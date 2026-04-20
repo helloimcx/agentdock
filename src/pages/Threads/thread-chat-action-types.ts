@@ -23,11 +23,11 @@ export type ThreadChatConversationRefs = {
   nextMessageOrderRef: MutableRefObject<number>;
   pendingTurnRef: ThreadChatPendingTurnRef;
   progressSequenceByTurnRef: MutableRefObject<Record<string, number>>;
+  taskStateRef: MutableRefObject<ChatTaskState>;
 };
 
 export type ThreadChatSendingRefs = ThreadChatConversationRefs & {
   lastSessionByProjectRef: MutableRefObject<Record<string, string>>;
-  taskStateRef: MutableRefObject<ChatTaskState>;
 };
 
 export type ThreadChatCoreSetters = {

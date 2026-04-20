@@ -63,7 +63,12 @@ interface PersistedDesktopSettings {
 }
 
 const PROGRESS_STYLE_OPTIONS = ['legacy', 'compact', 'card'] as const;
-const PROVIDER_PRESET_DEFINITIONS = [
+type ProviderPresetDefinition = DesktopProviderConfig & {
+  id: string;
+  label: string;
+};
+
+const PROVIDER_PRESET_DEFINITIONS: ProviderPresetDefinition[] = [
   {
     id: 'openai',
     label: 'OpenAI',
@@ -128,7 +133,7 @@ const PROVIDER_PRESET_DEFINITIONS = [
     base_url: 'http://127.0.0.1:11434/v1',
     model: 'qwen2.5-coder:7b',
   },
-] as const;
+];
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));

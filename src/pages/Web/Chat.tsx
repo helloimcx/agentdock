@@ -444,8 +444,8 @@ export default function WebChat() {
         : {
             id: baseSession.id,
             project: selectedProject,
-            sessionKey: baseSession.session_key,
-            name: sessionLabel(baseSession),
+            sessionKey: 'session_key' in baseSession ? baseSession.session_key : baseSession.sessionKey,
+            name: 'session_key' in baseSession ? sessionLabel(baseSession) : baseSession.name,
             live: baseSession.live,
             isDraft: false,
             detail: null,

@@ -1,4 +1,4 @@
-import type { Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { KnowledgeBase, ThreadDetail } from '../../../packages/contracts/src';
 import type { RuntimeProvider } from '@/app/runtime';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget } from './thread-chat-model';
@@ -124,6 +124,7 @@ export function useThreadChatActions({
     nextMessageOrderRef,
     pendingTurnRef,
     progressSequenceByTurnRef,
+    taskStateRef,
   };
 
   const identitySetters: ThreadChatIdentitySetters = {

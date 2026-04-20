@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
+import type { ThreadChatRefreshThreadsForWorkspace } from './thread-chat-action-types';
 import { useThreadChatBridgeActions } from './useThreadChatBridgeActions';
 import { useThreadChatBridgeEvents } from './useThreadChatBridgeEvents';
 
@@ -16,7 +17,7 @@ type UseThreadChatBridgeInput = {
   clearReplyTimeout: () => void;
   finalizeTurnMessages: (turnKey?: string) => void;
   nextProgressMessageId: (replyCtx?: string) => string;
-  refreshThreadsForWorkspace: (workspaceId: string) => Promise<unknown>;
+  refreshThreadsForWorkspace: ThreadChatRefreshThreadsForWorkspace;
   reserveAssistantMessageOrder: (sessionKey?: string) => number;
   reserveNextMessageOrder: () => number;
   settlePreviewMessages: (turnKey?: string) => void;
@@ -38,7 +39,6 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
   useThreadChatBridgeEvents({
     activeAgentType: input.activeAgentType,
     activeBridgeSessionKey: input.activeBridgeSessionKey,
-    activeThreadId: input.activeThreadId,
     armReplyTimeout: input.armReplyTimeout,
     clearActionStatuses: input.clearActionStatuses,
     clearLocalCorePolling: input.clearLocalCorePolling,
