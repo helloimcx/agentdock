@@ -13,6 +13,7 @@
     "build:renderer": "vite build",
     "build:electron": "node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json",
     "build:core": "pnpm build:electron",
+    "test": "pnpm build:electron && node --test dist-electron/electron/*.test.js dist-electron/packages/knowledge-api/test/*.test.js",
     "e2e:smoke": "pnpm build && node scripts/e2e-smoke.mjs",
     "start": "node scripts/dev.mjs",
     "start:core": "node scripts/launch-core.mjs",
