@@ -30,7 +30,8 @@ flowchart LR
 
   SM --> CC[cc-connect process]
   BA --> CC
-  WR --> CC
+  WR --> CCA[CcConnectCompatAdapter<br/>legacy thread bridge]
+  CCA --> CC
   WR --> ACP[ACP agent process<br/>localcore-acp]
   WR --> KB[Knowledge Provider<br/>ai_vector]
 ```
@@ -155,7 +156,7 @@ flowchart LR
 
 Routing rules:
 
-- normal projects: route to `cc-connect` management API and desktop bridge
+- normal projects: route through `CcConnectCompatAdapter`, which uses the `cc-connect` management API and desktop bridge as a legacy compatibility backend
 - `localcore-acp`: route to Local AI Core ACP session management and SQLite persistence
 
 The router also normalizes thread IDs as:
@@ -166,27 +167,41 @@ For `localcore-acp`, it generates synthetic bridge session keys:
 
 - `localcore-acp:<workspace>:<sessionId>`
 
+The migration target is to make Local AI Core the single owner of local desktop threads and runs. In that target model, `cc-connect` is no longer the local chat source of truth; it remains as a platform gateway for IM ingress and outbound delivery.
+
+```mermaid
+flowchart LR
+  UI[Thread UI] --> CORE[Local AI Core]
+  CORE --> TS[Thread Store<br/>SQLite]
+  CORE --> AR[Agent Runtime Adapters<br/>localcore-acp / future agents]
+  CORE --> PG[Platform Gateway Adapter]
+  PG --> CC[cc-connect<br/>IM platforms]
+  CC --> IM[Telegram / Slack / Discord / Feishu]
+```
+
 ## 7. Chat Flow
 
-### 7.1 Standard `cc-connect` Path
+### 7.1 Legacy `cc-connect` Compatibility Path
 
 ```mermaid
 sequenceDiagram
   participant UI as Thread Chat UI
-  participant API as src/api/desktop
-  participant IPC as Electron IPC
-  participant BA as BridgeAdapter
+  participant SDK as core-sdk
+  participant CORE as Local AI Core
+  participant WR as WorkspaceRouter
+  participant CCA as CcConnectCompatAdapter
   participant CC as cc-connect
 
-  UI->>API: send message
-  API->>IPC: bridgeSendMessage(...)
-  IPC->>BA: sendMessage(...)
-  BA->>CC: bridge websocket message
-  CC-->>BA: preview/update/reply/typing events
-  BA-->>IPC: DesktopBridgeEvent
-  IPC-->>LocalCore: bridge.updated
-  LocalCore-->>UI: SSE bridge event
+  UI->>SDK: sendMessage(threadId, content)
+  SDK->>CORE: local-core HTTP
+  CORE->>WR: sendThreadMessage
+  WR->>CCA: legacy thread operation
+  CCA->>CC: management API / bridge message
+  CC-->>CORE: normalized DesktopBridgeEvent
+  CORE-->>UI: SSE bridge event
 ```
+
+This path exists for migration compatibility. New local-first agents should prefer Local AI Core-owned backends rather than adding more thread ownership to `cc-connect`.
 
 ### 7.2 `localcore-acp` Path
 
@@ -282,7 +297,8 @@ Backend modules:
 - Keep renderer runtime-agnostic through `src/api/desktop.ts`
 - Use Local AI Core as the local uniform API and SSE event layer
 - Route by workspace type instead of forcing one global chat backend
-- Preserve `cc-connect` compatibility while adding `localcore-acp`
+- Preserve `cc-connect` compatibility behind an explicit adapter boundary while moving local chat ownership into Local AI Core
+- Keep `cc-connect` as the IM platform gateway instead of the desktop thread source of truth
 - Keep logical config user-friendly and runtime config operational
 
 ## 12. Current Risks / Complexity Hotspots
@@ -291,6 +307,7 @@ Backend modules:
 - `localcore-acp` streaming depends on ACP agents emitting chunked session updates
 - Electron and Local AI Core share some runtime responsibilities, so event fan-out must avoid duplicates
 - Logical config and generated runtime config can diverge by design, which is powerful but easy to misunderstand
+- The legacy compatibility path still lets `cc-connect` own normal project sessions until those agent runtimes are migrated to Local AI Core-native backends
 
 ## 13. Suggested Reading Order
 
@@ -305,4 +322,3 @@ If you are new to the codebase, read in this order:
 7. `services/local-ai-core/src/workspace-router.ts`
 8. `src/pages/Threads/useThreadChatController.ts`
 9. `src/pages/Threads/useThreadChatBridgeEvents.ts`
-

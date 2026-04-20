@@ -470,8 +470,180 @@ class LocalCoreAcpStore {
   }
 }
 
+type CcConnectCompatAdapterOptions = {
+  managementRequest: WorkspaceRouterOptions['managementRequest'];
+  bridgeSendMessage: WorkspaceRouterOptions['bridgeSendMessage'];
+  runThreadMap: Map<string, string>;
+};
+
+type WorkspaceThreadBackend = {
+  listThreads(workspaceId: string): Promise<ThreadSummary[]>;
+  createThread(workspaceId: string, title: string): Promise<ThreadDetail>;
+  getThread(threadId: string): Promise<ThreadDetail>;
+  renameThread(threadId: string, title: string): Promise<ThreadDetail>;
+  deleteThread(threadId: string): Promise<{ deleted: boolean }>;
+  sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }>;
+  sendThreadAction(threadId: string, content: string): Promise<{ runId: string }>;
+  interruptRun(runId: string): Promise<{ interrupted: boolean }>;
+};
+
+class CcConnectCompatAdapter implements WorkspaceThreadBackend {
+  constructor(private readonly options: CcConnectCompatAdapterOptions) {}
+
+  async listProjects() {
+    try {
+      const payload = await this.options.managementRequest<{ projects: ManagementProject[] }>('GET', '/projects');
+      return payload.projects || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
+    const payload = await this.options.managementRequest<{ sessions: ManagementSession[] }>(
+      'GET',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions`,
+    );
+    return (payload.sessions || []).map((session) => toThreadSummary(workspaceId, session));
+  }
+
+  async createThread(workspaceId: string, title: string): Promise<ThreadDetail> {
+    const chatId = `core-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionKey = `desktop:${workspaceId}:${chatId}`;
+    const created = await this.options.managementRequest<{ id?: string }>(
+      'POST',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions`,
+      {
+        session_key: sessionKey,
+        name: title,
+      },
+    );
+    const sessions = await this.options.managementRequest<{ sessions: ManagementSession[] }>(
+      'GET',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions`,
+    );
+    const matched =
+      (sessions.sessions || []).find((session) => session.id === created.id) ||
+      (sessions.sessions || []).find((session) => session.session_key === sessionKey);
+    if (!matched) {
+      throw new Error('Created thread could not be loaded');
+    }
+    return this.getThread(encodeThreadId(workspaceId, matched.id));
+  }
+
+  async getThread(threadId: string): Promise<ThreadDetail> {
+    const { workspaceId, sessionId } = decodeThreadId(threadId);
+    const detail = await this.options.managementRequest<ManagementSessionDetail>(
+      'GET',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?history_limit=200`,
+    );
+    return toThreadDetail(workspaceId, detail);
+  }
+
+  async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
+    const { workspaceId, sessionId } = decodeThreadId(threadId);
+    await this.options.managementRequest(
+      'PATCH',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
+      { name: title },
+    );
+    return this.getThread(threadId);
+  }
+
+  async deleteThread(threadId: string) {
+    const { workspaceId, sessionId } = decodeThreadId(threadId);
+    await this.options.managementRequest('DELETE', `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`);
+    return { deleted: true };
+  }
+
+  async sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }> {
+    const { workspaceId, sessionId } = decodeThreadId(threadId);
+    const detail = await this.options.managementRequest<any>(
+      'GET',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?history_limit=1`,
+    );
+    const sessionKey = String(detail.session_key || '');
+    if (sessionKey.startsWith('desktop:')) {
+      const [, project = workspaceId, chatId = 'main'] = sessionKey.split(':');
+      const result = await this.options.bridgeSendMessage({ project, chatId, content });
+      this.options.runThreadMap.set(result.messageId, threadId);
+      return { runId: result.messageId };
+    }
+    await this.options.managementRequest('POST', `/projects/${encodeURIComponent(workspaceId)}/sessions/switch`, {
+      session_key: detail.session_key,
+      session_id: detail.id,
+    }).catch(() => undefined);
+    await this.options.managementRequest('POST', `/projects/${encodeURIComponent(workspaceId)}/send`, {
+      session_key: detail.session_key,
+      message: content,
+    });
+    const runId = `run:${threadId}:${Date.now()}`;
+    this.options.runThreadMap.set(runId, threadId);
+    return { runId };
+  }
+
+  async sendThreadAction(threadId: string, content: string) {
+    return this.sendThreadMessage(threadId, content);
+  }
+
+  async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
+    const threadId = this.options.runThreadMap.get(runId);
+    if (!threadId) {
+      return { interrupted: false };
+    }
+    const { workspaceId, sessionId } = decodeThreadId(threadId);
+    const detail = await this.options.managementRequest<any>(
+      'GET',
+      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?history_limit=1`,
+    );
+    const sessionKey = String(detail.session_key || '');
+    if (!sessionKey.startsWith('desktop:')) {
+      return { interrupted: false };
+    }
+    await this.stopDesktopSession(sessionKey, workspaceId);
+    return { interrupted: true };
+  }
+
+  async sendDesktopProbe(workspaceId: string, chatId: string, content: string) {
+    const sessionKey = `desktop:${workspaceId}:${chatId}`;
+    const result = await this.options.bridgeSendMessage({ project: workspaceId, chatId, content });
+    return {
+      runId: String(result.messageId || ''),
+      sessionKey,
+    };
+  }
+
+  async stopDesktopSession(sessionKey: string, fallbackWorkspaceId: string) {
+    if (!sessionKey.startsWith('desktop:')) {
+      return;
+    }
+    const [, project = fallbackWorkspaceId, chatId = 'main'] = sessionKey.split(':');
+    await this.options.bridgeSendMessage({ project, chatId, content: '/stop' });
+  }
+
+  async cleanupProbeSession(workspaceId: string, sessionKey: string) {
+    try {
+      const payload = await this.options.managementRequest<{ sessions: ManagementSession[] }>(
+        'GET',
+        `/projects/${encodeURIComponent(workspaceId)}/sessions`,
+      );
+      const matched = (payload.sessions || []).find((session) => session.session_key === sessionKey);
+      if (!matched) {
+        return;
+      }
+      await this.options.managementRequest(
+        'DELETE',
+        `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(matched.id)}`,
+      );
+    } catch {
+      // Best effort cleanup for probe sessions.
+    }
+  }
+}
+
 class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
+  private readonly ccConnect: CcConnectCompatAdapter;
   private readonly sessions = new Map<string, AcpSessionState>();
   private readonly runThreadMap = new Map<string, string>();
   private readonly bridgeSubscribers = new Set<(event: DesktopBridgeEvent) => void>();
@@ -479,6 +651,11 @@ class WorkspaceRouter {
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = new LocalCoreAcpStore(options.userDataPath);
+    this.ccConnect = new CcConnectCompatAdapter({
+      managementRequest: options.managementRequest,
+      bridgeSendMessage: options.bridgeSendMessage,
+      runThreadMap: this.runThreadMap,
+    });
     this.unsubscribeExternalBridge = options.subscribeToBridgeEvents?.((event) => {
       this.notifyBridgeSubscribers(event);
     });
@@ -497,13 +674,7 @@ class WorkspaceRouter {
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
     const localProjects = await this.listLocalCoreProjects();
-    let ccProjects: ManagementProject[] = [];
-    try {
-      const payload = await this.options.managementRequest<{ projects: ManagementProject[] }>('GET', '/projects');
-      ccProjects = payload.projects || [];
-    } catch {
-      ccProjects = [];
-    }
+    const ccProjects = await this.ccConnect.listProjects();
     const workspaceMap = new Map<string, WorkspaceSummary>();
     for (const project of ccProjects) {
       workspaceMap.set(project.name, {
@@ -533,11 +704,7 @@ class WorkspaceRouter {
     if (route.kind === 'localcore-acp') {
       return this.store.listThreadSummaries(workspaceId);
     }
-    const payload = await this.options.managementRequest<{ sessions: ManagementSession[] }>(
-      'GET',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions`,
-    );
-    return (payload.sessions || []).map((session) => toThreadSummary(workspaceId, session));
+    return this.ccConnect.listThreads(workspaceId);
   }
 
   async createThread(workspaceId: string, title?: string): Promise<ThreadDetail> {
@@ -546,27 +713,7 @@ class WorkspaceRouter {
       const detail = this.store.createThread(workspaceId, title || `New thread ${new Date().toLocaleTimeString()}`);
       return this.withKnowledge(detail);
     }
-    const chatId = `core-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const sessionKey = `desktop:${workspaceId}:${chatId}`;
-    const created = await this.options.managementRequest<{ id?: string }>(
-      'POST',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions`,
-      {
-        session_key: sessionKey,
-        name: title || `New thread ${new Date().toLocaleTimeString()}`,
-      },
-    );
-    const sessions = await this.options.managementRequest<{ sessions: ManagementSession[] }>(
-      'GET',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions`,
-    );
-    const matched =
-      (sessions.sessions || []).find((session) => session.id === created.id) ||
-      (sessions.sessions || []).find((session) => session.session_key === sessionKey);
-    if (!matched) {
-      throw new Error('Created thread could not be loaded');
-    }
-    return this.getThread(encodeThreadId(workspaceId, matched.id));
+    return this.withKnowledge(await this.ccConnect.createThread(workspaceId, title || `New thread ${new Date().toLocaleTimeString()}`));
   }
 
   async getThread(threadId: string): Promise<ThreadDetail> {
@@ -575,11 +722,7 @@ class WorkspaceRouter {
     if (route.kind === 'localcore-acp') {
       return this.withKnowledge(this.store.getThread(threadId, []));
     }
-    const detail = await this.options.managementRequest<ManagementSessionDetail>(
-      'GET',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?history_limit=200`,
-    );
-    return this.withKnowledge(toThreadDetail(workspaceId, detail));
+    return this.withKnowledge(await this.ccConnect.getThread(encodeThreadId(workspaceId, sessionId)));
   }
 
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
@@ -589,12 +732,7 @@ class WorkspaceRouter {
       this.store.renameThread(threadId, title);
       return this.getThread(threadId);
     }
-    await this.options.managementRequest(
-      'PATCH',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`,
-      { name: title },
-    );
-    return this.getThread(threadId);
+    return this.withKnowledge(await this.ccConnect.renameThread(encodeThreadId(workspaceId, sessionId), title));
   }
 
   async updateThreadKnowledgeBases(threadId: string, knowledgeBaseIds: string[]) {
@@ -612,7 +750,7 @@ class WorkspaceRouter {
       await this.options.knowledgeProvider.deleteThreadKnowledgeBaseLinks(threadId);
       return { deleted: true };
     }
-    await this.options.managementRequest('DELETE', `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}`);
+    await this.ccConnect.deleteThread(encodeThreadId(workspaceId, sessionId));
     await this.options.knowledgeProvider.deleteThreadKnowledgeBaseLinks(threadId);
     return { deleted: true };
   }
@@ -623,28 +761,7 @@ class WorkspaceRouter {
     if (route.kind === 'localcore-acp') {
       return this.sendLocalCoreAcpThreadMessage(threadId, route.config, content);
     }
-    const detail = await this.options.managementRequest<any>(
-      'GET',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?history_limit=1`,
-    );
-    const sessionKey = String(detail.session_key || '');
-    if (sessionKey.startsWith('desktop:')) {
-      const [, project = workspaceId, chatId = 'main'] = sessionKey.split(':');
-      const result = await this.options.bridgeSendMessage({ project, chatId, content });
-      this.runThreadMap.set(result.messageId, threadId);
-      return { runId: result.messageId };
-    }
-    await this.options.managementRequest('POST', `/projects/${encodeURIComponent(workspaceId)}/sessions/switch`, {
-      session_key: detail.session_key,
-      session_id: detail.id,
-    }).catch(() => undefined);
-    await this.options.managementRequest('POST', `/projects/${encodeURIComponent(workspaceId)}/send`, {
-      session_key: detail.session_key,
-      message: content,
-    });
-    const runId = `run:${threadId}:${Date.now()}`;
-    this.runThreadMap.set(runId, threadId);
-    return { runId };
+    return this.ccConnect.sendThreadMessage(encodeThreadId(workspaceId, sessionId), content);
   }
 
   async sendThreadAction(threadId: string, content: string) {
@@ -653,7 +770,7 @@ class WorkspaceRouter {
     if (route.kind === 'localcore-acp') {
       return this.sendLocalCoreAcpThreadAction(threadId, content);
     }
-    return this.sendThreadMessage(threadId, content);
+    return this.ccConnect.sendThreadAction(threadId, content);
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
@@ -692,17 +809,7 @@ class WorkspaceRouter {
       this.store.updateRun(runId, threadId, 'interrupted');
       return { interrupted: true };
     }
-    const detail = await this.options.managementRequest<any>(
-      'GET',
-      `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}?history_limit=1`,
-    );
-    const sessionKey = String(detail.session_key || '');
-    if (!sessionKey.startsWith('desktop:')) {
-      return { interrupted: false };
-    }
-    const [, project = workspaceId, chatId = 'main'] = sessionKey.split(':');
-    await this.options.bridgeSendMessage({ project, chatId, content: '/stop' });
-    return { interrupted: true };
+    return this.ccConnect.interruptRun(runId);
   }
 
   getCapabilities(): LocalCoreCapabilities {
@@ -926,49 +1033,28 @@ class WorkspaceRouter {
     const sessionKey = `desktop:${workspaceId}:${probeChatId}`;
     const collector = this.createProbeCollector();
     let runId = '';
+    let shouldStopProbe = false;
     const sequence = this.waitForProbeSequence(sessionKey, 20000, collector);
     try {
-      const sent = await this.options.bridgeSendMessage({
-        project: workspaceId,
-        chatId: probeChatId,
-        content: prompt,
-      });
-      runId = String(sent.messageId || '');
+      const sent = await this.ccConnect.sendDesktopProbe(workspaceId, probeChatId, prompt);
+      runId = sent.runId;
       await sequence.promise;
       return this.finalizeProbeResult(workspaceId, route.agentType, 'cc-connect', prompt, collector, {
         sessionKey,
       });
     } catch (error) {
       sequence.cancel();
+      shouldStopProbe = true;
       return this.finalizeProbeResult(workspaceId, route.agentType, 'cc-connect', prompt, collector, {
         sessionKey,
         error: error instanceof Error ? error.message : String(error),
         timedOut: error instanceof Error && error.message.includes('Timed out'),
       });
     } finally {
-      if (runId) {
-        await this.interruptRun(runId).catch(() => ({ interrupted: false }));
+      if (runId && shouldStopProbe) {
+        await this.ccConnect.stopDesktopSession(sessionKey, workspaceId).catch(() => undefined);
       }
-      await this.cleanupProbeCcConnectSession(workspaceId, sessionKey);
-    }
-  }
-
-  private async cleanupProbeCcConnectSession(workspaceId: string, sessionKey: string) {
-    try {
-      const payload = await this.options.managementRequest<{ sessions: ManagementSession[] }>(
-        'GET',
-        `/projects/${encodeURIComponent(workspaceId)}/sessions`,
-      );
-      const matched = (payload.sessions || []).find((session) => session.session_key === sessionKey);
-      if (!matched) {
-        return;
-      }
-      await this.options.managementRequest(
-        'DELETE',
-        `/projects/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(matched.id)}`,
-      );
-    } catch {
-      // Best effort cleanup for probe sessions.
+      await this.ccConnect.cleanupProbeSession(workspaceId, sessionKey);
     }
   }
 
