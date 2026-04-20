@@ -28,7 +28,9 @@ export function useThreadChatRuntimeState({
 
   const serviceRunning = runtime?.phase === 'api_ready' || runtime?.phase === 'bridge_ready';
   const bridgeConnected = runtime?.bridge.status === 'connected';
-  const transportReady = runtimeProvider === 'local_core' ? serviceRunning : bridgeConnected;
+  const transportReady = runtimeProvider === 'web_remote'
+    ? bridgeConnected
+    : serviceRunning;
 
   const refreshRuntime = useCallback(async () => {
     const nextRuntime = await getRuntimeStatus();

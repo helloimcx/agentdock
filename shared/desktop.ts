@@ -79,12 +79,26 @@ export interface DesktopBridgeState {
   connectedAt?: string;
 }
 
+export interface DesktopRuntimeRoleState {
+  status: DesktopServiceStatus;
+  label: string;
+  lastError?: string;
+  service?: DesktopServiceState;
+  bridge?: DesktopBridgeState;
+}
+
+export interface DesktopRuntimeRoles {
+  conversation: DesktopRuntimeRoleState;
+  platformGateway: DesktopRuntimeRoleState;
+}
+
 export interface DesktopRuntimeStatus {
   mode: 'desktop';
   phase: DesktopRuntimePhase;
   pendingRestart: boolean;
   service: DesktopServiceState;
   bridge: DesktopBridgeState;
+  roles: DesktopRuntimeRoles;
   settings: DesktopSettings;
   managementBaseUrl: string;
   configFile: ConfigFileState;
@@ -95,19 +109,39 @@ export function deriveDesktopRuntimePhase(
   service: DesktopServiceState,
   bridge: DesktopBridgeState,
 ): DesktopRuntimePhase {
-  if (service.status === 'error' || bridge.status === 'error') {
-    return 'error';
-  }
-  if (service.status === 'stopped') {
-    return 'stopped';
-  }
   if (service.status === 'starting') {
     return 'starting';
   }
   if (bridge.status === 'connected') {
     return 'bridge_ready';
   }
+  // Local AI Core is the conversation runtime. The cc-connect service/bridge
+  // only represent the optional platform gateway, so their stopped/error state
+  // must not make local desktop chat unavailable.
   return 'api_ready';
+}
+
+export function deriveDesktopRuntimeRoles(
+  service: DesktopServiceState,
+  bridge: DesktopBridgeState,
+): DesktopRuntimeRoles {
+  const platformGatewayStatus: DesktopServiceStatus =
+    service.status === 'running' && bridge.status === 'error'
+      ? 'error'
+      : service.status;
+  return {
+    conversation: {
+      status: 'running',
+      label: 'Local AI Core',
+    },
+    platformGateway: {
+      status: platformGatewayStatus,
+      label: 'cc-connect Platform Gateway',
+      lastError: service.lastError || bridge.lastError,
+      service,
+      bridge,
+    },
+  };
 }
 
 export interface DesktopBridgeSendInput {
@@ -205,7 +239,7 @@ export function supportsInteractivePermission(agentType?: string | null) {
 
 export function isAcpAgentType(agentType?: string | null) {
   const normalized = String(agentType || '').trim().toLowerCase();
-  return normalized === 'acp' || normalized === LOCALCORE_ACP_AGENT_TYPE;
+  return normalized === 'acp' || normalized === 'opencode' || normalized === LOCALCORE_ACP_AGENT_TYPE;
 }
 
 export interface DesktopBridgeEvent {

@@ -28,7 +28,7 @@ import type {
   ThreadSummary,
   WorkspaceSummary,
 } from '../../contracts/src/index.js';
-import { deriveDesktopRuntimePhase } from '../../contracts/src/index.js';
+import { deriveDesktopRuntimePhase, deriveDesktopRuntimeRoles } from '../../contracts/src/index.js';
 import { AiVectorKnowledgeProvider, type KnowledgeProvider } from '../../knowledge-api/src/index.js';
 import { BridgeAdapter } from '../../../electron/bridge-adapter.js';
 import { ServiceManager } from '../../../electron/service-manager.js';
@@ -184,6 +184,7 @@ export class CcConnectController extends EventEmitter {
       ...runtime,
       phase: deriveDesktopRuntimePhase(runtime.service, bridge),
       bridge,
+      roles: deriveDesktopRuntimeRoles(runtime.service, bridge),
     };
   }
 

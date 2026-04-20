@@ -7,8 +7,9 @@ This document summarizes the current architecture of `cc-connect-desktop` from t
 AI-WorkStation is evolving from a pure Electron desktop manager for `cc-connect` into a hybrid local app with:
 
 - Electron-managed desktop runtime
-- Local AI Core as a local HTTP/SSE facade
-- Thread-level routing between `cc-connect` sessions and `localcore-acp` sessions
+- Local AI Core as the local conversation runtime and HTTP/SSE facade
+- Thread-level routing between Local AI Core-native agent backends and legacy `cc-connect` compatibility sessions
+- `cc-connect` retained as the IM platform gateway
 - Shared renderer code that can run against `electron`, `local_core`, or `web_remote`
 
 ## 2. Top-Level Architecture
@@ -67,6 +68,7 @@ Responsibilities:
 - manage the local `cc-connect` child process
 - manage the desktop bridge websocket connection
 - host the embedded Local AI Core server
+- report separate Conversation Runtime and Platform Gateway Runtime roles
 
 Key files:
 
@@ -156,8 +158,10 @@ flowchart LR
 
 Routing rules:
 
-- normal projects: route through `CcConnectCompatAdapter`, which uses the `cc-connect` management API and desktop bridge as a legacy compatibility backend
 - `localcore-acp`: route to Local AI Core ACP session management and SQLite persistence
+- `opencode` / `acp` with no IM platform bindings: route to the same Local AI Core-native ACP backend
+- projects with IM platform bindings: route through `CcConnectCompatAdapter` while `cc-connect` acts as the platform gateway
+- non-migrated agent types: keep the legacy compatibility path until they get native Local AI Core adapters
 
 The router also normalizes thread IDs as:
 
@@ -167,7 +171,7 @@ For `localcore-acp`, it generates synthetic bridge session keys:
 
 - `localcore-acp:<workspace>:<sessionId>`
 
-The migration target is to make Local AI Core the single owner of local desktop threads and runs. In that target model, `cc-connect` is no longer the local chat source of truth; it remains as a platform gateway for IM ingress and outbound delivery.
+The migration target is to make Local AI Core the single owner of local desktop threads and runs. In the current code, Local AI Core already owns local ACP-compatible desktop threads for `localcore-acp`, `opencode`, and `acp` workspaces that do not bind IM platforms. `cc-connect` is retained as the platform gateway for IM ingress and outbound delivery.
 
 ```mermaid
 flowchart LR
@@ -299,6 +303,8 @@ Backend modules:
 - Route by workspace type instead of forcing one global chat backend
 - Preserve `cc-connect` compatibility behind an explicit adapter boundary while moving local chat ownership into Local AI Core
 - Keep `cc-connect` as the IM platform gateway instead of the desktop thread source of truth
+- Split runtime status into `roles.conversation` and `roles.platformGateway` while preserving legacy `service`, `bridge`, and `phase` fields
+- Generate `cc-connect` runtime config only for platform-gateway projects; local ACP-compatible desktop projects are excluded from the generated gateway config
 - Keep logical config user-friendly and runtime config operational
 
 ## 12. Current Risks / Complexity Hotspots
@@ -307,7 +313,7 @@ Backend modules:
 - `localcore-acp` streaming depends on ACP agents emitting chunked session updates
 - Electron and Local AI Core share some runtime responsibilities, so event fan-out must avoid duplicates
 - Logical config and generated runtime config can diverge by design, which is powerful but easy to misunderstand
-- The legacy compatibility path still lets `cc-connect` own normal project sessions until those agent runtimes are migrated to Local AI Core-native backends
+- The legacy compatibility path still lets `cc-connect` own platform-bound or non-migrated agent sessions until those paths get explicit Local AI Core-native adapters or platform ingress mapping
 
 ## 13. Suggested Reading Order
 

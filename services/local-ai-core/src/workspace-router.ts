@@ -19,10 +19,12 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
+  normalizeDesktopAgentModel,
   type DesktopBridgeButtonOption,
   normalizeDesktopBridgeButtonOption,
 } from '../../../shared/desktop.js';
 import type { KnowledgeProvider } from '../../../packages/knowledge-api/src/index.js';
+import { CcConnectPlatformGatewayAdapter, hasPlatformGatewayBindings } from './platform-gateway.js';
 
 export function encodeThreadId(workspaceId: string, sessionId: string) {
   return `${encodeURIComponent(workspaceId)}::${encodeURIComponent(sessionId)}`;
@@ -151,6 +153,7 @@ type AcpSessionState = {
 
 type LocalCoreProjectConfig = {
   workspaceId: string;
+  agentType: string;
   workDir: string;
   command: string;
   args: string[];
@@ -187,6 +190,17 @@ function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
   return Array.isArray(project?.platforms)
     ? project!.platforms.map((platform) => String(platform?.type || '').trim()).filter(Boolean)
     : [];
+}
+
+function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | null) {
+  const agentType = String(project?.agent?.type || '').trim().toLowerCase();
+  if (agentType === LOCALCORE_ACP_AGENT_TYPE) {
+    return true;
+  }
+  if (agentType !== 'opencode' && agentType !== 'acp') {
+    return false;
+  }
+  return !hasPlatformGatewayBindings(project);
 }
 
 function normalizeMessageContent(content?: string | null) {
@@ -348,7 +362,7 @@ class LocalCoreAcpStore {
     return Number(row?.total || 0);
   }
 
-  createThread(workspaceId: string, title: string): ThreadDetail {
+  createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE): ThreadDetail {
     const sessionId = randomUUID();
     const threadId = encodeThreadId(workspaceId, sessionId);
     const now = new Date().toISOString();
@@ -356,7 +370,7 @@ class LocalCoreAcpStore {
     this.db.prepare(`
       INSERT INTO threads (id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '')
-    `).run(threadId, workspaceId, sessionId, bridgeSessionKey, title, LOCALCORE_ACP_AGENT_TYPE, now, now);
+    `).run(threadId, workspaceId, sessionId, bridgeSessionKey, title, agentType, now, now);
     return {
       id: threadId,
       workspaceId,
@@ -367,7 +381,7 @@ class LocalCoreAcpStore {
       historyCount: 0,
       excerpt: '',
       bridgeSessionKey,
-      agentType: LOCALCORE_ACP_AGENT_TYPE,
+      agentType,
       messages: [],
       selectedKnowledgeBaseIds: [],
     };
@@ -641,10 +655,566 @@ class CcConnectCompatAdapter implements WorkspaceThreadBackend {
   }
 }
 
+type LocalCoreAcpBackendOptions = {
+  store: LocalCoreAcpStore;
+  runThreadMap: Map<string, string>;
+  emitBridge: (event: DesktopBridgeEvent) => void;
+  log?: (message: string) => void;
+};
+
+class LocalCoreAcpBackend implements WorkspaceThreadBackend {
+  private readonly sessions = new Map<string, AcpSessionState>();
+
+  constructor(private readonly options: LocalCoreAcpBackendOptions) {}
+
+  close() {
+    for (const session of this.sessions.values()) {
+      session.closed = true;
+      session.child.kill('SIGTERM');
+    }
+    this.sessions.clear();
+  }
+
+  async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
+    return this.options.store.listThreadSummaries(workspaceId);
+  }
+
+  async createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE): Promise<ThreadDetail> {
+    return this.options.store.createThread(workspaceId, title, agentType);
+  }
+
+  async getThread(threadId: string): Promise<ThreadDetail> {
+    return this.options.store.getThread(threadId, []);
+  }
+
+  async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
+    this.options.store.renameThread(threadId, title);
+    return this.getThread(threadId);
+  }
+
+  async deleteThread(threadId: string) {
+    this.closeSession(threadId);
+    this.options.store.deleteThread(threadId);
+    return { deleted: true };
+  }
+
+  async sendThreadMessage(threadId: string, content: string, config?: LocalCoreProjectConfig): Promise<{ runId: string }> {
+    if (!config) {
+      throw new Error('localcore-acp message send requires a workspace config.');
+    }
+    const row = this.options.store.getThreadRow(threadId);
+    if (!row) {
+      throw new Error(`Thread not found: ${threadId}`);
+    }
+    this.options.store.appendMessage(threadId, 'user', content, 'final');
+    const runId = `run:${threadId}:${Date.now()}`;
+    this.options.runThreadMap.set(runId, threadId);
+    this.options.store.updateRun(runId, threadId, 'running');
+    void this.runPrompt(threadId, runId, row.bridge_session_key, config, content).catch((error) => {
+      this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    return { runId };
+  }
+
+  async sendThreadAction(threadId: string, content: string, config?: LocalCoreProjectConfig) {
+    const session = this.sessions.get(threadId);
+    if (!session?.currentRunId) {
+      return this.sendThreadMessage(threadId, content, config);
+    }
+    const pendingPermission = session.pendingPermissionByRun.get(session.currentRunId);
+    if (!pendingPermission) {
+      return this.sendThreadMessage(threadId, content, config);
+    }
+    const action = String(content || '').trim().toLowerCase();
+    const matched = pendingPermission.options.find((option) => option.normalizedAction === action || option.optionId === action);
+    if (!matched) {
+      throw new Error(`Unknown permission option: ${content}`);
+    }
+    this.sendRaw(session, {
+      jsonrpc: '2.0',
+      id: pendingPermission.requestId,
+      result: {
+        outcome: {
+          outcome: 'selected',
+          optionId: matched.optionId,
+        },
+      },
+    });
+    session.pendingPermissionByRun.delete(session.currentRunId);
+    this.emitBridgeEvent({
+      type: 'typing_start',
+      sessionKey: session.bridgeSessionKey,
+      replyCtx: session.currentRunId,
+    });
+    return { runId: session.currentRunId };
+  }
+
+  async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
+    const threadId = this.options.runThreadMap.get(runId);
+    if (!threadId) {
+      return { interrupted: false };
+    }
+    const session = this.sessions.get(threadId);
+    if (!session) {
+      this.options.store.updateRun(runId, threadId, 'interrupted');
+      return { interrupted: false };
+    }
+    if (!session.sessionId) {
+      this.options.store.updateRun(runId, threadId, 'interrupted');
+      this.closeSession(threadId);
+      return { interrupted: false };
+    }
+    const pendingPermission = session.pendingPermissionByRun.get(runId);
+    if (pendingPermission) {
+      this.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: pendingPermission.requestId,
+        result: {
+          outcome: {
+            outcome: 'cancelled',
+          },
+        },
+      });
+      session.pendingPermissionByRun.delete(runId);
+    }
+    this.sendRaw(session, {
+      jsonrpc: '2.0',
+      method: 'session/cancel',
+      params: {
+        sessionId: session.sessionId,
+      },
+    });
+    this.options.store.updateRun(runId, threadId, 'interrupted');
+    return { interrupted: true };
+  }
+
+  private async runPrompt(
+    threadId: string,
+    runId: string,
+    bridgeSessionKey: string,
+    config: LocalCoreProjectConfig,
+    content: string,
+  ) {
+    const session = await this.ensureAcpSession(threadId, bridgeSessionKey, config);
+    session.currentRunId = runId;
+    session.currentTurn = {
+      runId,
+      replyCtx: runId,
+      previewHandle: randomUUID(),
+      assistantText: '',
+      typingStarted: false,
+      previewStarted: false,
+      permission: null,
+    };
+    this.emitBridgeEvent({
+      type: 'typing_start',
+      sessionKey: bridgeSessionKey,
+      replyCtx: runId,
+    });
+    session.currentTurn.typingStarted = true;
+    const promptPromise = this.request(session, 'session/prompt', {
+      sessionId: session.sessionId,
+      messageId: randomUUID(),
+      prompt: [
+        {
+          type: 'text',
+          text: content,
+        },
+      ],
+    }) as Promise<{ stopReason?: string }>;
+    session.promptPromise = promptPromise;
+    try {
+      const result = await promptPromise;
+      const currentTurn = session.currentTurn;
+      if (!currentTurn || currentTurn.runId !== runId) {
+        return;
+      }
+      if (currentTurn.assistantText) {
+        this.options.store.appendMessage(threadId, 'assistant', currentTurn.assistantText, 'final');
+        if (!currentTurn.previewStarted) {
+          this.emitBridgeEvent({
+            type: 'reply',
+            sessionKey: bridgeSessionKey,
+            replyCtx: runId,
+            content: currentTurn.assistantText,
+          });
+        }
+      } else if (result?.stopReason === 'cancelled') {
+        this.emitBridgeEvent({
+          type: 'reply',
+          sessionKey: bridgeSessionKey,
+          replyCtx: runId,
+          content: 'Request cancelled.',
+        });
+      }
+      const nextStatus = result?.stopReason === 'cancelled' ? 'interrupted' : 'completed';
+      this.options.store.updateRun(runId, threadId, nextStatus);
+      this.emitBridgeEvent({
+        type: 'typing_stop',
+        sessionKey: bridgeSessionKey,
+        replyCtx: runId,
+      });
+    } catch (error) {
+      this.options.store.updateRun(runId, threadId, 'failed');
+      this.emitBridgeEvent({
+        type: 'reply',
+        sessionKey: bridgeSessionKey,
+        replyCtx: runId,
+        content: `Agent error: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      this.emitBridgeEvent({
+        type: 'typing_stop',
+        sessionKey: bridgeSessionKey,
+        replyCtx: runId,
+      });
+    } finally {
+      if (session.currentRunId === runId) {
+        session.currentRunId = null;
+      }
+      if (session.currentTurn?.runId === runId) {
+        session.currentTurn = null;
+      }
+      session.promptPromise = null;
+    }
+  }
+
+  private async ensureAcpSession(threadId: string, bridgeSessionKey: string, config: LocalCoreProjectConfig) {
+    const existing = this.sessions.get(threadId);
+    if (existing && !existing.closed && existing.sessionId) {
+      return existing;
+    }
+    if (existing) {
+      this.closeSession(threadId);
+    }
+    const child = spawn(config.command, config.args, {
+      cwd: config.workDir,
+      env: {
+        ...process.env,
+        ...config.env,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const session: AcpSessionState = {
+      child,
+      requestId: 0,
+      stdoutBuffer: '',
+      pending: new Map(),
+      sessionId: '',
+      supportsLoad: false,
+      workspaceId: config.workspaceId,
+      threadId,
+      bridgeSessionKey,
+      currentRunId: null,
+      currentTurn: null,
+      loadReplayMode: false,
+      pendingPermissionByRun: new Map(),
+      closed: false,
+      promptPromise: null,
+    };
+    this.sessions.set(threadId, session);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => this.handleStdout(session, chunk));
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      this.options.log?.(`[localcore-acp:${threadId}] ${chunk.trimEnd()}`);
+    });
+    child.on('exit', (code, signal) => {
+      session.closed = true;
+      for (const pending of session.pending.values()) {
+        pending.reject(new Error(`ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`));
+      }
+      session.pending.clear();
+      if (this.sessions.get(threadId) === session) {
+        this.sessions.delete(threadId);
+      }
+    });
+    const initResult = await this.request(session, 'initialize', {
+      protocolVersion: 1,
+      clientCapabilities: {
+        fs: {
+          readTextFile: false,
+          writeTextFile: false,
+        },
+        terminal: false,
+      },
+      clientInfo: {
+        name: 'ai-workstation',
+        title: 'AI-WorkStation',
+        version: '0.1.0',
+      },
+    }) as {
+      agentCapabilities?: { loadSession?: boolean };
+    };
+    session.supportsLoad = Boolean(initResult?.agentCapabilities?.loadSession);
+    const row = this.options.store.getThreadRow(threadId);
+    if (row?.acp_session_id && row.acp_supports_load && session.supportsLoad) {
+      try {
+        session.loadReplayMode = true;
+        await this.request(session, 'session/load', {
+          sessionId: row.acp_session_id,
+          cwd: config.workDir,
+          mcpServers: [],
+        });
+        session.sessionId = row.acp_session_id;
+      } catch (error) {
+        this.options.log?.(`ACP loadSession failed for ${threadId}; creating a fresh session instead: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        session.loadReplayMode = false;
+      }
+    }
+    if (!session.sessionId) {
+      try {
+        const created = await this.request(session, 'session/new', {
+          cwd: config.workDir,
+          mcpServers: [],
+        }) as { sessionId?: string; session?: { id?: string; sessionId?: string } };
+        session.sessionId = String(created.sessionId || created.session?.sessionId || created.session?.id || '').trim();
+        if (!session.sessionId) {
+          throw new Error('ACP session/new did not return a sessionId');
+        }
+        this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad);
+      } catch (error) {
+        this.closeSession(threadId);
+        throw error;
+      }
+    }
+    return session;
+  }
+
+  private handleStdout(session: AcpSessionState, chunk: string) {
+    session.stdoutBuffer += chunk;
+    while (session.stdoutBuffer.includes('\n')) {
+      const newlineIndex = session.stdoutBuffer.indexOf('\n');
+      const line = session.stdoutBuffer.slice(0, newlineIndex).trim();
+      session.stdoutBuffer = session.stdoutBuffer.slice(newlineIndex + 1);
+      if (!line) {
+        continue;
+      }
+      let payload: any;
+      try {
+        payload = JSON.parse(line);
+      } catch (error) {
+        this.options.log?.(`ACP stdout parse failed: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      if (payload.method && payload.id !== undefined) {
+        this.handleAgentRequest(session, payload);
+        continue;
+      }
+      if (payload.method) {
+        this.handleAgentNotification(session, payload);
+        continue;
+      }
+      if (payload.id !== undefined) {
+        const pending = session.pending.get(payload.id);
+        if (!pending) {
+          continue;
+        }
+        session.pending.delete(payload.id);
+        if (payload.error) {
+          pending.reject(new Error(payload.error.message || `ACP request failed: ${payload.id}`));
+        } else {
+          pending.resolve(payload.result);
+        }
+      }
+    }
+  }
+
+  private handleAgentRequest(session: AcpSessionState, payload: any) {
+    if (payload.method !== 'session/request_permission') {
+      this.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: payload.id,
+        error: {
+          code: -32601,
+          message: `Unsupported ACP client method: ${String(payload.method || '')}`,
+        },
+      });
+      return;
+    }
+    const currentRunId = session.currentRunId;
+    if (!currentRunId) {
+      this.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: payload.id,
+        result: {
+          outcome: {
+            outcome: 'cancelled',
+          },
+        },
+      });
+      return;
+    }
+    const options = Array.isArray(payload.params?.options)
+      ? payload.params.options
+          .map((option: any) => ({
+            optionId: String(option?.optionId || '').trim(),
+            name: String(option?.name || option?.optionId || '').trim(),
+            kind: String(option?.kind || '').trim(),
+            normalizedAction: normalizePermissionAction(option?.kind),
+          }))
+          .filter((option: { optionId: string }) => option.optionId)
+      : [];
+    const buttonRows: DesktopBridgeButtonOption[][] = [options.map((option: RunningPermissionRequest['options'][number]) => {
+      const data = option.normalizedAction
+        ? `perm:${option.normalizedAction.replace(/\s+/g, '_')}`
+        : option.optionId;
+      const normalized = normalizeDesktopBridgeButtonOption({
+        text: option.normalizedAction || option.name,
+        data,
+      });
+      return normalized || { text: option.name, data: option.optionId };
+    })];
+    const permissionRequest: RunningPermissionRequest = {
+      requestId: payload.id,
+      options,
+    };
+    session.pendingPermissionByRun.set(currentRunId, permissionRequest);
+    if (session.currentTurn) {
+      session.currentTurn.permission = permissionRequest;
+    }
+    this.options.store.updateRun(currentRunId, session.threadId, 'awaiting_input');
+    this.emitBridgeEvent({
+      type: 'buttons',
+      sessionKey: session.bridgeSessionKey,
+      replyCtx: currentRunId,
+      content: formatToolCallContent(payload.params?.toolCall),
+      buttonRows,
+    });
+  }
+
+  private handleAgentNotification(session: AcpSessionState, payload: any) {
+    if (session.loadReplayMode) {
+      return;
+    }
+    if (payload.method !== 'session/update') {
+      return;
+    }
+    const update = payload.params?.update;
+    const currentTurn = session.currentTurn;
+    const currentRunId = session.currentRunId;
+    if (!update || !currentTurn || !currentRunId) {
+      return;
+    }
+    switch (String(update.sessionUpdate || '')) {
+      case 'agent_message_chunk': {
+        if (update.content?.type !== 'text') {
+          return;
+        }
+        currentTurn.assistantText += String(update.content.text || '');
+        if (!currentTurn.previewStarted) {
+          currentTurn.previewStarted = true;
+          this.emitBridgeEvent({
+            type: 'preview_start',
+            sessionKey: session.bridgeSessionKey,
+            replyCtx: currentRunId,
+            previewHandle: currentTurn.previewHandle,
+            content: currentTurn.assistantText,
+          });
+          return;
+        }
+        this.emitBridgeEvent({
+          type: 'update_message',
+          sessionKey: session.bridgeSessionKey,
+          replyCtx: currentRunId,
+          previewHandle: currentTurn.previewHandle,
+          content: currentTurn.assistantText,
+        });
+        return;
+      }
+      case 'tool_call': {
+        const title = String(update.title || 'Running tool').trim();
+        this.emitBridgeEvent({
+          type: 'reply',
+          sessionKey: session.bridgeSessionKey,
+          replyCtx: currentRunId,
+          content: `Tool: ${title}`,
+        });
+        return;
+      }
+      case 'tool_call_update': {
+        const title = String(update.title || 'Tool update').trim();
+        const status = String(update.status || '').trim();
+        const content = Array.isArray(update.content)
+          ? update.content
+              .map((entry: any) =>
+                entry?.type === 'content' && entry?.content?.type === 'text'
+                  ? String(entry.content.text || '')
+                  : '')
+              .filter(Boolean)
+              .join('\n')
+          : '';
+        this.emitBridgeEvent({
+          type: 'reply',
+          sessionKey: session.bridgeSessionKey,
+          replyCtx: currentRunId,
+          content: `Tool: ${[title, status, content].filter(Boolean).join(' - ')}`,
+        });
+        return;
+      }
+      case 'plan': {
+        const entries = Array.isArray(update.entries) ? update.entries : [];
+        if (entries.length === 0) {
+          return;
+        }
+        const summary = entries
+          .map((entry: any) => String(entry?.content || '').trim())
+          .filter(Boolean)
+          .join(' | ');
+        this.emitBridgeEvent({
+          type: 'reply',
+          sessionKey: session.bridgeSessionKey,
+          replyCtx: currentRunId,
+          content: `Plan: ${summary}`,
+        });
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private request(session: AcpSessionState, method: string, params: unknown) {
+    session.requestId += 1;
+    const id = session.requestId;
+    this.sendRaw(session, {
+      jsonrpc: '2.0',
+      id,
+      method,
+      params,
+    });
+    return new Promise((resolve, reject) => {
+      session.pending.set(id, { resolve, reject });
+    });
+  }
+
+  private sendRaw(session: AcpSessionState, payload: Record<string, unknown>) {
+    if (session.closed || !session.child.stdin.writable) {
+      throw new Error('ACP session is not writable');
+    }
+    session.child.stdin.write(`${JSON.stringify(payload)}\n`);
+  }
+
+  private closeSession(threadId: string) {
+    const session = this.sessions.get(threadId);
+    if (!session) {
+      return;
+    }
+    session.closed = true;
+    session.child.kill('SIGTERM');
+    this.sessions.delete(threadId);
+  }
+
+  private emitBridgeEvent(event: DesktopBridgeEvent) {
+    this.options.emitBridge(event);
+  }
+}
+
 class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
   private readonly ccConnect: CcConnectCompatAdapter;
-  private readonly sessions = new Map<string, AcpSessionState>();
+  private readonly platformGateway = new CcConnectPlatformGatewayAdapter();
+  private readonly localCoreAcp: LocalCoreAcpBackend;
   private readonly runThreadMap = new Map<string, string>();
   private readonly bridgeSubscribers = new Set<(event: DesktopBridgeEvent) => void>();
   private readonly unsubscribeExternalBridge?: () => void;
@@ -656,17 +1226,19 @@ class WorkspaceRouter {
       bridgeSendMessage: options.bridgeSendMessage,
       runThreadMap: this.runThreadMap,
     });
+    this.localCoreAcp = new LocalCoreAcpBackend({
+      store: this.store,
+      runThreadMap: this.runThreadMap,
+      emitBridge: (event) => this.emitBridgeEvent(event),
+      log: options.log,
+    });
     this.unsubscribeExternalBridge = options.subscribeToBridgeEvents?.((event) => {
       this.notifyBridgeSubscribers(event);
     });
   }
 
   close() {
-    for (const session of this.sessions.values()) {
-      session.closed = true;
-      session.child.kill('SIGTERM');
-    }
-    this.sessions.clear();
+    this.localCoreAcp.close();
     this.unsubscribeExternalBridge?.();
     this.bridgeSubscribers.clear();
     this.store.close();
@@ -690,7 +1262,7 @@ class WorkspaceRouter {
       workspaceMap.set(project.name, {
         id: project.name,
         name: project.name,
-        agentType: LOCALCORE_ACP_AGENT_TYPE,
+        agentType: String(project.agent?.type || LOCALCORE_ACP_AGENT_TYPE),
         platforms: normalizePlatformTypes(project),
         sessionsCount: this.store.countThreads(project.name),
         heartbeatEnabled: false,
@@ -702,7 +1274,7 @@ class WorkspaceRouter {
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      return this.store.listThreadSummaries(workspaceId);
+      return this.localCoreAcp.listThreads(workspaceId);
     }
     return this.ccConnect.listThreads(workspaceId);
   }
@@ -710,8 +1282,11 @@ class WorkspaceRouter {
   async createThread(workspaceId: string, title?: string): Promise<ThreadDetail> {
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      const detail = this.store.createThread(workspaceId, title || `New thread ${new Date().toLocaleTimeString()}`);
-      return this.withKnowledge(detail);
+      return this.withKnowledge(await this.localCoreAcp.createThread(
+        workspaceId,
+        title || `New thread ${new Date().toLocaleTimeString()}`,
+        route.agentType,
+      ));
     }
     return this.withKnowledge(await this.ccConnect.createThread(workspaceId, title || `New thread ${new Date().toLocaleTimeString()}`));
   }
@@ -720,7 +1295,7 @@ class WorkspaceRouter {
     const { workspaceId, sessionId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      return this.withKnowledge(this.store.getThread(threadId, []));
+      return this.withKnowledge(await this.localCoreAcp.getThread(threadId));
     }
     return this.withKnowledge(await this.ccConnect.getThread(encodeThreadId(workspaceId, sessionId)));
   }
@@ -729,8 +1304,7 @@ class WorkspaceRouter {
     const { workspaceId, sessionId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      this.store.renameThread(threadId, title);
-      return this.getThread(threadId);
+      return this.withKnowledge(await this.localCoreAcp.renameThread(threadId, title));
     }
     return this.withKnowledge(await this.ccConnect.renameThread(encodeThreadId(workspaceId, sessionId), title));
   }
@@ -745,8 +1319,7 @@ class WorkspaceRouter {
     const { workspaceId, sessionId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      this.closeSession(threadId);
-      this.store.deleteThread(threadId);
+      await this.localCoreAcp.deleteThread(threadId);
       await this.options.knowledgeProvider.deleteThreadKnowledgeBaseLinks(threadId);
       return { deleted: true };
     }
@@ -759,7 +1332,7 @@ class WorkspaceRouter {
     const { workspaceId, sessionId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      return this.sendLocalCoreAcpThreadMessage(threadId, route.config, content);
+      return this.localCoreAcp.sendThreadMessage(threadId, content, route.config);
     }
     return this.ccConnect.sendThreadMessage(encodeThreadId(workspaceId, sessionId), content);
   }
@@ -768,7 +1341,7 @@ class WorkspaceRouter {
     const { workspaceId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      return this.sendLocalCoreAcpThreadAction(threadId, content);
+      return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
     }
     return this.ccConnect.sendThreadAction(threadId, content);
   }
@@ -781,33 +1354,7 @@ class WorkspaceRouter {
     const { workspaceId, sessionId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     if (route.kind === 'localcore-acp') {
-      const session = this.sessions.get(threadId);
-      if (!session) {
-        this.store.updateRun(runId, threadId, 'interrupted');
-        return { interrupted: false };
-      }
-      const pendingPermission = session.pendingPermissionByRun.get(runId);
-      if (pendingPermission) {
-        this.sendRaw(session, {
-          jsonrpc: '2.0',
-          id: pendingPermission.requestId,
-          result: {
-            outcome: {
-              outcome: 'cancelled',
-            },
-          },
-        });
-        session.pendingPermissionByRun.delete(runId);
-      }
-      this.sendRaw(session, {
-        jsonrpc: '2.0',
-        method: 'session/cancel',
-        params: {
-          sessionId: session.sessionId,
-        },
-      });
-      this.store.updateRun(runId, threadId, 'interrupted');
-      return { interrupted: true };
+      return this.localCoreAcp.interruptRun(runId);
     }
     return this.ccConnect.interruptRun(runId);
   }
@@ -815,7 +1362,7 @@ class WorkspaceRouter {
   getCapabilities(): LocalCoreCapabilities {
     return {
       adapters: {
-        channels: ['cc-connect', LOCALCORE_ACP_AGENT_TYPE],
+        channels: [this.platformGateway.id, LOCALCORE_ACP_AGENT_TYPE],
         agents: ['opencode', 'codex', 'claudecode', 'cursor', 'gemini', 'qoder', 'iflow', LOCALCORE_ACP_AGENT_TYPE],
         knowledge: true,
       },
@@ -825,7 +1372,7 @@ class WorkspaceRouter {
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {
     const route = await this.getWorkspaceRoute(workspaceId);
     const normalizedAgentType = String(route.agentType || '').trim().toLowerCase();
-    if (normalizedAgentType !== 'acp' && normalizedAgentType !== LOCALCORE_ACP_AGENT_TYPE) {
+    if (normalizedAgentType !== 'acp' && normalizedAgentType !== 'opencode' && normalizedAgentType !== LOCALCORE_ACP_AGENT_TYPE) {
       throw new Error(`Workspace "${workspaceId}" is not configured as an ACP agent.`);
     }
     if (route.kind === 'localcore-acp') {
@@ -1063,13 +1610,13 @@ class WorkspaceRouter {
     route: Extract<WorkspaceRoute, { kind: 'localcore-acp' }>,
   ) {
     const prompt = this.buildProbePrompt();
-    const thread = this.store.createThread(workspaceId, `[probe] ${new Date().toISOString()}`);
+    const thread = await this.localCoreAcp.createThread(workspaceId, `[probe] ${new Date().toISOString()}`, route.agentType);
     const collector = this.createProbeCollector();
     const sequence = this.waitForProbeSequence(thread.bridgeSessionKey || '', 20000, collector);
     try {
-      const sent = await this.sendLocalCoreAcpThreadMessage(thread.id, route.config, prompt);
+      const sent = await this.localCoreAcp.sendThreadMessage(thread.id, prompt, route.config);
       await sequence.promise;
-      await this.interruptRun(sent.runId).catch(() => ({ interrupted: false }));
+      await this.localCoreAcp.interruptRun(sent.runId).catch(() => ({ interrupted: false }));
       return this.finalizeProbeResult(workspaceId, route.agentType, 'localcore-acp', prompt, collector, {
         threadId: thread.id,
         sessionKey: thread.bridgeSessionKey,
@@ -1083,465 +1630,8 @@ class WorkspaceRouter {
         timedOut: error instanceof Error && error.message.includes('Timed out'),
       });
     } finally {
-      await this.deleteThread(thread.id).catch(() => ({ deleted: false }));
+      await this.localCoreAcp.deleteThread(thread.id).catch(() => ({ deleted: false }));
     }
-  }
-
-  private async sendLocalCoreAcpThreadMessage(threadId: string, config: LocalCoreProjectConfig, content: string) {
-    const row = this.store.getThreadRow(threadId);
-    if (!row) {
-      throw new Error(`Thread not found: ${threadId}`);
-    }
-    this.store.appendMessage(threadId, 'user', content, 'final');
-    const runId = `run:${threadId}:${Date.now()}`;
-    this.runThreadMap.set(runId, threadId);
-    this.store.updateRun(runId, threadId, 'running');
-    void this.runLocalCoreAcpPrompt(threadId, runId, row.bridge_session_key, config, content).catch((error) => {
-      this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
-    });
-    return { runId };
-  }
-
-  private async sendLocalCoreAcpThreadAction(threadId: string, content: string) {
-    const session = this.sessions.get(threadId);
-    if (!session?.currentRunId) {
-      return this.sendThreadMessage(threadId, content);
-    }
-    const pendingPermission = session.pendingPermissionByRun.get(session.currentRunId);
-    if (!pendingPermission) {
-      return this.sendThreadMessage(threadId, content);
-    }
-    const action = String(content || '').trim().toLowerCase();
-    const matched = pendingPermission.options.find((option) => option.normalizedAction === action || option.optionId === action);
-    if (!matched) {
-      throw new Error(`Unknown permission option: ${content}`);
-    }
-    this.sendRaw(session, {
-      jsonrpc: '2.0',
-      id: pendingPermission.requestId,
-      result: {
-        outcome: {
-          outcome: 'selected',
-          optionId: matched.optionId,
-        },
-      },
-    });
-    session.pendingPermissionByRun.delete(session.currentRunId);
-    this.emitBridgeEvent({
-      type: 'typing_start',
-      sessionKey: session.bridgeSessionKey,
-      replyCtx: session.currentRunId,
-    });
-    return { runId: session.currentRunId };
-  }
-
-  private async runLocalCoreAcpPrompt(
-    threadId: string,
-    runId: string,
-    bridgeSessionKey: string,
-    config: LocalCoreProjectConfig,
-    content: string,
-  ) {
-    const session = await this.ensureAcpSession(threadId, bridgeSessionKey, config);
-    session.currentRunId = runId;
-    session.currentTurn = {
-      runId,
-      replyCtx: runId,
-      previewHandle: randomUUID(),
-      assistantText: '',
-      typingStarted: false,
-      previewStarted: false,
-      permission: null,
-    };
-    this.emitBridgeEvent({
-      type: 'typing_start',
-      sessionKey: bridgeSessionKey,
-      replyCtx: runId,
-    });
-    session.currentTurn.typingStarted = true;
-    const promptPromise = this.request(session, 'session/prompt', {
-      sessionId: session.sessionId,
-      messageId: randomUUID(),
-      prompt: [
-        {
-          type: 'text',
-          text: content,
-        },
-      ],
-    }) as Promise<{ stopReason?: string }>;
-    session.promptPromise = promptPromise;
-    try {
-      const result = await promptPromise;
-      const currentTurn = session.currentTurn;
-      if (!currentTurn || currentTurn.runId !== runId) {
-        return;
-      }
-      if (currentTurn.assistantText) {
-        this.store.appendMessage(threadId, 'assistant', currentTurn.assistantText, 'final');
-        if (!currentTurn.previewStarted) {
-          this.emitBridgeEvent({
-            type: 'reply',
-            sessionKey: bridgeSessionKey,
-            replyCtx: runId,
-            content: currentTurn.assistantText,
-          });
-        }
-      } else if (result?.stopReason === 'cancelled') {
-        this.emitBridgeEvent({
-          type: 'reply',
-          sessionKey: bridgeSessionKey,
-          replyCtx: runId,
-          content: '⏳ Request cancelled.',
-        });
-      }
-      const nextStatus = result?.stopReason === 'cancelled' ? 'interrupted' : 'completed';
-      this.store.updateRun(runId, threadId, nextStatus);
-      this.emitBridgeEvent({
-        type: 'typing_stop',
-        sessionKey: bridgeSessionKey,
-        replyCtx: runId,
-      });
-    } catch (error) {
-      this.store.updateRun(runId, threadId, 'failed');
-      this.emitBridgeEvent({
-        type: 'reply',
-        sessionKey: bridgeSessionKey,
-        replyCtx: runId,
-        content: `Agent error: ${error instanceof Error ? error.message : String(error)}`,
-      });
-      this.emitBridgeEvent({
-        type: 'typing_stop',
-        sessionKey: bridgeSessionKey,
-        replyCtx: runId,
-      });
-    } finally {
-      if (session.currentRunId === runId) {
-        session.currentRunId = null;
-      }
-      if (session.currentTurn?.runId === runId) {
-        session.currentTurn = null;
-      }
-      session.promptPromise = null;
-    }
-  }
-
-  private async ensureAcpSession(threadId: string, bridgeSessionKey: string, config: LocalCoreProjectConfig) {
-    const existing = this.sessions.get(threadId);
-    if (existing && !existing.closed) {
-      return existing;
-    }
-    const child = spawn(config.command, config.args, {
-      cwd: config.workDir,
-      env: {
-        ...process.env,
-        ...config.env,
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const session: AcpSessionState = {
-      child,
-      requestId: 0,
-      stdoutBuffer: '',
-      pending: new Map(),
-      sessionId: '',
-      supportsLoad: false,
-      workspaceId: config.workspaceId,
-      threadId,
-      bridgeSessionKey,
-      currentRunId: null,
-      currentTurn: null,
-      loadReplayMode: false,
-      pendingPermissionByRun: new Map(),
-      closed: false,
-      promptPromise: null,
-    };
-    this.sessions.set(threadId, session);
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => this.handleStdout(session, chunk));
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk: string) => {
-      this.options.log?.(`[localcore-acp:${threadId}] ${chunk.trimEnd()}`);
-    });
-    child.on('exit', (code, signal) => {
-      session.closed = true;
-      for (const pending of session.pending.values()) {
-        pending.reject(new Error(`ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`));
-      }
-      session.pending.clear();
-      if (this.sessions.get(threadId) === session) {
-        this.sessions.delete(threadId);
-      }
-    });
-    const initResult = await this.request(session, 'initialize', {
-      protocolVersion: 1,
-      clientCapabilities: {
-        fs: {
-          readTextFile: false,
-          writeTextFile: false,
-        },
-        terminal: false,
-      },
-      clientInfo: {
-        name: 'ai-workstation',
-        title: 'AI-WorkStation',
-        version: '0.1.0',
-      },
-    }) as {
-      agentCapabilities?: { loadSession?: boolean };
-    };
-    session.supportsLoad = Boolean(initResult?.agentCapabilities?.loadSession);
-    const row = this.store.getThreadRow(threadId);
-    if (row?.acp_session_id && row.acp_supports_load && session.supportsLoad) {
-      try {
-        session.loadReplayMode = true;
-        await this.request(session, 'session/load', {
-          sessionId: row.acp_session_id,
-          cwd: config.workDir,
-          mcpServers: [],
-        });
-        session.sessionId = row.acp_session_id;
-      } catch (error) {
-        this.options.log?.(`ACP loadSession failed for ${threadId}; creating a fresh session instead: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        session.loadReplayMode = false;
-      }
-    }
-    if (!session.sessionId) {
-      const created = await this.request(session, 'session/new', {
-        cwd: config.workDir,
-        mcpServers: [],
-      }) as { sessionId: string };
-      session.sessionId = String(created.sessionId || '').trim();
-      if (!session.sessionId) {
-        throw new Error('ACP session/new did not return a sessionId');
-      }
-      this.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad);
-    }
-    return session;
-  }
-
-  private handleStdout(session: AcpSessionState, chunk: string) {
-    session.stdoutBuffer += chunk;
-    while (session.stdoutBuffer.includes('\n')) {
-      const newlineIndex = session.stdoutBuffer.indexOf('\n');
-      const line = session.stdoutBuffer.slice(0, newlineIndex).trim();
-      session.stdoutBuffer = session.stdoutBuffer.slice(newlineIndex + 1);
-      if (!line) {
-        continue;
-      }
-      let payload: any;
-      try {
-        payload = JSON.parse(line);
-      } catch (error) {
-        this.options.log?.(`ACP stdout parse failed: ${error instanceof Error ? error.message : String(error)}`);
-        continue;
-      }
-      if (payload.method && payload.id !== undefined) {
-        this.handleAgentRequest(session, payload);
-        continue;
-      }
-      if (payload.method) {
-        this.handleAgentNotification(session, payload);
-        continue;
-      }
-      if (payload.id !== undefined) {
-        const pending = session.pending.get(payload.id);
-        if (!pending) {
-          continue;
-        }
-        session.pending.delete(payload.id);
-        if (payload.error) {
-          pending.reject(new Error(payload.error.message || `ACP request failed: ${payload.id}`));
-        } else {
-          pending.resolve(payload.result);
-        }
-      }
-    }
-  }
-
-  private handleAgentRequest(session: AcpSessionState, payload: any) {
-    if (payload.method !== 'session/request_permission') {
-      this.sendRaw(session, {
-        jsonrpc: '2.0',
-        id: payload.id,
-        error: {
-          code: -32601,
-          message: `Unsupported ACP client method: ${String(payload.method || '')}`,
-        },
-      });
-      return;
-    }
-    const currentRunId = session.currentRunId;
-    if (!currentRunId) {
-      this.sendRaw(session, {
-        jsonrpc: '2.0',
-        id: payload.id,
-        result: {
-          outcome: {
-            outcome: 'cancelled',
-          },
-        },
-      });
-      return;
-    }
-    const options = Array.isArray(payload.params?.options)
-      ? payload.params.options
-          .map((option: any) => ({
-            optionId: String(option?.optionId || '').trim(),
-            name: String(option?.name || option?.optionId || '').trim(),
-            kind: String(option?.kind || '').trim(),
-            normalizedAction: normalizePermissionAction(option?.kind),
-          }))
-          .filter((option: { optionId: string }) => option.optionId)
-      : [];
-    const buttonRows: DesktopBridgeButtonOption[][] = [options.map((option: RunningPermissionRequest['options'][number]) => {
-      const data = option.normalizedAction
-        ? `perm:${option.normalizedAction.replace(/\s+/g, '_')}`
-        : option.optionId;
-      const normalized = normalizeDesktopBridgeButtonOption({
-        text: option.normalizedAction || option.name,
-        data,
-      });
-      return normalized || { text: option.name, data: option.optionId };
-    })];
-    const permissionRequest: RunningPermissionRequest = {
-      requestId: payload.id,
-      options,
-    };
-    session.pendingPermissionByRun.set(currentRunId, permissionRequest);
-    if (session.currentTurn) {
-      session.currentTurn.permission = permissionRequest;
-    }
-    this.store.updateRun(currentRunId, session.threadId, 'awaiting_input');
-    this.emitBridgeEvent({
-      type: 'buttons',
-      sessionKey: session.bridgeSessionKey,
-      replyCtx: currentRunId,
-      content: formatToolCallContent(payload.params?.toolCall),
-      buttonRows,
-    });
-  }
-
-  private handleAgentNotification(session: AcpSessionState, payload: any) {
-    if (session.loadReplayMode) {
-      return;
-    }
-    if (payload.method !== 'session/update') {
-      return;
-    }
-    const update = payload.params?.update;
-    const currentTurn = session.currentTurn;
-    const currentRunId = session.currentRunId;
-    if (!update || !currentTurn || !currentRunId) {
-      return;
-    }
-    switch (String(update.sessionUpdate || '')) {
-      case 'agent_message_chunk': {
-        if (update.content?.type !== 'text') {
-          return;
-        }
-        currentTurn.assistantText += String(update.content.text || '');
-        if (!currentTurn.previewStarted) {
-          currentTurn.previewStarted = true;
-          this.emitBridgeEvent({
-            type: 'preview_start',
-            sessionKey: session.bridgeSessionKey,
-            replyCtx: currentRunId,
-            previewHandle: currentTurn.previewHandle,
-            content: currentTurn.assistantText,
-          });
-          return;
-        }
-        this.emitBridgeEvent({
-          type: 'update_message',
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          previewHandle: currentTurn.previewHandle,
-          content: currentTurn.assistantText,
-        });
-        return;
-      }
-      case 'tool_call': {
-        const title = String(update.title || 'Running tool').trim();
-        this.emitBridgeEvent({
-          type: 'reply',
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          content: `🔧 ${title}`,
-        });
-        return;
-      }
-      case 'tool_call_update': {
-        const title = String(update.title || 'Tool update').trim();
-        const status = String(update.status || '').trim();
-        const content = Array.isArray(update.content)
-          ? update.content
-              .map((entry: any) =>
-                entry?.type === 'content' && entry?.content?.type === 'text'
-                  ? String(entry.content.text || '')
-                  : '')
-              .filter(Boolean)
-              .join('\n')
-          : '';
-        this.emitBridgeEvent({
-          type: 'reply',
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          content: `🔧 ${[title, status, content].filter(Boolean).join(' · ')}`,
-        });
-        return;
-      }
-      case 'plan': {
-        const entries = Array.isArray(update.entries) ? update.entries : [];
-        if (entries.length === 0) {
-          return;
-        }
-        const summary = entries
-          .map((entry: any) => String(entry?.content || '').trim())
-          .filter(Boolean)
-          .join(' | ');
-        this.emitBridgeEvent({
-          type: 'reply',
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          content: `💭 ${summary}`,
-        });
-        return;
-      }
-      default:
-        return;
-    }
-  }
-
-  private request(session: AcpSessionState, method: string, params: unknown) {
-    session.requestId += 1;
-    const id = session.requestId;
-    this.sendRaw(session, {
-      jsonrpc: '2.0',
-      id,
-      method,
-      params,
-    });
-    return new Promise((resolve, reject) => {
-      session.pending.set(id, { resolve, reject });
-    });
-  }
-
-  private sendRaw(session: AcpSessionState, payload: Record<string, unknown>) {
-    if (session.closed || !session.child.stdin.writable) {
-      throw new Error('ACP session is not writable');
-    }
-    session.child.stdin.write(`${JSON.stringify(payload)}\n`);
-  }
-
-  private closeSession(threadId: string) {
-    const session = this.sessions.get(threadId);
-    if (!session) {
-      return;
-    }
-    session.closed = true;
-    session.child.kill('SIGTERM');
-    this.sessions.delete(threadId);
   }
 
   private async getWorkspaceRoute(workspaceId: string): Promise<WorkspaceRoute> {
@@ -1549,10 +1639,10 @@ class WorkspaceRouter {
     const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
     const matched = projects.find((project) => String(project?.name || '').trim() === workspaceId);
     const agentType = String(matched?.agent?.type || '').trim();
-    if (agentType.toLowerCase() === LOCALCORE_ACP_AGENT_TYPE) {
+    if (isLocalCoreNativeAcpProject(matched)) {
       return {
         kind: 'localcore-acp' as const,
-        agentType,
+        agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
         config: this.toLocalCoreProjectConfig(configState, matched!),
       };
     }
@@ -1565,7 +1655,7 @@ class WorkspaceRouter {
   private async listLocalCoreProjects() {
     const configState = await this.options.readConfigState();
     const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
-    return projects.filter((project) => String(project?.agent?.type || '').trim().toLowerCase() === LOCALCORE_ACP_AGENT_TYPE);
+    return projects.filter((project) => isLocalCoreNativeAcpProject(project));
   }
 
   private toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): LocalCoreProjectConfig {
@@ -1584,17 +1674,28 @@ class WorkspaceRouter {
             .map(([key, value]) => [key, String(value ?? '')]),
         )
       : {};
-    const command = String(project.agent?.options?.command || '').trim();
+    const agentType = String(project.agent?.type || '').trim().toLowerCase();
+    const model = normalizeDesktopAgentModel(agentType, String(project.agent?.options?.model || ''));
+    const inferredOpencodeEnv: Record<string, string> = agentType === 'opencode'
+      ? {
+          OPENCODE_CONFIG_CONTENT: model ? JSON.stringify({ model }) : '{}',
+        }
+      : {};
+    const command = String(project.agent?.options?.command || (agentType === 'opencode' ? 'opencode' : '')).trim();
     if (!command) {
-      throw new Error(`Workspace "${project.name}" requires [projects.agent.options].command for localcore-acp.`);
+      throw new Error(`Workspace "${project.name}" requires [projects.agent.options].command for Local AI Core ACP execution.`);
     }
     return {
       workspaceId: project.name,
+      agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
       workDir,
       command,
-      args,
-      env,
-      model: String(project.agent?.options?.model || '').trim(),
+      args: args.length > 0 ? args : agentType === 'opencode' ? ['acp'] : args,
+      env: {
+        ...inferredOpencodeEnv,
+        ...env,
+      },
+      model,
     };
   }
 }

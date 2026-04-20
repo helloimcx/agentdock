@@ -21,7 +21,8 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createServer } from 'node:net';
-import { DEFAULT_DESKTOP_AGENT_TYPE, LOCALCORE_ACP_AGENT_TYPE, normalizeDesktopAgentModel } from '../shared/desktop.js';
+import { DEFAULT_DESKTOP_AGENT_TYPE, LOCALCORE_ACP_AGENT_TYPE, deriveDesktopRuntimeRoles, normalizeDesktopAgentModel } from '../shared/desktop.js';
+import { hasPlatformGatewayBindings } from '../services/local-ai-core/src/platform-gateway.js';
 import type {
   ConfigFileState,
   DesktopConnectConfig,
@@ -517,6 +518,17 @@ export class ServiceManager extends EventEmitter {
     mkdirSync(dirname(this.generatedConfigPath), { recursive: true });
     writeFileSync(this.generatedConfigPath, runtimeConfigRaw, 'utf8');
 
+    if (!Array.isArray(runtimeConfig.projects) || runtimeConfig.projects.length === 0) {
+      this.pushLog('Skipping cc-connect platform gateway: no workspace has IM platform bindings.');
+      this.appliedBinaryPath = this.settings.binaryPath;
+      this.appliedConfigPath = this.settings.configPath;
+      this.appliedConfigRaw = configState.raw;
+      this.appliedRuntimeConfigRaw = runtimeConfigRaw;
+      this.state = { status: 'stopped' };
+      this.emit('state');
+      return this.getServiceState();
+    }
+
     const binaryPath = this.resolveBinaryPath();
     this.pushLog(`Starting cc-connect using ${binaryPath}`);
     this.state = { status: 'starting' };
@@ -666,12 +678,15 @@ export class ServiceManager extends EventEmitter {
 
   async getRuntimeStatus(): Promise<DesktopRuntimeStatus> {
     const configFile = await this.readConfigState();
+    const service = this.getServiceState();
+    const bridge = { status: 'disconnected' as const };
     return {
       mode: 'desktop',
       phase: 'stopped',
       pendingRestart: this.computePendingRestart(configFile),
-      service: this.getServiceState(),
-      bridge: { status: 'disconnected' },
+      service,
+      bridge,
+      roles: deriveDesktopRuntimeRoles(service, bridge),
       settings: this.getSettings(),
       managementBaseUrl: this.getManagementBaseUrl(),
       configFile,
@@ -797,6 +812,12 @@ export class ServiceManager extends EventEmitter {
 
         if (agentType === LOCALCORE_ACP_AGENT_TYPE) {
           // localcore-acp workspaces are executed by the local AI core router, not by cc-connect itself.
+          return [];
+        }
+
+        if ((agentType === 'opencode' || agentType === 'acp') && !hasPlatformGatewayBindings(project)) {
+          // Local desktop chat for ACP-compatible agents is owned by Local AI Core.
+          // cc-connect is only generated for workspaces that bind external IM platforms.
           return [];
         }
 

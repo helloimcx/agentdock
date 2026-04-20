@@ -5,6 +5,7 @@ import { Activity, ArrowRight, Cable, Layers, Play, RotateCw, Server, Wrench } f
 import { Badge, Button, Card, EmptyState, StatCard } from '@/components/ui';
 import { getStatus, type SystemStatus } from '@/api/status';
 import { listProjects, type ProjectSummary } from '@/api/projects';
+import { listWorkspaces } from '../../packages/core-sdk/src';
 import {
   getRuntimeStatus,
   onRuntimeEvent,
@@ -23,6 +24,19 @@ function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
       return 'API ready';
     case 'bridge_ready':
       return 'bridge ready';
+    case 'error':
+      return 'error';
+    default:
+      return 'stopped';
+  }
+}
+
+function formatRuntimeRole(status?: DesktopRuntimeStatus['roles']['conversation']['status']) {
+  switch (status) {
+    case 'starting':
+      return 'starting';
+    case 'running':
+      return 'running';
     case 'error':
       return 'error';
     default:
@@ -54,6 +68,24 @@ export default function Dashboard() {
           setProjects([]);
           return;
         }
+      }
+      if (desktopRuntime) {
+        const p = await listWorkspaces();
+        setStatus({
+          version: 'local-core',
+          uptime_seconds: 0,
+          connected_platforms: runtimeOverride?.roles?.platformGateway.status === 'running' ? ['cc-connect'] : [],
+          projects_count: p.workspaces.length,
+          bridge_adapters: [],
+        });
+        setProjects((p.workspaces || []).map((workspace) => ({
+          name: workspace.name,
+          agent_type: workspace.agentType,
+          platforms: workspace.platforms,
+          sessions_count: workspace.sessionsCount,
+          heartbeat_enabled: workspace.heartbeatEnabled,
+        })));
+        return;
       }
       const [s, p] = await Promise.all([getStatus(), listProjects()]);
       setStatus(s);
@@ -125,9 +157,18 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
             <StatCard label="Runtime" value={formatRuntimePhase(runtime?.phase)} accent={runtime?.phase === 'bridge_ready'} />
-            <StatCard label="Bridge" value={runtime?.bridge.status || '-'} accent={runtime?.bridge.status === 'connected'} />
+            <StatCard
+              label="Conversation"
+              value={formatRuntimeRole(runtime?.roles?.conversation.status)}
+              accent={runtime?.roles?.conversation.status === 'running'}
+            />
+            <StatCard
+              label="Platform Gateway"
+              value={formatRuntimeRole(runtime?.roles?.platformGateway.status)}
+              accent={runtime?.roles?.platformGateway.status === 'running'}
+            />
             <StatCard
               label="Config"
               value={!runtime?.configFile.exists ? 'Missing' : runtime?.pendingRestart ? 'Restart needed' : 'Ready'}

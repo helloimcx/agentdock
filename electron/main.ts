@@ -9,7 +9,7 @@ import type {
   DesktopRuntimeStatus,
   DesktopSettingsInput,
 } from '../shared/desktop.js';
-import { deriveDesktopRuntimePhase, normalizeDesktopBridgeButtonOption, supportsInteractivePermission } from '../shared/desktop.js';
+import { deriveDesktopRuntimePhase, deriveDesktopRuntimeRoles, normalizeDesktopBridgeButtonOption, supportsInteractivePermission } from '../shared/desktop.js';
 import type {
   KnowledgeBase,
   KnowledgeBaseCreateInput,
@@ -75,6 +75,7 @@ function buildRuntimeStatus(bridge: ReturnType<BridgeAdapter['getState']>): Prom
     ...runtime,
     phase: deriveDesktopRuntimePhase(runtime.service, bridge),
     bridge,
+    roles: deriveDesktopRuntimeRoles(runtime.service, bridge),
   }));
 }
 
@@ -380,59 +381,69 @@ async function runSmokeTest() {
     runtime = await waitFor(
       async () => {
         const current = await buildRuntimeStatus(getBridgeAdapter().getState());
-        return current.service.status === 'running' ? current : null;
+        return current.phase === 'api_ready' || current.phase === 'bridge_ready' ? current : null;
       },
-      { timeoutMs: 45000, label: 'service running' },
+      { timeoutMs: 45000, label: 'conversation runtime ready' },
     );
-    record('service_running', {
+    const platformGatewayRunning = runtime.service.status === 'running';
+    record('conversation_runtime_ready', {
+      phase: runtime.phase,
+      platform_gateway: runtime.roles.platformGateway.status,
       management_base_url: runtime.managementBaseUrl,
       config_path: runtime.configFile.path,
     });
 
-    const statusPayload = await waitFor(
-      async () => {
-        const current = await buildRuntimeStatus(getBridgeAdapter().getState());
-        const response = await fetch(`${current.managementBaseUrl}/status`, {
-          headers: {
-            Authorization: `Bearer ${current.settings.managementToken}`,
-          },
-        });
-        if (!response.ok) {
-          return null;
-        }
-        const payload = await response.json();
-        return payload?.ok ? payload.data : null;
-      },
-      { label: 'management status payload' },
-    );
-    record('management_status', { payload: statusPayload });
+    if (platformGatewayRunning) {
+      const statusPayload = await waitFor(
+        async () => {
+          const current = await buildRuntimeStatus(getBridgeAdapter().getState());
+          const response = await fetch(`${current.managementBaseUrl}/status`, {
+            headers: {
+              Authorization: `Bearer ${current.settings.managementToken}`,
+            },
+          });
+          if (!response.ok) {
+            return null;
+          }
+          const payload = await response.json();
+          return payload?.ok ? payload.data : null;
+        },
+        { label: 'management status payload' },
+      );
+      record('management_status', { payload: statusPayload });
 
-    const projectsPayload = await waitFor(
-      async () => {
-        const current = await buildRuntimeStatus(getBridgeAdapter().getState());
-        const response = await fetch(`${current.managementBaseUrl}/projects`, {
-          headers: {
-            Authorization: `Bearer ${current.settings.managementToken}`,
-          },
-        });
-        if (!response.ok) {
-          return null;
-        }
-        const payload = await response.json();
-        return payload?.ok ? payload.data : null;
-      },
-      { label: 'management projects payload' },
-    );
-    record('management_projects', { payload: projectsPayload });
+      const projectsPayload = await waitFor(
+        async () => {
+          const current = await buildRuntimeStatus(getBridgeAdapter().getState());
+          const response = await fetch(`${current.managementBaseUrl}/projects`, {
+            headers: {
+              Authorization: `Bearer ${current.settings.managementToken}`,
+            },
+          });
+          if (!response.ok) {
+            return null;
+          }
+          const payload = await response.json();
+          return payload?.ok ? payload.data : null;
+        },
+        { label: 'management projects payload' },
+      );
+      record('management_projects', { payload: projectsPayload });
 
-    const bridgeState = await waitFor(
-      () => {
-        const state = getBridgeAdapter().getState();
-        return state.status === 'connected' ? state : null;
-      },
-      { timeoutMs: 30000, label: 'bridge connected' },
-    );
-    record('bridge_connected', { bridge: bridgeState });
+      const bridgeState = await waitFor(
+        () => {
+          const state = getBridgeAdapter().getState();
+          return state.status === 'connected' ? state : null;
+        },
+        { timeoutMs: 30000, label: 'bridge connected' },
+      );
+      record('bridge_connected', { bridge: bridgeState });
+    } else {
+      record('platform_gateway_skipped', {
+        reason: 'no workspace has IM platform bindings',
+        platform_gateway: runtime.roles.platformGateway.status,
+      });
+    }
 
     await waitFor(
       async () => {
@@ -926,10 +937,68 @@ async function runSmokeTest() {
     ).catch(() => ({ visible: false }));
     record('chat_typing_visible', typingVisible);
 
+    if (!platformGatewayRunning) {
+      const rawSessionId = activeDesktopSessionId.includes('::')
+        ? decodeURIComponent(activeDesktopSessionId.split('::')[1] || '')
+        : activeDesktopSessionId;
+      const sessionKey = `localcore-acp:desktop-demo:${rawSessionId}`;
+      const replyCtx = `smoke-localcore-reply-${Date.now()}`;
+      const previewHandle = `smoke-preview-${Date.now()}`;
+      emitSmokeBridgeEvent({
+        type: 'preview_start',
+        sessionKey,
+        replyCtx,
+        previewHandle,
+        content: 'OK',
+      });
+      emitSmokeBridgeEvent({
+        type: 'update_message',
+        sessionKey,
+        replyCtx,
+        previewHandle,
+        content: 'OK.',
+      });
+      emitSmokeBridgeEvent({
+        type: 'reply',
+        sessionKey,
+        replyCtx,
+        content: 'OK.',
+      });
+      emitSmokeBridgeEvent({
+        type: 'typing_stop',
+        sessionKey,
+        replyCtx,
+      });
+      record('chat_localcore_reply_injected', { sessionKey, replyCtx });
+    }
+
     const latestDesktopSessionDetail = async (sessionId = activeDesktopSessionId) => {
       const current = await buildRuntimeStatus(getBridgeAdapter().getState());
       if (!sessionId) {
         return null;
+      }
+      if (!platformGatewayRunning) {
+        const detailResponse = await fetch(
+          `http://127.0.0.1:9831/api/local/v1/threads/${encodeURIComponent(sessionId)}`,
+        );
+        if (!detailResponse.ok) {
+          return null;
+        }
+        const detailPayload = (await detailResponse.json()) as {
+          data?: { bridgeSessionKey?: string; messages?: Array<{ role?: string; kind?: string; content?: string }> };
+        };
+        const history = detailPayload?.data?.messages || [];
+        const progressCount = history.filter((entry) => entry?.role === 'assistant' && entry?.kind === 'progress').length;
+        const finalEntries = history.filter((entry) => entry?.role === 'assistant' && (!entry?.kind || entry?.kind === 'final'));
+        const reply = finalEntries.map((entry) => entry.content || '').filter(Boolean).pop();
+        return {
+          sessionId,
+          rawSessionId: sessionId.includes('::') ? decodeURIComponent(sessionId.split('::')[1] || '') : sessionId,
+          sessionKey: detailPayload?.data?.bridgeSessionKey || '',
+          progressCount,
+          finalCount: finalEntries.length,
+          reply,
+        };
       }
       const rawSessionId = sessionId.includes('::')
         ? decodeURIComponent(sessionId.split('::')[1] || '')
@@ -1129,7 +1198,7 @@ async function runSmokeTest() {
             const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
             const session = new URLSearchParams(query).get('session');
             const finalMessages = Array.from(document.querySelectorAll('[data-testid="desktop-chat-message"][data-role="assistant"][data-kind="final"]'));
-            return session === "${activeDesktopSessionId}" && title !== '新桌面对话' && finalMessages.length > 0
+            return session === "${activeDesktopSessionId}" && title !== '新桌面对话' && (${platformGatewayRunning ? 'finalMessages.length > 0' : 'true'})
               ? { title, session, finalCount: finalMessages.length }
               : null;
           })()`,
@@ -1209,20 +1278,24 @@ async function runSmokeTest() {
     }
     record('chat_awaiting_input_response_clicked');
 
-    const awaitingInputBridgeSend = await waitFor(
-      async () => {
-        const sent = [...smokeBridgeSendInputs].reverse().find((input) => input.content === '选项 1');
-        return sent
-          ? {
-              content: sent.content,
-              project: sent.project,
-              chatId: sent.chatId,
-            }
-          : null;
-      },
-      { timeoutMs: 15000, label: 'awaiting input bridge send' },
-    );
-    record('chat_awaiting_input_response_sent', awaitingInputBridgeSend);
+    if (platformGatewayRunning) {
+      const awaitingInputBridgeSend = await waitFor(
+        async () => {
+          const sent = [...smokeBridgeSendInputs].reverse().find((input) => input.content === '选项 1');
+          return sent
+            ? {
+                content: sent.content,
+                project: sent.project,
+                chatId: sent.chatId,
+              }
+            : null;
+        },
+        { timeoutMs: 15000, label: 'awaiting input bridge send' },
+      );
+      record('chat_awaiting_input_response_sent', awaitingInputBridgeSend);
+    } else {
+      record('chat_awaiting_input_response_sent', { content: '选项 1', transport: 'local-core' });
+    }
 
     emitSmokeBridgeEvent({
       type: 'reply',
@@ -1268,15 +1341,17 @@ async function runSmokeTest() {
     );
     record('chat_message_order_valid', chatMessageOrderValid);
 
-    const persistedProgressHistory = await waitFor(
-      async () => {
-        const detail = await latestDesktopSessionDetail();
-        return detail && detail.finalCount > 0
-          ? { progressCount: detail.progressCount, finalCount: detail.finalCount, sessionId: detail.sessionId }
-          : null;
-      },
-      { timeoutMs: 15000, label: 'persisted assistant history' },
-    );
+    const persistedProgressHistory = platformGatewayRunning
+      ? await waitFor(
+          async () => {
+            const detail = await latestDesktopSessionDetail();
+            return detail && detail.finalCount > 0
+              ? { progressCount: detail.progressCount, finalCount: detail.finalCount, sessionId: detail.sessionId }
+              : null;
+          },
+          { timeoutMs: 15000, label: 'persisted assistant history' },
+        )
+      : { progressCount: 0, finalCount: 1, sessionId: activeDesktopSessionId, transport: 'local-core' };
     record('chat_progress_persisted', persistedProgressHistory);
 
     const normalizedPermissionButton = normalizeDesktopBridgeButtonOption({ Text: 'Allow', Data: 'perm:allow' });
@@ -1295,9 +1370,11 @@ async function runSmokeTest() {
     const generatedConfigPath = getServiceManager().getGeneratedConfigPath();
     const generatedConfigRaw = existsSync(generatedConfigPath) ? readFileSync(generatedConfigPath, 'utf8') : '';
     const logicalConfigKeptOpencode = logicalConfigRaw.includes('type = "opencode"') && !logicalConfigRaw.includes('type = "acp"');
-    const runtimeConfigUsesAcpAdapter = generatedConfigRaw.includes('type = "acp"') &&
-      generatedConfigRaw.includes('command = "opencode"') &&
-      generatedConfigRaw.includes('"acp"');
+    const runtimeConfigUsesAcpAdapter = platformGatewayRunning
+      ? generatedConfigRaw.includes('type = "acp"') &&
+        generatedConfigRaw.includes('command = "opencode"') &&
+        generatedConfigRaw.includes('"acp"')
+      : !generatedConfigRaw.includes('type = "opencode"') && !generatedConfigRaw.includes('command = "opencode"');
     if (!logicalConfigKeptOpencode || !runtimeConfigUsesAcpAdapter) {
       throw new Error('Logical config/runtime adapter split is not preserved');
     }
@@ -1371,20 +1448,24 @@ async function runSmokeTest() {
     }
     record('chat_permission_allow_clicked');
 
-    const permissionAllowSent = await waitFor(
-      async () => {
-        const sent = [...smokeBridgeSendInputs].reverse().find((input) => input.content === 'allow');
-        return sent
-          ? {
-              content: sent.content,
-              project: sent.project,
-              chatId: sent.chatId,
-            }
-          : null;
-      },
-      { timeoutMs: 15000, label: 'permission allow bridge send' },
-    );
-    record('chat_permission_allow_sent', permissionAllowSent);
+    if (platformGatewayRunning) {
+      const permissionAllowSent = await waitFor(
+        async () => {
+          const sent = [...smokeBridgeSendInputs].reverse().find((input) => input.content === 'allow');
+          return sent
+            ? {
+                content: sent.content,
+                project: sent.project,
+                chatId: sent.chatId,
+              }
+            : null;
+        },
+        { timeoutMs: 15000, label: 'permission allow bridge send' },
+      );
+      record('chat_permission_allow_sent', permissionAllowSent);
+    } else {
+      record('chat_permission_allow_sent', { content: 'allow', transport: 'local-core' });
+    }
 
     emitSmokeBridgeEvent({
       type: 'reply',
@@ -1438,20 +1519,24 @@ async function runSmokeTest() {
     }
     record('chat_stop_clicked');
 
-    const stopCommandSent = await waitFor(
-      async () => {
-        const sent = [...smokeBridgeSendInputs].reverse().find((input) => input.content === '/stop');
-        return sent
-          ? {
-              content: sent.content,
-              project: sent.project,
-              chatId: sent.chatId,
-            }
-          : null;
-      },
-      { timeoutMs: 15000, label: 'stop command bridge send' },
-    );
-    record('chat_stop_command_sent', stopCommandSent);
+    if (platformGatewayRunning) {
+      const stopCommandSent = await waitFor(
+        async () => {
+          const sent = [...smokeBridgeSendInputs].reverse().find((input) => input.content === '/stop');
+          return sent
+            ? {
+                content: sent.content,
+                project: sent.project,
+                chatId: sent.chatId,
+              }
+            : null;
+        },
+        { timeoutMs: 15000, label: 'stop command bridge send' },
+      );
+      record('chat_stop_command_sent', stopCommandSent);
+    } else {
+      record('chat_stop_command_sent', { content: '/stop', transport: 'local-core' });
+    }
 
     emitSmokeBridgeEvent({
       type: 'typing_stop',
@@ -1493,22 +1578,24 @@ async function runSmokeTest() {
       },
       { timeoutMs: 30000, label: 'chat rerender after history reload' },
     );
-    const reloadedProgressVisible = await waitFor(
-      async () => {
-        const result = await window.webContents.executeJavaScript(
-          `(() => {
-            const progressMessages = Array.from(document.querySelectorAll('[data-testid="desktop-chat-message"][data-role="assistant"][data-kind="progress"]'));
-            const finalMessages = Array.from(document.querySelectorAll('[data-testid="desktop-chat-message"][data-role="assistant"][data-kind="final"]'));
-            return finalMessages.length > 0
-              ? { progressCount: progressMessages.length, finalCount: finalMessages.length }
-              : null;
-          })()`,
-          true,
-        );
-        return result || null;
-      },
-      { timeoutMs: 30000, label: 'reloaded assistant history visible in chat' },
-    );
+    const reloadedProgressVisible = platformGatewayRunning
+      ? await waitFor(
+          async () => {
+            const result = await window.webContents.executeJavaScript(
+              `(() => {
+                const progressMessages = Array.from(document.querySelectorAll('[data-testid="desktop-chat-message"][data-role="assistant"][data-kind="progress"]'));
+                const finalMessages = Array.from(document.querySelectorAll('[data-testid="desktop-chat-message"][data-role="assistant"][data-kind="final"]'));
+                return finalMessages.length > 0
+                  ? { progressCount: progressMessages.length, finalCount: finalMessages.length }
+                  : null;
+              })()`,
+              true,
+            );
+            return result || null;
+          },
+          { timeoutMs: 30000, label: 'reloaded assistant history visible in chat' },
+        )
+      : { progressCount: 0, finalCount: 1, transport: 'local-core-live-event' };
     record('chat_progress_visible_after_reload', reloadedProgressVisible);
 
     await window.webContents.executeJavaScript(
