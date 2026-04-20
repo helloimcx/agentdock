@@ -8,6 +8,7 @@ import type {
   DesktopBridgeEvent,
   DesktopBridgeSendInput,
   DesktopBridgeSendResult,
+  DesktopProviderConfig,
   DesktopProjectConfig,
   LocalCoreCapabilities,
   WorkspaceStreamingProbeEvent,
@@ -18,6 +19,7 @@ import type {
   WorkspaceSummary,
 } from '../../../packages/contracts/src/index.js';
 import {
+  DEFAULT_DESKTOP_OPENCODE_MODEL,
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
   type DesktopBridgeButtonOption,
@@ -161,6 +163,19 @@ type LocalCoreProjectConfig = {
   model: string;
 };
 
+type OpencodeInlineProviderConfig = {
+  npm?: string;
+  name: string;
+  options?: Record<string, unknown>;
+  models?: Record<string, { name: string }>;
+};
+
+type OpencodeInlineConfig = {
+  $schema: string;
+  model?: string;
+  provider?: Record<string, OpencodeInlineProviderConfig>;
+};
+
 type WorkspaceRoute =
   | {
       kind: 'localcore-acp';
@@ -194,10 +209,10 @@ function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
 
 function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | null) {
   const agentType = String(project?.agent?.type || '').trim().toLowerCase();
-  if (agentType === LOCALCORE_ACP_AGENT_TYPE) {
+  if (agentType === LOCALCORE_ACP_AGENT_TYPE || agentType === 'opencode') {
     return true;
   }
-  if (agentType !== 'opencode' && agentType !== 'acp') {
+  if (agentType !== 'acp') {
     return false;
   }
   return !hasPlatformGatewayBindings(project);
@@ -795,35 +810,35 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     config: LocalCoreProjectConfig,
     content: string,
   ) {
-    const session = await this.ensureAcpSession(threadId, bridgeSessionKey, config);
-    session.currentRunId = runId;
-    session.currentTurn = {
-      runId,
-      replyCtx: runId,
-      previewHandle: randomUUID(),
-      assistantText: '',
-      typingStarted: false,
-      previewStarted: false,
-      permission: null,
-    };
     this.emitBridgeEvent({
       type: 'typing_start',
       sessionKey: bridgeSessionKey,
       replyCtx: runId,
     });
-    session.currentTurn.typingStarted = true;
-    const promptPromise = this.request(session, 'session/prompt', {
-      sessionId: session.sessionId,
-      messageId: randomUUID(),
-      prompt: [
-        {
-          type: 'text',
-          text: content,
-        },
-      ],
-    }) as Promise<{ stopReason?: string }>;
-    session.promptPromise = promptPromise;
+    let session: AcpSessionState | null = null;
     try {
+      session = await this.ensureAcpSession(threadId, bridgeSessionKey, config);
+      session.currentRunId = runId;
+      session.currentTurn = {
+        runId,
+        replyCtx: runId,
+        previewHandle: randomUUID(),
+        assistantText: '',
+        typingStarted: true,
+        previewStarted: false,
+        permission: null,
+      };
+      const promptPromise = this.request(session, 'session/prompt', {
+        sessionId: session.sessionId,
+        messageId: randomUUID(),
+        prompt: [
+          {
+            type: 'text',
+            text: content,
+          },
+        ],
+      }, 180000) as Promise<{ stopReason?: string }>;
+      session.promptPromise = promptPromise;
       const result = await promptPromise;
       const currentTurn = session.currentTurn;
       if (!currentTurn || currentTurn.runId !== runId) {
@@ -855,12 +870,14 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         replyCtx: runId,
       });
     } catch (error) {
+      const errorContent = `Agent error: ${error instanceof Error ? error.message : String(error)}`;
       this.options.store.updateRun(runId, threadId, 'failed');
+      this.options.store.appendMessage(threadId, 'assistant', errorContent, 'final');
       this.emitBridgeEvent({
         type: 'reply',
         sessionKey: bridgeSessionKey,
         replyCtx: runId,
-        content: `Agent error: ${error instanceof Error ? error.message : String(error)}`,
+        content: errorContent,
       });
       this.emitBridgeEvent({
         type: 'typing_stop',
@@ -868,13 +885,15 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         replyCtx: runId,
       });
     } finally {
-      if (session.currentRunId === runId) {
+      if (session?.currentRunId === runId) {
         session.currentRunId = null;
       }
-      if (session.currentTurn?.runId === runId) {
+      if (session?.currentTurn?.runId === runId) {
         session.currentTurn = null;
       }
-      session.promptPromise = null;
+      if (session) {
+        session.promptPromise = null;
+      }
     }
   }
 
@@ -942,7 +961,7 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         title: 'AI-WorkStation',
         version: '0.1.0',
       },
-    }) as {
+    }, 30000) as {
       agentCapabilities?: { loadSession?: boolean };
     };
     session.supportsLoad = Boolean(initResult?.agentCapabilities?.loadSession);
@@ -954,7 +973,7 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           sessionId: row.acp_session_id,
           cwd: config.workDir,
           mcpServers: [],
-        });
+        }, 30000);
         session.sessionId = row.acp_session_id;
       } catch (error) {
         this.options.log?.(`ACP loadSession failed for ${threadId}; creating a fresh session instead: ${error instanceof Error ? error.message : String(error)}`);
@@ -967,8 +986,8 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         const created = await this.request(session, 'session/new', {
           cwd: config.workDir,
           mcpServers: [],
-        }) as { sessionId?: string; session?: { id?: string; sessionId?: string } };
-        session.sessionId = String(created.sessionId || created.session?.sessionId || created.session?.id || '').trim();
+        }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
+        session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
         if (!session.sessionId) {
           throw new Error('ACP session/new did not return a sessionId');
         }
@@ -1174,7 +1193,7 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     }
   }
 
-  private request(session: AcpSessionState, method: string, params: unknown) {
+  private request(session: AcpSessionState, method: string, params: unknown, timeoutMs = 30000) {
     session.requestId += 1;
     const id = session.requestId;
     this.sendRaw(session, {
@@ -1184,7 +1203,20 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       params,
     });
     return new Promise((resolve, reject) => {
-      session.pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        session.pending.delete(id);
+        reject(new Error(`Timed out waiting for ACP ${method} after ${timeoutMs}ms`));
+      }, timeoutMs);
+      session.pending.set(id, {
+        resolve: (value: any) => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        reject: (error: Error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
     });
   }
 
@@ -1197,12 +1229,11 @@ class LocalCoreAcpBackend implements WorkspaceThreadBackend {
 
   private closeSession(threadId: string) {
     const session = this.sessions.get(threadId);
-    if (!session) {
-      return;
+    if (session) {
+      session.closed = true;
+      session.child.kill('SIGTERM');
+      this.sessions.delete(threadId);
     }
-    session.closed = true;
-    session.child.kill('SIGTERM');
-    this.sessions.delete(threadId);
   }
 
   private emitBridgeEvent(event: DesktopBridgeEvent) {
@@ -1658,6 +1689,150 @@ class WorkspaceRouter {
     return projects.filter((project) => isLocalCoreNativeAcpProject(project));
   }
 
+  private resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {
+    const agentType = String(project.agent?.type || '').trim().toLowerCase();
+    const rawModel = String(project.agent?.options?.model || '').trim();
+    const normalizedModel = normalizeDesktopAgentModel(agentType, rawModel);
+    if (agentType !== 'opencode') {
+      return normalizedModel;
+    }
+    const configuredProviderModel = this.getFirstProviderModelRef(providers);
+    if (
+      configuredProviderModel &&
+      (!rawModel || normalizedModel === DEFAULT_DESKTOP_OPENCODE_MODEL)
+    ) {
+      return configuredProviderModel;
+    }
+    return normalizedModel;
+  }
+
+  private getFirstProviderModelRef(providers: DesktopProviderConfig[]) {
+    for (const provider of providers) {
+      const providerId = this.normalizeOpencodeProviderId(provider.name);
+      const modelId = this.getProviderDefaultModelId(provider);
+      if (providerId && modelId) {
+        return `${providerId}/${modelId}`;
+      }
+    }
+    return '';
+  }
+
+  private getProviderDefaultModelId(provider: DesktopProviderConfig) {
+    const directModel = String(provider.model || '').trim();
+    if (directModel) {
+      return directModel;
+    }
+    const firstModel = Array.isArray(provider.models)
+      ? provider.models.find((entry) => String(entry?.model || '').trim())
+      : null;
+    return String(firstModel?.model || '').trim();
+  }
+
+  private buildOpencodeInlineConfig(model: string, providers: DesktopProviderConfig[]) {
+    const config: OpencodeInlineConfig = {
+      $schema: 'https://opencode.ai/config.json',
+    };
+    const env: Record<string, string> = {};
+    if (model) {
+      config.model = model;
+    }
+    const providerConfig: Record<string, OpencodeInlineProviderConfig> = {};
+    for (const provider of providers) {
+      const providerId = this.normalizeOpencodeProviderId(provider.name);
+      if (!providerId) {
+        continue;
+      }
+      const entry: OpencodeInlineProviderConfig = {
+        name: String(provider.name || providerId),
+      };
+      if (this.shouldUseOpenAiCompatibleProvider(providerId)) {
+        entry.npm = '@ai-sdk/openai-compatible';
+      }
+      const options: Record<string, unknown> = {};
+      const baseUrl = String(provider.base_url || '').trim();
+      if (baseUrl) {
+        options.baseURL = baseUrl;
+      }
+      const apiKey = String(provider.api_key || '').trim();
+      if (apiKey) {
+        const envName = this.opencodeProviderApiKeyEnvName(providerId);
+        env[envName] = apiKey;
+        options.apiKey = `{env:${envName}}`;
+      }
+      if (Object.keys(options).length > 0) {
+        entry.options = options;
+      }
+      const models = this.buildOpencodeProviderModels(provider);
+      if (Object.keys(models).length > 0) {
+        entry.models = models;
+      }
+      providerConfig[providerId] = entry;
+    }
+    if (Object.keys(providerConfig).length > 0) {
+      config.provider = providerConfig;
+    }
+    return {
+      config,
+      env,
+    };
+  }
+
+  private buildOpencodeProviderModels(provider: DesktopProviderConfig) {
+    const models: Record<string, { name: string }> = {};
+    const addModel = (model?: string, alias?: string) => {
+      const modelId = String(model || '').trim();
+      if (!modelId || models[modelId]) {
+        return;
+      }
+      models[modelId] = {
+        name: String(alias || modelId).trim() || modelId,
+      };
+    };
+    addModel(provider.model);
+    for (const model of Array.isArray(provider.models) ? provider.models : []) {
+      addModel(model?.model, model?.alias);
+    }
+    return models;
+  }
+
+  private collectProviderEnv(providers: DesktopProviderConfig[]) {
+    const env: Record<string, string> = {};
+    for (const provider of providers) {
+      if (!provider.env || typeof provider.env !== 'object') {
+        continue;
+      }
+      for (const [key, value] of Object.entries(provider.env)) {
+        const envKey = key.trim();
+        if (envKey) {
+          env[envKey] = String(value ?? '');
+        }
+      }
+    }
+    return env;
+  }
+
+  private normalizeOpencodeProviderId(value?: string | null) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  private opencodeProviderApiKeyEnvName(providerId: string) {
+    const suffix = providerId.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return `AI_WORKSTATION_OPENCODE_${suffix || 'PROVIDER'}_API_KEY`;
+  }
+
+  private shouldUseOpenAiCompatibleProvider(providerId: string) {
+    const builtInNonCompatibleProviders = new Set([
+      'anthropic',
+      'google',
+      'gemini',
+    ]);
+    return !builtInNonCompatibleProviders.has(providerId);
+  }
+
   private toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): LocalCoreProjectConfig {
     const rawWorkDir = String(project.agent?.options?.work_dir || '.').trim() || '.';
     const configDir = dirname(configState.path);
@@ -1675,10 +1850,16 @@ class WorkspaceRouter {
         )
       : {};
     const agentType = String(project.agent?.type || '').trim().toLowerCase();
-    const model = normalizeDesktopAgentModel(agentType, String(project.agent?.options?.model || ''));
+    const providers = Array.isArray(project.agent?.providers) ? project.agent.providers : [];
+    const model = this.resolveOpencodeModel(project, providers);
+    const providerEnv = this.collectProviderEnv(providers);
+    const opencodeInlineConfig = agentType === 'opencode'
+      ? this.buildOpencodeInlineConfig(model, providers)
+      : null;
     const inferredOpencodeEnv: Record<string, string> = agentType === 'opencode'
       ? {
-          OPENCODE_CONFIG_CONTENT: model ? JSON.stringify({ model }) : '{}',
+          ...(opencodeInlineConfig?.env || {}),
+          OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeInlineConfig?.config || { $schema: 'https://opencode.ai/config.json' }),
         }
       : {};
     const command = String(project.agent?.options?.command || (agentType === 'opencode' ? 'opencode' : '')).trim();
@@ -1692,6 +1873,7 @@ class WorkspaceRouter {
       command,
       args: args.length > 0 ? args : agentType === 'opencode' ? ['acp'] : args,
       env: {
+        ...providerEnv,
         ...inferredOpencodeEnv,
         ...env,
       },

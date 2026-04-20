@@ -496,7 +496,7 @@ export default function DesktopWorkspace() {
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex];
   const selectedAgentType = String(selectedProject?.agent?.type || '').trim().toLowerCase();
-  const probeSupported = selectedAgentType === 'acp' || selectedAgentType === 'localcore-acp';
+  const probeSupported = selectedAgentType === 'acp' || selectedAgentType === 'opencode' || selectedAgentType === 'localcore-acp';
   const probeNeedsBridge = selectedAgentType === 'acp';
   const probeBlockedByUnsavedConfig = visualDirty || rawDirty;
   const probeDisabled = !selectedProject?.name
@@ -1129,7 +1129,7 @@ export default function DesktopWorkspace() {
                         )}
                         {selectedProject.agent?.type === 'opencode' && (
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Desktop runs <code>opencode</code> through the ACP adapter at runtime so permission controls work, but your saved config stays on <code>opencode</code>.
+                            Desktop thread chat runs <code>opencode</code> through Local AI Core's ACP backend. <code>cc-connect</code> is only kept for IM platform gateway duties.
                           </p>
                         )}
                       </div>
