@@ -78,7 +78,6 @@ export function useThreadChatSessionBrowser({
   progressSequenceByTurnRef,
 }: UseThreadChatSessionBrowserInput) {
   const usesManagedThreadApi = runtimeProvider !== 'web_remote';
-  const canFallbackToDesktopSessions = runtimeProvider === 'electron';
   const threadsForSelectedWorkspace = useMemo(
     () => threadGroups.find((group) => group.project === selectedWorkspaceId)?.sessions || [],
     [selectedWorkspaceId, threadGroups],
@@ -100,32 +99,20 @@ export function useThreadChatSessionBrowser({
     if (!workspaceId || !serviceRunning) {
       return [];
     }
-    let nextThreads;
-    try {
-      nextThreads = usesManagedThreadApi
-        ? sortChatThreadsByLiveAndUpdated((await listThreads(workspaceId)).threads.map((thread) => toCoreChatThreadSummary(thread)))
-        : sortChatThreadsByLiveAndUpdated(
-            ((await listSessions(workspaceId)).sessions || [])
-              .filter(sessionMatchesDesktop)
-              .map((session) => toChatThreadSummary(workspaceId, session)),
-          );
-    } catch (error) {
-      if (!canFallbackToDesktopSessions) {
-        throw error;
-      }
-      nextThreads = sortChatThreadsByLiveAndUpdated(
-        ((await listSessions(workspaceId)).sessions || [])
-          .filter(sessionMatchesDesktop)
-          .map((session) => toChatThreadSummary(workspaceId, session)),
-      );
-    }
+    const nextThreads = usesManagedThreadApi
+      ? sortChatThreadsByLiveAndUpdated((await listThreads(workspaceId)).threads.map((thread) => toCoreChatThreadSummary(thread)))
+      : sortChatThreadsByLiveAndUpdated(
+          ((await listSessions(workspaceId)).sessions || [])
+            .filter(sessionMatchesDesktop)
+            .map((session) => toChatThreadSummary(workspaceId, session)),
+        );
     const activeThread = nextThreads.find((thread) => thread.id === activeThreadId);
     if (activeThread?.agentType) {
       setActiveSessionAgentType(activeThread.agentType);
     }
     setThreadGroups((current) => upsertThreadGroup(current, workspaceId, nextThreads));
     return nextThreads;
-  }, [activeThreadId, canFallbackToDesktopSessions, serviceRunning, setActiveSessionAgentType, setThreadGroups, usesManagedThreadApi]);
+  }, [activeThreadId, serviceRunning, setActiveSessionAgentType, setThreadGroups, usesManagedThreadApi]);
 
   const loadActiveThread = useCallback(async (workspaceId: string, threadId: string) => {
     if (!workspaceId || !threadId || !serviceRunning) {
@@ -136,15 +123,9 @@ export function useThreadChatSessionBrowser({
     updateTaskState('idle');
     setTyping(false);
     if (usesManagedThreadApi) {
-      try {
-        const detail = await getThread(threadId);
-        applyLocalCoreThreadDetail(detail);
-        return;
-      } catch (error) {
-        if (!canFallbackToDesktopSessions) {
-          throw error;
-        }
-      }
+      const detail = await getThread(threadId);
+      applyLocalCoreThreadDetail(detail);
+      return;
     }
     const detail = await getSession(workspaceId, threadId, 200);
     const selectedKnowledgeBaseIds = await getThreadKnowledgeBases(workspaceId, threadId).catch(() => []);
@@ -165,7 +146,6 @@ export function useThreadChatSessionBrowser({
     setMessages(nextMessages);
   }, [
     applyLocalCoreThreadDetail,
-    canFallbackToDesktopSessions,
     clearLocalCorePolling,
     holdBlankComposerRef,
     lastSessionByProjectRef,
@@ -194,17 +174,9 @@ export function useThreadChatSessionBrowser({
       setSelectedKnowledgeBaseIds([]);
       return [];
     }
-    let nextWorkspaceIds;
-    try {
-      nextWorkspaceIds = usesManagedThreadApi
-        ? (await listWorkspaces()).workspaces.map((workspace) => workspace.id)
-        : (await listProjects()).projects.map((project) => project.name);
-    } catch (error) {
-      if (!canFallbackToDesktopSessions) {
-        throw error;
-      }
-      nextWorkspaceIds = (await listProjects()).projects.map((project) => project.name);
-    }
+    const nextWorkspaceIds = usesManagedThreadApi
+      ? (await listWorkspaces()).workspaces.map((workspace) => workspace.id)
+      : (await listProjects()).projects.map((project) => project.name);
     setProjects(nextWorkspaceIds);
     const nextGroups = (
       await Promise.all(
@@ -218,7 +190,6 @@ export function useThreadChatSessionBrowser({
     setSelectedProject((current) => current || requestedWorkspaceId || runtimeDefaultWorkspaceId || nextWorkspaceIds[0] || '');
     return nextGroups;
   }, [
-    canFallbackToDesktopSessions,
     refreshThreadsForWorkspace,
     requestedWorkspaceId,
     runtimeDefaultWorkspaceId,

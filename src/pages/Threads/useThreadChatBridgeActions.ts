@@ -1,5 +1,4 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
-import { bridgeSendMessage } from '@/api/desktop';
 import {
   normalizePermissionResponse,
   type DesktopBridgeButtonOption,
@@ -30,15 +29,14 @@ type UseThreadChatBridgeActionsInput = {
 
 export function useThreadChatBridgeActions({
   activeAgentType: _activeAgentType,
-  activeBridgeSessionKey,
   activeThreadId,
   armReplyTimeout,
   clearActionStatuses,
   clearReplyTimeout,
   messages,
   reserveNextMessageOrder,
-  runtimeProvider,
-  selectedWorkspaceId,
+  runtimeProvider: _runtimeProvider,
+  selectedWorkspaceId: _selectedWorkspaceId,
   sendAction,
   settlePreviewMessages,
   setActiveRunId,
@@ -49,9 +47,14 @@ export function useThreadChatBridgeActions({
   startLocalCoreThreadPolling,
   updateTaskState,
 }: UseThreadChatBridgeActionsInput & Pick<ThreadChatActiveThreadIdentity, 'activeRunId'> & { setActiveRunId: Dispatch<SetStateAction<string>> }) {
-  const usesManagedThreadApi = runtimeProvider !== 'web_remote';
+  const usesManagedThreadApi = _runtimeProvider !== 'web_remote';
   const handleBridgeAction = useCallback(async (message: ChatMessage, action: DesktopBridgeButtonOption) => {
     if (!activeThreadId) {
+      return;
+    }
+    if (!usesManagedThreadApi) {
+      setBridgeError('Managed desktop thread action transport is unavailable.');
+      updateTaskState('error', 'bridge-action-unavailable');
       return;
     }
     const actionContent = normalizePermissionResponse(action.data) || action.data;
@@ -72,28 +75,17 @@ export function useThreadChatBridgeActions({
         ...current,
         { id: actionMessageId, role: 'user', content: actionLabel, order: userOrder, timestamp: new Date().toISOString() },
       ]);
-      if (usesManagedThreadApi) {
-        const result = await sendAction(activeThreadId, actionContent);
-        setActiveRunId(result.runId);
-      } else {
-        const [, workspaceId = selectedWorkspaceId, chatId = 'main'] = activeBridgeSessionKey.split(':');
-        await bridgeSendMessage({
-          project: workspaceId,
-          chatId,
-          content: actionContent,
-        });
-      }
+      const result = await sendAction(activeThreadId, actionContent);
+      setActiveRunId(result.runId);
       sent = true;
       setBridgeError('');
       settlePreviewMessages(message.actionReplyCtx);
-      setTyping(usesManagedThreadApi);
+      setTyping(true);
       clearReplyTimeout();
       clearActionStatuses();
       if (message.actionMode === 'permission' && message.actionInteractive) {
         updateTaskState('permission_submitted', 'bridge-permission-submitted');
-        if (usesManagedThreadApi) {
-          armReplyTimeout('permission_continue');
-        }
+        armReplyTimeout('permission_continue');
         setMessages((current) =>
           current.map((item) =>
             item.id === message.id
@@ -108,9 +100,7 @@ export function useThreadChatBridgeActions({
         );
       } else {
         updateTaskState('running', 'bridge-action-submitted');
-        if (usesManagedThreadApi) {
-          armReplyTimeout();
-        }
+        armReplyTimeout();
       }
     } catch (error) {
       setBridgeError(error instanceof Error ? error.message : 'Failed to send permission response.');
@@ -137,15 +127,12 @@ export function useThreadChatBridgeActions({
       );
     }
   }, [
-    activeBridgeSessionKey,
     activeThreadId,
     armReplyTimeout,
     clearActionStatuses,
     clearReplyTimeout,
     messages,
     reserveNextMessageOrder,
-    runtimeProvider,
-    selectedWorkspaceId,
     sendAction,
     settlePreviewMessages,
     setActiveRunId,
