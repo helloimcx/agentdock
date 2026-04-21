@@ -501,7 +501,10 @@ export default function DesktopWorkspace() {
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex];
   const selectedAgentType = String(selectedProject?.agent?.type || '').trim().toLowerCase();
-  const probeSupported = selectedAgentType === 'acp' || selectedAgentType === 'opencode' || selectedAgentType === 'localcore-acp';
+  const probeSupported = selectedAgentType === 'acp'
+    || selectedAgentType === 'opencode'
+    || selectedAgentType === 'claudecode'
+    || selectedAgentType === 'localcore-acp';
   const probeNeedsBridge = selectedAgentType === 'acp';
   const probeBlockedByUnsavedConfig = visualDirty || rawDirty;
   const probeDisabled = !selectedProject?.name
@@ -1208,9 +1211,9 @@ export default function DesktopWorkspace() {
                       <section className="rounded-2xl border border-gray-200/80 dark:border-white/[0.08] p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <h3 className="font-medium text-gray-900 dark:text-white">ACP streaming probe</h3>
+                            <h3 className="font-medium text-gray-900 dark:text-white">Local ACP streaming probe</h3>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Runs one temporary prompt against the saved config on disk and checks the streaming bridge sequence.
+                              Runs one temporary prompt against the saved config on disk and checks the Local AI Core streaming bridge sequence.
                             </p>
                           </div>
                           <Button

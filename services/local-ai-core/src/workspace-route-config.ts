@@ -1,6 +1,8 @@
+import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../packages/contracts/src/index.js';
 import {
+  DESKTOP_CLAUDECODE_ACP_PACKAGE,
   DEFAULT_DESKTOP_OPENCODE_MODEL,
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
@@ -29,7 +31,7 @@ export function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
 
 export function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | null) {
   const agentType = String(project?.agent?.type || '').trim().toLowerCase();
-  if (agentType === LOCALCORE_ACP_AGENT_TYPE || agentType === 'opencode') {
+  if (agentType === LOCALCORE_ACP_AGENT_TYPE || agentType === 'opencode' || agentType === 'claudecode') {
     return true;
   }
   if (agentType !== 'acp') {
@@ -182,6 +184,23 @@ function shouldUseOpenAiCompatibleProvider(providerId: string) {
   return !builtInNonCompatibleProviders.has(providerId);
 }
 
+function resolveBundledClaudeCodeCommand() {
+  const require = createRequire(__filename);
+  const packageJsonPath = require.resolve(`${DESKTOP_CLAUDECODE_ACP_PACKAGE}/package.json`);
+  const packageJson = require(packageJsonPath) as { bin?: string | Record<string, string> };
+  const binField = packageJson.bin;
+  const relativeBinPath = typeof binField === 'string'
+    ? binField
+    : binField?.['claude-agent-acp'];
+  if (!relativeBinPath) {
+    throw new Error(`Bundled package "${DESKTOP_CLAUDECODE_ACP_PACKAGE}" does not declare the claude-agent-acp bin.`);
+  }
+  return {
+    command: process.execPath,
+    args: [resolve(dirname(packageJsonPath), relativeBinPath)],
+  };
+}
+
 export function toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): LocalCoreProjectConfig {
   const rawWorkDir = String(project.agent?.options?.work_dir || '.').trim() || '.';
   const configDir = dirname(configState.path);
@@ -211,19 +230,36 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
         OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeInlineConfig?.config || { $schema: 'https://opencode.ai/config.json' }),
       }
     : {};
-  const command = String(project.agent?.options?.command || (agentType === 'opencode' ? 'opencode' : '')).trim();
+  const inferredClaudeCodeEnv: Record<string, string> = agentType === 'claudecode' && model
+    ? {
+        ANTHROPIC_MODEL: model,
+      }
+    : {};
+  const bundledClaudeCode = agentType === 'claudecode'
+    ? resolveBundledClaudeCodeCommand()
+    : null;
+  const inferredCommand = agentType === 'opencode'
+    ? 'opencode'
+    : bundledClaudeCode?.command || '';
+  const command = String(project.agent?.options?.command || inferredCommand).trim();
   if (!command) {
     throw new Error(`Workspace "${project.name}" requires [projects.agent.options].command for Local AI Core ACP execution.`);
   }
+  const defaultArgs = agentType === 'opencode'
+    ? ['acp']
+    : agentType === 'claudecode'
+      ? [...(bundledClaudeCode?.args || [])]
+      : [];
   return {
     workspaceId: project.name,
     agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
     workDir,
     command,
-    args: args.length > 0 ? args : agentType === 'opencode' ? ['acp'] : args,
+    args: args.length > 0 ? args : defaultArgs,
     env: {
       ...providerEnv,
       ...inferredOpencodeEnv,
+      ...inferredClaudeCodeEnv,
       ...env,
     },
     model,

@@ -1,6 +1,7 @@
 export const DEFAULT_DESKTOP_AGENT_TYPE = 'opencode';
 export const DEFAULT_DESKTOP_OPENCODE_MODEL = 'opencode/minimax-m2.5-free';
 export const DEFAULT_DESKTOP_CLAUDECODE_MODEL = '';
+export const DESKTOP_CLAUDECODE_ACP_PACKAGE = '@agentclientprotocol/claude-agent-acp';
 export const DESKTOP_AGENT_TYPE_OPTIONS = [
   'opencode',
   'codex',
@@ -239,7 +240,10 @@ export function supportsInteractivePermission(agentType?: string | null) {
 
 export function isAcpAgentType(agentType?: string | null) {
   const normalized = String(agentType || '').trim().toLowerCase();
-  return normalized === 'acp' || normalized === 'opencode' || normalized === LOCALCORE_ACP_AGENT_TYPE;
+  return normalized === 'acp'
+    || normalized === 'opencode'
+    || normalized === 'claudecode'
+    || normalized === LOCALCORE_ACP_AGENT_TYPE;
 }
 
 export interface DesktopBridgeEvent {

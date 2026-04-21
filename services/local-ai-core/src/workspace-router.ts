@@ -180,7 +180,12 @@ class WorkspaceRouter {
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {
     const route = await this.getWorkspaceRoute(workspaceId);
     const normalizedAgentType = String(route.agentType || '').trim().toLowerCase();
-    if (normalizedAgentType !== 'acp' && normalizedAgentType !== 'opencode' && normalizedAgentType !== LOCALCORE_ACP_AGENT_TYPE) {
+    if (
+      normalizedAgentType !== 'acp'
+      && normalizedAgentType !== 'opencode'
+      && normalizedAgentType !== 'claudecode'
+      && normalizedAgentType !== LOCALCORE_ACP_AGENT_TYPE
+    ) {
       throw new Error(`Workspace "${workspaceId}" is not configured as an ACP agent.`);
     }
     if (route.kind === 'localcore-acp') {

@@ -815,7 +815,7 @@ export class ServiceManager extends EventEmitter {
           return [];
         }
 
-        if ((agentType === 'opencode' || agentType === 'acp') && !hasPlatformGatewayBindings(project)) {
+        if ((agentType === 'opencode' || agentType === 'claudecode' || agentType === 'acp') && !hasPlatformGatewayBindings(project)) {
           // Local desktop chat for ACP-compatible agents is owned by Local AI Core.
           // cc-connect is only generated for workspaces that bind external IM platforms.
           return [];
