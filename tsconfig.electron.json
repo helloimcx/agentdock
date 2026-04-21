@@ -11,5 +11,12 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "shared/**/*.ts", "packages/**/*.ts", "services/**/*.ts"]
+  "include": [
+    "electron/**/*.ts",
+    "shared/**/*.ts",
+    "packages/**/*.ts",
+    "services/**/*.ts",
+    "src/pages/Threads/thread-chat-permission.ts",
+    "src/pages/Threads/thread-chat-permission.test.ts"
+  ]
 }

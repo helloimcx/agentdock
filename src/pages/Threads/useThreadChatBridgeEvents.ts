@@ -15,6 +15,7 @@ import {
   sessionProjectFromKey,
   type ChatMessage,
 } from './thread-chat-model';
+import { taskStateAfterTypingStop } from './thread-chat-permission';
 import type {
   ThreadChatActiveThreadIdentity,
   ThreadChatConversationRefs,
@@ -248,7 +249,12 @@ export function useThreadChatBridgeEvents({
         clearReplyTimeout();
         pendingTurnRef.current = null;
         clearActionStatuses();
-        updateTaskState('idle', 'bridge-typing-stop');
+        updateTaskState(
+          taskStateAfterTypingStop(taskStateRef.current),
+          taskStateRef.current === 'awaiting_permission'
+            ? 'bridge-typing-stop-preserve-permission'
+            : 'bridge-typing-stop',
+        );
         settlePreviewMessages(event.replyCtx);
         finalizeTurnMessages(event.replyCtx);
         break;

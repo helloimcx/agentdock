@@ -15,6 +15,7 @@ import {
   type ChatTaskState,
   type ThreadGroup,
 } from './thread-chat-model';
+import { mergePermissionMetadata } from './thread-chat-permission';
 
 function advancePreviewContent(content: string, target: string) {
   if (!target) {
@@ -215,7 +216,7 @@ export function useThreadChatConversationState({
     const nextMessages = toMessagesFromThread(detail.messages || []);
     nextMessageOrderRef.current = nextMessages.length;
     pendingTurnRef.current = null;
-    setMessages(nextMessages);
+    setMessages((current) => mergePermissionMetadata(current, nextMessages));
   }, [
     setActiveRunId,
     setActiveSessionAgentType,

@@ -20,7 +20,7 @@ import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
 import { startDesktopService } from '@/api/desktop';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/session-utils';
-import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
+import { getLatestInteractivePermissionMessage } from './thread-chat-permission';
 import { formatMessageTimestamp, formatRuntimePhase } from './thread-chat-model';
 import { useThreadChatController } from './useThreadChatController';
 
@@ -131,24 +131,9 @@ export default function ThreadChat() {
   const isRuntimeStarting = runtime?.phase === 'starting';
   const selectedKnowledgeCount = selectedKnowledgeBaseIds.length;
   const permissionPromptMessage = useMemo(
-    () =>
-      [...renderedMessages]
-        .reverse()
-        .find((message) => message.role === 'assistant' && message.actionMode === 'permission' && message.actionInteractive),
+    () => getLatestInteractivePermissionMessage(renderedMessages),
     [renderedMessages],
   );
-  const fallbackPermissionActions = useMemo<DesktopBridgeButtonOption[][]>(
-    () => [[
-      { text: '允许', data: 'allow' },
-      { text: '拒绝', data: 'deny' },
-      { text: '始终允许', data: 'allow all' },
-    ]],
-    [],
-  );
-  const visiblePermissionActions =
-    permissionPromptMessage?.actions && permissionPromptMessage.actions.length > 0
-      ? permissionPromptMessage.actions
-      : fallbackPermissionActions;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -763,10 +748,10 @@ export default function ThreadChat() {
                     </div>
                   </div>
 
-                  {taskState === 'awaiting_permission' && permissionPromptMessage ? (
+                  {permissionPromptMessage ? (
                     <div className="flex min-w-[220px] flex-col gap-2 rounded-[20px] border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-400/20 dark:bg-amber-500/10">
                       <p className="text-xs font-medium text-amber-800 dark:text-amber-100">请选择权限响应</p>
-                      {visiblePermissionActions.map((row, rowIndex) => (
+                      {permissionPromptMessage.actions?.map((row, rowIndex) => (
                         <div key={`${permissionPromptMessage.id}-permission-row-${rowIndex}`} className="flex flex-wrap gap-2">
                           {row.map((action) => (
                             <Button
