@@ -20,7 +20,6 @@ import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
 import { startDesktopService } from '@/api/desktop';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/session-utils';
-import { getLatestInteractivePermissionMessage } from './thread-chat-permission';
 import { formatMessageTimestamp, formatRuntimePhase } from './thread-chat-model';
 import { useThreadChatController } from './useThreadChatController';
 
@@ -131,10 +130,7 @@ export default function ThreadChat() {
 
   const isRuntimeStarting = runtime?.phase === 'starting';
   const selectedKnowledgeCount = selectedKnowledgeBaseIds.length;
-  const permissionPromptMessage = useMemo(
-    () => pendingPermissionRequest || getLatestInteractivePermissionMessage(renderedMessages),
-    [pendingPermissionRequest, renderedMessages],
-  );
+  const permissionPromptMessage = pendingPermissionRequest;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {

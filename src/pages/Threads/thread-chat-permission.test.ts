@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
+import { toPendingPermissionRequest, type PermissionPromptMessage } from './thread-chat-permission';
 import {
-  getLatestInteractivePermissionMessage,
-  mergePermissionMetadata,
+  deriveTaskStateFromThreadDetail,
   taskStateAfterTypingStop,
-  type PermissionPromptMessage,
-} from './thread-chat-permission';
+  taskStateForBridgeButtons,
+  taskStateReasonForBridgeButtons,
+} from './thread-chat-task-state';
 
 type TestMessage = PermissionPromptMessage & {
   id: string;
@@ -32,56 +33,20 @@ function createMessage(overrides: Partial<TestMessage> & { id: string }): TestMe
   };
 }
 
-test('getLatestInteractivePermissionMessage returns the latest actionable permission prompt', () => {
-  const messages = [
-    createMessage({
-      id: 'older-permission',
-      order: 1,
-      actionMode: 'permission',
-      actionInteractive: true,
-      actions: createPermissionActions(),
-    }),
-    createMessage({
-      id: 'generic-buttons',
-      order: 2,
-      actionMode: 'generic',
-      actionInteractive: true,
-      actions: createPermissionActions(),
-    }),
-    createMessage({
-      id: 'latest-permission',
-      order: 3,
-      actionMode: 'permission',
-      actionInteractive: true,
-      actions: createPermissionActions(),
-    }),
-  ];
-
-  const prompt = getLatestInteractivePermissionMessage(messages);
+test('toPendingPermissionRequest returns an actionable permission prompt payload', () => {
+  const prompt = toPendingPermissionRequest(createMessage({
+    id: 'latest-permission',
+    order: 3,
+    actionMode: 'permission',
+    actionInteractive: true,
+    actionReplyCtx: 'run-1',
+    actions: createPermissionActions(),
+  }));
 
   assert.ok(prompt);
   assert.equal(prompt.id, 'latest-permission');
-});
-
-test('getLatestInteractivePermissionMessage ignores submitted or non-interactive prompts', () => {
-  const messages = [
-    createMessage({
-      id: 'submitted-permission',
-      order: 1,
-      actionMode: 'permission',
-      actionInteractive: true,
-      actions: [],
-    }),
-    createMessage({
-      id: 'unsupported-permission',
-      order: 2,
-      actionMode: 'permission',
-      actionInteractive: false,
-      actions: createPermissionActions(),
-    }),
-  ];
-
-  assert.equal(getLatestInteractivePermissionMessage(messages), undefined);
+  assert.deepEqual(prompt.actions, createPermissionActions());
+  assert.equal(prompt.actionReplyCtx, 'run-1');
 });
 
 test('taskStateAfterTypingStop keeps awaiting_permission prompts visible', () => {
@@ -90,31 +55,63 @@ test('taskStateAfterTypingStop keeps awaiting_permission prompts visible', () =>
   assert.equal(taskStateAfterTypingStop('permission_submitted'), 'idle');
 });
 
-test('mergePermissionMetadata preserves interactive permission buttons across thread refreshes', () => {
-  const currentMessages = [
-    createMessage({
-      id: 'transient-buttons',
-      order: 3,
-      content: '等待工具确认\n\n请选择一个选项继续执行。',
+test('taskStateForBridgeButtons prioritizes interactive permission requests', () => {
+  assert.equal(taskStateForBridgeButtons(true, true), 'awaiting_permission');
+  assert.equal(taskStateReasonForBridgeButtons(true, true), 'bridge-buttons-awaiting-permission');
+  assert.equal(taskStateForBridgeButtons(true, false), 'awaiting_input');
+  assert.equal(taskStateReasonForBridgeButtons(true, false), 'bridge-buttons-awaiting-input');
+  assert.equal(taskStateForBridgeButtons(false, false), 'idle');
+  assert.equal(taskStateReasonForBridgeButtons(false, false), 'bridge-buttons-idle');
+});
+
+test('deriveTaskStateFromThreadDetail recognizes permission and input blocking states', () => {
+  const pendingPermission = deriveTaskStateFromThreadDetail({
+    id: 'thread-1',
+    workspaceId: 'default',
+    title: 'Thread',
+    live: false,
+    updatedAt: '2026-04-22T00:00:00.000Z',
+    createdAt: '2026-04-22T00:00:00.000Z',
+    historyCount: 1,
+    excerpt: '',
+    messages: [],
+    selectedKnowledgeBaseIds: [],
+    pendingPermissionRequest: {
+      id: 'permission-1',
+      content: 'Permission required',
+      actions: createPermissionActions(),
       actionMode: 'permission',
       actionInteractive: true,
-      actionReplyCtx: 'run-1',
-      actions: createPermissionActions(),
-    }),
-  ];
-  const refreshedMessages = [
-    createMessage({
-      id: 'persisted-history-message',
-      order: 3,
-      content: '等待工具确认\n\n请选择一个选项继续执行。',
-    }),
-  ];
+    },
+  }, 0, 0);
+  assert.deepEqual(pendingPermission, {
+    state: 'awaiting_permission',
+    reason: 'local-core-poll-awaiting-permission',
+  });
 
-  const merged = mergePermissionMetadata(currentMessages, refreshedMessages);
-
-  assert.equal(merged[0]?.id, 'persisted-history-message');
-  assert.equal(merged[0]?.actionMode, 'permission');
-  assert.equal(merged[0]?.actionInteractive, true);
-  assert.deepEqual(merged[0]?.actions, createPermissionActions());
-  assert.equal(merged[0]?.actionReplyCtx, 'run-1');
+  const awaitingInput = deriveTaskStateFromThreadDetail({
+    id: 'thread-1',
+    workspaceId: 'default',
+    title: 'Thread',
+    live: false,
+    updatedAt: '2026-04-22T00:00:00.000Z',
+    createdAt: '2026-04-22T00:00:00.000Z',
+    historyCount: 1,
+    excerpt: '',
+    messages: [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '等待你的回复，请直接回复选项编号',
+        timestamp: '2026-04-22T00:00:00.000Z',
+        kind: 'progress',
+      },
+    ],
+    selectedKnowledgeBaseIds: [],
+    pendingPermissionRequest: null,
+  }, 0, 0);
+  assert.deepEqual(awaitingInput, {
+    state: 'awaiting_input',
+    reason: 'local-core-poll-awaiting-input',
+  });
 });

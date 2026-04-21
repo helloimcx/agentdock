@@ -364,7 +364,7 @@ export class KnowledgeSqliteStore {
       SELECT thread_id, knowledge_base_id, created_at
       FROM thread_knowledge_bases
       WHERE thread_id = ?
-      ORDER BY created_at ASC, knowledge_base_id ASC
+      ORDER BY created_at ASC, rowid ASC
     `).all(threadId) as ThreadKnowledgeBaseRow[];
     return rows.map((row) => row.knowledge_base_id);
   }

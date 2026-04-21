@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest, ThreadSummary } from '../../../../packages/contracts/src/index.js';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopBridgeButtonOption,
@@ -45,7 +45,11 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
   }
 
   async getThread(threadId: string): Promise<ThreadDetail> {
-    return this.options.store.getThread(threadId, []);
+    const detail = this.options.store.getThread(threadId, []);
+    return {
+      ...detail,
+      pendingPermissionRequest: this.getPendingPermissionRequest(threadId, detail),
+    };
   }
 
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
@@ -392,6 +396,29 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         }
       }
     }
+  }
+
+  private getPendingPermissionRequest(threadId: string, detail: ThreadDetail): ThreadPendingPermissionRequest | null {
+    const session = this.sessions.get(threadId);
+    const runId = session?.currentRunId;
+    if (!session || !runId) {
+      return null;
+    }
+    const pendingPermission = session.pendingPermissionByRun.get(runId);
+    if (!pendingPermission) {
+      return null;
+    }
+    const latestAssistantMessage = [...detail.messages].reverse().find((message) => message.role === 'assistant');
+    return {
+      id: latestAssistantMessage?.id || `${runId}-buttons`,
+      content: latestAssistantMessage?.content || 'Permission required before continuing.',
+      actions: toPermissionButtonRows(pendingPermission.options, normalizeDesktopBridgeButtonOption),
+      actionReplyCtx: runId,
+      actionPending: false,
+      actionStatus: undefined,
+      actionMode: 'permission',
+      actionInteractive: true,
+    };
   }
 
   private handleAgentRequest(session: AcpSessionState, payload: any) {

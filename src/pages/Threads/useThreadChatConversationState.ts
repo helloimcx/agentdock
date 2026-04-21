@@ -4,7 +4,6 @@ import type { ThreadDetail } from '../../../packages/contracts/src';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
   formatTaskHint,
-  isAwaitingInputMessage,
   isTaskInputLocked,
   isTaskRunningState,
   sortChatMessages,
@@ -15,7 +14,8 @@ import {
   type ChatTaskState,
   type ThreadGroup,
 } from './thread-chat-model';
-import { mergePermissionMetadata, type PendingPermissionRequest } from './thread-chat-permission';
+import type { PendingPermissionRequest } from './thread-chat-permission';
+import { deriveTaskStateFromThreadDetail } from './thread-chat-task-state';
 
 function advancePreviewContent(content: string, target: string) {
   if (!target) {
@@ -212,20 +212,15 @@ export function useThreadChatConversationState({
     setActiveSessionAgentType(detail.agentType || '');
     setActiveRunId(detail.runId || '');
     setSelectedKnowledgeBaseIds(detail.selectedKnowledgeBaseIds || []);
-    setPendingPermissionRequest((current) => (
-      detail.id === activeThreadIdRef.current
-        ? current
-        : null
-    ));
+    setPendingPermissionRequest(detail.pendingPermissionRequest || null);
     setThreadGroups((current) => upsertThreadInGroup(current, detail.workspaceId, toCoreChatThreadSummary(detail)));
     holdBlankComposerRef.current = false;
     progressSequenceByTurnRef.current = {};
     const nextMessages = toMessagesFromThread(detail.messages || []);
     nextMessageOrderRef.current = nextMessages.length;
     pendingTurnRef.current = null;
-    setMessages((current) => mergePermissionMetadata(current, nextMessages));
+    setMessages(nextMessages);
   }, [
-    activeThreadIdRef,
     setActiveRunId,
     setActiveSessionAgentType,
     setActiveSessionId,
@@ -255,31 +250,25 @@ export function useThreadChatConversationState({
         }
         applyLocalCoreThreadDetail(detail);
         const nextMessages = toMessagesFromThread(detail.messages || []);
-        const assistantCount = nextMessages.filter((message) => message.role === 'assistant').length;
-        const latestAssistantMessage = [...nextMessages].reverse().find((message) => message.role === 'assistant');
         const signature = nextMessages.map((message) => `${message.id}:${message.content}:${message.kind || 'final'}`).join('|');
         unchangedPolls = signature === lastSignature ? unchangedPolls + 1 : 0;
         lastSignature = signature;
-        if (latestAssistantMessage && isAwaitingInputMessage(latestAssistantMessage.content)) {
+        const derivedState = deriveTaskStateFromThreadDetail(detail, baselineAssistantCount, unchangedPolls);
+        if (derivedState?.state === 'awaiting_permission' || derivedState?.state === 'awaiting_input') {
           clearReplyTimeout();
           setTyping(false);
           pendingTurnRef.current = null;
-          setPendingPermissionRequest(null);
-          updateTaskState('awaiting_input', 'local-core-poll-awaiting-input');
+          updateTaskState(derivedState.state, derivedState.reason);
           return;
         }
-        if (
-          latestAssistantMessage &&
-          latestAssistantMessage.kind !== 'progress' &&
-          assistantCount > baselineAssistantCount &&
-          unchangedPolls >= 1
-        ) {
+        if (derivedState?.state === 'idle') {
           setTyping(false);
           setPendingPermissionRequest(null);
-          updateTaskState('idle', 'local-core-poll-complete');
+          updateTaskState(derivedState.state, derivedState.reason);
           return;
         }
         if (Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS) {
+          const assistantCount = detail.messages.filter((message) => message.role === 'assistant').length;
           setTyping(false);
           setPendingPermissionRequest(null);
           updateTaskState('idle', 'local-core-poll-timeout');

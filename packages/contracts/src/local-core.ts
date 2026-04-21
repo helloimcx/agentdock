@@ -1,4 +1,5 @@
 import type { DesktopBridgeEvent, DesktopRuntimeStatus } from '../../../shared/desktop';
+import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
 
 export interface WorkspaceSummary {
   id: string;
@@ -32,9 +33,21 @@ export interface ThreadMessage {
   kind?: 'final' | 'progress' | 'system';
 }
 
+export interface ThreadPendingPermissionRequest {
+  id: string;
+  content: string;
+  actions: DesktopBridgeButtonOption[][];
+  actionReplyCtx?: string;
+  actionPending?: boolean;
+  actionStatus?: string;
+  actionMode: 'permission';
+  actionInteractive: true;
+}
+
 export interface ThreadDetail extends ThreadSummary {
   messages: ThreadMessage[];
   selectedKnowledgeBaseIds: string[];
+  pendingPermissionRequest?: ThreadPendingPermissionRequest | null;
 }
 
 export interface RunSummary {

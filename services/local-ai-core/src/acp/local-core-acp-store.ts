@@ -156,6 +156,7 @@ export class LocalCoreAcpStore {
       agentType,
       messages: [],
       selectedKnowledgeBaseIds: [],
+      pendingPermissionRequest: null,
     };
   }
 
@@ -189,6 +190,7 @@ export class LocalCoreAcpStore {
         kind: message.kind,
       })),
       selectedKnowledgeBaseIds,
+      pendingPermissionRequest: null,
     };
   }
 
