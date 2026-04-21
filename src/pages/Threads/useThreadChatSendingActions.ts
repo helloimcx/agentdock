@@ -33,7 +33,7 @@ type UseThreadChatSendingActionsInput = {
   startLocalCoreThreadPolling: (threadId: string, baselineAssistantCount: number) => void;
 } & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
   Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
-  Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setTyping'> &
+  Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
   Pick<ThreadChatSendingRefs, 'holdBlankComposerRef' | 'lastSessionByProjectRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
 
@@ -65,6 +65,7 @@ export function useThreadChatSendingActions({
   setBridgeError,
   setDraft,
   setMessages,
+  setPendingPermissionRequest,
   setSending,
   setTyping,
   startLocalCoreThreadPolling,
@@ -145,6 +146,7 @@ export function useThreadChatSendingActions({
         selectedKnowledgeBaseIds,
       });
       pendingTurnRef.current = { sessionKey: ensured.sessionKey, userOrder };
+      setPendingPermissionRequest(null);
       setMessages((current) => [
         ...current,
         { id: `${crypto.randomUUID()}-user`, role: 'user', content, order: userOrder, timestamp: new Date().toISOString() },
@@ -170,6 +172,7 @@ export function useThreadChatSendingActions({
       clearLocalCorePolling();
       pendingTurnRef.current = null;
       settlePreviewMessages();
+      setPendingPermissionRequest(null);
       setTyping(false);
       updateTaskState('error', 'send-failed');
       setBridgeError(error instanceof Error ? error.message : 'Failed to send the message.');
@@ -193,6 +196,7 @@ export function useThreadChatSendingActions({
     setBridgeError,
     setDraft,
     setMessages,
+    setPendingPermissionRequest,
     setSending,
     settlePreviewMessages,
     setTyping,
@@ -209,6 +213,7 @@ export function useThreadChatSendingActions({
     clearReplyTimeout();
     clearLocalCorePolling();
     settlePreviewMessages();
+    setPendingPermissionRequest(null);
     setTyping(false);
     updateTaskState('stopping', 'stop-requested');
     try {
@@ -231,6 +236,7 @@ export function useThreadChatSendingActions({
     clearLocalCorePolling,
     clearReplyTimeout,
     setBridgeError,
+    setPendingPermissionRequest,
     settlePreviewMessages,
     setTyping,
     selectedProject,

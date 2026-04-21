@@ -25,7 +25,7 @@ type UseThreadChatThreadActionsInput = {
   setSearchParams: ThreadChatSearchParamsSetter;
 } & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
   Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
-  Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setTyping'> &
+  Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionAgentType' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
   Pick<ThreadChatModalSetters, 'setDeleteTarget' | 'setPendingSessionAction' | 'setRenameDraft' | 'setRenameTarget'> &
   Pick<ThreadChatConversationRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef'>;
@@ -53,6 +53,7 @@ export function useThreadChatThreadActions({
   setBridgeError,
   setDeleteTarget,
   setMessages,
+  setPendingPermissionRequest,
   setPendingSessionAction,
   setRenameDraft,
   setRenameTarget,
@@ -73,6 +74,7 @@ export function useThreadChatThreadActions({
     setActiveSessionAgentType('');
     setActiveRunId('');
     setMessages([]);
+    setPendingPermissionRequest(null);
     setTyping(false);
     updateTaskState('idle');
     setBridgeError('');
@@ -95,6 +97,7 @@ export function useThreadChatThreadActions({
     setActiveSessionName,
     setBridgeError,
     setMessages,
+    setPendingPermissionRequest,
     setTyping,
     updateTaskState,
   ]);

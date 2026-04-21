@@ -15,7 +15,7 @@ import {
   type ChatTaskState,
   type ThreadGroup,
 } from './thread-chat-model';
-import { mergePermissionMetadata } from './thread-chat-permission';
+import { mergePermissionMetadata, type PendingPermissionRequest } from './thread-chat-permission';
 
 function advancePreviewContent(content: string, target: string) {
   if (!target) {
@@ -60,6 +60,7 @@ export function useThreadChatConversationState({
   setThreadGroups,
 }: UseThreadChatConversationStateInput) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pendingPermissionRequest, setPendingPermissionRequest] = useState<PendingPermissionRequest | null>(null);
   const [typing, setTyping] = useState(false);
   const [taskState, setTaskState] = useState<ChatTaskState>('idle');
   const replyTimeoutRef = useRef<number | null>(null);
@@ -109,6 +110,7 @@ export function useThreadChatConversationState({
     replyTimeoutRef.current = window.setTimeout(() => {
       setTyping(false);
       pendingTurnRef.current = null;
+      setPendingPermissionRequest(null);
       updateTaskState('idle', 'reply-timeout');
       setBridgeError(
         mode === 'permission_continue'
@@ -210,6 +212,11 @@ export function useThreadChatConversationState({
     setActiveSessionAgentType(detail.agentType || '');
     setActiveRunId(detail.runId || '');
     setSelectedKnowledgeBaseIds(detail.selectedKnowledgeBaseIds || []);
+    setPendingPermissionRequest((current) => (
+      detail.id === activeThreadIdRef.current
+        ? current
+        : null
+    ));
     setThreadGroups((current) => upsertThreadInGroup(current, detail.workspaceId, toCoreChatThreadSummary(detail)));
     holdBlankComposerRef.current = false;
     progressSequenceByTurnRef.current = {};
@@ -218,6 +225,7 @@ export function useThreadChatConversationState({
     pendingTurnRef.current = null;
     setMessages((current) => mergePermissionMetadata(current, nextMessages));
   }, [
+    activeThreadIdRef,
     setActiveRunId,
     setActiveSessionAgentType,
     setActiveSessionId,
@@ -226,6 +234,7 @@ export function useThreadChatConversationState({
     setSelectedKnowledgeBaseIds,
     setSelectedProject,
     setThreadGroups,
+    setPendingPermissionRequest,
   ]);
 
   const startLocalCoreThreadPolling = useCallback((threadId: string, baselineAssistantCount: number) => {
@@ -255,6 +264,7 @@ export function useThreadChatConversationState({
           clearReplyTimeout();
           setTyping(false);
           pendingTurnRef.current = null;
+          setPendingPermissionRequest(null);
           updateTaskState('awaiting_input', 'local-core-poll-awaiting-input');
           return;
         }
@@ -265,11 +275,13 @@ export function useThreadChatConversationState({
           unchangedPolls >= 1
         ) {
           setTyping(false);
+          setPendingPermissionRequest(null);
           updateTaskState('idle', 'local-core-poll-complete');
           return;
         }
         if (Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS) {
           setTyping(false);
+          setPendingPermissionRequest(null);
           updateTaskState('idle', 'local-core-poll-timeout');
           if (assistantCount <= baselineAssistantCount) {
             setBridgeError('Agent did not respond in time. Check Local AI Core logs or adapter status.');
@@ -284,6 +296,7 @@ export function useThreadChatConversationState({
           return;
         }
         setTyping(false);
+        setPendingPermissionRequest(null);
         updateTaskState('error', 'local-core-poll-error');
         setBridgeError(error instanceof Error ? error.message : 'Failed to refresh the current thread.');
       }
@@ -292,7 +305,7 @@ export function useThreadChatConversationState({
     window.setTimeout(() => {
       void tick();
     }, 1500);
-  }, [applyLocalCoreThreadDetail, clearLocalCorePolling, clearReplyTimeout, pendingTurnRef, setBridgeError, updateTaskState]);
+  }, [applyLocalCoreThreadDetail, clearLocalCorePolling, clearReplyTimeout, pendingTurnRef, setBridgeError, setPendingPermissionRequest, updateTaskState]);
 
   useEffect(() => {
     const hasPendingPreview = messages.some((message) =>
@@ -340,6 +353,7 @@ export function useThreadChatConversationState({
     lastSessionByProjectRef,
     messages,
     nextMessageOrderRef,
+    pendingPermissionRequest,
     finalizeTurnMessages,
     nextProgressMessageId,
     pendingTurnRef,
@@ -348,6 +362,7 @@ export function useThreadChatConversationState({
     reserveAssistantMessageOrder,
     reserveNextMessageOrder,
     setMessages,
+    setPendingPermissionRequest,
     settlePreviewMessages,
     setTyping,
     startLocalCoreThreadPolling,

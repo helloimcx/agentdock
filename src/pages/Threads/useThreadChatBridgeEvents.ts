@@ -6,6 +6,7 @@ import {
   supportsInteractivePermission,
   type DesktopBridgeEvent,
 } from '../../../shared/desktop';
+import { toPendingPermissionRequest } from './thread-chat-permission';
 import {
   canStreamingPromoteTaskState,
   isAwaitingInputMessage,
@@ -40,7 +41,7 @@ type UseThreadChatBridgeEventsInput = {
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
   settlePreviewMessages: (turnKey?: string) => void;
 } & Pick<ThreadChatSharedHookContext, 'clearLocalCorePolling' | 'clearReplyTimeout' | 'updateTaskState'> &
-  Pick<ThreadChatSharedHookContext, 'refreshThreadsForWorkspace' | 'setBridgeError' | 'setMessages' | 'setTyping'> &
+  Pick<ThreadChatSharedHookContext, 'refreshThreadsForWorkspace' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatActiveThreadIdentity, 'activeBridgeSessionKey' | 'activeAgentType'> &
   Pick<ThreadChatConversationRefs, 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
 
@@ -60,6 +61,7 @@ export function useThreadChatBridgeEvents({
   settlePreviewMessages,
   setBridgeError,
   setMessages,
+  setPendingPermissionRequest,
   setTyping,
   taskStateRef,
   updateTaskState,
@@ -93,9 +95,10 @@ export function useThreadChatBridgeEvents({
           clearReplyTimeout();
           setTyping(false);
           pendingTurnRef.current = null;
-          clearActionStatuses();
-          updateTaskState('awaiting_input', 'bridge-preview-awaiting-input');
-          setBridgeError('');
+        clearActionStatuses();
+        updateTaskState('awaiting_input', 'bridge-preview-awaiting-input');
+        setPendingPermissionRequest(null);
+        setBridgeError('');
           setMessages((current) => {
             const existing = current.find((message) =>
               (event.previewHandle && message.id === event.previewHandle) ||
@@ -122,6 +125,7 @@ export function useThreadChatBridgeEvents({
         clearActionStatuses();
         setTyping(true);
         promoteStreamingState('bridge-preview-start');
+        setPendingPermissionRequest(null);
         armReplyTimeout();
         setBridgeError('');
         setMessages((current) => {
@@ -153,6 +157,7 @@ export function useThreadChatBridgeEvents({
           pendingTurnRef.current = null;
           clearActionStatuses();
           updateTaskState('awaiting_input', 'bridge-update-awaiting-input');
+          setPendingPermissionRequest(null);
           setBridgeError('');
           setMessages((current) =>
             {
@@ -195,6 +200,7 @@ export function useThreadChatBridgeEvents({
         clearActionStatuses();
         setTyping(true);
         promoteStreamingState('bridge-update-message');
+        setPendingPermissionRequest(null);
         armReplyTimeout();
         setBridgeError('');
         setMessages((current) =>
@@ -241,6 +247,7 @@ export function useThreadChatBridgeEvents({
         clearActionStatuses();
         setTyping(true);
         promoteStreamingState('bridge-typing-start');
+        setPendingPermissionRequest(null);
         setBridgeError('');
         armReplyTimeout();
         break;
@@ -270,6 +277,7 @@ export function useThreadChatBridgeEvents({
           promoteStreamingState('bridge-reply');
           armReplyTimeout();
         }
+        setPendingPermissionRequest(null);
         setBridgeError('');
         const replyMessageId = nextProgressMessageId(event.replyCtx);
         if (!isInternalProgressMessage(event.content) && event.replyCtx) {
@@ -300,15 +308,15 @@ export function useThreadChatBridgeEvents({
         setBridgeError('');
         clearActionStatuses();
         settlePreviewMessages(event.replyCtx);
+        const messageId = `${event.replyCtx || crypto.randomUUID()}-buttons`;
+        const actionRows = normalizeBridgeActionRows(event.buttonRows || event.buttons);
+        const isPermissionPrompt = isPermissionActionRow(actionRows);
+        const interactivePermission = isPermissionPrompt && supportsInteractivePermission(activeAgentType);
+        const nextActions = isPermissionPrompt && !interactivePermission ? [] : actionRows;
+        const nextStatus = isPermissionPrompt && !interactivePermission
+          ? permissionSupportMessage(activeAgentType)
+          : undefined;
         setMessages((current) => {
-          const messageId = `${event.replyCtx || crypto.randomUUID()}-buttons`;
-          const actionRows = normalizeBridgeActionRows(event.buttonRows || event.buttons);
-          const isPermissionPrompt = isPermissionActionRow(actionRows);
-          const interactivePermission = isPermissionPrompt && supportsInteractivePermission(activeAgentType);
-          const nextActions = isPermissionPrompt && !interactivePermission ? [] : actionRows;
-          const nextStatus = isPermissionPrompt && !interactivePermission
-            ? permissionSupportMessage(activeAgentType)
-            : undefined;
           const existing = current.find((message) => message.id === messageId);
           if (existing) {
             return current.map((message) =>
@@ -345,17 +353,32 @@ export function useThreadChatBridgeEvents({
             },
           ];
         });
+        setPendingPermissionRequest((current) => {
+          if (!isPermissionPrompt || !interactivePermission) {
+            return null;
+          }
+          const nextMessage = {
+            id: messageId,
+            role: 'assistant' as const,
+            content: event.content || 'Permission required before continuing.',
+            actions: nextActions,
+            actionReplyCtx: event.replyCtx,
+            actionPending: false,
+            actionMode: 'permission' as const,
+            actionInteractive: true as const,
+            actionStatus: nextStatus,
+          };
+          return toPendingPermissionRequest(nextMessage) || current;
+        });
         updateTaskState(
-          isPermissionActionRow(normalizeBridgeActionRows(event.buttonRows || event.buttons)) &&
-            supportsInteractivePermission(activeAgentType)
+          isPermissionPrompt && interactivePermission
             ? 'awaiting_permission'
-            : normalizeBridgeActionRows(event.buttonRows || event.buttons).length > 0
+            : actionRows.length > 0
               ? 'awaiting_input'
               : 'idle',
-          isPermissionActionRow(normalizeBridgeActionRows(event.buttonRows || event.buttons)) &&
-            supportsInteractivePermission(activeAgentType)
+          isPermissionPrompt && interactivePermission
             ? 'bridge-buttons-awaiting-permission'
-            : normalizeBridgeActionRows(event.buttonRows || event.buttons).length > 0
+            : actionRows.length > 0
               ? 'bridge-buttons-awaiting-input'
               : 'bridge-buttons-idle',
         );
@@ -366,6 +389,7 @@ export function useThreadChatBridgeEvents({
         pendingTurnRef.current = null;
         clearActionStatuses();
         updateTaskState('idle', 'bridge-card');
+        setPendingPermissionRequest(null);
         settlePreviewMessages(event.replyCtx);
         finalizeTurnMessages(event.replyCtx);
         setBridgeError('');
@@ -399,6 +423,7 @@ export function useThreadChatBridgeEvents({
     settlePreviewMessages,
     setBridgeError,
     setMessages,
+    setPendingPermissionRequest,
     setTyping,
     promoteStreamingState,
     updateTaskState,

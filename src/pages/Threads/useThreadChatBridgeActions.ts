@@ -4,6 +4,7 @@ import {
   type DesktopBridgeButtonOption,
 } from '../../../shared/desktop';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
+import type { PendingPermissionRequest } from './thread-chat-permission';
 import type {
   ThreadChatActiveThreadIdentity,
   ThreadChatSendingRefs,
@@ -20,7 +21,7 @@ type UseThreadChatBridgeActionsInput = {
   setPendingBridgeActionId: Dispatch<SetStateAction<string | null>>;
   sendAction: (threadId: string, action: string) => Promise<{ runId: string }>;
 } & Pick<ThreadChatSharedHookContext, 'runtimeProvider' | 'selectedWorkspaceId' | 'updateTaskState'> &
-  Pick<ThreadChatSharedHookContext, 'clearReplyTimeout' | 'setBridgeError' | 'setMessages' | 'setTyping'> &
+  Pick<ThreadChatSharedHookContext, 'clearReplyTimeout' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatActiveThreadIdentity, 'activeThreadId' | 'activeBridgeSessionKey'> &
   Pick<ThreadChatSendingRefs, 'taskStateRef'> &
   {
@@ -42,13 +43,17 @@ export function useThreadChatBridgeActions({
   setActiveRunId,
   setBridgeError,
   setMessages,
+  setPendingPermissionRequest,
   setPendingBridgeActionId,
   setTyping,
   startLocalCoreThreadPolling,
   updateTaskState,
 }: UseThreadChatBridgeActionsInput & Pick<ThreadChatActiveThreadIdentity, 'activeRunId'> & { setActiveRunId: Dispatch<SetStateAction<string>> }) {
   const usesManagedThreadApi = true;
-  const handleBridgeAction = useCallback(async (message: ChatMessage, action: DesktopBridgeButtonOption) => {
+  const handleBridgeAction = useCallback(async (
+    message: Pick<ChatMessage, 'id' | 'actionReplyCtx' | 'actionMode' | 'actionInteractive'> | PendingPermissionRequest,
+    action: DesktopBridgeButtonOption,
+  ) => {
     if (!activeThreadId) {
       return;
     }
@@ -71,6 +76,11 @@ export function useThreadChatBridgeActions({
           : item,
       ),
     );
+    setPendingPermissionRequest((current) =>
+      current && current.id === message.id
+        ? { ...current, actionPending: true }
+        : current,
+    );
     try {
       setMessages((current) => [
         ...current,
@@ -88,6 +98,7 @@ export function useThreadChatBridgeActions({
       if (message.actionMode === 'permission' && message.actionInteractive) {
         updateTaskState('permission_submitted', 'bridge-permission-submitted');
         armReplyTimeout('permission_continue');
+        setPendingPermissionRequest(null);
         setMessages((current) =>
           current.map((item) =>
             item.id === message.id
@@ -114,6 +125,11 @@ export function useThreadChatBridgeActions({
           : 'bridge-action-submit-failed',
       );
       setTyping(false);
+      setPendingPermissionRequest((current) =>
+        current && current.id === message.id
+          ? { ...current, actionPending: false }
+          : current,
+      );
     } finally {
       setPendingBridgeActionId(null);
       setMessages((current) =>
@@ -140,6 +156,7 @@ export function useThreadChatBridgeActions({
     setActiveRunId,
     setBridgeError,
     setMessages,
+    setPendingPermissionRequest,
     setPendingBridgeActionId,
     setTyping,
     startLocalCoreThreadPolling,

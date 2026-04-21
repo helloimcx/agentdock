@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
 import type { ThreadChatRefreshThreadsForWorkspace } from './thread-chat-action-types';
+import type { PendingPermissionRequest } from './thread-chat-permission';
 import { useThreadChatBridgeActions } from './useThreadChatBridgeActions';
 import { useThreadChatBridgeEvents } from './useThreadChatBridgeEvents';
 
@@ -24,6 +25,7 @@ type UseThreadChatBridgeInput = {
   setActiveRunId: Dispatch<SetStateAction<string>>;
   setBridgeError: Dispatch<SetStateAction<string>>;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  setPendingPermissionRequest: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   setPendingBridgeActionId: Dispatch<SetStateAction<string | null>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
   startLocalCoreThreadPolling: (threadId: string, baselineAssistantCount: number) => void;
@@ -53,6 +55,7 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
     settlePreviewMessages: input.settlePreviewMessages,
     setBridgeError: input.setBridgeError,
     setMessages: input.setMessages,
+    setPendingPermissionRequest: input.setPendingPermissionRequest,
     setTyping: input.setTyping,
     taskStateRef: input.taskStateRef,
     updateTaskState: input.updateTaskState,
@@ -75,6 +78,7 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
     setActiveRunId: input.setActiveRunId,
     setBridgeError: input.setBridgeError,
     setMessages: input.setMessages,
+    setPendingPermissionRequest: input.setPendingPermissionRequest,
     setPendingBridgeActionId: input.setPendingBridgeActionId,
     setTyping: input.setTyping,
     startLocalCoreThreadPolling: input.startLocalCoreThreadPolling,

@@ -36,7 +36,7 @@ type UseThreadChatSessionBrowserInput = {
   setSelectedKnowledgeBaseIds: (ids: string[]) => void;
 } & Pick<ThreadChatSharedHookContext, 'runtimeProvider' | 'updateTaskState'> &
   Pick<ThreadChatSharedHookContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
-  Pick<ThreadChatSharedHookContext, 'setBridgeError' | 'setMessages' | 'setTyping'> &
+  Pick<ThreadChatSharedHookContext, 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatConversationRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef'> &
   Pick<ThreadChatSendingRefs, 'lastSessionByProjectRef'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionAgentType' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
@@ -62,6 +62,7 @@ export function useThreadChatSessionBrowser({
   setActiveSessionName,
   setBridgeError,
   setMessages,
+  setPendingPermissionRequest,
   setProjects,
   setSearchParams,
   setSelectedProject,
@@ -121,6 +122,7 @@ export function useThreadChatSessionBrowser({
     holdBlankComposerRef.current = false;
     clearLocalCorePolling();
     updateTaskState('idle');
+    setPendingPermissionRequest(null);
     setTyping(false);
     if (usesManagedThreadApi) {
       const detail = await getThread(threadId);
@@ -160,6 +162,7 @@ export function useThreadChatSessionBrowser({
     setActiveSessionName,
     setSelectedKnowledgeBaseIds,
     setMessages,
+    setPendingPermissionRequest,
     setSelectedProject,
     setThreadGroups,
     setTyping,
@@ -205,6 +208,7 @@ export function useThreadChatSessionBrowser({
     if (!serviceRunning) {
       setThreadGroups([]);
       setMessages([]);
+      setPendingPermissionRequest(null);
       setSelectedKnowledgeBaseIds([]);
       setActiveSessionAgentType('');
       setActiveRunId('');
@@ -231,6 +235,7 @@ export function useThreadChatSessionBrowser({
     setActiveSessionAgentType,
     setBridgeError,
     setMessages,
+    setPendingPermissionRequest,
     setSelectedKnowledgeBaseIds,
     setThreadGroups,
     setTyping,

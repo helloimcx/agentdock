@@ -50,6 +50,7 @@ export default function ThreadChat() {
     loading,
     openRenameModal,
     pendingBridgeActionId,
+    pendingPermissionRequest,
     pendingSessionAction,
     projects,
     refreshRuntime,
@@ -131,8 +132,8 @@ export default function ThreadChat() {
   const isRuntimeStarting = runtime?.phase === 'starting';
   const selectedKnowledgeCount = selectedKnowledgeBaseIds.length;
   const permissionPromptMessage = useMemo(
-    () => getLatestInteractivePermissionMessage(renderedMessages),
-    [renderedMessages],
+    () => pendingPermissionRequest || getLatestInteractivePermissionMessage(renderedMessages),
+    [pendingPermissionRequest, renderedMessages],
   );
 
   useEffect(() => {

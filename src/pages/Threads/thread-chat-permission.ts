@@ -1,6 +1,7 @@
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
 
 export type PermissionPromptMessage = {
+  id?: string;
   role: 'user' | 'assistant';
   content?: string;
   actionMode?: 'permission' | 'generic';
@@ -9,6 +10,17 @@ export type PermissionPromptMessage = {
   actionReplyCtx?: string;
   actionPending?: boolean;
   actionStatus?: string;
+};
+
+export type PendingPermissionRequest = {
+  id: string;
+  content: string;
+  actions: DesktopBridgeButtonOption[][];
+  actionReplyCtx?: string;
+  actionPending?: boolean;
+  actionStatus?: string;
+  actionMode: 'permission';
+  actionInteractive: true;
 };
 
 export type PermissionTaskState =
@@ -33,6 +45,32 @@ export function getLatestInteractivePermissionMessage<T extends PermissionPrompt
 
 export function taskStateAfterTypingStop(taskState: PermissionTaskState): PermissionTaskState {
   return taskState === 'awaiting_permission' ? 'awaiting_permission' : 'idle';
+}
+
+export function toPendingPermissionRequest<T extends PermissionPromptMessage>(message: T): PendingPermissionRequest | null {
+  if (
+    !message.id ||
+    message.role !== 'assistant' ||
+    message.actionMode !== 'permission' ||
+    !message.actionInteractive ||
+    !message.content
+  ) {
+    return null;
+  }
+  const actions = message.actions?.filter((row) => row.length > 0) || [];
+  if (actions.length === 0) {
+    return null;
+  }
+  return {
+    id: message.id,
+    content: message.content,
+    actions,
+    actionReplyCtx: message.actionReplyCtx,
+    actionPending: message.actionPending,
+    actionStatus: message.actionStatus,
+    actionMode: 'permission',
+    actionInteractive: true,
+  };
 }
 
 function hasPermissionMetadata(message: PermissionPromptMessage) {

@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { RuntimeProvider } from '@/app/runtime';
 import type { ThreadDetail } from '../../../packages/contracts/src';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget, ThreadGroup } from './thread-chat-model';
+import type { PendingPermissionRequest } from './thread-chat-permission';
 
 export type ThreadChatSearchParamsSetter = (
   nextInit: URLSearchParams,
@@ -33,6 +34,7 @@ export type ThreadChatSendingRefs = ThreadChatConversationRefs & {
 export type ThreadChatCoreSetters = {
   setBridgeError: Dispatch<SetStateAction<string>>;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  setPendingPermissionRequest: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
 };
 

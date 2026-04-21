@@ -46,6 +46,7 @@ type UseThreadChatActionsInput = {
   setDeleteTarget: Dispatch<SetStateAction<ThreadActionTarget | null>>;
   setDraft: Dispatch<SetStateAction<string>>;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+  setPendingPermissionRequest: Dispatch<SetStateAction<import('./thread-chat-permission').PendingPermissionRequest | null>>;
   setPendingSessionAction: Dispatch<SetStateAction<'rename' | 'delete' | null>>;
   setRenameDraft: Dispatch<SetStateAction<string>>;
   setRenameTarget: Dispatch<SetStateAction<ThreadActionTarget | null>>;
@@ -95,6 +96,7 @@ export function useThreadChatActions({
   setDeleteTarget,
   setDraft,
   setMessages,
+  setPendingPermissionRequest,
   setPendingSessionAction,
   setRenameDraft,
   setRenameTarget,
@@ -119,6 +121,7 @@ export function useThreadChatActions({
     refreshSessionsForProject,
     setBridgeError,
     setMessages,
+    setPendingPermissionRequest,
     setTyping,
     holdBlankComposerRef,
     nextMessageOrderRef,
@@ -154,6 +157,7 @@ export function useThreadChatActions({
   const coreSetters: ThreadChatCoreSetters = {
     setBridgeError,
     setMessages,
+    setPendingPermissionRequest,
     setTyping,
   };
 
