@@ -1,4 +1,4 @@
-import type { RunningPermissionRequest } from './workspace-router-types.js';
+import type { RunningPermissionRequest } from '../router/workspace-router-types.js';
 
 type DesktopBridgeButtonNormalizer = (input: { text: string; data: string }) => { text: string; data: string } | null;
 

@@ -36,8 +36,8 @@ import { deriveDesktopRuntimePhase, deriveDesktopRuntimeRoles } from '../../cont
 import { AiVectorKnowledgeProvider, type KnowledgeProvider } from '../../knowledge-api/src/index.js';
 import { BridgeAdapter } from '../../../electron/bridge-adapter.js';
 import { ServiceManager } from '../../../electron/service-manager.js';
-import { LocalCoreLarkGateway } from '../../../services/local-ai-core/src/local-core-lark-gateway.js';
-import { createWorkspaceRouter, decodeThreadId, encodeThreadId } from '../../../services/local-ai-core/src/workspace-router.js';
+import { LocalCoreLarkGateway } from '../../../services/local-ai-core/src/gateway/local-core-lark-gateway.js';
+import { createWorkspaceRouter, decodeThreadId, encodeThreadId } from '../../../services/local-ai-core/src/router/workspace-router.js';
 
 type ManagementSession = {
   id: string;

@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import type { ConfigFileState, DesktopConnectConfig, DesktopProjectConfig } from '../packages/contracts/src/index.js';
 import { DESKTOP_CLAUDECODE_ACP_PACKAGE, isAcpAgentType, normalizeDesktopPlatformType } from '../shared/desktop.js';
 import { ServiceManager } from './service-manager.js';
-import { isLocalCoreNativeAcpProject, toLocalCoreProjectConfig } from '../services/local-ai-core/src/workspace-route-config.js';
-import { createWorkspaceRouter } from '../services/local-ai-core/src/workspace-router.js';
+import { isLocalCoreNativeAcpProject, toLocalCoreProjectConfig } from '../services/local-ai-core/src/router/workspace-route-config.js';
+import { createWorkspaceRouter } from '../services/local-ai-core/src/router/workspace-router.js';
 import type { KnowledgeProvider } from '../packages/knowledge-api/src/index.js';
 
 function withTempDir() {

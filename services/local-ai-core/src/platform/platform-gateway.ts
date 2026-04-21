@@ -1,5 +1,5 @@
-import type { DesktopConnectConfig, DesktopProjectConfig } from '../../../shared/desktop.js';
-import { normalizeDesktopPlatformType } from '../../../shared/desktop.js';
+import type { DesktopConnectConfig, DesktopProjectConfig } from '../../../../shared/desktop.js';
+import { normalizeDesktopPlatformType } from '../../../../shared/desktop.js';
 
 export type PlatformGatewayBinding = {
   workspaceId: string;

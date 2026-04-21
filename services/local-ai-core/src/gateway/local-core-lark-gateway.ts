@@ -8,10 +8,10 @@ import type {
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
-} from '../../../packages/contracts/src/index.js';
-import { normalizeDesktopPlatformType } from '../../../shared/desktop.js';
-import { LocalCoreAcpStore } from './local-core-acp-store.js';
-import type { WorkspaceRouter } from './workspace-router.js';
+} from '../../../../packages/contracts/src/index.js';
+import { normalizeDesktopPlatformType } from '../../../../shared/desktop.js';
+import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { WorkspaceRouter } from '../router/workspace-router.js';
 
 type LarkModule = typeof import('@larksuiteoapi/node-sdk');
 

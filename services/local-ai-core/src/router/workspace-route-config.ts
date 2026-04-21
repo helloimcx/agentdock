@@ -1,14 +1,14 @@
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../packages/contracts/src/index.js';
+import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../packages/contracts/src/index.js';
 import {
   DESKTOP_CLAUDECODE_ACP_PACKAGE,
   DEFAULT_DESKTOP_OPENCODE_MODEL,
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
   normalizeDesktopPlatformType,
-} from '../../../shared/desktop.js';
-import { hasCcConnectPlatformBindings } from './platform-gateway.js';
+} from '../../../../shared/desktop.js';
+import { hasCcConnectPlatformBindings } from '../platform/platform-gateway.js';
 import type { LocalCoreProjectConfig } from './workspace-router-types.js';
 
 type OpencodeInlineProviderConfig = {

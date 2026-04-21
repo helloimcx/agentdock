@@ -1,7 +1,7 @@
 import process from 'node:process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { CcConnectController } from '../../../packages/adapter-cc-connect/src/index.js';
+import { CcConnectController } from '../../../../packages/adapter-cc-connect/src/index.js';
 import { LocalAiCoreServer } from './server.js';
 
 async function main() {

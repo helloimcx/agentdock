@@ -1,5 +1,5 @@
-import type { ThreadDetail, ThreadMessage, ThreadSummary } from '../../../packages/contracts/src/index.js';
-import type { ManagementSession, ManagementSessionDetail } from './workspace-router-types.js';
+import type { ThreadDetail, ThreadMessage, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { ManagementSession, ManagementSessionDetail } from '../router/workspace-router-types.js';
 import { encodeThreadId } from './workspace-thread-id.js';
 
 export function normalizeMessageContent(content?: string | null) {

@@ -1,7 +1,7 @@
-import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src/index.js';
-import type { ManagementProject, ManagementSession, ManagementSessionDetail, WorkspaceRouterOptions, WorkspaceThreadBackend } from './workspace-router-types.js';
-import { decodeThreadId, encodeThreadId } from './workspace-thread-id.js';
-import { toThreadDetail, toThreadSummary } from './workspace-thread-mappers.js';
+import type { ThreadDetail, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { ManagementProject, ManagementSession, ManagementSessionDetail, WorkspaceRouterOptions, WorkspaceThreadBackend } from '../router/workspace-router-types.js';
+import { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
+import { toThreadDetail, toThreadSummary } from '../thread/workspace-thread-mappers.js';
 
 type CcConnectCompatAdapterOptions = {
   managementRequest: WorkspaceRouterOptions['managementRequest'];

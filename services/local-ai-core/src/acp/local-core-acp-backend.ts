@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '../../../../packages/contracts/src/index.js';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopBridgeButtonOption,
-} from '../../../shared/desktop.js';
+} from '../../../../shared/desktop.js';
 import { formatToolCallContent, normalizePermissionAction, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import type {
@@ -12,7 +12,7 @@ import type {
   LocalCoreProjectConfig,
   RunningPermissionRequest,
   WorkspaceThreadBackend,
-} from './workspace-router-types.js';
+} from '../router/workspace-router-types.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 

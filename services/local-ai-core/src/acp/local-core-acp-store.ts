@@ -7,8 +7,8 @@ import type {
   LocalCorePairingRequest,
   ThreadDetail,
   ThreadSummary,
-} from '../../../packages/contracts/src/index.js';
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../shared/desktop.js';
+} from '../../../../packages/contracts/src/index.js';
+import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
 import type {
   LocalMessageRow,
   LocalPlatformPairingRow,
@@ -16,9 +16,9 @@ import type {
   LocalPlatformUserRow,
   LocalRunRow,
   LocalThreadRow,
-} from './workspace-router-types.js';
-import { normalizeMessageContent } from './workspace-thread-mappers.js';
-import { encodeThreadId } from './workspace-thread-id.js';
+} from '../router/workspace-router-types.js';
+import { normalizeMessageContent } from '../thread/workspace-thread-mappers.js';
+import { encodeThreadId } from '../thread/workspace-thread-id.js';
 
 export class LocalCoreAcpStore {
   private readonly db: DatabaseSync;

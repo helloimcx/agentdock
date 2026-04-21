@@ -32,7 +32,7 @@ import type {
   ThreadDetail,
   ThreadSummary,
   WorkspaceSummary,
-} from '../../../packages/contracts/src/index.js';
+} from '../../../../packages/contracts/src/index.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
   getRuntimeStatus(): Promise<DesktopRuntimeStatus>;

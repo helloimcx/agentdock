@@ -7,8 +7,8 @@ import type {
   ThreadDetail,
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
-} from '../../../packages/contracts/src/index.js';
-import type { KnowledgeProvider } from '../../../packages/knowledge-api/src/index.js';
+} from '../../../../packages/contracts/src/index.js';
+import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
 
 export type ManagementSession = {
   id: string;

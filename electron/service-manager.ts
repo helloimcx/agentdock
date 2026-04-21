@@ -28,7 +28,7 @@ import {
   normalizeDesktopAgentModel,
   normalizeDesktopPlatformType,
 } from '../shared/desktop.js';
-import { hasCcConnectPlatformBindings } from '../services/local-ai-core/src/platform-gateway.js';
+import { hasCcConnectPlatformBindings } from '../services/local-ai-core/src/platform/platform-gateway.js';
 import type {
   ConfigFileState,
   DesktopConnectConfig,

@@ -25,12 +25,12 @@ import type {
   KnowledgeUploadResult,
   WorkspaceStreamingProbeResult,
 } from '../packages/contracts/src/index.js';
-import type { LocalAiCoreBindings } from '../services/local-ai-core/src/server.js';
-import { LocalAiCoreServer } from '../services/local-ai-core/src/server.js';
+import type { LocalAiCoreBindings } from '../services/local-ai-core/src/runtime/server.js';
+import { LocalAiCoreServer } from '../services/local-ai-core/src/runtime/server.js';
 import { ServiceManager } from './service-manager.js';
 import { BridgeAdapter } from './bridge-adapter.js';
 import { AiVectorKnowledgeProvider } from '../packages/knowledge-api/src/index.js';
-import { createWorkspaceRouter, encodeThreadId } from '../services/local-ai-core/src/workspace-router.js';
+import { createWorkspaceRouter, encodeThreadId } from '../services/local-ai-core/src/router/workspace-router.js';
 
 let mainWindow: InstanceType<typeof BrowserWindow> | null = null;
 let serviceManager: ServiceManager;

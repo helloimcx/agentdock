@@ -6,17 +6,17 @@ import type {
   ThreadSummary,
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
-} from '../../../packages/contracts/src/index.js';
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../shared/desktop.js';
-import { CcConnectPlatformGatewayAdapter } from './platform-gateway.js';
-import { CcConnectCompatAdapter } from './cc-connect-compat-adapter.js';
-import { LocalCoreAcpBackend } from './local-core-acp-backend.js';
-import { LocalCoreAcpStore } from './local-core-acp-store.js';
-import { decodeThreadId, encodeThreadId } from './workspace-thread-id.js';
+} from '../../../../packages/contracts/src/index.js';
+import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
+import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
+import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import { CcConnectCompatAdapter } from '../platform/cc-connect-compat-adapter.js';
+import { CcConnectPlatformGatewayAdapter } from '../platform/platform-gateway.js';
+import { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
 import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 
-export { decodeThreadId, encodeThreadId } from './workspace-thread-id.js';
+export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
 
 export class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
