@@ -159,6 +159,48 @@ export interface LocalCoreCapabilities {
   };
 }
 
+export interface LocalCoreLarkGatewayStatus {
+  workspaceId: string;
+  platform: 'lark';
+  enabled: boolean;
+  connected: boolean;
+  status: 'disabled' | 'stopped' | 'starting' | 'running' | 'error';
+  appId: string;
+  lastError?: string;
+  connectedAt?: string;
+  pendingPairings: number;
+  authorizedUsers: number;
+}
+
+export interface LocalCoreAuthorizedUser {
+  id: string;
+  workspaceId: string;
+  platform: 'lark';
+  platformUserId: string;
+  chatId: string;
+  displayName: string;
+  threadId?: string;
+  authorizedAt: string;
+}
+
+export interface LocalCorePairingRequest {
+  code: string;
+  workspaceId: string;
+  platform: 'lark';
+  platformUserId: string;
+  chatId: string;
+  displayName: string;
+  requestedAt: string;
+  expiresAt: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+}
+
+export interface LocalCoreLarkConnectionResult {
+  success: boolean;
+  appId: string;
+  error?: string;
+}
+
 export interface WorkspaceStreamingProbeEvent {
   type: DesktopBridgeEvent['type'];
   at: string;

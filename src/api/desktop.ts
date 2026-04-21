@@ -7,7 +7,13 @@ import type {
   DesktopSettings,
   DesktopSettingsInput,
 } from '../../shared/desktop';
-import type { WorkspaceStreamingProbeResult } from '../../packages/contracts/src';
+import type {
+  LocalCoreAuthorizedUser,
+  LocalCoreLarkConnectionResult,
+  LocalCoreLarkGatewayStatus,
+  LocalCorePairingRequest,
+  WorkspaceStreamingProbeResult,
+} from '../../packages/contracts/src';
 import {
   coreBridgeConnect,
   coreBridgeDisconnect,
@@ -16,14 +22,23 @@ import {
   getThread as getCoreThread,
   getCoreLogs,
   getCoreRuntime,
+  getLarkGatewayStatus as getCoreLarkGatewayStatus,
+  listLarkGateways as listCoreLarkGateways,
   onBridgeUpdated,
   onRuntimeUpdated,
   probeWorkspaceStreaming as probeCoreWorkspaceStreaming,
   readCoreConfigFile,
+  rejectLarkPairing as rejectCoreLarkPairing,
   restartCoreService,
+  testLarkConnection as testCoreLarkConnection,
   saveCoreRawConfigFile,
   saveCoreSettings,
   saveCoreStructuredConfigFile,
+  approveLarkPairing as approveCoreLarkPairing,
+  disableLarkGateway as disableCoreLarkGateway,
+  enableLarkGateway as enableCoreLarkGateway,
+  listLarkAuthorizedUsers as listCoreLarkAuthorizedUsers,
+  listLarkPendingPairings as listCoreLarkPendingPairings,
   startCoreService,
   stopCoreService,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
@@ -46,6 +61,15 @@ type DesktopProvider = {
   bridgeConnect: () => Promise<unknown>;
   bridgeDisconnect: () => Promise<unknown>;
   bridgeSendMessage: (input: DesktopBridgeSendInput) => Promise<DesktopBridgeSendResult>;
+  listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
+  getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
+  testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;
+  enableLarkGateway: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
+  disableLarkGateway: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
+  listLarkPendingPairings: (workspaceId?: string) => Promise<LocalCorePairingRequest[]>;
+  approveLarkPairing: (code: string) => Promise<LocalCoreAuthorizedUser>;
+  rejectLarkPairing: (code: string) => Promise<{ rejected: boolean }>;
+  listLarkAuthorizedUsers: (workspaceId?: string) => Promise<LocalCoreAuthorizedUser[]>;
   probeWorkspaceStreaming: (workspaceId: string) => Promise<WorkspaceStreamingProbeResult>;
   onRuntimeEvent: (listener: (runtime: DesktopRuntimeStatus) => void) => () => void;
   onBridgeEvent: (listener: (event: DesktopBridgeEvent) => void) => () => void;
@@ -77,6 +101,15 @@ const electronProvider: DesktopProvider = {
   bridgeConnect: () => requireDesktopBridge().bridgeConnect(),
   bridgeDisconnect: () => requireDesktopBridge().bridgeDisconnect(),
   bridgeSendMessage: (input: DesktopBridgeSendInput) => requireDesktopBridge().bridgeSendMessage(input),
+  listLarkGateways: () => requireDesktopBridge().listLarkGateways(),
+  getLarkGatewayStatus: (workspaceId: string) => requireDesktopBridge().getLarkGatewayStatus(workspaceId),
+  testLarkConnection: (workspaceId: string) => requireDesktopBridge().testLarkConnection(workspaceId),
+  enableLarkGateway: (workspaceId: string) => requireDesktopBridge().enableLarkGateway(workspaceId),
+  disableLarkGateway: (workspaceId: string) => requireDesktopBridge().disableLarkGateway(workspaceId),
+  listLarkPendingPairings: (workspaceId?: string) => requireDesktopBridge().listLarkPendingPairings(workspaceId),
+  approveLarkPairing: (code: string) => requireDesktopBridge().approveLarkPairing(code),
+  rejectLarkPairing: (code: string) => requireDesktopBridge().rejectLarkPairing(code),
+  listLarkAuthorizedUsers: (workspaceId?: string) => requireDesktopBridge().listLarkAuthorizedUsers(workspaceId),
   probeWorkspaceStreaming: (workspaceId: string) => requireDesktopBridge().probeWorkspaceStreaming(workspaceId),
   onRuntimeEvent: (listener) => requireDesktopBridge().onRuntimeEvent(listener),
   onBridgeEvent: (listener) => onBridgeUpdated(listener),
@@ -101,6 +134,15 @@ const localCoreProvider: DesktopProvider = {
   bridgeConnect: () => coreBridgeConnect(),
   bridgeDisconnect: () => coreBridgeDisconnect(),
   bridgeSendMessage: (input: DesktopBridgeSendInput) => coreBridgeSendMessage(input),
+  listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
+  getLarkGatewayStatus: (workspaceId: string) => getCoreLarkGatewayStatus(workspaceId),
+  testLarkConnection: (workspaceId: string) => testCoreLarkConnection(workspaceId),
+  enableLarkGateway: (workspaceId: string) => enableCoreLarkGateway(workspaceId),
+  disableLarkGateway: (workspaceId: string) => disableCoreLarkGateway(workspaceId),
+  listLarkPendingPairings: (workspaceId?: string) => listCoreLarkPendingPairings(workspaceId).then((result) => result.pairings),
+  approveLarkPairing: (code: string) => approveCoreLarkPairing(code),
+  rejectLarkPairing: (code: string) => rejectCoreLarkPairing(code),
+  listLarkAuthorizedUsers: (workspaceId?: string) => listCoreLarkAuthorizedUsers(workspaceId).then((result) => result.users),
   probeWorkspaceStreaming: (workspaceId: string) => probeCoreWorkspaceStreaming(workspaceId),
   onRuntimeEvent: (listener) => onRuntimeUpdated(listener),
   onBridgeEvent: (listener) => onBridgeUpdated(listener),
@@ -168,6 +210,15 @@ export const saveDesktopSettings = (input: DesktopSettingsInput): Promise<Deskto
 export const bridgeConnect = () => requireProvider().bridgeConnect();
 export const bridgeDisconnect = () => requireProvider().bridgeDisconnect();
 export const bridgeSendMessage = (input: DesktopBridgeSendInput): Promise<DesktopBridgeSendResult> => requireProvider().bridgeSendMessage(input);
+export const listLarkGateways = (): Promise<LocalCoreLarkGatewayStatus[]> => requireProvider().listLarkGateways();
+export const getLarkGatewayStatus = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().getLarkGatewayStatus(workspaceId);
+export const testLarkConnection = (workspaceId: string): Promise<LocalCoreLarkConnectionResult> => requireProvider().testLarkConnection(workspaceId);
+export const enableLarkGateway = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().enableLarkGateway(workspaceId);
+export const disableLarkGateway = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().disableLarkGateway(workspaceId);
+export const listLarkPendingPairings = (workspaceId?: string): Promise<LocalCorePairingRequest[]> => requireProvider().listLarkPendingPairings(workspaceId);
+export const approveLarkPairing = (code: string): Promise<LocalCoreAuthorizedUser> => requireProvider().approveLarkPairing(code);
+export const rejectLarkPairing = (code: string): Promise<{ rejected: boolean }> => requireProvider().rejectLarkPairing(code);
+export const listLarkAuthorizedUsers = (workspaceId?: string): Promise<LocalCoreAuthorizedUser[]> => requireProvider().listLarkAuthorizedUsers(workspaceId);
 export const probeWorkspaceStreaming = (workspaceId: string): Promise<WorkspaceStreamingProbeResult> =>
   requireProvider().probeWorkspaceStreaming(workspaceId);
 export const onRuntimeEvent = (listener: (runtime: DesktopRuntimeStatus) => void) => requireProvider().onRuntimeEvent(listener);

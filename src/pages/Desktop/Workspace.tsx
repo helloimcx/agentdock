@@ -3,6 +3,12 @@ import { Plus, Save, Trash2, Wrench } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, Select, Textarea } from '@/components/ui';
 import {
+  approveLarkPairing,
+  disableLarkGateway,
+  enableLarkGateway,
+  getLarkGatewayStatus,
+  listLarkAuthorizedUsers,
+  listLarkPendingPairings,
   getRuntimeStatus,
   onRuntimeEvent,
   probeWorkspaceStreaming,
@@ -13,6 +19,7 @@ import {
   saveStructuredConfigFile,
   startDesktopService,
   stopDesktopService,
+  testLarkConnection,
 } from '@/api/desktop';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
@@ -29,6 +36,11 @@ import type {
   DesktopRuntimeStatus,
 } from '../../../shared/desktop';
 import type { WorkspaceStreamingProbeResult } from '../../../packages/contracts/src';
+import type {
+  LocalCoreAuthorizedUser,
+  LocalCoreLarkGatewayStatus,
+  LocalCorePairingRequest,
+} from '../../../packages/contracts/src';
 
 type EditorTab = 'visual' | 'raw';
 const CUSTOM_SELECT_VALUE = '__custom__';
@@ -260,26 +272,17 @@ function getPlatformFieldDefinitions(platformType: string, options: Record<strin
       return [
         { key: 'app_id', label: 'App ID', type: 'text' },
         { key: 'app_secret', label: 'App secret', type: 'password' },
-        { key: 'allow_from', label: 'Allow from', type: 'text', placeholder: '*' },
-        { key: 'reaction_emoji', label: 'Reaction emoji', type: 'text', placeholder: 'OnIt' },
-        { key: 'enable_feishu_card', label: 'Enable Feishu cards', type: 'boolean' },
-        { key: 'group_reply_all', label: 'Reply to all group messages', type: 'boolean' },
-        { key: 'share_session_in_channel', label: 'Share one session in channel', type: 'boolean' },
-        { key: 'thread_isolation', label: 'Use thread isolation', type: 'boolean' },
-        { key: 'reply_to_trigger', label: 'Reply to trigger message', type: 'boolean' },
-        { key: 'progress_style', label: 'Progress style', type: 'select', options: [...PROGRESS_STYLE_OPTIONS] },
+        { key: 'encrypt_key', label: 'Encrypt key', type: 'password' },
+        { key: 'verification_token', label: 'Verification token', type: 'password' },
+        { key: 'auto_approve', label: 'Auto approve first message', type: 'boolean' },
       ];
     case 'lark':
       return [
         { key: 'app_id', label: 'App ID', type: 'text' },
         { key: 'app_secret', label: 'App secret', type: 'password' },
-        { key: 'port', label: 'Webhook port', type: 'number', placeholder: '8080' },
-        { key: 'callback_path', label: 'Webhook path', type: 'text', placeholder: '/feishu/webhook' },
         { key: 'encrypt_key', label: 'Encrypt key', type: 'password' },
-        { key: 'allow_from', label: 'Allow from', type: 'text', placeholder: '*' },
-        { key: 'reaction_emoji', label: 'Reaction emoji', type: 'text', placeholder: 'OnIt' },
-        { key: 'enable_feishu_card', label: 'Enable cards', type: 'boolean' },
-        { key: 'progress_style', label: 'Progress style', type: 'select', options: [...PROGRESS_STYLE_OPTIONS] },
+        { key: 'verification_token', label: 'Verification token', type: 'password' },
+        { key: 'auto_approve', label: 'Auto approve first message', type: 'boolean' },
       ];
     case 'dingtalk':
       return [
@@ -407,6 +410,10 @@ export default function DesktopWorkspace() {
   const [knowledgeDefaultCollection, setKnowledgeDefaultCollection] = useState('personal_knowledge');
   const [probePending, setProbePending] = useState(false);
   const [streamingProbe, setStreamingProbe] = useState<WorkspaceStreamingProbeResult | null>(null);
+  const [larkStatus, setLarkStatus] = useState<LocalCoreLarkGatewayStatus | null>(null);
+  const [larkPairings, setLarkPairings] = useState<LocalCorePairingRequest[]>([]);
+  const [larkUsers, setLarkUsers] = useState<LocalCoreAuthorizedUser[]>([]);
+  const [larkPendingAction, setLarkPendingAction] = useState<'test' | 'enable' | 'disable' | `approve:${string}` | `reject:${string}` | null>(null);
   const requestedProject = searchParams.get('project') || '';
   const requestedProjectRef = useRef(requestedProject);
   const runtimeReady = runtime?.phase === 'api_ready' || runtime?.phase === 'bridge_ready';
@@ -489,6 +496,29 @@ export default function DesktopWorkspace() {
     });
   }, []);
 
+  const loadLarkState = useCallback(async (workspaceId?: string) => {
+    if (!workspaceId) {
+      setLarkStatus(null);
+      setLarkPairings([]);
+      setLarkUsers([]);
+      return;
+    }
+    try {
+      const [status, pairings, users] = await Promise.all([
+        getLarkGatewayStatus(workspaceId),
+        listLarkPendingPairings(workspaceId),
+        listLarkAuthorizedUsers(workspaceId),
+      ]);
+      setLarkStatus(status);
+      setLarkPairings(pairings);
+      setLarkUsers(users);
+    } catch {
+      setLarkStatus(null);
+      setLarkPairings([]);
+      setLarkUsers([]);
+    }
+  }, []);
+
   useEffect(() => {
     void loadAll();
     const stop = onRuntimeEvent((nextRuntime) => {
@@ -546,6 +576,17 @@ export default function DesktopWorkspace() {
   useEffect(() => {
     setStreamingProbe(null);
   }, [selectedProject?.name, selectedAgentType]);
+
+  useEffect(() => {
+    const hasLark = (selectedProject?.platforms || []).some((platform) => ['lark', 'feishu'].includes(String(platform?.type || '').trim().toLowerCase()));
+    if (!hasLark) {
+      setLarkStatus(null);
+      setLarkPairings([]);
+      setLarkUsers([]);
+      return;
+    }
+    void loadLarkState(selectedProject?.name);
+  }, [loadLarkState, selectedProject]);
 
   const updateSelectedProject = useCallback((updater: (project: DesktopProjectConfig) => DesktopProjectConfig) => {
     setNotice(null);
@@ -841,6 +882,74 @@ export default function DesktopWorkspace() {
       setProbePending(false);
     }
   }, [probeDisabled, selectedProject?.name]);
+
+  const handleTestLarkConnection = useCallback(async () => {
+    if (!selectedProject?.name) {
+      return;
+    }
+    setLarkPendingAction('test');
+    try {
+      const result = await testLarkConnection(selectedProject.name);
+      await loadLarkState(selectedProject.name);
+      setNotice({
+        tone: result.success ? 'success' : 'warning',
+        title: result.success ? 'Feishu/Lark connection test passed' : 'Feishu/Lark connection test failed',
+        detail: result.success ? `App ${result.appId} authenticated against Feishu successfully.` : result.error || 'Authentication failed.',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        title: 'Could not test Feishu/Lark connection',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setLarkPendingAction(null);
+    }
+  }, [loadLarkState, selectedProject?.name]);
+
+  const handleToggleLarkGateway = useCallback(async (enable: boolean) => {
+    if (!selectedProject?.name) {
+      return;
+    }
+    setLarkPendingAction(enable ? 'enable' : 'disable');
+    try {
+      const status = enable ? await enableLarkGateway(selectedProject.name) : await disableLarkGateway(selectedProject.name);
+      await loadLarkState(selectedProject.name);
+      setNotice({
+        tone: status.connected || status.status === 'running' ? 'success' : 'warning',
+        title: enable ? 'Feishu/Lark gateway started' : 'Feishu/Lark gateway stopped',
+        detail: status.lastError || `Gateway status is now ${status.status}.`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        title: enable ? 'Could not start Feishu/Lark gateway' : 'Could not stop Feishu/Lark gateway',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setLarkPendingAction(null);
+    }
+  }, [loadLarkState, selectedProject?.name]);
+
+  const handleApproveLarkPairing = useCallback(async (code: string) => {
+    setLarkPendingAction(`approve:${code}`);
+    try {
+      await approveLarkPairing(code);
+      await loadLarkState(selectedProject?.name);
+    } finally {
+      setLarkPendingAction(null);
+    }
+  }, [loadLarkState, selectedProject?.name]);
+
+  const handleRejectLarkPairing = useCallback(async (code: string) => {
+    setLarkPendingAction(`reject:${code}`);
+    try {
+      await rejectLarkPairing(code);
+      await loadLarkState(selectedProject?.name);
+    } finally {
+      setLarkPendingAction(null);
+    }
+  }, [loadLarkState, selectedProject?.name]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1760,6 +1869,118 @@ export default function DesktopWorkspace() {
                         </div>
                       ))}
                     </section>
+
+                    {(selectedProject.platforms || []).some((platform) => ['lark', 'feishu'].includes(String(platform?.type || '').trim().toLowerCase())) && (
+                      <section className="space-y-4 rounded-xl border border-gray-200/80 p-4 dark:border-white/[0.08]">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h3 className="font-medium text-gray-900 dark:text-white">Feishu / Lark Native Gateway</h3>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                              Local AI Core owns the Feishu/Lark runtime directly. `cc-connect` is no longer used for this platform.
+                            </p>
+                          </div>
+                          <div className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            larkStatus?.status === 'running'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300'
+                              : larkStatus?.status === 'error'
+                                ? 'bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-300'
+                                : 'bg-gray-100 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300'
+                          }`}>
+                            {larkStatus?.status || 'disabled'}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div className="rounded-lg border border-gray-200/80 px-3 py-2 dark:border-white/[0.08]">
+                            <div className="text-gray-500 dark:text-gray-400">App ID</div>
+                            <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white">{larkStatus?.appId || 'Not configured'}</div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200/80 px-3 py-2 dark:border-white/[0.08]">
+                            <div className="text-gray-500 dark:text-gray-400">Pending pairings</div>
+                            <div className="mt-1 text-gray-900 dark:text-white">{larkStatus?.pendingPairings || 0}</div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200/80 px-3 py-2 dark:border-white/[0.08]">
+                            <div className="text-gray-500 dark:text-gray-400">Authorized users</div>
+                            <div className="mt-1 text-gray-900 dark:text-white">{larkStatus?.authorizedUsers || 0}</div>
+                          </div>
+                        </div>
+                        {larkStatus?.lastError && (
+                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
+                            {larkStatus.lastError}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleTestLarkConnection()}
+                            loading={larkPendingAction === 'test'}
+                          >
+                            Test connection
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleToggleLarkGateway(true)}
+                            loading={larkPendingAction === 'enable'}
+                          >
+                            Start gateway
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleToggleLarkGateway(false)}
+                            loading={larkPendingAction === 'disable'}
+                          >
+                            Stop gateway
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Pending pairings</h4>
+                            {larkPairings.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-gray-200/80 px-3 py-4 text-sm text-gray-500 dark:border-white/[0.08] dark:text-gray-400">
+                                No pending pairings yet. Send a message from Feishu/Lark to trigger pairing.
+                              </div>
+                            ) : larkPairings.map((pairing) => (
+                              <div key={pairing.code} className="rounded-lg border border-gray-200/80 px-3 py-3 text-sm dark:border-white/[0.08]">
+                                <div className="font-medium text-gray-900 dark:text-white">{pairing.displayName || pairing.platformUserId}</div>
+                                <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{pairing.code} · {pairing.chatId}</div>
+                                <div className="mt-3 flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => void handleApproveLarkPairing(pairing.code)}
+                                    loading={larkPendingAction === `approve:${pairing.code}`}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    onClick={() => void handleRejectLarkPairing(pairing.code)}
+                                    loading={larkPendingAction === `reject:${pairing.code}`}
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Authorized users</h4>
+                            {larkUsers.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-gray-200/80 px-3 py-4 text-sm text-gray-500 dark:border-white/[0.08] dark:text-gray-400">
+                                No authorized users yet.
+                              </div>
+                            ) : larkUsers.map((user) => (
+                              <div key={user.id} className="rounded-lg border border-gray-200/80 px-3 py-3 text-sm dark:border-white/[0.08]">
+                                <div className="font-medium text-gray-900 dark:text-white">{user.displayName || user.platformUserId}</div>
+                                <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{user.chatId}</div>
+                                {user.threadId && (
+                                  <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{user.threadId}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </section>
+                    )}
 
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300">
                       Visual editing covers the stable fields for v1. Keep complex option maps, speech/TTS, webhook, and relay sections in the raw TOML editor.

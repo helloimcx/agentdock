@@ -2,6 +2,7 @@ export const DEFAULT_DESKTOP_AGENT_TYPE = 'opencode';
 export const DEFAULT_DESKTOP_OPENCODE_MODEL = 'opencode/minimax-m2.5-free';
 export const DEFAULT_DESKTOP_CLAUDECODE_MODEL = '';
 export const DESKTOP_CLAUDECODE_ACP_PACKAGE = '@agentclientprotocol/claude-agent-acp';
+export const DESKTOP_LARK_SDK_PACKAGE = '@larksuiteoapi/node-sdk';
 export const DESKTOP_AGENT_TYPE_OPTIONS = [
   'opencode',
   'codex',
@@ -91,6 +92,7 @@ export interface DesktopRuntimeRoleState {
 export interface DesktopRuntimeRoles {
   conversation: DesktopRuntimeRoleState;
   platformGateway: DesktopRuntimeRoleState;
+  larkGateway?: DesktopRuntimeRoleState;
 }
 
 export interface DesktopRuntimeStatus {
@@ -143,6 +145,14 @@ export function deriveDesktopRuntimeRoles(
       bridge,
     },
   };
+}
+
+export function normalizeDesktopPlatformType(platformType?: string | null) {
+  const normalized = String(platformType || '').trim().toLowerCase();
+  if (normalized === 'feishu') {
+    return 'lark';
+  }
+  return normalized;
 }
 
 export interface DesktopBridgeSendInput {

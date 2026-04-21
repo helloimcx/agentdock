@@ -2,9 +2,21 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, join } from 'node:path';
-import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src/index.js';
+import type {
+  LocalCoreAuthorizedUser,
+  LocalCorePairingRequest,
+  ThreadDetail,
+  ThreadSummary,
+} from '../../../packages/contracts/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../shared/desktop.js';
-import type { LocalMessageRow, LocalRunRow, LocalThreadRow } from './workspace-router-types.js';
+import type {
+  LocalMessageRow,
+  LocalPlatformPairingRow,
+  LocalPlatformThreadBindingRow,
+  LocalPlatformUserRow,
+  LocalRunRow,
+  LocalThreadRow,
+} from './workspace-router-types.js';
 import { normalizeMessageContent } from './workspace-thread-mappers.js';
 import { encodeThreadId } from './workspace-thread-id.js';
 
@@ -52,6 +64,42 @@ export class LocalCoreAcpStore {
         FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_runs_thread_updated ON runs (thread_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS platform_pairings (
+        code TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        platform_user_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        status TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_platform_pairings_workspace_status ON platform_pairings (workspace_id, status, expires_at DESC);
+      CREATE TABLE IF NOT EXISTS platform_users (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        platform_user_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        thread_id TEXT,
+        authorized_at TEXT NOT NULL,
+        UNIQUE(workspace_id, platform, platform_user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_platform_users_workspace_platform ON platform_users (workspace_id, platform);
+      CREATE TABLE IF NOT EXISTS platform_thread_bindings (
+        workspace_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        platform_user_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        last_platform_message_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, platform, chat_id, platform_user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_platform_thread_bindings_thread ON platform_thread_bindings (thread_id);
     `);
   }
 
@@ -191,6 +239,16 @@ export class LocalCoreAcpStore {
     `).run(runId, threadId, status, now, now);
   }
 
+  getLatestRunForThread(threadId: string) {
+    return this.db.prepare(`
+      SELECT id, thread_id, status, started_at, updated_at
+      FROM runs
+      WHERE thread_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).get(threadId) as LocalRunRow | undefined;
+  }
+
   getThreadRow(threadId: string) {
     return this.db.prepare(`
       SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load
@@ -205,5 +263,194 @@ export class LocalCoreAcpStore {
       SET acp_session_id = ?, acp_supports_load = ?, updated_at = COALESCE(updated_at, ?)
       WHERE id = ?
     `).run(sessionId, supportsLoad ? 1 : 0, new Date().toISOString(), threadId);
+  }
+
+  createPairingRequest(input: Omit<LocalPlatformPairingRow, 'platform'> & { platform?: 'lark' }) {
+    this.db.prepare(`
+      INSERT INTO platform_pairings (code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.code,
+      input.workspace_id,
+      input.platform || 'lark',
+      input.platform_user_id,
+      input.chat_id,
+      input.display_name,
+      input.requested_at,
+      input.expires_at,
+      input.status,
+    );
+  }
+
+  listPendingPairings(workspaceId?: string) {
+    const query = workspaceId
+      ? `
+        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        FROM platform_pairings
+        WHERE workspace_id = ? AND status = 'pending'
+        ORDER BY requested_at DESC
+      `
+      : `
+        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        FROM platform_pairings
+        WHERE status = 'pending'
+        ORDER BY requested_at DESC
+      `;
+    return this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalPlatformPairingRow[];
+  }
+
+  getPairingRequest(code: string) {
+    return this.db.prepare(`
+      SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+      FROM platform_pairings
+      WHERE code = ?
+    `).get(code) as LocalPlatformPairingRow | undefined;
+  }
+
+  updatePairingStatus(code: string, status: LocalPlatformPairingRow['status']) {
+    this.db.prepare('UPDATE platform_pairings SET status = ? WHERE code = ?').run(status, code);
+  }
+
+  expirePendingPairings(nowIso = new Date().toISOString()) {
+    this.db.prepare(`
+      UPDATE platform_pairings
+      SET status = 'expired'
+      WHERE status = 'pending' AND expires_at < ?
+    `).run(nowIso);
+  }
+
+  getAuthorizedUser(workspaceId: string, platformUserId: string) {
+    return this.db.prepare(`
+      SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
+      FROM platform_users
+      WHERE workspace_id = ? AND platform = 'lark' AND platform_user_id = ?
+    `).get(workspaceId, platformUserId) as LocalPlatformUserRow | undefined;
+  }
+
+  listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
+    const query = workspaceId
+      ? `
+        SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
+        FROM platform_users
+        WHERE workspace_id = ?
+        ORDER BY authorized_at DESC
+      `
+      : `
+        SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
+        FROM platform_users
+        ORDER BY authorized_at DESC
+      `;
+    const rows = this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalPlatformUserRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspace_id,
+      platform: 'lark',
+      platformUserId: row.platform_user_id,
+      chatId: row.chat_id,
+      displayName: row.display_name,
+      threadId: row.thread_id || undefined,
+      authorizedAt: row.authorized_at,
+    }));
+  }
+
+  createAuthorizedUser(input: Omit<LocalPlatformUserRow, 'platform'> & { platform?: 'lark' }) {
+    this.db.prepare(`
+      INSERT INTO platform_users (id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, platform, platform_user_id) DO UPDATE SET
+        chat_id = excluded.chat_id,
+        display_name = excluded.display_name,
+        thread_id = COALESCE(excluded.thread_id, platform_users.thread_id),
+        authorized_at = excluded.authorized_at
+    `).run(
+      input.id,
+      input.workspace_id,
+      input.platform || 'lark',
+      input.platform_user_id,
+      input.chat_id,
+      input.display_name,
+      input.thread_id,
+      input.authorized_at,
+    );
+  }
+
+  updateAuthorizedUserThread(workspaceId: string, platformUserId: string, threadId: string) {
+    this.db.prepare(`
+      UPDATE platform_users
+      SET thread_id = ?
+      WHERE workspace_id = ? AND platform = 'lark' AND platform_user_id = ?
+    `).run(threadId, workspaceId, platformUserId);
+  }
+
+  getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string) {
+    return this.db.prepare(`
+      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at
+      FROM platform_thread_bindings
+      WHERE workspace_id = ? AND platform = 'lark' AND chat_id = ? AND platform_user_id = ?
+    `).get(workspaceId, chatId, platformUserId) as LocalPlatformThreadBindingRow | undefined;
+  }
+
+  upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: 'lark' }) {
+    this.db.prepare(`
+      INSERT INTO platform_thread_bindings
+      (workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, platform, chat_id, platform_user_id) DO UPDATE SET
+        thread_id = excluded.thread_id,
+        last_platform_message_id = COALESCE(excluded.last_platform_message_id, platform_thread_bindings.last_platform_message_id),
+        updated_at = excluded.updated_at
+    `).run(
+      input.workspace_id,
+      input.platform || 'lark',
+      input.chat_id,
+      input.platform_user_id,
+      input.thread_id,
+      input.last_platform_message_id,
+      input.created_at,
+      input.updated_at,
+    );
+  }
+
+  updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string) {
+    this.db.prepare(`
+      UPDATE platform_thread_bindings
+      SET last_platform_message_id = ?, updated_at = ?
+      WHERE workspace_id = ? AND platform = 'lark' AND chat_id = ? AND platform_user_id = ?
+    `).run(messageId, new Date().toISOString(), workspaceId, chatId, platformUserId);
+  }
+
+  clearPlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string) {
+    this.db.prepare(`
+      UPDATE platform_thread_bindings
+      SET last_platform_message_id = NULL, updated_at = ?
+      WHERE workspace_id = ? AND platform = 'lark' AND chat_id = ? AND platform_user_id = ?
+    `).run(new Date().toISOString(), workspaceId, chatId, platformUserId);
+  }
+
+  listPairingRequests(workspaceId?: string): LocalCorePairingRequest[] {
+    const query = workspaceId
+      ? `
+        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        FROM platform_pairings
+        WHERE workspace_id = ?
+        ORDER BY requested_at DESC
+      `
+      : `
+        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        FROM platform_pairings
+        ORDER BY requested_at DESC
+      `;
+    const rows = this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalPlatformPairingRow[];
+    return rows.map((row) => ({
+      code: row.code,
+      workspaceId: row.workspace_id,
+      platform: 'lark',
+      platformUserId: row.platform_user_id,
+      chatId: row.chat_id,
+      displayName: row.display_name,
+      requestedAt: row.requested_at,
+      expiresAt: row.expires_at,
+      status: row.status,
+    }));
   }
 }

@@ -18,7 +18,7 @@ import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProject
 
 export { decodeThreadId, encodeThreadId } from './workspace-thread-id.js';
 
-class WorkspaceRouter {
+export class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
   private readonly ccConnect: CcConnectCompatAdapter;
   private readonly platformGateway = new CcConnectPlatformGatewayAdapter();
@@ -50,6 +50,11 @@ class WorkspaceRouter {
     this.unsubscribeExternalBridge?.();
     this.bridgeSubscribers.clear();
     this.store.close();
+  }
+
+  getThreadSessionKey(threadId: string) {
+    const row = this.store.getThreadRow(threadId);
+    return row?.bridge_session_key || '';
   }
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {

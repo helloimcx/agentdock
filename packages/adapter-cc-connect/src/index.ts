@@ -10,6 +10,10 @@ import type {
   DesktopSettingsInput,
   DesktopServiceState,
   LocalCoreCapabilities,
+  LocalCoreAuthorizedUser,
+  LocalCoreLarkConnectionResult,
+  LocalCoreLarkGatewayStatus,
+  LocalCorePairingRequest,
   KnowledgeSource,
   KnowledgeBase,
   KnowledgeBaseCreateInput,
@@ -32,6 +36,7 @@ import { deriveDesktopRuntimePhase, deriveDesktopRuntimeRoles } from '../../cont
 import { AiVectorKnowledgeProvider, type KnowledgeProvider } from '../../knowledge-api/src/index.js';
 import { BridgeAdapter } from '../../../electron/bridge-adapter.js';
 import { ServiceManager } from '../../../electron/service-manager.js';
+import { LocalCoreLarkGateway } from '../../../services/local-ai-core/src/local-core-lark-gateway.js';
 import { createWorkspaceRouter, decodeThreadId, encodeThreadId } from '../../../services/local-ai-core/src/workspace-router.js';
 
 type ManagementSession = {
@@ -115,6 +120,7 @@ export class CcConnectController extends EventEmitter {
   private readonly bridgeAdapter: BridgeAdapter;
   private readonly knowledgeProvider: KnowledgeProvider;
   private readonly workspaceRouter;
+  private readonly larkGateway: LocalCoreLarkGateway;
 
   constructor(private readonly userDataPath: string) {
     super();
@@ -149,6 +155,15 @@ export class CcConnectController extends EventEmitter {
       emitBridge: (event) => this.emit('bridge', event),
       log: (message) => this.emit('logs', message),
     });
+    this.larkGateway = new LocalCoreLarkGateway({
+      store: (this.workspaceRouter as any).store,
+      readConfig: async () => (await this.serviceManager.readConfigState()).parsed,
+      getWorkspaceRouter: () => this.workspaceRouter,
+      onStateChanged: () => {
+        void this.emitRuntime();
+      },
+      log: (message) => this.emit('logs', message),
+    });
   }
 
   async init() {
@@ -165,6 +180,9 @@ export class CcConnectController extends EventEmitter {
     this.bridgeAdapter.on('event', (event: DesktopBridgeEvent) => {
       this.emit('bridge', event);
     });
+    this.on('bridge', (event: DesktopBridgeEvent) => {
+      void this.larkGateway.onBridgeEvent(event);
+    });
     const settings = this.serviceManager.getSettings();
     if (settings.autoStartService) {
       const result = await this.serviceManager.start();
@@ -174,17 +192,33 @@ export class CcConnectController extends EventEmitter {
     } else {
       await this.serviceManager.ensureConfigFile();
     }
+    await this.larkGateway.refreshBindings();
     await this.emitRuntime();
   }
 
   async getRuntimeStatus(): Promise<DesktopRuntimeStatus> {
     const bridge = this.bridgeAdapter.getState();
     const runtime = await this.serviceManager.getRuntimeStatus();
+    const larkStatuses = this.larkGateway.listStatuses();
+    const larkGatewayStatus = larkStatuses.some((entry) => entry.status === 'running')
+      ? 'running'
+      : larkStatuses.some((entry) => entry.status === 'error')
+        ? 'error'
+        : larkStatuses.some((entry) => entry.status === 'starting')
+          ? 'starting'
+          : 'stopped';
     return {
       ...runtime,
       phase: deriveDesktopRuntimePhase(runtime.service, bridge),
       bridge,
-      roles: deriveDesktopRuntimeRoles(runtime.service, bridge),
+      roles: {
+        ...deriveDesktopRuntimeRoles(runtime.service, bridge),
+        larkGateway: {
+          status: larkGatewayStatus,
+          label: 'Local AI Core Lark Gateway',
+          lastError: larkStatuses.find((entry) => entry.lastError)?.lastError,
+        },
+      },
     };
   }
 
@@ -227,11 +261,15 @@ export class CcConnectController extends EventEmitter {
   }
 
   saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
-    return this.serviceManager.writeStructuredConfig(config);
+    return this.serviceManager.writeStructuredConfig(config).then(async (state) => {
+      await this.larkGateway.refreshBindings();
+      return state;
+    });
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
     const settings = this.serviceManager.updateSettings(input);
+    await this.larkGateway.refreshBindings();
     await this.emitRuntime();
     return settings;
   }
@@ -370,7 +408,54 @@ export class CcConnectController extends EventEmitter {
     return this.workspaceRouter.probeWorkspaceStreaming(workspaceId);
   }
 
+  async listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]> {
+    await this.larkGateway.refreshBindings();
+    return this.larkGateway.listStatuses();
+  }
+
+  async getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
+    await this.larkGateway.refreshBindings();
+    return this.larkGateway.getStatus(workspaceId);
+  }
+
+  async testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult> {
+    return this.larkGateway.testConnection(workspaceId);
+  }
+
+  async enableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
+    const status = await this.larkGateway.enable(workspaceId);
+    await this.emitRuntime();
+    return status;
+  }
+
+  async disableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
+    const status = await this.larkGateway.disable(workspaceId);
+    await this.emitRuntime();
+    return status;
+  }
+
+  async listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]> {
+    return this.larkGateway.listPendingPairings(workspaceId);
+  }
+
+  async approveLarkPairing(code: string): Promise<LocalCoreAuthorizedUser> {
+    const result = this.larkGateway.approvePairing(code);
+    await this.emitRuntime();
+    return result;
+  }
+
+  async rejectLarkPairing(code: string): Promise<{ rejected: boolean }> {
+    const result = this.larkGateway.rejectPairing(code);
+    await this.emitRuntime();
+    return result;
+  }
+
+  async listLarkAuthorizedUsers(workspaceId?: string): Promise<LocalCoreAuthorizedUser[]> {
+    return this.larkGateway.listAuthorizedUsers(workspaceId);
+  }
+
   async close() {
+    await this.larkGateway.close();
     this.workspaceRouter.close();
     try {
       await this.serviceManager.stop();

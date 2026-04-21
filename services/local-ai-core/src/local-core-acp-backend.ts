@@ -14,6 +14,8 @@ import type {
   WorkspaceThreadBackend,
 } from './workspace-router-types.js';
 
+const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
+
 type LocalCoreAcpBackendOptions = {
   store: LocalCoreAcpStore;
   runThreadMap: Map<string, string>;
@@ -181,7 +183,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
             text: content,
           },
         ],
-      }, 180000) as Promise<{ stopReason?: string }>;
+      }, ACP_PROMPT_TIMEOUT_MS) as Promise<{ stopReason?: string }>;
       session.promptPromise = promptPromise;
       const result = await promptPromise;
       const currentTurn = session.currentTurn;
@@ -190,12 +192,21 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       }
       if (currentTurn.assistantText) {
         this.options.store.appendMessage(threadId, 'assistant', currentTurn.assistantText, 'final');
-        if (!currentTurn.previewStarted) {
+        this.emitBridgeEvent({
+          type: 'reply',
+          sessionKey: bridgeSessionKey,
+          replyCtx: runId,
+          content: currentTurn.assistantText,
+        });
+      } else if (String(content || '').trim().startsWith('/')) {
+        const slashReply = this.deriveSlashCommandReply(content, result as Record<string, unknown>);
+        if (slashReply) {
+          this.options.store.appendMessage(threadId, 'assistant', slashReply, 'final');
           this.emitBridgeEvent({
             type: 'reply',
             sessionKey: bridgeSessionKey,
             replyCtx: runId,
-            content: currentTurn.assistantText,
+            content: slashReply,
           });
         }
       } else if (result?.stopReason === 'cancelled') {
@@ -482,7 +493,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          content: `Tool: ${title}`,
+          content: `🔧 ${title}`,
         });
         return;
       }
@@ -502,7 +513,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          content: `Tool: ${[title, status, content].filter(Boolean).join(' - ')}`,
+          content: `🔧 ${[title, status, content].filter(Boolean).join(' - ')}`,
         });
         return;
       }
@@ -519,7 +530,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          content: `Plan: ${summary}`,
+          content: `💭 ${summary}`,
         });
         return;
       }
@@ -560,6 +571,43 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       throw new Error('ACP session is not writable');
     }
     session.child.stdin.write(`${JSON.stringify(payload)}\n`);
+  }
+
+  private deriveSlashCommandReply(content: string, result: Record<string, unknown>) {
+    const normalized = String(content || '').trim();
+    const [commandName = ''] = normalized.split(/\s+/, 1);
+    const direct = [
+      result.result,
+      result.message,
+      result.summary,
+      result.output,
+    ];
+    for (const candidate of direct) {
+      const text = this.normalizeSlashCommandResult(candidate);
+      if (text) {
+        return text;
+      }
+    }
+    if (commandName === '/mode') {
+      return '模式命令已执行，但当前 ACP 运行时没有返回可显示的模式菜单。请直接使用 `/mode <name>`。';
+    }
+    return `命令已执行：${commandName}`;
+  }
+
+  private normalizeSlashCommandResult(value: unknown) {
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+    if (!value || typeof value !== 'object') {
+      return '';
+    }
+    const record = value as Record<string, unknown>;
+    for (const key of ['text', 'content', 'message', 'summary', 'result']) {
+      if (typeof record[key] === 'string' && String(record[key]).trim()) {
+        return String(record[key]).trim();
+      }
+    }
+    return '';
   }
 
   private closeSession(threadId: string) {

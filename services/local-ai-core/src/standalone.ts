@@ -8,6 +8,15 @@ async function main() {
   const userDataPath = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim() || join(process.cwd(), '.ai-workstation-core');
   mkdirSync(userDataPath, { recursive: true });
   const controller = new CcConnectController(userDataPath);
+  controller.on('logs', (line: string) => {
+    if (!line) {
+      return;
+    }
+    process.stdout.write(`[local-ai-core] ${line}\n`);
+  });
+  controller.on('bridge', (event: unknown) => {
+    process.stdout.write(`[local-ai-core bridge] ${JSON.stringify(event)}\n`);
+  });
   await controller.init();
   const server = new LocalAiCoreServer(controller);
   await server.start();

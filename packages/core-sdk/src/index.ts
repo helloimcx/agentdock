@@ -19,7 +19,11 @@ import type {
   DesktopServiceState,
   KnowledgeSource,
   LocalCoreCapabilities,
+  LocalCoreAuthorizedUser,
+  LocalCoreLarkConnectionResult,
+  LocalCoreLarkGatewayStatus,
   LocalCoreEvent,
+  LocalCorePairingRequest,
   WorkspaceStreamingProbeResult,
   ThreadDetail,
   ThreadSummary,
@@ -163,6 +167,44 @@ export async function coreBridgeDisconnect() {
 
 export async function coreBridgeSendMessage(input: DesktopBridgeSendInput) {
   return coreRequest<DesktopBridgeSendResult>('POST', '/runtime/bridge/send-message', input);
+}
+
+export async function listLarkGateways() {
+  return coreRequest<{ gateways: LocalCoreLarkGatewayStatus[] }>('GET', '/platforms/lark');
+}
+
+export async function getLarkGatewayStatus(workspaceId: string) {
+  return coreRequest<LocalCoreLarkGatewayStatus>('GET', `/platforms/lark/${encodeURIComponent(workspaceId)}`);
+}
+
+export async function testLarkConnection(workspaceId: string) {
+  return coreRequest<LocalCoreLarkConnectionResult>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/test`);
+}
+
+export async function enableLarkGateway(workspaceId: string) {
+  return coreRequest<LocalCoreLarkGatewayStatus>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/enable`);
+}
+
+export async function disableLarkGateway(workspaceId: string) {
+  return coreRequest<LocalCoreLarkGatewayStatus>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/disable`);
+}
+
+export async function listLarkPendingPairings(workspaceId?: string) {
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  return coreRequest<{ pairings: LocalCorePairingRequest[] }>('GET', `/platforms/lark/pairings${suffix}`);
+}
+
+export async function approveLarkPairing(code: string) {
+  return coreRequest<LocalCoreAuthorizedUser>('POST', '/platforms/lark/pairings/approve', { code });
+}
+
+export async function rejectLarkPairing(code: string) {
+  return coreRequest<{ rejected: boolean }>('POST', '/platforms/lark/pairings/reject', { code });
+}
+
+export async function listLarkAuthorizedUsers(workspaceId?: string) {
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  return coreRequest<{ users: LocalCoreAuthorizedUser[] }>('GET', `/platforms/lark/users${suffix}`);
 }
 
 export async function listWorkspaces() {

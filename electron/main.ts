@@ -1932,6 +1932,51 @@ function registerIPC() {
     recordSmokeBridgeSend(input);
     return getBridgeAdapter().sendMessage(input);
   });
+  ipcMain.handle('desktop:list-lark-gateways', () =>
+    localAiCoreBindings
+      ? localAiCoreBindings.listLarkGatewayStatuses()
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:get-lark-gateway-status', (_event, workspaceId: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.getLarkGatewayStatus(workspaceId)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:test-lark-connection', (_event, workspaceId: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.testLarkConnection(workspaceId)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:enable-lark-gateway', (_event, workspaceId: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.enableLarkGateway(workspaceId)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:disable-lark-gateway', (_event, workspaceId: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.disableLarkGateway(workspaceId)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:list-lark-pairings', (_event, workspaceId?: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.listLarkPendingPairings(workspaceId)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:approve-lark-pairing', (_event, code: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.approveLarkPairing(code)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:reject-lark-pairing', (_event, code: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.rejectLarkPairing(code)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
+  ipcMain.handle('desktop:list-lark-users', (_event, workspaceId?: string) =>
+    localAiCoreBindings
+      ? localAiCoreBindings.listLarkAuthorizedUsers(workspaceId)
+      : Promise.reject(new Error('Local AI Core bindings are not initialized')),
+  );
   ipcMain.handle('desktop:probe-workspace-streaming', (_event, workspaceId: string) =>
     localAiCoreBindings
       ? localAiCoreBindings.probeWorkspaceStreaming(workspaceId)

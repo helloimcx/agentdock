@@ -1,9 +1,10 @@
 import type { DesktopConnectConfig, DesktopProjectConfig } from '../../../shared/desktop.js';
+import { normalizeDesktopPlatformType } from '../../../shared/desktop.js';
 
 export type PlatformGatewayBinding = {
   workspaceId: string;
   platformType: string;
-  adapter: 'cc-connect';
+  adapter: 'cc-connect' | 'localcore-lark';
 };
 
 export interface PlatformIngressAdapter {
@@ -14,8 +15,19 @@ export interface PlatformIngressAdapter {
 
 export function hasPlatformGatewayBindings(project: DesktopProjectConfig | null | undefined) {
   return Array.isArray(project?.platforms) && project.platforms.some((platform) => {
-    const type = String(platform?.type || '').trim();
+    const type = normalizeDesktopPlatformType(platform?.type);
     return Boolean(type);
+  });
+}
+
+export function hasNativeLarkBindings(project: DesktopProjectConfig | null | undefined) {
+  return Array.isArray(project?.platforms) && project.platforms.some((platform) => normalizeDesktopPlatformType(platform?.type) === 'lark');
+}
+
+export function hasCcConnectPlatformBindings(project: DesktopProjectConfig | null | undefined) {
+  return Array.isArray(project?.platforms) && project.platforms.some((platform) => {
+    const type = normalizeDesktopPlatformType(platform?.type);
+    return Boolean(type) && type !== 'lark';
   });
 }
 
@@ -25,11 +37,12 @@ export class CcConnectPlatformGatewayAdapter implements PlatformIngressAdapter {
   listBindings(config: DesktopConnectConfig | null | undefined): PlatformGatewayBinding[] {
     const projects = Array.isArray(config?.projects) ? config!.projects! : [];
     return projects.flatMap((project) => {
-      if (!hasPlatformGatewayBindings(project)) {
+      if (!hasCcConnectPlatformBindings(project)) {
         return [];
       }
       return (project.platforms || [])
-        .map((platform) => String(platform?.type || '').trim())
+        .map((platform) => normalizeDesktopPlatformType(platform?.type))
+        .filter((platformType) => platformType !== 'lark')
         .filter(Boolean)
         .map((platformType) => ({
           workspaceId: project.name,
@@ -40,6 +53,32 @@ export class CcConnectPlatformGatewayAdapter implements PlatformIngressAdapter {
   }
 
   hasBindings(project: DesktopProjectConfig | null | undefined) {
-    return hasPlatformGatewayBindings(project);
+    return hasCcConnectPlatformBindings(project);
+  }
+}
+
+export class LocalCoreLarkGatewayAdapter implements PlatformIngressAdapter {
+  readonly id = 'localcore-lark';
+
+  listBindings(config: DesktopConnectConfig | null | undefined): PlatformGatewayBinding[] {
+    const projects = Array.isArray(config?.projects) ? config!.projects! : [];
+    return projects.flatMap((project) => {
+      if (!hasNativeLarkBindings(project)) {
+        return [];
+      }
+      return (project.platforms || [])
+        .map((platform) => normalizeDesktopPlatformType(platform?.type))
+        .filter((platformType) => platformType === 'lark')
+        .filter(Boolean)
+        .map((platformType) => ({
+          workspaceId: project.name,
+          platformType,
+          adapter: this.id,
+        }));
+    });
+  }
+
+  hasBindings(project: DesktopProjectConfig | null | undefined) {
+    return hasNativeLarkBindings(project);
   }
 }

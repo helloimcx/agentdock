@@ -21,8 +21,14 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createServer } from 'node:net';
-import { DEFAULT_DESKTOP_AGENT_TYPE, LOCALCORE_ACP_AGENT_TYPE, deriveDesktopRuntimeRoles, normalizeDesktopAgentModel } from '../shared/desktop.js';
-import { hasPlatformGatewayBindings } from '../services/local-ai-core/src/platform-gateway.js';
+import {
+  DEFAULT_DESKTOP_AGENT_TYPE,
+  LOCALCORE_ACP_AGENT_TYPE,
+  deriveDesktopRuntimeRoles,
+  normalizeDesktopAgentModel,
+  normalizeDesktopPlatformType,
+} from '../shared/desktop.js';
+import { hasCcConnectPlatformBindings } from '../services/local-ai-core/src/platform-gateway.js';
 import type {
   ConfigFileState,
   DesktopConnectConfig,
@@ -815,7 +821,7 @@ export class ServiceManager extends EventEmitter {
           return [];
         }
 
-        if ((agentType === 'opencode' || agentType === 'claudecode' || agentType === 'acp') && !hasPlatformGatewayBindings(project)) {
+        if ((agentType === 'opencode' || agentType === 'claudecode' || agentType === 'acp') && !hasCcConnectPlatformBindings(project)) {
           // Local desktop chat for ACP-compatible agents is owned by Local AI Core.
           // cc-connect is only generated for workspaces that bind external IM platforms.
           return [];
@@ -862,7 +868,15 @@ export class ServiceManager extends EventEmitter {
         project.platforms[0]?.type !== 'telegram' ||
         project.platforms[0]?.options?.bot_token !== 'replace-me'
       ) {
-        return [project];
+        const platforms = Array.isArray(project.platforms)
+          ? project.platforms
+              .map((platform) => ({
+                ...platform,
+                type: normalizeDesktopPlatformType(platform?.type),
+              }))
+              .filter((platform) => platform.type && platform.type !== 'lark')
+          : [];
+        return [{ ...project, platforms }];
       }
 
       return [{
@@ -881,8 +895,19 @@ export class ServiceManager extends EventEmitter {
     }
 
     next.projects = next.projects.map((project) => {
+      const normalizedPlatforms = Array.isArray(project?.platforms)
+        ? project.platforms
+            .map((platform) => ({
+              ...platform,
+              type: normalizeDesktopPlatformType(platform?.type),
+            }))
+            .filter((platform) => platform.type)
+        : project?.platforms;
       if (!project?.agent) {
-        return project;
+        return {
+          ...project,
+          platforms: normalizedPlatforms,
+        };
       }
 
       let nextAgent = clone(project.agent);
@@ -944,6 +969,7 @@ export class ServiceManager extends EventEmitter {
 
       return {
         ...project,
+        platforms: normalizedPlatforms,
         agent: nextAgent,
       };
     });

@@ -11,6 +11,10 @@ import type {
   DesktopSettingsInput,
   DesktopServiceState,
   LocalCoreCapabilities,
+  LocalCoreAuthorizedUser,
+  LocalCoreLarkConnectionResult,
+  LocalCoreLarkGatewayStatus,
+  LocalCorePairingRequest,
   LocalCoreEvent,
   KnowledgeSource,
   KnowledgeBase,
@@ -74,6 +78,15 @@ export interface LocalAiCoreBindings extends EventEmitter {
   searchKnowledgeBase(knowledgeBaseId: string, input: KnowledgeSearchInput): Promise<KnowledgeSearchResult[]>;
   getCapabilities(): Promise<LocalCoreCapabilities>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
+  listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]>;
+  getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
+  testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult>;
+  enableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
+  disableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
+  listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]>;
+  approveLarkPairing(code: string): Promise<LocalCoreAuthorizedUser>;
+  rejectLarkPairing(code: string): Promise<{ rejected: boolean }>;
+  listLarkAuthorizedUsers(workspaceId?: string): Promise<LocalCoreAuthorizedUser[]>;
 }
 
 interface LocalAiCoreServerOptions {
@@ -243,6 +256,50 @@ export class LocalAiCoreServer {
       if (req.method === 'POST' && path === '/api/local/v1/runtime/bridge/send-message') {
         const body = await readJsonBody(req);
         json(res, 200, await this.bindings.bridgeSendMessage(body as unknown as DesktopBridgeSendInput));
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/platforms/lark') {
+        json(res, 200, { gateways: await this.bindings.listLarkGatewayStatuses() });
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/platforms/lark/pairings') {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { pairings: await this.bindings.listLarkPendingPairings(workspaceId || undefined) });
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/platforms/lark/users') {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { users: await this.bindings.listLarkAuthorizedUsers(workspaceId || undefined) });
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/platforms/lark/pairings/approve') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.approveLarkPairing(String(body.code || '')));
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/platforms/lark/pairings/reject') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.rejectLarkPairing(String(body.code || '')));
+        return;
+      }
+      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/lark/') && path.endsWith('/test')) {
+        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length, -'/test'.length));
+        json(res, 200, await this.bindings.testLarkConnection(workspaceId));
+        return;
+      }
+      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/lark/') && path.endsWith('/enable')) {
+        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length, -'/enable'.length));
+        json(res, 200, await this.bindings.enableLarkGateway(workspaceId));
+        return;
+      }
+      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/lark/') && path.endsWith('/disable')) {
+        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length, -'/disable'.length));
+        json(res, 200, await this.bindings.disableLarkGateway(workspaceId));
+        return;
+      }
+      if (req.method === 'GET' && path.startsWith('/api/local/v1/platforms/lark/')) {
+        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length));
+        json(res, 200, await this.bindings.getLarkGatewayStatus(workspaceId));
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/workspaces') {

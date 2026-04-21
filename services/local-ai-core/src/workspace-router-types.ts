@@ -82,6 +82,40 @@ export type LocalRunRow = {
   updated_at: string;
 };
 
+export type LocalPlatformPairingRow = {
+  code: string;
+  workspace_id: string;
+  platform: 'lark';
+  platform_user_id: string;
+  chat_id: string;
+  display_name: string;
+  requested_at: string;
+  expires_at: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+};
+
+export type LocalPlatformUserRow = {
+  id: string;
+  workspace_id: string;
+  platform: 'lark';
+  platform_user_id: string;
+  chat_id: string;
+  display_name: string;
+  thread_id: string | null;
+  authorized_at: string;
+};
+
+export type LocalPlatformThreadBindingRow = {
+  workspace_id: string;
+  platform: 'lark';
+  chat_id: string;
+  platform_user_id: string;
+  thread_id: string;
+  last_platform_message_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RunningPermissionRequest = {
   requestId: number | string;
   options: Array<{

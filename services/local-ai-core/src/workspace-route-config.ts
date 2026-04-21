@@ -6,8 +6,9 @@ import {
   DEFAULT_DESKTOP_OPENCODE_MODEL,
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
+  normalizeDesktopPlatformType,
 } from '../../../shared/desktop.js';
-import { hasPlatformGatewayBindings } from './platform-gateway.js';
+import { hasCcConnectPlatformBindings } from './platform-gateway.js';
 import type { LocalCoreProjectConfig } from './workspace-router-types.js';
 
 type OpencodeInlineProviderConfig = {
@@ -25,7 +26,7 @@ type OpencodeInlineConfig = {
 
 export function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
   return Array.isArray(project?.platforms)
-    ? project!.platforms.map((platform) => String(platform?.type || '').trim()).filter(Boolean)
+    ? project!.platforms.map((platform) => normalizeDesktopPlatformType(platform?.type)).filter(Boolean)
     : [];
 }
 
@@ -37,7 +38,7 @@ export function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | nul
   if (agentType !== 'acp') {
     return false;
   }
-  return !hasPlatformGatewayBindings(project);
+  return !hasCcConnectPlatformBindings(project);
 }
 
 function resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {
