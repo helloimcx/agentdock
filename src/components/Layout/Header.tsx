@@ -12,7 +12,6 @@ const routeTitles: Record<string, string> = {
   '/knowledge': 'nav.knowledge',
   '/sessions': 'nav.sessions',
   '/cron': 'nav.cron',
-  '/bridge': 'nav.bridge',
   '/system': 'nav.system',
 };
 

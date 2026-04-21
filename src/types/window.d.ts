@@ -1,8 +1,6 @@
 import type {
   ConfigFileState,
   DesktopBridgeEvent,
-  DesktopBridgeSendInput,
-  DesktopBridgeSendResult,
   DesktopRuntimeStatus,
   DesktopSettings,
   DesktopSettingsInput,
@@ -31,9 +29,6 @@ declare global {
       updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) => Promise<string[]>;
       deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;
       saveSettings: (input: DesktopSettingsInput) => Promise<DesktopSettings>;
-      bridgeConnect: () => Promise<unknown>;
-      bridgeDisconnect: () => Promise<unknown>;
-      bridgeSendMessage: (input: DesktopBridgeSendInput) => Promise<DesktopBridgeSendResult>;
       listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
       getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
       testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;

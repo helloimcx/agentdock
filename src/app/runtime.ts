@@ -1,12 +1,8 @@
 export type AppMode = 'desktop' | 'web';
-export type RuntimeProvider = 'electron' | 'local_core' | 'web_remote';
+export type RuntimeProvider = 'electron' | 'local_core';
 
 let runtimeProvider: RuntimeProvider =
-  typeof window !== 'undefined' && Boolean(window.desktop) ? 'electron' : 'web_remote';
-
-function hasDesktopBridge() {
-  return typeof window !== 'undefined' && Boolean(window.desktop);
-}
+  typeof window !== 'undefined' && Boolean(window.desktop) ? 'electron' : 'local_core';
 
 export function getRuntimeProvider(): RuntimeProvider {
   return runtimeProvider;
@@ -17,7 +13,7 @@ export function setRuntimeProvider(next: RuntimeProvider) {
 }
 
 export function getAppMode(): AppMode {
-  return runtimeProvider === 'web_remote' ? 'web' : 'desktop';
+  return 'desktop';
 }
 
 export function isDesktopApp() {
@@ -29,11 +25,11 @@ export function isLocalCoreApp() {
 }
 
 export function isWebApp() {
-  return runtimeProvider === 'web_remote';
+  return false;
 }
 
 export function supportsDesktopRuntime() {
-  return runtimeProvider === 'electron' || runtimeProvider === 'local_core';
+  return true;
 }
 
 export function supportsDesktopChat() {

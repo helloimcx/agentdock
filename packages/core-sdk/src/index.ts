@@ -1,8 +1,6 @@
 import type {
   ConfigFileState,
   DesktopBridgeEvent,
-  DesktopBridgeSendInput,
-  DesktopBridgeSendResult,
   DesktopRuntimeStatus,
   DesktopSettings,
   DesktopSettingsInput,
@@ -77,7 +75,7 @@ function ensureEventSource() {
     'message.updated',
     'run.updated',
     'presence.updated',
-    'bridge.updated',
+    'stream.updated',
   ].forEach((eventName) => {
     eventSource?.addEventListener(eventName, forward as EventListener);
   });
@@ -155,18 +153,6 @@ export async function saveCoreStructuredConfigFile(config: unknown) {
 
 export async function saveCoreSettings(input: DesktopSettingsInput) {
   return coreRequest<DesktopSettings>('POST', '/runtime/settings', input);
-}
-
-export async function coreBridgeConnect() {
-  return coreRequest<unknown>('POST', '/runtime/bridge/connect');
-}
-
-export async function coreBridgeDisconnect() {
-  return coreRequest<unknown>('POST', '/runtime/bridge/disconnect');
-}
-
-export async function coreBridgeSendMessage(input: DesktopBridgeSendInput) {
-  return coreRequest<DesktopBridgeSendResult>('POST', '/runtime/bridge/send-message', input);
 }
 
 export async function listLarkGateways() {
@@ -375,16 +361,16 @@ export function onRuntimeUpdated(listener: (runtime: DesktopRuntimeStatus) => vo
 
 export function onBridgeUpdated(listener: (event: DesktopBridgeEvent) => void) {
   return subscribeEvents((event) => {
-    if (event.type === 'bridge.updated') {
-      listener(event.bridge);
+    if (event.type === 'stream.updated') {
+      listener(event.stream);
     }
     if (
       event.type === 'message.created' ||
       event.type === 'message.updated' ||
       event.type === 'run.updated'
     ) {
-      if ('bridge' in event && event.bridge) {
-        listener(event.bridge);
+      if ('stream' in event && event.stream) {
+        listener(event.stream);
       }
     }
   });

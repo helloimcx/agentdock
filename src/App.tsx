@@ -11,7 +11,6 @@ import ProjectDetail from '@/pages/Projects/ProjectDetail';
 import SessionList from '@/pages/Sessions/SessionList';
 import SessionChat from '@/pages/Sessions/SessionChat';
 import CronList from '@/pages/Cron/CronList';
-import BridgeAdapters from '@/pages/Bridge/BridgeAdapters';
 import SystemConfig from '@/pages/System/Config';
 import SystemLogs from '@/pages/System/Logs';
 import KnowledgeHome from '@/pages/Knowledge/KnowledgeHome';
@@ -72,7 +71,6 @@ export default function App() {
         <Route path="sessions" element={<DesktopSessionsRedirect />} />
         <Route path="sessions/:project/:id" element={<DesktopSessionsRedirect />} />
         <Route path="cron" element={<CronList />} />
-        <Route path="bridge" element={<BridgeAdapters />} />
         <Route path="system" element={<SystemConfig />} />
         <Route path="system/logs" element={<SystemLogs />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -211,7 +211,7 @@ export interface WorkspaceStreamingProbeEvent {
 export interface WorkspaceStreamingProbeResult {
   workspaceId: string;
   agentType: string;
-  transport: 'cc-connect' | 'localcore-acp';
+  transport: 'localcore-acp';
   prompt: string;
   passed: boolean;
   startedAt: string;
@@ -240,8 +240,8 @@ export interface LocalCoreHealth {
 export type LocalCoreEvent =
   | { type: 'runtime.updated'; runtime: DesktopRuntimeStatus }
   | { type: 'thread.updated'; thread: ThreadSummary }
-  | { type: 'message.created'; threadId: string; message: ThreadMessage; bridge?: DesktopBridgeEvent }
-  | { type: 'message.updated'; threadId: string; message: Partial<ThreadMessage>; bridge?: DesktopBridgeEvent }
-  | { type: 'run.updated'; run: RunSummary; bridge?: DesktopBridgeEvent }
-  | { type: 'presence.updated'; threadId?: string; live: boolean; bridge?: DesktopBridgeEvent }
-  | { type: 'bridge.updated'; bridge: DesktopBridgeEvent };
+  | { type: 'message.created'; threadId: string; message: ThreadMessage; stream?: DesktopBridgeEvent }
+  | { type: 'message.updated'; threadId: string; message: Partial<ThreadMessage>; stream?: DesktopBridgeEvent }
+  | { type: 'run.updated'; run: RunSummary; stream?: DesktopBridgeEvent }
+  | { type: 'presence.updated'; threadId?: string; live: boolean; stream?: DesktopBridgeEvent }
+  | { type: 'stream.updated'; stream: DesktopBridgeEvent };

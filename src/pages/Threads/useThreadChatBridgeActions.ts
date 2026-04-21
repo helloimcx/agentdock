@@ -47,11 +47,12 @@ export function useThreadChatBridgeActions({
   startLocalCoreThreadPolling,
   updateTaskState,
 }: UseThreadChatBridgeActionsInput & Pick<ThreadChatActiveThreadIdentity, 'activeRunId'> & { setActiveRunId: Dispatch<SetStateAction<string>> }) {
-  const usesManagedThreadApi = _runtimeProvider !== 'web_remote';
+  const usesManagedThreadApi = true;
   const handleBridgeAction = useCallback(async (message: ChatMessage, action: DesktopBridgeButtonOption) => {
     if (!activeThreadId) {
       return;
     }
+    const baselineAssistantCount = messages.filter((item) => item.role === 'assistant').length;
     if (!usesManagedThreadApi) {
       setBridgeError('Managed desktop thread action transport is unavailable.');
       updateTaskState('error', 'bridge-action-unavailable');
@@ -77,6 +78,7 @@ export function useThreadChatBridgeActions({
       ]);
       const result = await sendAction(activeThreadId, actionContent);
       setActiveRunId(result.runId);
+      startLocalCoreThreadPolling(activeThreadId, baselineAssistantCount);
       sent = true;
       setBridgeError('');
       settlePreviewMessages(message.actionReplyCtx);
@@ -140,6 +142,7 @@ export function useThreadChatBridgeActions({
     setMessages,
     setPendingBridgeActionId,
     setTyping,
+    startLocalCoreThreadPolling,
     updateTaskState,
     usesManagedThreadApi,
   ]);

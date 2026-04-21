@@ -21,9 +21,7 @@ function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
     case 'starting':
       return 'starting';
     case 'api_ready':
-      return 'API ready';
-    case 'bridge_ready':
-      return 'bridge ready';
+      return 'ready';
     case 'error':
       return 'error';
     default:
@@ -63,7 +61,7 @@ export default function Dashboard() {
       if (desktopRuntime) {
         nextRuntime = runtimeOverride ?? await getRuntimeStatus();
         setRuntime(nextRuntime);
-        if (nextRuntime.phase !== 'api_ready' && nextRuntime.phase !== 'bridge_ready') {
+        if (nextRuntime.phase !== 'api_ready') {
           setStatus(null);
           setProjects([]);
           return;
@@ -74,7 +72,7 @@ export default function Dashboard() {
         setStatus({
           version: 'local-core',
           uptime_seconds: 0,
-          connected_platforms: runtimeOverride?.roles?.platformGateway.status === 'running' ? ['cc-connect'] : [],
+          connected_platforms: runtimeOverride?.roles?.platformGateway.status === 'running' ? ['lark'] : [],
           projects_count: p.workspaces.length,
           bridge_adapters: [],
         });
@@ -103,13 +101,13 @@ export default function Dashboard() {
     window.addEventListener('cc:refresh', handler);
     const stopRuntime = desktopRuntime ? onRuntimeEvent((nextRuntime) => {
       setRuntime(nextRuntime);
-      if (nextRuntime.phase === 'api_ready' || nextRuntime.phase === 'bridge_ready') {
+      if (nextRuntime.phase === 'api_ready') {
         void fetchData(nextRuntime);
         return;
       }
       setStatus(null);
       setProjects([]);
-      setError(nextRuntime.service.lastError || '');
+      setError(nextRuntime.roles.conversation.lastError || nextRuntime.roles.platformGateway.lastError || '');
     }) : () => {};
     return () => {
       window.removeEventListener('cc:refresh', handler);
@@ -136,12 +134,12 @@ export default function Dashboard() {
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {localCoreManaged
-                  ? 'Local AI Core runtime, adapter state, and bridge connectivity for your local app.'
-                  : 'Local `cc-connect` process, management API, and desktop bridge status.'}
+                  ? 'Local AI Core runtime and native gateway status for your local app.'
+                  : 'Desktop shell status for the embedded Local AI Core runtime.'}
               </p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => void startDesktopService().then(() => fetchData())} disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready' || runtime?.phase === 'bridge_ready'}>
+              <Button size="sm" onClick={() => void startDesktopService().then(() => fetchData())} disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready'}>
                 <Play size={14} /> 启动
               </Button>
               <Button size="sm" variant="secondary" onClick={() => void restartDesktopService().then(() => fetchData())}>
@@ -158,7 +156,7 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-            <StatCard label="Runtime" value={formatRuntimePhase(runtime?.phase)} accent={runtime?.phase === 'bridge_ready'} />
+            <StatCard label="Runtime" value={formatRuntimePhase(runtime?.phase)} accent={runtime?.phase === 'api_ready'} />
             <StatCard
               label="Conversation"
               value={formatRuntimeRole(runtime?.roles?.conversation.status)}
@@ -183,9 +181,9 @@ export default function Dashboard() {
             </div>
           )}
 
-          {runtime?.service.lastError && (
+          {runtime?.roles.platformGateway.lastError && (
             <div className="mt-4 text-sm rounded-lg border border-red-200 bg-red-50 text-red-600 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
-              {runtime.service.lastError}
+              {runtime.roles.platformGateway.lastError}
             </div>
           )}
           {error && (
@@ -284,7 +282,7 @@ export default function Dashboard() {
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Web Admin</h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  This browser build manages a remote `cc-connect` instance. Chat is available here, while desktop runtime controls and workspace runtime settings stay in the desktop app.
+                  This browser build connects to a standalone API endpoint. Chat is available here, while local runtime controls stay in the desktop app.
                 </p>
               </div>
             </div>

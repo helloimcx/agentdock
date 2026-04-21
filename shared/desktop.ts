@@ -52,8 +52,7 @@ const PERMISSION_RESPONSE_MAP: Record<string, 'allow' | 'deny' | 'allow all'> = 
 };
 
 export type DesktopServiceStatus = 'stopped' | 'starting' | 'running' | 'error';
-export type DesktopBridgeStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-export type DesktopRuntimePhase = 'stopped' | 'starting' | 'api_ready' | 'bridge_ready' | 'error';
+export type DesktopRuntimePhase = 'stopped' | 'starting' | 'api_ready' | 'error';
 
 export interface DesktopSettings {
   binaryPath: string;
@@ -75,18 +74,11 @@ export interface DesktopServiceState {
   lastError?: string;
 }
 
-export interface DesktopBridgeState {
-  status: DesktopBridgeStatus;
-  lastError?: string;
-  connectedAt?: string;
-}
-
 export interface DesktopRuntimeRoleState {
   status: DesktopServiceStatus;
   label: string;
   lastError?: string;
   service?: DesktopServiceState;
-  bridge?: DesktopBridgeState;
 }
 
 export interface DesktopRuntimeRoles {
@@ -100,49 +92,29 @@ export interface DesktopRuntimeStatus {
   phase: DesktopRuntimePhase;
   pendingRestart: boolean;
   service: DesktopServiceState;
-  bridge: DesktopBridgeState;
   roles: DesktopRuntimeRoles;
   settings: DesktopSettings;
-  managementBaseUrl: string;
   configFile: ConfigFileState;
   logs: string[];
 }
 
-export function deriveDesktopRuntimePhase(
-  service: DesktopServiceState,
-  bridge: DesktopBridgeState,
-): DesktopRuntimePhase {
+export function deriveDesktopRuntimePhase(service: DesktopServiceState): DesktopRuntimePhase {
   if (service.status === 'starting') {
     return 'starting';
   }
-  if (bridge.status === 'connected') {
-    return 'bridge_ready';
-  }
-  // Local AI Core is the conversation runtime. The cc-connect service/bridge
-  // only represent the optional platform gateway, so their stopped/error state
-  // must not make local desktop chat unavailable.
   return 'api_ready';
 }
 
-export function deriveDesktopRuntimeRoles(
-  service: DesktopServiceState,
-  bridge: DesktopBridgeState,
-): DesktopRuntimeRoles {
-  const platformGatewayStatus: DesktopServiceStatus =
-    service.status === 'running' && bridge.status === 'error'
-      ? 'error'
-      : service.status;
+export function deriveDesktopRuntimeRoles(service: DesktopServiceState): DesktopRuntimeRoles {
   return {
     conversation: {
       status: 'running',
       label: 'Local AI Core',
     },
     platformGateway: {
-      status: platformGatewayStatus,
-      label: 'cc-connect Platform Gateway',
-      lastError: service.lastError || bridge.lastError,
+      status: service.status,
+      label: 'Native Platform Gateway',
       service,
-      bridge,
     },
   };
 }

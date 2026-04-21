@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import fs from 'node:fs';
 
 const rootDir = process.cwd();
-const entry = path.join(rootDir, 'dist-electron', 'services', 'local-ai-core', 'src', 'standalone.js');
+const entry = path.join(rootDir, 'dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
 
 if (!fs.existsSync(entry)) {
   console.error('[core] Missing compiled Local AI Core entry. Run `pnpm build:electron` first.');

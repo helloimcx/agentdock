@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  bridgeConnect,
   updateThreadKnowledgeBases as updateDesktopThreadKnowledgeBases,
 } from '@/api/desktop';
 import { listKnowledgeBases } from '@/api/knowledge';
@@ -150,17 +149,7 @@ export function useThreadChatController() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [renderedMessages, typing]);
 
-  useEffect(() => {
-    if (serviceRunning) {
-      void bridgeConnect();
-    }
-  }, [serviceRunning]);
-
   const refreshKnowledgeBases = useCallback(async () => {
-    if (runtimeProvider === 'web_remote') {
-      setAvailableKnowledgeBases([]);
-      return;
-    }
     try {
       const payload = await listKnowledgeBases();
       setAvailableKnowledgeBases(payload.bases || []);
@@ -180,7 +169,7 @@ export function useThreadChatController() {
     const requestId = knowledgeBaseSelectionRequestRef.current + 1;
     knowledgeBaseSelectionRequestRef.current = requestId;
     setSelectedKnowledgeBaseIds(normalizedIds);
-    if (!selectedWorkspaceId || !activeThreadId || runtimeProvider === 'web_remote') {
+    if (!selectedWorkspaceId || !activeThreadId) {
       return;
     }
     try {

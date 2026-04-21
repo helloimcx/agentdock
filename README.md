@@ -1,12 +1,11 @@
 # AI-WorkStation
 
-`cc-connect` backend 服务的桌面管理客户端，正在演进为基于 Local AI Core 的单机版 Super AI App。
+基于 Local AI Core 的本地桌面 AI 工作台，内置原生 Feishu/Lark 网关与本地 ACP 会话运行时。
 
 ## 运行模式
 
-- **桌面模式** — Electron 启动并管理本地 `cc-connect` 进程，通过 WebSocket 桥接实现实时聊天
-- **Web 管理模式** — 通过 API Token + Server URL 连接远程 `cc-connect` 实例
-- **Local AI Core 模式** — 通过本地 `127.0.0.1:9831` 的核心服务统一提供 runtime、chat 与事件流
+- **桌面模式** — Electron 作为壳进程启动本地 Local AI Core，并加载桌面 UI
+- **Local AI Core 模式** — 通过本地 `127.0.0.1:9831` 提供 runtime、chat、知识库与 Lark 网关能力
 
 ## 技术栈
 
@@ -48,9 +47,9 @@ pnpm start:core   # 启动已构建的 Local AI Core
 ## 项目结构
 
 ```
-├── electron/        # Electron 主进程（IPC、服务管理、WebSocket 桥接）
+├── electron/        # Electron 主进程壳
 ├── apps/            # 未来的桌面/Web 前端壳目录
-├── packages/        # contracts、core-sdk、adapters、knowledge-api
+├── packages/        # contracts、core-sdk、knowledge-api
 ├── services/        # Local AI Core
 ├── src/             # React 渲染进程
 │   ├── pages/       # 页面组件

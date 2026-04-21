@@ -9,6 +9,7 @@ import {
   getLarkGatewayStatus,
   listLarkAuthorizedUsers,
   listLarkPendingPairings,
+  rejectLarkPairing,
   getRuntimeStatus,
   onRuntimeEvent,
   probeWorkspaceStreaming,
@@ -203,9 +204,7 @@ function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
     case 'starting':
       return 'starting';
     case 'api_ready':
-      return 'management API ready';
-    case 'bridge_ready':
-      return 'bridge ready';
+      return 'runtime ready';
     case 'error':
       return 'error';
     default:
@@ -416,7 +415,7 @@ export default function DesktopWorkspace() {
   const [larkPendingAction, setLarkPendingAction] = useState<'test' | 'enable' | 'disable' | `approve:${string}` | `reject:${string}` | null>(null);
   const requestedProject = searchParams.get('project') || '';
   const requestedProjectRef = useRef(requestedProject);
-  const runtimeReady = runtime?.phase === 'api_ready' || runtime?.phase === 'bridge_ready';
+  const runtimeReady = runtime?.phase === 'api_ready';
   const settingsDirty = useMemo(() => {
     if (!persistedSettings) {
       return false;
@@ -535,13 +534,12 @@ export default function DesktopWorkspace() {
     || selectedAgentType === 'opencode'
     || selectedAgentType === 'claudecode'
     || selectedAgentType === 'localcore-acp';
-  const probeNeedsBridge = selectedAgentType === 'acp';
+  const probeNeedsBridge = false;
   const probeBlockedByUnsavedConfig = visualDirty || rawDirty;
   const probeDisabled = !selectedProject?.name
     || !probeSupported
     || probePending
-    || probeBlockedByUnsavedConfig
-    || (probeNeedsBridge && runtime?.bridge.status !== 'connected');
+    || probeBlockedByUnsavedConfig;
 
   const projectNames = useMemo(() => projects.map((project) => project.name), [projects]);
 
@@ -819,7 +817,7 @@ export default function DesktopWorkspace() {
       setNotice({
         tone: 'success',
         title: 'Desktop service started',
-        detail: 'The local cc-connect process is running and ready for management or chat traffic.',
+        detail: 'The embedded Local AI Core runtime is running and ready for local chat traffic.',
       });
       setRestartPending(false);
     } catch (error) {
@@ -841,7 +839,7 @@ export default function DesktopWorkspace() {
       setNotice({
         tone: 'success',
         title: 'Desktop service stopped',
-        detail: 'The local cc-connect process has been stopped.',
+        detail: 'The local runtime has been stopped.',
       });
       setRestartPending(false);
     } catch (error) {
@@ -989,11 +987,11 @@ export default function DesktopWorkspace() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI-WorkStation 运行时</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Manage the local `cc-connect` process and where this app stores its runtime files.
+              Manage Local AI Core runtime defaults and where this app stores its local files.
             </p>
           </div>
 
-          <Input label="cc-connect binary" value={binaryPath} onChange={(event) => setBinaryPath(event.target.value)} />
+          <Input label="Runtime binary" value={binaryPath} onChange={(event) => setBinaryPath(event.target.value)} />
           <Input label="Config file" value={configPath} onChange={(event) => setConfigPath(event.target.value)} />
           <Input label="Default chat project" value={defaultProject} onChange={(event) => setDefaultProject(event.target.value)} />
 
@@ -1061,7 +1059,7 @@ export default function DesktopWorkspace() {
               checked={autoStartService}
               onChange={(event) => setAutoStartService(event.target.checked)}
             />
-            Auto-start `cc-connect` when the desktop app opens
+            Auto-start the local runtime when the desktop app opens
           </label>
 
           <div className="flex gap-2">
@@ -1077,7 +1075,7 @@ export default function DesktopWorkspace() {
               variant="secondary"
               onClick={() => void handleStartService()}
               loading={pendingAction === 'start'}
-              disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready' || runtime?.phase === 'bridge_ready'}
+              disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready'}
             >
               Start
             </Button>
@@ -1095,7 +1093,7 @@ export default function DesktopWorkspace() {
             <p className="font-medium text-gray-900 dark:text-white">How runtime actions apply</p>
             <p className="mt-1">
               `Save desktop settings` updates this app&apos;s local paths and defaults. `Start`, `Stop`, and `Restart`
-              control the local `cc-connect` process directly.
+              control the embedded Local AI Core runtime directly.
             </p>
           </div>
 
@@ -1104,10 +1102,10 @@ export default function DesktopWorkspace() {
               Runtime status: <span className="text-accent">{formatRuntimePhase(runtime?.phase)}</span>
             </p>
             <p className="text-gray-500 dark:text-gray-400 mt-1 break-all">
-              Management API: {runtime?.managementBaseUrl || '-'}
+              Local API: http://127.0.0.1:9831/api/local/v1
             </p>
-            {runtime?.service.lastError && (
-              <p className="text-red-500 mt-2">{runtime.service.lastError}</p>
+            {runtime?.roles.platformGateway.lastError && (
+              <p className="text-red-500 mt-2">{runtime.roles.platformGateway.lastError}</p>
             )}
           </div>
         </Card>
@@ -1134,7 +1132,7 @@ export default function DesktopWorkspace() {
             <p className="font-medium text-gray-900 dark:text-white">How config changes apply</p>
             <p className="mt-1">
               `Save config` only writes `config.toml`. `Save and restart service` writes the file and immediately
-              restarts `cc-connect`, so the new config takes effect right away.
+              restarts Local AI Core, so the new config takes effect right away.
             </p>
           </div>
 
@@ -1341,9 +1339,9 @@ export default function DesktopWorkspace() {
                             Save the workspace config first. The probe always uses the config file currently on disk.
                           </p>
                         )}
-                        {!probeBlockedByUnsavedConfig && probeNeedsBridge && runtime?.bridge.status !== 'connected' && (
+                        {!probeBlockedByUnsavedConfig && probeNeedsBridge && (
                           <p className="text-xs text-amber-600 dark:text-amber-300">
-                            The bridge must be connected before an `acp` probe can run.
+                            The runtime must be ready before an `acp` probe can run.
                           </p>
                         )}
                         {streamingProbe && (

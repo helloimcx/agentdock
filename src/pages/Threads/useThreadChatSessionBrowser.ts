@@ -77,7 +77,7 @@ export function useThreadChatSessionBrowser({
   pendingTurnRef,
   progressSequenceByTurnRef,
 }: UseThreadChatSessionBrowserInput) {
-  const usesManagedThreadApi = runtimeProvider !== 'web_remote';
+  const usesManagedThreadApi = true;
   const threadsForSelectedWorkspace = useMemo(
     () => threadGroups.find((group) => group.project === selectedWorkspaceId)?.sessions || [],
     [selectedWorkspaceId, threadGroups],

@@ -1,330 +1,61 @@
-# AI-WorkStation System Architecture
+# AI-WorkStation Architecture
 
-This document summarizes the current architecture of `cc-connect-desktop` from the perspective of runtime ownership, data flow, and subsystem boundaries.
+## Summary
 
-## 1. Goals
+AI-WorkStation now runs as a Local AI Core-first desktop app:
 
-AI-WorkStation is evolving from a pure Electron desktop manager for `cc-connect` into a hybrid local app with:
+- Electron is only the desktop shell
+- Local AI Core owns runtime, threads, streaming, knowledge, and native Lark ingress
+- The renderer talks to Local AI Core APIs directly or through the Electron shell
 
-- Electron-managed desktop runtime
-- Local AI Core as the local conversation runtime and HTTP/SSE facade
-- Thread-level routing between Local AI Core-native agent backends and legacy `cc-connect` compatibility sessions
-- `cc-connect` retained as the IM platform gateway
-- Shared renderer code that can run against `electron`, `local_core`, or `web_remote`
+There is no `cc-connect` runtime, management API, or bridge compatibility path in the active architecture.
 
-## 2. Top-Level Architecture
+## Top-Level Flow
 
 ```mermaid
 flowchart LR
-  U[User] --> R[React Renderer<br/>src/]
-  R --> DP[Desktop API Provider<br/>src/api/desktop.ts]
-
-  DP -->|electron| IPC[Electron IPC<br/>electron/preload.ts + electron/main.ts]
-  DP -->|local_core| CORE[Local AI Core HTTP/SSE<br/>services/local-ai-core]
-  DP -->|web_remote| MGMT[Remote cc-connect Management API]
-
-  IPC --> SM[ServiceManager]
-  IPC --> BA[BridgeAdapter]
-  IPC --> WR[WorkspaceRouter]
-
-  CORE --> WR
-
-  SM --> CC[cc-connect process]
-  BA --> CC
-  WR --> CCA[CcConnectCompatAdapter<br/>legacy thread bridge]
-  CCA --> CC
-  WR --> ACP[ACP agent process<br/>localcore-acp]
-  WR --> KB[Knowledge Provider<br/>ai_vector]
+  U[User] --> R[React Renderer]
+  R --> DP[Desktop API Provider]
+  DP -->|electron| E[Electron Shell]
+  DP -->|local_core| C[Local AI Core HTTP/SSE]
+  E --> C
+  C --> ACP[ACP Agent Backends]
+  C --> KB[Knowledge Provider]
+  C --> LARK[Native Feishu/Lark Gateway]
 ```
 
-## 3. Main Layers
+## Main Layers
 
-### 3.1 Renderer
+### Renderer
 
-The renderer lives in `src/` and is a React 19 app bootstrapped from `src/main.tsx`.
+- lives in `src/`
+- renders Dashboard, Workspace, Threads, Knowledge
+- consumes Local AI Core runtime and SSE events
 
-Its responsibilities are:
+### Electron
 
-- detect the active runtime provider
-- render pages such as Dashboard, Workspace, Threads, Knowledge
-- unify thread/chat UX across desktop and local-core modes
-- subscribe to runtime and bridge events
+- lives in `electron/`
+- opens the desktop window
+- starts Local AI Core as a local companion process
+- does not own chat routing or platform gateway logic
 
-Important modules:
+### Local AI Core
 
-- `src/main.tsx`: bootstrap, runtime detection, managed-session initialization
-- `src/api/desktop.ts`: provider selection and desktop-facing API facade
-- `src/pages/Threads/*`: thread browser, session state, bridge event handling, send/stop/action flows
-- `src/pages/Desktop/Workspace.tsx`: config editing, runtime control, ACP probe
+- lives in `services/local-ai-core/`
+- exposes `/api/local/v1/*`
+- owns thread routing, SQLite persistence, ACP streaming, and Lark ingress
 
-### 3.2 Electron Shell
+### Shared Packages
 
-The Electron side lives in `electron/`.
+- `packages/contracts`: shared API and data contracts
+- `packages/core-sdk`: Local AI Core browser client
+- `packages/knowledge-api`: knowledge abstraction and `ai_vector` implementation
 
-Responsibilities:
+## Runtime Model
 
-- own the native desktop window
-- expose a `window.desktop` API through preload
-- manage the local `cc-connect` child process
-- manage the desktop bridge websocket connection
-- host the embedded Local AI Core server
-- report separate Conversation Runtime and Platform Gateway Runtime roles
+The renderer uses one of two local providers:
 
-Key files:
+- `electron`: desktop shell is available
+- `local_core`: direct Local AI Core access is available
 
-- `electron/main.ts`
-- `electron/preload.ts`
-- `electron/service-manager.ts`
-- `electron/bridge-adapter.ts`
-
-### 3.3 Local AI Core
-
-The Local AI Core service lives under `services/local-ai-core/` and acts as a stable local API surface over runtime, threads, knowledge, and SSE events.
-
-Responsibilities:
-
-- expose `/api/local/v1/*`
-- stream runtime and bridge events over SSE
-- route thread operations by workspace type
-- persist `localcore-acp` threads in SQLite
-
-Key files:
-
-- `services/local-ai-core/src/server.ts`
-- `services/local-ai-core/src/workspace-router.ts`
-- `services/local-ai-core/src/standalone.ts`
-
-### 3.4 Shared Packages
-
-The `packages/` directory provides reusable contracts and adapters:
-
-- `packages/contracts`: shared types for local-core APIs and thread data
-- `packages/core-sdk`: browser-side client for Local AI Core
-- `packages/adapter-cc-connect`: controller wrapper for standalone local-core mode
-- `packages/knowledge-api`: knowledge provider abstraction and `ai_vector` implementation
-
-## 4. Runtime Provider Model
-
-The renderer chooses one of three runtime providers:
-
-- `electron`: use `window.desktop`, but bridge events are normalized through Local AI Core SSE
-- `local_core`: use Local AI Core HTTP/SSE directly
-- `web_remote`: use remote management APIs only
-
-```mermaid
-flowchart TD
-  A[Renderer Startup] --> B{window.desktop available?}
-  B -->|yes| E[electron provider]
-  B -->|no| C{Local AI Core reachable at 127.0.0.1:9831?}
-  C -->|yes| L[local_core provider]
-  C -->|no| W[web_remote provider]
-```
-
-This selection is centralized in `src/api/desktop.ts` and `src/app/runtime.ts`.
-
-## 5. `cc-connect` Runtime Path
-
-When the app runs in Electron desktop mode, `ServiceManager` owns the lifecycle of the local `cc-connect` binary.
-
-Responsibilities:
-
-- persist user settings
-- read and write logical `config.toml`
-- derive `generated-config.toml` used at runtime
-- assign ports and management tokens
-- start/stop/restart the child process
-- wait for management API readiness
-
-Important detail:
-
-- logical config is user-facing
-- generated runtime config is what `cc-connect` actually starts with
-- `opencode` is transformed to runtime `acp`
-- `localcore-acp` is excluded from generated runtime config because it is executed by Local AI Core, not by `cc-connect`
-
-```mermaid
-flowchart LR
-  UI[Workspace UI] --> CFG[config.toml<br/>logical config]
-  CFG --> SM[ServiceManager]
-  SM --> GCFG[generated-config.toml<br/>runtime config]
-  GCFG --> CC[cc-connect process]
-  CC --> MGMT[Management API]
-  CC --> BR[Desktop Bridge WebSocket]
-```
-
-## 6. Thread Routing Model
-
-`WorkspaceRouter` is the core routing layer. It decides whether a workspace is handled by `cc-connect` or by `localcore-acp`.
-
-Routing rules:
-
-- `localcore-acp`: route to Local AI Core ACP session management and SQLite persistence
-- `opencode` / `acp` with no IM platform bindings: route to the same Local AI Core-native ACP backend
-- projects with IM platform bindings: route through `CcConnectCompatAdapter` while `cc-connect` acts as the platform gateway
-- non-migrated agent types: keep the legacy compatibility path until they get native Local AI Core adapters
-
-The router also normalizes thread IDs as:
-
-- `workspace::session`
-
-For `localcore-acp`, it generates synthetic bridge session keys:
-
-- `localcore-acp:<workspace>:<sessionId>`
-
-The migration target is to make Local AI Core the single owner of local desktop threads and runs. In the current code, Local AI Core already owns local ACP-compatible desktop threads for `localcore-acp`, `opencode`, and `acp` workspaces that do not bind IM platforms. `cc-connect` is retained as the platform gateway for IM ingress and outbound delivery.
-
-```mermaid
-flowchart LR
-  UI[Thread UI] --> CORE[Local AI Core]
-  CORE --> TS[Thread Store<br/>SQLite]
-  CORE --> AR[Agent Runtime Adapters<br/>localcore-acp / future agents]
-  CORE --> PG[Platform Gateway Adapter]
-  PG --> CC[cc-connect<br/>IM platforms]
-  CC --> IM[Telegram / Slack / Discord / Feishu]
-```
-
-## 7. Chat Flow
-
-### 7.1 Legacy `cc-connect` Compatibility Path
-
-```mermaid
-sequenceDiagram
-  participant UI as Thread Chat UI
-  participant SDK as core-sdk
-  participant CORE as Local AI Core
-  participant WR as WorkspaceRouter
-  participant CCA as CcConnectCompatAdapter
-  participant CC as cc-connect
-
-  UI->>SDK: sendMessage(threadId, content)
-  SDK->>CORE: local-core HTTP
-  CORE->>WR: sendThreadMessage
-  WR->>CCA: legacy thread operation
-  CCA->>CC: management API / bridge message
-  CC-->>CORE: normalized DesktopBridgeEvent
-  CORE-->>UI: SSE bridge event
-```
-
-This path exists for migration compatibility. New local-first agents should prefer Local AI Core-owned backends rather than adding more thread ownership to `cc-connect`.
-
-### 7.2 `localcore-acp` Path
-
-```mermaid
-sequenceDiagram
-  participant UI as Thread Chat UI
-  participant SDK as core-sdk
-  participant CORE as Local AI Core
-  participant WR as WorkspaceRouter
-  participant ACP as ACP Agent Process
-  participant DB as SQLite
-
-  UI->>SDK: sendMessage(threadId, content)
-  SDK->>CORE: POST /threads/:id/messages
-  CORE->>WR: sendThreadMessage
-  WR->>DB: append user message + run state
-  WR->>ACP: session/prompt
-  ACP-->>WR: session/update chunks
-  WR-->>CORE: bridge.updated preview/update/typing
-  CORE-->>UI: SSE bridge events
-  WR->>DB: append final assistant message
-```
-
-## 8. Streaming and Typewriter Model
-
-ACP-like agents use bridge semantics rather than a separate streaming protocol in the renderer.
-
-The intended event model is:
-
-- `typing_start`
-- `preview_start`
-- repeated `update_message` with cumulative content
-- `typing_stop`
-
-Renderer behavior:
-
-- preview phase is rendered as plain text
-- renderer stores `streamTargetContent`
-- a timer advances visible content toward the target for typewriter effect
-- finalization settles the preview into a normal final assistant message
-
-The main implementation points are:
-
-- `src/pages/Threads/useThreadChatBridgeEvents.ts`
-- `src/pages/Threads/useThreadChatConversationState.ts`
-- `services/local-ai-core/src/workspace-router.ts`
-
-## 9. Persistence Model
-
-There are two separate persistence domains:
-
-### 9.1 `cc-connect`
-
-- session persistence is owned by `cc-connect`
-- AI-WorkStation reads sessions through management APIs
-
-### 9.2 `localcore-acp`
-
-- persistence is owned by Local AI Core SQLite
-- database path: `runtime/local-core.db`
-
-Current tables:
-
-- `threads`
-- `messages`
-- `runs`
-
-This split is intentional so that `localcore-acp` does not depend on `cc-connect` session storage.
-
-## 10. Knowledge Integration
-
-Knowledge integration is abstracted behind `KnowledgeProvider`, currently backed by `AiVectorKnowledgeProvider`.
-
-Responsibilities:
-
-- manage knowledge config
-- manage bases/folders/files
-- attach selected knowledge base IDs to threads
-- proxy upload/search/delete operations to the configured `ai_vector` service
-
-Renderer modules:
-
-- `src/api/knowledge.ts`
-- `src/pages/Knowledge/*`
-
-Backend modules:
-
-- `packages/knowledge-api/src/index.ts`
-- `packages/knowledge-api/src/ai-vector-provider.ts`
-
-## 11. Key Design Decisions
-
-- Keep renderer runtime-agnostic through `src/api/desktop.ts`
-- Use Local AI Core as the local uniform API and SSE event layer
-- Route by workspace type instead of forcing one global chat backend
-- Preserve `cc-connect` compatibility behind an explicit adapter boundary while moving local chat ownership into Local AI Core
-- Keep `cc-connect` as the IM platform gateway instead of the desktop thread source of truth
-- Split runtime status into `roles.conversation` and `roles.platformGateway` while preserving legacy `service`, `bridge`, and `phase` fields
-- Generate `cc-connect` runtime config only for platform-gateway projects; local ACP-compatible desktop projects are excluded from the generated gateway config
-- Keep logical config user-friendly and runtime config operational
-
-## 12. Current Risks / Complexity Hotspots
-
-- Thread chat currently mixes persisted message reloads and live bridge events, so deduplication must stay tight
-- `localcore-acp` streaming depends on ACP agents emitting chunked session updates
-- Electron and Local AI Core share some runtime responsibilities, so event fan-out must avoid duplicates
-- Logical config and generated runtime config can diverge by design, which is powerful but easy to misunderstand
-- The legacy compatibility path still lets `cc-connect` own platform-bound or non-migrated agent sessions until those paths get explicit Local AI Core-native adapters or platform ingress mapping
-
-## 13. Suggested Reading Order
-
-If you are new to the codebase, read in this order:
-
-1. `README.md`
-2. `src/main.tsx`
-3. `src/api/desktop.ts`
-4. `electron/main.ts`
-5. `electron/service-manager.ts`
-6. `services/local-ai-core/src/server.ts`
-7. `services/local-ai-core/src/workspace-router.ts`
-8. `src/pages/Threads/useThreadChatController.ts`
-9. `src/pages/Threads/useThreadChatBridgeEvents.ts`
+Both providers target the same Local AI Core API surface.

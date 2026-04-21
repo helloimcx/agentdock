@@ -12,6 +12,7 @@ import { useThemeStore } from './store/theme';
 import { getDesktopLogs, getRuntimeStatus, initializeDesktopProvider, onRuntimeEvent } from './api/desktop';
 import { api } from './api/client';
 import { getRuntimeProvider, supportsDesktopRuntime } from './app/runtime';
+import { LOCAL_AI_CORE_BASE } from '../packages/core-sdk/src';
 
 useAuthStore.getState().init();
 useThemeStore.getState().init();
@@ -20,6 +21,13 @@ type BootstrapState =
   | { status: 'loading' }
   | { status: 'ready' }
   | { status: 'error'; message: string; logs: string[] };
+
+const BOOTSTRAP_RETRY_ATTEMPTS = 20;
+const BOOTSTRAP_RETRY_DELAY_MS = 500;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function LoadingScreen() {
   return (
@@ -59,8 +67,8 @@ function BootstrapFailureScreen({
           <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
             <p className="font-medium text-gray-900 dark:text-white">What we can do next</p>
             <p className="mt-1">
-              请先重试桌面端初始化。如果仍然失败，请检查下方运行时日志，并确认桌面设置中的本地
-              `cc-connect` 二进制路径是否正确。
+              请先重试本地运行时初始化。如果仍然失败，请检查下方运行时日志，并确认 Local AI Core
+              配置文件路径与运行环境是否正确。
             </p>
           </div>
           {logs.length > 0 && (
@@ -96,12 +104,27 @@ function BootstrapApp() {
     setManagedRuntime(hasManagedRuntime);
     if (hasManagedRuntime) {
       try {
-        const runtime = await getRuntimeStatus();
-        api.setBaseUrl(runtime.managementBaseUrl);
-        api.setToken(runtime.settings.managementToken);
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < BOOTSTRAP_RETRY_ATTEMPTS; attempt += 1) {
+          try {
+            await getRuntimeStatus();
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+            if (attempt < BOOTSTRAP_RETRY_ATTEMPTS - 1) {
+              await sleep(BOOTSTRAP_RETRY_DELAY_MS);
+            }
+          }
+        }
+        if (lastError) {
+          throw lastError;
+        }
+        api.setBaseUrl(LOCAL_AI_CORE_BASE);
+        api.setToken('');
         useAuthStore.getState().setManagedSession(
-          runtime.settings.managementToken,
-          runtime.managementBaseUrl,
+          '',
+          LOCAL_AI_CORE_BASE,
           getRuntimeProvider() === 'local_core' ? 'local_core' : 'electron',
         );
       } catch (error) {
@@ -132,11 +155,11 @@ function BootstrapApp() {
       return;
     }
     return onRuntimeEvent((runtime) => {
-      api.setBaseUrl(runtime.managementBaseUrl);
-      api.setToken(runtime.settings.managementToken);
+      api.setBaseUrl(LOCAL_AI_CORE_BASE);
+      api.setToken('');
       useAuthStore.getState().setManagedSession(
-        runtime.settings.managementToken,
-        runtime.managementBaseUrl,
+        '',
+        LOCAL_AI_CORE_BASE,
         getRuntimeProvider() === 'local_core' ? 'local_core' : 'electron',
       );
     });

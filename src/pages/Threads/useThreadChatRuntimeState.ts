@@ -26,16 +26,13 @@ export function useThreadChatRuntimeState({
   const runtimeProvider = getRuntimeProvider();
   const showSessionKey = runtimeProvider === 'electron';
 
-  const serviceRunning = runtime?.phase === 'api_ready' || runtime?.phase === 'bridge_ready';
-  const bridgeConnected = runtime?.bridge.status === 'connected';
-  const transportReady = runtimeProvider === 'web_remote'
-    ? bridgeConnected
-    : serviceRunning;
+  const serviceRunning = runtime?.phase === 'api_ready';
+  const transportReady = serviceRunning;
 
   const refreshRuntime = useCallback(async () => {
     const nextRuntime = await getRuntimeStatus();
     setRuntime(nextRuntime);
-    if (!nextRuntime.service.lastError && !selectedProject) {
+    if (!nextRuntime.roles.conversation.lastError && !selectedProject) {
       setSelectedProject(requestedProject || nextRuntime.settings.defaultProject);
     }
   }, [requestedProject, selectedProject, setSelectedProject]);

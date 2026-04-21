@@ -218,8 +218,6 @@ export function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
       return '启动中';
     case 'api_ready':
       return '服务就绪';
-    case 'bridge_ready':
-      return '桥接就绪';
     case 'error':
       return '运行异常';
     default:

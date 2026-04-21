@@ -1,51 +1,16 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type {
   ConfigFileState,
-  DesktopBridgeEvent,
-  DesktopBridgeSendInput,
-  DesktopBridgeSendResult,
   ThreadDetail,
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
 } from '../../../../packages/contracts/src/index.js';
 import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
 
-export type ManagementSession = {
-  id: string;
-  session_key: string;
-  name: string;
-  platform: string;
-  agent_type: string;
-  active: boolean;
-  live: boolean;
-  created_at: string;
-  updated_at: string;
-  history_count: number;
-  last_message: { content: string } | null;
-  user_name?: string;
-  chat_name?: string;
-};
-
-export type ManagementSessionDetail = ManagementSession & {
-  history: Array<{ role: string; content: string; kind?: string; timestamp: string }>;
-};
-
-export type ManagementProject = {
-  name: string;
-  agent_type: string;
-  platforms: string[];
-  sessions_count: number;
-  heartbeat_enabled: boolean;
-};
-
 export type WorkspaceRouterOptions = {
   userDataPath: string;
   readConfigState: () => Promise<ConfigFileState>;
-  managementRequest: <T>(method: string, path: string, body?: unknown) => Promise<T>;
-  bridgeSendMessage: (input: DesktopBridgeSendInput) => Promise<DesktopBridgeSendResult>;
-  subscribeToBridgeEvents?: (listener: (event: DesktopBridgeEvent) => void) => () => void;
   knowledgeProvider: KnowledgeProvider;
-  emitBridge: (event: DesktopBridgeEvent) => void;
   log?: (message: string) => void;
 };
 
@@ -178,15 +143,11 @@ export type OpencodeInlineConfig = {
 };
 
 export type WorkspaceRoute =
-  | {
-      kind: 'localcore-acp';
-      agentType: string;
-      config: LocalCoreProjectConfig;
-    }
-  | {
-      kind: 'cc-connect';
-      agentType: string;
-    };
+  {
+    kind: 'localcore-acp';
+    agentType: string;
+    config: LocalCoreProjectConfig;
+  };
 
 export type ProbeCollector = {
   startedAt: string;

@@ -3,8 +3,6 @@ import { EventEmitter } from 'node:events';
 import type {
   ConfigFileState,
   DesktopBridgeEvent,
-  DesktopBridgeSendInput,
-  DesktopBridgeSendResult,
   DesktopConnectConfig,
   DesktopRuntimeStatus,
   DesktopSettings,
@@ -44,9 +42,6 @@ export interface LocalAiCoreBindings extends EventEmitter {
   saveRawConfigFile(raw: string): Promise<ConfigFileState>;
   saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
   saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
-  bridgeConnect(): Promise<unknown>;
-  bridgeDisconnect(): Promise<unknown>;
-  bridgeSendMessage(input: DesktopBridgeSendInput): Promise<DesktopBridgeSendResult>;
   listWorkspaces(): Promise<WorkspaceSummary[]>;
   listThreads(workspaceId: string): Promise<ThreadSummary[]>;
   createThread(workspaceId: string, title?: string): Promise<ThreadDetail>;
@@ -146,14 +141,14 @@ export class LocalAiCoreServer {
       this.broadcast({ type: 'runtime.updated', runtime });
     });
     this.bindings.on('bridge', (bridge: DesktopBridgeEvent) => {
-      this.broadcast({ type: 'bridge.updated', bridge });
+      this.broadcast({ type: 'stream.updated', stream: bridge });
       if (bridge.sessionKey) {
         const threadId = this.findThreadIdFromSessionKey(bridge.sessionKey);
         this.broadcast({
           type: 'presence.updated',
           threadId,
           live: bridge.type !== 'typing_stop',
-          bridge,
+          stream: bridge,
         });
       }
     });
@@ -243,19 +238,6 @@ export class LocalAiCoreServer {
       if (req.method === 'POST' && path === '/api/local/v1/runtime/settings') {
         const body = await readJsonBody(req);
         json(res, 200, await this.bindings.saveSettings(body as DesktopSettingsInput));
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/bridge/connect') {
-        json(res, 200, await this.bindings.bridgeConnect());
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/bridge/disconnect') {
-        json(res, 200, await this.bindings.bridgeDisconnect());
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/bridge/send-message') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.bridgeSendMessage(body as unknown as DesktopBridgeSendInput));
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/platforms/lark') {

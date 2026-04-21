@@ -1,5 +1,11 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
-import { createThread, interruptRun, sendMessage as sendThreadMessage, updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases } from '../../../packages/core-sdk/src';
+import {
+  createThread,
+  interruptRun,
+  sendAction as sendThreadAction,
+  sendMessage as sendThreadMessage,
+  updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
+} from '../../../packages/core-sdk/src';
 import type { KnowledgeBase } from '../../../packages/contracts/src';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
 import type {
@@ -69,7 +75,7 @@ export function useThreadChatSendingActions({
   progressSequenceByTurnRef,
   taskStateRef,
 }: UseThreadChatSendingActionsInput) {
-  const usesManagedThreadApi = runtimeProvider !== 'web_remote';
+  const usesManagedThreadApi = true;
   const buildMessageContent = useCallback((content: string) => {
     if (selectedKnowledgeBaseIds.length === 0) {
       return content;
@@ -122,8 +128,10 @@ export function useThreadChatSendingActions({
       return;
     }
     const content = draft.trim();
-    const payloadContent = buildMessageContent(content);
+    const isAwaitingReply = taskState === 'awaiting_input';
+    const payloadContent = isAwaitingReply ? content : buildMessageContent(content);
     const userOrder = reserveNextMessageOrder();
+    const baselineAssistantCount = messages.filter((message) => message.role === 'assistant').length;
     setDraft('');
     setSending(true);
 
@@ -149,8 +157,11 @@ export function useThreadChatSendingActions({
       }
       armReplyTimeout();
       if (usesManagedThreadApi && ensured.id) {
-        const result = await sendThreadMessage(ensured.id, payloadContent);
+        const result = isAwaitingReply
+          ? await sendThreadAction(ensured.id, payloadContent)
+          : await sendThreadMessage(ensured.id, payloadContent);
         setActiveRunId(result.runId);
+        startLocalCoreThreadPolling(ensured.id, baselineAssistantCount);
       } else {
         throw new Error('Managed desktop thread transport is unavailable.');
       }
@@ -172,8 +183,10 @@ export function useThreadChatSendingActions({
     clearReplyTimeout,
     draft,
     ensureSession,
+    taskState,
     pendingTurnRef,
     reserveNextMessageOrder,
+    messages,
     selectedKnowledgeBaseIds,
     selectedProject,
     setActiveRunId,
@@ -183,6 +196,7 @@ export function useThreadChatSendingActions({
     setSending,
     settlePreviewMessages,
     setTyping,
+    startLocalCoreThreadPolling,
     updateTaskState,
     usesManagedThreadApi,
   ]);

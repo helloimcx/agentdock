@@ -1,12 +1,11 @@
 import type { ThreadDetail, ThreadMessage, ThreadSummary } from '../../../../packages/contracts/src/index.js';
-import type { ManagementSession, ManagementSessionDetail } from '../router/workspace-router-types.js';
 import { encodeThreadId } from './workspace-thread-id.js';
 
 export function normalizeMessageContent(content?: string | null) {
   return String(content || '').replace(/\n/g, ' ').trim();
 }
 
-export function toThreadMessages(history: ManagementSessionDetail['history']): ThreadMessage[] {
+export function toThreadMessages(history: Array<{ role: string; content: string; kind?: string; timestamp: string }>): ThreadMessage[] {
   return history.map((message, index) => ({
     id: `${message.timestamp || index}-${message.role}-${index}`,
     role: message.role === 'user' ? 'user' : message.role === 'assistant' ? 'assistant' : 'system',
@@ -16,7 +15,23 @@ export function toThreadMessages(history: ManagementSessionDetail['history']): T
   }));
 }
 
-export function toThreadSummary(workspaceId: string, session: ManagementSession): ThreadSummary {
+export function toThreadSummary(
+  workspaceId: string,
+  session: {
+    id: string;
+    session_key: string;
+    name: string;
+    active: boolean;
+    live: boolean;
+    created_at: string;
+    updated_at: string;
+    history_count: number;
+    last_message: { content: string } | null;
+    user_name?: string;
+    chat_name?: string;
+    agent_type: string;
+  },
+): ThreadSummary {
   const id = encodeThreadId(workspaceId, session.id);
   return {
     id,
@@ -36,7 +51,21 @@ export function toThreadSummary(workspaceId: string, session: ManagementSession)
 
 export function toThreadDetail(
   workspaceId: string,
-  session: ManagementSessionDetail,
+  session: {
+    id: string;
+    session_key: string;
+    name: string;
+    active: boolean;
+    live: boolean;
+    created_at: string;
+    updated_at: string;
+    history_count: number;
+    last_message: { content: string } | null;
+    user_name?: string;
+    chat_name?: string;
+    agent_type: string;
+    history: Array<{ role: string; content: string; kind?: string; timestamp: string }>;
+  },
   selectedKnowledgeBaseIds: string[] = [],
 ): ThreadDetail {
   return {

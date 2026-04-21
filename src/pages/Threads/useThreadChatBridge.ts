@@ -10,7 +10,7 @@ type UseThreadChatBridgeInput = {
   activeThreadId: string;
   activeRunId: string;
   messages: ChatMessage[];
-  runtimeProvider: 'electron' | 'local_core' | 'web_remote';
+  runtimeProvider: 'electron' | 'local_core';
   selectedWorkspaceId: string;
   clearActionStatuses: () => void;
   clearLocalCorePolling: () => void;

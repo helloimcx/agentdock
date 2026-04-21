@@ -8,7 +8,6 @@ import {
   normalizeDesktopAgentModel,
   normalizeDesktopPlatformType,
 } from '../../../../shared/desktop.js';
-import { hasCcConnectPlatformBindings } from '../platform/platform-gateway.js';
 import type { LocalCoreProjectConfig } from './workspace-router-types.js';
 
 type OpencodeInlineProviderConfig = {
@@ -35,10 +34,7 @@ export function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | nul
   if (agentType === LOCALCORE_ACP_AGENT_TYPE || agentType === 'opencode' || agentType === 'claudecode') {
     return true;
   }
-  if (agentType !== 'acp') {
-    return false;
-  }
-  return !hasCcConnectPlatformBindings(project);
+  return agentType === 'acp';
 }
 
 function resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {

@@ -63,7 +63,7 @@ export function useThreadChatThreadActions({
   pendingTurnRef,
   progressSequenceByTurnRef,
 }: UseThreadChatThreadActionsInput) {
-  const usesManagedThreadApi = runtimeProvider !== 'web_remote';
+  const usesManagedThreadApi = true;
   const shouldCreateThreadImmediately = runtimeProvider === 'local_core';
   const resetBlankConversation = useCallback(() => {
     holdBlankComposerRef.current = true;

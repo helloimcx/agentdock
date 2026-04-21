@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type {
   DesktopBridgeEvent,
   LocalCoreCapabilities,
@@ -10,9 +9,7 @@ import type {
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import { CcConnectCompatAdapter } from '../platform/cc-connect-compat-adapter.js';
-import { CcConnectPlatformGatewayAdapter } from '../platform/platform-gateway.js';
-import { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
+import { decodeThreadId } from '../thread/workspace-thread-id.js';
 import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 
@@ -20,34 +17,22 @@ export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js
 
 export class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
-  private readonly ccConnect: CcConnectCompatAdapter;
-  private readonly platformGateway = new CcConnectPlatformGatewayAdapter();
   private readonly localCoreAcp: LocalCoreAcpBackend;
   private readonly runThreadMap = new Map<string, string>();
   private readonly bridgeSubscribers = new Set<(event: DesktopBridgeEvent) => void>();
-  private readonly unsubscribeExternalBridge?: () => void;
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = new LocalCoreAcpStore(options.userDataPath);
-    this.ccConnect = new CcConnectCompatAdapter({
-      managementRequest: options.managementRequest,
-      bridgeSendMessage: options.bridgeSendMessage,
-      runThreadMap: this.runThreadMap,
-    });
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
       runThreadMap: this.runThreadMap,
       emitBridge: (event) => this.emitBridgeEvent(event),
       log: options.log,
     });
-    this.unsubscribeExternalBridge = options.subscribeToBridgeEvents?.((event) => {
-      this.notifyBridgeSubscribers(event);
-    });
   }
 
   close() {
     this.localCoreAcp.close();
-    this.unsubscribeExternalBridge?.();
     this.bridgeSubscribers.clear();
     this.store.close();
   }
@@ -57,20 +42,13 @@ export class WorkspaceRouter {
     return row?.bridge_session_key || '';
   }
 
+  getStore() {
+    return this.store;
+  }
+
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
     const localProjects = await this.listLocalCoreProjects();
-    const ccProjects = await this.ccConnect.listProjects();
     const workspaceMap = new Map<string, WorkspaceSummary>();
-    for (const project of ccProjects) {
-      workspaceMap.set(project.name, {
-        id: project.name,
-        name: project.name,
-        agentType: project.agent_type,
-        platforms: project.platforms || [],
-        sessionsCount: project.sessions_count,
-        heartbeatEnabled: Boolean(project.heartbeat_enabled),
-      });
-    }
     for (const project of localProjects) {
       workspaceMap.set(project.name, {
         id: project.name,
@@ -85,41 +63,29 @@ export class WorkspaceRouter {
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
-    const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.localCoreAcp.listThreads(workspaceId);
-    }
-    return this.ccConnect.listThreads(workspaceId);
+    await this.getWorkspaceRoute(workspaceId);
+    return this.localCoreAcp.listThreads(workspaceId);
   }
 
   async createThread(workspaceId: string, title?: string): Promise<ThreadDetail> {
     const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.withKnowledge(await this.localCoreAcp.createThread(
-        workspaceId,
-        title || `New thread ${new Date().toLocaleTimeString()}`,
-        route.agentType,
-      ));
-    }
-    return this.withKnowledge(await this.ccConnect.createThread(workspaceId, title || `New thread ${new Date().toLocaleTimeString()}`));
+    return this.withKnowledge(await this.localCoreAcp.createThread(
+      workspaceId,
+      title || `New thread ${new Date().toLocaleTimeString()}`,
+      route.agentType,
+    ));
   }
 
   async getThread(threadId: string): Promise<ThreadDetail> {
-    const { workspaceId, sessionId } = decodeThreadId(threadId);
-    const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.withKnowledge(await this.localCoreAcp.getThread(threadId));
-    }
-    return this.withKnowledge(await this.ccConnect.getThread(encodeThreadId(workspaceId, sessionId)));
+    const { workspaceId } = decodeThreadId(threadId);
+    await this.getWorkspaceRoute(workspaceId);
+    return this.withKnowledge(await this.localCoreAcp.getThread(threadId));
   }
 
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
-    const { workspaceId, sessionId } = decodeThreadId(threadId);
-    const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.withKnowledge(await this.localCoreAcp.renameThread(threadId, title));
-    }
-    return this.withKnowledge(await this.ccConnect.renameThread(encodeThreadId(workspaceId, sessionId), title));
+    const { workspaceId } = decodeThreadId(threadId);
+    await this.getWorkspaceRoute(workspaceId);
+    return this.withKnowledge(await this.localCoreAcp.renameThread(threadId, title));
   }
 
   async updateThreadKnowledgeBases(threadId: string, knowledgeBaseIds: string[]) {
@@ -129,34 +95,23 @@ export class WorkspaceRouter {
   }
 
   async deleteThread(threadId: string) {
-    const { workspaceId, sessionId } = decodeThreadId(threadId);
-    const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      await this.localCoreAcp.deleteThread(threadId);
-      await this.options.knowledgeProvider.deleteThreadKnowledgeBaseLinks(threadId);
-      return { deleted: true };
-    }
-    await this.ccConnect.deleteThread(encodeThreadId(workspaceId, sessionId));
+    const { workspaceId } = decodeThreadId(threadId);
+    await this.getWorkspaceRoute(workspaceId);
+    await this.localCoreAcp.deleteThread(threadId);
     await this.options.knowledgeProvider.deleteThreadKnowledgeBaseLinks(threadId);
     return { deleted: true };
   }
 
   async sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }> {
-    const { workspaceId, sessionId } = decodeThreadId(threadId);
+    const { workspaceId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.localCoreAcp.sendThreadMessage(threadId, content, route.config);
-    }
-    return this.ccConnect.sendThreadMessage(encodeThreadId(workspaceId, sessionId), content);
+    return this.localCoreAcp.sendThreadMessage(threadId, content, route.config);
   }
 
   async sendThreadAction(threadId: string, content: string) {
     const { workspaceId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
-    }
-    return this.ccConnect.sendThreadAction(threadId, content);
+    return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
@@ -164,18 +119,15 @@ export class WorkspaceRouter {
     if (!threadId) {
       return { interrupted: false };
     }
-    const { workspaceId, sessionId } = decodeThreadId(threadId);
-    const route = await this.getWorkspaceRoute(workspaceId);
-    if (route.kind === 'localcore-acp') {
-      return this.localCoreAcp.interruptRun(runId);
-    }
-    return this.ccConnect.interruptRun(runId);
+    const { workspaceId } = decodeThreadId(threadId);
+    await this.getWorkspaceRoute(workspaceId);
+    return this.localCoreAcp.interruptRun(runId);
   }
 
   getCapabilities(): LocalCoreCapabilities {
     return {
       adapters: {
-        channels: [this.platformGateway.id, LOCALCORE_ACP_AGENT_TYPE],
+        channels: ['localcore-lark', LOCALCORE_ACP_AGENT_TYPE],
         agents: ['opencode', 'codex', 'claudecode', 'cursor', 'gemini', 'qoder', 'iflow', LOCALCORE_ACP_AGENT_TYPE],
         knowledge: true,
       },
@@ -193,10 +145,7 @@ export class WorkspaceRouter {
     ) {
       throw new Error(`Workspace "${workspaceId}" is not configured as an ACP agent.`);
     }
-    if (route.kind === 'localcore-acp') {
-      return this.probeLocalCoreAcpWorkspace(workspaceId, route);
-    }
-    return this.probeCcConnectWorkspace(workspaceId, route);
+    return this.probeLocalCoreAcpWorkspace(workspaceId, route);
   }
 
   private async withKnowledge(detail: ThreadDetail) {
@@ -208,7 +157,6 @@ export class WorkspaceRouter {
 
   private emitBridgeEvent(event: DesktopBridgeEvent) {
     this.notifyBridgeSubscribers(event);
-    this.options.emitBridge(event);
   }
 
   private notifyBridgeSubscribers(event: DesktopBridgeEvent) {
@@ -222,6 +170,10 @@ export class WorkspaceRouter {
     return () => {
       this.bridgeSubscribers.delete(listener);
     };
+  }
+
+  subscribeBridgeEvents(listener: (event: DesktopBridgeEvent) => void) {
+    return this.subscribeBridge(listener);
   }
 
   private createProbeCollector(): ProbeCollector {
@@ -392,37 +344,6 @@ export class WorkspaceRouter {
     return 'Reply with exactly three short plain-text lines: alpha, beta, gamma. Do not call tools or ask questions.';
   }
 
-  private async probeCcConnectWorkspace(workspaceId: string, route: Extract<WorkspaceRoute, { kind: 'cc-connect' }>) {
-    const prompt = this.buildProbePrompt();
-    const probeChatId = `probe-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
-    const sessionKey = `desktop:${workspaceId}:${probeChatId}`;
-    const collector = this.createProbeCollector();
-    let runId = '';
-    let shouldStopProbe = false;
-    const sequence = this.waitForProbeSequence(sessionKey, 20000, collector);
-    try {
-      const sent = await this.ccConnect.sendDesktopProbe(workspaceId, probeChatId, prompt);
-      runId = sent.runId;
-      await sequence.promise;
-      return this.finalizeProbeResult(workspaceId, route.agentType, 'cc-connect', prompt, collector, {
-        sessionKey,
-      });
-    } catch (error) {
-      sequence.cancel();
-      shouldStopProbe = true;
-      return this.finalizeProbeResult(workspaceId, route.agentType, 'cc-connect', prompt, collector, {
-        sessionKey,
-        error: error instanceof Error ? error.message : String(error),
-        timedOut: error instanceof Error && error.message.includes('Timed out'),
-      });
-    } finally {
-      if (runId && shouldStopProbe) {
-        await this.ccConnect.stopDesktopSession(sessionKey, workspaceId).catch(() => undefined);
-      }
-      await this.ccConnect.cleanupProbeSession(workspaceId, sessionKey);
-    }
-  }
-
   private async probeLocalCoreAcpWorkspace(
     workspaceId: string,
     route: Extract<WorkspaceRoute, { kind: 'localcore-acp' }>,
@@ -456,17 +377,14 @@ export class WorkspaceRouter {
     const configState = await this.options.readConfigState();
     const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
     const matched = projects.find((project) => String(project?.name || '').trim() === workspaceId);
-    const agentType = String(matched?.agent?.type || '').trim();
-    if (isLocalCoreNativeAcpProject(matched)) {
-      return {
-        kind: 'localcore-acp' as const,
-        agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
-        config: toLocalCoreProjectConfig(configState, matched!),
-      };
+    const agentType = String(matched?.agent?.type || '').trim().toLowerCase();
+    if (!matched || !isLocalCoreNativeAcpProject(matched)) {
+      throw new Error(`Workspace "${workspaceId}" is not configured as a Local AI Core ACP workspace.`);
     }
     return {
-      kind: 'cc-connect' as const,
-      agentType,
+      kind: 'localcore-acp' as const,
+      agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
+      config: toLocalCoreProjectConfig(configState, matched),
     };
   }
 

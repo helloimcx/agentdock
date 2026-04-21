@@ -439,11 +439,26 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       session.currentTurn.permission = permissionRequest;
     }
     this.options.store.updateRun(currentRunId, session.threadId, 'awaiting_input');
+    const permissionPrompt = [
+      '等待工具确认',
+      '',
+      formatToolCallContent(payload.params?.toolCall),
+      '',
+      '请选择一个选项继续执行。',
+      '',
+      '若按钮没有显示，请直接回复：allow all / allow / deny',
+    ].join('\n');
+    this.options.store.appendMessage(
+      session.threadId,
+      'assistant',
+      permissionPrompt,
+      'progress',
+    );
     this.emitBridgeEvent({
       type: 'buttons',
       sessionKey: session.bridgeSessionKey,
       replyCtx: currentRunId,
-      content: formatToolCallContent(payload.params?.toolCall),
+      content: permissionPrompt,
       buttonRows,
     });
   }
@@ -489,11 +504,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       }
       case 'tool_call': {
         const title = String(update.title || 'Running tool').trim();
+        const content = `🔧 ${title}`;
+        this.options.store.appendMessage(session.threadId, 'assistant', content, 'progress');
         this.emitBridgeEvent({
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          content: `🔧 ${title}`,
+          content,
         });
         return;
       }
@@ -509,11 +526,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
               .filter(Boolean)
               .join('\n')
           : '';
+        const message = `🔧 ${[title, status, content].filter(Boolean).join(' - ')}`;
+        this.options.store.appendMessage(session.threadId, 'assistant', message, 'progress');
         this.emitBridgeEvent({
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          content: `🔧 ${[title, status, content].filter(Boolean).join(' - ')}`,
+          content: message,
         });
         return;
       }
@@ -526,11 +545,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           .map((entry: any) => String(entry?.content || '').trim())
           .filter(Boolean)
           .join(' | ');
+        const content = `💭 ${summary}`;
+        this.options.store.appendMessage(session.threadId, 'assistant', content, 'progress');
         this.emitBridgeEvent({
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          content: `💭 ${summary}`,
+          content,
         });
         return;
       }

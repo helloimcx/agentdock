@@ -4,6 +4,7 @@ import type { ThreadDetail } from '../../../packages/contracts/src';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
   formatTaskHint,
+  isAwaitingInputMessage,
   isTaskInputLocked,
   isTaskRunningState,
   sortChatMessages,
@@ -245,13 +246,31 @@ export function useThreadChatConversationState({
         applyLocalCoreThreadDetail(detail);
         const nextMessages = toMessagesFromThread(detail.messages || []);
         const assistantCount = nextMessages.filter((message) => message.role === 'assistant').length;
+        const latestAssistantMessage = [...nextMessages].reverse().find((message) => message.role === 'assistant');
         const signature = nextMessages.map((message) => `${message.id}:${message.content}:${message.kind || 'final'}`).join('|');
         unchangedPolls = signature === lastSignature ? unchangedPolls + 1 : 0;
         lastSignature = signature;
-        if ((assistantCount > baselineAssistantCount && unchangedPolls >= 2) || Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS) {
+        if (latestAssistantMessage && isAwaitingInputMessage(latestAssistantMessage.content)) {
+          clearReplyTimeout();
+          setTyping(false);
+          pendingTurnRef.current = null;
+          updateTaskState('awaiting_input', 'local-core-poll-awaiting-input');
+          return;
+        }
+        if (
+          latestAssistantMessage &&
+          latestAssistantMessage.kind !== 'progress' &&
+          assistantCount > baselineAssistantCount &&
+          unchangedPolls >= 1
+        ) {
           setTyping(false);
           updateTaskState('idle', 'local-core-poll-complete');
-          if (Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS && assistantCount <= baselineAssistantCount) {
+          return;
+        }
+        if (Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS) {
+          setTyping(false);
+          updateTaskState('idle', 'local-core-poll-timeout');
+          if (assistantCount <= baselineAssistantCount) {
             setBridgeError('Agent did not respond in time. Check Local AI Core logs or adapter status.');
           }
           return;
@@ -272,7 +291,7 @@ export function useThreadChatConversationState({
     window.setTimeout(() => {
       void tick();
     }, 1500);
-  }, [applyLocalCoreThreadDetail, clearLocalCorePolling, setBridgeError, updateTaskState]);
+  }, [applyLocalCoreThreadDetail, clearLocalCorePolling, clearReplyTimeout, pendingTurnRef, setBridgeError, updateTaskState]);
 
   useEffect(() => {
     const hasPendingPreview = messages.some((message) =>

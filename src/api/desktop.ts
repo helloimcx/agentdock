@@ -1,8 +1,6 @@
 import type {
   ConfigFileState,
   DesktopBridgeEvent,
-  DesktopBridgeSendInput,
-  DesktopBridgeSendResult,
   DesktopRuntimeStatus,
   DesktopSettings,
   DesktopSettingsInput,
@@ -15,9 +13,6 @@ import type {
   WorkspaceStreamingProbeResult,
 } from '../../packages/contracts/src';
 import {
-  coreBridgeConnect,
-  coreBridgeDisconnect,
-  coreBridgeSendMessage,
   detectLocalAiCore,
   getThread as getCoreThread,
   getCoreLogs,
@@ -58,9 +53,6 @@ type DesktopProvider = {
   updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) => Promise<string[]>;
   deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;
   saveSettings: (input: DesktopSettingsInput) => Promise<DesktopSettings>;
-  bridgeConnect: () => Promise<unknown>;
-  bridgeDisconnect: () => Promise<unknown>;
-  bridgeSendMessage: (input: DesktopBridgeSendInput) => Promise<DesktopBridgeSendResult>;
   listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
   getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
   testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;
@@ -98,9 +90,6 @@ const electronProvider: DesktopProvider = {
   deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) =>
     requireDesktopBridge().deleteThreadKnowledgeBases(workspaceId, threadId),
   saveSettings: (input: DesktopSettingsInput) => requireDesktopBridge().saveSettings(input),
-  bridgeConnect: () => requireDesktopBridge().bridgeConnect(),
-  bridgeDisconnect: () => requireDesktopBridge().bridgeDisconnect(),
-  bridgeSendMessage: (input: DesktopBridgeSendInput) => requireDesktopBridge().bridgeSendMessage(input),
   listLarkGateways: () => requireDesktopBridge().listLarkGateways(),
   getLarkGatewayStatus: (workspaceId: string) => requireDesktopBridge().getLarkGatewayStatus(workspaceId),
   testLarkConnection: (workspaceId: string) => requireDesktopBridge().testLarkConnection(workspaceId),
@@ -131,9 +120,6 @@ const localCoreProvider: DesktopProvider = {
   deleteThreadKnowledgeBases: (_workspaceId: string, threadId: string) =>
     updateCoreThreadKnowledgeBases(threadId, []).then(() => ({ deleted: true })),
   saveSettings: (input: DesktopSettingsInput) => saveCoreSettings(input),
-  bridgeConnect: () => coreBridgeConnect(),
-  bridgeDisconnect: () => coreBridgeDisconnect(),
-  bridgeSendMessage: (input: DesktopBridgeSendInput) => coreBridgeSendMessage(input),
   listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
   getLarkGatewayStatus: (workspaceId: string) => getCoreLarkGatewayStatus(workspaceId),
   testLarkConnection: (workspaceId: string) => testCoreLarkConnection(workspaceId),
@@ -152,12 +138,9 @@ let activeProvider: DesktopProvider | null = null;
 
 function providerFor(kind: RuntimeProvider): DesktopProvider | null {
   if (kind === 'electron') {
-    return window.desktop ? electronProvider : null;
+    return window.desktop ? electronProvider : localCoreProvider;
   }
-  if (kind === 'local_core') {
-    return localCoreProvider;
-  }
-  return null;
+  return localCoreProvider;
 }
 
 async function detectProvider() {
@@ -171,9 +154,9 @@ async function detectProvider() {
     activeProvider = localCoreProvider;
     return activeProvider;
   }
-  setRuntimeProvider('web_remote');
-  activeProvider = null;
-  return null;
+  setRuntimeProvider('local_core');
+  activeProvider = localCoreProvider;
+  return activeProvider;
 }
 
 function requireProvider() {
@@ -207,9 +190,6 @@ export const updateThreadKnowledgeBases = (
 export const deleteThreadKnowledgeBases = (workspaceId: string, threadId: string): Promise<{ deleted: boolean }> =>
   requireProvider().deleteThreadKnowledgeBases(workspaceId, threadId);
 export const saveDesktopSettings = (input: DesktopSettingsInput): Promise<DesktopSettings> => requireProvider().saveSettings(input);
-export const bridgeConnect = () => requireProvider().bridgeConnect();
-export const bridgeDisconnect = () => requireProvider().bridgeDisconnect();
-export const bridgeSendMessage = (input: DesktopBridgeSendInput): Promise<DesktopBridgeSendResult> => requireProvider().bridgeSendMessage(input);
 export const listLarkGateways = (): Promise<LocalCoreLarkGatewayStatus[]> => requireProvider().listLarkGateways();
 export const getLarkGatewayStatus = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().getLarkGatewayStatus(workspaceId);
 export const testLarkConnection = (workspaceId: string): Promise<LocalCoreLarkConnectionResult> => requireProvider().testLarkConnection(workspaceId);

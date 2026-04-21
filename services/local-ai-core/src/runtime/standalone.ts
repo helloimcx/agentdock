@@ -1,13 +1,13 @@
 import process from 'node:process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { CcConnectController } from '../../../../packages/adapter-cc-connect/src/index.js';
+import { LocalCoreController } from './local-core-controller.js';
 import { LocalAiCoreServer } from './server.js';
 
 async function main() {
   const userDataPath = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim() || join(process.cwd(), '.ai-workstation-core');
   mkdirSync(userDataPath, { recursive: true });
-  const controller = new CcConnectController(userDataPath);
+  const controller = new LocalCoreController(userDataPath);
   controller.on('logs', (line: string) => {
     if (!line) {
       return;
