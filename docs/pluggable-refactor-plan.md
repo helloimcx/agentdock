@@ -17,19 +17,19 @@ Stabilize the current system before introducing registries and plugin abstractio
 
 ### Tasks
 
-- [ ] Audit current hardcoded module composition in `services/local-ai-core/src/runtime/local-core-controller.ts`
-- [ ] Audit current hardcoded feature switches in `src/app/runtime.ts`
-- [ ] Audit current hardcoded routes in `src/App.tsx`
-- [ ] Audit current hardcoded nav items in `src/components/Layout/Sidebar.tsx`
-- [ ] Audit current capability declarations in `services/local-ai-core/src/router/workspace-router.ts`
-- [ ] Write a short ADR documenting why the system is moving from layered modules to plugin-based composition
-- [ ] Define naming conventions for plugin ids, capability ids, and feature ids
-- [ ] Define a folder convention for future plugins under `services/local-ai-core/src/plugins/`
+- [x] Audit current hardcoded module composition in `services/local-ai-core/src/runtime/local-core-controller.ts`
+- [x] Audit current hardcoded feature switches in `src/app/runtime.ts`
+- [x] Audit current hardcoded routes in `src/App.tsx`
+- [x] Audit current hardcoded nav items in `src/components/Layout/Sidebar.tsx`
+- [x] Audit current capability declarations in `services/local-ai-core/src/router/workspace-router.ts`
+- [x] Write a short ADR documenting why the system is moving from layered modules to plugin-based composition
+- [x] Define naming conventions for plugin ids, capability ids, and feature ids
+- [x] Define a folder convention for future plugins under `services/local-ai-core/src/plugins/`
 
 ### Exit Criteria
 
 - [ ] The team agrees on plugin naming and directory conventions
-- [ ] The current hardcoded composition points are explicitly documented
+- [x] The current hardcoded composition points are explicitly documented
 - [ ] No new feature work adds more boolean-based feature switches
 
 ## Phase 1: Contracts And Kernel Skeleton
@@ -40,19 +40,19 @@ Create the minimum kernel abstractions without changing business behavior.
 
 ### Tasks
 
-- [ ] Add `packages/plugin-sdk/` for plugin contracts and helper types
-- [ ] Add `PluginManifest` type
-- [ ] Add `RuntimePlugin` type
-- [ ] Add `PluginContext` type
-- [ ] Add `PluginHealth` type
-- [ ] Add `CapabilityRegistry` interfaces for agent, channel, knowledge, scheduler, and UI contributions
-- [ ] Add `kernel/plugin-registry.ts`
-- [ ] Add `kernel/capability-registry.ts`
-- [ ] Add `kernel/lifecycle-manager.ts`
-- [ ] Add `kernel/event-bus.ts`
-- [ ] Add `kernel/bootstrap.ts`
-- [ ] Add a minimal `kernel/diagnostics.ts`
-- [ ] Keep bootstrap static for now, with explicit imports of built-in plugins
+- [x] Add `packages/plugin-sdk/` for plugin contracts and helper types
+- [x] Add `PluginManifest` type
+- [x] Add `RuntimePlugin` type
+- [x] Add `PluginContext` type
+- [x] Add `PluginHealth` type
+- [x] Add `CapabilityRegistry` interfaces for agent, channel, knowledge, scheduler, and UI contributions
+- [x] Add `kernel/plugin-registry.ts`
+- [x] Add `kernel/capability-registry.ts`
+- [x] Add `kernel/lifecycle-manager.ts`
+- [x] Add `kernel/event-bus.ts`
+- [x] Add `kernel/bootstrap.ts`
+- [x] Add a minimal `kernel/diagnostics.ts`
+- [x] Keep bootstrap static for now, with explicit imports of built-in plugins
 
 ### Suggested Paths
 
@@ -65,9 +65,9 @@ Create the minimum kernel abstractions without changing business behavior.
 
 ### Exit Criteria
 
-- [ ] The kernel can register plugins and expose a capability snapshot
-- [ ] No business plugin is dynamically loaded yet
-- [ ] Existing behavior remains unchanged
+- [x] The kernel can register plugins and expose a capability snapshot
+- [x] No business plugin is dynamically loaded yet
+- [x] Existing behavior remains unchanged
 
 ## Phase 2: Replace Direct Composition With Bootstrap
 
@@ -393,4 +393,3 @@ Remove compatibility shims and obsolete hardcoded paths after the plugin system 
 - [ ] Adding a new nav item does not require editing `Sidebar.tsx`
 - [ ] The runtime exposes installed capabilities and plugin health
 - [ ] Built-in modules are registered like plugins, not treated specially in the architecture
-

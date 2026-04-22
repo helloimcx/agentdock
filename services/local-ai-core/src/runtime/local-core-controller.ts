@@ -38,6 +38,7 @@ import type {
 import { AiVectorKnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
 import { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
+import { bootstrapLocalCoreKernel, type LocalCoreKernel } from '../kernel/bootstrap.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { LarkScheduleAdapter } from '../scheduler/lark-schedule-adapter.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
@@ -74,6 +75,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly larkGateway: LocalCoreLarkGateway;
   private readonly scheduler: SchedulerService;
   private readonly cliBinDir: string;
+  private readonly kernel: LocalCoreKernel;
 
   constructor(private readonly userDataPath: string) {
     super();
@@ -82,6 +84,9 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     mkdirSync(this.runtimeDir, { recursive: true });
     this.cliBinDir = this.ensureCliWrapper();
     this.settings = this.loadSettings();
+    this.kernel = bootstrapLocalCoreKernel({
+      log: (message) => this.pushLog(message),
+    });
     this.ensureConfigFile();
     this.knowledgeProvider = new AiVectorKnowledgeProvider({
       userDataPath,
@@ -162,6 +167,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async init() {
+    await this.kernel.lifecycle.initAll();
     await this.larkGateway.refreshBindings();
     await this.scheduler.start();
     await this.emitRuntime();
@@ -169,6 +175,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async close() {
     await this.scheduler.stop();
+    await this.kernel.lifecycle.stopAll();
     this.larkGateway.close();
     this.workspaceRouter.close();
   }
@@ -403,7 +410,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async getCapabilities(): Promise<LocalCoreCapabilities> {
-    return this.workspaceRouter.getCapabilities();
+    return this.kernel.getCapabilitySnapshot();
   }
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {
