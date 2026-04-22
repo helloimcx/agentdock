@@ -70,6 +70,7 @@ export interface ScheduledJob {
   workspaceId: string;
   platform: 'lark' | (string & {});
   route: ScheduledJobRoute;
+  executionMode: 'same-thread' | 'side-thread';
   triggerType: 'cron' | 'once';
   cronExpr?: string;
   runAt?: string;
@@ -101,6 +102,7 @@ export interface ScheduledJobCreateInput {
   workspaceId: string;
   platform: 'lark' | (string & {});
   route: ScheduledJobRoute;
+  executionMode?: 'same-thread' | 'side-thread';
   triggerType: 'cron' | 'once';
   cronExpr?: string;
   runAt?: string;
@@ -111,6 +113,7 @@ export interface ScheduledJobCreateInput {
 
 export interface ScheduledJobUpdateInput {
   route?: ScheduledJobRoute;
+  executionMode?: 'same-thread' | 'side-thread';
   triggerType?: 'cron' | 'once';
   cronExpr?: string;
   runAt?: string;

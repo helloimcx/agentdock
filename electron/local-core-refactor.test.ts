@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { LocalCoreAcpResponseProcessor } from '../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
 import { ScheduledConversationExecutor } from '../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
+import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({
@@ -20,6 +21,7 @@ test('response processor derives slash fallback replies and cron system response
         workspaceId: '知识库',
         platform: 'lark',
         route: { type: 'lark_chat', chatId: 'chat-1', platformUserId: 'user-1', threadId: 'thread-1' },
+        executionMode: 'same-thread',
         triggerType: 'cron',
         cronExpr: '*/2 * * * *',
         promptTemplate: 'ping',
@@ -54,6 +56,7 @@ test('scheduled conversation executor uses execution policy hooks around a threa
     workspaceId: '知识库',
     platform: 'lark',
     route: { type: 'lark_chat', chatId: 'chat-1', platformUserId: 'user-1', threadId: 'thread-1' },
+    executionMode: 'same-thread',
     triggerType: 'cron',
     cronExpr: '*/2 * * * *',
     promptTemplate: 'ping',
@@ -112,6 +115,7 @@ test('scheduler run lifecycle updates run and job state through explicit transit
     workspaceId: '知识库',
     platform: 'lark',
     route: { type: 'lark_chat', chatId: 'chat-1', platformUserId: 'user-1', threadId: 'thread-1' },
+    executionMode: 'same-thread',
     triggerType: 'cron',
     cronExpr: '*/2 * * * *',
     promptTemplate: 'ping',
@@ -161,4 +165,73 @@ test('scheduler run lifecycle updates run and job state through explicit transit
     'run-1:succeeded',
   ]);
   assert.deepEqual(emittedJobs, ['job-1:false']);
+});
+
+test('lark side-thread execution policy reuses a dedicated scheduled thread', async () => {
+  const job = {
+    id: 'job-1',
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'lark_chat', chatId: 'chat-1', platformUserId: 'user-1', threadId: 'thread-origin' },
+    executionMode: 'side-thread',
+    triggerType: 'cron',
+    cronExpr: '*/2 * * * *',
+    promptTemplate: 'ping',
+    description: 'two-minute ping',
+    enabled: true,
+    concurrencyPolicy: 'skip_if_running',
+    createdAt: '2026-04-22T06:00:00.000Z',
+    updatedAt: '2026-04-22T06:00:00.000Z',
+  } as const;
+  const policy = createLarkExecutionPolicy(
+    job as any,
+    {
+      store: {} as any,
+      workspaceRouter: {
+        listThreads: async () => [{ id: 'thread-scheduled', title: '[Scheduled] two-minute ping' }],
+        createThread: async () => ({ id: 'thread-new' }),
+      } as any,
+      larkGateway: {
+        muteThreadBridge: () => {},
+        unmuteThreadBridge: () => {},
+      } as any,
+    },
+    async () => 'thread-origin',
+  );
+
+  const target = await policy.resolveTarget(job as any);
+  assert.equal(target.threadId, 'thread-scheduled');
+});
+
+test('lark same-thread execution policy keeps the original thread target', async () => {
+  const job = {
+    id: 'job-1',
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'lark_chat', chatId: 'chat-1', platformUserId: 'user-1', threadId: 'thread-origin' },
+    executionMode: 'same-thread',
+    triggerType: 'cron',
+    cronExpr: '*/2 * * * *',
+    promptTemplate: 'ping',
+    description: 'two-minute ping',
+    enabled: true,
+    concurrencyPolicy: 'skip_if_running',
+    createdAt: '2026-04-22T06:00:00.000Z',
+    updatedAt: '2026-04-22T06:00:00.000Z',
+  } as const;
+  const policy = createLarkExecutionPolicy(
+    job as any,
+    {
+      store: {} as any,
+      workspaceRouter: {} as any,
+      larkGateway: {
+        muteThreadBridge: () => {},
+        unmuteThreadBridge: () => {},
+      } as any,
+    },
+    async () => 'thread-origin',
+  );
+
+  const target = await policy.resolveTarget(job as any);
+  assert.equal(target.threadId, 'thread-origin');
 });

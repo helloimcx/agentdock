@@ -55,6 +55,7 @@ export type LocalScheduledJobRow = {
   platform: string;
   route_type: string;
   route_config: string;
+  execution_mode: 'same-thread' | 'side-thread';
   trigger_type: 'cron' | 'once';
   cron_expr: string | null;
   run_at: string | null;

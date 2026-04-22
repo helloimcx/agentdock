@@ -112,6 +112,7 @@ export class LocalCoreAcpStore {
         platform TEXT NOT NULL,
         route_type TEXT NOT NULL,
         route_config TEXT NOT NULL,
+        execution_mode TEXT NOT NULL DEFAULT 'same-thread',
         trigger_type TEXT NOT NULL,
         cron_expr TEXT,
         run_at TEXT,
@@ -142,6 +143,7 @@ export class LocalCoreAcpStore {
       );
       CREATE INDEX IF NOT EXISTS idx_scheduled_job_runs_job_triggered ON scheduled_job_runs (job_id, triggered_at DESC);
     `);
+    this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
   }
 
   close() {
@@ -304,14 +306,14 @@ export class LocalCoreAcpStore {
     const query = workspaceId
       ? `
         SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
-               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error
+               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode
         FROM scheduled_jobs
         WHERE workspace_id = ?
         ORDER BY updated_at DESC
       `
       : `
         SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
-               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error
+               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode
         FROM scheduled_jobs
         ORDER BY updated_at DESC
       `;
@@ -322,7 +324,7 @@ export class LocalCoreAcpStore {
   getScheduledJob(jobId: string): ScheduledJob | undefined {
     const row = this.db.prepare(`
       SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
-             enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error
+             enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode
       FROM scheduled_jobs
       WHERE id = ?
     `).get(jobId) as LocalScheduledJobRow | undefined;
@@ -334,15 +336,16 @@ export class LocalCoreAcpStore {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO scheduled_jobs (
-        id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at,
+        id, workspace_id, platform, route_type, route_config, execution_mode, trigger_type, cron_expr, run_at,
         prompt_template, description, enabled, concurrency_policy, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'skip_if_running', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'skip_if_running', ?, ?)
     `).run(
       id,
       input.workspaceId,
       input.platform,
       input.route.type,
       JSON.stringify(input.route),
+      input.executionMode || 'same-thread',
       input.triggerType,
       input.cronExpr || null,
       input.runAt || null,
@@ -363,6 +366,7 @@ export class LocalCoreAcpStore {
     const next = {
       ...existing,
       ...(input.route ? { route: input.route } : {}),
+      ...(input.executionMode ? { executionMode: input.executionMode } : {}),
       ...(input.triggerType ? { triggerType: input.triggerType } : {}),
       ...(Object.prototype.hasOwnProperty.call(input, 'cronExpr') ? { cronExpr: input.cronExpr || undefined } : {}),
       ...(Object.prototype.hasOwnProperty.call(input, 'runAt') ? { runAt: input.runAt || undefined } : {}),
@@ -373,12 +377,13 @@ export class LocalCoreAcpStore {
     };
     this.db.prepare(`
       UPDATE scheduled_jobs
-      SET route_type = ?, route_config = ?, trigger_type = ?, cron_expr = ?, run_at = ?, prompt_template = ?,
+      SET route_type = ?, route_config = ?, execution_mode = ?, trigger_type = ?, cron_expr = ?, run_at = ?, prompt_template = ?,
           description = ?, enabled = ?, updated_at = ?
       WHERE id = ?
     `).run(
       next.route.type,
       JSON.stringify(next.route),
+      next.executionMode,
       next.triggerType,
       next.cronExpr || null,
       next.runAt || null,
@@ -723,6 +728,7 @@ export class LocalCoreAcpStore {
       workspaceId: row.workspace_id,
       platform: row.platform,
       route,
+      executionMode: row.execution_mode || 'same-thread',
       triggerType: row.trigger_type,
       cronExpr: row.cron_expr || undefined,
       runAt: row.run_at || undefined,
@@ -751,5 +757,13 @@ export class LocalCoreAcpStore {
       runId: row.run_id || undefined,
       platformMessageId: row.platform_message_id || undefined,
     };
+  }
+
+  private ensureColumn(table: string, column: string, definition: string) {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (rows.some((row) => row.name === column)) {
+      return;
+    }
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 }

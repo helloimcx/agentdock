@@ -66,7 +66,14 @@ src/
 - `beforeExecute(target, job)`
 - `afterExecute(target, job)`
 
-当前 Lark adapter 使用的是“复用原 thread”的策略。后续若要改成 side-thread / side-run，应优先替换 execution policy，而不是把新逻辑继续塞回 adapter 或 scheduler service。
+当前任务模型支持：
+
+- `executionMode: 'same-thread'`
+- `executionMode: 'side-thread'`
+
+`same-thread` 会复用原对话 thread；`side-thread` 会为该 job 复用或创建一个专用的 `[Scheduled] ...` 线程。当前默认值仍是 `same-thread`，以保持现有行为兼容。
+
+后续若要继续演进到 side-run 或更复杂的 execution target，应优先扩展 execution policy，而不是把新逻辑继续塞回 adapter 或 scheduler service。
 
 ## 对外接口（概览）
 
