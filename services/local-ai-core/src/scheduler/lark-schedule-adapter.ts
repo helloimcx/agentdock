@@ -3,6 +3,7 @@ import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { PlatformScheduleAdapter, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
+import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 
 type LarkScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -11,10 +12,21 @@ type LarkScheduleAdapterOptions = {
   log?: (message: string) => void;
 };
 
-const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
-
 export class LarkScheduleAdapter implements PlatformScheduleAdapter {
-  constructor(private readonly options: LarkScheduleAdapterOptions) {}
+  private readonly executor: ScheduledConversationExecutor;
+
+  constructor(private readonly options: LarkScheduleAdapterOptions) {
+    this.executor = new ScheduledConversationExecutor({
+      store: options.store,
+      workspaceRouter: options.workspaceRouter,
+      beforeExecute: (threadId) => {
+        this.options.larkGateway.muteThreadBridge(threadId);
+      },
+      afterExecute: (threadId) => {
+        this.options.larkGateway.unmuteThreadBridge(threadId);
+      },
+    });
+  }
 
   supports(job: ScheduledJob) {
     return job.platform === 'lark' && job.route.type === 'lark_chat';
@@ -23,31 +35,20 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
     const { job } = context;
     const threadId = await this.resolveThread(job);
-    this.options.larkGateway.muteThreadBridge(threadId);
-    try {
-      const sendResult = await this.options.workspaceRouter.sendThreadMessage(threadId, job.promptTemplate);
-      const run = await this.waitForRun(sendResult.runId, 15 * 60 * 1000);
-      const thread = await this.options.workspaceRouter.getThread(threadId);
-      const replyText = [...thread.messages]
-        .reverse()
-        .find((message) => message.role === 'assistant' && message.kind === 'final')
-        ?.content;
-      let platformMessageId = '';
-      if (replyText) {
-        platformMessageId = await this.options.larkGateway.sendScheduledCard(job.workspaceId, job.route.chatId, replyText);
-        if (!platformMessageId) {
-          throw new Error('Lark gateway did not return a message id for scheduled delivery.');
-        }
+    const execution = await this.executor.execute(threadId, job.promptTemplate);
+    let platformMessageId = '';
+    if (execution.replyText) {
+      platformMessageId = await this.options.larkGateway.sendScheduledCard(job.workspaceId, job.route.chatId, execution.replyText);
+      if (!platformMessageId) {
+        throw new Error('Lark gateway did not return a message id for scheduled delivery.');
       }
-      return {
-        threadId,
-        runId: sendResult.runId,
-        replyText,
-        platformMessageId: platformMessageId || undefined,
-      };
-    } finally {
-      this.options.larkGateway.unmuteThreadBridge(threadId);
     }
+    return {
+      threadId,
+      runId: execution.runId,
+      replyText: execution.replyText,
+      platformMessageId: platformMessageId || undefined,
+    };
   }
 
   private async resolveThread(job: ScheduledJob) {
@@ -79,20 +80,5 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
       this.options.store.updateAuthorizedUserThread(job.workspaceId, route.platformUserId, thread.id);
     }
     return thread.id;
-  }
-
-  private async waitForRun(runId: string, timeoutMs: number) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
-      const run = this.options.store.getRun(runId);
-      if (run && TERMINAL_RUN_STATES.has(run.status)) {
-        if (run.status !== 'completed') {
-          throw new Error(`Scheduled run finished with status ${run.status}`);
-        }
-        return run;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    throw new Error(`Timed out waiting for scheduled run ${runId}`);
   }
 }
