@@ -14,7 +14,7 @@ import type {
 type UseThreadChatBridgeActionsInput = {
   messages: ChatMessage[];
   reserveNextMessageOrder: () => number;
-  startLocalCoreThreadPolling: (threadId: string, baselineAssistantCount: number) => void;
+  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
   clearActionStatuses: () => void;
   settlePreviewMessages: (turnKey?: string) => void;
@@ -57,7 +57,7 @@ export function useThreadChatBridgeActions({
     if (!activeThreadId) {
       return;
     }
-    const baselineAssistantCount = messages.filter((item) => item.role === 'assistant').length;
+    const baselineResponseCount = messages.filter((item) => item.role !== 'user' && item.kind !== 'progress').length;
     if (!usesManagedThreadApi) {
       setBridgeError('Managed desktop thread action transport is unavailable.');
       updateTaskState('error', 'bridge-action-unavailable');
@@ -88,7 +88,7 @@ export function useThreadChatBridgeActions({
       ]);
       const result = await sendAction(activeThreadId, actionContent);
       setActiveRunId(result.runId);
-      startLocalCoreThreadPolling(activeThreadId, baselineAssistantCount);
+      startLocalCoreThreadPolling(activeThreadId, baselineResponseCount);
       sent = true;
       setBridgeError('');
       settlePreviewMessages(message.actionReplyCtx);

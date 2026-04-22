@@ -232,7 +232,7 @@ export function useThreadChatConversationState({
     setPendingPermissionRequest,
   ]);
 
-  const startLocalCoreThreadPolling = useCallback((threadId: string, baselineAssistantCount: number) => {
+  const startLocalCoreThreadPolling = useCallback((threadId: string, baselineResponseCount: number) => {
     clearLocalCorePolling();
     const generation = localCorePollGenerationRef.current;
     const startedAt = Date.now();
@@ -253,7 +253,7 @@ export function useThreadChatConversationState({
         const signature = nextMessages.map((message) => `${message.id}:${message.content}:${message.kind || 'final'}`).join('|');
         unchangedPolls = signature === lastSignature ? unchangedPolls + 1 : 0;
         lastSignature = signature;
-        const derivedState = deriveTaskStateFromThreadDetail(detail, baselineAssistantCount, unchangedPolls);
+        const derivedState = deriveTaskStateFromThreadDetail(detail, baselineResponseCount, unchangedPolls);
         if (derivedState?.state === 'awaiting_permission' || derivedState?.state === 'awaiting_input') {
           clearReplyTimeout();
           setTyping(false);
@@ -268,11 +268,11 @@ export function useThreadChatConversationState({
           return;
         }
         if (Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS) {
-          const assistantCount = detail.messages.filter((message) => message.role === 'assistant').length;
+          const responseCount = detail.messages.filter((message) => message.role !== 'user' && message.kind !== 'progress').length;
           setTyping(false);
           setPendingPermissionRequest(null);
           updateTaskState('idle', 'local-core-poll-timeout');
-          if (assistantCount <= baselineAssistantCount) {
+          if (responseCount <= baselineResponseCount) {
             setBridgeError('Agent did not respond in time. Check Local AI Core logs or adapter status.');
           }
           return;

@@ -22,6 +22,10 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCoreEvent,
   LocalCorePairingRequest,
+  ScheduledJob,
+  ScheduledJobCreateInput,
+  ScheduledJobRun,
+  ScheduledJobUpdateInput,
   WorkspaceStreamingProbeResult,
   ThreadDetail,
   ThreadSummary,
@@ -74,6 +78,8 @@ function ensureEventSource() {
     'message.created',
     'message.updated',
     'run.updated',
+    'scheduler.job.updated',
+    'scheduler.run.updated',
     'presence.updated',
     'stream.updated',
   ].forEach((eventName) => {
@@ -195,6 +201,35 @@ export async function listLarkAuthorizedUsers(workspaceId?: string) {
 
 export async function listWorkspaces() {
   return coreRequest<{ workspaces: WorkspaceSummary[] }>('GET', '/workspaces');
+}
+
+export async function listScheduledJobs(workspaceId?: string) {
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  return coreRequest<{ jobs: ScheduledJob[] }>('GET', `/scheduler/jobs${suffix}`);
+}
+
+export async function getScheduledJob(jobId: string) {
+  return coreRequest<ScheduledJob>('GET', `/scheduler/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function createScheduledJob(input: ScheduledJobCreateInput) {
+  return coreRequest<ScheduledJob>('POST', '/scheduler/jobs', input);
+}
+
+export async function updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput) {
+  return coreRequest<ScheduledJob>('PATCH', `/scheduler/jobs/${encodeURIComponent(jobId)}`, input);
+}
+
+export async function deleteScheduledJob(jobId: string) {
+  return coreRequest<{ deleted: boolean }>('DELETE', `/scheduler/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function runScheduledJob(jobId: string) {
+  return coreRequest<ScheduledJobRun>('POST', `/scheduler/jobs/${encodeURIComponent(jobId)}/run`);
+}
+
+export async function listScheduledJobRuns(jobId: string) {
+  return coreRequest<{ runs: ScheduledJobRun[] }>('GET', `/scheduler/jobs/${encodeURIComponent(jobId)}/runs`);
 }
 
 export async function listThreads(workspaceId: string) {

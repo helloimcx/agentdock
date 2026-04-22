@@ -28,7 +28,7 @@ type UseThreadChatBridgeInput = {
   setPendingPermissionRequest: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   setPendingBridgeActionId: Dispatch<SetStateAction<string | null>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
-  startLocalCoreThreadPolling: (threadId: string, baselineAssistantCount: number) => void;
+  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
   updateTaskState: (next: ChatTaskState) => void;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
   pendingTurnRef: MutableRefObject<{ sessionKey: string; userOrder: number } | null>;

@@ -9,7 +9,7 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
 } from '../../../../packages/contracts/src/index.js';
-import { normalizeDesktopPlatformType } from '../../../../shared/desktop.js';
+import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 
@@ -83,9 +83,10 @@ export class LocalCoreLarkGateway extends EventEmitter {
   // Keep permission state in a dedicated card to avoid mixing order in the main reply card.
   private readonly mirrorPermissionStateInMainCard = false;
   private readonly runtime = new Map<string, LarkRuntimeState>();
-  private readonly threadRouting = new Map<string, { workspaceId: string; platformUserId: string; chatId: string }>();
+  private readonly threadRouting = new Map<string, { workspaceId: string; platformUserId: string; chatId: string; threadId: string }>();
   private readonly outboundEventChains = new Map<string, Promise<void>>();
   private readonly outboundTurns = new Map<string, LarkTurnState>();
+  private readonly mutedThreadBridgeCounts = new Map<string, number>();
   private larkModulePromise: Promise<LarkModule> | null = null;
 
   constructor(private readonly options: LocalCoreLarkGatewayOptions) {
@@ -139,6 +140,24 @@ export class LocalCoreLarkGateway extends EventEmitter {
   async disable(workspaceId: string) {
     await this.stopWorkspace(workspaceId);
     return this.getStatus(workspaceId);
+  }
+
+  async sendScheduledCard(workspaceId: string, chatId: string, text: string) {
+    return this.sendImmediateCard(workspaceId, chatId, text);
+  }
+
+  muteThreadBridge(threadId: string) {
+    const current = this.mutedThreadBridgeCounts.get(threadId) || 0;
+    this.mutedThreadBridgeCounts.set(threadId, current + 1);
+  }
+
+  unmuteThreadBridge(threadId: string) {
+    const current = this.mutedThreadBridgeCounts.get(threadId) || 0;
+    if (current <= 1) {
+      this.mutedThreadBridgeCounts.delete(threadId);
+      return;
+    }
+    this.mutedThreadBridgeCounts.set(threadId, current - 1);
   }
 
   getStatus(workspaceId: string): LocalCoreLarkGatewayStatus {
@@ -259,6 +278,10 @@ export class LocalCoreLarkGateway extends EventEmitter {
         const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId);
         if (!binding) {
           this.options.log?.(`localcore-lark bridge binding disappeared for sessionKey=${sessionKey}`);
+          return;
+        }
+        if (this.mutedThreadBridgeCounts.has(binding.thread_id)) {
+          this.options.log?.(`localcore-lark bridge muted for thread=${binding.thread_id} type=${event.type}`);
           return;
         }
         const turn = this.getOrCreateTurnState(sessionKey, binding.last_platform_message_id || undefined);
@@ -422,12 +445,23 @@ export class LocalCoreLarkGateway extends EventEmitter {
       });
     }
     const sessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
-    this.threadRouting.set(sessionKey, {
+    const normalizedText = String(input.text || '').trim().toLowerCase();
+    const permissionThreadId = (
+      normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
+    )
+      ? this.findAwaitingPermissionThreadId(input.workspaceId, input.chatId, input.platformUserId)
+      : '';
+    if (permissionThreadId && permissionThreadId !== threadId) {
+      threadId = permissionThreadId;
+    }
+    const effectiveSessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
+    this.threadRouting.set(effectiveSessionKey, {
       workspaceId: input.workspaceId,
       platformUserId: input.platformUserId,
       chatId: input.chatId,
+      threadId,
     });
-    const acknowledgement = this.createTurnState(sessionKey, input.messageId);
+    const acknowledgement = this.createTurnState(effectiveSessionKey, input.messageId);
     await this.addAcknowledgementReaction(input.workspaceId, input.messageId, acknowledgement);
     const slashCommand = this.parseSlashCommand(input.text);
     if (slashCommand?.name === 'new') {
@@ -448,11 +482,11 @@ export class LocalCoreLarkGateway extends EventEmitter {
         workspaceId: input.workspaceId,
         platformUserId: input.platformUserId,
         chatId: input.chatId,
+        threadId: nextThread.id,
       });
       await this.sendImmediateCard(input.workspaceId, input.chatId, '**已开始新会话**');
       return { paired: true, threadId: nextThread.id };
     }
-    const normalizedText = String(input.text || '').trim().toLowerCase();
     const latestRun = this.options.store.getLatestRunForThread(threadId);
     if (
       (normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny')
@@ -462,7 +496,7 @@ export class LocalCoreLarkGateway extends EventEmitter {
       return { paired: true, threadId };
     }
     this.options.store.clearPlatformThreadMessageId(input.workspaceId, input.chatId, input.platformUserId);
-    await router.sendThreadMessage(threadId, input.text);
+    await router.sendThreadMessage(threadId, wrapUserMessageWithSchedulerProtocol(input.text));
     return { paired: true, threadId };
   }
 
@@ -738,6 +772,23 @@ export class LocalCoreLarkGateway extends EventEmitter {
     return String(randomInt(100000, 1000000));
   }
 
+  private findAwaitingPermissionThreadId(workspaceId: string, chatId: string, platformUserId: string) {
+    for (const [sessionKey, route] of this.threadRouting.entries()) {
+      if (
+        route.workspaceId !== workspaceId
+        || route.chatId !== chatId
+        || route.platformUserId !== platformUserId
+      ) {
+        continue;
+      }
+      const turn = this.outboundTurns.get(sessionKey);
+      if (turn?.awaitingPermission && route.threadId) {
+        return route.threadId;
+      }
+    }
+    return '';
+  }
+
   private parseSlashCommand(text: string) {
     const normalized = String(text || '').trim();
     if (!normalized.startsWith('/')) {
@@ -855,11 +906,13 @@ export class LocalCoreLarkGateway extends EventEmitter {
   private renderTurnCard(turn: LarkTurnState) {
     const sections: string[] = [];
     if (turn.finalText) {
-      sections.push(`**回复**\n${turn.finalText}`);
+      sections.push(turn.finalText);
     } else if (turn.previewText) {
-      sections.push(`**回复**\n${turn.previewText}`);
+      sections.push(turn.previewText);
+    } else if (turn.processing && turn.toolCalls.length > 0) {
+      sections.push(`**处理中**\n${this.formatCompactToolLines(turn.toolCalls).join('\n')}`);
     } else if (turn.processing) {
-      sections.push('**思考过程**\n• 正在思考...');
+      sections.push('**处理中**\n正在思考...');
     }
     return {
       text: sections.join('\n\n').trim(),
@@ -868,15 +921,12 @@ export class LocalCoreLarkGateway extends EventEmitter {
   }
 
   private renderPermissionCard(turn: LarkTurnState, event: DesktopBridgeEvent) {
-    const content = String(event.content || '').trim();
+    const summary = this.buildPermissionSummary(turn, String(event.content || '').trim());
     const sections = [
-      '**等待工具确认**',
-      turn.toolCalls.length
-        ? `**工具调用**\n${turn.toolCalls.map((line) => `• ${line}`).join('\n')}`
-        : '',
-      content ? `**请求**\n${content}` : '',
-      '**操作**\n请选择一个选项继续执行。',
-      '若按钮点击失败，请直接发送：`allow all` / `allow` / `deny`',
+      '**需要工具确认**',
+      summary.command ? `\`${summary.command}\`` : '',
+      summary.reason || '',
+      '回复：`allow` / `allow all` / `deny`',
     ].filter(Boolean);
     const buttonRows = this.enableCardActions && Array.isArray(event.buttonRows)
       ? event.buttonRows
@@ -940,6 +990,28 @@ export class LocalCoreLarkGateway extends EventEmitter {
     if (target.length > 6) {
       target.splice(0, target.length - 6);
     }
+  }
+
+  private buildPermissionSummary(turn: LarkTurnState, rawContent: string) {
+    const lastTool = turn.toolCalls[turn.toolCalls.length - 1] || '';
+    const [commandPart = '', reasonPart = ''] = lastTool.split(/\s+-\s+/, 2);
+    const compactContent = rawContent
+      .replace(/\s+/g, ' ')
+      .replace(/请选择一个选项继续执行。?/g, '')
+      .replace(/若按钮没有显示，请直接回复：?\s*allow all \/ allow \/ deny/gi, '')
+      .replace(/等待工具确认/gi, '')
+      .trim();
+    return {
+      command: commandPart.trim(),
+      reason: reasonPart.trim() || compactContent,
+    };
+  }
+
+  private formatCompactToolLines(toolCalls: string[]) {
+    return toolCalls.slice(-2).map((line) => {
+      const compact = line.replace(/\s+/g, ' ').trim();
+      return compact.startsWith('Terminal') ? '• Terminal' : `• ${compact}`;
+    });
   }
 
   private async sendImmediateCard(workspaceId: string, chatId: string, text: string) {

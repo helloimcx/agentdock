@@ -1,6 +1,7 @@
 import type {
   DesktopBridgeEvent,
   LocalCoreCapabilities,
+  ScheduledJob,
   ThreadDetail,
   ThreadSummary,
   WorkspaceStreamingProbeResult,
@@ -20,13 +21,49 @@ export class WorkspaceRouter {
   private readonly localCoreAcp: LocalCoreAcpBackend;
   private readonly runThreadMap = new Map<string, string>();
   private readonly bridgeSubscribers = new Set<(event: DesktopBridgeEvent) => void>();
+  private schedulerBridge: {
+    createJob: (input: {
+      workspaceId: string;
+      threadId: string;
+      chatId: string;
+      platformUserId: string;
+      name: string;
+      schedule: string;
+      scheduleDescription: string;
+      message: string;
+    }) => Promise<ScheduledJob>;
+    listJobsForThread: (threadId: string) => Promise<ScheduledJob[]>;
+    deleteJob: (jobId: string) => Promise<void>;
+  } | null = null;
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = new LocalCoreAcpStore(options.userDataPath);
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
       runThreadMap: this.runThreadMap,
+      cliBinDir: options.cliBinDir,
+      localCoreBase: options.localCoreBase,
       emitBridge: (event) => this.emitBridgeEvent(event),
+      scheduler: {
+        createJob: async (input) => {
+          if (!this.schedulerBridge) {
+            throw new Error('Scheduler bridge is unavailable.');
+          }
+          return this.schedulerBridge.createJob(input);
+        },
+        listJobsForThread: async (threadId) => {
+          if (!this.schedulerBridge) {
+            throw new Error('Scheduler bridge is unavailable.');
+          }
+          return this.schedulerBridge.listJobsForThread(threadId);
+        },
+        deleteJob: async (jobId) => {
+          if (!this.schedulerBridge) {
+            throw new Error('Scheduler bridge is unavailable.');
+          }
+          return this.schedulerBridge.deleteJob(jobId);
+        },
+      },
       log: options.log,
     });
   }
@@ -44,6 +81,10 @@ export class WorkspaceRouter {
 
   getStore() {
     return this.store;
+  }
+
+  setSchedulerBridge(bridge: NonNullable<WorkspaceRouter['schedulerBridge']>) {
+    this.schedulerBridge = bridge;
   }
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
@@ -130,6 +171,11 @@ export class WorkspaceRouter {
         channels: ['localcore-lark', LOCALCORE_ACP_AGENT_TYPE],
         agents: ['opencode', 'codex', 'claudecode', 'cursor', 'gemini', 'qoder', 'iflow', LOCALCORE_ACP_AGENT_TYPE],
         knowledge: true,
+      },
+      scheduler: {
+        enabled: true,
+        triggerTypes: ['cron', 'once'],
+        platforms: ['lark'],
       },
     };
   }

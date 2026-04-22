@@ -464,19 +464,22 @@ export default function ThreadChat() {
                 <div className="space-y-5">
                   {renderedMessages.map((message) => {
                     const isUser = message.role === 'user';
-                    const isProgress = !isUser && message.kind === 'progress';
+                    const isSystem = message.role === 'system';
+                    const isProgress = !isUser && !isSystem && message.kind === 'progress';
                     return (
                       <div key={message.id} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
                         {!isUser ? (
                           <div
                             className={cn(
                               'mt-1 flex shrink-0 items-center justify-center rounded-full text-slate-400 dark:text-slate-500',
-                              isProgress
+                              isSystem
+                                ? 'h-7 w-7 bg-amber-100 text-amber-600 dark:bg-amber-500/12 dark:text-amber-300'
+                                : isProgress
                                 ? 'h-6 w-6 bg-slate-100 dark:bg-white/[0.04]'
                                 : 'h-8 w-8 bg-slate-100 dark:bg-white/[0.06]',
                             )}
                           >
-                            {isProgress ? <Circle size={7} className="fill-current" /> : <Bot size={14} />}
+                            {isSystem ? <Check size={14} /> : isProgress ? <Circle size={7} className="fill-current" /> : <Bot size={14} />}
                           </div>
                         ) : null}
 
@@ -496,12 +499,17 @@ export default function ThreadChat() {
                               'rounded-[22px] px-4 py-3 text-sm',
                               isUser
                                 ? 'rounded-br-md bg-emerald-400/95 text-black shadow-none'
+                                : isSystem
+                                  ? 'rounded-bl-md border border-amber-200/80 bg-amber-50 text-amber-900 shadow-[0_6px_18px_rgba(15,23,42,0.03)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 dark:shadow-none'
                                 : isProgress
                                   ? 'rounded-bl-lg bg-slate-100/80 text-[13px] leading-6 text-slate-500 dark:bg-white/[0.04] dark:text-slate-400'
                                   : 'rounded-bl-md border border-slate-200/80 bg-white text-slate-800 shadow-[0_6px_18px_rgba(15,23,42,0.04)] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-slate-100 dark:shadow-none',
                             )}
                           >
                             <div className={cn('mb-2 flex items-center gap-2 text-[10px]', isUser ? 'justify-end text-black/60' : 'text-slate-400 dark:text-slate-500')}>
+                              {isSystem ? (
+                                <span className="tracking-[0.16em] text-amber-600 dark:text-amber-300">系统</span>
+                              ) : null}
                               {isProgress ? (
                                 <span className="tracking-[0.16em] text-amber-500 dark:text-amber-300">过程</span>
                               ) : null}

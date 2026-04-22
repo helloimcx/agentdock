@@ -58,6 +58,67 @@ export interface RunSummary {
   updatedAt: string;
 }
 
+export interface ScheduledJobRoute {
+  type: 'lark_chat';
+  chatId: string;
+  platformUserId: string;
+  threadId?: string;
+}
+
+export interface ScheduledJob {
+  id: string;
+  workspaceId: string;
+  platform: 'lark' | (string & {});
+  route: ScheduledJobRoute;
+  triggerType: 'cron' | 'once';
+  cronExpr?: string;
+  runAt?: string;
+  promptTemplate: string;
+  description: string;
+  enabled: boolean;
+  concurrencyPolicy: 'skip_if_running';
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  lastStatus?: ScheduledJobRun['status'];
+  lastError?: string;
+}
+
+export interface ScheduledJobRun {
+  id: string;
+  jobId: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+  triggeredAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+  threadId?: string;
+  runId?: string;
+  platformMessageId?: string;
+}
+
+export interface ScheduledJobCreateInput {
+  workspaceId: string;
+  platform: 'lark' | (string & {});
+  route: ScheduledJobRoute;
+  triggerType: 'cron' | 'once';
+  cronExpr?: string;
+  runAt?: string;
+  promptTemplate: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+export interface ScheduledJobUpdateInput {
+  route?: ScheduledJobRoute;
+  triggerType?: 'cron' | 'once';
+  cronExpr?: string;
+  runAt?: string;
+  promptTemplate?: string;
+  description?: string;
+  enabled?: boolean;
+}
+
 export interface KnowledgeSource {
   id: string;
   name: string;
@@ -170,6 +231,11 @@ export interface LocalCoreCapabilities {
     agents: string[];
     knowledge: boolean;
   };
+  scheduler?: {
+    enabled: boolean;
+    triggerTypes: Array<'cron' | 'once'>;
+    platforms: string[];
+  };
 }
 
 export interface LocalCoreLarkGatewayStatus {
@@ -256,5 +322,7 @@ export type LocalCoreEvent =
   | { type: 'message.created'; threadId: string; message: ThreadMessage; stream?: DesktopBridgeEvent }
   | { type: 'message.updated'; threadId: string; message: Partial<ThreadMessage>; stream?: DesktopBridgeEvent }
   | { type: 'run.updated'; run: RunSummary; stream?: DesktopBridgeEvent }
+  | { type: 'scheduler.job.updated'; job: ScheduledJob }
+  | { type: 'scheduler.run.updated'; run: ScheduledJobRun }
   | { type: 'presence.updated'; threadId?: string; live: boolean; stream?: DesktopBridgeEvent }
   | { type: 'stream.updated'; stream: DesktopBridgeEvent };

@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { delimiter } from 'node:path';
 import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest, ThreadSummary } from '../../../../packages/contracts/src/index.js';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopBridgeButtonOption,
 } from '../../../../shared/desktop.js';
+import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
 import { formatToolCallContent, normalizePermissionAction, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import type {
@@ -13,13 +15,30 @@ import type {
   RunningPermissionRequest,
   WorkspaceThreadBackend,
 } from '../router/workspace-router-types.js';
+import { detectCronCommands, stripCronCommands, type CronCommand } from '../scheduler/cron-command-detector.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
 type LocalCoreAcpBackendOptions = {
   store: LocalCoreAcpStore;
   runThreadMap: Map<string, string>;
+  cliBinDir?: string;
+  localCoreBase?: string;
   emitBridge: (event: DesktopBridgeEvent) => void;
+  scheduler: {
+    createJob: (input: {
+      workspaceId: string;
+      threadId: string;
+      chatId: string;
+      platformUserId: string;
+      name: string;
+      schedule: string;
+      scheduleDescription: string;
+      message: string;
+    }) => Promise<ScheduledJob>;
+    listJobsForThread: (threadId: string) => Promise<ScheduledJob[]>;
+    deleteJob: (jobId: string) => Promise<void>;
+  };
   log?: (message: string) => void;
 };
 
@@ -95,7 +114,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     if (!matched) {
       throw new Error(`Unknown permission option: ${content}`);
     }
-    this.sendRaw(session, {
+    const accepted = this.sendRaw(session, {
       jsonrpc: '2.0',
       id: pendingPermission.requestId,
       result: {
@@ -105,6 +124,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         },
       },
     });
+    if (!accepted) {
+      throw new Error(session.closeReason || 'ACP session is not writable');
+    }
     session.pendingPermissionByRun.delete(session.currentRunId);
     this.emitBridgeEvent({
       type: 'typing_start',
@@ -142,13 +164,17 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       });
       session.pendingPermissionByRun.delete(runId);
     }
-    this.sendRaw(session, {
+    const cancelled = this.sendRaw(session, {
       jsonrpc: '2.0',
       method: 'session/cancel',
       params: {
         sessionId: session.sessionId,
       },
     });
+    if (!cancelled) {
+      this.options.store.updateRun(runId, threadId, 'interrupted');
+      return { interrupted: false };
+    }
     this.options.store.updateRun(runId, threadId, 'interrupted');
     return { interrupted: true };
   }
@@ -195,13 +221,19 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         return;
       }
       if (currentTurn.assistantText) {
-        this.options.store.appendMessage(threadId, 'assistant', currentTurn.assistantText, 'final');
-        this.emitBridgeEvent({
-          type: 'reply',
-          sessionKey: bridgeSessionKey,
-          replyCtx: runId,
-          content: currentTurn.assistantText,
-        });
+        const processed = await this.processAssistantResponse(threadId, currentTurn.assistantText);
+        if (processed.displayContent) {
+          this.options.store.appendMessage(threadId, 'assistant', processed.displayContent, 'final');
+          this.emitBridgeEvent({
+            type: 'reply',
+            sessionKey: bridgeSessionKey,
+            replyCtx: runId,
+            content: processed.displayContent,
+          });
+        }
+        for (const systemResponse of processed.systemResponses) {
+          this.options.store.appendMessage(threadId, 'system', systemResponse, 'system');
+        }
       } else if (String(content || '').trim().startsWith('/')) {
         const slashReply = this.deriveSlashCommandReply(content, result as Record<string, unknown>);
         if (slashReply) {
@@ -264,11 +296,15 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     if (existing) {
       this.closeSession(threadId);
     }
+    const baseEnv = {
+      ...process.env,
+      ...config.env,
+    };
     const child = spawn(config.command, config.args, {
       cwd: config.workDir,
       env: {
-        ...process.env,
-        ...config.env,
+        ...baseEnv,
+        ...this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || '')),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -286,7 +322,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       currentTurn: null,
       loadReplayMode: false,
       pendingPermissionByRun: new Map(),
+      schedulerJobCreatedByRun: new Map(),
       closed: false,
+      closeReason: null,
       promptPromise: null,
     };
     this.sessions.set(threadId, session);
@@ -296,15 +334,14 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     child.stderr.on('data', (chunk: string) => {
       this.options.log?.(`[localcore-acp:${threadId}] ${chunk.trimEnd()}`);
     });
+    child.stdin.on('error', (error) => {
+      this.handleSessionPipeFailure(session, error);
+    });
     child.on('exit', (code, signal) => {
-      session.closed = true;
-      for (const pending of session.pending.values()) {
-        pending.reject(new Error(`ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`));
-      }
-      session.pending.clear();
-      if (this.sessions.get(threadId) === session) {
-        this.sessions.delete(threadId);
-      }
+      this.closeSessionWithError(
+        session,
+        new Error(`ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`),
+      );
     });
     const initResult = await this.request(session, 'initialize', {
       protocolVersion: 1,
@@ -456,9 +493,33 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           }))
           .filter((option: { optionId: string }) => option.optionId)
       : [];
+    const toolTitle = formatToolCallContent(payload.params?.toolCall);
+    const isSchedulerAdd = this.isSchedulerAddCommand(toolTitle);
+    if (isSchedulerAdd && session.schedulerJobCreatedByRun.get(currentRunId)) {
+      this.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: payload.id,
+        result: {
+          outcome: {
+            outcome: 'cancelled',
+          },
+        },
+      });
+      const content = '已限制本次对话只创建一个定时任务，额外的 scheduler add 请求已自动取消。';
+      this.options.store.appendMessage(session.threadId, 'assistant', content, 'progress');
+      this.emitBridgeEvent({
+        type: 'reply',
+        sessionKey: session.bridgeSessionKey,
+        replyCtx: currentRunId,
+        content,
+      });
+      return;
+    }
     const buttonRows = toPermissionButtonRows(options, normalizeDesktopBridgeButtonOption);
     const permissionRequest: RunningPermissionRequest = {
       requestId: payload.id,
+      toolTitle,
+      isSchedulerAdd,
       options,
     };
     session.pendingPermissionByRun.set(currentRunId, permissionRequest);
@@ -469,7 +530,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     const permissionPrompt = [
       '等待工具确认',
       '',
-      formatToolCallContent(payload.params?.toolCall),
+      toolTitle,
       '',
       '请选择一个选项继续执行。',
       '',
@@ -553,6 +614,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
               .filter(Boolean)
               .join('\n')
           : '';
+        if (this.isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
+          session.schedulerJobCreatedByRun.set(currentRunId, true);
+        }
         const message = `🔧 ${[title, status, content].filter(Boolean).join(' - ')}`;
         this.options.store.appendMessage(session.threadId, 'assistant', message, 'progress');
         this.emitBridgeEvent({
@@ -590,12 +654,6 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
   private request(session: AcpSessionState, method: string, params: unknown, timeoutMs = 30000) {
     session.requestId += 1;
     const id = session.requestId;
-    this.sendRaw(session, {
-      jsonrpc: '2.0',
-      id,
-      method,
-      params,
-    });
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         session.pending.delete(id);
@@ -611,14 +669,33 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
           reject(error);
         },
       });
+      if (!this.sendRaw(session, {
+        jsonrpc: '2.0',
+        id,
+        method,
+        params,
+      })) {
+        session.pending.delete(id);
+        reject(new Error(session.closeReason || 'ACP session is not writable'));
+      }
     });
   }
 
   private sendRaw(session: AcpSessionState, payload: Record<string, unknown>) {
     if (session.closed || !session.child.stdin.writable) {
-      throw new Error('ACP session is not writable');
+      return false;
     }
-    session.child.stdin.write(`${JSON.stringify(payload)}\n`);
+    try {
+      session.child.stdin.write(`${JSON.stringify(payload)}\n`, (error?: Error | null) => {
+        if (error) {
+          this.handleSessionPipeFailure(session, error);
+        }
+      });
+      return true;
+    } catch (error) {
+      this.handleSessionPipeFailure(session, error);
+      return false;
+    }
   }
 
   private deriveSlashCommandReply(content: string, result: Record<string, unknown>) {
@@ -658,16 +735,143 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     return '';
   }
 
+  private async processAssistantResponse(threadId: string, content: string) {
+    const commands = detectCronCommands(content);
+    if (commands.length === 0) {
+      return {
+        displayContent: content,
+        systemResponses: [] as string[],
+      };
+    }
+    const systemResponses: string[] = [];
+    for (const command of commands) {
+      const response = await this.handleCronCommand(threadId, command);
+      if (response) {
+        systemResponses.push(response);
+      }
+    }
+    return {
+      displayContent: stripCronCommands(content),
+      systemResponses,
+    };
+  }
+
+  private async handleCronCommand(threadId: string, command: CronCommand) {
+    try {
+      switch (command.kind) {
+        case 'create': {
+          const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+          if (!binding || binding.platform !== 'lark') {
+            return '定时任务创建失败：当前对话没有绑定可调度的 Lark 会话。请先在 Lark 对话线程中使用，或先建立平台绑定。';
+          }
+          const job = await this.options.scheduler.createJob({
+            workspaceId: binding.workspace_id,
+            threadId,
+            chatId: binding.chat_id,
+            platformUserId: binding.platform_user_id,
+            name: command.name,
+            schedule: command.schedule,
+            scheduleDescription: command.scheduleDescription,
+            message: command.message,
+          });
+          return `已创建定时任务：${job.description || command.name}，计划 ${command.scheduleDescription}（${command.schedule}），ID: ${job.id}`;
+        }
+        case 'list': {
+          const jobs = await this.options.scheduler.listJobsForThread(threadId);
+          if (jobs.length === 0) {
+            return '当前对话没有定时任务。';
+          }
+          return [
+            '当前对话定时任务：',
+            ...jobs.map((job) => `- ${job.description || job.id} | ${job.triggerType === 'cron' ? job.cronExpr : job.runAt} | ${job.enabled ? 'enabled' : 'disabled'} | ${job.id}`),
+          ].join('\n');
+        }
+        case 'delete': {
+          await this.options.scheduler.deleteJob(command.jobId);
+          return `已删除定时任务：${command.jobId}`;
+        }
+        default:
+          return '';
+      }
+    } catch (error) {
+      return `定时任务操作失败：${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   private closeSession(threadId: string) {
     const session = this.sessions.get(threadId);
     if (session) {
       session.closed = true;
+      session.closeReason = 'ACP session closed';
       session.child.kill('SIGTERM');
       this.sessions.delete(threadId);
     }
   }
 
+  private handleSessionPipeFailure(session: AcpSessionState, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    this.options.log?.(`[localcore-acp:${session.threadId}] stdin failure: ${message}`);
+    this.closeSessionWithError(session, new Error(message));
+  }
+
+  private closeSessionWithError(session: AcpSessionState, error: Error) {
+    if (session.closed) {
+      return;
+    }
+    const activeRunId = session.currentRunId;
+    session.closed = true;
+    session.closeReason = error.message;
+    for (const pending of session.pending.values()) {
+      pending.reject(error);
+    }
+    session.pending.clear();
+    if (activeRunId) {
+      this.options.store.updateRun(activeRunId, session.threadId, 'failed');
+      this.emitBridgeEvent({
+        type: 'typing_stop',
+        sessionKey: session.bridgeSessionKey,
+        replyCtx: activeRunId,
+      });
+      session.pendingPermissionByRun.delete(activeRunId);
+    }
+    if (this.sessions.get(session.threadId) === session) {
+      this.sessions.delete(session.threadId);
+    }
+    if (!session.child.killed) {
+      session.child.kill('SIGTERM');
+    }
+  }
+
   private emitBridgeEvent(event: DesktopBridgeEvent) {
     this.options.emitBridge(event);
+  }
+
+  private buildAgentRuntimeEnv(threadId: string, existingPath: string) {
+    const row = this.options.store.getThreadRow(threadId);
+    if (!row) {
+      return {};
+    }
+    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+    const env: Record<string, string> = {
+      LOCAL_AI_CORE_BASE: this.options.localCoreBase || 'http://127.0.0.1:9831/api/local/v1',
+      LOCAL_AI_WORKSPACE_ID: row.workspace_id,
+      LOCAL_AI_THREAD_ID: threadId,
+    };
+    if (binding) {
+      env.LOCAL_AI_PLATFORM = binding.platform;
+      env.LOCAL_AI_ROUTE_TYPE = 'lark_chat';
+      env.LOCAL_AI_CHAT_ID = binding.chat_id;
+      env.LOCAL_AI_PLATFORM_USER_ID = binding.platform_user_id;
+    }
+    if (this.options.cliBinDir) {
+      env.PATH = existingPath
+        ? `${this.options.cliBinDir}${delimiter}${existingPath}`
+        : this.options.cliBinDir;
+    }
+    return env;
+  }
+
+  private isSchedulerAddCommand(value: unknown) {
+    return /\blac\s+scheduler\s+add\b/.test(String(value || ''));
   }
 }

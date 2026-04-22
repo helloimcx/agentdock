@@ -40,6 +40,23 @@ export const DESKTOP_PROVIDER_PRESET_OPTIONS = [
 export const DESKTOP_PROVIDER_THINKING_OPTIONS = ['', 'enabled', 'disabled'] as const;
 export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['opencode', 'claudecode', 'acp', 'localcore-acp'] as const;
 export const LOCALCORE_ACP_AGENT_TYPE = 'localcore-acp';
+export const SCHEDULER_PROTOCOL_INSTRUCTION = [
+  '[Scheduler Tools]',
+  'If the user asks to create, view, edit, delete, or manually run a scheduled task for this conversation, use the Bash tool to run the local scheduler CLI.',
+  'Use these commands:',
+  'lac scheduler add --cron "<5-field cron>" --message "<exact message to send>" --desc "<short label>"',
+  'lac scheduler list',
+  'lac scheduler list --thread',
+  'lac scheduler info <job-id>',
+  'lac scheduler edit <job-id> [--cron "<5-field cron>"] [--message "<exact message>"] [--desc "<short label>"] [--enabled true|false]',
+  'lac scheduler del <job-id>',
+  'lac scheduler run <job-id>',
+  'Environment variables LOCAL_AI_WORKSPACE_ID, LOCAL_AI_THREAD_ID, LOCAL_AI_PLATFORM, LOCAL_AI_CHAT_ID, and LOCAL_AI_PLATFORM_USER_ID are already set when available.',
+  'Prefer relying on those variables instead of inventing your own route or creating session-only cron jobs.',
+  'By default, `lac scheduler list` shows all scheduled tasks in the current workspace. Use `lac scheduler list --thread` to show only the current conversation thread.',
+  'Only use the scheduler CLI when the user explicitly asks for scheduled automation.',
+  '[/Scheduler Tools]',
+].join('\n');
 
 const PERMISSION_RESPONSE_MAP: Record<string, 'allow' | 'deny' | 'allow all'> = {
   allow: 'allow',
@@ -125,6 +142,17 @@ export function normalizeDesktopPlatformType(platformType?: string | null) {
     return 'lark';
   }
   return normalized;
+}
+
+export function wrapUserMessageWithSchedulerProtocol(content: string, extraBlocks: string[] = []) {
+  return [
+    SCHEDULER_PROTOCOL_INSTRUCTION,
+    ...extraBlocks.flatMap((block) => (block ? ['', block] : [])),
+    '',
+    '[User Message]',
+    content,
+    '[/User Message]',
+  ].join('\n');
 }
 
 export interface DesktopBridgeSendInput {

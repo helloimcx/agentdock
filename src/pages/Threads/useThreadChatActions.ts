@@ -53,7 +53,7 @@ type UseThreadChatActionsInput = {
   setSearchParams: (nextInit: URLSearchParams, navigateOptions?: { replace?: boolean }) => void;
   setSending: Dispatch<SetStateAction<boolean>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
-  startLocalCoreThreadPolling: (threadId: string, baselineAssistantCount: number) => void;
+  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
   holdBlankComposerRef: MutableRefObject<boolean>;
   lastSessionByProjectRef: MutableRefObject<Record<string, string>>;
   nextMessageOrderRef: MutableRefObject<number>;

@@ -5,6 +5,10 @@ import { dirname, join } from 'node:path';
 import type {
   LocalCoreAuthorizedUser,
   LocalCorePairingRequest,
+  ScheduledJob,
+  ScheduledJobCreateInput,
+  ScheduledJobRun,
+  ScheduledJobUpdateInput,
   ThreadDetail,
   ThreadSummary,
 } from '../../../../packages/contracts/src/index.js';
@@ -14,6 +18,8 @@ import type {
   LocalPlatformPairingRow,
   LocalPlatformThreadBindingRow,
   LocalPlatformUserRow,
+  LocalScheduledJobRow,
+  LocalScheduledJobRunRow,
   LocalRunRow,
   LocalThreadRow,
 } from '../router/workspace-router-types.js';
@@ -100,6 +106,41 @@ export class LocalCoreAcpStore {
         PRIMARY KEY (workspace_id, platform, chat_id, platform_user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_platform_thread_bindings_thread ON platform_thread_bindings (thread_id);
+      CREATE TABLE IF NOT EXISTS scheduled_jobs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        route_type TEXT NOT NULL,
+        route_config TEXT NOT NULL,
+        trigger_type TEXT NOT NULL,
+        cron_expr TEXT,
+        run_at TEXT,
+        prompt_template TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        concurrency_policy TEXT NOT NULL DEFAULT 'skip_if_running',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_run_at TEXT,
+        last_status TEXT,
+        last_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_workspace_updated ON scheduled_jobs (workspace_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled ON scheduled_jobs (enabled, trigger_type, run_at);
+      CREATE TABLE IF NOT EXISTS scheduled_job_runs (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        triggered_at TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        error TEXT,
+        thread_id TEXT,
+        run_id TEXT,
+        platform_message_id TEXT,
+        FOREIGN KEY (job_id) REFERENCES scheduled_jobs(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_scheduled_job_runs_job_triggered ON scheduled_job_runs (job_id, triggered_at DESC);
     `);
   }
 
@@ -251,6 +292,215 @@ export class LocalCoreAcpStore {
     `).get(threadId) as LocalRunRow | undefined;
   }
 
+  getRun(runId: string) {
+    return this.db.prepare(`
+      SELECT id, thread_id, status, started_at, updated_at
+      FROM runs
+      WHERE id = ?
+    `).get(runId) as LocalRunRow | undefined;
+  }
+
+  listScheduledJobs(workspaceId?: string): ScheduledJob[] {
+    const query = workspaceId
+      ? `
+        SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
+               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error
+        FROM scheduled_jobs
+        WHERE workspace_id = ?
+        ORDER BY updated_at DESC
+      `
+      : `
+        SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
+               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error
+        FROM scheduled_jobs
+        ORDER BY updated_at DESC
+      `;
+    const rows = this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalScheduledJobRow[];
+    return rows.map((row) => this.toScheduledJob(row));
+  }
+
+  getScheduledJob(jobId: string): ScheduledJob | undefined {
+    const row = this.db.prepare(`
+      SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
+             enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error
+      FROM scheduled_jobs
+      WHERE id = ?
+    `).get(jobId) as LocalScheduledJobRow | undefined;
+    return row ? this.toScheduledJob(row) : undefined;
+  }
+
+  createScheduledJob(input: ScheduledJobCreateInput): ScheduledJob {
+    const id = `job:${randomUUID()}`;
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO scheduled_jobs (
+        id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at,
+        prompt_template, description, enabled, concurrency_policy, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'skip_if_running', ?, ?)
+    `).run(
+      id,
+      input.workspaceId,
+      input.platform,
+      input.route.type,
+      JSON.stringify(input.route),
+      input.triggerType,
+      input.cronExpr || null,
+      input.runAt || null,
+      input.promptTemplate,
+      input.description || '',
+      input.enabled === false ? 0 : 1,
+      now,
+      now,
+    );
+    return this.getScheduledJob(id)!;
+  }
+
+  updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): ScheduledJob {
+    const existing = this.getScheduledJob(jobId);
+    if (!existing) {
+      throw new Error(`Scheduled job not found: ${jobId}`);
+    }
+    const next = {
+      ...existing,
+      ...(input.route ? { route: input.route } : {}),
+      ...(input.triggerType ? { triggerType: input.triggerType } : {}),
+      ...(Object.prototype.hasOwnProperty.call(input, 'cronExpr') ? { cronExpr: input.cronExpr || undefined } : {}),
+      ...(Object.prototype.hasOwnProperty.call(input, 'runAt') ? { runAt: input.runAt || undefined } : {}),
+      ...(typeof input.promptTemplate === 'string' ? { promptTemplate: input.promptTemplate } : {}),
+      ...(typeof input.description === 'string' ? { description: input.description } : {}),
+      ...(typeof input.enabled === 'boolean' ? { enabled: input.enabled } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    this.db.prepare(`
+      UPDATE scheduled_jobs
+      SET route_type = ?, route_config = ?, trigger_type = ?, cron_expr = ?, run_at = ?, prompt_template = ?,
+          description = ?, enabled = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      next.route.type,
+      JSON.stringify(next.route),
+      next.triggerType,
+      next.cronExpr || null,
+      next.runAt || null,
+      next.promptTemplate,
+      next.description,
+      next.enabled ? 1 : 0,
+      next.updatedAt,
+      jobId,
+    );
+    return this.getScheduledJob(jobId)!;
+  }
+
+  deleteScheduledJob(jobId: string) {
+    this.db.prepare('DELETE FROM scheduled_jobs WHERE id = ?').run(jobId);
+    return { deleted: true };
+  }
+
+  listScheduledJobRuns(jobId: string): ScheduledJobRun[] {
+    const rows = this.db.prepare(`
+      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id
+      FROM scheduled_job_runs
+      WHERE job_id = ?
+      ORDER BY triggered_at DESC
+    `).all(jobId) as LocalScheduledJobRunRow[];
+    return rows.map((row) => this.toScheduledJobRun(row));
+  }
+
+  createScheduledJobRun(jobId: string, status: ScheduledJobRun['status'], input: Partial<ScheduledJobRun> = {}): ScheduledJobRun {
+    const id = `jobrun:${randomUUID()}`;
+    const triggeredAt = input.triggeredAt || new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO scheduled_job_runs (id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      jobId,
+      status,
+      triggeredAt,
+      input.startedAt || null,
+      input.finishedAt || null,
+      input.error || null,
+      input.threadId || null,
+      input.runId || null,
+      input.platformMessageId || null,
+    );
+    this.updateScheduledJobStatus(jobId, {
+      lastRunAt: triggeredAt,
+      lastStatus: status,
+      lastError: input.error || '',
+    });
+    return this.getScheduledJobRun(id)!;
+  }
+
+  getScheduledJobRun(runId: string): ScheduledJobRun | undefined {
+    const row = this.db.prepare(`
+      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id
+      FROM scheduled_job_runs
+      WHERE id = ?
+    `).get(runId) as LocalScheduledJobRunRow | undefined;
+    return row ? this.toScheduledJobRun(row) : undefined;
+  }
+
+  updateScheduledJobRun(runId: string, input: Partial<ScheduledJobRun>) {
+    const existing = this.getScheduledJobRun(runId);
+    if (!existing) {
+      throw new Error(`Scheduled job run not found: ${runId}`);
+    }
+    const next = {
+      ...existing,
+      ...input,
+    };
+    this.db.prepare(`
+      UPDATE scheduled_job_runs
+      SET status = ?, triggered_at = ?, started_at = ?, finished_at = ?, error = ?, thread_id = ?, run_id = ?, platform_message_id = ?
+      WHERE id = ?
+    `).run(
+      next.status,
+      next.triggeredAt,
+      next.startedAt || null,
+      next.finishedAt || null,
+      next.error || null,
+      next.threadId || null,
+      next.runId || null,
+      next.platformMessageId || null,
+      runId,
+    );
+    if (input.status || Object.prototype.hasOwnProperty.call(input, 'error') || input.finishedAt || input.triggeredAt) {
+      this.updateScheduledJobStatus(existing.jobId, {
+        lastRunAt: next.triggeredAt,
+        lastStatus: next.status,
+        lastError: next.error || '',
+      });
+    }
+    return this.getScheduledJobRun(runId)!;
+  }
+
+  updateScheduledJobStatus(jobId: string, input: {
+    lastRunAt?: string;
+    lastStatus?: ScheduledJobRun['status'];
+    lastError?: string;
+    enabled?: boolean;
+  }) {
+    this.db.prepare(`
+      UPDATE scheduled_jobs
+      SET last_run_at = COALESCE(?, last_run_at),
+          last_status = COALESCE(?, last_status),
+          last_error = CASE WHEN ? IS NULL THEN last_error ELSE ? END,
+          enabled = CASE WHEN ? IS NULL THEN enabled ELSE ? END,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      input.lastRunAt || null,
+      input.lastStatus || null,
+      input.lastError == null ? null : input.lastError,
+      input.lastError == null ? null : input.lastError,
+      typeof input.enabled === 'boolean' ? (input.enabled ? 1 : 0) : null,
+      typeof input.enabled === 'boolean' ? (input.enabled ? 1 : 0) : null,
+      new Date().toISOString(),
+      jobId,
+    );
+  }
+
   getThreadRow(threadId: string) {
     return this.db.prepare(`
       SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load
@@ -392,6 +642,16 @@ export class LocalCoreAcpStore {
     `).get(workspaceId, chatId, platformUserId) as LocalPlatformThreadBindingRow | undefined;
   }
 
+  getPlatformThreadBindingByThreadId(threadId: string) {
+    return this.db.prepare(`
+      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at
+      FROM platform_thread_bindings
+      WHERE thread_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).get(threadId) as LocalPlatformThreadBindingRow | undefined;
+  }
+
   upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: 'lark' }) {
     this.db.prepare(`
       INSERT INTO platform_thread_bindings
@@ -454,5 +714,42 @@ export class LocalCoreAcpStore {
       expiresAt: row.expires_at,
       status: row.status,
     }));
+  }
+
+  private toScheduledJob(row: LocalScheduledJobRow): ScheduledJob {
+    const route = JSON.parse(row.route_config) as ScheduledJob['route'];
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      platform: row.platform,
+      route,
+      triggerType: row.trigger_type,
+      cronExpr: row.cron_expr || undefined,
+      runAt: row.run_at || undefined,
+      promptTemplate: row.prompt_template,
+      description: row.description,
+      enabled: Boolean(row.enabled),
+      concurrencyPolicy: row.concurrency_policy,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      lastRunAt: row.last_run_at || undefined,
+      lastStatus: row.last_status || undefined,
+      lastError: row.last_error || undefined,
+    };
+  }
+
+  private toScheduledJobRun(row: LocalScheduledJobRunRow): ScheduledJobRun {
+    return {
+      id: row.id,
+      jobId: row.job_id,
+      status: row.status,
+      triggeredAt: row.triggered_at,
+      startedAt: row.started_at || undefined,
+      finishedAt: row.finished_at || undefined,
+      error: row.error || undefined,
+      threadId: row.thread_id || undefined,
+      runId: row.run_id || undefined,
+      platformMessageId: row.platform_message_id || undefined,
+    };
   }
 }

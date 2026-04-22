@@ -14,7 +14,7 @@ export const ASSISTANT_REPLY_TIMEOUT_MS = 90000;
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   streamTargetContent?: string;
   kind?: 'final' | 'progress';
@@ -112,7 +112,7 @@ export function sessionMatchesDesktop(session: Session) {
 export function toMessages(history: { role: string; content: string; kind?: string; timestamp: string }[]): ChatMessage[] {
   return history.map((message, index) => ({
     id: `${index}-${message.timestamp || message.role}`,
-    role: message.role === 'user' ? 'user' : 'assistant',
+    role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
     content: message.role === 'user' ? extractVisibleMessageContent(message.content) : message.content,
     kind: message.kind === 'progress' ? 'progress' : 'final',
     order: index,
@@ -123,7 +123,7 @@ export function toMessages(history: { role: string; content: string; kind?: stri
 export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMessage[] {
   return history.map((message, index) => ({
     id: message.id || `${index}-${message.timestamp || message.role}`,
-    role: message.role === 'user' ? 'user' : 'assistant',
+    role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
     content: message.role === 'user' ? extractVisibleMessageContent(message.content) : message.content,
     kind:
       message.kind === 'progress'

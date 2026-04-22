@@ -50,7 +50,7 @@ export function taskStateReasonForBridgeButtons(hasActions: boolean, hasInteract
 
 export function deriveTaskStateFromThreadDetail(
   detail: ThreadDetail,
-  baselineAssistantCount: number,
+  baselineResponseCount: number,
   unchangedPolls: number,
 ): { state: ChatTaskState; reason: string } | null {
   if (detail.pendingPermissionRequest) {
@@ -73,7 +73,7 @@ export function deriveTaskStateFromThreadDetail(
   if (
     latestAssistantMessage &&
     latestAssistantMessage.kind !== 'progress' &&
-    assistantMessages.length > baselineAssistantCount &&
+    detail.messages.filter((message) => message.role !== 'user' && message.kind !== 'progress').length > baselineResponseCount &&
     unchangedPolls >= 1
   ) {
     return {

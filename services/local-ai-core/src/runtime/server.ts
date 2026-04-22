@@ -14,6 +14,10 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
   LocalCoreEvent,
+  ScheduledJob,
+  ScheduledJobCreateInput,
+  ScheduledJobRun,
+  ScheduledJobUpdateInput,
   KnowledgeSource,
   KnowledgeBase,
   KnowledgeBaseCreateInput,
@@ -43,6 +47,13 @@ export interface LocalAiCoreBindings extends EventEmitter {
   saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
   saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
   listWorkspaces(): Promise<WorkspaceSummary[]>;
+  listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]>;
+  getScheduledJob(jobId: string): Promise<ScheduledJob>;
+  createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob>;
+  updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob>;
+  deleteScheduledJob(jobId: string): Promise<{ deleted: boolean }>;
+  runScheduledJob(jobId: string): Promise<ScheduledJobRun>;
+  listScheduledJobRuns(jobId: string): Promise<ScheduledJobRun[]>;
   listThreads(workspaceId: string): Promise<ThreadSummary[]>;
   createThread(workspaceId: string, title?: string): Promise<ThreadDetail>;
   getThread(threadId: string): Promise<ThreadDetail>;
@@ -151,6 +162,12 @@ export class LocalAiCoreServer {
           stream: bridge,
         });
       }
+    });
+    this.bindings.on('scheduler-job', (job: ScheduledJob) => {
+      this.broadcast({ type: 'scheduler.job.updated', job });
+    });
+    this.bindings.on('scheduler-run', (run: ScheduledJobRun) => {
+      this.broadcast({ type: 'scheduler.run.updated', run });
     });
   }
 
@@ -282,6 +299,47 @@ export class LocalAiCoreServer {
       if (req.method === 'GET' && path.startsWith('/api/local/v1/platforms/lark/')) {
         const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length));
         json(res, 200, await this.bindings.getLarkGatewayStatus(workspaceId));
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/scheduler/jobs') {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { jobs: await this.bindings.listScheduledJobs(workspaceId || undefined) });
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/scheduler/jobs') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createScheduledJob(body as unknown as ScheduledJobCreateInput));
+        return;
+      }
+      if (
+        req.method === 'GET'
+        && path.startsWith('/api/local/v1/scheduler/jobs/')
+        && !path.endsWith('/runs')
+        && !path.endsWith('/run')
+      ) {
+        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length));
+        json(res, 200, await this.bindings.getScheduledJob(jobId));
+        return;
+      }
+      if (req.method === 'GET' && path.startsWith('/api/local/v1/scheduler/jobs/') && path.endsWith('/runs')) {
+        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length, -'/runs'.length));
+        json(res, 200, { runs: await this.bindings.listScheduledJobRuns(jobId) });
+        return;
+      }
+      if (req.method === 'POST' && path.startsWith('/api/local/v1/scheduler/jobs/') && path.endsWith('/run')) {
+        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length, -'/run'.length));
+        json(res, 200, await this.bindings.runScheduledJob(jobId));
+        return;
+      }
+      if (req.method === 'PATCH' && path.startsWith('/api/local/v1/scheduler/jobs/')) {
+        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length));
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateScheduledJob(jobId, body as unknown as ScheduledJobUpdateInput));
+        return;
+      }
+      if (req.method === 'DELETE' && path.startsWith('/api/local/v1/scheduler/jobs/')) {
+        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length));
+        json(res, 200, await this.bindings.deleteScheduledJob(jobId));
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/workspaces') {

@@ -9,6 +9,8 @@ import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/i
 
 export type WorkspaceRouterOptions = {
   userDataPath: string;
+  cliBinDir?: string;
+  localCoreBase?: string;
   readConfigState: () => Promise<ConfigFileState>;
   knowledgeProvider: KnowledgeProvider;
   log?: (message: string) => void;
@@ -47,6 +49,39 @@ export type LocalRunRow = {
   updated_at: string;
 };
 
+export type LocalScheduledJobRow = {
+  id: string;
+  workspace_id: string;
+  platform: string;
+  route_type: string;
+  route_config: string;
+  trigger_type: 'cron' | 'once';
+  cron_expr: string | null;
+  run_at: string | null;
+  prompt_template: string;
+  description: string;
+  enabled: number;
+  concurrency_policy: 'skip_if_running';
+  created_at: string;
+  updated_at: string;
+  last_run_at: string | null;
+  last_status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | null;
+  last_error: string | null;
+};
+
+export type LocalScheduledJobRunRow = {
+  id: string;
+  job_id: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+  triggered_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  thread_id: string | null;
+  run_id: string | null;
+  platform_message_id: string | null;
+};
+
 export type LocalPlatformPairingRow = {
   code: string;
   workspace_id: string;
@@ -83,6 +118,8 @@ export type LocalPlatformThreadBindingRow = {
 
 export type RunningPermissionRequest = {
   requestId: number | string;
+  toolTitle?: string;
+  isSchedulerAdd?: boolean;
   options: Array<{
     optionId: string;
     name: string;
@@ -115,7 +152,9 @@ export type AcpSessionState = {
   currentTurn: RunningTurn | null;
   loadReplayMode: boolean;
   pendingPermissionByRun: Map<string, RunningPermissionRequest>;
+  schedulerJobCreatedByRun: Map<string, boolean>;
   closed: boolean;
+  closeReason: string | null;
   promptPromise: Promise<{ stopReason?: string }> | null;
 };
 

@@ -7,6 +7,7 @@ import {
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
 } from '../../../packages/core-sdk/src';
 import type { KnowledgeBase } from '../../../packages/contracts/src';
+import { wrapUserMessageWithSchedulerProtocol } from '../../../shared/desktop';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
 import type {
   ThreadChatIdentitySetters,
@@ -30,7 +31,7 @@ type UseThreadChatSendingActionsInput = {
   settlePreviewMessages: (turnKey?: string) => void;
   setDraft: Dispatch<SetStateAction<string>>;
   setSending: Dispatch<SetStateAction<boolean>>;
-  startLocalCoreThreadPolling: (threadId: string, baselineAssistantCount: number) => void;
+  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
 } & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
   Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
@@ -79,23 +80,19 @@ export function useThreadChatSendingActions({
   const usesManagedThreadApi = true;
   const buildMessageContent = useCallback((content: string) => {
     if (selectedKnowledgeBaseIds.length === 0) {
-      return content;
+      return wrapUserMessageWithSchedulerProtocol(content);
     }
     const selectedBases = selectedKnowledgeBaseIds
       .map((knowledgeBaseId) => availableKnowledgeBases.find((base) => base.id === knowledgeBaseId))
       .filter((base): base is KnowledgeBase => Boolean(base));
     if (selectedBases.length === 0) {
-      return content;
+      return wrapUserMessageWithSchedulerProtocol(content);
     }
-    return [
+    return wrapUserMessageWithSchedulerProtocol(content, [[
       '[Selected Knowledge Bases]',
       ...selectedBases.map((base) => `- id: ${base.id} | name: ${base.name}`),
       '[/Selected Knowledge Bases]',
-      '',
-      '[User Message]',
-      content,
-      '[/User Message]',
-    ].join('\n');
+    ].join('\n')]);
   }, [availableKnowledgeBases, selectedKnowledgeBaseIds]);
 
   const ensureSession = useCallback(async () => {
@@ -132,7 +129,7 @@ export function useThreadChatSendingActions({
     const isAwaitingReply = taskState === 'awaiting_input';
     const payloadContent = isAwaitingReply ? content : buildMessageContent(content);
     const userOrder = reserveNextMessageOrder();
-    const baselineAssistantCount = messages.filter((message) => message.role === 'assistant').length;
+    const baselineResponseCount = messages.filter((message) => message.role !== 'user' && message.kind !== 'progress').length;
     setDraft('');
     setSending(true);
 
@@ -163,7 +160,7 @@ export function useThreadChatSendingActions({
           ? await sendThreadAction(ensured.id, payloadContent)
           : await sendThreadMessage(ensured.id, payloadContent);
         setActiveRunId(result.runId);
-        startLocalCoreThreadPolling(ensured.id, baselineAssistantCount);
+        startLocalCoreThreadPolling(ensured.id, baselineResponseCount);
       } else {
         throw new Error('Managed desktop thread transport is unavailable.');
       }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as TOML from '@iarna/toml';
 import type {
@@ -14,6 +14,10 @@ import type {
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
+  ScheduledJob,
+  ScheduledJobCreateInput,
+  ScheduledJobRun,
+  ScheduledJobUpdateInput,
   WorkspaceStreamingProbeResult,
   ThreadDetail,
   ThreadSummary,
@@ -35,6 +39,8 @@ import { AiVectorKnowledgeProvider } from '../../../../packages/knowledge-api/sr
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
 import { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
+import { LarkScheduleAdapter } from '../scheduler/lark-schedule-adapter.js';
+import { SchedulerService } from '../scheduler/scheduler-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 
 const DEFAULT_CONFIG = `# Managed by Local AI Core
@@ -66,12 +72,15 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly workspaceRouter: WorkspaceRouter;
   private readonly knowledgeProvider: AiVectorKnowledgeProvider;
   private readonly larkGateway: LocalCoreLarkGateway;
+  private readonly scheduler: SchedulerService;
+  private readonly cliBinDir: string;
 
   constructor(private readonly userDataPath: string) {
     super();
     this.runtimeDir = join(userDataPath, 'runtime');
     this.settingsPath = join(this.runtimeDir, 'local-core-settings.json');
     mkdirSync(this.runtimeDir, { recursive: true });
+    this.cliBinDir = this.ensureCliWrapper();
     this.settings = this.loadSettings();
     this.ensureConfigFile();
     this.knowledgeProvider = new AiVectorKnowledgeProvider({
@@ -91,6 +100,8 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     });
     this.workspaceRouter = createWorkspaceRouter({
       userDataPath,
+      cliBinDir: this.cliBinDir,
+      localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
       readConfigState: () => this.readConfigFile(),
       knowledgeProvider: this.knowledgeProvider,
       log: (message) => this.pushLog(message),
@@ -102,18 +113,62 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       onStateChanged: () => this.emitRuntime(),
       log: (message) => this.pushLog(message),
     });
+    this.scheduler = new SchedulerService({
+      store: this.workspaceRouter.getStore(),
+      adapters: [
+        new LarkScheduleAdapter({
+          store: this.workspaceRouter.getStore(),
+          workspaceRouter: this.workspaceRouter,
+          larkGateway: this.larkGateway,
+          log: (message) => this.pushLog(message),
+        }),
+      ],
+      log: (message) => this.pushLog(message),
+    });
+    this.workspaceRouter.setSchedulerBridge({
+      createJob: async ({ workspaceId, threadId, chatId, platformUserId, name, schedule, scheduleDescription, message }) =>
+        this.scheduler.createJob({
+          workspaceId,
+          platform: 'lark',
+          route: {
+            type: 'lark_chat',
+            chatId,
+            platformUserId,
+            threadId,
+          },
+          triggerType: 'cron',
+          cronExpr: schedule,
+          promptTemplate: message,
+          description: `${name} · ${scheduleDescription}`,
+          enabled: true,
+        }),
+      listJobsForThread: async (threadId) => this.scheduler
+        .listJobs()
+        .filter((job) => job.route.threadId === threadId),
+      deleteJob: async (jobId) => {
+        this.scheduler.deleteJob(jobId);
+      },
+    });
     this.workspaceRouter.subscribeBridgeEvents((event) => {
       this.emit('bridge', event);
       void this.larkGateway.onBridgeEvent(event);
+    });
+    this.scheduler.on('job', (job: ScheduledJob) => {
+      this.emit('scheduler-job', job);
+    });
+    this.scheduler.on('run', (run: ScheduledJobRun) => {
+      this.emit('scheduler-run', run);
     });
   }
 
   async init() {
     await this.larkGateway.refreshBindings();
+    await this.scheduler.start();
     await this.emitRuntime();
   }
 
   async close() {
+    await this.scheduler.stop();
     this.larkGateway.close();
     this.workspaceRouter.close();
   }
@@ -210,6 +265,38 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
     return this.workspaceRouter.listWorkspaces();
+  }
+
+  async listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]> {
+    return this.scheduler.listJobs(workspaceId);
+  }
+
+  async getScheduledJob(jobId: string): Promise<ScheduledJob> {
+    const job = this.scheduler.getJob(jobId);
+    if (!job) {
+      throw new Error(`Scheduled job not found: ${jobId}`);
+    }
+    return job;
+  }
+
+  async createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob> {
+    return this.scheduler.createJob(input);
+  }
+
+  async updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob> {
+    return this.scheduler.updateJob(jobId, input);
+  }
+
+  async deleteScheduledJob(jobId: string) {
+    return this.scheduler.deleteJob(jobId);
+  }
+
+  async runScheduledJob(jobId: string): Promise<ScheduledJobRun> {
+    return this.scheduler.runJobNow(jobId);
+  }
+
+  async listScheduledJobRuns(jobId: string): Promise<ScheduledJobRun[]> {
+    return this.scheduler.listJobRuns(jobId);
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
@@ -425,6 +512,22 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     }
     mkdirSync(dirname(this.settings.configPath), { recursive: true });
     writeFileSync(this.settings.configPath, DEFAULT_CONFIG, 'utf8');
+  }
+
+  private ensureCliWrapper() {
+    const binDir = join(this.runtimeDir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const cliEntry = join(__dirname, '..', 'cli', 'lac.js');
+    const wrapperPath = join(binDir, 'lac');
+    const script = [
+      '#!/bin/sh',
+      'export ELECTRON_RUN_AS_NODE=1',
+      `exec "${process.execPath.replace(/"/g, '\\"')}" "${cliEntry.replace(/"/g, '\\"')}" "$@"`,
+      '',
+    ].join('\n');
+    writeFileSync(wrapperPath, script, 'utf8');
+    chmodSync(wrapperPath, 0o755);
+    return binDir;
   }
 
   private async emitRuntime() {
