@@ -4,6 +4,7 @@ import type { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { PlatformScheduleAdapter, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
+import type { ScheduledExecutionPolicy } from './execution-policy.js';
 
 type LarkScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -14,18 +15,22 @@ type LarkScheduleAdapterOptions = {
 
 export class LarkScheduleAdapter implements PlatformScheduleAdapter {
   private readonly executor: ScheduledConversationExecutor;
+  private readonly executionPolicy: ScheduledExecutionPolicy;
 
   constructor(private readonly options: LarkScheduleAdapterOptions) {
     this.executor = new ScheduledConversationExecutor({
       store: options.store,
       workspaceRouter: options.workspaceRouter,
-      beforeExecute: (threadId) => {
-        this.options.larkGateway.muteThreadBridge(threadId);
-      },
-      afterExecute: (threadId) => {
-        this.options.larkGateway.unmuteThreadBridge(threadId);
-      },
     });
+    this.executionPolicy = {
+      resolveTarget: async (job) => ({ threadId: await this.resolveThread(job) }),
+      beforeExecute: (target) => {
+        this.options.larkGateway.muteThreadBridge(target.threadId);
+      },
+      afterExecute: (target) => {
+        this.options.larkGateway.unmuteThreadBridge(target.threadId);
+      },
+    };
   }
 
   supports(job: ScheduledJob) {
@@ -34,8 +39,7 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
 
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
     const { job } = context;
-    const threadId = await this.resolveThread(job);
-    const execution = await this.executor.execute(threadId, job.promptTemplate);
+    const execution = await this.executor.execute(job, job.promptTemplate, this.executionPolicy);
     let platformMessageId = '';
     if (execution.replyText) {
       platformMessageId = await this.options.larkGateway.sendScheduledCard(job.workspaceId, job.route.chatId, execution.replyText);
@@ -44,7 +48,7 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
       }
     }
     return {
-      threadId,
+      threadId: execution.threadId,
       runId: execution.runId,
       replyText: execution.replyText,
       platformMessageId: platformMessageId || undefined,

@@ -16,6 +16,7 @@ src/
   gateway/   # 平台网关（当前为 native Lark gateway）
   router/    # workspace 路由与配置归一化
   runtime/   # 本地服务入口（HTTP/SSE server、standalone 启动）
+  scheduler/ # 定时任务调度、执行策略与平台适配
   thread/    # 线程 ID 编解码与 Thread DTO 映射
 ```
 
@@ -27,6 +28,45 @@ src/
 - `src/gateway/local-core-lark-gateway.ts`: Feishu/Lark 原生网关
 - `src/acp/local-core-acp-backend.ts`: ACP 子进程桥接与流式事件处理
 - `src/acp/local-core-acp-store.ts`: SQLite 持久化层
+- `src/scheduler/scheduler-service.ts`: 定时任务调度主入口
+
+## ACP 分层
+
+当前 ACP 子系统按职责拆成四层：
+
+- `src/acp/local-core-acp-transport.ts`
+  只负责 ACP 子进程、stdin/stdout、JSON-RPC request/response、pipe failure。
+- `src/acp/local-core-acp-turn-coordinator.ts`
+  只负责 permission 请求、tool/progress update、preview bridge 事件。
+- `src/acp/local-core-acp-session-coordinator.ts`
+  只负责 session 容器、`session/load`、`session/new`、run interrupt、异常收尾。
+- `src/acp/local-core-acp-response-processor.ts`
+  只负责 assistant 最终输出后处理，包括 slash fallback 和 `[CRON_*]` fallback。
+
+`src/acp/local-core-acp-backend.ts` 现在主要做装配：连接 thread API、run 启停与上述各层。
+
+## Scheduler 分层
+
+当前 scheduler 子系统按职责拆成四层：
+
+- `src/scheduler/scheduler-service.ts`
+  只负责轮询、due 判断、并发控制、adapter 选择。
+- `src/scheduler/scheduler-run-lifecycle.ts`
+  只负责 `scheduled_job_runs` 的状态迁移和对应 job 状态回写。
+- `src/scheduler/scheduled-conversation-executor.ts`
+  只负责把一次定时任务转换成一次 conversation execution：发消息、等 run、取最终 reply。
+- `src/scheduler/lark-schedule-adapter.ts`
+  只负责 Lark route 解析和平台结果回投。
+
+## Scheduler Execution Policy
+
+`src/scheduler/execution-policy.ts` 定义了 scheduler 执行策略接口：
+
+- `resolveTarget(job)`
+- `beforeExecute(target, job)`
+- `afterExecute(target, job)`
+
+当前 Lark adapter 使用的是“复用原 thread”的策略。后续若要改成 side-thread / side-run，应优先替换 execution policy，而不是把新逻辑继续塞回 adapter 或 scheduler service。
 
 ## 对外接口（概览）
 
@@ -66,3 +106,4 @@ pnpm dev:core
 - 内部平台类型统一使用 `lark`（兼容读取 `feishu`）
 - Local AI Core 为本地线程与事件流的统一入口
 - 本仓库默认运行形态为 Local AI Core 单核运行时，不依赖 `cc-connect`
+- ACP、scheduler、gateway 三层之间优先通过显式接口协作，不应在单个文件里同时混合 transport、state machine、platform delivery 与持久化状态迁移

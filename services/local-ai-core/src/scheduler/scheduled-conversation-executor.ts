@@ -1,35 +1,36 @@
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledExecutionPolicy, ScheduledExecutionTarget } from './execution-policy.js';
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
 
 type ScheduledConversationExecutorOptions = {
   store: LocalCoreAcpStore;
   workspaceRouter: WorkspaceRouter;
-  beforeExecute?: (threadId: string) => void;
-  afterExecute?: (threadId: string) => void;
 };
 
 export class ScheduledConversationExecutor {
   constructor(private readonly options: ScheduledConversationExecutorOptions) {}
 
-  async execute(threadId: string, prompt: string, timeoutMs = 15 * 60 * 1000) {
-    this.options.beforeExecute?.(threadId);
+  async execute(job: ScheduledJob, prompt: string, policy: ScheduledExecutionPolicy, timeoutMs = 15 * 60 * 1000) {
+    const target = await policy.resolveTarget(job);
+    await policy.beforeExecute?.(target, job);
     try {
-      const sendResult = await this.options.workspaceRouter.sendThreadMessage(threadId, prompt);
+      const sendResult = await this.options.workspaceRouter.sendThreadMessage(target.threadId, prompt);
       await this.waitForRun(sendResult.runId, timeoutMs);
-      const thread = await this.options.workspaceRouter.getThread(threadId);
+      const thread = await this.options.workspaceRouter.getThread(target.threadId);
       const replyText = [...thread.messages]
         .reverse()
         .find((message) => message.role === 'assistant' && message.kind === 'final')
         ?.content;
       return {
-        threadId,
+        threadId: target.threadId,
         runId: sendResult.runId,
         replyText,
       };
     } finally {
-      this.options.afterExecute?.(threadId);
+      await policy.afterExecute?.(target, job);
     }
   }
 
