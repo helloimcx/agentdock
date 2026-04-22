@@ -61,6 +61,7 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
   const cronExpr = getRequiredFlag(flags, 'cron');
   const promptTemplate = getRequiredFlag(flags, 'message');
   const description = getRequiredFlag(flags, 'desc');
+  const executionMode = getExecutionMode(flags);
   const context = resolveContext(flags, env);
   if (!context.workspaceId || !context.threadId) {
     throw new Error('scheduler add requires a current workspace/thread context.');
@@ -77,6 +78,7 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
       platformUserId: context.platformUserId,
       threadId: context.threadId,
     },
+    executionMode,
     triggerType: 'cron',
     cronExpr,
     promptTemplate,
@@ -86,6 +88,7 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
   print(json, io.stdout, job, [
     `Created scheduler job ${job.id}`,
     `Schedule: ${job.cronExpr || ''}`,
+    `Execution mode: ${job.executionMode}`,
     `Description: ${job.description}`,
   ].join('\n'));
   return 0;
@@ -126,6 +129,7 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
   const promptTemplate = getFlag(flags, 'message');
   const description = getFlag(flags, 'desc');
   const enabled = getOptionalBooleanFlag(flags, 'enabled');
+  const executionMode = getFlag(flags, 'execution-mode');
   if (cronExpr) {
     input.cronExpr = cronExpr;
   }
@@ -137,6 +141,9 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
   }
   if (typeof enabled === 'boolean') {
     input.enabled = enabled;
+  }
+  if (executionMode) {
+    input.executionMode = parseExecutionMode(executionMode);
   }
   if (Object.keys(input).length === 0) {
     throw new Error('scheduler edit requires at least one editable field.');
@@ -261,6 +268,17 @@ function normalizeMaybeBooleanFlag(value: string) {
   return value === 'true' ? '' : value;
 }
 
+function getExecutionMode(flags: Map<string, string[]>) {
+  return parseExecutionMode(getFlag(flags, 'execution-mode') || 'same-thread');
+}
+
+function parseExecutionMode(value: string) {
+  if (value === 'same-thread' || value === 'side-thread') {
+    return value;
+  }
+  throw new Error('Flag --execution-mode must be same-thread or side-thread');
+}
+
 function print(asJson: boolean, output: Pick<NodeJS.WriteStream, 'write'>, payload: unknown, text: string) {
   output.write(asJson ? `${JSON.stringify(payload, null, 2)}\n` : `${text}\n`);
 }
@@ -268,10 +286,10 @@ function print(asJson: boolean, output: Pick<NodeJS.WriteStream, 'write'>, paylo
 function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
   output.write([
     'Usage:',
-    '  lac scheduler add --cron "<expr>" --message "<text>" --desc "<label>" [--json]',
+    '  lac scheduler add --cron "<expr>" --message "<text>" --desc "<label>" [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler list [--workspace <id>] [--thread [<id>]] [--json]',
     '  lac scheduler info <job-id> [--json]',
-    '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--json]',
+    '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler del <job-id> [--json]',
     '  lac scheduler run <job-id> [--json]',
   ].join('\n') + '\n');
@@ -279,7 +297,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
 
 function formatJobLine(job: ScheduledJob) {
   const schedule = job.triggerType === 'cron' ? job.cronExpr || '' : job.runAt || '';
-  return `${job.id} | ${job.enabled ? 'enabled' : 'disabled'} | ${schedule} | ${job.description}`;
+  return `${job.id} | ${job.enabled ? 'enabled' : 'disabled'} | ${job.executionMode} | ${schedule} | ${job.description}`;
 }
 
 function formatJobDetails(job: ScheduledJob, latestRun?: ScheduledJobRun) {
@@ -288,6 +306,7 @@ function formatJobDetails(job: ScheduledJob, latestRun?: ScheduledJobRun) {
     `Workspace: ${job.workspaceId}`,
     `Platform: ${job.platform}`,
     `Thread: ${job.route.threadId || ''}`,
+    `Execution mode: ${job.executionMode}`,
     `Schedule: ${job.triggerType === 'cron' ? job.cronExpr || '' : job.runAt || ''}`,
     `Enabled: ${job.enabled ? 'true' : 'false'}`,
     `Description: ${job.description}`,

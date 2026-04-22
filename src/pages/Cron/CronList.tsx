@@ -17,6 +17,7 @@ import { formatTime } from '@/lib/utils';
 
 type SchedulerFormState = {
   workspaceId: string;
+  executionMode: 'same-thread' | 'side-thread';
   triggerType: 'cron' | 'once';
   cronExpr: string;
   runAt: string;
@@ -30,6 +31,7 @@ type SchedulerFormState = {
 
 const DEFAULT_FORM: SchedulerFormState = {
   workspaceId: '',
+  executionMode: 'same-thread',
   triggerType: 'cron',
   cronExpr: '0 9 * * *',
   runAt: '',
@@ -47,6 +49,7 @@ function toForm(job?: CronJob | null): SchedulerFormState {
   }
   return {
     workspaceId: job.workspaceId,
+    executionMode: job.executionMode,
     triggerType: job.triggerType,
     cronExpr: job.cronExpr || '0 9 * * *',
     runAt: job.runAt ? String(job.runAt).slice(0, 16) : '',
@@ -69,6 +72,7 @@ function toPayload(form: SchedulerFormState): CronJobCreateInput {
       platformUserId: form.platformUserId,
       ...(form.threadId ? { threadId: form.threadId } : {}),
     },
+    executionMode: form.executionMode,
     triggerType: form.triggerType,
     ...(form.triggerType === 'cron'
       ? { cronExpr: form.cronExpr, runAt: undefined }
@@ -204,6 +208,7 @@ export default function CronList() {
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-2">
                     <span><strong>Workspace:</strong> {job.workspaceId}</span>
+                    <span><strong>Execution:</strong> {job.executionMode}</span>
                     <span><strong>Route:</strong> {job.route.chatId} / {job.route.platformUserId}</span>
                     <span><strong>{job.triggerType === 'cron' ? t('cron.expression') : 'Run at'}:</strong> {job.triggerType === 'cron' ? job.cronExpr : formatTime(job.runAt || '')}</span>
                     {job.route.threadId && <span><strong>Thread:</strong> {job.route.threadId}</span>}
@@ -238,6 +243,14 @@ export default function CronList() {
           >
             <option value="">Select workspace</option>
             {selectedWorkspaceOptions}
+          </Select>
+          <Select
+            label="Execution mode"
+            value={form.executionMode}
+            onChange={(event) => setForm({ ...form, executionMode: event.target.value as 'same-thread' | 'side-thread' })}
+          >
+            <option value="same-thread">same-thread</option>
+            <option value="side-thread">side-thread</option>
           </Select>
           <Select
             label="Trigger type"
