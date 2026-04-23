@@ -21,6 +21,12 @@ export function createBuiltinLarkChannelPlugin(options: {
       provides: [
         'channel:lark',
       ],
+      configSchema: {
+        fields: [
+          { key: 'appId', type: 'string', label: 'App ID' },
+          { key: 'appSecret', type: 'string', label: 'App Secret' },
+        ],
+      },
     },
     capabilities: {
       channels: [

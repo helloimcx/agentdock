@@ -18,6 +18,7 @@ import type {
   KnowledgeSource,
   LocalCoreCapabilities,
   LocalCoreCapabilitySnapshot,
+  LocalCorePluginDiagnostics,
   LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
@@ -422,6 +423,10 @@ export async function getCapabilities() {
 
 export async function getCapabilitySnapshot() {
   return coreRequest<LocalCoreCapabilitySnapshot>('GET', '/capabilities/snapshot');
+}
+
+export async function getPluginDiagnostics() {
+  return coreRequest<LocalCorePluginDiagnostics>('GET', '/plugins/diagnostics');
 }
 
 export async function probeWorkspaceStreaming(workspaceId: string) {

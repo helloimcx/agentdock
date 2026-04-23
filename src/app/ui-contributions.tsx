@@ -31,6 +31,7 @@ import SystemLogs from '@/pages/System/Logs';
 import KnowledgeHome from '@/pages/Knowledge/KnowledgeHome';
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail';
 import type { RuntimeFeatureSupport } from '@/app/runtime';
+import type { LocalCorePluginDiagnostics } from '../../packages/contracts/src';
 
 export type UiContributionContext = {
   desktopManaged: boolean;
@@ -62,8 +63,10 @@ export type SystemSettingsPanelContext = {
   config: unknown;
   loading: boolean;
   actionMsg: string;
+  pluginDiagnostics: LocalCorePluginDiagnostics | null;
   onReload: () => void;
   onRestart: () => void;
+  onTogglePlugin: (pluginId: string, enabled: boolean) => void;
 };
 
 export type UiSettingsPanelContribution = {
@@ -333,6 +336,74 @@ function registerBuiltinSettingsPanels(registry: RendererUiContributionRegistry)
             {JSON.stringify(config, null, 2)}
           </pre>
         )}
+      </Card>
+    ),
+  });
+  registry.registerSettingsPanel({
+    id: 'system-plugins',
+    titleKey: 'system.plugins',
+    order: 40,
+    render: ({ t, pluginDiagnostics, onTogglePlugin }) => (
+      <Card>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{t('system.plugins')}</h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {pluginDiagnostics
+                ? `${pluginDiagnostics.enabledPluginCount}/${pluginDiagnostics.pluginCount} enabled`
+                : 'Loading...'}
+            </p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {(pluginDiagnostics?.plugins || []).map((plugin) => (
+            <div
+              key={plugin.pluginId}
+              className="rounded-2xl border border-gray-200 dark:border-white/[0.08] px-4 py-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white break-all">{plugin.pluginId}</p>
+                    <span className="rounded-full bg-gray-100 dark:bg-white/[0.06] px-2 py-0.5 text-[11px] text-gray-600 dark:text-gray-300">
+                      {plugin.manifest.kind}
+                    </span>
+                    <span
+                      className={[
+                        'rounded-full px-2 py-0.5 text-[11px]',
+                        plugin.health.status === 'healthy'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+                          : plugin.health.status === 'degraded'
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                            : 'bg-red-500/10 text-red-600 dark:text-red-300',
+                      ].join(' ')}
+                    >
+                      {plugin.health.status}
+                    </span>
+                  </div>
+                  {plugin.health.summary && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{plugin.health.summary}</p>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {plugin.manifest.provides.join(', ') || 'No declared capabilities'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onTogglePlugin(plugin.pluginId, !plugin.enabled)}
+                  className={[
+                    'shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors',
+                    plugin.enabled
+                      ? 'bg-accent/15 text-gray-900 dark:text-white hover:bg-accent/25'
+                      : 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/[0.1]',
+                  ].join(' ')}
+                >
+                  {plugin.enabled ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </Card>
     ),
   });

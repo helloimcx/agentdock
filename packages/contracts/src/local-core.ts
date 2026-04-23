@@ -319,6 +319,50 @@ export interface LocalCoreCapabilitySnapshot {
   ui: LocalCoreUiCapability[];
 }
 
+export type LocalCorePluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'ui' | 'composite';
+export type LocalCorePluginHealthStatus = 'healthy' | 'degraded' | 'failed';
+export type LocalCorePluginConfigFieldType = 'string' | 'number' | 'boolean' | 'json';
+
+export interface LocalCorePluginConfigFieldSchema {
+  key: string;
+  type: LocalCorePluginConfigFieldType;
+  label?: string;
+  description?: string;
+  defaultValue?: unknown;
+}
+
+export interface LocalCorePluginConfigSchema {
+  fields: LocalCorePluginConfigFieldSchema[];
+}
+
+export interface LocalCorePluginManifest {
+  id: string;
+  kind: LocalCorePluginKind;
+  version: string;
+  dependsOn?: string[];
+  provides: string[];
+  configSchema?: LocalCorePluginConfigSchema;
+}
+
+export interface LocalCorePluginHealth {
+  status: LocalCorePluginHealthStatus;
+  summary?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface LocalCorePluginDiagnostic {
+  pluginId: string;
+  enabled: boolean;
+  manifest: LocalCorePluginManifest;
+  health: LocalCorePluginHealth;
+}
+
+export interface LocalCorePluginDiagnostics {
+  pluginCount: number;
+  enabledPluginCount: number;
+  plugins: LocalCorePluginDiagnostic[];
+}
+
 export interface LocalCoreCapabilities {
   adapters: {
     channels: string[];

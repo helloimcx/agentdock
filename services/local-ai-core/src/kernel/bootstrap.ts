@@ -67,9 +67,10 @@ export interface LocalCoreRuntimeBootstrap {
 
 export function bootstrapLocalCoreKernel(options?: {
   log?: (message: string) => void;
+  disabledPluginIds?: string[];
 }): LocalCoreKernel {
   const capabilities = new LocalCoreCapabilityRegistry();
-  const plugins = new LocalCorePluginRegistry();
+  const plugins = new LocalCorePluginRegistry(options?.disabledPluginIds);
   const context: PluginContext = {
     bus: new LocalCoreEventBus(),
     capabilities,
@@ -85,8 +86,12 @@ export function bootstrapLocalCoreKernel(options?: {
   const builtIns = [runtimeCapabilitiesPlugin, createBuiltinCronSchedulerPlugin()];
   for (const plugin of builtIns) {
     plugins.register(plugin);
-    if (plugin.capabilities) {
+    options?.log?.(`[plugin:${plugin.manifest.id}] registered`);
+    if (plugin.capabilities && plugins.isEnabled(plugin.manifest.id)) {
+      logCapabilityContributions(plugin, options?.log);
       capabilities.registerContributions(plugin.capabilities);
+    } else if (!plugins.isEnabled(plugin.manifest.id)) {
+      options?.log?.(`[plugin:${plugin.manifest.id}] disabled by runtime settings`);
     }
   }
 
@@ -123,8 +128,28 @@ export function bootstrapLocalCoreKernel(options?: {
 
 function registerPlugin(kernel: LocalCoreKernel, plugin: RuntimePlugin) {
   kernel.plugins.register(plugin);
-  if (plugin.capabilities) {
+  kernel.context.logger.log(`[plugin:${plugin.manifest.id}] registered`);
+  if (plugin.capabilities && kernel.plugins.isEnabled(plugin.manifest.id)) {
+    logCapabilityContributions(plugin, kernel.context.logger.log);
     kernel.capabilities.registerContributions(plugin.capabilities);
+  } else if (!kernel.plugins.isEnabled(plugin.manifest.id)) {
+    kernel.context.logger.log(`[plugin:${plugin.manifest.id}] disabled by runtime settings`);
+  }
+}
+
+function logCapabilityContributions(plugin: RuntimePlugin, log?: (message: string) => void) {
+  if (!log || !plugin.capabilities) {
+    return;
+  }
+  const capabilityIds = [
+    ...(plugin.capabilities.agents || []).map((capability) => capability.id),
+    ...(plugin.capabilities.channels || []).map((capability) => capability.id),
+    ...(plugin.capabilities.knowledge || []).map((capability) => capability.id),
+    ...(plugin.capabilities.schedulers || []).map((capability) => capability.id),
+    ...(plugin.capabilities.ui || []).map((capability) => capability.id),
+  ];
+  for (const capabilityId of capabilityIds) {
+    log(`[plugin:${plugin.manifest.id}][capability:${capabilityId}] registered`);
   }
 }
 
@@ -178,12 +203,16 @@ export function bootstrapLocalCoreRuntime(options: {
   enableKnowledge?: boolean;
   log?: (message: string) => void;
 }): LocalCoreRuntimeBootstrap {
-  const kernel = bootstrapLocalCoreKernel({
-    log: options.log,
-  });
   const state = createLocalCoreRuntimeState({
     userDataPath: options.userDataPath,
     onLog: options.log,
+  });
+  const disabledPluginIds = Object.entries(state.getSettings().plugins)
+    .filter(([, settings]) => settings.enabled === false)
+    .map(([pluginId]) => pluginId);
+  const kernel = bootstrapLocalCoreKernel({
+    log: options.log,
+    disabledPluginIds,
   });
   const store = new LocalCoreAcpStore(options.userDataPath);
   const agentPlugins = [
@@ -221,12 +250,21 @@ export function bootstrapLocalCoreRuntime(options: {
   for (const plugin of schedulerPlugins) {
     registerPlugin(kernel, plugin);
   }
-  const agentRuntimes = agentPlugins.map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
+  const agentRuntimes = agentPlugins
+    .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
+    .map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
   const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
-  const knowledgeRuntime = resolveKnowledgeRuntime(knowledgePlugin, kernel.context);
+  const knowledgeRuntime = kernel.plugins.isEnabled(knowledgePlugin.manifest.id)
+    ? resolveKnowledgeRuntime(knowledgePlugin, kernel.context)
+    : resolveKnowledgeRuntime(createBuiltinNoopKnowledgePlugin(), kernel.context);
+  const cronSchedulerPlugin = createBuiltinCronSchedulerPlugin();
   const schedulerRuntimes = [
-    resolveSchedulerRuntime(createBuiltinCronSchedulerPlugin(), kernel.context),
-    ...schedulerPlugins.map((plugin) => resolveSchedulerRuntime(plugin, kernel.context)),
+    ...(kernel.plugins.isEnabled(cronSchedulerPlugin.manifest.id)
+      ? [resolveSchedulerRuntime(cronSchedulerPlugin, kernel.context)]
+      : []),
+    ...schedulerPlugins
+      .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
+      .map((plugin) => resolveSchedulerRuntime(plugin, kernel.context)),
   ];
   const schedulerTriggers = schedulerRuntimes.flatMap((runtime) => runtime.triggers || []) as SchedulerTriggerRuntime[];
   const schedulerExecutors = schedulerRuntimes.flatMap((runtime) => runtime.executors || []) as SchedulerExecutorRuntime[];

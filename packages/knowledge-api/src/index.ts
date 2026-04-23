@@ -127,6 +127,13 @@ export function createAiVectorKnowledgePlugin(options: KnowledgePluginFactoryOpt
       kind: 'knowledge',
       version: '0.1.0',
       provides: ['knowledge:ai-vector'],
+      configSchema: {
+        fields: [
+          { key: 'baseUrl', type: 'string', label: 'Base URL' },
+          { key: 'authMode', type: 'string', label: 'Auth mode', defaultValue: 'none' },
+          { key: 'defaultCollection', type: 'string', label: 'Default collection' },
+        ],
+      },
     },
     capabilities: {
       knowledge: [

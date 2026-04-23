@@ -322,6 +322,20 @@ export interface PluginLogger {
   log(message: string): void;
 }
 
+export type PluginConfigFieldType = 'string' | 'number' | 'boolean' | 'json';
+
+export interface PluginConfigFieldSchema {
+  key: string;
+  type: PluginConfigFieldType;
+  label?: string;
+  description?: string;
+  defaultValue?: unknown;
+}
+
+export interface PluginConfigSchema {
+  fields: PluginConfigFieldSchema[];
+}
+
 export interface PluginContext {
   bus: EventBus;
   capabilities: CapabilityRegistry;
@@ -338,6 +352,7 @@ export interface PluginManifest {
   version: string;
   dependsOn?: string[];
   provides: string[];
+  configSchema?: PluginConfigSchema;
   contributes?: {
     routes?: UiRouteContribution[];
     navItems?: UiNavContribution[];

@@ -9,6 +9,7 @@ import type {
   LocalCoreAuthorizedUser,
   LocalCoreCapabilitySnapshot,
   LocalCoreCapabilities,
+  LocalCorePluginDiagnostics,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
@@ -110,6 +111,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       settings: this.state.getSettings(),
       configFile: await this.readConfigFile(),
       logs: this.getLogs(200),
+      pluginDiagnostics: await this.getPluginDiagnostics(),
     };
   }
 
@@ -301,6 +303,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot> {
     return this.kernel.getCapabilitySnapshot().snapshot;
+  }
+
+  async getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics> {
+    return this.kernel.diagnostics.snapshot();
   }
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {

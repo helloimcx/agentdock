@@ -21,6 +21,7 @@ type RuntimeSettingsFile = {
   configPath: string;
   defaultProject: string;
   autoStartService: boolean;
+  plugins: DesktopSettings['plugins'];
   knowledge: {
     baseUrl: string;
     authMode: 'none' | 'bearer' | 'header';
@@ -75,6 +76,26 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       ...(input.defaultProject ? { defaultProject: input.defaultProject } : {}),
       ...(typeof input.autoStartService === 'boolean' ? { autoStartService: input.autoStartService } : {}),
       ...(input.configPath ? { configPath: input.configPath } : {}),
+      plugins: input.plugins
+        ? Object.fromEntries(
+            Object.entries({
+              ...this.settings.plugins,
+              ...Object.fromEntries(
+                Object.entries(input.plugins).map(([pluginId, value]) => [
+                  pluginId,
+                  {
+                    ...this.settings.plugins[pluginId],
+                    ...value,
+                    config: {
+                      ...(this.settings.plugins[pluginId]?.config || {}),
+                      ...(value.config || {}),
+                    },
+                  },
+                ]),
+              ),
+            }),
+          )
+        : this.settings.plugins,
       knowledge: input.knowledge
         ? {
             ...this.settings.knowledge,
@@ -154,6 +175,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       configPath: join(this.runtimeDir, 'config.toml'),
       defaultProject: 'default',
       autoStartService: true,
+      plugins: {},
       knowledge: {
         baseUrl: '',
         authMode: 'none',
@@ -174,6 +196,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
         bridgeToken: '',
         bridgePath: '',
         knowledge: defaults.knowledge,
+        plugins: defaults.plugins,
       };
     }
     const raw = JSON.parse(readFileSync(this.settingsPath, 'utf8')) as Partial<RuntimeSettingsFile>;
@@ -187,6 +210,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       bridgePort: 0,
       bridgeToken: '',
       bridgePath: '',
+      plugins: normalizePluginSettings(raw.plugins),
       knowledge: {
         ...defaults.knowledge,
         ...(raw.knowledge || {}),
@@ -199,6 +223,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       configPath: this.settings.configPath,
       defaultProject: this.settings.defaultProject,
       autoStartService: this.settings.autoStartService,
+      plugins: this.settings.plugins,
       knowledge: this.settings.knowledge,
     };
     mkdirSync(dirname(this.settingsPath), { recursive: true });
@@ -228,6 +253,26 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     chmodSync(wrapperPath, 0o755);
     return binDir;
   }
+}
+
+function normalizePluginSettings(input: unknown): DesktopSettings['plugins'] {
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+  const output: DesktopSettings['plugins'] = {};
+  for (const [pluginId, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') {
+      continue;
+    }
+    const record = value as Record<string, unknown>;
+    output[pluginId] = {
+      enabled: typeof record.enabled === 'boolean' ? record.enabled : true,
+      config: record.config && typeof record.config === 'object'
+        ? record.config as Record<string, unknown>
+        : {},
+    };
+  }
+  return output;
 }
 
 export function createLocalCoreRuntimeState(options: {

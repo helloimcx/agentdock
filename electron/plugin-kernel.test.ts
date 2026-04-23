@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapLocalCoreKernel } from '../services/local-ai-core/src/kernel/bootstrap.js';
@@ -55,20 +55,30 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
   const diagnostics = await kernel.diagnostics.snapshot();
 
   assert.equal(diagnostics.pluginCount, 2);
+  assert.equal(diagnostics.enabledPluginCount, 2);
   assert.deepEqual(
-    diagnostics.plugins.map((plugin) => plugin.id).sort(),
+    diagnostics.plugins.map((plugin) => plugin.pluginId).sort(),
     ['builtin.runtime-capabilities', 'builtin.scheduler-cron'],
   );
-  assert.deepEqual(diagnostics.health, [
-    {
-      pluginId: 'builtin.runtime-capabilities',
-      health: { status: 'healthy' },
-    },
-    {
-      pluginId: 'builtin.scheduler-cron',
-      health: { status: 'healthy' },
-    },
-  ]);
+  assert.deepEqual(
+    diagnostics.plugins.map((plugin) => ({
+      pluginId: plugin.pluginId,
+      enabled: plugin.enabled,
+      health: plugin.health,
+    })),
+    [
+      {
+        pluginId: 'builtin.runtime-capabilities',
+        enabled: true,
+        health: { status: 'healthy' },
+      },
+      {
+        pluginId: 'builtin.scheduler-cron',
+        enabled: true,
+        health: { status: 'healthy' },
+      },
+    ],
+  );
 });
 
 test('runtime bootstrap registers the active knowledge provider in capability snapshot', async () => {
@@ -131,6 +141,51 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       triggerTypes: ['cron', 'once'],
       deliveryTargets: ['lark'],
       platforms: ['lark'],
+    });
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('runtime bootstrap keeps disabled plugins diagnosable without contributing capabilities', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
+  try {
+    const runtimeDir = join(userDataPath, 'runtime');
+    mkdirSync(runtimeDir, { recursive: true });
+    writeFileSync(
+      join(runtimeDir, 'local-core-settings.json'),
+      JSON.stringify({
+        configPath: join(runtimeDir, 'config.toml'),
+        defaultProject: 'default',
+        autoStartService: true,
+        knowledge: {
+          baseUrl: '',
+          authMode: 'none',
+          token: '',
+          headerName: 'X-API-Key',
+          defaultCollection: 'personal_knowledge',
+        },
+        plugins: {
+          'builtin.scheduler-lark': { enabled: false },
+        },
+      }),
+      'utf8',
+    );
+
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+    });
+    const diagnostics = await runtime.kernel.diagnostics.snapshot();
+    const disabledPlugin = diagnostics.plugins.find((plugin) => plugin.pluginId === 'builtin.scheduler-lark');
+
+    assert.ok(disabledPlugin);
+    assert.equal(disabledPlugin.enabled, false);
+    assert.equal(disabledPlugin.health.status, 'degraded');
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
+      enabled: true,
+      triggerTypes: ['cron', 'once'],
+      deliveryTargets: [],
+      platforms: [],
     });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });

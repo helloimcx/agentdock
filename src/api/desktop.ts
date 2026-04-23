@@ -15,6 +15,7 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
+  LocalCorePluginDiagnostics,
   WorkspaceStreamingProbeResult,
 } from '../../packages/contracts/src';
 import {
@@ -27,6 +28,7 @@ import {
   getCoreLogs,
   getCoreRuntime,
   getCapabilitySnapshot as getCoreCapabilitySnapshot,
+  getPluginDiagnostics as getCorePluginDiagnostics,
   getLarkGatewayStatus as getCoreLarkGatewayStatus,
   listChannelAuthorizedUsers as listCoreChannelAuthorizedUsers,
   listChannelGateways as listCoreChannelGateways,
@@ -69,6 +71,7 @@ type DesktopProvider = {
   deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;
   saveSettings: (input: DesktopSettingsInput) => Promise<DesktopSettings>;
   getCapabilitySnapshot: () => Promise<LocalCoreCapabilitySnapshot>;
+  getPluginDiagnostics: () => Promise<LocalCorePluginDiagnostics>;
   listChannelGateways: (platform: string) => Promise<LocalCoreChannelGatewayStatus[]>;
   getChannelGatewayStatus: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
   testChannelConnection: (platform: string, workspaceId: string) => Promise<LocalCoreChannelConnectionResult>;
@@ -116,6 +119,7 @@ const electronProvider: DesktopProvider = {
     requireDesktopBridge().deleteThreadKnowledgeBases(workspaceId, threadId),
   saveSettings: (input: DesktopSettingsInput) => requireDesktopBridge().saveSettings(input),
   getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
+  getPluginDiagnostics: () => getCorePluginDiagnostics(),
   listChannelGateways: (platform: string) => requireDesktopBridge().listChannelGateways(platform),
   getChannelGatewayStatus: (platform: string, workspaceId: string) => requireDesktopBridge().getChannelGatewayStatus(platform, workspaceId),
   testChannelConnection: (platform: string, workspaceId: string) => requireDesktopBridge().testChannelConnection(platform, workspaceId),
@@ -156,6 +160,7 @@ const localCoreProvider: DesktopProvider = {
     updateCoreThreadKnowledgeBases(threadId, []).then(() => ({ deleted: true })),
   saveSettings: (input: DesktopSettingsInput) => saveCoreSettings(input),
   getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
+  getPluginDiagnostics: () => getCorePluginDiagnostics(),
   listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
   getChannelGatewayStatus: (platform: string, workspaceId: string) => getCoreChannelGatewayStatus(platform, workspaceId),
   testChannelConnection: (platform: string, workspaceId: string) => testCoreChannelConnection(platform, workspaceId),
@@ -238,6 +243,7 @@ export const deleteThreadKnowledgeBases = (workspaceId: string, threadId: string
   requireProvider().deleteThreadKnowledgeBases(workspaceId, threadId);
 export const saveDesktopSettings = (input: DesktopSettingsInput): Promise<DesktopSettings> => requireProvider().saveSettings(input);
 export const getRuntimeCapabilitySnapshot = (): Promise<LocalCoreCapabilitySnapshot> => requireProvider().getCapabilitySnapshot();
+export const getRuntimePluginDiagnostics = (): Promise<LocalCorePluginDiagnostics> => requireProvider().getPluginDiagnostics();
 export const listChannelGateways = (platform: string): Promise<LocalCoreChannelGatewayStatus[]> => requireProvider().listChannelGateways(platform);
 export const getChannelGatewayStatus = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
   requireProvider().getChannelGatewayStatus(platform, workspaceId);

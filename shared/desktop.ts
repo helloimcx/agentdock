@@ -83,6 +83,7 @@ export interface DesktopSettings {
   bridgeToken: string;
   bridgePath: string;
   knowledge: DesktopKnowledgeSettings;
+  plugins: Record<string, DesktopPluginSettings>;
 }
 
 export interface DesktopServiceState {
@@ -114,6 +115,39 @@ export interface DesktopRuntimeStatus {
   settings: DesktopSettings;
   configFile: ConfigFileState;
   logs: string[];
+  pluginDiagnostics?: DesktopRuntimePluginDiagnostics;
+}
+
+export interface DesktopRuntimePluginDiagnostics {
+  pluginCount: number;
+  enabledPluginCount: number;
+  plugins: DesktopRuntimePluginDiagnostic[];
+}
+
+export interface DesktopRuntimePluginDiagnostic {
+  pluginId: string;
+  enabled: boolean;
+  manifest: {
+    id: string;
+    kind: string;
+    version: string;
+    dependsOn?: string[];
+    provides: string[];
+    configSchema?: {
+      fields: Array<{
+        key: string;
+        type: string;
+        label?: string;
+        description?: string;
+        defaultValue?: unknown;
+      }>;
+    };
+  };
+  health: {
+    status: 'healthy' | 'degraded' | 'failed';
+    summary?: string;
+    details?: Record<string, unknown>;
+  };
 }
 
 export function deriveDesktopRuntimePhase(service: DesktopServiceState): DesktopRuntimePhase {
@@ -292,6 +326,7 @@ export interface DesktopSettingsInput {
   autoStartService?: boolean;
   defaultProject?: string;
   knowledge?: Partial<DesktopKnowledgeSettings>;
+  plugins?: Record<string, Partial<DesktopPluginSettings>>;
 }
 
 export type DesktopKnowledgeAuthMode = 'none' | 'bearer' | 'header';
@@ -302,6 +337,11 @@ export interface DesktopKnowledgeSettings {
   token: string;
   headerName: string;
   defaultCollection: string;
+}
+
+export interface DesktopPluginSettings {
+  enabled: boolean;
+  config?: Record<string, unknown>;
 }
 
 export interface DesktopPlatformConfig {

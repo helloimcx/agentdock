@@ -299,19 +299,19 @@ Add operational support so plugins can fail independently and be diagnosed.
 
 ### Tasks
 
-- [ ] Add plugin-scoped config schema support
-- [ ] Add plugin enable/disable state in runtime settings
-- [ ] Add per-plugin health checks
-- [ ] Add plugin diagnostics to runtime status
-- [ ] Add a system page section for installed plugins and health
-- [ ] Add logs that include plugin id and capability id
-- [ ] Ensure a failed plugin is marked degraded instead of crashing bootstrap where possible
+- [x] Add plugin-scoped config schema support
+- [x] Add plugin enable/disable state in runtime settings
+- [x] Add per-plugin health checks
+- [x] Add plugin diagnostics to runtime status
+- [x] Add a system page section for installed plugins and health
+- [x] Add logs that include plugin id and capability id
+- [x] Ensure a failed plugin is marked degraded instead of crashing bootstrap where possible
 
 ### Exit Criteria
 
-- [ ] Plugin health is visible in the UI or system API
-- [ ] Individual plugins can be disabled
-- [ ] A single plugin failure does not take down unrelated features
+- [x] Plugin health is visible in the UI or system API
+- [x] Individual plugins can be disabled
+- [x] A single plugin failure does not take down unrelated features
 
 ## Phase 11: Cleanup And Deletion
 

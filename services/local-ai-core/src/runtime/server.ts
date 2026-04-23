@@ -10,6 +10,7 @@ import type {
   DesktopServiceState,
   LocalCoreCapabilities,
   LocalCoreCapabilitySnapshot,
+  LocalCorePluginDiagnostics,
   LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
@@ -89,6 +90,7 @@ export interface LocalAiCoreBindings extends EventEmitter {
   searchKnowledgeBase(knowledgeBaseId: string, input: KnowledgeSearchInput): Promise<KnowledgeSearchResult[]>;
   getCapabilities(): Promise<LocalCoreCapabilities>;
   getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot>;
+  getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
   getChannelGatewayStatus(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
@@ -528,6 +530,10 @@ export class LocalAiCoreServer {
       }
       if (req.method === 'GET' && path === '/api/local/v1/capabilities/snapshot') {
         json(res, 200, await this.bindings.getCapabilitySnapshot());
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/plugins/diagnostics') {
+        json(res, 200, await this.bindings.getPluginDiagnostics());
         return;
       }
       if (req.method === 'POST' && path.startsWith('/api/local/v1/workspaces/') && path.endsWith('/streaming-probe')) {
