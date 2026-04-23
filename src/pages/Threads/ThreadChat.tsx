@@ -29,33 +29,49 @@ type ToolResultCard = {
   title: string;
   status: string;
   output: string;
+  label: string;
 };
 
 function parseToolResultCard(content: string): ToolResultCard | null {
-  const match = content.match(/^\s*(?:🔧\s*)?(Tool update)\s*-\s*([^-]+?)\s*-\s*([\s\S]+?)\s*$/i);
-  if (!match) {
-    return null;
+  const updateMatch = content.match(/^\s*(?:🔧\s*)?(Tool update)\s*-\s*([^-]+?)\s*-\s*([\s\S]+?)\s*$/i);
+  if (updateMatch) {
+    const [, title, status, payload] = updateMatch;
+    const trimmedPayload = payload.trim();
+    try {
+      const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
+      const value = typeof parsed.output === 'string'
+        ? parsed.output
+        : parsed.output ?? parsed.error ?? parsed;
+      return {
+        title,
+        status: status.trim(),
+        output: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+        label: '工具结果',
+      };
+    } catch {
+      return {
+        title,
+        status: status.trim(),
+        output: trimmedPayload,
+        label: '工具结果',
+      };
+    }
   }
 
-  const [, title, status, payload] = match;
-  const trimmedPayload = payload.trim();
-  try {
-    const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
-    const value = typeof parsed.output === 'string'
-      ? parsed.output
-      : parsed.output ?? parsed.error ?? parsed;
+  const callMatch = content.match(/^\s*🔧\s*(.+?)\s*$/);
+  if (callMatch) {
+    const rawTitle = callMatch[1].trim();
+    const [name, ...rest] = rawTitle.split(':');
+    const output = rest.join(':').trim();
     return {
-      title,
-      status: status.trim(),
-      output: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-    };
-  } catch {
-    return {
-      title,
-      status: status.trim(),
-      output: trimmedPayload,
+      title: name.trim() || 'Tool call',
+      status: 'running',
+      output,
+      label: '工具调用',
     };
   }
+
+  return null;
 }
 
 function ToolResultCardView({ card }: { card: ToolResultCard }) {
@@ -71,7 +87,7 @@ function ToolResultCardView({ card }: { card: ToolResultCard }) {
             <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{card.title}</p>
             <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
               <Terminal size={12} />
-              工具结果
+              {card.label}
             </p>
           </div>
         </div>
@@ -796,7 +812,7 @@ export default function ThreadChat() {
                 </div>
 
                 <div className="mt-2.5">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                     <Textarea
                       data-testid="desktop-chat-input"
                       value={draft}
