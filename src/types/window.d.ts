@@ -8,8 +8,12 @@ import type {
 } from '../../shared/desktop';
 import type {
   LocalCoreAuthorizedUser,
+  LocalCoreChannelAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   WorkspaceStreamingProbeResult,
 } from '../../packages/contracts/src';
@@ -29,6 +33,15 @@ declare global {
       updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) => Promise<string[]>;
       deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;
       saveSettings: (input: DesktopSettingsInput) => Promise<DesktopSettings>;
+      listChannelGateways: (platform: string) => Promise<LocalCoreChannelGatewayStatus[]>;
+      getChannelGatewayStatus: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+      testChannelConnection: (platform: string, workspaceId: string) => Promise<LocalCoreChannelConnectionResult>;
+      enableChannelGateway: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+      disableChannelGateway: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+      listChannelPendingPairings: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelPairingRequest[]>;
+      approveChannelPairing: (platform: string, code: string) => Promise<LocalCoreChannelAuthorizedUser>;
+      rejectChannelPairing: (platform: string, code: string) => Promise<{ rejected: boolean }>;
+      listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelAuthorizedUser[]>;
       listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
       getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
       testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;

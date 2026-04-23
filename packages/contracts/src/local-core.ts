@@ -58,12 +58,15 @@ export interface RunSummary {
   updatedAt: string;
 }
 
-export interface ScheduledJobRoute {
-  type: 'lark_chat';
-  chatId: string;
-  platformUserId: string;
+export interface ChannelRoute {
+  type: string;
+  channelId: string;
+  participantId?: string;
   threadId?: string;
+  metadata?: Record<string, unknown>;
 }
+
+export type ScheduledJobRoute = ChannelRoute;
 
 export interface ScheduledJob {
   id: string;
@@ -242,46 +245,72 @@ export interface LocalCoreCapabilities {
   };
 }
 
-export interface LocalCoreLarkGatewayStatus {
+export interface LocalCoreChannelGatewayStatus {
   workspaceId: string;
-  platform: 'lark';
+  platform: string;
   enabled: boolean;
   connected: boolean;
   status: 'disabled' | 'stopped' | 'starting' | 'running' | 'error';
-  appId: string;
+  appId?: string;
   lastError?: string;
   connectedAt?: string;
   pendingPairings: number;
   authorizedUsers: number;
 }
 
-export interface LocalCoreAuthorizedUser {
+export interface LocalCoreLarkGatewayStatus extends LocalCoreChannelGatewayStatus {
+  platform: 'lark';
+  appId: string;
+}
+
+export interface LocalCoreChannelAuthorizedUser {
   id: string;
   workspaceId: string;
-  platform: 'lark';
-  platformUserId: string;
-  chatId: string;
+  platform: string;
+  participantId: string;
+  channelId: string;
   displayName: string;
   threadId?: string;
   authorizedAt: string;
 }
 
-export interface LocalCorePairingRequest {
-  code: string;
-  workspaceId: string;
+export interface LocalCoreAuthorizedUser extends LocalCoreChannelAuthorizedUser {
   platform: 'lark';
   platformUserId: string;
   chatId: string;
+}
+
+export interface LocalCoreChannelPairingRequest {
+  code: string;
+  workspaceId: string;
+  platform: string;
+  participantId: string;
+  channelId: string;
   displayName: string;
   requestedAt: string;
   expiresAt: string;
   status: 'pending' | 'approved' | 'rejected' | 'expired';
 }
 
-export interface LocalCoreLarkConnectionResult {
+export interface LocalCorePairingRequest extends LocalCoreChannelPairingRequest {
+  platform: 'lark';
+  platformUserId: string;
+  chatId: string;
+}
+
+export interface LocalCoreChannelConnectionResult {
   success: boolean;
-  appId: string;
+  platform: string;
+  workspaceId: string;
+  appId?: string;
   error?: string;
+}
+
+export interface LocalCoreLarkConnectionResult extends LocalCoreChannelConnectionResult {
+  platform: 'lark';
+  success: boolean;
+  workspaceId: string;
+  appId: string;
 }
 
 export interface WorkspaceStreamingProbeEvent {

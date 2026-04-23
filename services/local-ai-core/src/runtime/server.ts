@@ -10,8 +10,12 @@ import type {
   DesktopServiceState,
   LocalCoreCapabilities,
   LocalCoreAuthorizedUser,
+  LocalCoreChannelAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   LocalCoreEvent,
   ScheduledJob,
@@ -84,6 +88,15 @@ export interface LocalAiCoreBindings extends EventEmitter {
   searchKnowledgeBase(knowledgeBaseId: string, input: KnowledgeSearchInput): Promise<KnowledgeSearchResult[]>;
   getCapabilities(): Promise<LocalCoreCapabilities>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
+  listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
+  getChannelGatewayStatus(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
+  testChannelConnection(platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult>;
+  enableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
+  disableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
+  listChannelPendingPairings(platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]>;
+  approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser>;
+  rejectChannelPairing(platform: string, code: string): Promise<{ rejected: boolean }>;
+  listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]>;
   listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]>;
   getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
   testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult>;
@@ -257,49 +270,63 @@ export class LocalAiCoreServer {
         json(res, 200, await this.bindings.saveSettings(body as DesktopSettingsInput));
         return;
       }
-      if (req.method === 'GET' && path === '/api/local/v1/platforms/lark') {
-        json(res, 200, { gateways: await this.bindings.listLarkGatewayStatuses() });
-        return;
+      if (req.method === 'GET' && path.startsWith('/api/local/v1/platforms/')) {
+        const suffix = path.slice('/api/local/v1/platforms/'.length);
+        const segments = suffix.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
+        const [platform = '', workspaceOrCollection = '', action = ''] = segments;
+        if (!platform) {
+          json(res, 404, null, false, 'Platform not found');
+          return;
+        }
+        if (segments.length === 1) {
+          json(res, 200, { gateways: await this.bindings.listChannelGatewayStatuses(platform) });
+          return;
+        }
+        if (workspaceOrCollection === 'pairings' && segments.length === 2) {
+          const workspaceId = String(url.searchParams.get('workspace_id') || '');
+          json(res, 200, { pairings: await this.bindings.listChannelPendingPairings(platform, workspaceId || undefined) });
+          return;
+        }
+        if (workspaceOrCollection === 'users' && segments.length === 2) {
+          const workspaceId = String(url.searchParams.get('workspace_id') || '');
+          json(res, 200, { users: await this.bindings.listChannelAuthorizedUsers(platform, workspaceId || undefined) });
+          return;
+        }
+        if (segments.length === 2) {
+          json(res, 200, await this.bindings.getChannelGatewayStatus(platform, workspaceOrCollection));
+          return;
+        }
       }
-      if (req.method === 'GET' && path === '/api/local/v1/platforms/lark/pairings') {
-        const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { pairings: await this.bindings.listLarkPendingPairings(workspaceId || undefined) });
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/platforms/lark/users') {
-        const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { users: await this.bindings.listLarkAuthorizedUsers(workspaceId || undefined) });
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/platforms/lark/pairings/approve') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.approveLarkPairing(String(body.code || '')));
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/platforms/lark/pairings/reject') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.rejectLarkPairing(String(body.code || '')));
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/lark/') && path.endsWith('/test')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length, -'/test'.length));
-        json(res, 200, await this.bindings.testLarkConnection(workspaceId));
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/lark/') && path.endsWith('/enable')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length, -'/enable'.length));
-        json(res, 200, await this.bindings.enableLarkGateway(workspaceId));
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/lark/') && path.endsWith('/disable')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length, -'/disable'.length));
-        json(res, 200, await this.bindings.disableLarkGateway(workspaceId));
-        return;
-      }
-      if (req.method === 'GET' && path.startsWith('/api/local/v1/platforms/lark/')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/platforms/lark/'.length));
-        json(res, 200, await this.bindings.getLarkGatewayStatus(workspaceId));
-        return;
+      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/')) {
+        const suffix = path.slice('/api/local/v1/platforms/'.length);
+        const segments = suffix.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
+        const [platform = '', workspaceOrCollection = '', action = ''] = segments;
+        if (!platform) {
+          json(res, 404, null, false, 'Platform not found');
+          return;
+        }
+        if (workspaceOrCollection === 'pairings' && action === 'approve') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.approveChannelPairing(platform, String(body.code || '')));
+          return;
+        }
+        if (workspaceOrCollection === 'pairings' && action === 'reject') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.rejectChannelPairing(platform, String(body.code || '')));
+          return;
+        }
+        if (action === 'test') {
+          json(res, 200, await this.bindings.testChannelConnection(platform, workspaceOrCollection));
+          return;
+        }
+        if (action === 'enable') {
+          json(res, 200, await this.bindings.enableChannelGateway(platform, workspaceOrCollection));
+          return;
+        }
+        if (action === 'disable') {
+          json(res, 200, await this.bindings.disableChannelGateway(platform, workspaceOrCollection));
+          return;
+        }
       }
       if (req.method === 'GET' && path === '/api/local/v1/scheduler/jobs') {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');

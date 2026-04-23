@@ -134,26 +134,26 @@ Turn Lark into a channel plugin and remove channel-specific logic from core cont
 
 ### Tasks
 
-- [ ] Define `ChannelPlugin` and `ChannelRoute` abstractions
-- [ ] Convert `LocalCoreLarkGateway` into a built-in `channel-lark` plugin
-- [ ] Move channel binding startup and shutdown into plugin lifecycle hooks
-- [ ] Replace channel-specific registration with registry lookup
-- [ ] Generalize platform pairing lifecycle to channel-agnostic events
-- [ ] Generalize route models so they do not require `type: 'lark_chat'` in core contracts
-- [ ] Keep current Lark behavior unchanged during extraction
+- [x] Define `ChannelPlugin` and `ChannelRoute` abstractions
+- [x] Convert `LocalCoreLarkGateway` into a built-in `channel-lark` plugin
+- [x] Move channel binding startup and shutdown into plugin lifecycle hooks
+- [x] Replace channel-specific registration with registry lookup
+- [x] Generalize platform pairing lifecycle to channel-agnostic events
+- [x] Generalize route models so they do not require `type: 'lark_chat'` in core contracts
+- [x] Keep current Lark behavior unchanged during extraction
 
 ### Current Code To Untangle
 
-- [ ] `services/local-ai-core/src/gateway/local-core-lark-gateway.ts`
-- [ ] scheduler route typing in `packages/contracts/src/local-core.ts`
-- [ ] Lark-specific methods inside `src/api/desktop.ts`
-- [ ] Lark-specific capability strings in `WorkspaceRouter.getCapabilities()`
+- [x] `services/local-ai-core/src/gateway/local-core-lark-gateway.ts`
+- [x] scheduler route typing in `packages/contracts/src/local-core.ts`
+- [x] Lark-specific methods inside `src/api/desktop.ts`
+- [x] Lark-specific capability strings in `WorkspaceRouter.getCapabilities()`
 
 ### Exit Criteria
 
-- [ ] Lark is registered as a plugin, not instantiated as a hard dependency of the kernel
-- [ ] Core route contracts are channel-agnostic
-- [ ] Adding Slack or Discord would not require kernel edits
+- [x] Lark is registered as a plugin, not instantiated as a hard dependency of the kernel
+- [x] Core route contracts are channel-agnostic
+- [x] Adding Slack or Discord would not require kernel edits
 
 ## Phase 5: Capability Extraction For Agents
 

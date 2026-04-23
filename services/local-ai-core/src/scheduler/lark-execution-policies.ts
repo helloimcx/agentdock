@@ -1,5 +1,5 @@
 import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
-import type { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
+import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
@@ -7,7 +7,7 @@ import type { ScheduledExecutionPolicy } from './execution-policy.js';
 type LarkExecutionPolicyOptions = {
   store: LocalCoreAcpStore;
   workspaceRouter: WorkspaceRouter;
-  larkGateway: LocalCoreLarkGateway;
+  larkGateway: ChannelRuntime;
 };
 
 export function createLarkExecutionPolicy(
@@ -34,11 +34,11 @@ class LarkSameThreadExecutionPolicy implements ScheduledExecutionPolicy {
   }
 
   beforeExecute(target: { threadId: string }) {
-    this.options.larkGateway.muteThreadBridge(target.threadId);
+    this.options.larkGateway.muteThreadBridge?.(target.threadId);
   }
 
   afterExecute(target: { threadId: string }) {
-    this.options.larkGateway.unmuteThreadBridge(target.threadId);
+    this.options.larkGateway.unmuteThreadBridge?.(target.threadId);
   }
 }
 
@@ -57,10 +57,10 @@ class LarkSideThreadExecutionPolicy implements ScheduledExecutionPolicy {
   }
 
   beforeExecute(target: { threadId: string }) {
-    this.options.larkGateway.muteThreadBridge(target.threadId);
+    this.options.larkGateway.muteThreadBridge?.(target.threadId);
   }
 
   afterExecute(target: { threadId: string }) {
-    this.options.larkGateway.unmuteThreadBridge(target.threadId);
+    this.options.larkGateway.unmuteThreadBridge?.(target.threadId);
   }
 }

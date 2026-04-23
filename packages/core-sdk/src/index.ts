@@ -18,9 +18,13 @@ import type {
   KnowledgeSource,
   LocalCoreCapabilities,
   LocalCoreAuthorizedUser,
+  LocalCoreChannelAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreEvent,
+  LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   ScheduledJob,
   ScheduledJobCreateInput,
@@ -161,42 +165,78 @@ export async function saveCoreSettings(input: DesktopSettingsInput) {
   return coreRequest<DesktopSettings>('POST', '/runtime/settings', input);
 }
 
+export async function listChannelGateways(platform: string) {
+  return coreRequest<{ gateways: LocalCoreChannelGatewayStatus[] }>('GET', `/platforms/${encodeURIComponent(platform)}`);
+}
+
+export async function getChannelGatewayStatus(platform: string, workspaceId: string) {
+  return coreRequest<LocalCoreChannelGatewayStatus>('GET', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}`);
+}
+
+export async function testChannelConnection(platform: string, workspaceId: string) {
+  return coreRequest<LocalCoreChannelConnectionResult>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/test`);
+}
+
+export async function enableChannelGateway(platform: string, workspaceId: string) {
+  return coreRequest<LocalCoreChannelGatewayStatus>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/enable`);
+}
+
+export async function disableChannelGateway(platform: string, workspaceId: string) {
+  return coreRequest<LocalCoreChannelGatewayStatus>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/disable`);
+}
+
+export async function listChannelPendingPairings(platform: string, workspaceId?: string) {
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  return coreRequest<{ pairings: LocalCoreChannelPairingRequest[] }>('GET', `/platforms/${encodeURIComponent(platform)}/pairings${suffix}`);
+}
+
+export async function approveChannelPairing(platform: string, code: string) {
+  return coreRequest<LocalCoreChannelAuthorizedUser>('POST', `/platforms/${encodeURIComponent(platform)}/pairings/approve`, { code });
+}
+
+export async function rejectChannelPairing(platform: string, code: string) {
+  return coreRequest<{ rejected: boolean }>('POST', `/platforms/${encodeURIComponent(platform)}/pairings/reject`, { code });
+}
+
+export async function listChannelAuthorizedUsers(platform: string, workspaceId?: string) {
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  return coreRequest<{ users: LocalCoreChannelAuthorizedUser[] }>('GET', `/platforms/${encodeURIComponent(platform)}/users${suffix}`);
+}
+
 export async function listLarkGateways() {
-  return coreRequest<{ gateways: LocalCoreLarkGatewayStatus[] }>('GET', '/platforms/lark');
+  return listChannelGateways('lark') as Promise<{ gateways: LocalCoreLarkGatewayStatus[] }>;
 }
 
 export async function getLarkGatewayStatus(workspaceId: string) {
-  return coreRequest<LocalCoreLarkGatewayStatus>('GET', `/platforms/lark/${encodeURIComponent(workspaceId)}`);
+  return getChannelGatewayStatus('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
 }
 
 export async function testLarkConnection(workspaceId: string) {
-  return coreRequest<LocalCoreLarkConnectionResult>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/test`);
+  return testChannelConnection('lark', workspaceId) as Promise<LocalCoreLarkConnectionResult>;
 }
 
 export async function enableLarkGateway(workspaceId: string) {
-  return coreRequest<LocalCoreLarkGatewayStatus>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/enable`);
+  return enableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
 }
 
 export async function disableLarkGateway(workspaceId: string) {
-  return coreRequest<LocalCoreLarkGatewayStatus>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/disable`);
+  return disableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
 }
 
 export async function listLarkPendingPairings(workspaceId?: string) {
-  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
-  return coreRequest<{ pairings: LocalCorePairingRequest[] }>('GET', `/platforms/lark/pairings${suffix}`);
+  return listChannelPendingPairings('lark', workspaceId) as Promise<{ pairings: LocalCorePairingRequest[] }>;
 }
 
 export async function approveLarkPairing(code: string) {
-  return coreRequest<LocalCoreAuthorizedUser>('POST', '/platforms/lark/pairings/approve', { code });
+  return approveChannelPairing('lark', code) as Promise<LocalCoreAuthorizedUser>;
 }
 
 export async function rejectLarkPairing(code: string) {
-  return coreRequest<{ rejected: boolean }>('POST', '/platforms/lark/pairings/reject', { code });
+  return rejectChannelPairing('lark', code);
 }
 
 export async function listLarkAuthorizedUsers(workspaceId?: string) {
-  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
-  return coreRequest<{ users: LocalCoreAuthorizedUser[] }>('GET', `/platforms/lark/users${suffix}`);
+  return listChannelAuthorizedUsers('lark', workspaceId) as Promise<{ users: LocalCoreAuthorizedUser[] }>;
 }
 
 export async function listWorkspaces() {

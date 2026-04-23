@@ -7,24 +7,37 @@ import type {
 } from '../../shared/desktop';
 import type {
   LocalCoreAuthorizedUser,
+  LocalCoreChannelAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   WorkspaceStreamingProbeResult,
 } from '../../packages/contracts/src';
 import {
+  approveChannelPairing as approveCoreChannelPairing,
   detectLocalAiCore,
+  disableChannelGateway as disableCoreChannelGateway,
+  enableChannelGateway as enableCoreChannelGateway,
+  getChannelGatewayStatus as getCoreChannelGatewayStatus,
   getThread as getCoreThread,
   getCoreLogs,
   getCoreRuntime,
   getLarkGatewayStatus as getCoreLarkGatewayStatus,
+  listChannelAuthorizedUsers as listCoreChannelAuthorizedUsers,
+  listChannelGateways as listCoreChannelGateways,
+  listChannelPendingPairings as listCoreChannelPendingPairings,
   listLarkGateways as listCoreLarkGateways,
   onBridgeUpdated,
   onRuntimeUpdated,
   probeWorkspaceStreaming as probeCoreWorkspaceStreaming,
   readCoreConfigFile,
+  rejectChannelPairing as rejectCoreChannelPairing,
   rejectLarkPairing as rejectCoreLarkPairing,
   restartCoreService,
+  testChannelConnection as testCoreChannelConnection,
   testLarkConnection as testCoreLarkConnection,
   saveCoreRawConfigFile,
   saveCoreSettings,
@@ -53,6 +66,15 @@ type DesktopProvider = {
   updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) => Promise<string[]>;
   deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;
   saveSettings: (input: DesktopSettingsInput) => Promise<DesktopSettings>;
+  listChannelGateways: (platform: string) => Promise<LocalCoreChannelGatewayStatus[]>;
+  getChannelGatewayStatus: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+  testChannelConnection: (platform: string, workspaceId: string) => Promise<LocalCoreChannelConnectionResult>;
+  enableChannelGateway: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+  disableChannelGateway: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+  listChannelPendingPairings: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelPairingRequest[]>;
+  approveChannelPairing: (platform: string, code: string) => Promise<LocalCoreChannelAuthorizedUser>;
+  rejectChannelPairing: (platform: string, code: string) => Promise<{ rejected: boolean }>;
+  listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelAuthorizedUser[]>;
   listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
   getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
   testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;
@@ -90,6 +112,15 @@ const electronProvider: DesktopProvider = {
   deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) =>
     requireDesktopBridge().deleteThreadKnowledgeBases(workspaceId, threadId),
   saveSettings: (input: DesktopSettingsInput) => requireDesktopBridge().saveSettings(input),
+  listChannelGateways: (platform: string) => requireDesktopBridge().listChannelGateways(platform),
+  getChannelGatewayStatus: (platform: string, workspaceId: string) => requireDesktopBridge().getChannelGatewayStatus(platform, workspaceId),
+  testChannelConnection: (platform: string, workspaceId: string) => requireDesktopBridge().testChannelConnection(platform, workspaceId),
+  enableChannelGateway: (platform: string, workspaceId: string) => requireDesktopBridge().enableChannelGateway(platform, workspaceId),
+  disableChannelGateway: (platform: string, workspaceId: string) => requireDesktopBridge().disableChannelGateway(platform, workspaceId),
+  listChannelPendingPairings: (platform: string, workspaceId?: string) => requireDesktopBridge().listChannelPendingPairings(platform, workspaceId),
+  approveChannelPairing: (platform: string, code: string) => requireDesktopBridge().approveChannelPairing(platform, code),
+  rejectChannelPairing: (platform: string, code: string) => requireDesktopBridge().rejectChannelPairing(platform, code),
+  listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => requireDesktopBridge().listChannelAuthorizedUsers(platform, workspaceId),
   listLarkGateways: () => requireDesktopBridge().listLarkGateways(),
   getLarkGatewayStatus: (workspaceId: string) => requireDesktopBridge().getLarkGatewayStatus(workspaceId),
   testLarkConnection: (workspaceId: string) => requireDesktopBridge().testLarkConnection(workspaceId),
@@ -120,6 +151,17 @@ const localCoreProvider: DesktopProvider = {
   deleteThreadKnowledgeBases: (_workspaceId: string, threadId: string) =>
     updateCoreThreadKnowledgeBases(threadId, []).then(() => ({ deleted: true })),
   saveSettings: (input: DesktopSettingsInput) => saveCoreSettings(input),
+  listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
+  getChannelGatewayStatus: (platform: string, workspaceId: string) => getCoreChannelGatewayStatus(platform, workspaceId),
+  testChannelConnection: (platform: string, workspaceId: string) => testCoreChannelConnection(platform, workspaceId),
+  enableChannelGateway: (platform: string, workspaceId: string) => enableCoreChannelGateway(platform, workspaceId),
+  disableChannelGateway: (platform: string, workspaceId: string) => disableCoreChannelGateway(platform, workspaceId),
+  listChannelPendingPairings: (platform: string, workspaceId?: string) =>
+    listCoreChannelPendingPairings(platform, workspaceId).then((result) => result.pairings),
+  approveChannelPairing: (platform: string, code: string) => approveCoreChannelPairing(platform, code),
+  rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
+  listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
+    listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
   listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
   getLarkGatewayStatus: (workspaceId: string) => getCoreLarkGatewayStatus(workspaceId),
   testLarkConnection: (workspaceId: string) => testCoreLarkConnection(workspaceId),
@@ -190,6 +232,23 @@ export const updateThreadKnowledgeBases = (
 export const deleteThreadKnowledgeBases = (workspaceId: string, threadId: string): Promise<{ deleted: boolean }> =>
   requireProvider().deleteThreadKnowledgeBases(workspaceId, threadId);
 export const saveDesktopSettings = (input: DesktopSettingsInput): Promise<DesktopSettings> => requireProvider().saveSettings(input);
+export const listChannelGateways = (platform: string): Promise<LocalCoreChannelGatewayStatus[]> => requireProvider().listChannelGateways(platform);
+export const getChannelGatewayStatus = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
+  requireProvider().getChannelGatewayStatus(platform, workspaceId);
+export const testChannelConnection = (platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult> =>
+  requireProvider().testChannelConnection(platform, workspaceId);
+export const enableChannelGateway = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
+  requireProvider().enableChannelGateway(platform, workspaceId);
+export const disableChannelGateway = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
+  requireProvider().disableChannelGateway(platform, workspaceId);
+export const listChannelPendingPairings = (platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]> =>
+  requireProvider().listChannelPendingPairings(platform, workspaceId);
+export const approveChannelPairing = (platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser> =>
+  requireProvider().approveChannelPairing(platform, code);
+export const rejectChannelPairing = (platform: string, code: string): Promise<{ rejected: boolean }> =>
+  requireProvider().rejectChannelPairing(platform, code);
+export const listChannelAuthorizedUsers = (platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> =>
+  requireProvider().listChannelAuthorizedUsers(platform, workspaceId);
 export const listLarkGateways = (): Promise<LocalCoreLarkGatewayStatus[]> => requireProvider().listLarkGateways();
 export const getLarkGatewayStatus = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().getLarkGatewayStatus(workspaceId);
 export const testLarkConnection = (workspaceId: string): Promise<LocalCoreLarkConnectionResult> => requireProvider().testLarkConnection(workspaceId);

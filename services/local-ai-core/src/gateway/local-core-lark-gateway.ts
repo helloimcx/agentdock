@@ -1,14 +1,19 @@
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
+  ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
   DesktopProjectConfig,
   LocalCoreAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
+  LocalCoreChannelPairingRequest,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
 } from '../../../../packages/contracts/src/index.js';
+import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
@@ -76,7 +81,7 @@ type LocalCoreLarkGatewayOptions = {
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 
-export class LocalCoreLarkGateway extends EventEmitter {
+export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
   // Lark card action callbacks are unreliable in current WS-only setup (code 200340).
   // Keep permission approval on explicit text commands: allow all / allow / deny.
   private readonly enableCardActions = false;
@@ -88,6 +93,8 @@ export class LocalCoreLarkGateway extends EventEmitter {
   private readonly outboundTurns = new Map<string, LarkTurnState>();
   private readonly mutedThreadBridgeCounts = new Map<string, number>();
   private larkModulePromise: Promise<LarkModule> | null = null;
+  readonly platform = 'lark';
+  readonly routeType = 'channel.chat';
 
   constructor(private readonly options: LocalCoreLarkGatewayOptions) {
     super();
@@ -126,9 +133,14 @@ export class LocalCoreLarkGateway extends EventEmitter {
     this.options.onStateChanged?.();
   }
 
-  async testConnection(workspaceId: string) {
+  async testConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult> {
     const binding = await this.getBinding(workspaceId);
-    return this.createSdkClientResult(binding);
+    const result = await this.createSdkClientResult(binding);
+    return {
+      ...result,
+      platform: 'lark',
+      workspaceId,
+    };
   }
 
   async enable(workspaceId: string) {
@@ -144,6 +156,10 @@ export class LocalCoreLarkGateway extends EventEmitter {
 
   async sendScheduledCard(workspaceId: string, chatId: string, text: string) {
     return this.sendImmediateCard(workspaceId, chatId, text);
+  }
+
+  async sendScheduledMessage(workspaceId: string, route: ChannelRoute, text: string) {
+    return this.sendScheduledCard(workspaceId, route.channelId, text);
   }
 
   muteThreadBridge(threadId: string) {
@@ -179,7 +195,7 @@ export class LocalCoreLarkGateway extends EventEmitter {
     };
   }
 
-  listStatuses() {
+  listStatuses(): LocalCoreLarkGatewayStatus[] {
     return [...this.runtime.keys()].sort().map((workspaceId) => this.getStatus(workspaceId));
   }
 
@@ -192,6 +208,14 @@ export class LocalCoreLarkGateway extends EventEmitter {
 
   listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
     return this.options.store.listAuthorizedUsers(workspaceId);
+  }
+
+  async start() {
+    await this.refreshBindings();
+  }
+
+  async stop() {
+    this.close();
   }
 
   approvePairing(code: string): LocalCoreAuthorizedUser {
@@ -525,11 +549,15 @@ export class LocalCoreLarkGateway extends EventEmitter {
       await client.auth.v3.appAccessToken.internal({ data: { app_id: binding.appId, app_secret: binding.appSecret } });
       return {
         success: true,
+        platform: 'lark',
+        workspaceId: binding.workspaceId,
         appId: binding.appId,
       };
     } catch (error) {
       return {
         success: false,
+        platform: 'lark',
+        workspaceId: binding.workspaceId,
         appId: binding.appId,
         error: error instanceof Error ? error.message : String(error),
       };

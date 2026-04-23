@@ -21,6 +21,38 @@ export interface ChannelCapability {
   displayName?: string;
 }
 
+export interface ChannelRuntime {
+  readonly platform: string;
+  readonly routeType: string;
+  listStatuses(): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus[]>
+    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus[];
+  getStatus(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
+    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
+  testConnection(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelConnectionResult>
+    | import('../../contracts/src/index.js').LocalCoreChannelConnectionResult;
+  enable(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
+    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
+  disable(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
+    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
+  listPendingPairings(workspaceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelPairingRequest[]>
+    | import('../../contracts/src/index.js').LocalCoreChannelPairingRequest[];
+  approvePairing(code: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser>
+    | import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser;
+  rejectPairing(code: string): Promise<{ rejected: boolean }> | { rejected: boolean };
+  listAuthorizedUsers(workspaceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser[]>
+    | import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser[];
+  onBridgeEvent?(event: import('../../../shared/desktop.js').DesktopBridgeEvent): Promise<void> | void;
+  refreshBindings?(): Promise<void> | void;
+  sendScheduledMessage?(
+    workspaceId: string,
+    route: import('../../contracts/src/index.js').ChannelRoute,
+    text: string,
+  ): Promise<string> | string;
+  muteThreadBridge?(threadId: string): void;
+  unmuteThreadBridge?(threadId: string): void;
+  close?(): void;
+}
+
 export interface KnowledgeCapability {
   id: string;
   sourceType: string;
@@ -70,6 +102,10 @@ export interface ThreadKnowledgeAttachmentStore {
 export interface KnowledgeRuntimeRegistration {
   provider: KnowledgeRuntime;
   attachments: ThreadKnowledgeAttachmentStore;
+}
+
+export interface ChannelRuntimeRegistration {
+  channel: ChannelRuntime;
 }
 
 export interface SchedulerCapability {
@@ -199,4 +235,11 @@ export interface KnowledgePlugin extends RuntimePlugin {
     kind: 'knowledge' | 'composite';
   };
   createRuntime?(ctx: PluginContext): Promise<KnowledgeRuntimeRegistration> | KnowledgeRuntimeRegistration;
+}
+
+export interface ChannelPlugin extends RuntimePlugin {
+  manifest: PluginManifest & {
+    kind: 'channel' | 'composite';
+  };
+  createRuntime?(ctx: PluginContext): Promise<ChannelRuntimeRegistration> | ChannelRuntimeRegistration;
 }

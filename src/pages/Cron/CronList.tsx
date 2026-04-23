@@ -55,8 +55,8 @@ function toForm(job?: CronJob | null): SchedulerFormState {
     runAt: job.runAt ? String(job.runAt).slice(0, 16) : '',
     promptTemplate: job.promptTemplate,
     description: job.description,
-    chatId: job.route.chatId,
-    platformUserId: job.route.platformUserId,
+    chatId: job.route.channelId,
+    platformUserId: job.route.participantId || '',
     threadId: job.route.threadId || '',
     enabled: job.enabled,
   };
@@ -67,9 +67,9 @@ function toPayload(form: SchedulerFormState): CronJobCreateInput {
     workspaceId: form.workspaceId,
     platform: 'lark',
     route: {
-      type: 'lark_chat',
-      chatId: form.chatId,
-      platformUserId: form.platformUserId,
+      type: 'channel.chat',
+      channelId: form.chatId,
+      participantId: form.platformUserId,
       ...(form.threadId ? { threadId: form.threadId } : {}),
     },
     executionMode: form.executionMode,
@@ -209,7 +209,7 @@ export default function CronList() {
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-2">
                     <span><strong>Workspace:</strong> {job.workspaceId}</span>
                     <span><strong>Execution:</strong> {job.executionMode}</span>
-                    <span><strong>Route:</strong> {job.route.chatId} / {job.route.platformUserId}</span>
+                    <span><strong>Route:</strong> {job.route.channelId} / {job.route.participantId}</span>
                     <span><strong>{job.triggerType === 'cron' ? t('cron.expression') : 'Run at'}:</strong> {job.triggerType === 'cron' ? job.cronExpr : formatTime(job.runAt || '')}</span>
                     {job.route.threadId && <span><strong>Thread:</strong> {job.route.threadId}</span>}
                     {job.lastRunAt && <span><strong>{t('cron.lastRun')}:</strong> {formatTime(job.lastRunAt)}</span>}

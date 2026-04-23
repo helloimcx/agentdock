@@ -15,7 +15,6 @@ export const runtimeCapabilitiesPlugin: RuntimePlugin = {
       'agent:qoder',
       'agent:iflow',
       `agent:${LOCALCORE_ACP_AGENT_TYPE}`,
-      'channel:localcore-lark',
       `channel:${LOCALCORE_ACP_AGENT_TYPE}`,
       'scheduler:cron',
     ],
@@ -27,12 +26,6 @@ export const runtimeCapabilitiesPlugin: RuntimePlugin = {
       displayName: agentType,
     })),
     channels: [
-      {
-        id: 'channel.localcore-lark',
-        platform: 'lark',
-        routeType: 'lark_chat',
-        displayName: 'LocalCore Lark',
-      },
       {
         id: `channel.${LOCALCORE_ACP_AGENT_TYPE}`,
         platform: LOCALCORE_ACP_AGENT_TYPE,

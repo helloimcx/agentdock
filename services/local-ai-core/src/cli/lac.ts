@@ -66,16 +66,16 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
   if (!context.workspaceId || !context.threadId) {
     throw new Error('scheduler add requires a current workspace/thread context.');
   }
-  if (context.platform !== 'lark' || context.routeType !== 'lark_chat' || !context.chatId || !context.platformUserId) {
+  if (context.platform !== 'lark' || !['channel.chat', 'lark_chat'].includes(context.routeType) || !context.chatId || !context.platformUserId) {
     throw new Error('scheduler add requires a bound Lark route. Missing LOCAL_AI_CHAT_ID or LOCAL_AI_PLATFORM_USER_ID.');
   }
   const job = await request<ScheduledJob>(context.baseUrl, 'POST', '/scheduler/jobs', {
     workspaceId: context.workspaceId,
     platform: 'lark',
     route: {
-      type: 'lark_chat',
-      chatId: context.chatId,
-      platformUserId: context.platformUserId,
+      type: 'channel.chat',
+      channelId: context.chatId,
+      participantId: context.platformUserId,
       threadId: context.threadId,
     },
     executionMode,
@@ -203,7 +203,7 @@ function resolveContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv): C
     workspaceId: getFlag(flags, 'workspace') || String(env.LOCAL_AI_WORKSPACE_ID || ''),
     threadId: normalizeMaybeBooleanFlag(getFlag(flags, 'thread')) || String(env.LOCAL_AI_THREAD_ID || ''),
     platform,
-    routeType: String(env.LOCAL_AI_ROUTE_TYPE || '') || (platform === 'lark' && chatId && platformUserId ? 'lark_chat' : ''),
+    routeType: String(env.LOCAL_AI_ROUTE_TYPE || '') || (platform === 'lark' && chatId && platformUserId ? 'channel.chat' : ''),
     chatId,
     platformUserId,
   };

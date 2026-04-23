@@ -1,4 +1,5 @@
 import type {
+  ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
   LocalCoreCapabilities,
@@ -6,6 +7,9 @@ import type {
   ScheduledJobRun,
 } from '../../../../packages/contracts/src/index.js';
 import type {
+  ChannelPlugin,
+  ChannelRuntime,
+  ChannelRuntimeRegistration,
   KnowledgePlugin,
   KnowledgeRuntime,
   KnowledgeRuntimeRegistration,
@@ -13,7 +17,6 @@ import type {
   RuntimePlugin,
   ThreadKnowledgeAttachmentStore,
 } from '../../../../packages/plugin-sdk/src/index.js';
-import { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { LocalCoreCapabilityRegistry } from './capability-registry.js';
 import { LocalCoreDiagnostics } from './diagnostics.js';
@@ -21,6 +24,7 @@ import { LocalCoreEventBus } from './event-bus.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import { runtimeCapabilitiesPlugin } from '../plugins/builtin/runtime-capabilities-plugin.js';
+import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
 import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';
 import { createBuiltinNoopKnowledgePlugin } from '../plugins/builtin/knowledge-noop-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
@@ -41,10 +45,10 @@ export interface LocalCoreRuntimeBootstrap {
   kernel: LocalCoreKernel;
   state: LocalCoreRuntimeState;
   store: LocalCoreAcpStore;
+  channelRuntime: ChannelRuntime;
   knowledgeProvider: KnowledgeRuntime;
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
   workspaceRouter: WorkspaceRouter;
-  larkGateway: LocalCoreLarkGateway;
   scheduler: SchedulerService;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -122,6 +126,17 @@ function resolveKnowledgeRuntime(plugin: KnowledgePlugin, context: PluginContext
   return runtime;
 }
 
+function resolveChannelRuntime(plugin: ChannelPlugin, context: PluginContext): ChannelRuntimeRegistration {
+  if (!plugin.createRuntime) {
+    throw new Error(`Channel plugin ${plugin.manifest.id} does not provide a runtime factory.`);
+  }
+  const runtime = plugin.createRuntime(context);
+  if (runtime instanceof Promise) {
+    throw new Error(`Channel plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
+  }
+  return runtime;
+}
+
 export function bootstrapLocalCoreRuntime(options: {
   userDataPath: string;
   localCoreBase?: string;
@@ -139,6 +154,15 @@ export function bootstrapLocalCoreRuntime(options: {
     userDataPath: options.userDataPath,
     onLog: options.log,
   });
+  const store = new LocalCoreAcpStore(options.userDataPath);
+  let workspaceRouter!: WorkspaceRouter;
+  const channelPlugin = createBuiltinLarkChannelPlugin({
+    store,
+    readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
+    getWorkspaceRouter: () => workspaceRouter,
+    onStateChanged: options.onRuntimeStateChanged,
+    log: options.log,
+  });
   const knowledgePlugin = options.enableKnowledge === false
     ? createBuiltinNoopKnowledgePlugin()
     : createBuiltinAiVectorKnowledgePlugin({
@@ -146,12 +170,13 @@ export function bootstrapLocalCoreRuntime(options: {
         getConfig: () => state.getKnowledgeConfig(),
         setConfig: (input) => state.updateKnowledgeConfig(input),
       });
-  const store = new LocalCoreAcpStore(options.userDataPath);
+  registerPlugin(kernel, channelPlugin);
   registerPlugin(kernel, knowledgePlugin);
+  const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
   const knowledgeRuntime = resolveKnowledgeRuntime(knowledgePlugin, kernel.context);
   const knowledgeProvider = knowledgeRuntime.provider as KnowledgeRuntime;
   const knowledgeAttachments = knowledgeRuntime.attachments as ThreadKnowledgeAttachmentStore;
-  const workspaceRouter = createWorkspaceRouter({
+  workspaceRouter = createWorkspaceRouter({
     store,
     cliBinDir: state.cliBinDir,
     localCoreBase: options.localCoreBase,
@@ -161,20 +186,13 @@ export function bootstrapLocalCoreRuntime(options: {
     knowledgeAttachments,
     log: options.log,
   });
-  const larkGateway = new LocalCoreLarkGateway({
-    store,
-    readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
-    getWorkspaceRouter: () => workspaceRouter,
-    onStateChanged: options.onRuntimeStateChanged,
-    log: options.log,
-  });
   const scheduler = new SchedulerService({
     store,
     adapters: [
       new LarkScheduleAdapter({
         store,
         workspaceRouter,
-        larkGateway,
+        larkGateway: channelRuntime,
         log: options.log,
       }),
     ],
@@ -187,9 +205,9 @@ export function bootstrapLocalCoreRuntime(options: {
         workspaceId,
         platform: 'lark',
         route: {
-          type: 'lark_chat',
-          chatId,
-          platformUserId,
+          type: channelRuntime.routeType,
+          channelId: chatId,
+          participantId: platformUserId,
           threadId,
         },
         triggerType: 'cron',
@@ -208,7 +226,7 @@ export function bootstrapLocalCoreRuntime(options: {
 
   workspaceRouter.subscribeBridgeEvents((event) => {
     options.onBridgeEvent?.(event);
-    void larkGateway.onBridgeEvent(event);
+    void channelRuntime.onBridgeEvent?.(event);
   });
   scheduler.on('job', (job: ScheduledJob) => {
     options.onSchedulerJob?.(job);
@@ -221,20 +239,18 @@ export function bootstrapLocalCoreRuntime(options: {
     kernel,
     state,
     store,
+    channelRuntime,
     knowledgeProvider,
     knowledgeAttachments,
     workspaceRouter,
-    larkGateway,
     scheduler,
     async start() {
-      await kernel.lifecycle.initAll();
-      await larkGateway.refreshBindings();
+      await kernel.lifecycle.startAll();
       await scheduler.start();
     },
     async stop() {
       await scheduler.stop();
       await kernel.lifecycle.stopAll();
-      larkGateway.close();
       workspaceRouter.close();
     },
   };

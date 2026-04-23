@@ -8,6 +8,10 @@ import type {
   DesktopSettingsInput,
   LocalCoreAuthorizedUser,
   LocalCoreCapabilities,
+  LocalCoreChannelAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
+  LocalCoreChannelPairingRequest,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
@@ -32,12 +36,11 @@ import type {
   KnowledgeSearchInput,
   KnowledgeSearchResult,
 } from '../../../../packages/contracts/src/index.js';
-import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { ChannelRuntime, KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
 import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
-import type { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
 import type { SchedulerService } from '../scheduler/scheduler-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 
@@ -45,7 +48,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly state: LocalCoreRuntimeState;
   private readonly workspaceRouter: WorkspaceRouter;
   private readonly knowledgeProvider: KnowledgeRuntime;
-  private readonly larkGateway: LocalCoreLarkGateway;
+  private readonly channelRuntime: ChannelRuntime;
   private readonly scheduler: SchedulerService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
@@ -73,7 +76,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.kernel = this.runtime.kernel;
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
-    this.larkGateway = this.runtime.larkGateway;
+    this.channelRuntime = this.runtime.channelRuntime;
     this.scheduler = this.runtime.scheduler;
   }
 
@@ -112,7 +115,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async restartService() {
-    await this.larkGateway.refreshBindings();
+    await this.channelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return { status: 'running' as const };
   }
@@ -127,21 +130,21 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
     const next = await this.state.saveRawConfigFile(raw);
-    await this.larkGateway.refreshBindings();
+    await this.channelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return next;
   }
 
   async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
     const next = await this.state.saveStructuredConfigFile(config);
-    await this.larkGateway.refreshBindings();
+    await this.channelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return next;
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
     const settings = await this.state.saveSettings(input);
-    await this.larkGateway.refreshBindings();
+    await this.channelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return settings;
   }
@@ -293,40 +296,87 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     return this.workspaceRouter.probeWorkspaceStreaming(workspaceId);
   }
 
+  async listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]> {
+    if (platform && platform !== this.channelRuntime.platform) {
+      return [];
+    }
+    return this.channelRuntime.listStatuses();
+  }
+
+  async getChannelGatewayStatus(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.getStatus(workspaceId);
+  }
+
+  async testChannelConnection(platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.testConnection(workspaceId);
+  }
+
+  async enableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.enable(workspaceId);
+  }
+
+  async disableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.disable(workspaceId);
+  }
+
+  async listChannelPendingPairings(platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.listPendingPairings(workspaceId);
+  }
+
+  async approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.approvePairing(code);
+  }
+
+  async rejectChannelPairing(platform: string, code: string) {
+    this.assertPlatform(platform);
+    return this.channelRuntime.rejectPairing(code);
+  }
+
+  async listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> {
+    this.assertPlatform(platform);
+    return this.channelRuntime.listAuthorizedUsers(workspaceId);
+  }
+
   async listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]> {
-    return this.larkGateway.listStatuses();
+    return this.listChannelGatewayStatuses('lark') as Promise<LocalCoreLarkGatewayStatus[]>;
   }
 
   async getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.larkGateway.getStatus(workspaceId);
+    return this.getChannelGatewayStatus('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
   }
 
   async testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult> {
-    return this.larkGateway.testConnection(workspaceId);
+    return this.testChannelConnection('lark', workspaceId) as Promise<LocalCoreLarkConnectionResult>;
   }
 
   async enableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.larkGateway.enable(workspaceId);
+    return this.enableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
   }
 
   async disableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.larkGateway.disable(workspaceId);
+    return this.disableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
   }
 
   async listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]> {
-    return this.larkGateway.listPendingPairings(workspaceId);
+    return this.listChannelPendingPairings('lark', workspaceId) as Promise<LocalCorePairingRequest[]>;
   }
 
   async approveLarkPairing(code: string): Promise<LocalCoreAuthorizedUser> {
-    return this.larkGateway.approvePairing(code);
+    return this.approveChannelPairing('lark', code) as Promise<LocalCoreAuthorizedUser>;
   }
 
   async rejectLarkPairing(code: string) {
-    return this.larkGateway.rejectPairing(code);
+    return this.rejectChannelPairing('lark', code);
   }
 
   async listLarkAuthorizedUsers(workspaceId?: string): Promise<LocalCoreAuthorizedUser[]> {
-    return this.larkGateway.listAuthorizedUsers(workspaceId);
+    return this.listChannelAuthorizedUsers('lark', workspaceId) as Promise<LocalCoreAuthorizedUser[]>;
   }
 
   emitBridge(event: DesktopBridgeEvent) {
@@ -339,5 +389,11 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   private handleLog(message: string) {
     this.emit('logs', message);
+  }
+
+  private assertPlatform(platform: string) {
+    if (platform !== this.channelRuntime.platform) {
+      throw new Error(`Unsupported channel platform: ${platform}`);
+    }
   }
 }
