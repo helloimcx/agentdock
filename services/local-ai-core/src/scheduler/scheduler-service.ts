@@ -1,13 +1,13 @@
 import { EventEmitter } from 'node:events';
 import type { ScheduledJob, ScheduledJobRun } from '../../../../packages/contracts/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import type { PlatformScheduleAdapter } from './adapters.js';
-import { cronMatchesDate, floorToMinute } from './cron.js';
+import type { SchedulerExecutorRuntime, SchedulerTriggerRuntime } from './adapters.js';
 import { SchedulerRunLifecycle } from './scheduler-run-lifecycle.js';
 
 type SchedulerServiceOptions = {
   store: LocalCoreAcpStore;
-  adapters: PlatformScheduleAdapter[];
+  triggers: SchedulerTriggerRuntime[];
+  executors: SchedulerExecutorRuntime[];
   log?: (message: string) => void;
 };
 
@@ -96,17 +96,11 @@ export class SchedulerService extends EventEmitter {
   }
 
   private isDue(job: ScheduledJob, now: Date) {
-    if (job.triggerType === 'once') {
-      return Boolean(job.runAt && Date.parse(job.runAt) <= now.getTime() && !job.lastRunAt);
-    }
-    if (!job.cronExpr) {
+    const trigger = this.options.triggers.find((candidate) => candidate.supports(job));
+    if (!trigger) {
       return false;
     }
-    if (!cronMatchesDate(job.cronExpr, now)) {
-      return false;
-    }
-    const minuteStart = floorToMinute(now).toISOString();
-    return !job.lastRunAt || job.lastRunAt < minuteStart;
+    return trigger.isDue(job, now);
   }
 
   private async executeJob(job: ScheduledJob, triggeredAt: string, manual: boolean) {
@@ -116,12 +110,12 @@ export class SchedulerService extends EventEmitter {
     this.runningJobs.add(job.id);
     const run = this.runLifecycle.markQueued(job, triggeredAt);
     try {
-      const adapter = this.options.adapters.find((candidate) => candidate.supports(job));
-      if (!adapter) {
-        throw new Error(`No scheduler adapter is available for platform "${job.platform}"`);
+      const executor = this.options.executors.find((candidate) => candidate.supports(job));
+      if (!executor) {
+        throw new Error(`No scheduler executor is available for delivery target "${job.platform}"`);
       }
       this.runLifecycle.markRunning(run.id);
-      const result = await adapter.execute({ job, triggeredAt });
+      const result = await executor.execute({ job, triggeredAt });
       return this.runLifecycle.markSucceeded(job, run.id, result, !manual && job.triggerType === 'once');
     } catch (error) {
       const failed = this.runLifecycle.markFailed(job.id, run.id, error instanceof Error ? error.message : String(error));

@@ -1,7 +1,8 @@
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
-import type { ScheduledExecutionPolicy, ScheduledExecutionTarget } from './execution-policy.js';
+import type { ScheduledExecutionTarget } from './adapters.js';
+import type { ScheduledExecutionPolicy } from './execution-policy.js';
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
 

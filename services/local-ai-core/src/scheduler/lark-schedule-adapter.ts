@@ -2,24 +2,25 @@ import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
-import type { PlatformScheduleAdapter, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
+import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 import { createLarkExecutionPolicy } from './lark-execution-policies.js';
 
 type LarkScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
-  workspaceRouter: WorkspaceRouter;
-  larkGateway: ChannelRuntime;
+  getWorkspaceRouter: () => WorkspaceRouter;
+  getChannelRuntime: () => ChannelRuntime;
   log?: (message: string) => void;
 };
 
-export class LarkScheduleAdapter implements PlatformScheduleAdapter {
+export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
   private readonly executor: ScheduledConversationExecutor;
+  readonly deliveryTargets = ['lark'];
 
   constructor(private readonly options: LarkScheduleAdapterOptions) {
     this.executor = new ScheduledConversationExecutor({
       store: options.store,
-      workspaceRouter: options.workspaceRouter,
+      workspaceRouter: options.getWorkspaceRouter(),
     });
   }
 
@@ -29,14 +30,19 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
 
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
     const { job } = context;
-    const executionPolicy = createLarkExecutionPolicy(job, this.options, (nextJob) => this.resolveThread(nextJob));
+    const executionPolicy = createLarkExecutionPolicy(job, {
+      store: this.options.store,
+      workspaceRouter: this.options.getWorkspaceRouter(),
+      getChannelRuntime: this.options.getChannelRuntime,
+    }, (nextJob) => this.resolveThread(nextJob));
     const execution = await this.executor.execute(job, job.promptTemplate, executionPolicy);
     let platformMessageId = '';
     if (execution.replyText) {
-      if (!this.options.larkGateway.sendScheduledMessage) {
+      const channelRuntime = this.options.getChannelRuntime();
+      if (!channelRuntime.sendScheduledMessage) {
         throw new Error('Lark channel runtime does not support scheduled delivery.');
       }
-      platformMessageId = await this.options.larkGateway.sendScheduledMessage(job.workspaceId, job.route, execution.replyText);
+      platformMessageId = await channelRuntime.sendScheduledMessage(job.workspaceId, job.route, execution.replyText);
       if (!platformMessageId) {
         throw new Error('Lark gateway did not return a message id for scheduled delivery.');
       }
@@ -50,9 +56,10 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
   }
 
   private async resolveThread(job: ScheduledJob) {
+    const workspaceRouter = this.options.getWorkspaceRouter();
     const route = job.route;
     if (route.threadId) {
-      await this.options.workspaceRouter.getThread(route.threadId);
+      await workspaceRouter.getThread(route.threadId);
       return route.threadId;
     }
     const channelId = route.channelId;
@@ -61,7 +68,7 @@ export class LarkScheduleAdapter implements PlatformScheduleAdapter {
     if (binding?.thread_id) {
       return binding.thread_id;
     }
-    const thread = await this.options.workspaceRouter.createThread(
+    const thread = await workspaceRouter.createThread(
       job.workspaceId,
       job.description || `Scheduled ${job.platform} task`,
     );

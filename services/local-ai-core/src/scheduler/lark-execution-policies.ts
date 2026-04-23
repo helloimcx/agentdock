@@ -7,7 +7,7 @@ import type { ScheduledExecutionPolicy } from './execution-policy.js';
 type LarkExecutionPolicyOptions = {
   store: LocalCoreAcpStore;
   workspaceRouter: WorkspaceRouter;
-  larkGateway: ChannelRuntime;
+  getChannelRuntime: () => ChannelRuntime;
 };
 
 export function createLarkExecutionPolicy(
@@ -29,16 +29,20 @@ class LarkSameThreadExecutionPolicy implements ScheduledExecutionPolicy {
 
   async resolveTarget(job: ScheduledJob) {
     return {
+      kind: 'thread',
       threadId: await this.resolveSameThread(job),
+      workspaceId: job.workspaceId,
+      platform: job.platform,
+      route: job.route,
     };
   }
 
   beforeExecute(target: { threadId: string }) {
-    this.options.larkGateway.muteThreadBridge?.(target.threadId);
+    this.options.getChannelRuntime().muteThreadBridge?.(target.threadId);
   }
 
   afterExecute(target: { threadId: string }) {
-    this.options.larkGateway.unmuteThreadBridge?.(target.threadId);
+    this.options.getChannelRuntime().unmuteThreadBridge?.(target.threadId);
   }
 }
 
@@ -50,17 +54,29 @@ class LarkSideThreadExecutionPolicy implements ScheduledExecutionPolicy {
     const existing = (await this.options.workspaceRouter.listThreads(job.workspaceId))
       .find((thread) => thread.title === title);
     if (existing) {
-      return { threadId: existing.id };
+      return {
+        kind: 'thread',
+        threadId: existing.id,
+        workspaceId: job.workspaceId,
+        platform: job.platform,
+        route: job.route,
+      };
     }
     const created = await this.options.workspaceRouter.createThread(job.workspaceId, title);
-    return { threadId: created.id };
+    return {
+      kind: 'thread',
+      threadId: created.id,
+      workspaceId: job.workspaceId,
+      platform: job.platform,
+      route: job.route,
+    };
   }
 
   beforeExecute(target: { threadId: string }) {
-    this.options.larkGateway.muteThreadBridge?.(target.threadId);
+    this.options.getChannelRuntime().muteThreadBridge?.(target.threadId);
   }
 
   afterExecute(target: { threadId: string }) {
-    this.options.larkGateway.unmuteThreadBridge?.(target.threadId);
+    this.options.getChannelRuntime().unmuteThreadBridge?.(target.threadId);
   }
 }

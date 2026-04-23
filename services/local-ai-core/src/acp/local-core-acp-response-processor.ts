@@ -1,12 +1,11 @@
-import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob, ScheduledJobRoute } from '../../../../packages/contracts/src/index.js';
 import { detectCronCommands, stripCronCommands, type CronCommand } from '../scheduler/cron-command-detector.js';
 
 type SchedulerHandlers = {
   createJob: (input: {
     workspaceId: string;
-    threadId: string;
-    chatId: string;
-    platformUserId: string;
+    platform: string;
+    route: ScheduledJobRoute;
     name: string;
     schedule: string;
     scheduleDescription: string;
@@ -17,11 +16,10 @@ type SchedulerHandlers = {
 };
 
 type ResponseProcessorOptions = {
-  getLarkBinding: (threadId: string) => {
-    workspace_id: string;
-    platform: 'lark';
-    chat_id: string;
-    platform_user_id: string;
+  getScheduledDeliveryBinding: (threadId: string) => {
+    workspaceId: string;
+    platform: string;
+    route: ScheduledJobRoute;
   } | null;
   scheduler: SchedulerHandlers;
 };
@@ -91,15 +89,17 @@ export class LocalCoreAcpResponseProcessor {
     try {
       switch (command.kind) {
         case 'create': {
-          const binding = this.options.getLarkBinding(threadId);
-          if (!binding || binding.platform !== 'lark') {
-            return '定时任务创建失败：当前对话没有绑定可调度的 Lark 会话。请先在 Lark 对话线程中使用，或先建立平台绑定。';
+          const binding = this.options.getScheduledDeliveryBinding(threadId);
+          if (!binding) {
+            return '定时任务创建失败：当前对话没有绑定可调度的平台会话。请先在平台对话线程中使用，或先建立平台绑定。';
           }
           const job = await this.options.scheduler.createJob({
-            workspaceId: binding.workspace_id,
-            threadId,
-            chatId: binding.chat_id,
-            platformUserId: binding.platform_user_id,
+            workspaceId: binding.workspaceId,
+            platform: binding.platform,
+            route: {
+              ...binding.route,
+              threadId,
+            },
             name: command.name,
             schedule: command.schedule,
             scheduleDescription: command.scheduleDescription,

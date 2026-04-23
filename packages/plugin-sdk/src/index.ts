@@ -144,9 +144,48 @@ export interface AgentRuntimeRegistration {
 export interface SchedulerCapability {
   id: string;
   triggerTypes: string[];
-  deliveryPlatforms: string[];
+  deliveryTargets: string[];
+  deliveryPlatforms?: string[];
   enabled?: boolean;
   displayName?: string;
+}
+
+export interface SchedulerExecutionContext {
+  job: import('../../contracts/src/index.js').ScheduledJob;
+  triggeredAt: string;
+}
+
+export interface SchedulerExecutionResult {
+  threadId?: string;
+  runId?: string;
+  replyText?: string;
+  platformMessageId?: string;
+}
+
+export interface SchedulerExecutionTarget {
+  kind: string;
+  threadId: string;
+  workspaceId: string;
+  platform: string;
+  route: import('../../contracts/src/index.js').ScheduledJobRoute;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SchedulerTriggerRuntime {
+  readonly triggerTypes: string[];
+  supports(job: import('../../contracts/src/index.js').ScheduledJob): boolean;
+  isDue(job: import('../../contracts/src/index.js').ScheduledJob, now: Date): boolean;
+}
+
+export interface SchedulerExecutorRuntime {
+  readonly deliveryTargets: string[];
+  supports(job: import('../../contracts/src/index.js').ScheduledJob): boolean;
+  execute(context: SchedulerExecutionContext): Promise<SchedulerExecutionResult>;
+}
+
+export interface SchedulerRuntimeRegistration {
+  triggers?: SchedulerTriggerRuntime[];
+  executors?: SchedulerExecutorRuntime[];
 }
 
 export interface UiRouteContribution {
@@ -282,4 +321,11 @@ export interface AgentPlugin extends RuntimePlugin {
     kind: 'agent' | 'composite';
   };
   createRuntime?(ctx: PluginContext): Promise<AgentRuntimeRegistration> | AgentRuntimeRegistration;
+}
+
+export interface SchedulerPlugin extends RuntimePlugin {
+  manifest: PluginManifest & {
+    kind: 'scheduler' | 'composite';
+  };
+  createRuntime?(ctx: PluginContext): Promise<SchedulerRuntimeRegistration> | SchedulerRuntimeRegistration;
 }

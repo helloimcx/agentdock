@@ -7,12 +7,16 @@ import { createLarkExecutionPolicy } from '../services/local-ai-core/src/schedul
 
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({
-    getLarkBinding: (threadId) => threadId === 'thread-1'
+    getScheduledDeliveryBinding: (threadId) => threadId === 'thread-1'
       ? {
-          workspace_id: '知识库',
+          workspaceId: '知识库',
           platform: 'lark',
-          chat_id: 'chat-1',
-          platform_user_id: 'user-1',
+          route: {
+            type: 'channel.chat',
+            channelId: 'chat-1',
+            participantId: 'user-1',
+            threadId,
+          },
         }
       : null,
     scheduler: {
@@ -88,7 +92,13 @@ test('scheduled conversation executor uses execution policy hooks around a threa
     job,
     'ping',
     {
-      resolveTarget: async () => ({ threadId: 'thread-1' }),
+      resolveTarget: async () => ({
+        kind: 'thread',
+        threadId: 'thread-1',
+        workspaceId: '知识库',
+        platform: 'lark',
+        route: job.route,
+      }),
       beforeExecute: (target) => {
         calls.push(`before:${target.threadId}`);
       },
@@ -191,10 +201,10 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
         listThreads: async () => [{ id: 'thread-scheduled', title: '[Scheduled] two-minute ping' }],
         createThread: async () => ({ id: 'thread-new' }),
       } as any,
-      larkGateway: {
+      getChannelRuntime: () => ({
         muteThreadBridge: () => {},
         unmuteThreadBridge: () => {},
-      } as any,
+      } as any),
     },
     async () => 'thread-origin',
   );
@@ -224,10 +234,10 @@ test('lark same-thread execution policy keeps the original thread target', async
     {
       store: {} as any,
       workspaceRouter: {} as any,
-      larkGateway: {
+      getChannelRuntime: () => ({
         muteThreadBridge: () => {},
         unmuteThreadBridge: () => {},
-      } as any,
+      } as any),
     },
     async () => 'thread-origin',
   );

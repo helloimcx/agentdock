@@ -1,8 +1,5 @@
 import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
-
-export type ScheduledExecutionTarget = {
-  threadId: string;
-};
+import type { ScheduledExecutionTarget } from './adapters.js';
 
 export interface ScheduledExecutionPolicy {
   resolveTarget(job: ScheduledJob): Promise<ScheduledExecutionTarget>;

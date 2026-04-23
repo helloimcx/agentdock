@@ -24,9 +24,8 @@ export class WorkspaceRouter {
   private schedulerBridge: {
     createJob: (input: {
       workspaceId: string;
-      threadId: string;
-      chatId: string;
-      platformUserId: string;
+      platform: string;
+      route: ScheduledJob['route'];
       name: string;
       schedule: string;
       scheduleDescription: string;

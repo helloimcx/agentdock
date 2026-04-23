@@ -191,24 +191,24 @@ Separate scheduler trigger logic from delivery/channel logic and register both t
 
 ### Tasks
 
-- [ ] Define scheduler trigger and scheduler executor plugin contracts
-- [ ] Convert `LarkScheduleAdapter` into a scheduler delivery plugin
-- [ ] Keep cron as a built-in trigger plugin
-- [ ] Remove direct scheduler-to-Lark assumptions from `LocalCoreController`
-- [ ] Generalize scheduled job route and execution target models
-- [ ] Expose supported trigger types and delivery targets from registry state
+- [x] Define scheduler trigger and scheduler executor plugin contracts
+- [x] Convert `LarkScheduleAdapter` into a scheduler delivery plugin
+- [x] Keep cron as a built-in trigger plugin
+- [x] Remove direct scheduler-to-Lark assumptions from `LocalCoreController`
+- [x] Generalize scheduled job route and execution target models
+- [x] Expose supported trigger types and delivery targets from registry state
 
 ### Current Code To Untangle
 
-- [ ] `services/local-ai-core/src/scheduler/adapters.ts`
-- [ ] `services/local-ai-core/src/scheduler/lark-schedule-adapter.ts`
-- [ ] `services/local-ai-core/src/scheduler/scheduler-service.ts`
-- [ ] scheduler bridge setup in `LocalCoreController`
+- [x] `services/local-ai-core/src/scheduler/adapters.ts`
+- [x] `services/local-ai-core/src/scheduler/lark-schedule-adapter.ts`
+- [x] `services/local-ai-core/src/scheduler/scheduler-service.ts`
+- [x] scheduler bridge setup in `LocalCoreController`
 
 ### Exit Criteria
 
-- [ ] Scheduler no longer depends directly on Lark-specific adapter wiring
-- [ ] A new scheduled delivery target can be added as a plugin
+- [x] Scheduler no longer depends directly on Lark-specific adapter wiring
+- [x] A new scheduled delivery target can be added as a plugin
 
 ## Phase 7: Event Bus Migration
 

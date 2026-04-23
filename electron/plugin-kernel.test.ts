@@ -19,7 +19,8 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
     scheduler: {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      platforms: ['lark'],
+      deliveryTargets: [],
+      platforms: [],
     },
   });
 });
@@ -30,11 +31,18 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
   await kernel.lifecycle.initAll();
   const diagnostics = await kernel.diagnostics.snapshot();
 
-  assert.equal(diagnostics.pluginCount, 1);
-  assert.equal(diagnostics.plugins[0]?.id, 'builtin.runtime-capabilities');
+  assert.equal(diagnostics.pluginCount, 2);
+  assert.deepEqual(
+    diagnostics.plugins.map((plugin) => plugin.id).sort(),
+    ['builtin.runtime-capabilities', 'builtin.scheduler-cron'],
+  );
   assert.deepEqual(diagnostics.health, [
     {
       pluginId: 'builtin.runtime-capabilities',
+      health: { status: 'healthy' },
+    },
+    {
+      pluginId: 'builtin.scheduler-cron',
       health: { status: 'healthy' },
     },
   ]);
@@ -60,6 +68,12 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, ['ai-vector']);
     assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, true);
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
+      enabled: true,
+      triggerTypes: ['cron', 'once'],
+      deliveryTargets: ['lark'],
+      platforms: ['lark'],
+    });
 
     await runtime.start();
     await runtime.stop();
@@ -89,6 +103,12 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, []);
     assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, false);
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
+      enabled: true,
+      triggerTypes: ['cron', 'once'],
+      deliveryTargets: ['lark'],
+      platforms: ['lark'],
+    });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }

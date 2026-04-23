@@ -66,15 +66,30 @@ export interface ChannelRoute {
   metadata?: Record<string, unknown>;
 }
 
-export type ScheduledJobRoute = ChannelRoute;
+export type ScheduledJobTriggerType = 'cron' | 'once' | (string & {});
+
+export type ScheduledJobExecutionMode = 'same-thread' | 'side-thread' | (string & {});
+
+export type ScheduledJobDeliveryTarget = ChannelRoute;
+
+export type ScheduledJobRoute = ScheduledJobDeliveryTarget;
+
+export interface ScheduledJobExecutionTarget {
+  kind: string;
+  threadId: string;
+  workspaceId: string;
+  platform: string;
+  route: ScheduledJobRoute;
+  metadata?: Record<string, unknown>;
+}
 
 export interface ScheduledJob {
   id: string;
   workspaceId: string;
   platform: 'lark' | (string & {});
   route: ScheduledJobRoute;
-  executionMode: 'same-thread' | 'side-thread';
-  triggerType: 'cron' | 'once';
+  executionMode: ScheduledJobExecutionMode;
+  triggerType: ScheduledJobTriggerType;
   cronExpr?: string;
   runAt?: string;
   promptTemplate: string;
@@ -105,8 +120,8 @@ export interface ScheduledJobCreateInput {
   workspaceId: string;
   platform: 'lark' | (string & {});
   route: ScheduledJobRoute;
-  executionMode?: 'same-thread' | 'side-thread';
-  triggerType: 'cron' | 'once';
+  executionMode?: ScheduledJobExecutionMode;
+  triggerType: ScheduledJobTriggerType;
   cronExpr?: string;
   runAt?: string;
   promptTemplate: string;
@@ -116,8 +131,8 @@ export interface ScheduledJobCreateInput {
 
 export interface ScheduledJobUpdateInput {
   route?: ScheduledJobRoute;
-  executionMode?: 'same-thread' | 'side-thread';
-  triggerType?: 'cron' | 'once';
+  executionMode?: ScheduledJobExecutionMode;
+  triggerType?: ScheduledJobTriggerType;
   cronExpr?: string;
   runAt?: string;
   promptTemplate?: string;
@@ -240,7 +255,8 @@ export interface LocalCoreCapabilities {
   };
   scheduler?: {
     enabled: boolean;
-    triggerTypes: Array<'cron' | 'once'>;
+    triggerTypes: string[];
+    deliveryTargets: string[];
     platforms: string[];
   };
 }

@@ -18,6 +18,10 @@ import type {
   KnowledgeRuntimeRegistration,
   PluginContext,
   RuntimePlugin,
+  SchedulerExecutorRuntime,
+  SchedulerPlugin,
+  SchedulerRuntimeRegistration,
+  SchedulerTriggerRuntime,
   ThreadKnowledgeAttachmentStore,
 } from '../../../../packages/plugin-sdk/src/index.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
@@ -35,9 +39,10 @@ import {
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
 import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';
 import { createBuiltinNoopKnowledgePlugin } from '../plugins/builtin/knowledge-noop-plugin.js';
+import { createBuiltinCronSchedulerPlugin } from '../plugins/builtin/scheduler-cron-plugin.js';
+import { createBuiltinLarkSchedulerPlugin } from '../plugins/builtin/scheduler-lark-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
-import { LarkScheduleAdapter } from '../scheduler/lark-schedule-adapter.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
 
 export interface LocalCoreKernel {
@@ -80,7 +85,7 @@ export function bootstrapLocalCoreKernel(options?: {
   const lifecycle = new LocalCoreLifecycleManager(plugins, context);
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
-  const builtIns = [runtimeCapabilitiesPlugin];
+  const builtIns = [runtimeCapabilitiesPlugin, createBuiltinCronSchedulerPlugin()];
   for (const plugin of builtIns) {
     plugins.register(plugin);
     if (plugin.capabilities) {
@@ -109,8 +114,9 @@ export function bootstrapLocalCoreKernel(options?: {
         },
         scheduler: {
           enabled: snapshot.schedulers.some((capability) => capability.enabled !== false),
-          triggerTypes: [...new Set(snapshot.schedulers.flatMap((capability) => capability.triggerTypes))] as Array<'cron' | 'once'>,
-          platforms: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryPlatforms))],
+          triggerTypes: [...new Set(snapshot.schedulers.flatMap((capability) => capability.triggerTypes))],
+          deliveryTargets: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryTargets || capability.deliveryPlatforms || []))],
+          platforms: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryTargets || capability.deliveryPlatforms || []))],
         },
       };
     },
@@ -157,6 +163,17 @@ function resolveAgentRuntime(plugin: AgentPlugin, context: PluginContext): Agent
   return runtime;
 }
 
+function resolveSchedulerRuntime(plugin: SchedulerPlugin, context: PluginContext): SchedulerRuntimeRegistration {
+  if (!plugin.createRuntime) {
+    throw new Error(`Scheduler plugin ${plugin.manifest.id} does not provide a runtime factory.`);
+  }
+  const runtime = plugin.createRuntime(context);
+  if (runtime instanceof Promise) {
+    throw new Error(`Scheduler plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
+  }
+  return runtime;
+}
+
 export function bootstrapLocalCoreRuntime(options: {
   userDataPath: string;
   localCoreBase?: string;
@@ -195,14 +212,31 @@ export function bootstrapLocalCoreRuntime(options: {
         getConfig: () => state.getKnowledgeConfig(),
         setConfig: (input) => state.updateKnowledgeConfig(input),
       });
+  const schedulerPlugins = [
+    createBuiltinLarkSchedulerPlugin({
+      store,
+      getWorkspaceRouter: () => workspaceRouter,
+      getChannelRuntime: () => channelRuntime,
+      log: options.log,
+    }),
+  ];
   for (const plugin of agentPlugins) {
     registerPlugin(kernel, plugin);
   }
   registerPlugin(kernel, channelPlugin);
   registerPlugin(kernel, knowledgePlugin);
+  for (const plugin of schedulerPlugins) {
+    registerPlugin(kernel, plugin);
+  }
   const agentRuntimes = agentPlugins.map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
   const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
   const knowledgeRuntime = resolveKnowledgeRuntime(knowledgePlugin, kernel.context);
+  const schedulerRuntimes = [
+    resolveSchedulerRuntime(createBuiltinCronSchedulerPlugin(), kernel.context),
+    ...schedulerPlugins.map((plugin) => resolveSchedulerRuntime(plugin, kernel.context)),
+  ];
+  const schedulerTriggers = schedulerRuntimes.flatMap((runtime) => runtime.triggers || []) as SchedulerTriggerRuntime[];
+  const schedulerExecutors = schedulerRuntimes.flatMap((runtime) => runtime.executors || []) as SchedulerExecutorRuntime[];
   const knowledgeProvider = knowledgeRuntime.provider as KnowledgeRuntime;
   const knowledgeAttachments = knowledgeRuntime.attachments as ThreadKnowledgeAttachmentStore;
   workspaceRouter = createWorkspaceRouter({
@@ -218,28 +252,17 @@ export function bootstrapLocalCoreRuntime(options: {
   });
   const scheduler = new SchedulerService({
     store,
-    adapters: [
-      new LarkScheduleAdapter({
-        store,
-        workspaceRouter,
-        larkGateway: channelRuntime,
-        log: options.log,
-      }),
-    ],
+    triggers: schedulerTriggers,
+    executors: schedulerExecutors,
     log: options.log,
   });
 
   workspaceRouter.setSchedulerBridge({
-    createJob: async ({ workspaceId, threadId, chatId, platformUserId, name, schedule, scheduleDescription, message }) =>
+    createJob: async ({ workspaceId, platform, route, name, schedule, scheduleDescription, message }) =>
       scheduler.createJob({
         workspaceId,
-        platform: 'lark',
-        route: {
-          type: channelRuntime.routeType,
-          channelId: chatId,
-          participantId: platformUserId,
-          threadId,
-        },
+        platform,
+        route,
         triggerType: 'cron',
         cronExpr: schedule,
         promptTemplate: message,

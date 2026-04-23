@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, ScheduledJobRoute, ThreadDetail, ThreadSummary } from '../../../../packages/contracts/src/index.js';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
 } from '../../../../shared/desktop.js';
@@ -26,9 +26,8 @@ type LocalCoreAcpBackendOptions = {
   scheduler: {
     createJob: (input: {
       workspaceId: string;
-      threadId: string;
-      chatId: string;
-      platformUserId: string;
+      platform: string;
+      route: ScheduledJobRoute;
       name: string;
       schedule: string;
       scheduleDescription: string;
@@ -73,7 +72,22 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       log: options.log,
     });
     this.responseProcessor = new LocalCoreAcpResponseProcessor({
-      getLarkBinding: (threadId) => this.options.store.getPlatformThreadBindingByThreadId(threadId) || null,
+      getScheduledDeliveryBinding: (threadId) => {
+        const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+        if (!binding) {
+          return null;
+        }
+        return {
+          workspaceId: binding.workspace_id,
+          platform: binding.platform,
+          route: {
+            type: binding.platform === 'lark' ? 'channel.chat' : binding.platform,
+            channelId: binding.chat_id,
+            participantId: binding.platform_user_id,
+            threadId,
+          },
+        };
+      },
       scheduler: options.scheduler,
     });
   }

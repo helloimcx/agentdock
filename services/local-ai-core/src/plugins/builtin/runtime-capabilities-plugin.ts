@@ -17,7 +17,6 @@ export const runtimeCapabilitiesPlugin: RuntimePlugin = {
       'agent:qoder',
       'agent:iflow',
       `channel:${LOCALCORE_ACP_AGENT_TYPE}`,
-      'scheduler:cron',
     ],
   },
   capabilities: {
@@ -31,15 +30,6 @@ export const runtimeCapabilitiesPlugin: RuntimePlugin = {
         id: `channel.${LOCALCORE_ACP_AGENT_TYPE}`,
         platform: LOCALCORE_ACP_AGENT_TYPE,
         displayName: 'LocalCore ACP',
-      },
-    ],
-    schedulers: [
-      {
-        id: 'scheduler.cron',
-        triggerTypes: ['cron', 'once'],
-        deliveryPlatforms: ['lark'],
-        enabled: true,
-        displayName: 'Cron Scheduler',
       },
     ],
   },
