@@ -10,9 +10,11 @@ import {
   RotateCw,
   Search,
   Send,
+  Terminal,
   Trash2,
   User,
   WifiOff,
+  Wrench,
   X,
 } from 'lucide-react';
 import { Button, Input, Modal, Textarea } from '@/components/ui';
@@ -22,6 +24,74 @@ import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/session-utils';
 import { formatMessageTimestamp, formatRuntimePhase } from './thread-chat-model';
 import { useThreadChatController } from './useThreadChatController';
+
+type ToolResultCard = {
+  title: string;
+  status: string;
+  output: string;
+};
+
+function parseToolResultCard(content: string): ToolResultCard | null {
+  const match = content.match(/^\s*(?:🔧\s*)?(Tool update)\s*-\s*([^-]+?)\s*-\s*([\s\S]+?)\s*$/i);
+  if (!match) {
+    return null;
+  }
+
+  const [, title, status, payload] = match;
+  const trimmedPayload = payload.trim();
+  try {
+    const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
+    const value = typeof parsed.output === 'string'
+      ? parsed.output
+      : parsed.output ?? parsed.error ?? parsed;
+    return {
+      title,
+      status: status.trim(),
+      output: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+    };
+  } catch {
+    return {
+      title,
+      status: status.trim(),
+      output: trimmedPayload,
+    };
+  }
+}
+
+function ToolResultCardView({ card }: { card: ToolResultCard }) {
+  const completed = card.status.toLowerCase() === 'completed';
+  return (
+    <div className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-slate-50/95 shadow-[0_8px_22px_rgba(15,23,42,0.04)] dark:border-white/[0.07] dark:bg-[#111820] dark:shadow-none">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06]">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+            <Wrench size={14} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{card.title}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <Terminal size={12} />
+              工具结果
+            </p>
+          </div>
+        </div>
+        <span
+          className={cn(
+            'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]',
+            completed
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              : 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+          )}
+        >
+          {card.status}
+        </span>
+      </div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[12px] leading-5 text-slate-700 [scrollbar-gutter:stable] dark:text-slate-200">
+        {card.output || '无输出'}
+      </pre>
+    </div>
+  );
+}
 
 export default function ThreadChat() {
   const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false);
@@ -466,6 +536,8 @@ export default function ThreadChat() {
                     const isUser = message.role === 'user';
                     const isSystem = message.role === 'system';
                     const isProgress = !isUser && !isSystem && message.kind === 'progress';
+                    const toolResultCard = !isUser ? parseToolResultCard(message.content) : null;
+                    const isToolResult = Boolean(toolResultCard);
                     return (
                       <div key={message.id} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
                         {!isUser ? (
@@ -491,7 +563,7 @@ export default function ThreadChat() {
                           data-timestamp={message.timestamp || ''}
                           className={cn(
                             'transition-all',
-                            isUser ? 'max-w-[72%]' : isProgress ? 'max-w-[76%]' : 'max-w-[84%]',
+                            isUser ? 'max-w-[72%]' : isToolResult ? 'max-w-[86%]' : isProgress ? 'max-w-[76%]' : 'max-w-[84%]',
                           )}
                         >
                           <div
@@ -504,6 +576,7 @@ export default function ThreadChat() {
                                 : isProgress
                                   ? 'rounded-bl-lg bg-slate-100/80 text-[13px] leading-6 text-slate-500 dark:bg-white/[0.04] dark:text-slate-400'
                                   : 'rounded-bl-md border border-slate-200/80 bg-white text-slate-800 shadow-[0_6px_18px_rgba(15,23,42,0.04)] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-slate-100 dark:shadow-none',
+                              isToolResult && 'bg-transparent p-0 shadow-none dark:bg-transparent',
                             )}
                           >
                             <div className={cn('mb-2 flex items-center gap-2 text-[10px]', isUser ? 'justify-end text-black/60' : 'text-slate-400 dark:text-slate-500')}>
@@ -511,7 +584,7 @@ export default function ThreadChat() {
                                 <span className="tracking-[0.16em] text-amber-600 dark:text-amber-300">系统</span>
                               ) : null}
                               {isProgress ? (
-                                <span className="tracking-[0.16em] text-amber-500 dark:text-amber-300">过程</span>
+                                <span className="tracking-[0.16em] text-amber-500 dark:text-amber-300">{isToolResult ? '工具' : '过程'}</span>
                               ) : null}
                               {formatMessageTimestamp(message.timestamp) ? (
                                 <span data-testid="desktop-chat-message-timestamp">{formatMessageTimestamp(message.timestamp)}</span>
@@ -521,6 +594,8 @@ export default function ThreadChat() {
                               <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-inherit">
                                 {message.content}
                               </div>
+                            ) : toolResultCard ? (
+                              <ToolResultCardView card={toolResultCard} />
                             ) : (
                               <ChatMarkdown content={message.content} isUser={isUser} />
                             )}
@@ -720,8 +795,8 @@ export default function ThreadChat() {
                   ) : null}
                 </div>
 
-                <div className="mt-2.5 flex items-end gap-3">
-                  <div className="flex-1">
+                <div className="mt-2.5">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
                     <Textarea
                       data-testid="desktop-chat-input"
                       value={draft}
@@ -747,54 +822,54 @@ export default function ThreadChat() {
                       disabled={!serviceRunning || !transportReady || sending || !selectedProject || taskInputLocked}
                       className="min-h-[94px] rounded-[20px] border-slate-200 bg-white px-4 py-3 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500"
                     />
-                    <div className="mt-1.5 flex items-center justify-between px-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span>Enter 发送，Shift + Enter 换行</span>
-                      <span>{selectedProject ? '范围会随当前线程保存' : '请先选择项目'}</span>
-                    </div>
-                  </div>
 
-                  {permissionPromptMessage ? (
-                    <div className="flex min-w-[220px] flex-col gap-2 rounded-[20px] border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-400/20 dark:bg-amber-500/10">
-                      <p className="text-xs font-medium text-amber-800 dark:text-amber-100">请选择权限响应</p>
-                      {permissionPromptMessage.actions?.map((row, rowIndex) => (
-                        <div key={`${permissionPromptMessage.id}-permission-row-${rowIndex}`} className="flex flex-wrap gap-2">
-                          {row.map((action) => (
-                            <Button
-                              key={`${permissionPromptMessage.id}-${rowIndex}-${action.data}`}
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => void handleBridgeAction(permissionPromptMessage, action)}
-                              disabled={Boolean(permissionPromptMessage.actionPending || pendingBridgeActionId)}
-                              loading={pendingBridgeActionId === permissionPromptMessage.id}
-                              className="rounded-full border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 dark:border-amber-400/30 dark:bg-white/[0.08] dark:text-amber-50 dark:hover:bg-white/[0.12]"
-                            >
-                              {action.text || action.data}
-                            </Button>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  ) : taskRunning ? (
-                    <Button
-                      variant="danger"
-                      onClick={() => void handleStopTask()}
-                      disabled={(!activeSessionKey && !activeRunId) || taskState === 'stopping'}
-                      data-testid="desktop-chat-stop-task"
-                      className="h-14 min-w-[124px] rounded-[20px] bg-red-50 px-5 text-red-600 hover:bg-red-100 dark:bg-red-500/12 dark:text-red-200 dark:hover:bg-red-500/18"
-                    >
-                      <LoaderCircle size={16} className="animate-spin" />
-                      {taskState === 'stopping' ? '停止中' : '停止任务'}
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => void handleSend()}
-                      disabled={!draft.trim() || !serviceRunning || !transportReady || sending || !selectedProject}
-                      data-testid="desktop-chat-send"
-                      className="h-14 w-14 rounded-full px-0 shadow-none"
-                    >
-                      <Send size={18} />
-                    </Button>
-                  )}
+                    {permissionPromptMessage ? (
+                      <div className="flex min-w-[220px] flex-col gap-2 rounded-[20px] border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-400/20 dark:bg-amber-500/10">
+                        <p className="text-xs font-medium text-amber-800 dark:text-amber-100">请选择权限响应</p>
+                        {permissionPromptMessage.actions?.map((row, rowIndex) => (
+                          <div key={`${permissionPromptMessage.id}-permission-row-${rowIndex}`} className="flex flex-wrap gap-2">
+                            {row.map((action) => (
+                              <Button
+                                key={`${permissionPromptMessage.id}-${rowIndex}-${action.data}`}
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => void handleBridgeAction(permissionPromptMessage, action)}
+                                disabled={Boolean(permissionPromptMessage.actionPending || pendingBridgeActionId)}
+                                loading={pendingBridgeActionId === permissionPromptMessage.id}
+                                className="rounded-full border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 dark:border-amber-400/30 dark:bg-white/[0.08] dark:text-amber-50 dark:hover:bg-white/[0.12]"
+                              >
+                                {action.text || action.data}
+                              </Button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    ) : taskRunning ? (
+                      <Button
+                        variant="danger"
+                        onClick={() => void handleStopTask()}
+                        disabled={(!activeSessionKey && !activeRunId) || taskState === 'stopping'}
+                        data-testid="desktop-chat-stop-task"
+                        className="h-14 min-w-[124px] rounded-[20px] bg-red-50 px-5 text-red-600 hover:bg-red-100 dark:bg-red-500/12 dark:text-red-200 dark:hover:bg-red-500/18"
+                      >
+                        <LoaderCircle size={16} className="animate-spin" />
+                        {taskState === 'stopping' ? '停止中' : '停止任务'}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => void handleSend()}
+                        disabled={!draft.trim() || !serviceRunning || !transportReady || sending || !selectedProject}
+                        data-testid="desktop-chat-send"
+                        className="h-14 w-14 rounded-full px-0 shadow-none"
+                      >
+                        <Send size={18} />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between px-1 pr-[4.5rem] text-[11px] text-slate-500 dark:text-slate-400">
+                    <span>Enter 发送，Shift + Enter 换行</span>
+                    <span>{selectedProject ? '范围会随当前线程保存' : '请先选择项目'}</span>
+                  </div>
                 </div>
               </div>
             </div>
