@@ -33,9 +33,7 @@ export function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | nul
   const agentType = String(project?.agent?.type || '').trim().toLowerCase();
   return !agentType
     || agentType === 'acp'
-    || agentType === LOCALCORE_ACP_AGENT_TYPE
-    || agentType === 'opencode'
-    || agentType === 'claudecode';
+    || agentType === LOCALCORE_ACP_AGENT_TYPE;
 }
 
 function resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {

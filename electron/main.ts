@@ -44,6 +44,14 @@ async function waitForLocalCoreHealthy(timeoutMs = 15000) {
   throw new Error(`Local AI Core did not become healthy within ${timeoutMs}ms`);
 }
 
+async function fetchSmokeJson(path: string) {
+  const response = await fetch(`http://127.0.0.1:9831${path}`);
+  if (!response.ok) {
+    throw new Error(`Smoke request failed for ${path}: HTTP ${response.status}`);
+  }
+  return response.json() as Promise<unknown>;
+}
+
 async function ensureLocalCoreProcess() {
   if (await isLocalCoreHealthy()) {
     return;
@@ -126,7 +134,11 @@ app.whenReady().then(async () => {
   await ensureLocalCoreProcess();
   createWindow();
   if (smokeOutputPath) {
-    writeSmokeResult({ ok: true });
+    const [capabilities, pluginDiagnostics] = await Promise.all([
+      fetchSmokeJson('/api/local/v1/capabilities/snapshot'),
+      fetchSmokeJson('/api/local/v1/plugins/diagnostics'),
+    ]);
+    writeSmokeResult({ ok: true, capabilities, pluginDiagnostics });
     setTimeout(() => app.quit(), 300);
   }
 

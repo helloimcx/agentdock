@@ -338,58 +338,58 @@ Remove compatibility shims and obsolete hardcoded paths after the plugin system 
 
 ### Kernel And Contracts
 
-- [ ] Add tests for plugin registration order
-- [ ] Add tests for dependency resolution
-- [ ] Add tests for duplicate plugin id rejection
-- [ ] Add tests for capability snapshot generation
+- [x] Add tests for plugin registration order
+- [x] Add tests for dependency resolution
+- [x] Add tests for duplicate plugin id rejection
+- [x] Add tests for capability snapshot generation
 
 ### Knowledge
 
-- [ ] Add tests proving knowledge provider registration is registry-driven
-- [ ] Add tests proving disabled knowledge provider removes its capabilities cleanly
+- [x] Add tests proving knowledge provider registration is registry-driven
+- [x] Add tests proving disabled knowledge provider removes its capabilities cleanly
 
 ### Channels
 
-- [ ] Add tests proving channel plugin lifecycle start and stop works
-- [ ] Add tests proving channel route abstraction is not Lark-specific
+- [x] Add tests proving channel plugin lifecycle start and stop works
+- [x] Add tests proving channel route abstraction is not Lark-specific
 
 ### Agents
 
-- [ ] Add tests proving agent runtime selection is registry-based
-- [ ] Add tests for unsupported workspace-to-agent mismatch behavior
+- [x] Add tests proving agent runtime selection is registry-based
+- [x] Add tests for unsupported workspace-to-agent mismatch behavior
 
 ### Renderer
 
-- [ ] Add tests for route rendering from contribution registry
-- [ ] Add tests for nav rendering from contribution registry
-- [ ] Add tests for capability-driven feature visibility
+- [x] Add tests for route rendering from contribution registry
+- [x] Add tests for nav rendering from contribution registry
+- [x] Add tests for capability-driven feature visibility
 
 ### End-To-End
 
-- [ ] Run `pnpm test`
-- [ ] Run `pnpm e2e:smoke`
-- [ ] Add or update smoke coverage for plugin capability snapshot
-- [ ] Add or update smoke coverage for degraded plugin state
+- [x] Run `pnpm test`
+- [x] Run `pnpm e2e:smoke`
+- [x] Add or update smoke coverage for plugin capability snapshot
+- [x] Add or update smoke coverage for degraded plugin state
 
 ## Suggested Delivery Order
 
-- [ ] PR 1: plugin SDK plus kernel skeleton
-- [ ] PR 2: bootstrap injection replacing controller composition
-- [ ] PR 3: knowledge plugin extraction
-- [ ] PR 4: channel plugin extraction
-- [ ] PR 5: agent runtime extraction
-- [ ] PR 6: scheduler extraction
-- [ ] PR 7: runtime capability snapshot
-- [ ] PR 8: renderer route and nav registries
-- [ ] PR 9: diagnostics and plugin health
-- [ ] PR 10: cleanup and compatibility removal
+- [x] PR 1: plugin SDK plus kernel skeleton
+- [x] PR 2: bootstrap injection replacing controller composition
+- [x] PR 3: knowledge plugin extraction
+- [x] PR 4: channel plugin extraction
+- [x] PR 5: agent runtime extraction
+- [x] PR 6: scheduler extraction
+- [x] PR 7: runtime capability snapshot
+- [x] PR 8: renderer route and nav registries
+- [x] PR 9: diagnostics and plugin health
+- [x] PR 10: cleanup and compatibility removal
 
 ## Success Criteria
 
-- [ ] Adding a new channel does not require kernel edits
-- [ ] Adding a new knowledge provider does not require router edits
-- [ ] Adding a new agent does not require workspace router edits
-- [ ] Adding a new page does not require editing `src/App.tsx`
-- [ ] Adding a new nav item does not require editing `Sidebar.tsx`
-- [ ] The runtime exposes installed capabilities and plugin health
-- [ ] Built-in modules are registered like plugins, not treated specially in the architecture
+- [x] Adding a new channel does not require kernel edits
+- [x] Adding a new knowledge provider does not require router edits
+- [x] Adding a new agent does not require workspace router edits
+- [x] Adding a new page does not require editing `src/App.tsx`
+- [x] Adding a new nav item does not require editing `Sidebar.tsx`
+- [x] The runtime exposes installed capabilities and plugin health
+- [x] Built-in modules are registered like plugins, not treated specially in the architecture
