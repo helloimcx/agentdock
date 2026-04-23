@@ -28,6 +28,50 @@ export interface KnowledgeCapability {
   displayName?: string;
 }
 
+export interface KnowledgeRuntime {
+  listSources(): Promise<import('../../contracts/src/index.js').KnowledgeSource[]>;
+  getConfig(): Promise<import('../../contracts/src/index.js').KnowledgeConfig>;
+  updateConfig(input: Partial<import('../../contracts/src/index.js').KnowledgeConfig>): Promise<import('../../contracts/src/index.js').KnowledgeConfig>;
+  listFolders(): Promise<import('../../contracts/src/index.js').KnowledgeFolder[]>;
+  createFolder(input: import('../../contracts/src/index.js').KnowledgeFolderCreateInput): Promise<import('../../contracts/src/index.js').KnowledgeFolder>;
+  updateFolder(
+    id: string,
+    input: import('../../contracts/src/index.js').KnowledgeFolderUpdateInput,
+  ): Promise<import('../../contracts/src/index.js').KnowledgeFolder>;
+  deleteFolder(id: string): Promise<{ deleted: boolean }>;
+  listKnowledgeBases(): Promise<import('../../contracts/src/index.js').KnowledgeBase[]>;
+  getKnowledgeBase(id: string): Promise<import('../../contracts/src/index.js').KnowledgeBase>;
+  createKnowledgeBase(
+    input: import('../../contracts/src/index.js').KnowledgeBaseCreateInput,
+  ): Promise<import('../../contracts/src/index.js').KnowledgeBase>;
+  updateKnowledgeBase(
+    id: string,
+    input: import('../../contracts/src/index.js').KnowledgeBaseUpdateInput,
+  ): Promise<import('../../contracts/src/index.js').KnowledgeBase>;
+  deleteKnowledgeBase(id: string): Promise<{ deleted: boolean }>;
+  listKnowledgeBaseFiles(knowledgeBaseId: string): Promise<import('../../contracts/src/index.js').KnowledgeFile[]>;
+  uploadKnowledgeBaseFiles(
+    knowledgeBaseId: string,
+    request: { contentType: string; body: Uint8Array },
+  ): Promise<import('../../contracts/src/index.js').KnowledgeUploadResult[]>;
+  deleteKnowledgeBaseFile(knowledgeBaseId: string, fileId: string): Promise<{ deleted: boolean }>;
+  searchKnowledgeBase(
+    knowledgeBaseId: string,
+    input: import('../../contracts/src/index.js').KnowledgeSearchInput,
+  ): Promise<import('../../contracts/src/index.js').KnowledgeSearchResult[]>;
+}
+
+export interface ThreadKnowledgeAttachmentStore {
+  listThreadKnowledgeBaseIds(threadId: string): Promise<string[]>;
+  updateThreadKnowledgeBaseIds(threadId: string, knowledgeBaseIds: string[]): Promise<string[]>;
+  deleteThreadKnowledgeBaseLinks(threadId: string): Promise<{ deleted: boolean }>;
+}
+
+export interface KnowledgeRuntimeRegistration {
+  provider: KnowledgeRuntime;
+  attachments: ThreadKnowledgeAttachmentStore;
+}
+
 export interface SchedulerCapability {
   id: string;
   triggerTypes: string[];
@@ -148,4 +192,11 @@ export interface RuntimePlugin {
   start?(): Promise<void> | void;
   stop?(): Promise<void> | void;
   healthCheck?(): Promise<PluginHealth> | PluginHealth;
+}
+
+export interface KnowledgePlugin extends RuntimePlugin {
+  manifest: PluginManifest & {
+    kind: 'knowledge' | 'composite';
+  };
+  createRuntime?(ctx: PluginContext): Promise<KnowledgeRuntimeRegistration> | KnowledgeRuntimeRegistration;
 }

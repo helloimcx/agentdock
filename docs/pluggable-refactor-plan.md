@@ -106,25 +106,25 @@ Turn knowledge handling into a first-class plugin capability.
 
 ### Tasks
 
-- [ ] Define `KnowledgePlugin` in `packages/plugin-sdk`
-- [ ] Adapt `packages/knowledge-api` to implement `KnowledgePlugin`
-- [ ] Move `AiVectorKnowledgeProvider` registration into a built-in plugin
-- [ ] Ensure thread-to-knowledge attachment remains outside the concrete provider where possible
-- [ ] Separate knowledge storage policy from knowledge provider implementation
-- [ ] Add a noop or disabled knowledge plugin registration path
-- [ ] Expose installed knowledge providers through runtime capabilities
+- [x] Define `KnowledgePlugin` in `packages/plugin-sdk`
+- [x] Adapt `packages/knowledge-api` to implement `KnowledgePlugin`
+- [x] Move `AiVectorKnowledgeProvider` registration into a built-in plugin
+- [x] Ensure thread-to-knowledge attachment remains outside the concrete provider where possible
+- [x] Separate knowledge storage policy from knowledge provider implementation
+- [x] Add a noop or disabled knowledge plugin registration path
+- [x] Expose installed knowledge providers through runtime capabilities
 
 ### Current Code To Untangle
 
-- [ ] `packages/knowledge-api/src/ai-vector-provider.ts`
-- [ ] `packages/knowledge-api/src/index.ts`
-- [ ] knowledge references inside `WorkspaceRouter`
-- [ ] knowledge-specific settings persistence inside `LocalCoreController`
+- [x] `packages/knowledge-api/src/ai-vector-provider.ts`
+- [x] `packages/knowledge-api/src/index.ts`
+- [x] knowledge references inside `WorkspaceRouter`
+- [x] knowledge-specific settings persistence inside `LocalCoreController`
 
 ### Exit Criteria
 
-- [ ] A second knowledge provider can be added without editing kernel code
-- [ ] The runtime reports active knowledge capabilities from registry state
+- [x] A second knowledge provider can be added without editing kernel code
+- [x] The runtime reports active knowledge capabilities from registry state
 
 ## Phase 4: Capability Extraction For Channels
 

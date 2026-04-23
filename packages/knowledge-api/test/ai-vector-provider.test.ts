@@ -5,7 +5,13 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { KnowledgeConfig } from '../../contracts/src/index.js';
-import { AiVectorKnowledgeProvider, defaultKnowledgeConfig } from '../src/ai-vector-provider.js';
+import {
+  AiVectorKnowledgeProvider,
+  SqliteThreadKnowledgeAttachmentStore,
+  createAiVectorKnowledgePlugin,
+  createNoopKnowledgePlugin,
+  defaultKnowledgeConfig,
+} from '../src/index.js';
 import { KnowledgeSqliteStore } from '../src/sqlite-store.js';
 
 function withTempDir() {
@@ -265,25 +271,93 @@ test('stores selected knowledge-base bindings per thread in sqlite', async () =>
     getConfig: () => defaultKnowledgeConfig(),
     setConfig: (input) => ({ ...defaultKnowledgeConfig(), ...input }),
   });
+  const attachments = new SqliteThreadKnowledgeAttachmentStore({
+    userDataPath: temp.dir,
+  });
 
   try {
     const firstBase = await provider.createKnowledgeBase({ name: '知识库 A' });
     const secondBase = await provider.createKnowledgeBase({ name: '知识库 B' });
 
-    const storedIds = await provider.updateThreadKnowledgeBaseIds('thread-1', [
+    const storedIds = await attachments.updateThreadKnowledgeBaseIds('thread-1', [
       firstBase.id,
       secondBase.id,
       firstBase.id,
     ]);
 
     assert.deepEqual(storedIds, [firstBase.id, secondBase.id]);
-    assert.deepEqual(await provider.listThreadKnowledgeBaseIds('thread-1'), [firstBase.id, secondBase.id]);
+    assert.deepEqual(await attachments.listThreadKnowledgeBaseIds('thread-1'), [firstBase.id, secondBase.id]);
 
-    await provider.deleteThreadKnowledgeBaseLinks('thread-1');
-    assert.deepEqual(await provider.listThreadKnowledgeBaseIds('thread-1'), []);
+    await attachments.deleteThreadKnowledgeBaseLinks('thread-1');
+    assert.deepEqual(await attachments.listThreadKnowledgeBaseIds('thread-1'), []);
   } finally {
     temp.cleanup();
   }
+});
+
+test('ai-vector knowledge plugin creates provider runtime and registers enabled capability', async () => {
+  const temp = withTempDir();
+  try {
+    const plugin = createAiVectorKnowledgePlugin({
+      userDataPath: temp.dir,
+      getConfig: () => defaultKnowledgeConfig(),
+      setConfig: (input) => ({ ...defaultKnowledgeConfig(), ...input }),
+    });
+
+    assert.equal(plugin.manifest.id, 'knowledge.ai-vector');
+    assert.equal(plugin.capabilities?.knowledge?.[0]?.enabled, true);
+
+    const runtime = await plugin.createRuntime?.({
+      bus: { emit() {}, on() { return () => {}; } },
+      capabilities: {
+        registerAgent() {},
+        registerChannel() {},
+        registerKnowledge() {},
+        registerScheduler() {},
+        registerUi() {},
+        registerContributions() {},
+        listAgents() { return []; },
+        listChannels() { return []; },
+        listKnowledge() { return []; },
+        listSchedulers() { return []; },
+        listUi() { return []; },
+        snapshot() { return { agents: [], channels: [], knowledge: [], schedulers: [], ui: [] }; },
+      },
+      logger: { log() {} },
+    });
+
+    assert.ok(runtime);
+    assert.deepEqual(await runtime?.attachments.listThreadKnowledgeBaseIds('thread-1'), []);
+    assert.deepEqual(await runtime?.provider.listKnowledgeBases(), []);
+  } finally {
+    temp.cleanup();
+  }
+});
+
+test('noop knowledge plugin exposes a disabled capability and inert runtime', async () => {
+  const plugin = createNoopKnowledgePlugin();
+  const runtime = await plugin.createRuntime?.({
+    bus: { emit() {}, on() { return () => {}; } },
+    capabilities: {
+      registerAgent() {},
+      registerChannel() {},
+      registerKnowledge() {},
+      registerScheduler() {},
+      registerUi() {},
+      registerContributions() {},
+      listAgents() { return []; },
+      listChannels() { return []; },
+      listKnowledge() { return []; },
+      listSchedulers() { return []; },
+      listUi() { return []; },
+      snapshot() { return { agents: [], channels: [], knowledge: [], schedulers: [], ui: [] }; },
+    },
+    logger: { log() {} },
+  });
+
+  assert.equal(plugin.capabilities?.knowledge?.[0]?.enabled, false);
+  assert.deepEqual(await runtime?.provider.listKnowledgeBases(), []);
+  assert.deepEqual(await runtime?.attachments.listThreadKnowledgeBaseIds('thread-1'), []);
 });
 
 test('deletes remote vector data for cached-miss knowledge bases before removing local base', async () => {

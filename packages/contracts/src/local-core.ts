@@ -233,6 +233,7 @@ export interface LocalCoreCapabilities {
     channels: string[];
     agents: string[];
     knowledge: boolean;
+    knowledgeProviders: string[];
   };
   scheduler?: {
     enabled: boolean;

@@ -17,7 +17,6 @@ export const runtimeCapabilitiesPlugin: RuntimePlugin = {
       `agent:${LOCALCORE_ACP_AGENT_TYPE}`,
       'channel:localcore-lark',
       `channel:${LOCALCORE_ACP_AGENT_TYPE}`,
-      'knowledge:ai-vector',
       'scheduler:cron',
     ],
   },
@@ -38,14 +37,6 @@ export const runtimeCapabilitiesPlugin: RuntimePlugin = {
         id: `channel.${LOCALCORE_ACP_AGENT_TYPE}`,
         platform: LOCALCORE_ACP_AGENT_TYPE,
         displayName: 'LocalCore ACP',
-      },
-    ],
-    knowledge: [
-      {
-        id: 'knowledge.ai-vector',
-        sourceType: 'ai-vector',
-        enabled: true,
-        displayName: 'AI Vector Knowledge',
       },
     ],
     schedulers: [

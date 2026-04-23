@@ -32,7 +32,7 @@ import type {
   KnowledgeSearchInput,
   KnowledgeSearchResult,
 } from '../../../../packages/contracts/src/index.js';
-import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
+import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
 import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
@@ -44,7 +44,7 @@ import type { LocalAiCoreBindings } from './server.js';
 export class LocalCoreController extends EventEmitter implements LocalAiCoreBindings {
   private readonly state: LocalCoreRuntimeState;
   private readonly workspaceRouter: WorkspaceRouter;
-  private readonly knowledgeProvider: KnowledgeProvider;
+  private readonly knowledgeProvider: KnowledgeRuntime;
   private readonly larkGateway: LocalCoreLarkGateway;
   private readonly scheduler: SchedulerService;
   private readonly kernel: LocalCoreKernel;

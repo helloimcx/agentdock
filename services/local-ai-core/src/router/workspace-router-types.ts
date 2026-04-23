@@ -6,7 +6,7 @@ import type {
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
 } from '../../../../packages/contracts/src/index.js';
-import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
+import type { KnowledgeRuntime, ThreadKnowledgeAttachmentStore } from '../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 export type WorkspaceRouterOptions = {
@@ -16,7 +16,8 @@ export type WorkspaceRouterOptions = {
   localCoreBase?: string;
   readConfigState: () => Promise<ConfigFileState>;
   getCapabilities: () => LocalCoreCapabilities;
-  knowledgeProvider: KnowledgeProvider;
+  knowledgeProvider: KnowledgeRuntime;
+  knowledgeAttachments: ThreadKnowledgeAttachmentStore;
   log?: (message: string) => void;
 };
 

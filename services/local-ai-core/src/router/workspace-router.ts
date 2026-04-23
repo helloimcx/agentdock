@@ -133,7 +133,7 @@ export class WorkspaceRouter {
 
   async updateThreadKnowledgeBases(threadId: string, knowledgeBaseIds: string[]) {
     return {
-      knowledgeBaseIds: await this.options.knowledgeProvider.updateThreadKnowledgeBaseIds(threadId, knowledgeBaseIds),
+      knowledgeBaseIds: await this.options.knowledgeAttachments.updateThreadKnowledgeBaseIds(threadId, knowledgeBaseIds),
     };
   }
 
@@ -141,7 +141,7 @@ export class WorkspaceRouter {
     const { workspaceId } = decodeThreadId(threadId);
     await this.getWorkspaceRoute(workspaceId);
     await this.localCoreAcp.deleteThread(threadId);
-    await this.options.knowledgeProvider.deleteThreadKnowledgeBaseLinks(threadId);
+    await this.options.knowledgeAttachments.deleteThreadKnowledgeBaseLinks(threadId);
     return { deleted: true };
   }
 
@@ -188,7 +188,7 @@ export class WorkspaceRouter {
   private async withKnowledge(detail: ThreadDetail) {
     return {
       ...detail,
-      selectedKnowledgeBaseIds: await this.options.knowledgeProvider.listThreadKnowledgeBaseIds(detail.id),
+      selectedKnowledgeBaseIds: await this.options.knowledgeAttachments.listThreadKnowledgeBaseIds(detail.id),
     };
   }
 
