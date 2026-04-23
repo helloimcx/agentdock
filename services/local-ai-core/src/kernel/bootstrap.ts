@@ -18,6 +18,7 @@ import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import { runtimeCapabilitiesPlugin } from '../plugins/builtin/runtime-capabilities-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
+import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
 import { LarkScheduleAdapter } from '../scheduler/lark-schedule-adapter.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
 
@@ -32,6 +33,7 @@ export interface LocalCoreKernel {
 
 export interface LocalCoreRuntimeBootstrap {
   kernel: LocalCoreKernel;
+  state: LocalCoreRuntimeState;
   store: LocalCoreAcpStore;
   knowledgeProvider: KnowledgeProvider;
   workspaceRouter: WorkspaceRouter;
@@ -92,11 +94,7 @@ export function bootstrapLocalCoreKernel(options?: {
 
 export function bootstrapLocalCoreRuntime(options: {
   userDataPath: string;
-  cliBinDir?: string;
   localCoreBase?: string;
-  readConfigState: () => Promise<ConfigFileState>;
-  getKnowledgeConfig: () => KnowledgeConfig;
-  setKnowledgeConfig: (input: Partial<KnowledgeConfig>) => Promise<KnowledgeConfig> | KnowledgeConfig;
   log?: (message: string) => void;
   onBridgeEvent?: (event: DesktopBridgeEvent) => void;
   onSchedulerJob?: (job: ScheduledJob) => void;
@@ -106,24 +104,28 @@ export function bootstrapLocalCoreRuntime(options: {
   const kernel = bootstrapLocalCoreKernel({
     log: options.log,
   });
+  const state = createLocalCoreRuntimeState({
+    userDataPath: options.userDataPath,
+    onLog: options.log,
+  });
   const store = new LocalCoreAcpStore(options.userDataPath);
   const knowledgeProvider = new AiVectorKnowledgeProvider({
     userDataPath: options.userDataPath,
-    getConfig: options.getKnowledgeConfig,
-    setConfig: options.setKnowledgeConfig,
+    getConfig: () => state.getKnowledgeConfig(),
+    setConfig: (input) => state.updateKnowledgeConfig(input),
   });
   const workspaceRouter = createWorkspaceRouter({
     store,
-    cliBinDir: options.cliBinDir,
+    cliBinDir: state.cliBinDir,
     localCoreBase: options.localCoreBase,
-    readConfigState: options.readConfigState,
+    readConfigState: () => state.readConfigFile(),
     getCapabilities: () => kernel.getCapabilitySnapshot(),
     knowledgeProvider,
     log: options.log,
   });
   const larkGateway = new LocalCoreLarkGateway({
     store,
-    readConfig: async () => (await options.readConfigState()).parsed as DesktopConnectConfig | null | undefined,
+    readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
     getWorkspaceRouter: () => workspaceRouter,
     onStateChanged: options.onRuntimeStateChanged,
     log: options.log,
@@ -179,6 +181,7 @@ export function bootstrapLocalCoreRuntime(options: {
 
   return {
     kernel,
+    state,
     store,
     knowledgeProvider,
     workspaceRouter,

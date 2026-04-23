@@ -81,7 +81,7 @@ Move object wiring out of `LocalCoreController` and into a composition root.
 - [x] Stop constructing concrete modules directly inside `LocalCoreController`
 - [ ] Pass registries and resolved capabilities into controller/services through constructor injection
 - [x] Move runtime-owned singletons behind a bootstrap container object
-- [ ] Ensure logs, stores, config readers, and event bus are created in one place only
+- [x] Ensure logs, stores, config readers, and event bus are created in one place only
 - [x] Keep existing endpoints and API behavior unchanged
 
 ### Current Code To Untangle
@@ -94,9 +94,9 @@ Move object wiring out of `LocalCoreController` and into a composition root.
 
 ### Exit Criteria
 
-- [ ] `LocalCoreController` no longer acts as the main composition root
-- [ ] All built-in modules are created by bootstrap and injected
-- [ ] There is one obvious place to register built-in plugins
+- [x] `LocalCoreController` no longer acts as the main composition root
+- [x] All built-in modules are created by bootstrap and injected
+- [x] There is one obvious place to register built-in plugins
 
 ## Phase 3: Capability Extraction For Knowledge
 

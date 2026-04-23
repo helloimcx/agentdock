@@ -1,7 +1,4 @@
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import * as TOML from '@iarna/toml';
 import type {
   ConfigFileState,
   DesktopConnectConfig,
@@ -39,70 +36,26 @@ import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/i
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
 import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
 import type { SchedulerService } from '../scheduler/scheduler-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 
-const DEFAULT_CONFIG = `# Managed by Local AI Core
-[[projects]]
-name = "default"
-
-[projects.agent]
-type = "opencode"
-`;
-
-type RuntimeSettingsFile = {
-  configPath: string;
-  defaultProject: string;
-  autoStartService: boolean;
-  knowledge: {
-    baseUrl: string;
-    authMode: 'none' | 'bearer' | 'header';
-    token: string;
-    headerName: string;
-    defaultCollection: string;
-  };
-};
-
 export class LocalCoreController extends EventEmitter implements LocalAiCoreBindings {
-  private readonly runtimeDir: string;
-  private readonly settingsPath: string;
-  private settings: DesktopSettings;
-  private readonly logs: string[] = [];
+  private readonly state: LocalCoreRuntimeState;
   private readonly workspaceRouter: WorkspaceRouter;
   private readonly knowledgeProvider: KnowledgeProvider;
   private readonly larkGateway: LocalCoreLarkGateway;
   private readonly scheduler: SchedulerService;
-  private readonly cliBinDir: string;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
 
   constructor(private readonly userDataPath: string) {
     super();
-    this.runtimeDir = join(userDataPath, 'runtime');
-    this.settingsPath = join(this.runtimeDir, 'local-core-settings.json');
-    mkdirSync(this.runtimeDir, { recursive: true });
-    this.cliBinDir = this.ensureCliWrapper();
-    this.settings = this.loadSettings();
-    this.ensureConfigFile();
     this.runtime = bootstrapLocalCoreRuntime({
       userDataPath,
-      cliBinDir: this.cliBinDir,
       localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
-      readConfigState: () => this.readConfigFile(),
-      getKnowledgeConfig: () => this.settings.knowledge,
-      setKnowledgeConfig: (input) => {
-        this.settings = {
-          ...this.settings,
-          knowledge: {
-            ...this.settings.knowledge,
-            ...input,
-          },
-        };
-        this.persistSettings();
-        return this.settings.knowledge;
-      },
-      log: (message) => this.pushLog(message),
+      log: (message) => this.handleLog(message),
       onBridgeEvent: (event) => {
         this.emit('bridge', event);
       },
@@ -116,6 +69,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
         void this.emitRuntime();
       },
     });
+    this.state = this.runtime.state;
     this.kernel = this.runtime.kernel;
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
@@ -143,7 +97,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       pendingRestart: false,
       service,
       roles: deriveDesktopRuntimeRoles(service),
-      settings: this.settings,
+      settings: this.state.getSettings(),
       configFile: await this.readConfigFile(),
       logs: this.getLogs(200),
     };
@@ -164,62 +118,32 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   getLogs(limit = 200): string[] {
-    return this.logs.slice(-Math.max(limit, 1));
+    return this.state.getLogs(limit);
   }
 
   async readConfigFile(): Promise<ConfigFileState> {
-    const path = this.settings.configPath;
-    if (!existsSync(path)) {
-      return { path, exists: false, raw: '', parsed: null };
-    }
-    const raw = readFileSync(path, 'utf8');
-    try {
-      const parsed = TOML.parse(raw) as DesktopConnectConfig;
-      return { path, exists: true, raw, parsed };
-    } catch (error) {
-      return {
-        path,
-        exists: true,
-        raw,
-        parsed: null,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
+    return this.state.readConfigFile();
   }
 
   async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
-    mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, raw, 'utf8');
+    const next = await this.state.saveRawConfigFile(raw);
     await this.larkGateway.refreshBindings();
     await this.emitRuntime();
-    return this.readConfigFile();
+    return next;
   }
 
   async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
-    mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, TOML.stringify(config as any), 'utf8');
+    const next = await this.state.saveStructuredConfigFile(config);
     await this.larkGateway.refreshBindings();
     await this.emitRuntime();
-    return this.readConfigFile();
+    return next;
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
-    this.settings = {
-      ...this.settings,
-      ...(input.defaultProject ? { defaultProject: input.defaultProject } : {}),
-      ...(typeof input.autoStartService === 'boolean' ? { autoStartService: input.autoStartService } : {}),
-      ...(input.configPath ? { configPath: input.configPath } : {}),
-      knowledge: input.knowledge
-        ? {
-            ...this.settings.knowledge,
-            ...input.knowledge,
-          }
-        : this.settings.knowledge,
-    };
-    this.persistSettings();
+    const settings = await this.state.saveSettings(input);
     await this.larkGateway.refreshBindings();
     await this.emitRuntime();
-    return this.settings;
+    return settings;
   }
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
@@ -409,98 +333,11 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.emit('bridge', event);
   }
 
-  private loadSettings(): DesktopSettings {
-    const defaults: RuntimeSettingsFile = {
-      configPath: join(this.runtimeDir, 'config.toml'),
-      defaultProject: 'default',
-      autoStartService: true,
-      knowledge: {
-        baseUrl: '',
-        authMode: 'none',
-        token: '',
-        headerName: 'X-API-Key',
-        defaultCollection: 'personal_knowledge',
-      },
-    };
-    if (!existsSync(this.settingsPath)) {
-      return {
-        binaryPath: '',
-        configPath: defaults.configPath,
-        autoStartService: defaults.autoStartService,
-        defaultProject: defaults.defaultProject,
-        managementPort: 0,
-        managementToken: '',
-        bridgePort: 0,
-        bridgeToken: '',
-        bridgePath: '',
-        knowledge: defaults.knowledge,
-      };
-    }
-    const raw = JSON.parse(readFileSync(this.settingsPath, 'utf8')) as Partial<RuntimeSettingsFile>;
-    return {
-      binaryPath: '',
-      configPath: String(raw.configPath || defaults.configPath),
-      autoStartService: typeof raw.autoStartService === 'boolean' ? raw.autoStartService : defaults.autoStartService,
-      defaultProject: String(raw.defaultProject || defaults.defaultProject),
-      managementPort: 0,
-      managementToken: '',
-      bridgePort: 0,
-      bridgeToken: '',
-      bridgePath: '',
-      knowledge: {
-        ...defaults.knowledge,
-        ...(raw.knowledge || {}),
-      },
-    };
-  }
-
-  private persistSettings() {
-    const payload: RuntimeSettingsFile = {
-      configPath: this.settings.configPath,
-      defaultProject: this.settings.defaultProject,
-      autoStartService: this.settings.autoStartService,
-      knowledge: this.settings.knowledge,
-    };
-    mkdirSync(dirname(this.settingsPath), { recursive: true });
-    writeFileSync(this.settingsPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  }
-
-  private ensureConfigFile() {
-    if (existsSync(this.settings.configPath)) {
-      return;
-    }
-    mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, DEFAULT_CONFIG, 'utf8');
-  }
-
-  private ensureCliWrapper() {
-    const binDir = join(this.runtimeDir, 'bin');
-    mkdirSync(binDir, { recursive: true });
-    const cliEntry = join(__dirname, '..', 'cli', 'lac.js');
-    const wrapperPath = join(binDir, 'lac');
-    const script = [
-      '#!/bin/sh',
-      'export ELECTRON_RUN_AS_NODE=1',
-      `exec "${process.execPath.replace(/"/g, '\\"')}" "${cliEntry.replace(/"/g, '\\"')}" "$@"`,
-      '',
-    ].join('\n');
-    writeFileSync(wrapperPath, script, 'utf8');
-    chmodSync(wrapperPath, 0o755);
-    return binDir;
-  }
-
   private async emitRuntime() {
     this.emit('runtime', await this.getRuntimeStatus());
   }
 
-  private pushLog(message: string) {
-    if (!message) {
-      return;
-    }
-    this.logs.push(message);
+  private handleLog(message: string) {
     this.emit('logs', message);
-    if (this.logs.length > 400) {
-      this.logs.splice(0, this.logs.length - 400);
-    }
   }
 }
