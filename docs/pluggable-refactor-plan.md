@@ -272,24 +272,24 @@ Make routes, nav items, and settings panels declarative contributions.
 
 ### Tasks
 
-- [ ] Add UI contribution types for routes, nav items, and settings panels
-- [ ] Add renderer-side registries for those contributions
-- [ ] Replace hardcoded route declarations in `src/App.tsx`
-- [ ] Replace hardcoded nav item list in `src/components/Layout/Sidebar.tsx`
-- [ ] Replace hardcoded system/settings sections with registered panels
-- [ ] Preserve route guards, ordering, and labels through manifest metadata
-- [ ] Keep the initial built-in features registered statically
+- [x] Add UI contribution types for routes, nav items, and settings panels
+- [x] Add renderer-side registries for those contributions
+- [x] Replace hardcoded route declarations in `src/App.tsx`
+- [x] Replace hardcoded nav item list in `src/components/Layout/Sidebar.tsx`
+- [x] Replace hardcoded system/settings sections with registered panels
+- [x] Preserve route guards, ordering, and labels through manifest metadata
+- [x] Keep the initial built-in features registered statically
 
 ### Current Code To Untangle
 
-- [ ] `src/App.tsx`
-- [ ] `src/components/Layout/Sidebar.tsx`
-- [ ] any page-specific feature switch helpers
+- [x] `src/App.tsx`
+- [x] `src/components/Layout/Sidebar.tsx`
+- [x] any page-specific feature switch helpers
 
 ### Exit Criteria
 
-- [ ] Adding a new page does not require editing `src/App.tsx`
-- [ ] Adding a new nav entry does not require editing `Sidebar.tsx`
+- [x] Adding a new page does not require editing `src/App.tsx`
+- [x] Adding a new nav entry does not require editing `Sidebar.tsx`
 
 ## Phase 10: Config, Diagnostics, And Failure Isolation
 

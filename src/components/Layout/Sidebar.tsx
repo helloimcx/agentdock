@@ -1,14 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  LayoutDashboard,
-  MessagesSquare,
-  Wrench,
-  FolderKanban,
-  Library,
-  MessageSquare,
-  Clock,
-  Settings,
   Sun,
   Moon,
   Monitor,
@@ -22,17 +14,7 @@ import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
 import { useThemeStore } from '@/store/theme';
 import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
-
-const navItems = [
-  { key: 'dashboard', path: '/', icon: LayoutDashboard },
-  { key: 'chat', path: '/chat', icon: MessagesSquare },
-  { key: 'workspace', path: '/workspace', icon: Wrench },
-  { key: 'knowledge', path: '/knowledge', icon: Library },
-  { key: 'projects', path: '/projects', icon: FolderKanban },
-  { key: 'sessions', path: '/sessions', icon: MessageSquare },
-  { key: 'cron', path: '/cron', icon: Clock },
-  { key: 'system', path: '/system', icon: Settings },
-];
+import { rendererUiContributions } from '@/app/ui-contributions';
 
 const languages = [
   { code: 'en', label: 'English' },
@@ -47,13 +29,7 @@ export default function Sidebar() {
   const { theme, setTheme } = useThemeStore();
   const logout = useAuthStore((s) => s.logout);
   const desktopManaged = useAuthStore((s) => s.desktopManaged);
-  const {
-    desktopChat,
-    chatRoute,
-    desktopWorkspace,
-    knowledgeModule,
-    schedulerModule,
-  } = useRuntimeFeatureSupport();
+  const features = useRuntimeFeatureSupport();
   const runtimeProvider = getRuntimeProvider();
   const [collapsed, setCollapsed] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -68,24 +44,9 @@ export default function Sidebar() {
   const nextTheme = { light: 'dark' as const, dark: 'system' as const, system: 'light' as const };
   const ThemeIcon = themeIcons[theme];
 
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.key === 'chat' && !chatRoute) {
-      return false;
-    }
-    if (item.key === 'workspace' && !desktopWorkspace) {
-      return false;
-    }
-    if (item.key === 'knowledge' && !knowledgeModule) {
-      return false;
-    }
-    if (item.key === 'cron' && !schedulerModule) {
-      return false;
-    }
-    if (desktopManaged) {
-      return item.key !== 'projects' && item.key !== 'sessions';
-    }
-    return true;
-  });
+  const visibleNavItems = rendererUiContributions
+    .listNavItems()
+    .filter((item) => item.visible?.({ desktopManaged, features }) ?? true);
 
   return (
     <aside
@@ -118,34 +79,30 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
-        {visibleNavItems.map(({ key, path, icon: Icon }) => (
-          <NavLink
-            key={key}
-            to={path}
-            end={path === '/'}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                isActive
-                  ? 'bg-accent/15 text-gray-900 dark:text-white ring-1 ring-accent/35 shadow-[0_0_20px_-8px_rgba(66,255,156,0.5)]'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white'
-              )
-            }
-          >
-            <Icon size={20} className="shrink-0" />
-            {!collapsed && (
-              <span>
-                {key === 'chat'
-                  ? !desktopChat
-                    ? t('nav.chatWeb')
-                    : runtimeProvider === 'electron'
-                      ? t('nav.chatDesktop')
-                      : t('nav.chat')
-                  : t(`nav.${key}`)}
-              </span>
-            )}
-          </NavLink>
-        ))}
+        {visibleNavItems.map((item) => {
+          const Icon = item.icon;
+          const labelKey = item.resolveLabelKey?.({ desktopManaged, features, runtimeProvider }) || item.labelKey;
+          return (
+            <NavLink
+              key={item.id}
+              to={item.path}
+              end={item.end}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                  isActive
+                    ? 'bg-accent/15 text-gray-900 dark:text-white ring-1 ring-accent/35 shadow-[0_0_20px_-8px_rgba(66,255,156,0.5)]'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white'
+                )
+              }
+            >
+              <Icon size={20} className="shrink-0" />
+              {!collapsed && (
+                <span>{t(labelKey)}</span>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
 
       <div

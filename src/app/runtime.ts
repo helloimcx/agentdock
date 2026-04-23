@@ -78,6 +78,8 @@ export function getRuntimeFeatureSupport(snapshot = getRuntimeCapabilitySnapshot
   };
 }
 
+export type RuntimeFeatureSupport = ReturnType<typeof getRuntimeFeatureSupport>;
+
 export function useRuntimeFeatureSupport() {
   const snapshot = useRuntimeCapabilityStore((state) => state.snapshot);
   return getRuntimeFeatureSupport(snapshot);

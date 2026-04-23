@@ -4,38 +4,21 @@ import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
-
-const routeTitles: Record<string, string> = {
-  '/': 'nav.dashboard',
-  '/chat': 'nav.chat',
-  '/workspace': 'nav.workspace',
-  '/knowledge': 'nav.knowledge',
-  '/sessions': 'nav.sessions',
-  '/cron': 'nav.cron',
-  '/system': 'nav.system',
-};
+import { resolveRouteTitleKey } from '@/app/ui-contributions';
+import { useAuthStore } from '@/store/auth';
 
 export default function Header() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const [spinning, setSpinning] = useState(false);
-  const { desktopChat } = useRuntimeFeatureSupport();
+  const desktopManaged = useAuthStore((s) => s.desktopManaged);
+  const features = useRuntimeFeatureSupport();
+  const { desktopChat } = features;
   const runtimeProvider = getRuntimeProvider();
   const compactDesktopChatHeader =
     pathname.startsWith('/chat') && desktopChat && runtimeProvider === 'electron';
 
-  const matchedTitleKey =
-    Object.entries(routeTitles).find(([path]) =>
-      path === '/' ? pathname === '/' : pathname.startsWith(path)
-    )?.[1] || 'nav.dashboard';
-  const titleKey =
-    matchedTitleKey === 'nav.chat'
-      ? !desktopChat
-        ? 'nav.chatWeb'
-        : runtimeProvider === 'electron'
-          ? 'nav.chatDesktop'
-          : 'nav.chat'
-      : matchedTitleKey;
+  const titleKey = resolveRouteTitleKey(pathname, { desktopManaged, features, runtimeProvider });
 
   const handleRefresh = () => {
     setSpinning(true);
