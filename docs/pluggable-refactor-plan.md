@@ -77,20 +77,20 @@ Move object wiring out of `LocalCoreController` and into a composition root.
 
 ### Tasks
 
-- [ ] Extract controller wiring logic into `kernel/bootstrap.ts`
-- [ ] Stop constructing concrete modules directly inside `LocalCoreController`
+- [x] Extract controller wiring logic into `kernel/bootstrap.ts`
+- [x] Stop constructing concrete modules directly inside `LocalCoreController`
 - [ ] Pass registries and resolved capabilities into controller/services through constructor injection
-- [ ] Move runtime-owned singletons behind a bootstrap container object
+- [x] Move runtime-owned singletons behind a bootstrap container object
 - [ ] Ensure logs, stores, config readers, and event bus are created in one place only
-- [ ] Keep existing endpoints and API behavior unchanged
+- [x] Keep existing endpoints and API behavior unchanged
 
 ### Current Code To Untangle
 
-- [ ] `new AiVectorKnowledgeProvider(...)`
-- [ ] `new LocalCoreLarkGateway(...)`
-- [ ] `new SchedulerService(...)`
-- [ ] `new LarkScheduleAdapter(...)`
-- [ ] `createWorkspaceRouter(...)`
+- [x] `new AiVectorKnowledgeProvider(...)`
+- [x] `new LocalCoreLarkGateway(...)`
+- [x] `new SchedulerService(...)`
+- [x] `new LarkScheduleAdapter(...)`
+- [x] `createWorkspaceRouter(...)`
 
 ### Exit Criteria
 

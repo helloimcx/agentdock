@@ -35,13 +35,12 @@ import type {
   KnowledgeSearchInput,
   KnowledgeSearchResult,
 } from '../../../../packages/contracts/src/index.js';
-import { AiVectorKnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
+import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
-import { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
-import { bootstrapLocalCoreKernel, type LocalCoreKernel } from '../kernel/bootstrap.js';
-import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
-import { LarkScheduleAdapter } from '../scheduler/lark-schedule-adapter.js';
-import { SchedulerService } from '../scheduler/scheduler-service.js';
+import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
+import type { WorkspaceRouter } from '../router/workspace-router.js';
+import type { LocalCoreLarkGateway } from '../gateway/local-core-lark-gateway.js';
+import type { SchedulerService } from '../scheduler/scheduler-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 
 const DEFAULT_CONFIG = `# Managed by Local AI Core
@@ -71,11 +70,12 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private settings: DesktopSettings;
   private readonly logs: string[] = [];
   private readonly workspaceRouter: WorkspaceRouter;
-  private readonly knowledgeProvider: AiVectorKnowledgeProvider;
+  private readonly knowledgeProvider: KnowledgeProvider;
   private readonly larkGateway: LocalCoreLarkGateway;
   private readonly scheduler: SchedulerService;
   private readonly cliBinDir: string;
   private readonly kernel: LocalCoreKernel;
+  private readonly runtime: LocalCoreRuntimeBootstrap;
 
   constructor(private readonly userDataPath: string) {
     super();
@@ -84,14 +84,14 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     mkdirSync(this.runtimeDir, { recursive: true });
     this.cliBinDir = this.ensureCliWrapper();
     this.settings = this.loadSettings();
-    this.kernel = bootstrapLocalCoreKernel({
-      log: (message) => this.pushLog(message),
-    });
     this.ensureConfigFile();
-    this.knowledgeProvider = new AiVectorKnowledgeProvider({
+    this.runtime = bootstrapLocalCoreRuntime({
       userDataPath,
-      getConfig: () => this.settings.knowledge,
-      setConfig: (input) => {
+      cliBinDir: this.cliBinDir,
+      localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
+      readConfigState: () => this.readConfigFile(),
+      getKnowledgeConfig: () => this.settings.knowledge,
+      setKnowledgeConfig: (input) => {
         this.settings = {
           ...this.settings,
           knowledge: {
@@ -102,82 +102,34 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
         this.persistSettings();
         return this.settings.knowledge;
       },
-    });
-    this.workspaceRouter = createWorkspaceRouter({
-      userDataPath,
-      cliBinDir: this.cliBinDir,
-      localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
-      readConfigState: () => this.readConfigFile(),
-      knowledgeProvider: this.knowledgeProvider,
       log: (message) => this.pushLog(message),
-    });
-    this.larkGateway = new LocalCoreLarkGateway({
-      store: this.workspaceRouter.getStore(),
-      readConfig: async () => (await this.readConfigFile()).parsed,
-      getWorkspaceRouter: () => this.workspaceRouter,
-      onStateChanged: () => this.emitRuntime(),
-      log: (message) => this.pushLog(message),
-    });
-    this.scheduler = new SchedulerService({
-      store: this.workspaceRouter.getStore(),
-      adapters: [
-        new LarkScheduleAdapter({
-          store: this.workspaceRouter.getStore(),
-          workspaceRouter: this.workspaceRouter,
-          larkGateway: this.larkGateway,
-          log: (message) => this.pushLog(message),
-        }),
-      ],
-      log: (message) => this.pushLog(message),
-    });
-    this.workspaceRouter.setSchedulerBridge({
-      createJob: async ({ workspaceId, threadId, chatId, platformUserId, name, schedule, scheduleDescription, message }) =>
-        this.scheduler.createJob({
-          workspaceId,
-          platform: 'lark',
-          route: {
-            type: 'lark_chat',
-            chatId,
-            platformUserId,
-            threadId,
-          },
-          triggerType: 'cron',
-          cronExpr: schedule,
-          promptTemplate: message,
-          description: `${name} · ${scheduleDescription}`,
-          enabled: true,
-        }),
-      listJobsForThread: async (threadId) => this.scheduler
-        .listJobs()
-        .filter((job) => job.route.threadId === threadId),
-      deleteJob: async (jobId) => {
-        this.scheduler.deleteJob(jobId);
+      onBridgeEvent: (event) => {
+        this.emit('bridge', event);
+      },
+      onSchedulerJob: (job) => {
+        this.emit('scheduler-job', job);
+      },
+      onSchedulerRun: (run) => {
+        this.emit('scheduler-run', run);
+      },
+      onRuntimeStateChanged: () => {
+        void this.emitRuntime();
       },
     });
-    this.workspaceRouter.subscribeBridgeEvents((event) => {
-      this.emit('bridge', event);
-      void this.larkGateway.onBridgeEvent(event);
-    });
-    this.scheduler.on('job', (job: ScheduledJob) => {
-      this.emit('scheduler-job', job);
-    });
-    this.scheduler.on('run', (run: ScheduledJobRun) => {
-      this.emit('scheduler-run', run);
-    });
+    this.kernel = this.runtime.kernel;
+    this.knowledgeProvider = this.runtime.knowledgeProvider;
+    this.workspaceRouter = this.runtime.workspaceRouter;
+    this.larkGateway = this.runtime.larkGateway;
+    this.scheduler = this.runtime.scheduler;
   }
 
   async init() {
-    await this.kernel.lifecycle.initAll();
-    await this.larkGateway.refreshBindings();
-    await this.scheduler.start();
+    await this.runtime.start();
     await this.emitRuntime();
   }
 
   async close() {
-    await this.scheduler.stop();
-    await this.kernel.lifecycle.stopAll();
-    this.larkGateway.close();
-    this.workspaceRouter.close();
+    await this.runtime.stop();
   }
 
   async getRuntimeStatus(): Promise<DesktopRuntimeStatus> {

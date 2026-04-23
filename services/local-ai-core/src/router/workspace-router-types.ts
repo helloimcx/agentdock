@@ -1,17 +1,21 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type {
   ConfigFileState,
+  LocalCoreCapabilities,
   ThreadDetail,
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
 } from '../../../../packages/contracts/src/index.js';
 import type { KnowledgeProvider } from '../../../../packages/knowledge-api/src/index.js';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 export type WorkspaceRouterOptions = {
-  userDataPath: string;
+  store?: LocalCoreAcpStore;
+  userDataPath?: string;
   cliBinDir?: string;
   localCoreBase?: string;
   readConfigState: () => Promise<ConfigFileState>;
+  getCapabilities: () => LocalCoreCapabilities;
   knowledgeProvider: KnowledgeProvider;
   log?: (message: string) => void;
 };

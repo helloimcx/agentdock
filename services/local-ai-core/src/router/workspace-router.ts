@@ -37,7 +37,13 @@ export class WorkspaceRouter {
   } | null = null;
 
   constructor(private readonly options: WorkspaceRouterOptions) {
-    this.store = new LocalCoreAcpStore(options.userDataPath);
+    if (options.store) {
+      this.store = options.store;
+    } else if (options.userDataPath) {
+      this.store = new LocalCoreAcpStore(options.userDataPath);
+    } else {
+      throw new Error('WorkspaceRouter requires either a store or userDataPath.');
+    }
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
       runThreadMap: this.runThreadMap,
@@ -77,10 +83,6 @@ export class WorkspaceRouter {
   getThreadSessionKey(threadId: string) {
     const row = this.store.getThreadRow(threadId);
     return row?.bridge_session_key || '';
-  }
-
-  getStore() {
-    return this.store;
   }
 
   setSchedulerBridge(bridge: NonNullable<WorkspaceRouter['schedulerBridge']>) {
@@ -166,18 +168,7 @@ export class WorkspaceRouter {
   }
 
   getCapabilities(): LocalCoreCapabilities {
-    return {
-      adapters: {
-        channels: ['localcore-lark', LOCALCORE_ACP_AGENT_TYPE],
-        agents: ['opencode', 'codex', 'claudecode', 'cursor', 'gemini', 'qoder', 'iflow', LOCALCORE_ACP_AGENT_TYPE],
-        knowledge: true,
-      },
-      scheduler: {
-        enabled: true,
-        triggerTypes: ['cron', 'once'],
-        platforms: ['lark'],
-      },
-    };
+    return this.options.getCapabilities();
   }
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {
