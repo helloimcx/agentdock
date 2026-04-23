@@ -8,10 +8,10 @@ export function createBuiltinLarkChannelPlugin(options: {
   store: LocalCoreAcpStore;
   readConfig: () => Promise<DesktopConnectConfig | null | undefined>;
   getWorkspaceRouter: () => WorkspaceRouter;
-  onStateChanged?: () => void;
   log?: (message: string) => void;
 }): ChannelPlugin {
   let runtime: ChannelRuntimeRegistration | null = null;
+  let unsubscribeBridgeEvents: (() => void) | null = null;
 
   return {
     manifest: {
@@ -32,17 +32,20 @@ export function createBuiltinLarkChannelPlugin(options: {
         },
       ],
     },
-    createRuntime(_ctx: PluginContext) {
+    createRuntime(ctx: PluginContext) {
       if (!runtime) {
         runtime = {
           channel: new LocalCoreLarkGateway({
             store: options.store,
             readConfig: options.readConfig,
             getWorkspaceRouter: options.getWorkspaceRouter,
-            onStateChanged: options.onStateChanged,
+            eventBus: ctx.bus,
             log: options.log,
           }),
         };
+        unsubscribeBridgeEvents = ctx.bus.on('platform.bridge.updated', (event) => {
+          void runtime?.channel.onBridgeEvent?.(event);
+        });
       }
       return runtime;
     },
@@ -50,6 +53,8 @@ export function createBuiltinLarkChannelPlugin(options: {
       await runtime?.channel.refreshBindings?.();
     },
     async stop() {
+      unsubscribeBridgeEvents?.();
+      unsubscribeBridgeEvents = null;
       runtime?.channel.close?.();
     },
   };

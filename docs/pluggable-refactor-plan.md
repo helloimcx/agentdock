@@ -218,25 +218,25 @@ Replace direct cross-module callback chains with typed domain events.
 
 ### Tasks
 
-- [ ] Define domain event types in plugin SDK or core contracts
-- [ ] Publish `platform.message.received` from channel plugins
-- [ ] Publish `thread.message.accepted` from thread orchestration
-- [ ] Publish `run.started`, `run.progress`, `run.completed`, `run.failed`
-- [ ] Publish scheduler lifecycle events
-- [ ] Replace direct callback wiring where plugin-to-plugin interaction is currently explicit
-- [ ] Keep synchronous direct calls only where request-response semantics are required
+- [x] Define domain event types in plugin SDK or core contracts
+- [x] Publish `platform.message.received` from channel plugins
+- [x] Publish `thread.message.accepted` from thread orchestration
+- [x] Publish `run.started`, `run.progress`, `run.completed`, `run.failed`
+- [x] Publish scheduler lifecycle events
+- [x] Replace direct callback wiring where plugin-to-plugin interaction is currently explicit
+- [x] Keep synchronous direct calls only where request-response semantics are required
 
 ### Current Code To Untangle
 
-- [ ] bridge event forwarding in `LocalCoreController`
-- [ ] channel-triggered orchestration paths
-- [ ] scheduler notifications
-- [ ] renderer SSE update publication paths
+- [x] bridge event forwarding in `LocalCoreController`
+- [x] channel-triggered orchestration paths
+- [x] scheduler notifications
+- [x] renderer SSE update publication paths
 
 ### Exit Criteria
 
-- [ ] Plugins collaborate primarily through typed events
-- [ ] Removing one plugin does not require stubbing direct calls in multiple other modules
+- [x] Plugins collaborate primarily through typed events
+- [x] Removing one plugin does not require stubbing direct calls in multiple other modules
 
 ## Phase 8: Renderer Capability Snapshot
 

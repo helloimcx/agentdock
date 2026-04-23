@@ -52,6 +52,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly scheduler: SchedulerService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
+  private readonly busUnsubscribers: Array<() => void> = [];
 
   constructor(private readonly userDataPath: string) {
     super();
@@ -59,18 +60,6 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       userDataPath,
       localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
       log: (message) => this.handleLog(message),
-      onBridgeEvent: (event) => {
-        this.emit('bridge', event);
-      },
-      onSchedulerJob: (job) => {
-        this.emit('scheduler-job', job);
-      },
-      onSchedulerRun: (run) => {
-        this.emit('scheduler-run', run);
-      },
-      onRuntimeStateChanged: () => {
-        void this.emitRuntime();
-      },
     });
     this.state = this.runtime.state;
     this.kernel = this.runtime.kernel;
@@ -78,6 +67,20 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.workspaceRouter = this.runtime.workspaceRouter;
     this.channelRuntime = this.runtime.channelRuntime;
     this.scheduler = this.runtime.scheduler;
+    this.busUnsubscribers.push(
+      this.kernel.context.bus.on('platform.bridge.updated', (event) => {
+        this.emit('bridge', event);
+      }),
+      this.kernel.context.bus.on('scheduler.job.updated', (job) => {
+        this.emit('scheduler-job', job);
+      }),
+      this.kernel.context.bus.on('scheduler.run.updated', (run) => {
+        this.emit('scheduler-run', run);
+      }),
+      this.kernel.context.bus.on('runtime.state.changed', () => {
+        void this.emitRuntime();
+      }),
+    );
   }
 
   async init() {
@@ -86,6 +89,9 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async close() {
+    for (const unsubscribe of this.busUnsubscribers) {
+      unsubscribe();
+    }
     await this.runtime.stop();
   }
 

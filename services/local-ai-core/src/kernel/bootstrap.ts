@@ -1,10 +1,7 @@
 import type {
   ChannelRoute,
-  DesktopBridgeEvent,
   DesktopConnectConfig,
   LocalCoreCapabilities,
-  ScheduledJob,
-  ScheduledJobRun,
 } from '../../../../packages/contracts/src/index.js';
 import type {
   AgentPlugin,
@@ -179,10 +176,6 @@ export function bootstrapLocalCoreRuntime(options: {
   localCoreBase?: string;
   enableKnowledge?: boolean;
   log?: (message: string) => void;
-  onBridgeEvent?: (event: DesktopBridgeEvent) => void;
-  onSchedulerJob?: (job: ScheduledJob) => void;
-  onSchedulerRun?: (run: ScheduledJobRun) => void;
-  onRuntimeStateChanged?: () => void;
 }): LocalCoreRuntimeBootstrap {
   const kernel = bootstrapLocalCoreKernel({
     log: options.log,
@@ -202,7 +195,6 @@ export function bootstrapLocalCoreRuntime(options: {
     store,
     readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
     getWorkspaceRouter: () => workspaceRouter,
-    onStateChanged: options.onRuntimeStateChanged,
     log: options.log,
   });
   const knowledgePlugin = options.enableKnowledge === false
@@ -246,6 +238,7 @@ export function bootstrapLocalCoreRuntime(options: {
     readConfigState: () => state.readConfigFile(),
     getCapabilities: () => kernel.getCapabilitySnapshot(),
     getAgentRuntimes: () => agentRuntimes,
+    eventBus: kernel.context.bus,
     knowledgeProvider,
     knowledgeAttachments,
     log: options.log,
@@ -254,6 +247,7 @@ export function bootstrapLocalCoreRuntime(options: {
     store,
     triggers: schedulerTriggers,
     executors: schedulerExecutors,
+    eventBus: kernel.context.bus,
     log: options.log,
   });
 
@@ -275,17 +269,6 @@ export function bootstrapLocalCoreRuntime(options: {
     deleteJob: async (jobId) => {
       scheduler.deleteJob(jobId);
     },
-  });
-
-  workspaceRouter.subscribeBridgeEvents((event) => {
-    options.onBridgeEvent?.(event);
-    void channelRuntime.onBridgeEvent?.(event);
-  });
-  scheduler.on('job', (job: ScheduledJob) => {
-    options.onSchedulerJob?.(job);
-  });
-  scheduler.on('run', (run: ScheduledJobRun) => {
-    options.onSchedulerRun?.(run);
   });
 
   return {

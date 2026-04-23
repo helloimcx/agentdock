@@ -13,7 +13,7 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
 } from '../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { ChannelRuntime, EventBus } from '../../../../packages/plugin-sdk/src/index.js';
 import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
@@ -75,7 +75,7 @@ type LocalCoreLarkGatewayOptions = {
   store: LocalCoreAcpStore;
   readConfig: () => Promise<DesktopConnectConfig | null | undefined>;
   getWorkspaceRouter: () => WorkspaceRouter;
-  onStateChanged?: () => void;
+  eventBus: EventBus;
   log?: (message: string) => void;
 };
 
@@ -130,7 +130,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       }
       await this.startWorkspace(binding);
     }
-    this.options.onStateChanged?.();
+    this.notifyRuntimeStateChanged();
   }
 
   async testConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult> {
@@ -244,7 +244,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       authorized_at: authorizedAt,
     });
     this.options.store.updatePairingStatus(code, 'approved');
-    this.options.onStateChanged?.();
+    this.notifyRuntimeStateChanged();
     const user = this.options.store.listAuthorizedUsers(pairing.workspace_id).find((entry) => entry.id === userId);
     if (!user) {
       throw new Error('Authorized user lookup failed after approval');
@@ -258,7 +258,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       throw new Error(`Pairing code not found: ${code}`);
     }
     this.options.store.updatePairingStatus(code, 'rejected');
-    this.options.onStateChanged?.();
+    this.notifyRuntimeStateChanged();
     return { rejected: true };
   }
 
@@ -407,6 +407,18 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   async handleInboundMessage(input: LarkInboundMessage) {
+    this.options.eventBus.emit({
+      type: 'platform.message.received',
+      payload: {
+        platform: this.platform,
+        workspaceId: input.workspaceId,
+        participantId: input.platformUserId,
+        channelId: input.chatId,
+        displayName: input.displayName,
+        text: input.text,
+        messageId: input.messageId,
+      },
+    });
     this.options.store.expirePendingPairings();
     const binding = await this.getBinding(input.workspaceId);
     let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId);
@@ -424,7 +436,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         });
         authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId);
         this.options.log?.(`localcore-lark auto-approved user for ${input.workspaceId}: ${input.platformUserId}`);
-        this.options.onStateChanged?.();
+        this.notifyRuntimeStateChanged();
       }
     }
     if (!authorized) {
@@ -445,7 +457,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           expires_at: new Date(now.getTime() + PAIRING_EXPIRY_MS).toISOString(),
           status: 'pending',
         });
-        this.options.onStateChanged?.();
+        this.notifyRuntimeStateChanged();
       }
       await this.sendImmediateCard(input.workspaceId, input.chatId, this.renderPendingPairingCard(pairingCode));
       return { paired: false };
@@ -574,7 +586,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       appId: binding.appId,
     };
     this.runtime.set(binding.workspaceId, status);
-    this.options.onStateChanged?.();
+    this.notifyRuntimeStateChanged();
     try {
       const mod = await this.getLarkModule();
       status.client = new mod.Client({
@@ -618,7 +630,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status.lastError = error instanceof Error ? error.message : String(error);
       this.options.log?.(`localcore-lark start failed for ${binding.workspaceId}: ${status.lastError}`);
     }
-    this.options.onStateChanged?.();
+    this.notifyRuntimeStateChanged();
   }
 
   private async stopWorkspace(workspaceId: string) {
@@ -638,7 +650,16 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       connected: false,
       appId: state.appId,
     });
-    this.options.onStateChanged?.();
+    this.notifyRuntimeStateChanged();
+  }
+
+  private notifyRuntimeStateChanged() {
+    this.options.eventBus.emit({
+      type: 'runtime.state.changed',
+      payload: {
+        reason: 'channel-bindings',
+      },
+    });
   }
 
   private async handleMessageEvent(workspaceId: string, data: Record<string, unknown>) {

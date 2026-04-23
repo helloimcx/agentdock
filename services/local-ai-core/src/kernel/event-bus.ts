@@ -1,11 +1,11 @@
-import type { EventBus, EventBusEvent } from '../../../../packages/plugin-sdk/src/index.js';
+import type { DomainEventPayloadMap, DomainEventType, EventBus, EventBusEvent } from '../../../../packages/plugin-sdk/src/index.js';
 
 type Listener = (payload: unknown) => void;
 
 export class LocalCoreEventBus implements EventBus {
   private readonly listeners = new Map<string, Set<Listener>>();
 
-  emit<TPayload>(event: EventBusEvent<TPayload>) {
+  emit<TType extends DomainEventType>(event: EventBusEvent<TType>) {
     const listeners = this.listeners.get(event.type);
     if (!listeners) {
       return;
@@ -15,7 +15,7 @@ export class LocalCoreEventBus implements EventBus {
     }
   }
 
-  on<TPayload>(type: string, listener: (payload: TPayload) => void) {
+  on<TType extends DomainEventType>(type: TType, listener: (payload: DomainEventPayloadMap[TType]) => void) {
     const listeners = this.listeners.get(type) || new Set<Listener>();
     listeners.add(listener as Listener);
     this.listeners.set(type, listeners);

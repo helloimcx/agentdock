@@ -49,6 +49,7 @@ export class WorkspaceRouter {
       cliBinDir: options.cliBinDir,
       localCoreBase: options.localCoreBase,
       emitBridge: (event) => this.emitBridgeEvent(event),
+      eventBus: options.eventBus,
       scheduler: {
         createJob: async (input) => {
           if (!this.schedulerBridge) {
@@ -190,6 +191,10 @@ export class WorkspaceRouter {
   }
 
   private emitBridgeEvent(event: DesktopBridgeEvent) {
+    this.options.eventBus.emit({
+      type: 'platform.bridge.updated',
+      payload: event,
+    });
     this.notifyBridgeSubscribers(event);
   }
 

@@ -255,14 +255,67 @@ export interface CapabilityRegistry {
   snapshot(): CapabilitySnapshot;
 }
 
-export interface EventBusEvent<TPayload = unknown> {
-  type: string;
-  payload: TPayload;
+export interface DomainEventPayloadMap {
+  'platform.bridge.updated': import('../../../shared/desktop.js').DesktopBridgeEvent;
+  'platform.message.received': {
+    platform: string;
+    workspaceId: string;
+    participantId: string;
+    channelId: string;
+    displayName: string;
+    text: string;
+    messageId: string;
+  };
+  'thread.message.accepted': {
+    threadId: string;
+    workspaceId: string;
+    role: import('../../contracts/src/index.js').ThreadMessage['role'];
+    content: string;
+    kind?: import('../../contracts/src/index.js').ThreadMessage['kind'];
+    source: 'user' | 'agent' | 'platform' | 'scheduler' | 'system';
+  };
+  'run.started': {
+    runId: string;
+    threadId: string;
+    workspaceId: string;
+    prompt: string;
+    sessionKey: string;
+  };
+  'run.progress': {
+    runId: string;
+    threadId: string;
+    workspaceId: string;
+    stream: import('../../../shared/desktop.js').DesktopBridgeEvent;
+  };
+  'run.completed': {
+    runId: string;
+    threadId: string;
+    workspaceId: string;
+    stopReason?: string;
+  };
+  'run.failed': {
+    runId: string;
+    threadId: string;
+    workspaceId: string;
+    error: string;
+  };
+  'scheduler.job.updated': import('../../contracts/src/index.js').ScheduledJob;
+  'scheduler.run.updated': import('../../contracts/src/index.js').ScheduledJobRun;
+  'runtime.state.changed': {
+    reason: 'config' | 'settings' | 'channel-bindings' | 'bootstrap' | 'unknown';
+  };
+}
+
+export type DomainEventType = keyof DomainEventPayloadMap;
+
+export interface EventBusEvent<TType extends DomainEventType = DomainEventType> {
+  type: TType;
+  payload: DomainEventPayloadMap[TType];
 }
 
 export interface EventBus {
-  emit<TPayload>(event: EventBusEvent<TPayload>): void;
-  on<TPayload>(type: string, listener: (payload: TPayload) => void): () => void;
+  emit<TType extends DomainEventType>(event: EventBusEvent<TType>): void;
+  on<TType extends DomainEventType>(type: TType, listener: (payload: DomainEventPayloadMap[TType]) => void): () => void;
 }
 
 export interface PluginLogger {

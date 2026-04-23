@@ -5,6 +5,7 @@ import {
 } from '../../../../shared/desktop.js';
 import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
+import type { EventBus } from '../../../../packages/plugin-sdk/src/index.js';
 import type {
   AcpSessionState,
   LocalCoreProjectConfig,
@@ -23,6 +24,7 @@ type LocalCoreAcpBackendOptions = {
   cliBinDir?: string;
   localCoreBase?: string;
   emitBridge: (event: DesktopBridgeEvent) => void;
+  eventBus: EventBus;
   scheduler: {
     createJob: (input: {
       workspaceId: string;
@@ -132,9 +134,30 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       throw new Error(`Thread not found: ${threadId}`);
     }
     this.options.store.appendMessage(threadId, 'user', content, 'final');
+    this.options.eventBus.emit({
+      type: 'thread.message.accepted',
+      payload: {
+        threadId,
+        workspaceId: row.workspace_id,
+        role: 'user',
+        content,
+        kind: 'final',
+        source: 'user',
+      },
+    });
     const runId = `run:${threadId}:${Date.now()}`;
     this.options.runThreadMap.set(runId, threadId);
     this.options.store.updateRun(runId, threadId, 'running');
+    this.options.eventBus.emit({
+      type: 'run.started',
+      payload: {
+        runId,
+        threadId,
+        workspaceId: row.workspace_id,
+        prompt: content,
+        sessionKey: row.bridge_session_key,
+      },
+    });
     void this.runPrompt(threadId, runId, row.bridge_session_key, config, content).catch((error) => {
       this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -188,6 +211,10 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     config: LocalCoreProjectConfig,
     content: string,
   ) {
+    const row = this.options.store.getThreadRow(threadId);
+    if (!row) {
+      throw new Error(`Thread not found: ${threadId}`);
+    }
     this.emitBridgeEvent({
       type: 'typing_start',
       sessionKey: bridgeSessionKey,
@@ -226,6 +253,17 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         const processed = await this.responseProcessor.processAssistantResponse(threadId, currentTurn.assistantText);
         if (processed.displayContent) {
           this.options.store.appendMessage(threadId, 'assistant', processed.displayContent, 'final');
+          this.options.eventBus.emit({
+            type: 'thread.message.accepted',
+            payload: {
+              threadId,
+              workspaceId: row.workspace_id,
+              role: 'assistant',
+              content: processed.displayContent,
+              kind: 'final',
+              source: 'agent',
+            },
+          });
           this.emitBridgeEvent({
             type: 'reply',
             sessionKey: bridgeSessionKey,
@@ -235,11 +273,33 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         }
         for (const systemResponse of processed.systemResponses) {
           this.options.store.appendMessage(threadId, 'system', systemResponse, 'system');
+          this.options.eventBus.emit({
+            type: 'thread.message.accepted',
+            payload: {
+              threadId,
+              workspaceId: row.workspace_id,
+              role: 'system',
+              content: systemResponse,
+              kind: 'system',
+              source: 'system',
+            },
+          });
         }
       } else if (String(content || '').trim().startsWith('/')) {
         const slashReply = this.responseProcessor.deriveSlashCommandReply(content, result as Record<string, unknown>);
         if (slashReply) {
           this.options.store.appendMessage(threadId, 'assistant', slashReply, 'final');
+          this.options.eventBus.emit({
+            type: 'thread.message.accepted',
+            payload: {
+              threadId,
+              workspaceId: row.workspace_id,
+              role: 'assistant',
+              content: slashReply,
+              kind: 'final',
+              source: 'agent',
+            },
+          });
           this.emitBridgeEvent({
             type: 'reply',
             sessionKey: bridgeSessionKey,
@@ -257,6 +317,15 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       }
       const nextStatus = result?.stopReason === 'cancelled' ? 'interrupted' : 'completed';
       this.options.store.updateRun(runId, threadId, nextStatus);
+      this.options.eventBus.emit({
+        type: 'run.completed',
+        payload: {
+          runId,
+          threadId,
+          workspaceId: row.workspace_id,
+          stopReason: result?.stopReason,
+        },
+      });
       this.emitBridgeEvent({
         type: 'typing_stop',
         sessionKey: bridgeSessionKey,
@@ -266,6 +335,26 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       const errorContent = `Agent error: ${error instanceof Error ? error.message : String(error)}`;
       this.options.store.updateRun(runId, threadId, 'failed');
       this.options.store.appendMessage(threadId, 'assistant', errorContent, 'final');
+      this.options.eventBus.emit({
+        type: 'thread.message.accepted',
+        payload: {
+          threadId,
+          workspaceId: row.workspace_id,
+          role: 'assistant',
+          content: errorContent,
+          kind: 'final',
+          source: 'agent',
+        },
+      });
+      this.options.eventBus.emit({
+        type: 'run.failed',
+        payload: {
+          runId,
+          threadId,
+          workspaceId: row.workspace_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
       this.emitBridgeEvent({
         type: 'reply',
         sessionKey: bridgeSessionKey,
@@ -303,6 +392,23 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
   }
 
   private emitBridgeEvent(event: DesktopBridgeEvent) {
+    if (event.replyCtx) {
+      const threadId = this.options.runThreadMap.get(event.replyCtx);
+      if (threadId) {
+        const thread = this.options.store.getThreadRow(threadId);
+        if (thread) {
+          this.options.eventBus.emit({
+            type: 'run.progress',
+            payload: {
+              runId: event.replyCtx,
+              threadId,
+              workspaceId: thread.workspace_id,
+              stream: event,
+            },
+          });
+        }
+      }
+    }
     this.options.emitBridge(event);
   }
 }

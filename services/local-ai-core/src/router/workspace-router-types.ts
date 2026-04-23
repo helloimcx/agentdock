@@ -10,6 +10,7 @@ import type {
   AgentRuntime,
   AgentLaunchConfig,
   AgentRuntimeRoute,
+  EventBus,
   KnowledgeRuntime,
   ThreadKnowledgeAttachmentStore,
 } from '../../../../packages/plugin-sdk/src/index.js';
@@ -23,6 +24,7 @@ export type WorkspaceRouterOptions = {
   readConfigState: () => Promise<ConfigFileState>;
   getCapabilities: () => LocalCoreCapabilities;
   getAgentRuntimes?: () => AgentRuntime[];
+  eventBus: EventBus;
   knowledgeProvider: KnowledgeRuntime;
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
   log?: (message: string) => void;
