@@ -246,6 +246,79 @@ export interface KnowledgeSearchInput {
   limit?: number;
 }
 
+export interface LocalCoreAgentCapability {
+  id: string;
+  agentType: string;
+  displayName?: string;
+}
+
+export interface LocalCoreChannelCapability {
+  id: string;
+  platform: string;
+  routeType?: string;
+  displayName?: string;
+}
+
+export interface LocalCoreKnowledgeCapability {
+  id: string;
+  sourceType: string;
+  enabled?: boolean;
+  displayName?: string;
+}
+
+export interface LocalCoreSchedulerCapability {
+  id: string;
+  triggerTypes: string[];
+  deliveryTargets: string[];
+  deliveryPlatforms?: string[];
+  enabled?: boolean;
+  displayName?: string;
+}
+
+export interface LocalCoreUiRouteContribution {
+  id: string;
+  path: string;
+  title: string;
+  featureId?: string;
+}
+
+export interface LocalCoreUiNavContribution {
+  id: string;
+  path: string;
+  title: string;
+  featureId?: string;
+  order?: number;
+}
+
+export interface LocalCoreUiSettingsContribution {
+  id: string;
+  title: string;
+  featureId?: string;
+  order?: number;
+}
+
+export interface LocalCoreCommandContribution {
+  id: string;
+  title: string;
+  featureId?: string;
+}
+
+export interface LocalCoreUiCapability {
+  id: string;
+  routes?: LocalCoreUiRouteContribution[];
+  navItems?: LocalCoreUiNavContribution[];
+  settingsPanels?: LocalCoreUiSettingsContribution[];
+  commands?: LocalCoreCommandContribution[];
+}
+
+export interface LocalCoreCapabilitySnapshot {
+  agents: LocalCoreAgentCapability[];
+  channels: LocalCoreChannelCapability[];
+  knowledge: LocalCoreKnowledgeCapability[];
+  schedulers: LocalCoreSchedulerCapability[];
+  ui: LocalCoreUiCapability[];
+}
+
 export interface LocalCoreCapabilities {
   adapters: {
     channels: string[];
@@ -259,6 +332,7 @@ export interface LocalCoreCapabilities {
     deliveryTargets: string[];
     platforms: string[];
   };
+  snapshot: LocalCoreCapabilitySnapshot;
 }
 
 export interface LocalCoreChannelGatewayStatus {

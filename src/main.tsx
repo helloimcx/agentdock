@@ -9,9 +9,9 @@ import './index.css';
 import './i18n';
 import { useAuthStore } from './store/auth';
 import { useThemeStore } from './store/theme';
-import { getDesktopLogs, getRuntimeStatus, initializeDesktopProvider, onRuntimeEvent } from './api/desktop';
+import { getDesktopLogs, getRuntimeCapabilitySnapshot, getRuntimeStatus, initializeDesktopProvider, onRuntimeEvent } from './api/desktop';
 import { api } from './api/client';
-import { getRuntimeProvider, supportsDesktopRuntime } from './app/runtime';
+import { getRuntimeProvider, setRuntimeCapabilitySnapshot, supportsDesktopRuntime } from './app/runtime';
 import { LOCAL_AI_CORE_BASE } from '../packages/core-sdk/src';
 
 useAuthStore.getState().init();
@@ -120,6 +120,7 @@ function BootstrapApp() {
         if (lastError) {
           throw lastError;
         }
+        setRuntimeCapabilitySnapshot(await getRuntimeCapabilitySnapshot());
         api.setBaseUrl(LOCAL_AI_CORE_BASE);
         api.setToken('');
         useAuthStore.getState().setManagedSession(
@@ -142,6 +143,9 @@ function BootstrapApp() {
         return;
       }
     }
+    if (!hasManagedRuntime) {
+      setRuntimeCapabilitySnapshot(null);
+    }
 
     setState({ status: 'ready' });
   }, []);
@@ -157,6 +161,9 @@ function BootstrapApp() {
     return onRuntimeEvent((runtime) => {
       api.setBaseUrl(LOCAL_AI_CORE_BASE);
       api.setToken('');
+      void getRuntimeCapabilitySnapshot()
+        .then((snapshot) => setRuntimeCapabilitySnapshot(snapshot))
+        .catch(() => {});
       useAuthStore.getState().setManagedSession(
         '',
         LOCAL_AI_CORE_BASE,

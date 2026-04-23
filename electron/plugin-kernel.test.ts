@@ -22,6 +22,29 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
       deliveryTargets: [],
       platforms: [],
     },
+    snapshot: {
+      agents: [
+        { id: 'agent.codex', agentType: 'codex', displayName: 'codex' },
+        { id: 'agent.cursor', agentType: 'cursor', displayName: 'cursor' },
+        { id: 'agent.gemini', agentType: 'gemini', displayName: 'gemini' },
+        { id: 'agent.qoder', agentType: 'qoder', displayName: 'qoder' },
+        { id: 'agent.iflow', agentType: 'iflow', displayName: 'iflow' },
+      ],
+      channels: [
+        { id: 'channel.localcore-acp', platform: 'localcore-acp', displayName: 'LocalCore ACP' },
+      ],
+      knowledge: [],
+      schedulers: [
+        {
+          id: 'scheduler.trigger.cron',
+          triggerTypes: ['cron', 'once'],
+          deliveryTargets: [],
+          enabled: true,
+          displayName: 'Cron Trigger',
+        },
+      ],
+      ui: [],
+    },
   });
 });
 

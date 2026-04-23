@@ -115,6 +115,7 @@ export function bootstrapLocalCoreKernel(options?: {
           deliveryTargets: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryTargets || capability.deliveryPlatforms || []))],
           platforms: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryTargets || capability.deliveryPlatforms || []))],
         },
+        snapshot,
       };
     },
   };

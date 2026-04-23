@@ -18,11 +18,10 @@ import {
   Languages,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getRuntimeProvider } from '@/app/runtime';
+import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
 import { useThemeStore } from '@/store/theme';
 import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
-import { supportsChatRoute, supportsDesktopChat, supportsDesktopWorkspace, supportsKnowledgeModule } from '@/app/runtime';
 
 const navItems = [
   { key: 'dashboard', path: '/', icon: LayoutDashboard },
@@ -48,10 +47,13 @@ export default function Sidebar() {
   const { theme, setTheme } = useThemeStore();
   const logout = useAuthStore((s) => s.logout);
   const desktopManaged = useAuthStore((s) => s.desktopManaged);
-  const desktopChat = supportsDesktopChat();
-  const chatRoute = supportsChatRoute();
-  const desktopWorkspace = supportsDesktopWorkspace();
-  const knowledgeModule = supportsKnowledgeModule();
+  const {
+    desktopChat,
+    chatRoute,
+    desktopWorkspace,
+    knowledgeModule,
+    schedulerModule,
+  } = useRuntimeFeatureSupport();
   const runtimeProvider = getRuntimeProvider();
   const [collapsed, setCollapsed] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -74,6 +76,9 @@ export default function Sidebar() {
       return false;
     }
     if (item.key === 'knowledge' && !knowledgeModule) {
+      return false;
+    }
+    if (item.key === 'cron' && !schedulerModule) {
       return false;
     }
     if (desktopManaged) {

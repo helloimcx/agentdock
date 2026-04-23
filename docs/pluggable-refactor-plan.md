@@ -246,23 +246,23 @@ Replace front-end booleans and hardcoded feature gates with a capability snapsho
 
 ### Tasks
 
-- [ ] Add runtime capability snapshot API to Local AI Core
-- [ ] Add corresponding types to `packages/contracts`
-- [ ] Add snapshot client calls to `packages/core-sdk`
-- [ ] Replace `supportsDesktopChat()` and related helpers with capability lookups
-- [ ] Replace `getRuntimeProvider()`-driven feature assumptions where feature-level capability data is required
-- [ ] Keep host/runtime provider info separate from feature capability info
+- [x] Add runtime capability snapshot API to Local AI Core
+- [x] Add corresponding types to `packages/contracts`
+- [x] Add snapshot client calls to `packages/core-sdk`
+- [x] Replace `supportsDesktopChat()` and related helpers with capability lookups
+- [x] Replace `getRuntimeProvider()`-driven feature assumptions where feature-level capability data is required
+- [x] Keep host/runtime provider info separate from feature capability info
 
 ### Current Code To Untangle
 
-- [ ] `src/app/runtime.ts`
-- [ ] feature guards in `src/App.tsx`
-- [ ] capability-dependent branches in `Sidebar.tsx`
+- [x] `src/app/runtime.ts`
+- [x] feature guards in `src/App.tsx`
+- [x] capability-dependent branches in `Sidebar.tsx`
 
 ### Exit Criteria
 
-- [ ] The renderer renders from runtime capability data, not fixed booleans
-- [ ] Features can disappear or appear based on registered plugins
+- [x] The renderer renders from runtime capability data, not fixed booleans
+- [x] Features can disappear or appear based on registered plugins
 
 ## Phase 9: Renderer Contribution Registries
 

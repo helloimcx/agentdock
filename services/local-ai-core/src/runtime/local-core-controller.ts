@@ -7,6 +7,7 @@ import type {
   DesktopSettings,
   DesktopSettingsInput,
   LocalCoreAuthorizedUser,
+  LocalCoreCapabilitySnapshot,
   LocalCoreCapabilities,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
@@ -296,6 +297,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async getCapabilities(): Promise<LocalCoreCapabilities> {
     return this.kernel.getCapabilitySnapshot();
+  }
+
+  async getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot> {
+    return this.kernel.getCapabilitySnapshot().snapshot;
   }
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {

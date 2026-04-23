@@ -14,7 +14,7 @@ import {
 } from '@/api/desktop';
 import { formatUptime } from '@/lib/utils';
 import type { DesktopRuntimeStatus } from '../../shared/desktop';
-import { getRuntimeProvider, supportsDesktopRuntime, supportsDesktopWorkspace } from '@/app/runtime';
+import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
 
 function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
   switch (phase) {
@@ -49,8 +49,7 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const desktopRuntime = supportsDesktopRuntime();
-  const desktopWorkspace = supportsDesktopWorkspace();
+  const { desktopRuntime, desktopWorkspace } = useRuntimeFeatureSupport();
   const localCoreManaged = getRuntimeProvider() === 'local_core';
 
   const fetchData = useCallback(async (runtimeOverride?: DesktopRuntimeStatus | null) => {

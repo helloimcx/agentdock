@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { getRuntimeProvider, supportsDesktopChat } from '@/app/runtime';
+import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
 
 const routeTitles: Record<string, string> = {
   '/': 'nav.dashboard',
@@ -19,7 +19,7 @@ export default function Header() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const [spinning, setSpinning] = useState(false);
-  const desktopChat = supportsDesktopChat();
+  const { desktopChat } = useRuntimeFeatureSupport();
   const runtimeProvider = getRuntimeProvider();
   const compactDesktopChatHeader =
     pathname.startsWith('/chat') && desktopChat && runtimeProvider === 'electron';

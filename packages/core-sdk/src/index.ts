@@ -17,6 +17,7 @@ import type {
   DesktopServiceState,
   KnowledgeSource,
   LocalCoreCapabilities,
+  LocalCoreCapabilitySnapshot,
   LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
@@ -417,6 +418,10 @@ export async function searchKnowledgeBase(knowledgeBaseId: string, input: Knowle
 
 export async function getCapabilities() {
   return coreRequest<LocalCoreCapabilities>('GET', '/capabilities');
+}
+
+export async function getCapabilitySnapshot() {
+  return coreRequest<LocalCoreCapabilitySnapshot>('GET', '/capabilities/snapshot');
 }
 
 export async function probeWorkspaceStreaming(workspaceId: string) {

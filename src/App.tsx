@@ -15,7 +15,7 @@ import SystemConfig from '@/pages/System/Config';
 import SystemLogs from '@/pages/System/Logs';
 import KnowledgeHome from '@/pages/Knowledge/KnowledgeHome';
 import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail';
-import { supportsChatRoute, supportsDesktopChat, supportsDesktopWorkspace, supportsKnowledgeModule } from '@/app/runtime';
+import { useRuntimeFeatureSupport } from '@/app/runtime';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -52,10 +52,13 @@ function DesktopSessionsRedirect() {
 export default function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const desktopManaged = useAuthStore((s) => s.desktopManaged);
-  const desktopChat = supportsDesktopChat();
-  const chatRoute = supportsChatRoute();
-  const desktopWorkspace = supportsDesktopWorkspace();
-  const knowledgeModule = supportsKnowledgeModule();
+  const {
+    desktopChat,
+    chatRoute,
+    desktopWorkspace,
+    knowledgeModule,
+    schedulerModule,
+  } = useRuntimeFeatureSupport();
 
   return (
     <Routes>
@@ -70,7 +73,7 @@ export default function App() {
         <Route path="projects/:name" element={<DesktopProjectRedirect />} />
         <Route path="sessions" element={<DesktopSessionsRedirect />} />
         <Route path="sessions/:project/:id" element={<DesktopSessionsRedirect />} />
-        <Route path="cron" element={<CronList />} />
+        <Route path="cron" element={schedulerModule ? <CronList /> : <Navigate to="/" replace />} />
         <Route path="system" element={<SystemConfig />} />
         <Route path="system/logs" element={<SystemLogs />} />
         <Route path="*" element={<Navigate to="/" replace />} />
