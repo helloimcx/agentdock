@@ -163,25 +163,25 @@ Make agent runtimes pluggable instead of encoding agent type logic into router/c
 
 ### Tasks
 
-- [ ] Define `AgentRuntime` capability
-- [ ] Convert opencode support into `agent-opencode`
-- [ ] Convert Claude Code support into `agent-claudecode`
-- [ ] Convert local core ACP support into `agent-localcore-acp`
-- [ ] Move workspace capability checks out of `WorkspaceRouter`
-- [ ] Replace hardcoded agent type arrays with registry queries
-- [ ] Split project config normalization from runtime selection logic
-- [ ] Keep workspace config translation in a thin adapter layer
+- [x] Define `AgentRuntime` capability
+- [x] Convert opencode support into `agent-opencode`
+- [x] Convert Claude Code support into `agent-claudecode`
+- [x] Convert local core ACP support into `agent-localcore-acp`
+- [x] Move workspace capability checks out of `WorkspaceRouter`
+- [x] Replace hardcoded agent type arrays with registry queries
+- [x] Split project config normalization from runtime selection logic
+- [x] Keep workspace config translation in a thin adapter layer
 
 ### Current Code To Untangle
 
-- [ ] `services/local-ai-core/src/router/workspace-route-config.ts`
-- [ ] `services/local-ai-core/src/router/workspace-router.ts`
-- [ ] agent type constants in `shared/desktop.ts`
+- [x] `services/local-ai-core/src/router/workspace-route-config.ts`
+- [x] `services/local-ai-core/src/router/workspace-router.ts`
+- [x] agent type constants in `shared/desktop.ts`
 
 ### Exit Criteria
 
-- [ ] `WorkspaceRouter` depends on `AgentRuntime` interfaces, not agent type strings
-- [ ] Adding a new agent runtime does not require editing router internals
+- [x] `WorkspaceRouter` depends on `AgentRuntime` interfaces, not agent type strings
+- [x] Adding a new agent runtime does not require editing router internals
 
 ## Phase 6: Scheduler Refactor
 

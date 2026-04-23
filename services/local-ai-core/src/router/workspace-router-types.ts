@@ -6,7 +6,13 @@ import type {
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
 } from '../../../../packages/contracts/src/index.js';
-import type { KnowledgeRuntime, ThreadKnowledgeAttachmentStore } from '../../../../packages/plugin-sdk/src/index.js';
+import type {
+  AgentRuntime,
+  AgentLaunchConfig,
+  AgentRuntimeRoute,
+  KnowledgeRuntime,
+  ThreadKnowledgeAttachmentStore,
+} from '../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 export type WorkspaceRouterOptions = {
@@ -16,6 +22,7 @@ export type WorkspaceRouterOptions = {
   localCoreBase?: string;
   readConfigState: () => Promise<ConfigFileState>;
   getCapabilities: () => LocalCoreCapabilities;
+  getAgentRuntimes?: () => AgentRuntime[];
   knowledgeProvider: KnowledgeRuntime;
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
   log?: (message: string) => void;
@@ -164,16 +171,6 @@ export type AcpSessionState = {
   promptPromise: Promise<{ stopReason?: string }> | null;
 };
 
-export type LocalCoreProjectConfig = {
-  workspaceId: string;
-  agentType: string;
-  workDir: string;
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-  model: string;
-};
-
 export type OpencodeInlineProviderConfig = {
   npm?: string;
   name: string;
@@ -187,12 +184,11 @@ export type OpencodeInlineConfig = {
   provider?: Record<string, OpencodeInlineProviderConfig>;
 };
 
-export type WorkspaceRoute =
-  {
-    kind: 'localcore-acp';
-    agentType: string;
-    config: LocalCoreProjectConfig;
-  };
+export type LocalCoreProjectConfig = AgentLaunchConfig;
+
+export type WorkspaceRoute = AgentRuntimeRoute & {
+  runtime: AgentRuntime;
+};
 
 export type ProbeCollector = {
   startedAt: string;

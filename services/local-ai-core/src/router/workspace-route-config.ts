@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../packages/contracts/src/index.js';
+import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   DESKTOP_CLAUDECODE_ACP_PACKAGE,
   DEFAULT_DESKTOP_OPENCODE_MODEL,
@@ -8,7 +9,6 @@ import {
   normalizeDesktopAgentModel,
   normalizeDesktopPlatformType,
 } from '../../../../shared/desktop.js';
-import type { LocalCoreProjectConfig } from './workspace-router-types.js';
 
 type OpencodeInlineProviderConfig = {
   npm?: string;
@@ -31,10 +31,11 @@ export function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
 
 export function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | null) {
   const agentType = String(project?.agent?.type || '').trim().toLowerCase();
-  if (agentType === LOCALCORE_ACP_AGENT_TYPE || agentType === 'opencode' || agentType === 'claudecode') {
-    return true;
-  }
-  return agentType === 'acp';
+  return !agentType
+    || agentType === 'acp'
+    || agentType === LOCALCORE_ACP_AGENT_TYPE
+    || agentType === 'opencode'
+    || agentType === 'claudecode';
 }
 
 function resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {
@@ -198,7 +199,7 @@ function resolveBundledClaudeCodeCommand() {
   };
 }
 
-export function toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): LocalCoreProjectConfig {
+export function toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): AgentLaunchConfig {
   const rawWorkDir = String(project.agent?.options?.work_dir || '.').trim() || '.';
   const configDir = dirname(configState.path);
   const workDir = isAbsolute(rawWorkDir) ? rawWorkDir : resolve(configDir, rawWorkDir);
@@ -249,7 +250,7 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
       : [];
   return {
     workspaceId: project.name,
-    agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
+    agentType,
     workDir,
     command,
     args: args.length > 0 ? args : defaultArgs,

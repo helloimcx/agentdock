@@ -7,6 +7,9 @@ import type {
   ScheduledJobRun,
 } from '../../../../packages/contracts/src/index.js';
 import type {
+  AgentPlugin,
+  AgentRuntime,
+  AgentRuntimeRegistration,
   ChannelPlugin,
   ChannelRuntime,
   ChannelRuntimeRegistration,
@@ -24,6 +27,11 @@ import { LocalCoreEventBus } from './event-bus.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import { runtimeCapabilitiesPlugin } from '../plugins/builtin/runtime-capabilities-plugin.js';
+import {
+  createBuiltinClaudeCodeAgentPlugin,
+  createBuiltinLocalCoreAcpAgentPlugin,
+  createBuiltinOpencodeAgentPlugin,
+} from '../plugins/builtin/agent-localcore-acp-plugin.js';
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
 import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';
 import { createBuiltinNoopKnowledgePlugin } from '../plugins/builtin/knowledge-noop-plugin.js';
@@ -45,6 +53,7 @@ export interface LocalCoreRuntimeBootstrap {
   kernel: LocalCoreKernel;
   state: LocalCoreRuntimeState;
   store: LocalCoreAcpStore;
+  agentRuntimes: AgentRuntime[];
   channelRuntime: ChannelRuntime;
   knowledgeProvider: KnowledgeRuntime;
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
@@ -137,6 +146,17 @@ function resolveChannelRuntime(plugin: ChannelPlugin, context: PluginContext): C
   return runtime;
 }
 
+function resolveAgentRuntime(plugin: AgentPlugin, context: PluginContext): AgentRuntimeRegistration {
+  if (!plugin.createRuntime) {
+    throw new Error(`Agent plugin ${plugin.manifest.id} does not provide a runtime factory.`);
+  }
+  const runtime = plugin.createRuntime(context);
+  if (runtime instanceof Promise) {
+    throw new Error(`Agent plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
+  }
+  return runtime;
+}
+
 export function bootstrapLocalCoreRuntime(options: {
   userDataPath: string;
   localCoreBase?: string;
@@ -155,6 +175,11 @@ export function bootstrapLocalCoreRuntime(options: {
     onLog: options.log,
   });
   const store = new LocalCoreAcpStore(options.userDataPath);
+  const agentPlugins = [
+    createBuiltinLocalCoreAcpAgentPlugin(),
+    createBuiltinOpencodeAgentPlugin(),
+    createBuiltinClaudeCodeAgentPlugin(),
+  ];
   let workspaceRouter!: WorkspaceRouter;
   const channelPlugin = createBuiltinLarkChannelPlugin({
     store,
@@ -170,8 +195,12 @@ export function bootstrapLocalCoreRuntime(options: {
         getConfig: () => state.getKnowledgeConfig(),
         setConfig: (input) => state.updateKnowledgeConfig(input),
       });
+  for (const plugin of agentPlugins) {
+    registerPlugin(kernel, plugin);
+  }
   registerPlugin(kernel, channelPlugin);
   registerPlugin(kernel, knowledgePlugin);
+  const agentRuntimes = agentPlugins.map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
   const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
   const knowledgeRuntime = resolveKnowledgeRuntime(knowledgePlugin, kernel.context);
   const knowledgeProvider = knowledgeRuntime.provider as KnowledgeRuntime;
@@ -182,6 +211,7 @@ export function bootstrapLocalCoreRuntime(options: {
     localCoreBase: options.localCoreBase,
     readConfigState: () => state.readConfigFile(),
     getCapabilities: () => kernel.getCapabilitySnapshot(),
+    getAgentRuntimes: () => agentRuntimes,
     knowledgeProvider,
     knowledgeAttachments,
     log: options.log,
@@ -239,6 +269,7 @@ export function bootstrapLocalCoreRuntime(options: {
     kernel,
     state,
     store,
+    agentRuntimes,
     channelRuntime,
     knowledgeProvider,
     knowledgeAttachments,

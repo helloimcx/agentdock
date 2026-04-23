@@ -2,12 +2,12 @@ import type {
   DesktopBridgeEvent,
   LocalCoreCapabilities,
   ScheduledJob,
+  DesktopProjectConfig,
   ThreadDetail,
   ThreadSummary,
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
 } from '../../../../packages/contracts/src/index.js';
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { decodeThreadId } from '../thread/workspace-thread-id.js';
@@ -93,10 +93,14 @@ export class WorkspaceRouter {
     const localProjects = await this.listLocalCoreProjects();
     const workspaceMap = new Map<string, WorkspaceSummary>();
     for (const project of localProjects) {
+      const route = this.resolveProjectRoute(await this.options.readConfigState(), project);
+      if (!route) {
+        continue;
+      }
       workspaceMap.set(project.name, {
         id: project.name,
         name: project.name,
-        agentType: String(project.agent?.type || LOCALCORE_ACP_AGENT_TYPE),
+        agentType: route.agentType,
         platforms: normalizePlatformTypes(project),
         sessionsCount: this.store.countThreads(project.name),
         heartbeatEnabled: false,
@@ -173,14 +177,8 @@ export class WorkspaceRouter {
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {
     const route = await this.getWorkspaceRoute(workspaceId);
-    const normalizedAgentType = String(route.agentType || '').trim().toLowerCase();
-    if (
-      normalizedAgentType !== 'acp'
-      && normalizedAgentType !== 'opencode'
-      && normalizedAgentType !== 'claudecode'
-      && normalizedAgentType !== LOCALCORE_ACP_AGENT_TYPE
-    ) {
-      throw new Error(`Workspace "${workspaceId}" is not configured as an ACP agent.`);
+    if (!route.supportsStreamingProbe) {
+      throw new Error(`Workspace "${workspaceId}" does not expose a streaming probe.`);
     }
     return this.probeLocalCoreAcpWorkspace(workspaceId, route);
   }
@@ -383,7 +381,7 @@ export class WorkspaceRouter {
 
   private async probeLocalCoreAcpWorkspace(
     workspaceId: string,
-    route: Extract<WorkspaceRoute, { kind: 'localcore-acp' }>,
+    route: WorkspaceRoute,
   ) {
     const prompt = this.buildProbePrompt();
     const thread = await this.localCoreAcp.createThread(workspaceId, `[probe] ${new Date().toISOString()}`, route.agentType);
@@ -414,21 +412,52 @@ export class WorkspaceRouter {
     const configState = await this.options.readConfigState();
     const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
     const matched = projects.find((project) => String(project?.name || '').trim() === workspaceId);
-    const agentType = String(matched?.agent?.type || '').trim().toLowerCase();
-    if (!matched || !isLocalCoreNativeAcpProject(matched)) {
+    const route = matched ? this.resolveProjectRoute(configState, matched) : null;
+    if (!matched || !route) {
       throw new Error(`Workspace "${workspaceId}" is not configured as a Local AI Core ACP workspace.`);
     }
-    return {
-      kind: 'localcore-acp' as const,
-      agentType: agentType || LOCALCORE_ACP_AGENT_TYPE,
-      config: toLocalCoreProjectConfig(configState, matched),
-    };
+    return route;
   }
 
   private async listLocalCoreProjects() {
     const configState = await this.options.readConfigState();
     const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
-    return projects.filter((project) => isLocalCoreNativeAcpProject(project));
+    return projects.filter((project) => this.resolveProjectRoute(configState, project));
+  }
+
+  private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readConfigState']>>, project: DesktopProjectConfig) {
+    for (const runtime of this.options.getAgentRuntimes?.() || []) {
+      if (!runtime.matchesProject(project)) {
+        continue;
+      }
+      const route = runtime.createRoute(configState, project);
+      if (route) {
+        return {
+          ...route,
+          runtime,
+        } satisfies WorkspaceRoute;
+      }
+    }
+    if (isLocalCoreNativeAcpProject(project)) {
+      const agentType = String(project.agent?.type || '').trim().toLowerCase() || 'localcore-acp';
+      return {
+        kind: 'localcore-acp',
+        agentType,
+        transport: 'localcore-acp',
+        config: {
+          ...toLocalCoreProjectConfig(configState, project),
+          agentType,
+        },
+        supportsStreamingProbe: true,
+        runtime: {
+          agentType,
+          transport: 'localcore-acp',
+          matchesProject: () => true,
+          createRoute: () => null,
+        },
+      } satisfies WorkspaceRoute;
+    }
+    return null;
   }
 }
 

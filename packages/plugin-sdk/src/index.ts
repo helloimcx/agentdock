@@ -14,6 +14,35 @@ export interface AgentCapability {
   displayName?: string;
 }
 
+export interface AgentLaunchConfig {
+  workspaceId: string;
+  agentType: string;
+  workDir: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  model: string;
+}
+
+export interface AgentRuntimeRoute {
+  kind: string;
+  agentType: string;
+  transport: string;
+  config: AgentLaunchConfig;
+  supportsStreamingProbe?: boolean;
+}
+
+export interface AgentRuntime {
+  readonly agentType: string;
+  readonly transport: string;
+  readonly displayName?: string;
+  matchesProject(project: import('../../contracts/src/index.js').DesktopProjectConfig): boolean;
+  createRoute(
+    configState: import('../../contracts/src/index.js').ConfigFileState,
+    project: import('../../contracts/src/index.js').DesktopProjectConfig,
+  ): AgentRuntimeRoute | null;
+}
+
 export interface ChannelCapability {
   id: string;
   platform: string;
@@ -106,6 +135,10 @@ export interface KnowledgeRuntimeRegistration {
 
 export interface ChannelRuntimeRegistration {
   channel: ChannelRuntime;
+}
+
+export interface AgentRuntimeRegistration {
+  runtime: AgentRuntime;
 }
 
 export interface SchedulerCapability {
@@ -242,4 +275,11 @@ export interface ChannelPlugin extends RuntimePlugin {
     kind: 'channel' | 'composite';
   };
   createRuntime?(ctx: PluginContext): Promise<ChannelRuntimeRegistration> | ChannelRuntimeRegistration;
+}
+
+export interface AgentPlugin extends RuntimePlugin {
+  manifest: PluginManifest & {
+    kind: 'agent' | 'composite';
+  };
+  createRuntime?(ctx: PluginContext): Promise<AgentRuntimeRegistration> | AgentRuntimeRegistration;
 }

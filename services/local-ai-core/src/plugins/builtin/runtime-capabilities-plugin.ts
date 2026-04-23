@@ -1,26 +1,27 @@
 import type { RuntimePlugin } from '../../../../../packages/plugin-sdk/src/index.js';
 import { DESKTOP_AGENT_TYPE_OPTIONS, LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 
+const STATIC_AGENT_TYPES = DESKTOP_AGENT_TYPE_OPTIONS.filter((agentType) =>
+  agentType !== 'opencode' && agentType !== 'claudecode' && agentType !== LOCALCORE_ACP_AGENT_TYPE,
+);
+
 export const runtimeCapabilitiesPlugin: RuntimePlugin = {
   manifest: {
     id: 'builtin.runtime-capabilities',
     kind: 'composite',
     version: '0.1.0',
     provides: [
-      'agent:opencode',
       'agent:codex',
-      'agent:claudecode',
       'agent:cursor',
       'agent:gemini',
       'agent:qoder',
       'agent:iflow',
-      `agent:${LOCALCORE_ACP_AGENT_TYPE}`,
       `channel:${LOCALCORE_ACP_AGENT_TYPE}`,
       'scheduler:cron',
     ],
   },
   capabilities: {
-    agents: DESKTOP_AGENT_TYPE_OPTIONS.map((agentType) => ({
+    agents: STATIC_AGENT_TYPES.map((agentType) => ({
       id: `agent.${agentType}`,
       agentType,
       displayName: agentType,

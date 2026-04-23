@@ -12,7 +12,7 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
   assert.deepEqual(kernel.getCapabilitySnapshot(), {
     adapters: {
       channels: ['localcore-acp'],
-      agents: ['opencode', 'codex', 'claudecode', 'cursor', 'gemini', 'qoder', 'iflow', 'localcore-acp'],
+      agents: ['codex', 'cursor', 'gemini', 'qoder', 'iflow'],
       knowledge: false,
       knowledgeProviders: [],
     },
@@ -47,6 +47,16 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
       userDataPath,
     });
 
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.agents, [
+      'codex',
+      'cursor',
+      'gemini',
+      'qoder',
+      'iflow',
+      'localcore-acp',
+      'opencode',
+      'claudecode',
+    ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, ['ai-vector']);
     assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, true);
@@ -66,6 +76,16 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       enableKnowledge: false,
     });
 
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.agents, [
+      'codex',
+      'cursor',
+      'gemini',
+      'qoder',
+      'iflow',
+      'localcore-acp',
+      'opencode',
+      'claudecode',
+    ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, []);
     assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, false);
