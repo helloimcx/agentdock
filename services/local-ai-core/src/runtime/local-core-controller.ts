@@ -56,9 +56,12 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly busUnsubscribers: Array<() => void> = [];
 
-  constructor(private readonly userDataPath: string) {
+  constructor(
+    private readonly userDataPath: string,
+    runtime?: LocalCoreRuntimeBootstrap,
+  ) {
     super();
-    this.runtime = bootstrapLocalCoreRuntime({
+    this.runtime = runtime || bootstrapLocalCoreRuntime({
       userDataPath,
       localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
       log: (message) => this.handleLog(message),

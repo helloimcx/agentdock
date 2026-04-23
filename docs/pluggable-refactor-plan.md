@@ -28,9 +28,9 @@ Stabilize the current system before introducing registries and plugin abstractio
 
 ### Exit Criteria
 
-- [ ] The team agrees on plugin naming and directory conventions
+- [x] The team agrees on plugin naming and directory conventions
 - [x] The current hardcoded composition points are explicitly documented
-- [ ] No new feature work adds more boolean-based feature switches
+- [x] No new feature work adds more boolean-based feature switches
 
 ## Phase 1: Contracts And Kernel Skeleton
 
@@ -79,7 +79,7 @@ Move object wiring out of `LocalCoreController` and into a composition root.
 
 - [x] Extract controller wiring logic into `kernel/bootstrap.ts`
 - [x] Stop constructing concrete modules directly inside `LocalCoreController`
-- [ ] Pass registries and resolved capabilities into controller/services through constructor injection
+- [x] Pass registries and resolved capabilities into controller/services through constructor injection
 - [x] Move runtime-owned singletons behind a bootstrap container object
 - [x] Ensure logs, stores, config readers, and event bus are created in one place only
 - [x] Keep existing endpoints and API behavior unchanged

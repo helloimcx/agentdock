@@ -28,6 +28,7 @@ Conventions for the migration:
 - Feature ids use dotted lowercase product areas such as `feature.chat`, `feature.knowledge`, and `feature.scheduler`.
 - Built-in local-core plugins live under `services/local-ai-core/src/plugins/`.
 - Kernel-only infrastructure lives under `services/local-ai-core/src/kernel/`.
+- New feature work must not add boolean feature switches; expose capabilities through plugin contributions and the runtime capability snapshot.
 
 ## Consequences
 

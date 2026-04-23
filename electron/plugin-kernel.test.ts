@@ -10,6 +10,7 @@ import { LocalCoreCapabilityRegistry } from '../services/local-ai-core/src/kerne
 import { LocalCoreEventBus } from '../services/local-ai-core/src/kernel/event-bus.js';
 import { LocalCoreLifecycleManager } from '../services/local-ai-core/src/kernel/lifecycle-manager.js';
 import { LocalCorePluginRegistry } from '../services/local-ai-core/src/kernel/plugin-registry.js';
+import { LocalCoreController } from '../services/local-ai-core/src/runtime/local-core-controller.js';
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
   return {
@@ -303,6 +304,103 @@ test('runtime bootstrap keeps disabled plugins diagnosable without contributing 
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
+});
+
+test('LocalCoreController accepts injected bootstrap dependencies', async () => {
+  const bus = new LocalCoreEventBus();
+  const capabilitySnapshot = {
+    adapters: {
+      channels: ['test-channel'],
+      agents: ['test-agent'],
+      knowledge: false,
+      knowledgeProviders: [],
+    },
+    scheduler: {
+      enabled: false,
+      triggerTypes: [],
+      deliveryTargets: [],
+      platforms: [],
+    },
+    snapshot: {
+      agents: [{ id: 'agent.test', agentType: 'test-agent' }],
+      channels: [{ id: 'channel.test', platform: 'test-channel' }],
+      knowledge: [],
+      schedulers: [],
+      ui: [],
+    },
+  };
+  let started = false;
+  let stopped = false;
+  const controller = new LocalCoreController('/tmp/local-core-controller-injected', {
+    kernel: {
+      context: {
+        bus,
+        capabilities: new LocalCoreCapabilityRegistry(),
+        logger: { log: () => {} },
+      },
+      plugins: new LocalCorePluginRegistry(),
+      capabilities: new LocalCoreCapabilityRegistry(),
+      lifecycle: {} as any,
+      diagnostics: {
+        snapshot: async () => ({
+          pluginCount: 0,
+          enabledPluginCount: 0,
+          plugins: [],
+        }),
+      } as any,
+      getCapabilitySnapshot: () => capabilitySnapshot,
+    },
+    state: {
+      getSettings: () => ({
+        binaryPath: '',
+        configPath: '',
+        autoStartService: true,
+        defaultProject: 'default',
+        managementPort: 0,
+        managementToken: '',
+        bridgePort: 0,
+        bridgeToken: '',
+        bridgePath: '',
+        knowledge: {
+          baseUrl: '',
+          authMode: 'none',
+          token: '',
+          headerName: 'X-API-Key',
+          defaultCollection: 'personal_knowledge',
+        },
+        plugins: {},
+      }),
+      getLogs: () => [],
+      readConfigFile: async () => ({
+        path: '',
+        exists: false,
+        raw: '',
+        parsed: null,
+      }),
+    } as any,
+    store: {} as any,
+    agentRuntimes: [],
+    channelRuntime: {
+      platform: 'test-channel',
+      routeType: 'channel.test',
+    } as any,
+    knowledgeProvider: {} as any,
+    knowledgeAttachments: {} as any,
+    workspaceRouter: {} as any,
+    scheduler: {} as any,
+    start: async () => {
+      started = true;
+    },
+    stop: async () => {
+      stopped = true;
+    },
+  });
+
+  await controller.init();
+  assert.equal(started, true);
+  assert.deepEqual(await controller.getCapabilities(), capabilitySnapshot);
+  await controller.close();
+  assert.equal(stopped, true);
 });
 
 test('channel plugin lifecycle start and stop are driven by the kernel lifecycle', async () => {
