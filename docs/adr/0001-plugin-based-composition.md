@@ -23,7 +23,7 @@ The system will move to a small kernel plus statically registered built-in plugi
 
 Conventions for the migration:
 
-- Plugin ids use dotted lowercase namespaces such as `builtin.runtime-capabilities` or `channel.lark`.
+- Plugin ids use dotted lowercase namespaces such as `builtin.agent-opencode` or `builtin.channel-lark`.
 - Capability ids use `<kind>.<name>` such as `agent.opencode`, `channel.localcore-lark`, and `scheduler.cron`.
 - Feature ids use dotted lowercase product areas such as `feature.chat`, `feature.knowledge`, and `feature.scheduler`.
 - Built-in local-core plugins live under `services/local-ai-core/src/plugins/`.

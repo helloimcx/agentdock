@@ -321,18 +321,18 @@ Remove compatibility shims and obsolete hardcoded paths after the plugin system 
 
 ### Tasks
 
-- [ ] Delete boolean feature helpers that are no longer needed
-- [ ] Delete hardcoded capability arrays
-- [ ] Delete route and nav duplication left from transition period
-- [ ] Delete direct module construction paths bypassing bootstrap
-- [ ] Consolidate temporary adapters created during migration
-- [ ] Update docs to describe the final plugin-first architecture only
+- [x] Delete boolean feature helpers that are no longer needed
+- [x] Delete hardcoded capability arrays
+- [x] Delete route and nav duplication left from transition period
+- [x] Delete direct module construction paths bypassing bootstrap
+- [x] Consolidate temporary adapters created during migration
+- [x] Update docs to describe the final plugin-first architecture only
 
 ### Exit Criteria
 
-- [ ] There is one canonical way to add a capability
-- [ ] There is one canonical place to register built-in plugins
-- [ ] No obsolete hardcoded feature switches remain
+- [x] There is one canonical way to add a capability
+- [x] There is one canonical place to register built-in plugins
+- [x] No obsolete hardcoded feature switches remain
 
 ## Cross-Cutting Tests
 

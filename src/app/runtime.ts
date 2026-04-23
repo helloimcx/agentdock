@@ -84,27 +84,3 @@ export function useRuntimeFeatureSupport() {
   const snapshot = useRuntimeCapabilityStore((state) => state.snapshot);
   return getRuntimeFeatureSupport(snapshot);
 }
-
-export function supportsDesktopRuntime() {
-  return getRuntimeFeatureSupport().desktopRuntime;
-}
-
-export function supportsDesktopChat() {
-  return getRuntimeFeatureSupport().desktopChat;
-}
-
-export function supportsChatRoute() {
-  return getRuntimeFeatureSupport().chatRoute;
-}
-
-export function supportsDesktopWorkspace() {
-  return getRuntimeFeatureSupport().desktopWorkspace;
-}
-
-export function supportsKnowledgeModule() {
-  return getRuntimeFeatureSupport().knowledgeModule;
-}
-
-export function supportsSchedulerModule() {
-  return getRuntimeFeatureSupport().schedulerModule;
-}

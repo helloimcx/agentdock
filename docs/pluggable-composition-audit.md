@@ -1,44 +1,22 @@
-# Hardcoded Composition Audit
+# Plugin-First Composition Notes
 
-This audit captures the concrete composition points that the pluggable refactor needs to remove or isolate.
+The hardcoded composition points from the migration have been removed or isolated behind plugin registries.
 
 ## Local AI Core Composition
 
-`services/local-ai-core/src/runtime/local-core-controller.ts`
-
-- Instantiates `AiVectorKnowledgeProvider` directly and owns knowledge settings persistence.
-- Instantiates `WorkspaceRouter` directly through `createWorkspaceRouter(...)`.
-- Instantiates `LocalCoreLarkGateway` directly and wires bridge callbacks inline.
-- Instantiates `SchedulerService` and `LarkScheduleAdapter` directly.
-- Builds the scheduler bridge inline with Lark-specific route assumptions.
-- Owns logs, settings, config bootstrap, and CLI wrapper setup in the same constructor.
-
-`services/local-ai-core/src/router/workspace-router.ts`
-
-- Returns hardcoded capability strings from `getCapabilities()`.
-- Couples scheduler bridge input to the `lark_chat` route model.
-- Decides supported ACP agent runtimes from a hardcoded list.
+- Built-in plugins are registered through `services/local-ai-core/src/kernel/bootstrap.ts`.
+- Capabilities are contributed by plugin manifests and collected by `LocalCoreCapabilityRegistry`.
+- Runtime composition passes concrete stores, runtimes, and event bus dependencies into services through bootstrap.
+- Plugin lifecycle and diagnostics are managed by the kernel, so plugin failures are isolated and visible.
 
 ## Renderer Composition
 
-`src/app/runtime.ts`
-
-- Exposes static boolean helpers such as `supportsDesktopChat()` and `supportsKnowledgeModule()`.
-- Encodes runtime provider and feature support in process-level booleans instead of a server capability snapshot.
-
-`src/App.tsx`
-
-- Uses static runtime helpers to decide whether `/chat`, `/workspace`, and `/knowledge` should exist.
-- Mixes desktop-managed redirects with feature availability checks in the route table.
-
-`src/components/Layout/Sidebar.tsx`
-
-- Defines sidebar navigation as a static `navItems` array.
-- Filters visible items through hardcoded feature helper checks and `desktopManaged` branches.
+- `src/app/runtime.ts` stores the Local AI Core capability snapshot and derives feature support from it.
+- `src/app/ui-contributions.tsx` is the renderer registry for built-in routes, nav items, and settings panels.
+- `src/App.tsx` and `src/components/Layout/Sidebar.tsx` render from registry contributions instead of hardcoded page lists.
 
 ## Capability Declarations
 
-`services/local-ai-core/src/router/workspace-router.ts`
-
-- Declares channels, agents, knowledge, scheduler trigger types, and scheduler platforms inline.
-- Uses route and platform names that are tied to current built-in modules.
+- Plugin capability ids and manifests are the canonical source for channels, agents, knowledge providers, schedulers, and UI contributions.
+- Renderer feature visibility is derived from `/api/local/v1/capabilities/snapshot`.
+- Operational plugin state is visible through runtime status and `/api/local/v1/plugins/diagnostics`.

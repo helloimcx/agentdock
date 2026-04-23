@@ -11,7 +11,7 @@ import { useAuthStore } from './store/auth';
 import { useThemeStore } from './store/theme';
 import { getDesktopLogs, getRuntimeCapabilitySnapshot, getRuntimeStatus, initializeDesktopProvider, onRuntimeEvent } from './api/desktop';
 import { api } from './api/client';
-import { getRuntimeProvider, setRuntimeCapabilitySnapshot, supportsDesktopRuntime } from './app/runtime';
+import { getRuntimeProvider, setRuntimeCapabilitySnapshot } from './app/runtime';
 import { LOCAL_AI_CORE_BASE } from '../packages/core-sdk/src';
 
 useAuthStore.getState().init();
@@ -155,7 +155,7 @@ function BootstrapApp() {
   }, [bootstrap]);
 
   useEffect(() => {
-    if (!managedRuntime || !supportsDesktopRuntime()) {
+    if (!managedRuntime) {
       return;
     }
     return onRuntimeEvent((runtime) => {

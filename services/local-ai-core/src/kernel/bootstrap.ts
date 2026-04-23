@@ -27,11 +27,11 @@ import { LocalCoreDiagnostics } from './diagnostics.js';
 import { LocalCoreEventBus } from './event-bus.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
-import { runtimeCapabilitiesPlugin } from '../plugins/builtin/runtime-capabilities-plugin.js';
 import {
   createBuiltinClaudeCodeAgentPlugin,
   createBuiltinLocalCoreAcpAgentPlugin,
   createBuiltinOpencodeAgentPlugin,
+  createBuiltinStaticAgentCapabilityPlugin,
 } from '../plugins/builtin/agent-localcore-acp-plugin.js';
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
 import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';
@@ -83,7 +83,13 @@ export function bootstrapLocalCoreKernel(options?: {
   const lifecycle = new LocalCoreLifecycleManager(plugins, context);
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
-  const builtIns = [runtimeCapabilitiesPlugin, createBuiltinCronSchedulerPlugin()];
+  const builtIns = [
+    ...['codex', 'cursor', 'gemini', 'qoder', 'iflow'].map((agentType) =>
+      createBuiltinStaticAgentCapabilityPlugin(agentType)
+    ),
+    createBuiltinLocalCoreAcpAgentPlugin(),
+    createBuiltinCronSchedulerPlugin(),
+  ];
   for (const plugin of builtIns) {
     plugins.register(plugin);
     options?.log?.(`[plugin:${plugin.manifest.id}] registered`);
@@ -215,8 +221,12 @@ export function bootstrapLocalCoreRuntime(options: {
     disabledPluginIds,
   });
   const store = new LocalCoreAcpStore(options.userDataPath);
+  const localCoreAgentPlugin = kernel.plugins.get('builtin.agent-localcore-acp') as AgentPlugin | null;
+  if (!localCoreAgentPlugin) {
+    throw new Error('Missing built-in LocalCore ACP agent plugin.');
+  }
   const agentPlugins = [
-    createBuiltinLocalCoreAcpAgentPlugin(),
+    localCoreAgentPlugin,
     createBuiltinOpencodeAgentPlugin(),
     createBuiltinClaudeCodeAgentPlugin(),
   ];
@@ -242,7 +252,7 @@ export function bootstrapLocalCoreRuntime(options: {
       log: options.log,
     }),
   ];
-  for (const plugin of agentPlugins) {
+  for (const plugin of agentPlugins.filter((plugin) => plugin !== localCoreAgentPlugin)) {
     registerPlugin(kernel, plugin);
   }
   registerPlugin(kernel, channelPlugin);

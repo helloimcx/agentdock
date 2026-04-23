@@ -9,7 +9,7 @@ import type {
   WorkspaceSummary,
 } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
-import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { decodeThreadId } from '../thread/workspace-thread-id.js';
 import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
@@ -36,13 +36,7 @@ export class WorkspaceRouter {
   } | null = null;
 
   constructor(private readonly options: WorkspaceRouterOptions) {
-    if (options.store) {
-      this.store = options.store;
-    } else if (options.userDataPath) {
-      this.store = new LocalCoreAcpStore(options.userDataPath);
-    } else {
-      throw new Error('WorkspaceRouter requires either a store or userDataPath.');
-    }
+    this.store = options.store;
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
       runThreadMap: this.runThreadMap,

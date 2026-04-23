@@ -17,8 +17,7 @@ import type {
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 export type WorkspaceRouterOptions = {
-  store?: LocalCoreAcpStore;
-  userDataPath?: string;
+  store: LocalCoreAcpStore;
   cliBinDir?: string;
   localCoreBase?: string;
   readConfigState: () => Promise<ConfigFileState>;

@@ -1,5 +1,5 @@
 import type { ConfigFileState, DesktopProjectConfig } from '../../../../../packages/contracts/src/index.js';
-import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext } from '../../../../../packages/plugin-sdk/src/index.js';
+import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext, RuntimePlugin } from '../../../../../packages/plugin-sdk/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 import { toLocalCoreProjectConfig } from '../../router/workspace-route-config.js';
 
@@ -63,12 +63,23 @@ function createBuiltinAgentPlugin(options: {
 }
 
 export function createBuiltinLocalCoreAcpAgentPlugin() {
-  return createBuiltinAgentPlugin({
+  const plugin = createBuiltinAgentPlugin({
     pluginId: 'builtin.agent-localcore-acp',
     agentType: LOCALCORE_ACP_AGENT_TYPE,
     match: (normalizedAgentType) => !normalizedAgentType || normalizedAgentType === 'acp' || normalizedAgentType === LOCALCORE_ACP_AGENT_TYPE,
     displayName: 'LocalCore ACP',
   });
+  plugin.capabilities = {
+    ...plugin.capabilities,
+    channels: [
+      {
+        id: `channel.${LOCALCORE_ACP_AGENT_TYPE}`,
+        platform: LOCALCORE_ACP_AGENT_TYPE,
+        displayName: 'LocalCore ACP',
+      },
+    ],
+  };
+  return plugin;
 }
 
 export function createBuiltinOpencodeAgentPlugin() {
@@ -87,4 +98,24 @@ export function createBuiltinClaudeCodeAgentPlugin() {
     match: (normalizedAgentType) => normalizedAgentType === 'claudecode',
     displayName: 'Claude Code',
   });
+}
+
+export function createBuiltinStaticAgentCapabilityPlugin(agentType: string): RuntimePlugin {
+  return {
+    manifest: {
+      id: `builtin.agent-${agentType}`,
+      kind: 'agent',
+      version: '0.1.0',
+      provides: [`agent:${agentType}`],
+    },
+    capabilities: {
+      agents: [
+        {
+          id: `agent.${agentType}`,
+          agentType,
+          displayName: agentType,
+        },
+      ],
+    },
+  };
 }

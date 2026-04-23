@@ -12,7 +12,7 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
   assert.deepEqual(kernel.getCapabilitySnapshot(), {
     adapters: {
       channels: ['localcore-acp'],
-      agents: ['codex', 'cursor', 'gemini', 'qoder', 'iflow'],
+        agents: ['codex', 'cursor', 'gemini', 'qoder', 'iflow', 'localcore-acp'],
       knowledge: false,
       knowledgeProviders: [],
     },
@@ -29,6 +29,7 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
         { id: 'agent.gemini', agentType: 'gemini', displayName: 'gemini' },
         { id: 'agent.qoder', agentType: 'qoder', displayName: 'qoder' },
         { id: 'agent.iflow', agentType: 'iflow', displayName: 'iflow' },
+        { id: 'agent.localcore-acp', agentType: 'localcore-acp', displayName: 'LocalCore ACP' },
       ],
       channels: [
         { id: 'channel.localcore-acp', platform: 'localcore-acp', displayName: 'LocalCore ACP' },
@@ -54,11 +55,19 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
   await kernel.lifecycle.initAll();
   const diagnostics = await kernel.diagnostics.snapshot();
 
-  assert.equal(diagnostics.pluginCount, 2);
-  assert.equal(diagnostics.enabledPluginCount, 2);
+  assert.equal(diagnostics.pluginCount, 7);
+  assert.equal(diagnostics.enabledPluginCount, 7);
   assert.deepEqual(
     diagnostics.plugins.map((plugin) => plugin.pluginId).sort(),
-    ['builtin.runtime-capabilities', 'builtin.scheduler-cron'],
+    [
+      'builtin.agent-codex',
+      'builtin.agent-cursor',
+      'builtin.agent-gemini',
+      'builtin.agent-iflow',
+      'builtin.agent-localcore-acp',
+      'builtin.agent-qoder',
+      'builtin.scheduler-cron',
+    ],
   );
   assert.deepEqual(
     diagnostics.plugins.map((plugin) => ({
@@ -67,17 +76,18 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
       health: plugin.health,
     })),
     [
-      {
-        pluginId: 'builtin.runtime-capabilities',
-        enabled: true,
-        health: { status: 'healthy' },
-      },
-      {
-        pluginId: 'builtin.scheduler-cron',
-        enabled: true,
-        health: { status: 'healthy' },
-      },
-    ],
+      'builtin.agent-codex',
+      'builtin.agent-cursor',
+      'builtin.agent-gemini',
+      'builtin.agent-qoder',
+      'builtin.agent-iflow',
+      'builtin.agent-localcore-acp',
+      'builtin.scheduler-cron',
+    ].map((pluginId) => ({
+      pluginId,
+      enabled: true,
+      health: { status: 'healthy' },
+    })),
   );
 });
 
