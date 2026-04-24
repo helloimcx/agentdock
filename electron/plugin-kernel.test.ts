@@ -424,6 +424,27 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   assert.equal(stopped, true);
 });
 
+test('runtime logs are persisted to local-core.log', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-logs-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+      log: () => {},
+    });
+
+    runtime.state.pushLog('localcore-weixin send failed for sessionKey=test');
+    runtime.state.pushLog('second line');
+
+    const logPath = join(userDataPath, 'runtime', 'local-core.log');
+    const raw = readFileSync(logPath, 'utf-8');
+    assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* localcore-weixin send failed for sessionKey=test/m);
+    assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* second line/m);
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('channel plugin lifecycle start and stop are driven by the kernel lifecycle', async () => {
   const calls: string[] = [];
   const registry = new LocalCorePluginRegistry();

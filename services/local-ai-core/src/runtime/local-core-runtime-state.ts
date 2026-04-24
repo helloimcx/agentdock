@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as TOML from '@iarna/toml';
 import type {
@@ -16,6 +16,8 @@ name = "default"
 [projects.agent]
 type = "opencode"
 `;
+const LOG_FILE_NAME = 'local-core.log';
+const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024;
 
 type RuntimeSettingsFile = {
   configPath: string;
@@ -36,6 +38,7 @@ export interface LocalCoreRuntimeState {
   readonly runtimeDir: string;
   readonly settingsPath: string;
   readonly cliBinDir: string;
+  readonly logPath: string;
   getSettings(): DesktopSettings;
   saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
   getKnowledgeConfig(): KnowledgeConfig;
@@ -51,6 +54,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   readonly runtimeDir: string;
   readonly settingsPath: string;
   readonly cliBinDir: string;
+  readonly logPath: string;
   private settings: DesktopSettings;
   private readonly logs: string[] = [];
 
@@ -60,6 +64,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   ) {
     this.runtimeDir = join(userDataPath, 'runtime');
     this.settingsPath = join(this.runtimeDir, 'local-core-settings.json');
+    this.logPath = join(this.runtimeDir, LOG_FILE_NAME);
     mkdirSync(this.runtimeDir, { recursive: true });
     this.cliBinDir = this.ensureCliWrapper();
     this.settings = this.loadSettings();
@@ -132,9 +137,27 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       return;
     }
     this.logs.push(message);
+    this.appendLogFile(message);
     this.onLog?.(message);
     if (this.logs.length > 400) {
       this.logs.splice(0, this.logs.length - 400);
+    }
+  }
+
+  private appendLogFile(message: string) {
+    try {
+      if (existsSync(this.logPath) && statSync(this.logPath).size > LOG_FILE_MAX_BYTES) {
+        const rotatedPath = `${this.logPath}.1`;
+        try {
+          renameSync(this.logPath, rotatedPath);
+        } catch {
+          // Keep runtime logging best-effort; stdout/UI logs still work.
+        }
+      }
+      const line = `${new Date().toISOString()} ${message.replace(/\r?\n/g, '\\n')}\n`;
+      appendFileSync(this.logPath, line, 'utf-8');
+    } catch {
+      // File logging must never break Local AI Core runtime behavior.
     }
   }
 

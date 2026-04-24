@@ -882,3 +882,77 @@ test('weixin bridge keeps failed tool update status without execution details', 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('weixin bridge folds progress after nine context sends and preserves final reply', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ ret: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    for (let index = 1; index <= 12; index += 1) {
+      await gateway.onBridgeEvent({
+        type: 'reply',
+        sessionKey: 'session:thread-1',
+        content: `🔧 tool ${index}`,
+      } as any);
+    }
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
+
+    assert.equal(sentBodies.length, 10);
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 tool 1');
+    assert.equal(sentBodies[8]?.msg?.item_list?.[0]?.text_item?.text, '🔧 tool 9');
+    assert.doesNotMatch(
+      sentBodies.map((body) => body?.msg?.item_list?.[0]?.text_item?.text || '').join('\n'),
+      /🔧 tool 10|🔧 tool 11|🔧 tool 12/,
+    );
+    assert.match(sentBodies[9]?.msg?.item_list?.[0]?.text_item?.text, /已省略 3 条过程消息/);
+    assert.match(sentBodies[9]?.msg?.item_list?.[0]?.text_item?.text, /final reply/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
