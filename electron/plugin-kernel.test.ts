@@ -181,14 +181,14 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
       'opencode',
       'claudecode',
     ]);
-    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark']);
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, ['ai-vector']);
     assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, true);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      deliveryTargets: ['lark'],
-      platforms: ['lark'],
+      deliveryTargets: ['lark', 'weixin'],
+      platforms: ['lark', 'weixin'],
     });
 
     await runtime.start();
@@ -216,14 +216,14 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       'opencode',
       'claudecode',
     ]);
-    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark']);
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, []);
     assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, false);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      deliveryTargets: ['lark'],
-      platforms: ['lark'],
+      deliveryTargets: ['lark', 'weixin'],
+      platforms: ['lark', 'weixin'],
     });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -298,8 +298,8 @@ test('runtime bootstrap keeps disabled plugins diagnosable without contributing 
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      deliveryTargets: [],
-      platforms: [],
+      deliveryTargets: ['weixin'],
+      platforms: ['weixin'],
     });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -331,6 +331,8 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   };
   let started = false;
   let stopped = false;
+  let channelRefreshes = 0;
+  let weixinRefreshes = 0;
   const controller = new LocalCoreController('/tmp/local-core-controller-injected', {
     kernel: {
       context: {
@@ -377,12 +379,28 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
         raw: '',
         parsed: null,
       }),
+      saveStructuredConfigFile: async (config: unknown) => ({
+        path: '',
+        exists: true,
+        raw: JSON.stringify(config),
+        parsed: config,
+      }),
     } as any,
     store: {} as any,
     agentRuntimes: [],
     channelRuntime: {
       platform: 'test-channel',
       routeType: 'channel.test',
+      refreshBindings: async () => {
+        channelRefreshes++;
+      },
+    } as any,
+    weixinChannelRuntime: {
+      platform: 'weixin',
+      routeType: 'channel.chat',
+      refreshBindings: async () => {
+        weixinRefreshes++;
+      },
     } as any,
     knowledgeProvider: {} as any,
     knowledgeAttachments: {} as any,
@@ -399,6 +417,9 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   await controller.init();
   assert.equal(started, true);
   assert.deepEqual(await controller.getCapabilities(), capabilitySnapshot);
+  await controller.saveStructuredConfigFile({ projects: [] } as any);
+  assert.equal(channelRefreshes, 1);
+  assert.equal(weixinRefreshes, 1);
   await controller.close();
   assert.equal(stopped, true);
 });

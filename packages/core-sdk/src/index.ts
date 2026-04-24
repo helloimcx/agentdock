@@ -241,6 +241,17 @@ export async function listLarkAuthorizedUsers(workspaceId?: string) {
   return listChannelAuthorizedUsers('lark', workspaceId) as Promise<{ users: LocalCoreAuthorizedUser[] }>;
 }
 
+export async function getWeixinQrCode(workspaceId: string) {
+  return coreRequest<{ ticket: string; expiresIn: number; qrCodeUrl: string }>('POST', `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode`);
+}
+
+export async function checkWeixinQrCodeStatus(workspaceId: string, ticket: string) {
+  return coreRequest<{ status: 'wait' | 'signed' | 'confirmed' | 'expired'; userName?: string; userId?: string }>(
+    'GET',
+    `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode/status?ticket=${encodeURIComponent(ticket)}`,
+  );
+}
+
 export async function listWorkspaces() {
   return coreRequest<{ workspaces: WorkspaceSummary[] }>('GET', '/workspaces');
 }

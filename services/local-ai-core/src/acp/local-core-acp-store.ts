@@ -522,7 +522,7 @@ export class LocalCoreAcpStore {
     `).run(sessionId, supportsLoad ? 1 : 0, new Date().toISOString(), threadId);
   }
 
-  createPairingRequest(input: Omit<LocalPlatformPairingRow, 'platform'> & { platform?: 'lark' }) {
+  createPairingRequest(input: Omit<LocalPlatformPairingRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
       INSERT INTO platform_pairings (code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -576,32 +576,37 @@ export class LocalCoreAcpStore {
     `).run(nowIso);
   }
 
-  getAuthorizedUser(workspaceId: string, platformUserId: string) {
+  getAuthorizedUser(workspaceId: string, platformUserId: string, platform = 'lark') {
     return this.db.prepare(`
       SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
       FROM platform_users
-      WHERE workspace_id = ? AND platform = 'lark' AND platform_user_id = ?
-    `).get(workspaceId, platformUserId) as LocalPlatformUserRow | undefined;
+      WHERE workspace_id = ? AND platform = ? AND platform_user_id = ?
+    `).get(workspaceId, platform, platformUserId) as LocalPlatformUserRow | undefined;
   }
 
-  listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
-    const query = workspaceId
-      ? `
+  listAuthorizedUsers(workspaceId?: string, platform?: string): LocalCoreAuthorizedUser[] {
+    const params: string[] = [];
+    const predicates: string[] = [];
+    if (workspaceId) {
+      predicates.push('workspace_id = ?');
+      params.push(workspaceId);
+    }
+    if (platform) {
+      predicates.push('platform = ?');
+      params.push(platform);
+    }
+    const where = predicates.length > 0 ? `WHERE ${predicates.join(' AND ')}` : '';
+    const query = `
         SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
         FROM platform_users
-        WHERE workspace_id = ?
-        ORDER BY authorized_at DESC
-      `
-      : `
-        SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
-        FROM platform_users
+        ${where}
         ORDER BY authorized_at DESC
       `;
-    const rows = this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalPlatformUserRow[];
+    const rows = this.db.prepare(query).all(...params) as LocalPlatformUserRow[];
     return rows.map((row) => ({
       id: row.id,
       workspaceId: row.workspace_id,
-      platform: 'lark',
+      platform: row.platform,
       participantId: row.platform_user_id,
       channelId: row.chat_id,
       platformUserId: row.platform_user_id,
@@ -612,7 +617,7 @@ export class LocalCoreAcpStore {
     }));
   }
 
-  createAuthorizedUser(input: Omit<LocalPlatformUserRow, 'platform'> & { platform?: 'lark' }) {
+  createAuthorizedUser(input: Omit<LocalPlatformUserRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
       INSERT INTO platform_users (id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -633,20 +638,20 @@ export class LocalCoreAcpStore {
     );
   }
 
-  updateAuthorizedUserThread(workspaceId: string, platformUserId: string, threadId: string) {
+  updateAuthorizedUserThread(workspaceId: string, platformUserId: string, threadId: string, platform = 'lark') {
     this.db.prepare(`
       UPDATE platform_users
       SET thread_id = ?
-      WHERE workspace_id = ? AND platform = 'lark' AND platform_user_id = ?
-    `).run(threadId, workspaceId, platformUserId);
+      WHERE workspace_id = ? AND platform = ? AND platform_user_id = ?
+    `).run(threadId, workspaceId, platform, platformUserId);
   }
 
-  getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string) {
+  getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
     return this.db.prepare(`
       SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at
       FROM platform_thread_bindings
-      WHERE workspace_id = ? AND platform = 'lark' AND chat_id = ? AND platform_user_id = ?
-    `).get(workspaceId, chatId, platformUserId) as LocalPlatformThreadBindingRow | undefined;
+      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
+    `).get(workspaceId, platform, chatId, platformUserId) as LocalPlatformThreadBindingRow | undefined;
   }
 
   getPlatformThreadBindingByThreadId(threadId: string) {
@@ -659,7 +664,7 @@ export class LocalCoreAcpStore {
     `).get(threadId) as LocalPlatformThreadBindingRow | undefined;
   }
 
-  upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: 'lark' }) {
+  upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
       INSERT INTO platform_thread_bindings
       (workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at)
@@ -680,40 +685,45 @@ export class LocalCoreAcpStore {
     );
   }
 
-  updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string) {
+  updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string, platform = 'lark') {
     this.db.prepare(`
       UPDATE platform_thread_bindings
       SET last_platform_message_id = ?, updated_at = ?
-      WHERE workspace_id = ? AND platform = 'lark' AND chat_id = ? AND platform_user_id = ?
-    `).run(messageId, new Date().toISOString(), workspaceId, chatId, platformUserId);
+      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
+    `).run(messageId, new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
   }
 
-  clearPlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string) {
+  clearPlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
     this.db.prepare(`
       UPDATE platform_thread_bindings
       SET last_platform_message_id = NULL, updated_at = ?
-      WHERE workspace_id = ? AND platform = 'lark' AND chat_id = ? AND platform_user_id = ?
-    `).run(new Date().toISOString(), workspaceId, chatId, platformUserId);
+      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
+    `).run(new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
   }
 
-  listPairingRequests(workspaceId?: string): LocalCorePairingRequest[] {
-    const query = workspaceId
-      ? `
+  listPairingRequests(workspaceId?: string, platform?: string): LocalCorePairingRequest[] {
+    const params: string[] = [];
+    const predicates: string[] = [];
+    if (workspaceId) {
+      predicates.push('workspace_id = ?');
+      params.push(workspaceId);
+    }
+    if (platform) {
+      predicates.push('platform = ?');
+      params.push(platform);
+    }
+    const where = predicates.length > 0 ? `WHERE ${predicates.join(' AND ')}` : '';
+    const query = `
         SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
         FROM platform_pairings
-        WHERE workspace_id = ?
-        ORDER BY requested_at DESC
-      `
-      : `
-        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
-        FROM platform_pairings
+        ${where}
         ORDER BY requested_at DESC
       `;
-    const rows = this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalPlatformPairingRow[];
+    const rows = this.db.prepare(query).all(...params) as LocalPlatformPairingRow[];
     return rows.map((row) => ({
       code: row.code,
       workspaceId: row.workspace_id,
-      platform: 'lark',
+      platform: row.platform,
       participantId: row.platform_user_id,
       channelId: row.chat_id,
       platformUserId: row.platform_user_id,

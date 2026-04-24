@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { LocalCoreAcpResponseProcessor } from '../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
 import { ScheduledConversationExecutor } from '../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
+import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/gateway/local-core-weixin-gateway.js';
 
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({
@@ -244,4 +248,438 @@ test('lark same-thread execution policy keeps the original thread target', async
 
   const target = await policy.resolveTarget(job as any);
   assert.equal(target.threadId, 'thread-origin');
+});
+
+test('weixin channel can request a QR code without platform options', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; headers: Headers }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      headers: new Headers(init?.headers),
+    });
+    return new Response(JSON.stringify({
+      qrcode: 'ticket-1',
+      qrcode_img_content: 'https://liteapp.weixin.qq.com/q/test?qrcode=ticket-1&bot_type=3',
+      expired: 180,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const gateway = new LocalCoreWeixinGateway({
+      store: {} as any,
+      readConfig: async () => ({
+        projects: [
+          {
+            name: 'default',
+            agent: { type: 'localcore-acp', providers: [] },
+            platforms: [{ type: 'weixin', options: {} }],
+          },
+        ],
+      } as any),
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+    });
+
+    const result = await gateway.getQrCode('default');
+
+    assert.deepEqual(result, {
+      ticket: 'ticket-1',
+      expiresIn: 180,
+      qrCodeUrl: 'https://liteapp.weixin.qq.com/q/test?qrcode=ticket-1&bot_type=3',
+    });
+    assert.equal(requests[0]?.url, 'https://ilinkai.weixin.qq.com/ilink/bot/get_bot_qrcode?bot_type=3');
+    assert.equal(requests[0]?.headers.has('Authorization'), false);
+    assert.equal(requests[0]?.headers.has('AuthorizationType'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin QR confirmation persists credentials and starts authenticated polling', async () => {
+  const originalFetch = globalThis.fetch;
+  const stateDir = mkdtempSync(join(tmpdir(), 'weixin-channel-'));
+  const requests: Array<{ url: string; headers: Headers }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    requests.push({
+      url,
+      headers: new Headers(init?.headers),
+    });
+    if (url.includes('/get_qrcode_status')) {
+      return new Response(JSON.stringify({
+        status: 'confirmed',
+        bot_token: 'bot-token-1',
+        baseurl: 'https://ilinkai.weixin.qq.com',
+        ilink_bot_id: 'bot-1',
+        ilink_user_id: 'user-1',
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      expirePendingPairings: () => {},
+      listPendingPairings: () => [],
+      listAuthorizedUsers: () => [],
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { state_dir: stateDir } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  try {
+    const result = await gateway.checkQrCodeStatus('default', 'ticket-1');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(result.status, 'confirmed');
+    const pollingRequest = requests.find((request) => request.url.endsWith('/ilink/bot/getupdates'));
+    assert.equal(pollingRequest?.headers.get('Authorization'), 'Bearer bot-token-1');
+    assert.equal(pollingRequest?.headers.get('AuthorizationType'), 'ilink_bot_token');
+  } finally {
+    await gateway.stop();
+    globalThis.fetch = originalFetch;
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
+test('weixin inbound message handling is idempotent by message identity', async () => {
+  const sentThreadMessages: string[] = [];
+  const users = new Map<string, any>();
+  const threadBindings = new Map<string, any>();
+  const bindingKey = 'default:chat-1:user-1';
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      expirePendingPairings: () => {},
+      listPendingPairings: () => [],
+      listPairingRequests: () => [],
+      listAuthorizedUsers: () => [...users.values()],
+      getAuthorizedUser: (_workspaceId: string, platformUserId: string) => users.get(platformUserId),
+      createAuthorizedUser: (user: any) => users.set(user.platform_user_id, user),
+      updateAuthorizedUserThread: (_workspaceId: string, platformUserId: string, threadId: string) => {
+        users.set(platformUserId, { ...users.get(platformUserId), thread_id: threadId });
+      },
+      getPlatformThreadBinding: () => threadBindings.get(bindingKey),
+      upsertPlatformThreadBinding: (binding: any) => threadBindings.set(bindingKey, binding),
+      updatePlatformThreadMessageId: (_workspaceId: string, _chatId: string, _platformUserId: string, messageId: string) => {
+        threadBindings.set(bindingKey, { ...threadBindings.get(bindingKey), last_platform_message_id: messageId });
+      },
+      getLatestRunForThread: () => null,
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: {} }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({
+      createThread: async () => ({ id: 'thread-1' }),
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (_threadId: string, text: string) => {
+        sentThreadMessages.push(text);
+        return { runId: 'run-1' };
+      },
+    } as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const input = {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    displayName: 'User',
+    text: 'hello',
+    messageId: 'msg-1',
+    contextToken: 'ctx-1',
+  };
+
+  await gateway.handleInboundMessage(input);
+  await gateway.handleInboundMessage(input);
+
+  assert.equal(sentThreadMessages.length, 1);
+  assert.match(sentThreadMessages[0] || '', /hello/);
+});
+
+test('weixin bridge skips duplicate rendered replies', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ errcode: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({ type: 'update_message', sessionKey: 'session:thread-1', content: 'same reply' } as any);
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'same reply' } as any);
+    await gateway.onBridgeEvent({ type: 'typing_stop', sessionKey: 'session:thread-1' } as any);
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'same reply' } as any);
+
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, 'same reply');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin bridge splits long replies into multiple text messages', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ errcode: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({
+      type: 'reply',
+      sessionKey: 'session:thread-1',
+      content: Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 行：这是一段用于测试微信长文本切分的内容。`).join('\n\n'),
+    } as any);
+
+    assert.ok(sentBodies.length > 1);
+    assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
+    assert.equal(sentBodies[1]?.msg?.context_token, 'ctx-1');
+    for (const body of sentBodies) {
+      const text = body?.msg?.item_list?.[0]?.text_item?.text || '';
+      assert.ok(Buffer.byteLength(text, 'utf-8') <= 900);
+      assert.equal(body?.base_info?.channel_version, '1.0.0');
+      assert.equal(body?.msg?.from_user_id, '');
+      assert.match(body?.msg?.client_id || '', /^openclaw-weixin-/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin bridge sends protocol-compatible final reply payload', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body || '{}'));
+    sentBodies.push(body);
+    return new Response(JSON.stringify({ ret: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
+
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
+    assert.equal(sentBodies[0]?.msg?.from_user_id, '');
+    assert.equal(sentBodies[0]?.base_info?.channel_version, '1.0.0');
+    assert.match(sentBodies[0]?.msg?.client_id || '', /^openclaw-weixin-/);
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, 'final reply');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin bridge keeps tool status but omits tool execution result content', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ errcode: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({
+      type: 'reply',
+      sessionKey: 'session:thread-1',
+      content: '🔧 list desktop - completed - /Users/mochuxian/Desktop has many files and this result should not be sent',
+    } as any);
+
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 list desktop - completed');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

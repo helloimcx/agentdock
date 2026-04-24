@@ -409,7 +409,7 @@ export interface LocalCoreChannelAuthorizedUser {
 }
 
 export interface LocalCoreAuthorizedUser extends LocalCoreChannelAuthorizedUser {
-  platform: 'lark';
+  platform: string;
   platformUserId: string;
   chatId: string;
 }
@@ -427,7 +427,7 @@ export interface LocalCoreChannelPairingRequest {
 }
 
 export interface LocalCorePairingRequest extends LocalCoreChannelPairingRequest {
-  platform: 'lark';
+  platform: string;
   platformUserId: string;
   chatId: string;
 }

@@ -1,0 +1,92 @@
+import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { WorkspaceRouter } from '../router/workspace-router.js';
+import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
+import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
+import { createWeixinExecutionPolicy } from './weixin-execution-policies.js';
+
+type WeixinScheduleAdapterOptions = {
+  store: LocalCoreAcpStore;
+  getWorkspaceRouter: () => WorkspaceRouter;
+  getChannelRuntime: () => ChannelRuntime;
+  log?: (message: string) => void;
+};
+
+export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
+  private readonly executor: ScheduledConversationExecutor;
+  readonly deliveryTargets = ['weixin'];
+
+  constructor(private readonly options: WeixinScheduleAdapterOptions) {
+    this.executor = new ScheduledConversationExecutor({
+      store: options.store,
+      workspaceRouter: options.getWorkspaceRouter(),
+    });
+  }
+
+  supports(job: ScheduledJob) {
+    return job.platform === 'weixin' && (job.route.type === 'channel.chat' || job.route.type === 'weixin_chat');
+  }
+
+  async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
+    const { job } = context;
+    const executionPolicy = createWeixinExecutionPolicy(job, {
+      store: this.options.store,
+      workspaceRouter: this.options.getWorkspaceRouter(),
+      getChannelRuntime: this.options.getChannelRuntime,
+    }, (nextJob) => this.resolveThread(nextJob));
+    const execution = await this.executor.execute(job, job.promptTemplate, executionPolicy);
+    let platformMessageId = '';
+    if (execution.replyText) {
+      const channelRuntime = this.options.getChannelRuntime();
+      if (!channelRuntime.sendScheduledMessage) {
+        throw new Error('WeChat channel runtime does not support scheduled delivery.');
+      }
+      platformMessageId = await channelRuntime.sendScheduledMessage(job.workspaceId, job.route, execution.replyText);
+      if (!platformMessageId) {
+        throw new Error('WeChat gateway did not return a message id for scheduled delivery.');
+      }
+    }
+    return {
+      threadId: execution.threadId,
+      runId: execution.runId,
+      replyText: execution.replyText,
+      platformMessageId: platformMessageId || undefined,
+    };
+  }
+
+  private async resolveThread(job: ScheduledJob) {
+    const workspaceRouter = this.options.getWorkspaceRouter();
+    const route = job.route;
+    if (route.threadId) {
+      await workspaceRouter.getThread(route.threadId);
+      return route.threadId;
+    }
+    const channelId = route.channelId;
+    const participantId = route.participantId || '';
+    const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, 'weixin');
+    if (binding?.thread_id) {
+      return binding.thread_id;
+    }
+    const thread = await workspaceRouter.createThread(
+      job.workspaceId,
+      job.description || `Scheduled ${job.platform} task`,
+    );
+    const now = new Date().toISOString();
+    this.options.store.upsertPlatformThreadBinding({
+      workspace_id: job.workspaceId,
+      platform: 'weixin',
+      chat_id: channelId,
+      platform_user_id: participantId,
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+    const authorized = this.options.store.getAuthorizedUser(job.workspaceId, participantId, 'weixin');
+    if (authorized) {
+      this.options.store.updateAuthorizedUserThread(job.workspaceId, participantId, thread.id, 'weixin');
+    }
+    return thread.id;
+  }
+}

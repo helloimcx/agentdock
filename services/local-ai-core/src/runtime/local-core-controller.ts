@@ -51,6 +51,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly workspaceRouter: WorkspaceRouter;
   private readonly knowledgeProvider: KnowledgeRuntime;
   private readonly channelRuntime: ChannelRuntime;
+  private readonly weixinChannelRuntime: ChannelRuntime;
   private readonly scheduler: SchedulerService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
@@ -71,6 +72,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
     this.channelRuntime = this.runtime.channelRuntime;
+    this.weixinChannelRuntime = this.runtime.weixinChannelRuntime;
     this.scheduler = this.runtime.scheduler;
     this.busUnsubscribers.push(
       this.kernel.context.bus.on('platform.bridge.updated', (event) => {
@@ -128,6 +130,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async restartService() {
     await this.channelRuntime.refreshBindings?.();
+    await this.weixinChannelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return { status: 'running' as const };
   }
@@ -143,6 +146,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
     const next = await this.state.saveRawConfigFile(raw);
     await this.channelRuntime.refreshBindings?.();
+    await this.weixinChannelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return next;
   }
@@ -150,6 +154,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
     const next = await this.state.saveStructuredConfigFile(config);
     await this.channelRuntime.refreshBindings?.();
+    await this.weixinChannelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return next;
   }
@@ -157,6 +162,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
     const settings = await this.state.saveSettings(input);
     await this.channelRuntime.refreshBindings?.();
+    await this.weixinChannelRuntime.refreshBindings?.();
     await this.emitRuntime();
     return settings;
   }
@@ -317,50 +323,60 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]> {
-    if (platform && platform !== this.channelRuntime.platform) {
-      return [];
+    if (!platform) {
+      const [larkStatuses, weixinStatuses] = await Promise.all([
+        this.channelRuntime.listStatuses(),
+        this.weixinChannelRuntime.listStatuses(),
+      ]);
+      return [...larkStatuses, ...weixinStatuses];
     }
-    return this.channelRuntime.listStatuses();
+    return this.resolveChannelRuntime(platform).listStatuses();
   }
 
   async getChannelGatewayStatus(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.getStatus(workspaceId);
+    return this.resolveChannelRuntime(platform).getStatus(workspaceId);
   }
 
   async testChannelConnection(platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.testConnection(workspaceId);
+    return this.resolveChannelRuntime(platform).testConnection(workspaceId);
   }
 
   async enableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.enable(workspaceId);
+    return this.resolveChannelRuntime(platform).enable(workspaceId);
   }
 
   async disableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.disable(workspaceId);
+    return this.resolveChannelRuntime(platform).disable(workspaceId);
   }
 
   async listChannelPendingPairings(platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.listPendingPairings(workspaceId);
+    return this.resolveChannelRuntime(platform).listPendingPairings(workspaceId);
   }
 
   async approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.approvePairing(code);
+    return this.resolveChannelRuntime(platform).approvePairing(code);
   }
 
   async rejectChannelPairing(platform: string, code: string) {
-    this.assertPlatform(platform);
-    return this.channelRuntime.rejectPairing(code);
+    return this.resolveChannelRuntime(platform).rejectPairing(code);
   }
 
   async listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> {
-    this.assertPlatform(platform);
-    return this.channelRuntime.listAuthorizedUsers(workspaceId);
+    return this.resolveChannelRuntime(platform).listAuthorizedUsers(workspaceId);
+  }
+
+  async getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> {
+    const runtime = this.weixinChannelRuntime as import('../gateway/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
+    return runtime.getQrCode(workspaceId);
+  }
+
+  async checkWeixinQrCodeStatus(workspaceId: string, ticket: string): Promise<{
+    status: 'wait' | 'signed' | 'confirmed' | 'expired';
+    userName?: string;
+    userId?: string;
+  }> {
+    const runtime = this.weixinChannelRuntime as import('../gateway/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
+    return runtime.checkQrCodeStatus(workspaceId, ticket);
   }
 
   async listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]> {
@@ -411,9 +427,17 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.emit('logs', message);
   }
 
-  private assertPlatform(platform: string) {
-    if (platform !== this.channelRuntime.platform) {
-      throw new Error(`Unsupported channel platform: ${platform}`);
+  private resolveChannelRuntime(platform: string): ChannelRuntime {
+    if (platform === this.channelRuntime.platform) {
+      return this.channelRuntime;
     }
+    if (platform === this.weixinChannelRuntime.platform) {
+      return this.weixinChannelRuntime;
+    }
+    throw new Error(`Unsupported channel platform: ${platform}`);
+  }
+
+  private assertPlatform(platform: string) {
+    this.resolveChannelRuntime(platform);
   }
 }

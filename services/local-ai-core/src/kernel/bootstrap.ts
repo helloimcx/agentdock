@@ -34,10 +34,12 @@ import {
   createBuiltinStaticAgentCapabilityPlugin,
 } from '../plugins/builtin/agent-localcore-acp-plugin.js';
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
+import { createBuiltinWeixinChannelPlugin } from '../plugins/builtin/channel-weixin-plugin.js';
 import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';
 import { createBuiltinNoopKnowledgePlugin } from '../plugins/builtin/knowledge-noop-plugin.js';
 import { createBuiltinCronSchedulerPlugin } from '../plugins/builtin/scheduler-cron-plugin.js';
 import { createBuiltinLarkSchedulerPlugin } from '../plugins/builtin/scheduler-lark-plugin.js';
+import { createBuiltinWeixinSchedulerPlugin } from '../plugins/builtin/scheduler-weixin-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
@@ -57,6 +59,7 @@ export interface LocalCoreRuntimeBootstrap {
   store: LocalCoreAcpStore;
   agentRuntimes: AgentRuntime[];
   channelRuntime: ChannelRuntime;
+  weixinChannelRuntime: ChannelRuntime;
   knowledgeProvider: KnowledgeRuntime;
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
   workspaceRouter: WorkspaceRouter;
@@ -231,7 +234,14 @@ export function bootstrapLocalCoreRuntime(options: {
     createBuiltinClaudeCodeAgentPlugin(),
   ];
   let workspaceRouter!: WorkspaceRouter;
+  let weixinChannelRuntime!: ChannelRuntime;
   const channelPlugin = createBuiltinLarkChannelPlugin({
+    store,
+    readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
+    getWorkspaceRouter: () => workspaceRouter,
+    log: options.log,
+  });
+  const weixinChannelPlugin = createBuiltinWeixinChannelPlugin({
     store,
     readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
     getWorkspaceRouter: () => workspaceRouter,
@@ -251,11 +261,18 @@ export function bootstrapLocalCoreRuntime(options: {
       getChannelRuntime: () => channelRuntime,
       log: options.log,
     }),
+    createBuiltinWeixinSchedulerPlugin({
+      store,
+      getWorkspaceRouter: () => workspaceRouter,
+      getChannelRuntime: () => weixinChannelRuntime,
+      log: options.log,
+    }),
   ];
   for (const plugin of agentPlugins.filter((plugin) => plugin !== localCoreAgentPlugin)) {
     registerPlugin(kernel, plugin);
   }
   registerPlugin(kernel, channelPlugin);
+  registerPlugin(kernel, weixinChannelPlugin);
   registerPlugin(kernel, knowledgePlugin);
   for (const plugin of schedulerPlugins) {
     registerPlugin(kernel, plugin);
@@ -264,6 +281,7 @@ export function bootstrapLocalCoreRuntime(options: {
     .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
     .map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
   const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
+  weixinChannelRuntime = resolveChannelRuntime(weixinChannelPlugin, kernel.context).channel;
   const knowledgeRuntime = kernel.plugins.isEnabled(knowledgePlugin.manifest.id)
     ? resolveKnowledgeRuntime(knowledgePlugin, kernel.context)
     : resolveKnowledgeRuntime(createBuiltinNoopKnowledgePlugin(), kernel.context);
@@ -326,6 +344,7 @@ export function bootstrapLocalCoreRuntime(options: {
     store,
     agentRuntimes,
     channelRuntime,
+    weixinChannelRuntime,
     knowledgeProvider,
     knowledgeAttachments,
     workspaceRouter,

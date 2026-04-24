@@ -54,6 +54,8 @@ import {
   startCoreService,
   stopCoreService,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
+  getWeixinQrCode as getCoreWeixinQrCode,
+  checkWeixinQrCodeStatus as checkCoreWeixinQrCodeStatus,
 } from '../../packages/core-sdk/src';
 import { getRuntimeProvider, setRuntimeProvider, type RuntimeProvider } from '@/app/runtime';
 
@@ -81,6 +83,12 @@ type DesktopProvider = {
   approveChannelPairing: (platform: string, code: string) => Promise<LocalCoreChannelAuthorizedUser>;
   rejectChannelPairing: (platform: string, code: string) => Promise<{ rejected: boolean }>;
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelAuthorizedUser[]>;
+  getWeixinQrCode: (workspaceId: string) => Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }>;
+  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string) => Promise<{
+    status: 'wait' | 'signed' | 'confirmed' | 'expired';
+    userName?: string;
+    userId?: string;
+  }>;
   listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
   getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
   testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;
@@ -129,6 +137,8 @@ const electronProvider: DesktopProvider = {
   approveChannelPairing: (platform: string, code: string) => requireDesktopBridge().approveChannelPairing(platform, code),
   rejectChannelPairing: (platform: string, code: string) => requireDesktopBridge().rejectChannelPairing(platform, code),
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => requireDesktopBridge().listChannelAuthorizedUsers(platform, workspaceId),
+  getWeixinQrCode: (workspaceId: string) => getCoreWeixinQrCode(workspaceId),
+  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket),
   listLarkGateways: () => requireDesktopBridge().listLarkGateways(),
   getLarkGatewayStatus: (workspaceId: string) => requireDesktopBridge().getLarkGatewayStatus(workspaceId),
   testLarkConnection: (workspaceId: string) => requireDesktopBridge().testLarkConnection(workspaceId),
@@ -172,6 +182,8 @@ const localCoreProvider: DesktopProvider = {
   rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
     listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
+  getWeixinQrCode: (workspaceId: string) => getCoreWeixinQrCode(workspaceId),
+  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket),
   listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
   getLarkGatewayStatus: (workspaceId: string) => getCoreLarkGatewayStatus(workspaceId),
   testLarkConnection: (workspaceId: string) => testCoreLarkConnection(workspaceId),
@@ -261,6 +273,13 @@ export const rejectChannelPairing = (platform: string, code: string): Promise<{ 
   requireProvider().rejectChannelPairing(platform, code);
 export const listChannelAuthorizedUsers = (platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> =>
   requireProvider().listChannelAuthorizedUsers(platform, workspaceId);
+export const getWeixinQrCode = (workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> =>
+  requireProvider().getWeixinQrCode(workspaceId);
+export const checkWeixinQrCodeStatus = (workspaceId: string, ticket: string): Promise<{
+  status: 'wait' | 'signed' | 'confirmed' | 'expired';
+  userName?: string;
+  userId?: string;
+}> => requireProvider().checkWeixinQrCodeStatus(workspaceId, ticket);
 export const listLarkGateways = (): Promise<LocalCoreLarkGatewayStatus[]> => requireProvider().listLarkGateways();
 export const getLarkGatewayStatus = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().getLarkGatewayStatus(workspaceId);
 export const testLarkConnection = (workspaceId: string): Promise<LocalCoreLarkConnectionResult> => requireProvider().testLarkConnection(workspaceId);

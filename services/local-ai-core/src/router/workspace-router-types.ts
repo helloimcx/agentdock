@@ -99,7 +99,7 @@ export type LocalScheduledJobRunRow = {
 export type LocalPlatformPairingRow = {
   code: string;
   workspace_id: string;
-  platform: 'lark';
+  platform: string;
   platform_user_id: string;
   chat_id: string;
   display_name: string;
@@ -111,7 +111,7 @@ export type LocalPlatformPairingRow = {
 export type LocalPlatformUserRow = {
   id: string;
   workspace_id: string;
-  platform: 'lark';
+  platform: string;
   platform_user_id: string;
   chat_id: string;
   display_name: string;
@@ -121,7 +121,7 @@ export type LocalPlatformUserRow = {
 
 export type LocalPlatformThreadBindingRow = {
   workspace_id: string;
-  platform: 'lark';
+  platform: string;
   chat_id: string;
   platform_user_id: string;
   thread_id: string;

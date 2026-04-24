@@ -101,6 +101,12 @@ export interface LocalAiCoreBindings extends EventEmitter {
   approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser>;
   rejectChannelPairing(platform: string, code: string): Promise<{ rejected: boolean }>;
   listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]>;
+  getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }>;
+  checkWeixinQrCodeStatus(workspaceId: string, ticket: string): Promise<{
+    status: 'wait' | 'signed' | 'confirmed' | 'expired';
+    userName?: string;
+    userId?: string;
+  }>;
   listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]>;
   getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
   testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult>;
@@ -300,6 +306,15 @@ export class LocalAiCoreServer {
           json(res, 200, await this.bindings.getChannelGatewayStatus(platform, workspaceOrCollection));
           return;
         }
+        if (platform === 'weixin' && segments.length === 4 && action === 'qrcode' && segments[3] === 'status') {
+          const ticket = String(url.searchParams.get('ticket') || '');
+          if (!ticket) {
+            json(res, 400, null, false, 'Missing ticket parameter');
+            return;
+          }
+          json(res, 200, await this.bindings.checkWeixinQrCodeStatus(workspaceOrCollection, ticket));
+          return;
+        }
       }
       if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/')) {
         const suffix = path.slice('/api/local/v1/platforms/'.length);
@@ -329,6 +344,10 @@ export class LocalAiCoreServer {
         }
         if (action === 'disable') {
           json(res, 200, await this.bindings.disableChannelGateway(platform, workspaceOrCollection));
+          return;
+        }
+        if (platform === 'weixin' && segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {
+          json(res, 200, await this.bindings.getWeixinQrCode(workspaceOrCollection));
           return;
         }
       }

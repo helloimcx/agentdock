@@ -179,8 +179,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   getStatus(workspaceId: string): LocalCoreLarkGatewayStatus {
     this.options.store.expirePendingPairings();
     const binding = this.runtime.get(workspaceId);
-    const pairings = this.options.store.listPendingPairings(workspaceId).filter((row) => row.expires_at >= new Date().toISOString());
-    const users = this.options.store.listAuthorizedUsers(workspaceId);
+    const pairings = this.options.store.listPendingPairings(workspaceId)
+      .filter((row) => row.platform === 'lark' && row.expires_at >= new Date().toISOString());
+    const users = this.options.store.listAuthorizedUsers(workspaceId, 'lark');
     return {
       workspaceId,
       platform: 'lark',
@@ -202,12 +203,12 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   listPendingPairings(workspaceId?: string): LocalCorePairingRequest[] {
     this.options.store.expirePendingPairings();
     return this.options.store
-      .listPairingRequests(workspaceId)
+      .listPairingRequests(workspaceId, 'lark')
       .filter((item) => item.status === 'pending' && item.expiresAt >= new Date().toISOString());
   }
 
   listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
-    return this.options.store.listAuthorizedUsers(workspaceId);
+    return this.options.store.listAuthorizedUsers(workspaceId, 'lark');
   }
 
   async start() {
@@ -223,6 +224,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const pairing = this.options.store.getPairingRequest(code);
     if (!pairing) {
       throw new Error(`Pairing code not found: ${code}`);
+    }
+    if (pairing.platform !== 'lark') {
+      throw new Error(`Pairing code ${code} is not a Lark pairing`);
     }
     if (pairing.status !== 'pending') {
       throw new Error(`Pairing code ${code} is already ${pairing.status}`);
@@ -245,7 +249,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     });
     this.options.store.updatePairingStatus(code, 'approved');
     this.notifyRuntimeStateChanged();
-    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id).find((entry) => entry.id === userId);
+    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id, 'lark').find((entry) => entry.id === userId);
     if (!user) {
       throw new Error('Authorized user lookup failed after approval');
     }
@@ -441,7 +445,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
     if (!authorized) {
       const existingPending = this.options.store.listPendingPairings(input.workspaceId).find((item) =>
-        item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
+        item.platform === 'lark' && item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
       );
       let pairingCode = existingPending?.code || '';
       if (!existingPending) {

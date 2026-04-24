@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Save, Trash2, Wrench } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, Card, Input, Select, Textarea } from '@/components/ui';
 import {
   approveLarkPairing,
+  approveChannelPairing,
   disableLarkGateway,
+  disableChannelGateway,
   enableLarkGateway,
+  enableChannelGateway,
   getLarkGatewayStatus,
+  getChannelGatewayStatus,
   listLarkAuthorizedUsers,
+  listChannelAuthorizedUsers,
   listLarkPendingPairings,
+  listChannelPendingPairings,
   rejectLarkPairing,
+  rejectChannelPairing,
   getRuntimeStatus,
   onRuntimeEvent,
   probeWorkspaceStreaming,
@@ -21,6 +29,9 @@ import {
   startDesktopService,
   stopDesktopService,
   testLarkConnection,
+  testChannelConnection,
+  getWeixinQrCode,
+  checkWeixinQrCodeStatus,
 } from '@/api/desktop';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
@@ -39,6 +50,10 @@ import type {
 import type { WorkspaceStreamingProbeResult } from '../../../packages/contracts/src';
 import type {
   LocalCoreAuthorizedUser,
+  LocalCoreChannelAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
+  LocalCoreChannelPairingRequest,
   LocalCoreLarkGatewayStatus,
   LocalCorePairingRequest,
 } from '../../../packages/contracts/src';
@@ -325,19 +340,7 @@ function getPlatformFieldDefinitions(platformType: string, options: Record<strin
         { key: 'allow_from', label: 'Allow from', type: 'text', placeholder: '*' },
       ];
     case 'weixin':
-      return [
-        { key: 'token', label: 'Bearer token', type: 'password' },
-        { key: 'base_url', label: 'Base URL', type: 'text', placeholder: 'https://ilinkai.weixin.qq.com' },
-        { key: 'cdn_base_url', label: 'CDN base URL', type: 'text' },
-        { key: 'allow_from', label: 'Allow from', type: 'text', placeholder: '*' },
-        { key: 'account_id', label: 'Account ID', type: 'text', placeholder: 'default' },
-        { key: 'route_tag', label: 'Route tag', type: 'text' },
-        { key: 'long_poll_timeout_ms', label: 'Long poll timeout (ms)', type: 'number', placeholder: '35000' },
-        { key: 'state_dir', label: 'State dir', type: 'text' },
-        { key: 'proxy', label: 'Proxy URL', type: 'text' },
-        { key: 'proxy_username', label: 'Proxy username', type: 'text' },
-        { key: 'proxy_password', label: 'Proxy password', type: 'password' },
-      ];
+      return [];
     case 'qq':
       return [
         { key: 'ws_url', label: 'WebSocket URL', type: 'text', placeholder: 'ws://127.0.0.1:3001' },
@@ -413,6 +416,16 @@ export default function DesktopWorkspace() {
   const [larkPairings, setLarkPairings] = useState<LocalCorePairingRequest[]>([]);
   const [larkUsers, setLarkUsers] = useState<LocalCoreAuthorizedUser[]>([]);
   const [larkPendingAction, setLarkPendingAction] = useState<'test' | 'enable' | 'disable' | `approve:${string}` | `reject:${string}` | null>(null);
+  const [wechatStatus, setWechatStatus] = useState<LocalCoreChannelGatewayStatus | null>(null);
+  const [wechatPairings, setWechatPairings] = useState<LocalCoreChannelPairingRequest[]>([]);
+  const [wechatUsers, setWechatUsers] = useState<LocalCoreChannelAuthorizedUser[]>([]);
+  const [wechatPendingAction, setWechatPendingAction] = useState<'test' | 'enable' | 'disable' | `approve:${string}` | `reject:${string}` | 'login' | null>(null);
+  const [wechatQrTicket, setWechatQrTicket] = useState<string | null>(null);
+  const [wechatQrUrl, setWechatQrUrl] = useState<string | null>(null);
+  const [wechatQrStatus, setWechatQrStatus] = useState<string | null>(null);
+  const [wechatQrError, setWechatQrError] = useState<string | null>(null);
+  const [wechatQrExpiresIn, setWechatQrExpiresIn] = useState<number>(0);
+  const wechatQrPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestedProject = searchParams.get('project') || '';
   const requestedProjectRef = useRef(requestedProject);
   const runtimeReady = runtime?.phase === 'api_ready';
@@ -518,6 +531,29 @@ export default function DesktopWorkspace() {
     }
   }, []);
 
+  const loadWechatState = useCallback(async (workspaceId?: string) => {
+    if (!workspaceId) {
+      setWechatStatus(null);
+      setWechatPairings([]);
+      setWechatUsers([]);
+      return;
+    }
+    try {
+      const [status, pairings, users] = await Promise.all([
+        getChannelGatewayStatus('weixin', workspaceId),
+        listChannelPendingPairings('weixin', workspaceId),
+        listChannelAuthorizedUsers('weixin', workspaceId),
+      ]);
+      setWechatStatus(status);
+      setWechatPairings(pairings);
+      setWechatUsers(users);
+    } catch {
+      setWechatStatus(null);
+      setWechatPairings([]);
+      setWechatUsers([]);
+    }
+  }, []);
+
   useEffect(() => {
     void loadAll();
     const stop = onRuntimeEvent((nextRuntime) => {
@@ -585,6 +621,21 @@ export default function DesktopWorkspace() {
     }
     void loadLarkState(selectedProject?.name);
   }, [loadLarkState, selectedProject]);
+
+  useEffect(() => {
+    const hasWeixin = (selectedProject?.platforms || []).some((platform) => String(platform?.type || '').trim().toLowerCase() === 'weixin');
+    if (!hasWeixin) {
+      setWechatStatus(null);
+      setWechatPairings([]);
+      setWechatUsers([]);
+      setWechatQrTicket(null);
+      setWechatQrUrl(null);
+      setWechatQrStatus(null);
+      setWechatQrError(null);
+      return;
+    }
+    void loadWechatState(selectedProject?.name);
+  }, [loadWechatState, selectedProject]);
 
   const updateSelectedProject = useCallback((updater: (project: DesktopProjectConfig) => DesktopProjectConfig) => {
     setNotice(null);
@@ -948,6 +999,161 @@ export default function DesktopWorkspace() {
       setLarkPendingAction(null);
     }
   }, [loadLarkState, selectedProject?.name]);
+
+  // ==================== WeChat handlers ====================
+
+  const handleTestWechatConnection = useCallback(async () => {
+    if (!selectedProject?.name) return;
+    setWechatPendingAction('test');
+    try {
+      const result = await testChannelConnection('weixin', selectedProject.name);
+      await loadWechatState(selectedProject.name);
+      setNotice({
+        tone: result.success ? 'success' : 'warning',
+        title: result.success ? 'WeChat connection test passed' : 'WeChat connection test failed',
+        detail: result.success ? `Account ${result.appId} is reachable.` : result.error || 'Connection failed.',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        title: 'Could not test WeChat connection',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setWechatPendingAction(null);
+    }
+  }, [loadWechatState, selectedProject?.name]);
+
+  const handleToggleWechatGateway = useCallback(async (enable: boolean) => {
+    if (!selectedProject?.name) return;
+    setWechatPendingAction(enable ? 'enable' : 'disable');
+    try {
+      const status = enable
+        ? await enableChannelGateway('weixin', selectedProject.name)
+        : await disableChannelGateway('weixin', selectedProject.name);
+      await loadWechatState(selectedProject.name);
+      setNotice({
+        tone: status.connected || status.status === 'running' ? 'success' : 'warning',
+        title: enable ? 'WeChat gateway started' : 'WeChat gateway stopped',
+        detail: status.lastError || `Gateway status is now ${status.status}.`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'error',
+        title: enable ? 'Could not start WeChat gateway' : 'Could not stop WeChat gateway',
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setWechatPendingAction(null);
+    }
+  }, [loadWechatState, selectedProject?.name]);
+
+  const handleApproveWechatPairing = useCallback(async (code: string) => {
+    setWechatPendingAction(`approve:${code}`);
+    try {
+      await approveChannelPairing('weixin', code);
+      await loadWechatState(selectedProject?.name);
+    } finally {
+      setWechatPendingAction(null);
+    }
+  }, [loadWechatState, selectedProject?.name]);
+
+  const handleRejectWechatPairing = useCallback(async (code: string) => {
+    setWechatPendingAction(`reject:${code}`);
+    try {
+      await rejectChannelPairing('weixin', code);
+      await loadWechatState(selectedProject?.name);
+    } finally {
+      setWechatPendingAction(null);
+    }
+  }, [loadWechatState, selectedProject?.name]);
+
+  const handleWechatQrLogin = useCallback(async () => {
+    if (!selectedProject?.name) return;
+    setWechatPendingAction('login');
+    setWechatQrStatus(null);
+    setWechatQrError(null);
+    try {
+      if (configDraft) {
+        const normalized = normalizeDesktopConfigDraft(configDraft);
+        const saved = await saveStructuredConfigFile(normalized);
+        setRawDraft(saved.raw);
+        setConfigDraft(saved.parsed ? clone(saved.parsed) : normalized);
+        setRestartPending(false);
+      }
+      const { ticket, expiresIn, qrCodeUrl } = await getWeixinQrCode(selectedProject.name);
+      setWechatQrTicket(ticket);
+      setWechatQrUrl(qrCodeUrl);
+      setWechatQrExpiresIn(expiresIn);
+      setWechatQrStatus('wait');
+      await loadWechatState(selectedProject.name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setWechatQrError(message);
+      setNotice({
+        tone: 'error',
+        title: 'Could not get WeChat QR code',
+        detail: message,
+      });
+    } finally {
+      setWechatPendingAction(null);
+    }
+  }, [configDraft, loadWechatState, selectedProject?.name]);
+
+  const handleCancelWechatQr = useCallback(() => {
+    setWechatQrTicket(null);
+    setWechatQrUrl(null);
+    setWechatQrStatus(null);
+    setWechatQrError(null);
+    if (wechatQrPollRef.current) {
+      clearTimeout(wechatQrPollRef.current);
+      wechatQrPollRef.current = null;
+    }
+  }, []);
+
+  // QR code status polling
+  useEffect(() => {
+    if (!wechatQrTicket || !selectedProject?.name) return;
+    if (wechatQrStatus === 'confirmed' || wechatQrStatus === 'expired') return;
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const result = await checkWeixinQrCodeStatus(selectedProject!.name!, wechatQrTicket);
+        if (cancelled) return;
+        setWechatQrStatus(result.status);
+        if (result.status === 'signed' && result.userName) {
+          setWechatQrStatus('signed');
+        }
+        if (result.status === 'confirmed') {
+          setWechatQrStatus('confirmed');
+          await loadWechatState(selectedProject!.name);
+          setNotice({
+            tone: 'success',
+            title: 'WeChat QR code scan confirmed',
+            detail: result.userName ? `Linked to ${result.userName}` : 'Successfully linked to WeChat.',
+          });
+        }
+        if (result.status === 'expired') {
+          setNotice({
+            tone: 'warning',
+            title: 'QR code expired',
+            detail: 'The QR code has expired. Please request a new one.',
+          });
+        }
+      } catch {
+        // Silently retry on polling errors
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
+    wechatQrPollRef.current = interval;
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      wechatQrPollRef.current = null;
+    };
+  }, [wechatQrTicket, selectedProject?.name, wechatQrStatus, loadWechatState]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1723,49 +1929,53 @@ export default function DesktopWorkspace() {
                           <Plus size={14} /> Platform
                         </Button>
                       </div>
-                      {(selectedProject.platforms || []).map((platform, index) => (
-                        <div key={`${platform.type}-${index}`} className="grid grid-cols-[240px_minmax(0,1fr)_40px] gap-3">
-                          <div className="space-y-3">
-                            <Select
-                              label="Type"
-                              value={getSelectValue(platform.type, DESKTOP_PLATFORM_TYPE_OPTIONS)}
-                              onChange={(event) =>
-                                updateSelectedProject((project) => {
-                                  const platforms = [...(project.platforms || [])];
-                                  platforms[index] = {
-                                    ...platforms[index],
-                                    type: event.target.value === CUSTOM_SELECT_VALUE ? '' : event.target.value,
-                                  };
-                                  return { ...project, platforms };
-                                })
-                              }
-                            >
-                              {DESKTOP_PLATFORM_TYPE_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                              <option value={CUSTOM_SELECT_VALUE}>custom</option>
-                            </Select>
-                            {getSelectValue(platform.type, DESKTOP_PLATFORM_TYPE_OPTIONS) === CUSTOM_SELECT_VALUE && (
-                              <Input
-                                label="Custom platform type"
-                                value={platform.type}
+                      {(selectedProject.platforms || []).map((platform, index) => {
+                        const platformType = String(platform.type || '').trim().toLowerCase();
+                        const isWeixinPlatform = platformType === 'weixin';
+                        const platformFields = getPlatformFieldDefinitions(platform.type, platform.options || {});
+                        return (
+                          <div key={`${platform.type}-${index}`} className="grid grid-cols-[240px_minmax(0,1fr)_40px] gap-3">
+                            <div className="space-y-3">
+                              <Select
+                                label="Type"
+                                value={getSelectValue(platform.type, DESKTOP_PLATFORM_TYPE_OPTIONS)}
                                 onChange={(event) =>
                                   updateSelectedProject((project) => {
                                     const platforms = [...(project.platforms || [])];
-                                    platforms[index] = { ...platforms[index], type: event.target.value };
+                                    platforms[index] = {
+                                      ...platforms[index],
+                                      type: event.target.value === CUSTOM_SELECT_VALUE ? '' : event.target.value,
+                                    };
                                     return { ...project, platforms };
                                   })
                                 }
-                                placeholder="Enter a platform type supported by cc-connect"
-                              />
-                            )}
-                          </div>
-                          <div className="space-y-3">
-                            {getPlatformFieldDefinitions(platform.type, platform.options || {}).length > 0 ? (
+                              >
+                                {DESKTOP_PLATFORM_TYPE_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                                <option value={CUSTOM_SELECT_VALUE}>custom</option>
+                              </Select>
+                              {getSelectValue(platform.type, DESKTOP_PLATFORM_TYPE_OPTIONS) === CUSTOM_SELECT_VALUE && (
+                                <Input
+                                  label="Custom platform type"
+                                  value={platform.type}
+                                  onChange={(event) =>
+                                    updateSelectedProject((project) => {
+                                      const platforms = [...(project.platforms || [])];
+                                      platforms[index] = { ...platforms[index], type: event.target.value };
+                                      return { ...project, platforms };
+                                    })
+                                  }
+                                  placeholder="Enter a platform type supported by cc-connect"
+                                />
+                              )}
+                            </div>
+                            <div className="space-y-3">
+                              {isWeixinPlatform ? null : platformFields.length > 0 ? (
                               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                {getPlatformFieldDefinitions(platform.type, platform.options || {}).map((field) => {
+                                {platformFields.map((field) => {
                                   const optionValue = platform.options?.[field.key];
                                   if (field.type === 'boolean') {
                                     return (
@@ -1841,31 +2051,34 @@ export default function DesktopWorkspace() {
                                 No guided fields for this platform type yet. Use Raw TOML for advanced setup.
                               </div>
                             )}
-                            <Textarea
-                              label="Current options JSON"
-                              value={JSON.stringify(platform.options || {}, null, 2)}
-                              readOnly
-                              rows={6}
-                              className="font-mono text-[12px]"
-                            />
+                            {!isWeixinPlatform && (
+                              <Textarea
+                                label="Current options JSON"
+                                value={JSON.stringify(platform.options || {}, null, 2)}
+                                readOnly
+                                rows={6}
+                                className="font-mono text-[12px]"
+                              />
+                            )}
                           </div>
-                          <div className="flex items-end">
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() =>
-                                updateSelectedProject((project) => {
-                                  const platforms = [...(project.platforms || [])];
-                                  platforms.splice(index, 1);
-                                  return { ...project, platforms };
-                                })
-                              }
-                            >
-                              <Trash2 size={14} />
-                            </Button>
+                            <div className="flex items-end">
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() =>
+                                  updateSelectedProject((project) => {
+                                    const platforms = [...(project.platforms || [])];
+                                    platforms.splice(index, 1);
+                                    return { ...project, platforms };
+                                  })
+                                }
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </section>
 
                     {(selectedProject.platforms || []).some((platform) => ['lark', 'feishu'].includes(String(platform?.type || '').trim().toLowerCase())) && (
@@ -1970,6 +2183,181 @@ export default function DesktopWorkspace() {
                               <div key={user.id} className="rounded-lg border border-gray-200/80 px-3 py-3 text-sm dark:border-white/[0.08]">
                                 <div className="font-medium text-gray-900 dark:text-white">{user.displayName || user.platformUserId}</div>
                                 <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{user.chatId}</div>
+                                {user.threadId && (
+                                  <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{user.threadId}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </section>
+                    )}
+
+                    {(selectedProject.platforms || []).some((platform) => String(platform?.type || '').trim().toLowerCase() === 'weixin') && (
+                      <section className="space-y-4 rounded-xl border border-gray-200/80 p-4 dark:border-white/[0.08]">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h3 className="font-medium text-gray-900 dark:text-white">WeChat Native Gateway</h3>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                              Local AI Core owns the WeChat runtime directly. Scan the QR code to link your bot account.
+                            </p>
+                          </div>
+                          <div className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            wechatStatus?.status === 'running'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300'
+                              : wechatStatus?.status === 'error'
+                                ? 'bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-300'
+                                : 'bg-gray-100 text-gray-600 dark:bg-white/[0.06] dark:text-gray-300'
+                          }`}>
+                            {wechatStatus?.status || 'disabled'}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div className="rounded-lg border border-gray-200/80 px-3 py-2 dark:border-white/[0.08]">
+                            <div className="text-gray-500 dark:text-gray-400">Setup</div>
+                            <div className="mt-1 text-gray-900 dark:text-white">QR scan</div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200/80 px-3 py-2 dark:border-white/[0.08]">
+                            <div className="text-gray-500 dark:text-gray-400">Pending pairings</div>
+                            <div className="mt-1 text-gray-900 dark:text-white">{wechatStatus?.pendingPairings || 0}</div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200/80 px-3 py-2 dark:border-white/[0.08]">
+                            <div className="text-gray-500 dark:text-gray-400">Authorized users</div>
+                            <div className="mt-1 text-gray-900 dark:text-white">{wechatStatus?.authorizedUsers || 0}</div>
+                          </div>
+                        </div>
+                        {wechatStatus?.lastError && (
+                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
+                            {wechatStatus.lastError}
+                          </div>
+                        )}
+
+                        {/* QR Code Login */}
+                        <div className="rounded-lg border border-gray-200/80 p-4 dark:border-white/[0.08]">
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">QR Code Login</h4>
+                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Scan the QR code with WeChat to link your bot account.
+                          </p>
+                          {wechatQrError && (
+                            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
+                              {wechatQrError}
+                            </div>
+                          )}
+                          {wechatQrTicket && wechatQrUrl && wechatQrStatus ? (
+                            <div className="mt-3 flex flex-col items-center gap-3">
+                              <div className={`rounded-xl border-2 p-3 ${
+                                wechatQrStatus === 'confirmed'
+                                  ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/20'
+                                  : wechatQrStatus === 'signed'
+                                    ? 'border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/20'
+                                    : wechatQrStatus === 'expired'
+                                      ? 'border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-950/20'
+                                      : wechatQrStatus === 'wait'
+                                        ? 'border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-950/20'
+                                        : 'border-gray-200 dark:border-white/[0.08]'
+                              }`}>
+                                <QRCodeSVG
+                                  value={wechatQrUrl}
+                                  size={200}
+                                  level="M"
+                                  includeMargin
+                                />
+                              </div>
+                              <div className="text-sm">
+                                {wechatQrStatus === 'wait' && (
+                                  <span className="text-blue-600 dark:text-blue-400">Waiting for scan...</span>
+                                )}
+                                {wechatQrStatus === 'signed' && (
+                                  <span className="text-amber-600 dark:text-amber-400">Scanned! Waiting for confirmation...</span>
+                                )}
+                                {wechatQrStatus === 'confirmed' && (
+                                  <span className="text-emerald-600 dark:text-emerald-400">Confirmed! Bot linked successfully.</span>
+                                )}
+                                {wechatQrStatus === 'expired' && (
+                                  <span className="text-red-600 dark:text-red-400">QR code expired. Please request a new one.</span>
+                                )}
+                              </div>
+                              <Button variant="secondary" size="sm" onClick={handleCancelWechatQr}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="mt-3">
+                              <Button
+                                variant="secondary"
+                                onClick={() => void handleWechatQrLogin()}
+                                loading={wechatPendingAction === 'login'}
+                              >
+                                Show QR Code
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleTestWechatConnection()}
+                            loading={wechatPendingAction === 'test'}
+                          >
+                            Test connection
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleToggleWechatGateway(true)}
+                            loading={wechatPendingAction === 'enable'}
+                          >
+                            Start gateway
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleToggleWechatGateway(false)}
+                            loading={wechatPendingAction === 'disable'}
+                          >
+                            Stop gateway
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Pending pairings</h4>
+                            {wechatPairings.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-gray-200/80 px-3 py-4 text-sm text-gray-500 dark:border-white/[0.08] dark:text-gray-400">
+                                No pending pairings yet. Send a message from WeChat to trigger pairing.
+                              </div>
+                            ) : wechatPairings.map((pairing) => (
+                              <div key={pairing.code} className="rounded-lg border border-gray-200/80 px-3 py-3 text-sm dark:border-white/[0.08]">
+                                <div className="font-medium text-gray-900 dark:text-white">{pairing.displayName || pairing.participantId}</div>
+                                <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{pairing.code} · {pairing.channelId}</div>
+                                <div className="mt-3 flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => void handleApproveWechatPairing(pairing.code)}
+                                    loading={wechatPendingAction === `approve:${pairing.code}`}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    onClick={() => void handleRejectWechatPairing(pairing.code)}
+                                    loading={wechatPendingAction === `reject:${pairing.code}`}
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white">Authorized users</h4>
+                            {wechatUsers.length === 0 ? (
+                              <div className="rounded-lg border border-dashed border-gray-200/80 px-3 py-4 text-sm text-gray-500 dark:border-white/[0.08] dark:text-gray-400">
+                                No authorized users yet.
+                              </div>
+                            ) : wechatUsers.map((user) => (
+                              <div key={user.id} className="rounded-lg border border-gray-200/80 px-3 py-3 text-sm dark:border-white/[0.08]">
+                                <div className="font-medium text-gray-900 dark:text-white">{user.displayName || user.participantId}</div>
+                                <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{user.channelId}</div>
                                 {user.threadId && (
                                   <div className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{user.threadId}</div>
                                 )}
