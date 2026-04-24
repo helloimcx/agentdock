@@ -19,6 +19,14 @@ pnpm dev          # 启动开发环境（Vite + Electron）
 pnpm start:core   # 启动已构建的 Local AI Core
 ```
 
+## macOS 打开应用
+
+如果安装后提示应用无法打开，可先清除隔离属性再启动：
+
+```bash
+xattr -cr /Applications/AgentDock.app
+```
+
 ## 常用命令
 
 | 命令 | 说明 |
