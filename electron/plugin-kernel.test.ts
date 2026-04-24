@@ -165,7 +165,7 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
 });
 
 test('runtime bootstrap registers the active knowledge provider in capability snapshot', async () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {
     const runtime = bootstrapLocalCoreRuntime({
       userDataPath,
@@ -199,7 +199,7 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
 });
 
 test('runtime bootstrap supports a disabled knowledge plugin path', () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {
     const runtime = bootstrapLocalCoreRuntime({
       userDataPath,
@@ -231,8 +231,8 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
 });
 
 test('runtime bootstrap knowledge capabilities come from the selected provider plugin', () => {
-  const enabledUserDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
-  const disabledUserDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
+  const enabledUserDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  const disabledUserDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {
     const enabledRuntime = bootstrapLocalCoreRuntime({
       userDataPath: enabledUserDataPath,
@@ -262,7 +262,7 @@ test('runtime bootstrap knowledge capabilities come from the selected provider p
 });
 
 test('runtime bootstrap keeps disabled plugins diagnosable without contributing capabilities', async () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {
     const runtimeDir = join(userDataPath, 'runtime');
     mkdirSync(runtimeDir, { recursive: true });
@@ -425,7 +425,7 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
 });
 
 test('runtime logs are persisted to local-core.log', () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-logs-'));
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-logs-'));
   try {
     const runtime = bootstrapLocalCoreRuntime({
       userDataPath,
@@ -517,7 +517,7 @@ test('channel and scheduler capabilities use registry targets instead of Lark-sp
 });
 
 test('agent runtime selection is registry-based and disabled runtimes do not route workspaces', async () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'ai-workstation-kernel-'));
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {
     const runtimeDir = join(userDataPath, 'runtime');
     mkdirSync(runtimeDir, { recursive: true });

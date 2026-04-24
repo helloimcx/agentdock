@@ -1,5 +1,5 @@
 {
-  "name": "ai-workstation",
+  "name": "agentdock",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -63,8 +63,8 @@
     ]
   },
   "build": {
-    "appId": "com.helloimcx.ccconnectdesktop",
-    "productName": "CC Connect Desktop",
+    "appId": "com.helloimcx.agentdock",
+    "productName": "AgentDock",
     "directories": {
       "output": "release"
     },
@@ -101,7 +101,7 @@
       {
         "provider": "github",
         "owner": "helloimcx",
-        "repo": "cc-connect-desktop"
+        "repo": "agentdock"
       }
     ]
   }

@@ -106,7 +106,7 @@ function createWindow() {
     height: 920,
     minWidth: 1100,
     minHeight: 700,
-    title: 'AI-WorkStation',
+    title: 'AgentDock',
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,

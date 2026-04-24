@@ -129,7 +129,7 @@ export default function Dashboard() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                {localCoreManaged ? 'Local AI Core' : 'AI-WorkStation 运行时'}
+                {localCoreManaged ? 'Local AI Core' : 'AgentDock 运行时'}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {localCoreManaged

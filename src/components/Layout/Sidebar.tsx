@@ -73,7 +73,7 @@ export default function Sidebar() {
         </div>
         {!collapsed && (
           <span className="font-semibold text-gray-900 dark:text-white text-sm tracking-tight">
-            AI-WorkStation
+            AgentDock
           </span>
         )}
       </div>

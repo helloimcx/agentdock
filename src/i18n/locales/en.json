@@ -151,8 +151,8 @@
     "limit": "Line limit"
   },
   "login": {
-    "title": "AI-WorkStation",
-    "subtitle": "Connect to your AI-WorkStation instance",
+    "title": "AgentDock",
+    "subtitle": "Connect to your AgentDock instance",
     "token": "API token",
     "serverUrl": "Server URL",
     "connect": "Connect",

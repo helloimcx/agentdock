@@ -15,7 +15,7 @@ import {
 import { KnowledgeSqliteStore } from '../src/sqlite-store.js';
 
 function withTempDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'ai-workstation-kb-'));
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-kb-'));
   return {
     dir,
     cleanup() {

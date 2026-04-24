@@ -1,6 +1,6 @@
 ---
 name: knowledge-base
-description: Search selected knowledge bases through the local AI-WorkStation knowledge API.
+description: Search selected knowledge bases through the local AgentDock knowledge API.
 ---
 
 Use this skill when the user message includes a `[Selected Knowledge Bases]` block.

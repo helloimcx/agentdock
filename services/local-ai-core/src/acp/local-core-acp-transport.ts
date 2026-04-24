@@ -85,8 +85,8 @@ export class LocalCoreAcpTransport {
         terminal: false,
       },
       clientInfo: {
-        name: 'ai-workstation',
-        title: 'AI-WorkStation',
+        name: 'agentdock',
+        title: 'AgentDock',
         version: '0.1.0',
       },
     }, 30000) as {

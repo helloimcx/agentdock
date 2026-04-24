@@ -5,7 +5,7 @@ import { LocalCoreController } from './local-core-controller.js';
 import { LocalAiCoreServer } from './server.js';
 
 async function main() {
-  const userDataPath = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim() || join(process.cwd(), '.ai-workstation-core');
+  const userDataPath = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim() || join(process.cwd(), '.agentdock-core');
   mkdirSync(userDataPath, { recursive: true });
   const controller = new LocalCoreController(userDataPath);
   controller.on('logs', (line: string) => {

@@ -98,7 +98,7 @@ export default function Login() {
           <p className="text-sm text-center text-gray-500 dark:text-gray-400 mb-3">{t('login.subtitle')}</p>
           <div className="mb-8 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/60 px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
             {desktop
-              ? 'AI-WorkStation 桌面模式会自动连接到本地托管运行时。'
+              ? 'AgentDock 桌面模式会自动连接到本地托管运行时。'
               : 'Browser mode requires a reachable API endpoint. Enter the server URL and access token.'}
           </div>
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-WorkStation is an Electron + React app that manages a `cc-connect` backend service. It runs in two modes:
+AgentDock is an Electron + React app that manages a `cc-connect` backend service. It runs in two modes:
 - **Desktop mode**: Electron app spawns/manages a local `cc-connect` binary, with real-time chat via WebSocket bridge
 - **Web admin mode**: Connects to a remote `cc-connect` instance via API token + server URL
 

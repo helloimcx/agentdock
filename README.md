@@ -1,4 +1,4 @@
-# AI-WorkStation
+# AgentDock
 
 基于 Local AI Core 的本地桌面 AI 工作台，内置原生 Feishu/Lark 网关与本地 ACP 会话运行时。
 

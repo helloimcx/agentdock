@@ -62,7 +62,7 @@ function assertSmokeSnapshot(name, result, options = {}) {
 }
 
 async function runScenario(name, extraEnv = {}, options = {}) {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `ai-workstation-e2e-${name}-`));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `agentdock-e2e-${name}-`));
   const userDataDir = path.join(tempRoot, 'user-data');
   const outputPath = path.join(tempRoot, 'smoke-result.json');
   options.setup?.(userDataDir);

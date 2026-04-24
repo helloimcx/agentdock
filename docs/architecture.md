@@ -1,8 +1,8 @@
-# AI-WorkStation Architecture
+# AgentDock Architecture
 
 ## Summary
 
-AI-WorkStation now runs as a Local AI Core-first desktop app:
+AgentDock now runs as a Local AI Core-first desktop app:
 
 - Electron is only the desktop shell
 - Local AI Core owns runtime, threads, streaming, knowledge, and native Lark ingress

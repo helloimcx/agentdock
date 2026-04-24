@@ -34,7 +34,7 @@ function LoadingScreen() {
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-6">
         <div className="flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-gray-900 px-5 py-4 text-sm text-gray-600 dark:text-gray-300 shadow-sm">
           <RefreshCw size={16} className="animate-spin" />
-        正在初始化 AI-WorkStation 运行时…
+        正在初始化 AgentDock 运行时…
         </div>
     </div>
   );
@@ -58,7 +58,7 @@ function BootstrapFailureScreen({
               <AlertTriangle size={18} />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-red-700 dark:text-red-300">AI-WorkStation 运行时初始化失败</h1>
+              <h1 className="text-lg font-semibold text-red-700 dark:text-red-300">AgentDock 运行时初始化失败</h1>
               <p className="mt-1 text-sm text-red-600 dark:text-red-400 break-words">{message}</p>
             </div>
           </div>
