@@ -483,7 +483,7 @@ test('weixin bridge skips duplicate rendered replies', async () => {
   }
 });
 
-test('weixin bridge splits long replies into multiple text messages', async () => {
+test('weixin bridge keeps context replies to one truncated text message', async () => {
   const originalFetch = globalThis.fetch;
   const sentBodies: any[] = [];
   globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
@@ -540,13 +540,13 @@ test('weixin bridge splits long replies into multiple text messages', async () =
       content: Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 行：这是一段用于测试微信长文本切分的内容。`).join('\n\n'),
     } as any);
 
-    assert.ok(sentBodies.length > 1);
+    assert.equal(sentBodies.length, 1);
     assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
-    assert.equal(sentBodies[1]?.msg?.context_token, 'ctx-1');
     for (const body of sentBodies) {
       const text = body?.msg?.item_list?.[0]?.text_item?.text || '';
-      assert.ok(Buffer.byteLength(text, 'utf-8') <= 900);
-      assert.equal(body?.base_info?.channel_version, '1.0.0');
+      assert.ok(Buffer.byteLength(text, 'utf-8') <= 3500);
+      assert.match(text, /内容过长，已截断以保证微信送达/);
+      assert.equal(body?.base_info?.channel_version, '2.1.7');
       assert.equal(body?.msg?.from_user_id, '');
       assert.match(body?.msg?.client_id || '', /^openclaw-weixin-/);
     }
@@ -557,10 +557,10 @@ test('weixin bridge splits long replies into multiple text messages', async () =
 
 test('weixin bridge sends protocol-compatible final reply payload', async () => {
   const originalFetch = globalThis.fetch;
-  const sentBodies: any[] = [];
+  const sentRequests: Array<{ body: any; headers: Headers }> = [];
   globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body || '{}'));
-    sentBodies.push(body);
+    sentRequests.push({ body, headers: new Headers(init?.headers) });
     return new Response(JSON.stringify({ ret: 0 }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -609,18 +609,151 @@ test('weixin bridge sends protocol-compatible final reply payload', async () => 
   try {
     await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
 
-    assert.equal(sentBodies.length, 1);
-    assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
-    assert.equal(sentBodies[0]?.msg?.from_user_id, '');
-    assert.equal(sentBodies[0]?.base_info?.channel_version, '1.0.0');
-    assert.match(sentBodies[0]?.msg?.client_id || '', /^openclaw-weixin-/);
-    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, 'final reply');
+    assert.equal(sentRequests.length, 1);
+    assert.equal(sentRequests[0]?.body?.msg?.context_token, 'ctx-1');
+    assert.equal(sentRequests[0]?.body?.msg?.from_user_id, '');
+    assert.equal(sentRequests[0]?.body?.msg?.message_state, 2);
+    assert.equal(sentRequests[0]?.body?.base_info?.channel_version, '2.1.7');
+    assert.match(sentRequests[0]?.body?.msg?.client_id || '', /^openclaw-weixin-/);
+    assert.equal(sentRequests[0]?.body?.msg?.item_list?.[0]?.text_item?.text, 'final reply');
+    assert.equal(sentRequests[0]?.headers.get('iLink-App-Id'), 'bot');
+    assert.equal(sentRequests[0]?.headers.get('iLink-App-ClientVersion'), '131335');
+    assert.equal(sentRequests[0]?.headers.get('AuthorizationType'), 'ilink_bot_token');
+    assert.equal(sentRequests[0]?.headers.get('Authorization'), 'Bearer bot-token-1');
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('weixin bridge keeps tool status but omits tool execution result content', async () => {
+test('weixin bridge sends status events in real time', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ ret: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({ type: 'status', sessionKey: 'session:thread-1', content: '正在检查桌面文件' } as any);
+
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
+    assert.equal(sentBodies[0]?.msg?.message_state, 2);
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '正在检查桌面文件');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin bridge sends tool progress in real time before final reply', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ ret: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: '🔧 list desktop' } as any);
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
+
+    assert.equal(sentBodies.length, 2);
+    assert.equal(sentBodies[0]?.msg?.message_state, 2);
+    assert.equal(sentBodies[1]?.msg?.message_state, 2);
+    assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
+    assert.equal(sentBodies[1]?.msg?.context_token, 'ctx-1');
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 list desktop');
+    assert.equal(sentBodies[1]?.msg?.item_list?.[0]?.text_item?.text, 'final reply');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin bridge skips completed tool result updates but keeps final reply', async () => {
   const originalFetch = globalThis.fetch;
   const sentBodies: any[] = [];
   globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
@@ -674,11 +807,77 @@ test('weixin bridge keeps tool status but omits tool execution result content', 
     await gateway.onBridgeEvent({
       type: 'reply',
       sessionKey: 'session:thread-1',
-      content: '🔧 list desktop - completed - /Users/mochuxian/Desktop has many files and this result should not be sent',
+      content: '🔧 Tool update - completed - /Users/mochuxian/Desktop has many files and this result should not be sent',
+    } as any);
+    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
+
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0]?.msg?.message_state, 2);
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, 'final reply');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weixin bridge keeps failed tool update status without execution details', async () => {
+  const originalFetch = globalThis.fetch;
+  const sentBodies: any[] = [];
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(JSON.stringify({ errcode: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'weixin',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'ctx-1',
+      }),
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: { token: 'bot-token-1' } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    accountId: 'bot-1',
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  try {
+    await gateway.onBridgeEvent({
+      type: 'reply',
+      sessionKey: 'session:thread-1',
+      content: '🔧 Tool update - failed - stack trace and command output should not be sent',
     } as any);
 
     assert.equal(sentBodies.length, 1);
-    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 list desktop - completed');
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 Tool update - failed');
   } finally {
     globalThis.fetch = originalFetch;
   }

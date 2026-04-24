@@ -101,7 +101,10 @@ const BACKOFF_DELAY_MS = 30_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
 const PROCESSED_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const WEIXIN_TEXT_MESSAGE_MAX_BYTES = 900;
-const WEIXIN_CHANNEL_VERSION = '1.0.0';
+const WEIXIN_CONTEXT_REPLY_MAX_BYTES = 3500;
+const WEIXIN_CHANNEL_VERSION = '2.1.7';
+const WEIXIN_ILINK_APP_ID = 'bot';
+const WEIXIN_ILINK_APP_CLIENT_VERSION = '131335';
 const RESPONSE_TIMEOUT_MS = 5 * 60 * 1000;
 const TEXT_ITEM_TYPE = 1;
 const IMAGE_ITEM_TYPE = 2;
@@ -194,6 +197,13 @@ function createWechatUin(): string {
   return Buffer.from(String(crypto.randomInt(0, 0xffffffff))).toString('base64');
 }
 
+function createIlinkHeaders(): Record<string, string> {
+  return {
+    'iLink-App-Id': WEIXIN_ILINK_APP_ID,
+    'iLink-App-ClientVersion': WEIXIN_ILINK_APP_CLIENT_VERSION,
+  };
+}
+
 function utf8ByteLength(value: string): number {
   return Buffer.byteLength(value, 'utf-8');
 }
@@ -241,11 +251,26 @@ function splitTextByUtf8Bytes(text: string, maxBytes: number): string[] {
   return chunks;
 }
 
+function truncateTextByUtf8Bytes(text: string, maxBytes: number): string {
+  const normalized = String(text || '').replace(/\r\n/g, '\n').trim();
+  if (utf8ByteLength(normalized) <= maxBytes) return normalized;
+
+  const suffix = '\n\n（内容过长，已截断以保证微信送达）';
+  const budget = Math.max(0, maxBytes - utf8ByteLength(suffix));
+  let result = '';
+  for (const char of Array.from(normalized)) {
+    if (utf8ByteLength(`${result}${char}`) > budget) break;
+    result += char;
+  }
+  return `${result.trim()}${suffix}`;
+}
+
 function stripToolResultForWeixin(content: string): string {
   const normalized = String(content || '').trim();
   if (!normalized.startsWith('🔧 ')) return normalized;
 
   const parts = normalized.split(' - ');
+  if (parts[0] === '🔧 Tool update' && parts[1] === 'completed') return '';
   if (parts.length <= 2) return normalized;
   return parts.slice(0, 2).join(' - ');
 }
@@ -522,12 +547,11 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
           // WeChat doesn't support reply context; ignore
         }
         this.consumeBridgeEvent(turn, event);
-        if (event.type !== 'reply' && event.type !== 'buttons') return;
+        if (event.type !== 'reply' && event.type !== 'buttons' && event.type !== 'status') return;
 
         const rendered = this.renderTurnText(turn);
         if (!rendered) return;
         if (rendered === turn.lastSentText) return;
-
         try {
           await this.sendTextMessage(state, route.chatId, rendered, binding.last_platform_message_id || undefined);
           turn.lastSentAt = Date.now();
@@ -1020,6 +1044,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
         'Content-Type': 'application/json',
         'Content-Length': String(Buffer.byteLength(body, 'utf-8')),
         'X-WECHAT-UIN': createWechatUin(),
+        ...createIlinkHeaders(),
       };
       if (binding.token) {
         headers.AuthorizationType = 'ilink_bot_token';
@@ -1048,7 +1073,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = createIlinkHeaders();
       if (binding.token) {
         headers.AuthorizationType = 'ilink_bot_token';
         headers.Authorization = `Bearer ${binding.token}`;
@@ -1083,14 +1108,21 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     toUserId: string,
     text: string,
     contextToken?: string,
+    options: { clientId?: string; final?: boolean } = {},
   ): Promise<void> {
     const binding = await this.getBinding(state.workspaceId);
     const stripped = stripHtml(text);
-    const chunks = splitTextByUtf8Bytes(stripped, WEIXIN_TEXT_MESSAGE_MAX_BYTES);
+    const chunks = contextToken
+      ? [truncateTextByUtf8Bytes(stripped, WEIXIN_CONTEXT_REPLY_MAX_BYTES)].filter(Boolean)
+      : splitTextByUtf8Bytes(stripped, WEIXIN_TEXT_MESSAGE_MAX_BYTES);
     for (const [index, chunk] of chunks.entries()) {
-      const resp = await this.sendTextMessageChunk(binding, toUserId, chunk, contextToken);
+      const finalChunk = options.final && index === chunks.length - 1;
+      const resp = await this.sendTextMessageChunk(binding, toUserId, chunk, contextToken, {
+        clientId: options.clientId,
+        final: finalChunk,
+      });
       if (this.isSendMessageError(resp)) {
-        throw new Error(`WeChat sendmessage failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''} chunk=${index + 1}/${chunks.length} bytes=${utf8ByteLength(chunk)} context=${contextToken ? 'yes' : 'no'}`);
+        throw new Error(`WeChat sendmessage failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''} chunk=${index + 1}/${chunks.length} bytes=${utf8ByteLength(chunk)} context=${contextToken ? 'yes' : 'no'} message_state=${finalChunk ? 2 : 1}`);
       }
     }
     this.options.log?.(`localcore-weixin sent message to ${toUserId} for workspace ${state.workspaceId}${chunks.length > 1 ? ` chunks=${chunks.length}` : ''}`);
@@ -1101,6 +1133,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     toUserId: string,
     text: string,
     contextToken?: string,
+    options: { clientId?: string; final?: boolean } = {},
   ): Promise<SendMessageResp> {
     return this.apiPost<SendMessageResp>(
       binding,
@@ -1109,9 +1142,9 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
         msg: {
           from_user_id: '',
           to_user_id: toUserId,
-          client_id: `openclaw-weixin-${crypto.randomUUID()}`,
+          client_id: options.clientId || `openclaw-weixin-${crypto.randomUUID()}`,
           message_type: 2,
-          message_state: 2,
+          message_state: options.final === false ? 1 : 2,
           item_list: [{ type: TEXT_ITEM_TYPE, text_item: { text } }],
           ...(contextToken ? { context_token: contextToken } : {}),
         },
@@ -1225,7 +1258,11 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       return;
     }
     if (event.type === 'status') {
-      if (content) this.pushUnique(turn.statusLines, content);
+      if (content) {
+        this.pushUnique(turn.statusLines, content);
+        turn.finalText = content;
+        turn.previewText = content;
+      }
       return;
     }
     if (event.type === 'buttons') {
@@ -1270,7 +1307,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     if (!normalized) return;
     if (target[target.length - 1] === normalized) return;
     target.push(normalized);
-    if (target.length > 6) target.splice(0, target.length - 6);
+    if (target.length > 8) target.splice(0, target.length - 8);
   }
 
   private isDuplicateInboundMessage(input: WeixinInboundMessage): boolean {
