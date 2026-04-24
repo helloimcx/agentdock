@@ -9,13 +9,17 @@ let localCoreStartupPromise: Promise<void> | null = null;
 const userDataOverride = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim();
 const smokeOutputPath = process.env.AI_WORKSTATION_SMOKE_OUTPUT?.trim();
 
+function appResourcePath(...segments: string[]) {
+  return join(app.getAppPath(), ...segments);
+}
+
 if (userDataOverride) {
   mkdirSync(userDataOverride, { recursive: true });
   app.setPath('userData', userDataOverride);
 }
 
 function localCoreEntryPath() {
-  return join(process.cwd(), 'dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
+  return appResourcePath('dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
 }
 
 async function isLocalCoreHealthy(timeoutMs = 350) {
@@ -66,9 +70,10 @@ async function ensureLocalCoreProcess() {
         throw new Error(`Missing Local AI Core entry: ${entry}`);
       }
       const child = spawn(process.execPath, [entry], {
-        cwd: process.cwd(),
+        cwd: app.getAppPath(),
         env: {
           ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
           AI_WORKSTATION_USER_DATA_DIR: app.getPath('userData'),
         },
         stdio: 'inherit',
@@ -115,7 +120,7 @@ function createWindow() {
     return;
   }
 
-  const indexHtmlPath = join(process.cwd(), 'dist', 'renderer', 'index.html');
+  const indexHtmlPath = appResourcePath('dist', 'renderer', 'index.html');
   if (!existsSync(indexHtmlPath)) {
     throw new Error(`Renderer build output was not found at ${indexHtmlPath}. Run "pnpm build" first.`);
   }

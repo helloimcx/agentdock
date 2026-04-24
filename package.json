@@ -15,6 +15,7 @@
     "build:core": "pnpm build:electron",
     "test": "pnpm build:electron && node --test dist-electron/electron/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js",
     "e2e:smoke": "pnpm build && node scripts/e2e-smoke.mjs",
+    "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64",
     "start": "node scripts/dev.mjs",
     "start:core": "node scripts/launch-core.mjs",
     "start:prod": "node scripts/launch-electron.mjs .",
@@ -27,7 +28,6 @@
     "@larksuiteoapi/node-sdk": "^1.58.0",
     "@tailwindcss/typography": "^0.5.19",
     "clsx": "^2.1.1",
-    "electron": "^35.0.2",
     "highlight.js": "^11.11.1",
     "i18next": "^25.1.2",
     "lucide-react": "^0.487.0",
@@ -49,6 +49,8 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",
+    "electron": "^35.0.2",
+    "electron-builder": "^26.8.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.3",
@@ -58,6 +60,49 @@
     "onlyBuiltDependencies": [
       "electron",
       "protobufjs"
+    ]
+  },
+  "build": {
+    "appId": "com.helloimcx.ccconnectdesktop",
+    "productName": "CC Connect Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "asar": false,
+    "files": [
+      "dist/renderer/**",
+      "dist-electron/**",
+      "node_modules/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "helloimcx",
+        "repo": "cc-connect-desktop"
+      }
     ]
   }
 }
