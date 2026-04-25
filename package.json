@@ -1,7 +1,7 @@
 {
   "name": "agentdock",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "test": "pnpm build:electron && node --test dist-electron/electron/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js",
     "e2e:smoke": "pnpm build && node scripts/e2e-smoke.mjs",
     "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64",
+    "dist:win": "pnpm build && electron-builder --win nsis zip --x64",
     "start": "node scripts/dev.mjs",
     "start:core": "node scripts/launch-core.mjs",
     "start:prod": "node scripts/launch-electron.mjs .",
@@ -94,6 +95,23 @@
           "target": "zip",
           "arch": [
             "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
           ]
         }
       ]
