@@ -1,45 +1,26 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, ArrowRight, Cable, Layers, Play, RotateCw, Server, Wrench } from 'lucide-react';
-import { Badge, Button, Card, EmptyState, StatCard } from '@/components/ui';
+import { Activity, ArrowRight, BookOpen, Cable, FolderKanban, MessageSquare, Play, RotateCw, Server, Wrench } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Badge, Button, EmptyState, PageHeader, SectionCard, StatCard, StatusPill } from '@/components/ui';
 import { getStatus, type SystemStatus } from '@/api/status';
 import { listProjects, type ProjectSummary } from '@/api/projects';
+import { getRuntimeStatus, onRuntimeEvent, restartDesktopService, startDesktopService } from '@/api/desktop';
 import { listWorkspaces } from '../../packages/core-sdk/src';
-import {
-  getRuntimeStatus,
-  onRuntimeEvent,
-  restartDesktopService,
-  startDesktopService,
-} from '@/api/desktop';
 import { formatUptime } from '@/lib/utils';
 import type { DesktopRuntimeStatus } from '../../shared/desktop';
 import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
 
 function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
-  switch (phase) {
-    case 'starting':
-      return 'starting';
-    case 'api_ready':
-      return 'ready';
-    case 'error':
-      return 'error';
-    default:
-      return 'stopped';
-  }
+  if (phase === 'api_ready') return 'ready';
+  return phase || 'stopped';
 }
 
-function formatRuntimeRole(status?: DesktopRuntimeStatus['roles']['conversation']['status']) {
-  switch (status) {
-    case 'starting':
-      return 'starting';
-    case 'running':
-      return 'running';
-    case 'error':
-      return 'error';
-    default:
-      return 'stopped';
-  }
+function runtimeTone(phase?: DesktopRuntimeStatus['phase']) {
+  if (phase === 'api_ready') return 'success';
+  if (phase === 'starting') return 'warning';
+  if (phase === 'error') return 'danger';
+  return 'neutral';
 }
 
 export default function Dashboard() {
@@ -49,33 +30,26 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { desktopRuntime, desktopWorkspace } = useRuntimeFeatureSupport();
+  const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule } = useRuntimeFeatureSupport();
   const localCoreManaged = getRuntimeProvider() === 'local_core';
 
   const fetchData = useCallback(async (runtimeOverride?: DesktopRuntimeStatus | null) => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      setError('');
       let nextRuntime = runtimeOverride ?? null;
       if (desktopRuntime) {
         nextRuntime = runtimeOverride ?? await getRuntimeStatus();
         setRuntime(nextRuntime);
-        if (nextRuntime.phase !== 'api_ready') {
-          setStatus(null);
-          setProjects([]);
-          return;
-        }
-      }
-      if (desktopRuntime) {
-        const p = await listWorkspaces();
+        const workspaceData = await listWorkspaces();
         setStatus({
           version: 'local-core',
           uptime_seconds: 0,
-          connected_platforms: runtimeOverride?.roles?.platformGateway.status === 'running' ? ['lark'] : [],
-          projects_count: p.workspaces.length,
+          connected_platforms: nextRuntime.roles.platformGateway.status === 'running' ? ['gateway'] : [],
+          projects_count: workspaceData.workspaces.length,
           bridge_adapters: [],
         });
-        setProjects((p.workspaces || []).map((workspace) => ({
+        setProjects((workspaceData.workspaces || []).map((workspace) => ({
           name: workspace.name,
           agent_type: workspace.agentType,
           platforms: workspace.platforms,
@@ -84,11 +58,12 @@ export default function Dashboard() {
         })));
         return;
       }
-      const [s, p] = await Promise.all([getStatus(), listProjects()]);
-      setStatus(s);
-      setProjects(p.projects || []);
-    } catch (e: any) {
-      setError(e.message);
+
+      const [system, projectData] = await Promise.all([getStatus(), listProjects()]);
+      setStatus(system);
+      setProjects(projectData.projects || []);
+    } catch (err: any) {
+      setError(err.message || String(err));
     } finally {
       setLoading(false);
     }
@@ -100,13 +75,7 @@ export default function Dashboard() {
     window.addEventListener('cc:refresh', handler);
     const stopRuntime = desktopRuntime ? onRuntimeEvent((nextRuntime) => {
       setRuntime(nextRuntime);
-      if (nextRuntime.phase === 'api_ready') {
-        void fetchData(nextRuntime);
-        return;
-      }
-      setStatus(null);
-      setProjects([]);
-      setError(nextRuntime.roles.conversation.lastError || nextRuntime.roles.platformGateway.lastError || '');
+      void fetchData(nextRuntime);
     }) : () => {};
     return () => {
       window.removeEventListener('cc:refresh', handler);
@@ -115,184 +84,114 @@ export default function Dashboard() {
   }, [desktopRuntime, fetchData]);
 
   if (loading && !status) {
-    return <div className="flex items-center justify-center h-64 text-gray-400"><Activity className="animate-pulse" size={24} /></div>;
-  }
-
-  if (error && !desktopRuntime) {
-    return <div className="text-center py-16 text-red-500">{error}</div>;
+    return <div className="flex h-64 items-center justify-center text-slate-400"><Activity className="animate-pulse" size={24} /></div>;
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {desktopRuntime && (
-        <Card>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                {localCoreManaged ? 'Local AI Core' : 'AgentDock 运行时'}
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {localCoreManaged
-                  ? 'Local AI Core runtime and native gateway status for your local app.'
-                  : 'Desktop shell status for the embedded Local AI Core runtime.'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => void startDesktopService().then(() => fetchData())} disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready'}>
-                <Play size={14} /> 启动
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => void restartDesktopService().then(() => fetchData())}>
-                <RotateCw size={14} /> 重启
-              </Button>
-              {desktopWorkspace && (
-                <Link to="/workspace">
-                  <Button size="sm" variant="secondary">
-                    <Wrench size={14} /> 工作区
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </div>
+      <PageHeader
+        title="Home"
+        description="A quiet overview of your local runtime, workspaces, and the next action you are likely to take."
+        actions={desktopRuntime ? (
+          <>
+            <Button size="sm" onClick={() => void startDesktopService().then(() => fetchData())} disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready'}>
+              <Play size={14} /> Start
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => void restartDesktopService().then(() => fetchData())}>
+              <RotateCw size={14} /> Restart
+            </Button>
+          </>
+        ) : null}
+      />
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-            <StatCard label="Runtime" value={formatRuntimePhase(runtime?.phase)} accent={runtime?.phase === 'api_ready'} />
-            <StatCard
-              label="Conversation"
-              value={formatRuntimeRole(runtime?.roles?.conversation.status)}
-              accent={runtime?.roles?.conversation.status === 'running'}
-            />
-            <StatCard
-              label="Platform Gateway"
-              value={formatRuntimeRole(runtime?.roles?.platformGateway.status)}
-              accent={runtime?.roles?.platformGateway.status === 'running'}
-            />
-            <StatCard
-              label="Config"
-              value={!runtime?.configFile.exists ? 'Missing' : runtime?.pendingRestart ? 'Restart needed' : 'Ready'}
-              accent={Boolean(runtime?.configFile.exists && !runtime?.pendingRestart)}
-            />
-          </div>
+      {error ? (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+          {error}
+        </div>
+      ) : null}
 
-          {runtime?.pendingRestart && (
-            <div className="mt-4 text-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-700 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
-              Config changes are already saved to disk, but the running runtime is still using the previous state.
-              Restart it to apply the latest config.
-            </div>
-          )}
-
-          {runtime?.roles.platformGateway.lastError && (
-            <div className="mt-4 text-sm rounded-lg border border-red-200 bg-red-50 text-red-600 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
-              {runtime.roles.platformGateway.lastError}
-            </div>
-          )}
-          {error && (
-            <div className="mt-4 text-sm rounded-lg border border-amber-200 bg-amber-50 text-amber-700 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
-              {error}
-            </div>
-          )}
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label={t('dashboard.version')} value={status?.version || '-'} accent />
-        <StatCard label={t('dashboard.uptime')} value={status ? formatUptime(status.uptime_seconds) : '-'} />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <StatCard label="Runtime" value={desktopRuntime ? formatRuntimePhase(runtime?.phase) : status?.version || '-'} accent={desktopRuntime ? runtime?.phase === 'api_ready' : true} />
+        <StatCard label={t('dashboard.projects')} value={status?.projects_count ?? projects.length} />
         <StatCard label={t('dashboard.platforms')} value={status?.connected_platforms?.length ?? 0} />
-        <StatCard label={t('dashboard.projects')} value={status?.projects_count ?? 0} />
+        <StatCard label={t('dashboard.uptime')} value={status ? formatUptime(status.uptime_seconds) : '-'} />
       </div>
 
-      {/* Bridge adapters */}
-      {status?.bridge_adapters && status.bridge_adapters.length > 0 && (
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('dashboard.bridgeAdapters')}</h3>
-          <div className="flex flex-wrap gap-2">
-            {status.bridge_adapters.map((a, i) => (
-              <Badge key={i} variant="info">{a.platform} → {a.project}</Badge>
-            ))}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <SectionCard
+          title={localCoreManaged ? 'Local AI Core' : 'Runtime status'}
+          description="Keep the local service ready, then work from Chat or Workspace."
+          actions={<StatusPill tone={runtimeTone(runtime?.phase) as any}>{desktopRuntime ? formatRuntimePhase(runtime?.phase) : 'connected'}</StatusPill>}
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Link to="/chat" className="rounded-xl border border-violet-100 p-4 transition-colors hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]">
+              <MessageSquare size={18} className="text-violet-500" />
+              <p className="mt-3 text-sm font-medium text-slate-950 dark:text-white">Open chat</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">Start or continue a local agent thread.</p>
+            </Link>
+            {desktopWorkspace ? (
+              <Link to="/workspace" className="rounded-xl border border-violet-100 p-4 transition-colors hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]">
+                <Wrench size={18} className="text-violet-500" />
+                <p className="mt-3 text-sm font-medium text-slate-950 dark:text-white">Workspace</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">Review daily project settings.</p>
+              </Link>
+            ) : null}
+            {knowledgeModule ? (
+              <Link to="/knowledge" className="rounded-xl border border-violet-100 p-4 transition-colors hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]">
+                <BookOpen size={18} className="text-violet-500" />
+                <p className="mt-3 text-sm font-medium text-slate-950 dark:text-white">Knowledge</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">Manage searchable document libraries.</p>
+              </Link>
+            ) : null}
           </div>
-        </Card>
-      )}
+        </SectionCard>
 
-      {/* Project list */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{t('nav.projects')}</h3>
-          <Link to={desktopRuntime ? '/workspace' : '/projects'} className="text-xs text-accent hover:underline">{t('common.viewAll')}</Link>
-        </div>
+        <SectionCard title="Automation" description={schedulerModule ? 'Scheduled tasks are available.' : 'Scheduler is disabled.'}>
+          {schedulerModule ? (
+            <Link to="/cron">
+              <Button variant="secondary" className="w-full"><Cable size={14} /> View schedules</Button>
+            </Link>
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-violet-200/60">No automation module is currently enabled.</p>
+          )}
+        </SectionCard>
+      </div>
+
+      <SectionCard
+        title={t('nav.projects')}
+        description="Recent workspaces and projects."
+        actions={<Link to={desktopRuntime ? '/workspace' : '/projects'} className="text-sm font-medium text-accent hover:underline">{t('common.viewAll')}</Link>}
+      >
         {projects.length === 0 ? (
-          <EmptyState message={t('projects.noProjects')} icon={Layers} />
+          <EmptyState message={t('projects.noProjects')} icon={FolderKanban} />
         ) : (
-          <div className="space-y-2">
-            {projects.map((p) => (
+          <div className="divide-y divide-violet-100 dark:divide-violet-400/10">
+            {projects.slice(0, 6).map((project) => (
               <Link
-                key={p.name}
-                to={desktopRuntime ? `/workspace?project=${encodeURIComponent(p.name)}` : `/projects/${p.name}`}
-                className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group"
+                key={project.name}
+                to={desktopRuntime ? `/workspace?project=${encodeURIComponent(project.name)}` : `/projects/${project.name}`}
+                className="group flex items-center justify-between gap-3 py-3"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                    <Server size={16} className="text-gray-500 dark:text-gray-400" />
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-200">
+                    <Server size={17} />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{p.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {p.agent_type} · {p.platforms?.join(', ')} · {p.sessions_count} {t('nav.sessions').toLowerCase()}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-violet-200/55">
+                      {project.agent_type} · {project.platforms?.join(', ') || 'no platform'} · {project.sessions_count} sessions
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {p.heartbeat_enabled && <Badge variant="success">heartbeat</Badge>}
-                  <ArrowRight size={16} className="text-gray-300 dark:text-gray-600 group-hover:text-accent transition-colors" />
+                  {project.heartbeat_enabled ? <Badge variant="success">heartbeat</Badge> : null}
+                  <ArrowRight size={16} className="text-slate-300 transition-colors group-hover:text-accent" />
                 </div>
               </Link>
             ))}
           </div>
         )}
-      </Card>
-
-      {desktopRuntime && (
-        <Card>
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                {localCoreManaged ? 'Conversation Runtime' : 'Desktop Channel'}
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {localCoreManaged
-                  ? 'Open the dedicated chat UI to work with your local AI Core conversation runtime.'
-                  : 'Open the dedicated chat UI to use this app as the `desktop` bridge channel.'}
-              </p>
-            </div>
-            <Link to="/chat">
-              <Button size="sm">
-                <Cable size={14} /> Open Chat
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      )}
-
-      {!desktopRuntime && (
-        <Card>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-sky-100 dark:bg-sky-950/30 text-sky-600 dark:text-sky-300 flex items-center justify-center shrink-0">
-                <Server size={18} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Web Admin</h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  This browser build connects to a standalone API endpoint. Chat is available here, while local runtime controls stay in the desktop app.
-                </p>
-              </div>
-            </div>
-            <Link to="/chat">
-              <Button size="sm">
-                <Cable size={14} /> Open Chat
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      )}
+      </SectionCard>
     </div>
   );
 }

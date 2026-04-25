@@ -36,7 +36,7 @@ interface NoticeState {
 
 function noticeClassName(tone: NoticeTone) {
   if (tone === 'success') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-300';
+    return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/30 dark:bg-violet-950/20 dark:text-violet-300';
   }
   if (tone === 'warning') {
     return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300';
@@ -345,7 +345,7 @@ export default function KnowledgeHome() {
                         <button
                           type="button"
                           onClick={() => void handleRenameFolder(folder)}
-                          className="rounded-md p-1 text-gray-400 opacity-0 transition group-hover:opacity-100 hover:bg-gray-200/70 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-white"
+                          className="rounded-md p-1 text-gray-400 transition hover:bg-gray-200/70 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-white"
                           aria-label={`Rename ${folder.name}`}
                         >
                           <Pencil size={14} />
@@ -353,7 +353,7 @@ export default function KnowledgeHome() {
                         <button
                           type="button"
                           onClick={() => void handleDeleteFolder(folder)}
-                          className="rounded-md p-1 text-gray-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500"
+                          className="rounded-md p-1 text-gray-400 transition hover:bg-red-500/10 hover:text-red-500"
                           aria-label={`Delete ${folder.name}`}
                         >
                           <Trash2 size={14} />
@@ -411,7 +411,7 @@ export default function KnowledgeHome() {
                   key={base.id}
                   className="group relative overflow-hidden border border-gray-200/90 bg-white/90 p-6 shadow-sm hover:border-accent/30 hover:shadow-xl hover:shadow-black/5 dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.55)]"
                 >
-                  <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                  <div className="absolute right-4 top-4 flex gap-1">
                     <button
                       type="button"
                       onClick={() => void handleEditBase(base)}

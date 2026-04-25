@@ -7,6 +7,7 @@ import { useThemeStore } from '@/store/theme';
 import { api } from '@/api/client';
 import { getStatus } from '@/api/status';
 import { isDesktopApp, isWebApp } from '@/app/runtime';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const languages = [
   { code: 'en', label: 'EN' },
@@ -59,7 +60,7 @@ export default function Login() {
   const ThemeIcon = themeIcons[theme];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-sky-100 to-blue-50 dark:from-gray-950 dark:to-gray-900 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_top,#f3e8ff_0,#faf5ff_38%,#ffffff_72%)] p-4 dark:bg-[radial-gradient(circle_at_top,#2e1065_0,#12051f_42%,#05020a_78%)]">
       {/* Top right controls */}
       <div className="fixed top-4 right-4 flex items-center gap-2">
         <div className="flex bg-white/80 dark:bg-gray-800/80 backdrop-blur rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -86,12 +87,10 @@ export default function Login() {
       </div>
 
       <div className="w-full max-w-md animate-fade-in">
-        <div className="bg-white/90 dark:bg-[rgba(15,15,20,0.9)] backdrop-blur-xl border border-gray-200/50 dark:border-gray-800 rounded-2xl shadow-2xl shadow-black/10 dark:shadow-black/40 p-8">
+        <div className="bg-white/90 dark:bg-[#0c0614]/92 backdrop-blur-xl border border-violet-100/80 dark:border-violet-400/15 rounded-2xl shadow-2xl shadow-violet-950/10 dark:shadow-black/40 p-8">
           {/* Logo */}
           <div className="flex justify-center mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gray-900 dark:bg-white/5 flex items-center justify-center shadow-lg">
-              <div className="w-5 h-5 rounded-full bg-accent shadow-[0_0_20px_rgba(66,255,156,0.4)]" />
-            </div>
+            <BrandLogo markClassName="h-14 w-14 drop-shadow-[0_14px_28px_rgba(88,28,135,0.22)]" />
           </div>
           
           <h1 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-1">{t('login.title')}</h1>
@@ -136,7 +135,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading || !token.trim() || (web && !serverUrl.trim())}
-              className="w-full py-2.5 rounded-xl bg-accent text-black font-semibold text-sm hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-xl bg-accent text-white font-semibold text-sm hover:bg-accent-dim transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_0_20px_-6px_rgba(139,92,246,0.55)]"
             >
               {loading ? (
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">

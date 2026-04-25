@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Filter } from 'lucide-react';
-import { Card, Button, Badge } from '@/components/ui';
+import { Card, Button, Badge, PageHeader } from '@/components/ui';
 import { getLogs } from '@/api/status';
 
 const levelColors: Record<string, string> = {
@@ -42,21 +42,24 @@ export default function SystemLogs() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <Link to="/system" className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-          <ArrowLeft size={18} className="text-gray-400" />
-        </Link>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('system.logs')}</h2>
-      </div>
+      <PageHeader
+        title={t('system.logs')}
+        description="Filtered runtime logs for troubleshooting."
+        actions={(
+          <Link to="/system">
+            <Button variant="secondary" size="sm"><ArrowLeft size={14} /> {t('nav.system')}</Button>
+          </Link>
+        )}
+      />
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Filter size={14} className="text-gray-400" />
           <select
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
+            className="px-3 py-1.5 text-sm rounded-lg border border-violet-100 dark:border-violet-400/10 bg-white dark:bg-white/[0.04] text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
           >
             <option value="debug">Debug</option>
             <option value="info">Info</option>
@@ -67,7 +70,7 @@ export default function SystemLogs() {
         <select
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
-          className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
+          className="px-3 py-1.5 text-sm rounded-lg border border-violet-100 dark:border-violet-400/10 bg-white dark:bg-white/[0.04] text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
         >
           <option value="50">50</option>
           <option value="100">100</option>

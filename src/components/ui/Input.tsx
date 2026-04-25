@@ -13,10 +13,10 @@ export function Input({ label, className, ...props }: InputProps) {
       )}
       <input
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg transition-all duration-200',
-          'border border-gray-300/90 dark:border-white/[0.1]',
-          'bg-white/90 backdrop-blur-sm dark:bg-[rgba(0,0,0,0.45)] dark:backdrop-blur-md',
-          'text-gray-900 dark:text-white',
+          'w-full px-3 py-2 text-sm rounded-lg transition-colors duration-200',
+          'border border-violet-100 dark:border-violet-400/[0.12]',
+          'bg-white dark:bg-white/[0.04]',
+          'text-slate-950 dark:text-white',
           'focus:outline-none focus:ring-2 focus:ring-accent/45 focus:border-accent',
           'placeholder:text-gray-400 dark:placeholder:text-gray-500',
           className
@@ -39,10 +39,10 @@ export function Textarea({ label, className, ...props }: TextareaProps) {
       )}
       <textarea
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg transition-all duration-200 resize-none',
-          'border border-gray-300/90 dark:border-white/[0.1]',
-          'bg-white/90 backdrop-blur-sm dark:bg-[rgba(0,0,0,0.45)] dark:backdrop-blur-md',
-          'text-gray-900 dark:text-white',
+          'w-full px-3 py-2 text-sm rounded-lg transition-colors duration-200 resize-none',
+          'border border-violet-100 dark:border-violet-400/[0.12]',
+          'bg-white dark:bg-white/[0.04]',
+          'text-slate-950 dark:text-white',
           'focus:outline-none focus:ring-2 focus:ring-accent/45 focus:border-accent',
           'placeholder:text-gray-400 dark:placeholder:text-gray-500',
           className
@@ -65,10 +65,10 @@ export function Select({ label, className, children, ...props }: SelectProps) {
       )}
       <select
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg transition-all duration-200',
-          'border border-gray-300/90 dark:border-white/[0.1]',
-          'bg-white/90 backdrop-blur-sm dark:bg-[rgba(0,0,0,0.45)] dark:backdrop-blur-md',
-          'text-gray-900 dark:text-white',
+          'w-full px-3 py-2 text-sm rounded-lg transition-colors duration-200',
+          'border border-violet-100 dark:border-violet-400/[0.12]',
+          'bg-white dark:bg-white/[0.04]',
+          'text-slate-950 dark:text-white',
           'focus:outline-none focus:ring-2 focus:ring-accent/45 focus:border-accent',
           className
         )}

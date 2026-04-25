@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="860" viewBox="0 0 1320 860" fill="none">
+  <defs>
+    <linearGradient id="pageBg" x1="0" y1="0" x2="1320" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBF7FF"/>
+      <stop offset="0.52" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F0E7FF"/>
+    </linearGradient>
+    <linearGradient id="tileBg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F5F0FF"/>
+    </linearGradient>
+    <linearGradient id="darkTileBg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#160A24"/>
+      <stop offset="1" stop-color="#07020D"/>
+    </linearGradient>
+    <linearGradient id="violetA" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#C4B5FD"/>
+      <stop offset="0.48" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#5B21B6"/>
+    </linearGradient>
+    <linearGradient id="violetB" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F5F3FF"/>
+      <stop offset="0.42" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#4C1D95"/>
+    </linearGradient>
+    <linearGradient id="violetC" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#E9D5FF"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#4C1D95" flood-opacity="0.15"/>
+    </filter>
+    <filter id="iconGlow" x="-35%" y="-35%" width="170%" height="170%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#7C3AED" flood-opacity="0.28"/>
+    </filter>
+    <style>
+      .title { font: 700 34px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #24113F; }
+      .subtitle { font: 400 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #6B5A7F; }
+      .label { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #24113F; }
+      .desc { font: 400 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #6B5A7F; }
+      .small { font: 600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #8B7AA0; letter-spacing: 0.06em; }
+    </style>
+  </defs>
+
+  <rect width="1320" height="860" fill="url(#pageBg)"/>
+  <text x="72" y="76" class="title">AgentDock Logo Concepts</text>
+  <text x="72" y="108" class="subtitle">Six directions based on Dock, Command Hub, Portal, Monogram, Terminal Spark, and Crystal Core.</text>
+
+  <g transform="translate(72 152)">
+    <g filter="url(#softShadow)">
+      <rect width="360" height="290" rx="28" fill="url(#tileBg)" stroke="#E8DDFB"/>
+    </g>
+    <text x="28" y="42" class="small">A / DOCK</text>
+    <text x="28" y="72" class="label">Dock Base</text>
+    <text x="28" y="98" class="desc">稳、直观，强调“停靠坞”和本地工作台。</text>
+    <g transform="translate(122 122)" filter="url(#iconGlow)">
+      <rect x="0" y="0" width="116" height="116" rx="30" fill="url(#darkTileBg)"/>
+      <rect x="24" y="70" width="68" height="18" rx="9" fill="url(#violetA)"/>
+      <path d="M34 58C34 42.5 44.9 32 58 32C71.1 32 82 42.5 82 58" stroke="#EDE9FE" stroke-width="9" stroke-linecap="round"/>
+      <circle cx="34" cy="79" r="5.5" fill="#F5F3FF"/>
+      <circle cx="58" cy="79" r="5.5" fill="#F5F3FF"/>
+      <circle cx="82" cy="79" r="5.5" fill="#F5F3FF"/>
+      <path d="M58 32V20" stroke="#8B5CF6" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <text x="28" y="254" class="desc">优点：最贴名字；缺点：AI 感稍弱。</text>
+  </g>
+
+  <g transform="translate(480 152)">
+    <g filter="url(#softShadow)">
+      <rect width="360" height="290" rx="28" fill="url(#tileBg)" stroke="#E8DDFB"/>
+    </g>
+    <text x="28" y="42" class="small">B / COMMAND HUB</text>
+    <text x="28" y="72" class="label">Orchestrator</text>
+    <text x="28" y="98" class="desc">中心调度，多 agent、多工具、多通道协作。</text>
+    <g transform="translate(122 122)" filter="url(#iconGlow)">
+      <rect width="116" height="116" rx="30" fill="url(#darkTileBg)"/>
+      <circle cx="58" cy="58" r="20" fill="url(#violetA)"/>
+      <circle cx="58" cy="58" r="8" fill="#FFFFFF"/>
+      <path d="M58 38V20M76 68L92 78M40 68L24 78" stroke="#A78BFA" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="58" cy="20" r="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="4"/>
+      <circle cx="92" cy="78" r="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="4"/>
+      <circle cx="24" cy="78" r="8" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="4"/>
+      <circle cx="58" cy="58" r="35" stroke="#C4B5FD" stroke-opacity="0.35" stroke-width="3"/>
+    </g>
+    <text x="28" y="254" class="desc">优点：产品能力最清楚；缺点：比较常见。</text>
+  </g>
+
+  <g transform="translate(888 152)">
+    <g filter="url(#softShadow)">
+      <rect width="360" height="290" rx="28" fill="url(#tileBg)" stroke="#E8DDFB"/>
+    </g>
+    <text x="28" y="42" class="small">C / PORTAL</text>
+    <text x="28" y="72" class="label">Local Gateway</text>
+    <text x="28" y="98" class="desc">入口、通道、本地 AI 工作空间的门。</text>
+    <g transform="translate(122 122)" filter="url(#iconGlow)">
+      <rect width="116" height="116" rx="30" fill="url(#darkTileBg)"/>
+      <path d="M30 86V52C30 35.4 42.5 24 58 24C73.5 24 86 35.4 86 52V86" stroke="url(#violetA)" stroke-width="10" stroke-linecap="round"/>
+      <path d="M45 86V55C45 46.6 50.8 41 58 41C65.2 41 71 46.6 71 55V86" fill="#F5F3FF"/>
+      <path d="M53 56L64 50L61 64L70 69L56 72L50 84L48 69L38 62L53 56Z" fill="url(#violetC)"/>
+    </g>
+    <text x="28" y="254" class="desc">优点：高级、有记忆点；缺点：Dock 语义弱。</text>
+  </g>
+
+  <g transform="translate(72 492)">
+    <g filter="url(#softShadow)">
+      <rect width="360" height="290" rx="28" fill="url(#tileBg)" stroke="#E8DDFB"/>
+    </g>
+    <text x="28" y="42" class="small">D / MONOGRAM</text>
+    <text x="28" y="72" class="label">AD Mark</text>
+    <text x="28" y="98" class="desc">更品牌化，A 与 D 的几何组合。</text>
+    <g transform="translate(122 122)" filter="url(#iconGlow)">
+      <rect width="116" height="116" rx="30" fill="url(#darkTileBg)"/>
+      <path d="M26 86L47 29C49 23.5 56.7 23.4 59 28.8L83 86" stroke="url(#violetA)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M42 64H70" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+      <path d="M64 30H69C83 30 93 41.5 93 58C93 74.5 83 86 69 86H59" stroke="#A78BFA" stroke-width="10" stroke-linecap="round"/>
+    </g>
+    <text x="28" y="254" class="desc">优点：成熟；缺点：需要精调比例。</text>
+  </g>
+
+  <g transform="translate(480 492)">
+    <g filter="url(#softShadow)">
+      <rect width="360" height="290" rx="28" fill="url(#tileBg)" stroke="#E8DDFB"/>
+    </g>
+    <text x="28" y="42" class="small">E / TERMINAL SPARK</text>
+    <text x="28" y="72" class="label">Agent Prompt</text>
+    <text x="28" y="98" class="desc">开发者工具感，命令入口 + 智能光点。</text>
+    <g transform="translate(122 122)" filter="url(#iconGlow)">
+      <rect width="116" height="116" rx="30" fill="url(#darkTileBg)"/>
+      <path d="M34 36L58 58L34 80" stroke="url(#violetA)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M62 80H84" stroke="#F5F3FF" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="79" cy="36" r="10" fill="url(#violetC)"/>
+      <path d="M79 18V25M79 47V54M61 36H68M90 36H97" stroke="#C4B5FD" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <text x="28" y="254" class="desc">优点：工程师会懂；缺点：偏 CLI。</text>
+  </g>
+
+  <g transform="translate(888 492)">
+    <g filter="url(#softShadow)">
+      <rect width="360" height="290" rx="28" fill="url(#tileBg)" stroke="#E8DDFB"/>
+    </g>
+    <text x="28" y="42" class="small">F / CRYSTAL CORE</text>
+    <text x="28" y="72" class="label">Model Core</text>
+    <text x="28" y="98" class="desc">紫晶核心，高级、AI、模型能力感。</text>
+    <g transform="translate(122 122)" filter="url(#iconGlow)">
+      <rect width="116" height="116" rx="30" fill="url(#darkTileBg)"/>
+      <path d="M58 20L88 38V76L58 94L28 76V38L58 20Z" fill="url(#violetB)"/>
+      <path d="M58 20V94M28 38L58 58L88 38M28 76L58 58L88 76" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="58" cy="58" r="10" fill="#FFFFFF"/>
+      <circle cx="58" cy="58" r="4" fill="#7C3AED"/>
+    </g>
+    <text x="28" y="254" class="desc">优点：漂亮；缺点：名字关联弱。</text>
+  </g>
+</svg>

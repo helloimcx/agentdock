@@ -1,13 +1,13 @@
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
 import { resolveRouteTitleKey } from '@/app/ui-contributions';
 import { useAuthStore } from '@/store/auth';
 
-export default function Header() {
+export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void }) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const [spinning, setSpinning] = useState(false);
@@ -31,8 +31,8 @@ export default function Header() {
       className={cn(
         compactDesktopChatHeader ? 'h-11 px-4' : 'h-14 px-6',
         'flex items-center justify-between shrink-0',
-        'border-b border-gray-200/80 dark:border-white/[0.08]',
-        'bg-white/70 backdrop-blur-xl dark:bg-[rgba(0,0,0,0.72)] dark:backdrop-blur-xl'
+        'border-b border-violet-100/90 dark:border-violet-400/[0.12]',
+        'bg-white/80 backdrop-blur-xl dark:bg-[#08030f]/82 dark:backdrop-blur-xl'
       )}
     >
       {compactDesktopChatHeader ? <div /> : (
@@ -41,19 +41,36 @@ export default function Header() {
         </h1>
       )}
       {compactDesktopChatHeader ? null : (
-        <button
-          type="button"
-          onClick={handleRefresh}
-          className={cn(
-            'p-2 rounded-xl transition-all duration-200',
-            'text-gray-500 dark:text-gray-400',
-            'hover:bg-gray-100/90 dark:hover:bg-white/[0.08] hover:text-gray-800 dark:hover:text-white',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40'
-          )}
-          aria-label={t('common.refresh')}
-        >
-          <RefreshCw size={18} className={spinning ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className={cn(
+              'p-2 rounded-xl transition-colors duration-200',
+              'text-slate-500 dark:text-violet-200/60',
+              'hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-violet-700 dark:hover:text-white',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40'
+            )}
+            aria-label={t('common.refresh')}
+          >
+            <RefreshCw size={18} className={spinning ? 'animate-spin' : ''} />
+          </button>
+          {onOpenAdvanced ? (
+            <button
+              type="button"
+              onClick={onOpenAdvanced}
+              className={cn(
+                'p-2 rounded-xl transition-colors duration-200',
+                'text-slate-500 dark:text-violet-200/60',
+                'hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-violet-700 dark:hover:text-white',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40'
+              )}
+              aria-label="Open advanced diagnostics"
+            >
+              <SlidersHorizontal size={18} />
+            </button>
+          ) : null}
+        </div>
       )}
     </header>
   );

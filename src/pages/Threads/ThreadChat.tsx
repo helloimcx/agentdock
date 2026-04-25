@@ -80,7 +80,7 @@ function ToolResultCardView({ card }: { card: ToolResultCard }) {
     <div className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-slate-50/95 shadow-[0_8px_22px_rgba(15,23,42,0.04)] dark:border-white/[0.07] dark:bg-[#111820] dark:shadow-none">
       <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06]">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-300">
             <Wrench size={14} />
           </span>
           <div className="min-w-0">
@@ -95,7 +95,7 @@ function ToolResultCardView({ card }: { card: ToolResultCard }) {
           className={cn(
             'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]',
             completed
-              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300'
               : 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
           )}
         >
@@ -281,7 +281,7 @@ export default function ThreadChat() {
                     value={selectedProject}
                     onChange={(event) => setSelectedProject(event.target.value)}
                     data-testid="desktop-chat-project-select"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/15 dark:border-white/[0.08] dark:bg-[#0b1016] dark:text-white"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/15 dark:border-white/[0.08] dark:bg-[#0b1016] dark:text-white"
                   >
                     <option value="">{branding.scopeSelectPlaceholder}</option>
                     {visibleProjects.map((project) => (
@@ -329,7 +329,7 @@ export default function ThreadChat() {
 
                 <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/85 px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.03]">
                   <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
-                    <Circle size={7} className={cn('fill-current', serviceRunning ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-500')} />
+                    <Circle size={7} className={cn('fill-current', serviceRunning ? 'text-violet-500' : 'text-slate-300 dark:text-slate-500')} />
                     {serviceRunning ? '服务在线' : isRuntimeStarting ? '服务启动中' : '服务未启动'}
                   </span>
                 </div>
@@ -397,9 +397,9 @@ export default function ThreadChat() {
                             }
                           }}
                           className={cn(
-                            'group relative overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400/20',
+                            'group relative overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-violet-400/20',
                             session.id === activeSessionId
-                              ? 'border-emerald-200 bg-emerald-50/80 shadow-[inset_3px_0_0_0_rgba(16,185,129,0.9)] dark:border-emerald-400/20 dark:bg-emerald-500/10'
+                              ? 'border-violet-200 bg-violet-50/80 shadow-[inset_3px_0_0_0_rgba(139,92,246,0.9)] dark:border-violet-400/20 dark:bg-violet-500/10'
                               : 'border-transparent bg-white/70 hover:border-slate-200 hover:bg-white dark:bg-white/[0.03] dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]',
                           )}
                         >
@@ -416,7 +416,7 @@ export default function ThreadChat() {
                                   className={cn(
                                     'shrink-0 rounded-full px-2 py-0.5 text-[10px]',
                                     session.live
-                                      ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                                      ? 'bg-violet-500/12 text-violet-700 dark:text-violet-300'
                                       : 'bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400',
                                   )}
                                 >
@@ -501,7 +501,7 @@ export default function ThreadChat() {
                   {formatRuntimePhase(runtime?.phase)}
                 </span>
                 {transportReady ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2.5 py-1 text-violet-700 dark:text-violet-300">
                     <Circle size={6} className="fill-current" /> {branding.runtimeOnlineLabel}
                   </span>
                 ) : (
@@ -519,7 +519,7 @@ export default function ThreadChat() {
               {renderedMessages.length === 0 ? (
                 <div className="flex h-full min-h-[18rem] items-center justify-center">
                   <div className="w-full max-w-2xl rounded-[28px] border border-slate-200/80 bg-white px-8 py-10 text-center shadow-[0_10px_30px_rgba(15,23,42,0.04)] dark:border-white/[0.06] dark:bg-white/[0.03] dark:shadow-none">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-500">
                       <MessageSquarePlus size={22} />
                     </div>
                     <h3 className="mt-4 text-xl font-semibold text-slate-900 dark:text-white">开始一段新的桌面对话</h3>
@@ -533,7 +533,7 @@ export default function ThreadChat() {
                         selectedKnowledgeBases.map((base) => (
                           <span
                             key={base.id}
-                            className="rounded-full bg-emerald-50 px-3 py-1 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+                            className="rounded-full bg-violet-50 px-3 py-1 text-xs text-violet-700 dark:bg-violet-500/10 dark:text-violet-200"
                           >
                             {base.name}
                           </span>
@@ -586,7 +586,7 @@ export default function ThreadChat() {
                             className={cn(
                               'rounded-[22px] px-4 py-3 text-sm',
                               isUser
-                                ? 'rounded-br-md bg-emerald-400/95 text-black shadow-none'
+                                ? 'rounded-br-md bg-violet-400/95 text-black shadow-none'
                                 : isSystem
                                   ? 'rounded-bl-md border border-amber-200/80 bg-amber-50 text-amber-900 shadow-[0_6px_18px_rgba(15,23,42,0.03)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 dark:shadow-none'
                                 : isProgress
@@ -651,7 +651,7 @@ export default function ThreadChat() {
                               </p>
                             ) : null}
                             {message.preview ? (
-                              <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-emerald-500 dark:text-emerald-300">实时预览</p>
+                              <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-violet-500 dark:text-violet-300">实时预览</p>
                             ) : null}
                           </div>
                         </div>
@@ -781,7 +781,7 @@ export default function ThreadChat() {
                                 className={cn(
                                   'flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200',
                                   checked
-                                    ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-400/30 dark:bg-emerald-500/12'
+                                    ? 'border-violet-300 bg-violet-50 dark:border-violet-400/30 dark:bg-violet-500/12'
                                     : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:border-white/[0.12] dark:hover:bg-white/[0.05]',
                                 )}
                               >
@@ -789,7 +789,7 @@ export default function ThreadChat() {
                                   className={cn(
                                     'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[10px]',
                                     checked
-                                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                                      ? 'border-violet-500 bg-violet-500 text-white'
                                       : 'border-slate-300 text-transparent dark:border-white/[0.12]',
                                   )}
                                 >

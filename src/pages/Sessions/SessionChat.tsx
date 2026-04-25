@@ -71,7 +71,7 @@ export default function SessionChat() {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{session?.name || id}</h2>
               {session?.live ? (
-                <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded-full">
+                <span className="flex items-center gap-1 text-[10px] text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-1.5 py-0.5 rounded-full">
                   <Circle size={5} className="fill-current" /> live
                 </span>
               ) : (
@@ -109,7 +109,7 @@ export default function SessionChat() {
               <div className={cn(
                 'rounded-2xl px-5 py-3.5 text-sm',
                 isUser
-                  ? 'max-w-[70%] bg-accent text-black rounded-br-md'
+                  ? 'max-w-[70%] bg-accent text-white rounded-br-md'
                   : 'max-w-[85%] bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 text-gray-900 dark:text-gray-100 rounded-bl-md shadow-sm'
               )}>
                 <ChatMarkdown content={msg.content} isUser={isUser} />
@@ -140,7 +140,7 @@ export default function SessionChat() {
             <button
               onClick={handleSend}
               disabled={sending || !input.trim()}
-              className="px-4 py-3 rounded-xl bg-accent text-black hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center gap-2"
+              className="px-4 py-3 rounded-xl bg-accent text-white hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {sending ? (
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { subscribeEvents } from '../../../packages/core-sdk/src';
-import { Badge, Button, Card, EmptyState, Input, Modal, Select, Textarea } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import {
   createCronJob,
   deleteCronJob,
@@ -68,11 +68,11 @@ function toPayload(form: SchedulerFormState): CronJobCreateInput {
     platform: 'lark',
     route: {
       type: 'channel.chat',
-      channelId: form.chatId,
-      participantId: form.platformUserId,
+      channelId: form.chatId || form.workspaceId || 'default',
+      participantId: form.platformUserId || 'default',
       ...(form.threadId ? { threadId: form.threadId } : {}),
     },
-    executionMode: form.executionMode,
+    executionMode: form.executionMode || 'same-thread',
     triggerType: form.triggerType,
     ...(form.triggerType === 'cron'
       ? { cronExpr: form.cronExpr, runAt: undefined }
@@ -144,7 +144,7 @@ export default function CronList() {
   };
 
   const handleSave = async () => {
-    if (!form.workspaceId || !form.chatId || !form.platformUserId || !form.promptTemplate.trim()) {
+    if (!form.workspaceId || !form.promptTemplate.trim()) {
       return;
     }
     if (form.triggerType === 'once' && !form.runAt) {
@@ -186,10 +186,11 @@ export default function CronList() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t('cron.title')}</h2>
-        <Button onClick={openCreate}><Plus size={16} /> {t('cron.add')}</Button>
-      </div>
+      <PageHeader
+        title={t('cron.title')}
+        description="Create simple scheduled prompts for a workspace."
+        actions={<Button onClick={openCreate}><Plus size={16} /> {t('cron.add')}</Button>}
+      />
 
       {jobs.length === 0 ? (
         <EmptyState message={t('cron.noJobs')} icon={Clock} />
@@ -245,20 +246,12 @@ export default function CronList() {
             {selectedWorkspaceOptions}
           </Select>
           <Select
-            label="Execution mode"
-            value={form.executionMode}
-            onChange={(event) => setForm({ ...form, executionMode: event.target.value as 'same-thread' | 'side-thread' })}
-          >
-            <option value="same-thread">same-thread</option>
-            <option value="side-thread">side-thread</option>
-          </Select>
-          <Select
-            label="Trigger type"
+            label="Schedule type"
             value={form.triggerType}
             onChange={(event) => setForm({ ...form, triggerType: event.target.value as 'cron' | 'once' })}
           >
-            <option value="cron">cron</option>
-            <option value="once">once</option>
+            <option value="cron">Repeating</option>
+            <option value="once">One time</option>
           </Select>
           {form.triggerType === 'cron' ? (
             <Input
@@ -286,24 +279,6 @@ export default function CronList() {
             onChange={(event) => setForm({ ...form, promptTemplate: event.target.value })}
             rows={4}
             placeholder="Summarize today's blockers and post a status update."
-          />
-          <Input
-            label="Lark chat ID"
-            value={form.chatId}
-            onChange={(event) => setForm({ ...form, chatId: event.target.value })}
-            placeholder="oc_xxx"
-          />
-          <Input
-            label="Lark platform user ID"
-            value={form.platformUserId}
-            onChange={(event) => setForm({ ...form, platformUserId: event.target.value })}
-            placeholder="ou_xxx"
-          />
-          <Input
-            label="Thread ID"
-            value={form.threadId}
-            onChange={(event) => setForm({ ...form, threadId: event.target.value })}
-            placeholder="Optional existing thread binding"
           />
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input

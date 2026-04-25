@@ -15,6 +15,7 @@ import { useThemeStore } from '@/store/theme';
 import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
 import { rendererUiContributions } from '@/app/ui-contributions';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const languages = [
   { code: 'en', label: 'English' },
@@ -22,6 +23,12 @@ const languages = [
   { code: 'zh-TW', label: '繁體中文' },
   { code: 'ja', label: '日本語' },
   { code: 'es', label: 'Español' },
+];
+
+const navGroups = [
+  { label: 'Core', ids: ['dashboard', 'chat', 'workspace', 'projects', 'sessions'] },
+  { label: 'Knowledge', ids: ['knowledge', 'cron'] },
+  { label: 'System', ids: ['system'] },
 ];
 
 export default function Sidebar() {
@@ -52,55 +59,54 @@ export default function Sidebar() {
     <aside
       className={cn(
         'h-screen flex flex-col border-r transition-all duration-300 ease-out',
-        'bg-white/75 backdrop-blur-xl border-gray-200/80',
-        'dark:bg-[rgba(0,0,0,0.85)] dark:backdrop-blur-xl dark:border-white/[0.08]',
+        'bg-white/85 backdrop-blur-xl border-violet-100/90',
+        'dark:bg-[#08030f]/90 dark:backdrop-blur-xl dark:border-violet-400/[0.12]',
         collapsed ? 'w-16' : 'w-60'
       )}
     >
       <div
         className={cn(
           'flex items-center gap-3 px-4 h-16 border-b transition-colors',
-          'border-gray-200/80 dark:border-white/[0.08]'
+          'border-violet-100/90 dark:border-violet-400/[0.12]'
         )}
       >
-        <div
-          className={cn(
-            'w-8 h-8 rounded-xl flex items-center justify-center shrink-0',
-            'bg-gray-900/90 dark:bg-white/10 ring-1 ring-black/5 dark:ring-white/10'
-          )}
-        >
-          <div className="w-3 h-3 rounded-full bg-accent shadow-[0_0_12px_rgba(66,255,156,0.45)]" />
-        </div>
-        {!collapsed && (
-          <span className="font-semibold text-gray-900 dark:text-white text-sm tracking-tight">
-            AgentDock
-          </span>
-        )}
+        <BrandLogo showWordmark={!collapsed} />
       </div>
 
-      <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
-        {visibleNavItems.map((item) => {
-          const Icon = item.icon;
-          const labelKey = item.resolveLabelKey?.({ desktopManaged, features, runtimeProvider }) || item.labelKey;
+      <nav className="flex-1 py-4 space-y-5 px-2 overflow-y-auto">
+        {navGroups.map((group) => {
+          const items = visibleNavItems.filter((item) => group.ids.includes(item.id));
+          if (items.length === 0) return null;
           return (
-            <NavLink
-              key={item.id}
-              to={item.path}
-              end={item.end}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
-                  isActive
-                    ? 'bg-accent/15 text-gray-900 dark:text-white ring-1 ring-accent/35 shadow-[0_0_20px_-8px_rgba(66,255,156,0.5)]'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.06] hover:text-gray-900 dark:hover:text-white'
-                )
-              }
-            >
-              <Icon size={20} className="shrink-0" />
+            <div key={group.label} className="space-y-1">
               {!collapsed && (
-                <span>{t(labelKey)}</span>
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-violet-200/35">
+                  {group.label}
+                </p>
               )}
-            </NavLink>
+              {items.map((item) => {
+                const Icon = item.icon;
+                const labelKey = item.resolveLabelKey?.({ desktopManaged, features, runtimeProvider }) || item.labelKey;
+                return (
+                  <NavLink
+                    key={item.id}
+                    to={item.path}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200',
+                        isActive
+                          ? 'bg-accent/12 text-violet-950 ring-1 ring-accent/25 dark:text-white'
+                          : 'text-slate-600 dark:text-violet-200/60 hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-violet-900 dark:hover:text-white'
+                      )
+                    }
+                  >
+                    <Icon size={20} className="shrink-0" />
+                    {!collapsed && <span>{t(labelKey)}</span>}
+                  </NavLink>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
@@ -108,7 +114,7 @@ export default function Sidebar() {
       <div
         className={cn(
           'border-t p-2 space-y-1',
-          'border-gray-200/80 dark:border-white/[0.08]'
+          'border-violet-100/90 dark:border-violet-400/[0.12]'
         )}
       >
         <div className="relative">

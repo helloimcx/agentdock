@@ -2,17 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
 import {
-  ArrowLeft, Plug, Heart, Settings, Layers, Zap, Pause, Play,
+  ArrowLeft, Plug, Heart, Layers, Zap, Pause, Play,
   Trash2, Plus, Check, Clock,
 } from 'lucide-react';
-import { Card, Badge, Button, Input, Modal, EmptyState } from '@/components/ui';
+import { Card, Badge, Button, Input, Modal, EmptyState, PageHeader, SectionCard } from '@/components/ui';
 import { getProject, updateProject, type ProjectDetail as ProjectDetailType } from '@/api/projects';
 import { listProviders, addProvider, removeProvider, activateProvider, listModels, setModel, type Provider } from '@/api/providers';
 import { getHeartbeat, pauseHeartbeat, resumeHeartbeat, triggerHeartbeat, setHeartbeatInterval, type HeartbeatStatus } from '@/api/heartbeat';
 import { formatTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
-type Tab = 'overview' | 'providers' | 'heartbeat' | 'settings';
+type Tab = 'overview' | 'providers' | 'heartbeat';
 
 export default function ProjectDetail() {
   const { t } = useTranslation();
@@ -25,13 +25,6 @@ export default function ProjectDetail() {
   const [models, setModels] = useState<string[]>([]);
   const [currentModel, setCurrentModel] = useState('');
   const [loading, setLoading] = useState(true);
-
-  // Settings form
-  const [quiet, setQuiet] = useState(false);
-  const [language, setLanguage] = useState('');
-  const [adminFrom, setAdminFrom] = useState('');
-  const [disabledCmds, setDisabledCmds] = useState('');
-  const [saving, setSaving] = useState(false);
 
   // Add provider modal
   const [showAddProvider, setShowAddProvider] = useState(false);
@@ -53,10 +46,6 @@ export default function ProjectDetail() {
       ]);
       if (proj.status === 'fulfilled') {
         setProject(proj.value);
-        setQuiet(proj.value.settings?.quiet || false);
-        setLanguage(proj.value.settings?.language || '');
-        setAdminFrom(proj.value.settings?.admin_from || '');
-        setDisabledCmds(proj.value.settings?.disabled_commands?.join(', ') || '');
       }
       if (provs.status === 'fulfilled') {
         setProviders(provs.value.providers || []);
@@ -79,22 +68,6 @@ export default function ProjectDetail() {
     return () => window.removeEventListener('cc:refresh', handler);
   }, [fetchAll]);
 
-  const handleSaveSettings = async () => {
-    if (!name) return;
-    setSaving(true);
-    try {
-      await updateProject(name, {
-        quiet,
-        language,
-        admin_from: adminFrom,
-        disabled_commands: disabledCmds.split(',').map(s => s.trim()).filter(Boolean),
-      });
-      await fetchAll();
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleAddProvider = async () => {
     if (!name || !newProvider.name) return;
     await addProvider(name, newProvider);
@@ -114,7 +87,6 @@ export default function ProjectDetail() {
     { key: 'overview', icon: Layers },
     { key: 'providers', icon: Zap },
     { key: 'heartbeat', icon: Heart },
-    { key: 'settings', icon: Settings },
   ];
 
   if (loading && !project) {
@@ -124,13 +96,16 @@ export default function ProjectDetail() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Back + title */}
-      <div className="flex items-center gap-3">
-        <Link to="/projects" className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-          <ArrowLeft size={18} className="text-gray-400" />
-        </Link>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">{name}</h2>
-        {project && <Badge variant="info">{project.agent_type}</Badge>}
-      </div>
+      <PageHeader
+        title={name}
+        description="Project overview, providers, and heartbeat status. Low-frequency settings are no longer editable in the daily UI."
+        actions={(
+          <Link to="/projects">
+            <Button variant="secondary" size="sm"><ArrowLeft size={14} /> Back</Button>
+          </Link>
+        )}
+      />
+      {project && <Badge variant="info">{project.agent_type}</Badge>}
 
       {/* Tabs */}
       <div className="flex gap-2">
@@ -154,8 +129,7 @@ export default function ProjectDetail() {
       {/* Tab content */}
       {tab === 'overview' && project && (
         <div className="space-y-4">
-          <Card>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('projects.platforms')}</h3>
+          <SectionCard title={t('projects.platforms')}>
             <div className="flex flex-wrap gap-2">
               {project.platforms?.map((p) => (
                 <Badge key={p.type} variant={p.connected ? 'success' : 'danger'}>
@@ -163,9 +137,8 @@ export default function ProjectDetail() {
                 </Badge>
               ))}
             </div>
-          </Card>
-          <Card>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('sessions.title')}</h3>
+          </SectionCard>
+          <SectionCard title={t('sessions.title')}>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {project.sessions_count} {t('nav.sessions').toLowerCase()}
             </p>
@@ -176,7 +149,7 @@ export default function ProjectDetail() {
                 ))}
               </div>
             )}
-          </Card>
+          </SectionCard>
         </div>
       )}
 
@@ -299,25 +272,6 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {tab === 'settings' && project && (
-        <Card>
-          <div className="space-y-4 max-w-lg">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('projects.quiet')}</label>
-              <button
-                onClick={() => setQuiet(!quiet)}
-                className={cn('w-10 h-6 rounded-full transition-colors', quiet ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-700')}
-              >
-                <div className={cn('w-4 h-4 bg-white rounded-full transition-transform mx-1', quiet ? 'translate-x-4' : 'translate-x-0')} />
-              </button>
-            </div>
-            <Input label={t('projects.language')} value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="en, zh, ja..." />
-            <Input label={t('projects.adminFrom')} value={adminFrom} onChange={(e) => setAdminFrom(e.target.value)} placeholder="user1,user2 or *" />
-            <Input label={t('projects.disabledCommands')} value={disabledCmds} onChange={(e) => setDisabledCmds(e.target.value)} placeholder="restart, upgrade, cron" />
-            <Button loading={saving} onClick={handleSaveSettings}>{t('common.save')}</Button>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

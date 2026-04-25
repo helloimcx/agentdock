@@ -26,7 +26,7 @@ type NoticeTone = 'success' | 'error' | 'warning';
 
 function noticeClassName(tone: NoticeTone) {
   if (tone === 'success') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-300';
+    return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/30 dark:bg-violet-950/20 dark:text-violet-300';
   }
   if (tone === 'warning') {
     return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300';
@@ -214,7 +214,7 @@ export default function KnowledgeDetail() {
                 <label className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium',
                   configReady
-                    ? 'bg-accent text-black hover:bg-accent-dim'
+                    ? 'bg-accent text-white hover:bg-accent-dim'
                     : 'bg-gray-200 text-gray-500 dark:bg-white/[0.08] dark:text-gray-500',
                 )}>
                   <Upload size={14} />

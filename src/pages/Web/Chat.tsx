@@ -659,7 +659,7 @@ export default function WebChat() {
                     className={cn(
                       'rounded-2xl border p-3 transition-all',
                       active
-                        ? 'border-accent/45 bg-accent/10 shadow-[0_0_20px_-12px_rgba(66,255,156,0.55)]'
+                        ? 'border-accent/45 bg-accent/10 shadow-[0_0_20px_-12px_rgba(139,92,246,0.55)]'
                         : 'border-gray-200/80 bg-white/70 hover:border-accent/30 dark:border-white/[0.08] dark:bg-white/[0.03]'
                     )}
                   >
@@ -676,7 +676,7 @@ export default function WebChat() {
                               {sessionLabel(session)}
                             </span>
                             {session.live || activeSessionIds.has(session.id) ? (
-                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-300">
+                              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-600 dark:bg-violet-950/20 dark:text-violet-300">
                                 live
                               </span>
                             ) : (
@@ -772,7 +772,7 @@ export default function WebChat() {
                       className={cn(
                         'max-w-[85%] rounded-2xl px-5 py-3.5 text-sm',
                         isUser
-                          ? 'bg-accent text-black rounded-br-md'
+                          ? 'bg-accent text-white rounded-br-md'
                           : 'border border-gray-200 bg-white text-gray-900 shadow-sm dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.42)] dark:text-gray-100 rounded-bl-md'
                       )}
                     >

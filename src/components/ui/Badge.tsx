@@ -6,9 +6,9 @@ interface BadgeProps {
 }
 
 const variants = {
-  default: 'bg-gray-100/90 dark:bg-white/[0.08] text-gray-600 dark:text-gray-400 border border-gray-200/80 dark:border-white/[0.06]',
+  default: 'bg-slate-100/90 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-white/[0.06]',
   success:
-    'bg-emerald-100/90 dark:bg-emerald-900/25 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/20',
+    'bg-violet-100/90 dark:bg-violet-900/25 text-violet-700 dark:text-violet-400 border border-violet-200/50 dark:border-violet-500/20',
   warning:
     'bg-amber-100/90 dark:bg-amber-900/25 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-500/20',
   danger:
@@ -20,7 +20,7 @@ export function Badge({ children, variant = 'default' }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium backdrop-blur-sm',
+        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
         variants[variant]
       )}
     >

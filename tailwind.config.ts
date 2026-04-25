@@ -7,8 +7,8 @@ export default {
     extend: {
       colors: {
         accent: {
-          DEFAULT: '#42ff9c',
-          dim: '#2bc87a',
+          DEFAULT: '#8B5CF6',
+          dim: '#7C3AED',
         },
       },
       animation: {

@@ -9,12 +9,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  primary: 'bg-accent text-black hover:bg-accent-dim font-medium shadow-[0_0_20px_-6px_rgba(66,255,156,0.55)]',
+  primary: 'bg-accent text-white hover:bg-accent-dim font-medium shadow-none',
   secondary:
-    'bg-gray-100/90 dark:bg-white/[0.08] text-gray-700 dark:text-gray-300 hover:bg-gray-200/90 dark:hover:bg-white/[0.12] border border-transparent dark:border-white/[0.06]',
-  danger: 'bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20',
+    'bg-white text-slate-700 hover:bg-violet-50 border border-violet-100 dark:bg-white/[0.04] dark:text-violet-100 dark:hover:bg-white/[0.08] dark:border-violet-400/10',
+  danger: 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/15 dark:border-red-400/15',
   ghost:
-    'text-gray-500 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.06] hover:text-gray-700 dark:hover:text-gray-200',
+    'text-slate-500 dark:text-violet-200/60 hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-slate-800 dark:hover:text-white',
 };
 
 const sizes = {
@@ -38,6 +38,7 @@ export function Button({
       type={type}
       className={cn(
         'inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none',
+        'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/35',
         variants[variant],
         sizes[size],
         className

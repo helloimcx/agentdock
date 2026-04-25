@@ -113,7 +113,7 @@ export default function SessionList() {
                     <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
                       {s.name || s.user_name || s.id.slice(0, 8)}
                     </span>
-                    {s.live && <Circle size={5} className="fill-emerald-500 text-emerald-500 shrink-0" />}
+                    {s.live && <Circle size={5} className="fill-violet-500 text-violet-500 shrink-0" />}
                   </div>
                   <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">
                     {timeAgo(s.updated_at || s.created_at, t)}
