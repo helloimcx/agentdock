@@ -10,6 +10,7 @@ import {
   RotateCw,
   Search,
   Send,
+  ShieldCheck,
   Terminal,
   Trash2,
   User,
@@ -22,7 +23,7 @@ import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
 import { startDesktopService } from '@/api/desktop';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/session-utils';
-import { formatMessageTimestamp, formatRuntimePhase } from './thread-chat-model';
+import { formatMessageTimestamp, formatRuntimePhase, type ChatMessage } from './thread-chat-model';
 import { useThreadChatController } from './useThreadChatController';
 
 type ToolResultCard = {
@@ -30,6 +31,17 @@ type ToolResultCard = {
   status: string;
   output: string;
   label: string;
+};
+
+type PermissionCard = {
+  id: string;
+  content: string;
+  actions: NonNullable<ChatMessage['actions']>;
+  actionReplyCtx?: string;
+  actionPending?: boolean;
+  actionStatus?: string;
+  actionMode: 'permission';
+  actionInteractive: true;
 };
 
 function parseToolResultCard(content: string): ToolResultCard | null {
@@ -105,6 +117,85 @@ function ToolResultCardView({ card }: { card: ToolResultCard }) {
       <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[12px] leading-5 text-slate-700 [scrollbar-gutter:stable] dark:text-slate-200">
         {card.output || '无输出'}
       </pre>
+    </div>
+  );
+}
+
+function parsePermissionCardContent(content: string) {
+  const lines = content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const fallbackIndex = lines.findIndex((line) => line.includes('若按钮没有显示'));
+  const visibleLines = fallbackIndex >= 0 ? lines.slice(0, fallbackIndex) : lines;
+  const title = visibleLines[0] || '等待工具确认';
+  const bodyLines = visibleLines
+    .slice(1)
+    .filter((line) => !line.includes('请选择一个选项继续执行'));
+  return {
+    title,
+    bodyLines,
+  };
+}
+
+function isPermissionPromptContent(content: string) {
+  return /等待工具确认/.test(content) && /allow all\s*\/\s*allow\s*\/\s*deny/i.test(content);
+}
+
+function PermissionRequestCardView({
+  card,
+  loading,
+  onAction,
+}: {
+  card: PermissionCard;
+  loading: boolean;
+  onAction: (action: NonNullable<ChatMessage['actions']>[number][number]) => void;
+}) {
+  const parsed = parsePermissionCardContent(card.content);
+  return (
+    <div className="overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50/90 shadow-[0_10px_26px_rgba(180,83,9,0.08)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:shadow-none">
+      <div className="flex items-center justify-between gap-3 border-b border-amber-200/80 px-4 py-3 dark:border-amber-400/15">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200">
+            <ShieldCheck size={14} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-amber-950 dark:text-amber-50">{parsed.title}</p>
+            <p className="mt-0.5 text-[11px] text-amber-700/80 dark:text-amber-100/70">权限响应</p>
+          </div>
+        </div>
+      </div>
+      {parsed.bodyLines.length > 0 ? (
+        <div className="space-y-2 px-4 py-3 text-sm leading-6 text-amber-950 dark:text-amber-50">
+          {parsed.bodyLines.map((line, index) => (
+            <p key={`${card.id}-permission-line-${index}`} className="break-words">
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {card.actionStatus ? (
+        <p className="border-t border-amber-200/80 px-4 py-3 text-xs text-amber-700 dark:border-amber-400/15 dark:text-amber-100">
+          {card.actionStatus}
+        </p>
+      ) : null}
+      {card.actions.length > 0 ? (
+        <div className="flex flex-wrap gap-2 border-t border-amber-200/80 px-4 py-3 dark:border-amber-400/15">
+          {card.actions.flat().map((action) => (
+            <Button
+              key={`${card.id}-${action.data || action.text}`}
+              size="sm"
+              variant="secondary"
+              onClick={() => onAction(action)}
+              disabled={Boolean(card.actionPending || loading)}
+              loading={loading}
+              className="rounded-full border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 dark:border-amber-400/30 dark:bg-white/[0.08] dark:text-amber-50 dark:hover:bg-white/[0.12]"
+            >
+              {action.text || action.data}
+            </Button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -216,7 +307,6 @@ export default function ThreadChat() {
 
   const isRuntimeStarting = runtime?.phase === 'starting';
   const selectedKnowledgeCount = selectedKnowledgeBaseIds.length;
-  const permissionPromptMessage = pendingPermissionRequest;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -542,7 +632,26 @@ export default function ThreadChat() {
                     const isUser = message.role === 'user';
                     const isSystem = message.role === 'system';
                     const isProgress = !isUser && !isSystem && message.kind === 'progress';
-                    const toolResultCard = !isUser ? parseToolResultCard(message.content) : null;
+                    const pendingPermissionForMessage = pendingPermissionRequest?.id === message.id ? pendingPermissionRequest : null;
+                    const permissionCard = !isUser && (
+                      pendingPermissionForMessage ||
+                      (
+                        (message.actionMode === 'permission' && message.actionInteractive) ||
+                        isPermissionPromptContent(message.content)
+                          ? {
+                              id: message.id,
+                              content: message.content,
+                              actions: message.actions || [],
+                              actionReplyCtx: message.actionReplyCtx,
+                              actionPending: message.actionPending,
+                              actionStatus: message.actionStatus,
+                              actionMode: 'permission' as const,
+                              actionInteractive: true as const,
+                            }
+                          : null
+                      )
+                    );
+                    const toolResultCard = !isUser && !permissionCard ? parseToolResultCard(message.content) : null;
                     const isToolResult = Boolean(toolResultCard);
                     return (
                       <div key={message.id} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
@@ -596,7 +705,13 @@ export default function ThreadChat() {
                                 <span data-testid="desktop-chat-message-timestamp">{formatMessageTimestamp(message.timestamp)}</span>
                               ) : null}
                             </div>
-                            {!isUser && message.preview && message.previewPlainText ? (
+                            {permissionCard ? (
+                              <PermissionRequestCardView
+                                card={permissionCard}
+                                loading={pendingBridgeActionId === permissionCard.id}
+                                onAction={(action) => void handleBridgeAction(permissionCard, action)}
+                              />
+                            ) : !isUser && message.preview && message.previewPlainText ? (
                               <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-inherit">
                                 {message.content}
                               </div>
@@ -605,7 +720,7 @@ export default function ThreadChat() {
                             ) : (
                               <ChatMarkdown content={message.content} isUser={isUser} />
                             )}
-                            {!isUser && message.actions && message.actions.length > 0 ? (
+                            {!permissionCard && !isUser && message.actions && message.actions.length > 0 ? (
                               <div className="mt-4 space-y-2">
                                 {message.actions.map((row, rowIndex) => (
                                   <div key={`${message.id}-actions-${rowIndex}`} className="flex flex-wrap gap-2">
@@ -829,28 +944,7 @@ export default function ThreadChat() {
                       className="min-h-[94px] rounded-[20px] border-slate-200 bg-white px-4 py-3 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500"
                     />
 
-                    {permissionPromptMessage ? (
-                      <div className="flex min-w-[220px] flex-col gap-2 rounded-[20px] border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-400/20 dark:bg-amber-500/10">
-                        <p className="text-xs font-medium text-amber-800 dark:text-amber-100">请选择权限响应</p>
-                        {permissionPromptMessage.actions?.map((row, rowIndex) => (
-                          <div key={`${permissionPromptMessage.id}-permission-row-${rowIndex}`} className="flex flex-wrap gap-2">
-                            {row.map((action) => (
-                              <Button
-                                key={`${permissionPromptMessage.id}-${rowIndex}-${action.data}`}
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => void handleBridgeAction(permissionPromptMessage, action)}
-                                disabled={Boolean(permissionPromptMessage.actionPending || pendingBridgeActionId)}
-                                loading={pendingBridgeActionId === permissionPromptMessage.id}
-                                className="rounded-full border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 dark:border-amber-400/30 dark:bg-white/[0.08] dark:text-amber-50 dark:hover:bg-white/[0.12]"
-                              >
-                                {action.text || action.data}
-                              </Button>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ) : taskRunning ? (
+                    {taskRunning ? (
                       <Button
                         variant="danger"
                         onClick={() => void handleStopTask()}

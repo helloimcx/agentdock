@@ -185,6 +185,9 @@ export class LocalCoreAcpTurnCoordinator {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
         const toolName = currentTurn.pendingToolCallTitle?.trim();
+        if (this.isEmptyRunningToolUpdate(toolName, title, status, content)) {
+          return;
+        }
         currentTurn.pendingToolCallTitle = undefined;
         this.emitProgress(session, currentRunId, this.formatToolProgressMessage(toolName, title, status, content));
         return;
@@ -239,6 +242,13 @@ export class LocalCoreAcpTurnCoordinator {
   private formatToolProgressMessage(toolName: string | undefined, title: string, status: string, content: string) {
     const detail = [title, status, content].filter(Boolean).join(' - ');
     return toolName ? `🔧 ${toolName}: ${detail || 'Tool update'}` : `🔧 ${detail || 'Tool update'}`;
+  }
+
+  private isEmptyRunningToolUpdate(toolName: string | undefined, title: string, status: string, content: string) {
+    return !toolName &&
+      !content.trim() &&
+      /^running$/i.test(status) &&
+      (!title.trim() || /^tool update$/i.test(title));
   }
 }
 

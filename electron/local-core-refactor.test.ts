@@ -116,6 +116,47 @@ test('ACP bare tool call is flushed before assistant text', () => {
   assert.equal(session.currentTurn.assistantText, 'done');
 });
 
+test('ACP skips empty generic running tool updates', () => {
+  const appended: string[] = [];
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content) => appended.push(content),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        title: 'Tool update',
+        status: 'running',
+      },
+    },
+  });
+
+  assert.deepEqual(appended, []);
+  assert.deepEqual(emitted, []);
+});
+
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({
     getScheduledDeliveryBinding: (threadId) => threadId === 'thread-1'

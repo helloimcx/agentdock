@@ -317,7 +317,7 @@ export function useThreadChatBridgeEvents({
         const isPermissionPrompt = isPermissionActionRow(actionRows);
         const interactivePermission = isPermissionPrompt && supportsInteractivePermission(activeAgentType);
         const nextActions = isPermissionPrompt && !interactivePermission ? [] : actionRows;
-        const messageActions = interactivePermission && isPermissionPrompt ? [] : nextActions;
+        const messageActions = nextActions;
         const nextStatus = isPermissionPrompt && !interactivePermission
           ? permissionSupportMessage(activeAgentType)
           : undefined;
@@ -332,8 +332,8 @@ export function useThreadChatBridgeEvents({
                     actions: messageActions,
                     actionReplyCtx: event.replyCtx,
                     actionPending: false,
-                    actionMode: interactivePermission && isPermissionPrompt ? undefined : isPermissionPrompt ? 'permission' : 'generic',
-                    actionInteractive: interactivePermission && isPermissionPrompt ? undefined : interactivePermission,
+                    actionMode: isPermissionPrompt ? 'permission' : 'generic',
+                    actionInteractive: interactivePermission,
                     actionStatus: nextStatus,
                   }
                 : message,
@@ -352,8 +352,8 @@ export function useThreadChatBridgeEvents({
               actions: messageActions,
               actionReplyCtx: event.replyCtx,
               actionPending: false,
-              actionMode: interactivePermission && isPermissionPrompt ? undefined : isPermissionPrompt ? 'permission' : 'generic',
-              actionInteractive: interactivePermission && isPermissionPrompt ? undefined : interactivePermission,
+              actionMode: isPermissionPrompt ? 'permission' : 'generic',
+              actionInteractive: interactivePermission,
               actionStatus: nextStatus,
             },
           ];

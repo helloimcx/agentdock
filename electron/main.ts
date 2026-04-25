@@ -26,13 +26,6 @@ function appIconPath() {
   return appResourcePath('build', 'icon.png');
 }
 
-function applyDockIcon() {
-  const iconPath = appIconPath();
-  if (process.platform === 'darwin' && app.dock && existsSync(iconPath)) {
-    app.dock.setIcon(iconPath);
-  }
-}
-
 async function isLocalCoreHealthy(timeoutMs = 350) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -154,7 +147,6 @@ function writeSmokeResult(payload: Record<string, unknown>) {
 }
 
 app.whenReady().then(async () => {
-  applyDockIcon();
   await ensureLocalCoreProcess();
   createWindow();
   if (smokeOutputPath) {
