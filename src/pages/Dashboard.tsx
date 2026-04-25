@@ -32,17 +32,17 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
     <Link
       to={to}
       className={[
-        'group flex min-h-[136px] flex-col justify-between rounded-lg border p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring',
+        'group flex min-h-[118px] flex-col justify-between rounded-2xl p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring',
         primary
-          ? 'border-primary/25 bg-primary/10 hover:border-primary/35 hover:bg-primary/15'
-          : 'border-border bg-card/85 hover:border-primary/25 hover:bg-card',
+          ? 'bg-black/[0.07] text-foreground hover:bg-black/[0.09] dark:bg-white/[0.10] dark:hover:bg-white/[0.13]'
+          : 'bg-white/54 text-foreground hover:bg-white/72 dark:bg-white/[0.055] dark:hover:bg-white/[0.085]',
       ].join(' ')}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-sm">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70 text-primary shadow-[0_1px_1px_rgba(0,0,0,0.04)] dark:bg-white/[0.08]">
           <Icon size={20} />
         </div>
-        <ArrowRight size={17} className="mt-1 text-muted-foreground/45 transition-colors group-hover:text-primary" />
+        <ArrowRight size={17} className="mt-1 text-muted-foreground/45 transition-colors group-hover:text-foreground" />
       </div>
       <div>
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -144,8 +144,11 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="animate-fade-in space-y-6">
-      <PageHeader title="概览" />
+    <div className="animate-fade-in space-y-8">
+      <PageHeader
+        title="概览"
+        description="继续最近的工作，或进入项目、知识和自动化配置。"
+      />
 
       {error ? (
         <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
@@ -153,15 +156,26 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {quickActions.map((action) => (
-          <QuickAction key={action.to} {...action} />
-        ))}
-      </div>
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">快速开始</h2>
+            <p className="mt-1 text-sm text-muted-foreground">常用入口会保留在最前面。</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {quickActions.map((action) => (
+            <QuickAction key={action.to} {...action} />
+          ))}
+        </div>
+      </section>
 
       <Card className="p-0">
-        <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
-          <h2 className="text-base font-semibold text-foreground">{t('nav.projects')}</h2>
+        <div className="flex items-center justify-between gap-4 border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">{t('nav.projects')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">最近配置和会话概览。</p>
+          </div>
           <Link
             to={desktopRuntime ? '/workspace' : '/projects'}
             className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
@@ -174,15 +188,15 @@ export default function Dashboard() {
             <EmptyState message={t('projects.noProjects')} icon={FolderKanban} />
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-black/[0.08] dark:divide-white/[0.07]">
             {projects.slice(0, 6).map((project) => (
               <Link
                 key={project.name}
                 to={desktopRuntime ? `/workspace?project=${encodeURIComponent(project.name)}` : `/projects/${project.name}`}
-                className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors duration-200 hover:bg-accent/10"
+                className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors duration-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <Server size={17} />
                   </div>
                   <div className="min-w-0">
@@ -194,7 +208,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-2">
                   {project.heartbeat_enabled ? <Badge variant="success">heartbeat</Badge> : null}
-                  <ArrowRight size={16} className="text-muted-foreground/45 transition-colors group-hover:text-primary" />
+                  <ArrowRight size={16} className="text-muted-foreground/45 transition-colors group-hover:text-foreground" />
                 </div>
               </Link>
             ))}

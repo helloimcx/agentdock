@@ -58,28 +58,32 @@ export default function Sidebar() {
   return (
     <aside
       className={cn(
-        'h-screen flex flex-col border-r transition-all duration-300 ease-out',
-        'border-black/10 bg-white/42 backdrop-blur-2xl supports-[backdrop-filter]:bg-white/36',
-        'dark:border-white/[0.08] dark:bg-[#1c1c1e]/58 dark:supports-[backdrop-filter]:bg-[#1c1c1e]/46',
+        'relative h-screen flex flex-col overflow-hidden border-r transition-all duration-300 ease-out',
+        'border-white/55 bg-white/24 shadow-[inset_-1px_0_0_rgba(255,255,255,0.36)] backdrop-blur-[34px] supports-[backdrop-filter]:bg-white/18',
+        'dark:border-white/[0.10] dark:bg-[#1c1c1e]/34 dark:shadow-[inset_-1px_0_0_rgba(255,255,255,0.08)] dark:supports-[backdrop-filter]:bg-[#1c1c1e]/26',
         collapsed ? 'w-16' : 'w-56'
       )}
     >
       <div
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0.18)_48%,rgba(255,255,255,0.08))] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.025)_52%,rgba(255,255,255,0.015))]"
+        aria-hidden="true"
+      />
+      <div
         className={cn(
-          'flex h-[5.25rem] items-center gap-3 px-4 pt-7 transition-colors'
+          'relative flex h-[5.25rem] items-center gap-3 px-4 pt-7 transition-colors'
         )}
       >
         <BrandLogo showWordmark={!collapsed} />
       </div>
 
-      <nav className="flex-1 py-3 space-y-4 px-2 overflow-y-auto">
+      <nav className="relative flex-1 py-3 space-y-4 px-2 overflow-y-auto">
         {navGroups.map((group) => {
           const items = visibleNavItems.filter((item) => group.ids.includes(item.id));
           if (items.length === 0) return null;
           return (
             <div key={group.label} className="space-y-1">
               {!collapsed && (
-                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
                   {group.label}
                 </p>
               )}
@@ -96,7 +100,7 @@ export default function Sidebar() {
                         'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
                         'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         isActive
-                          ? 'bg-primary/[0.12] text-foreground shadow-[inset_0_0_0_1px_rgba(0,122,255,0.14)]'
+                          ? 'bg-black/[0.07] text-foreground dark:bg-white/[0.10]'
                           : 'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]'
                       )
                     }
@@ -113,7 +117,7 @@ export default function Sidebar() {
 
       <div
         className={cn(
-          'border-t p-2 space-y-1',
+          'relative border-t p-2 space-y-1',
           'border-black/10 dark:border-white/[0.08]'
         )}
       >
