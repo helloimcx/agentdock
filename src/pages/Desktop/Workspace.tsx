@@ -42,6 +42,12 @@ type PlatformDialogState = {
   draft: DesktopPlatformConfig;
 };
 
+type ProjectDialogDraft = {
+  name: string;
+  agentType: string;
+  workDir: string;
+};
+
 type WeixinQrState = {
   ticket: string;
   expiresIn: number;
@@ -66,20 +72,16 @@ function ensureProjects(config: DesktopConnectConfig) {
   return config.projects;
 }
 
-function createProjectDraft(index: number): DesktopProjectConfig {
+function createProjectDialogDraft(projects: DesktopProjectConfig[]): ProjectDialogDraft {
+  const projectNames = new Set(projects.map((project) => project.name).filter(Boolean));
+  let index = projects.length + 1;
+  while (projectNames.has(`project-${index}`)) {
+    index += 1;
+  }
   return {
     name: `project-${index}`,
-    agent: {
-      type: DEFAULT_DESKTOP_AGENT_TYPE,
-      options: {
-        model: getDefaultDesktopAgentModel(DEFAULT_DESKTOP_AGENT_TYPE),
-        work_dir: '.',
-      },
-      providers: [],
-    },
-    platforms: [],
-    admin_from: '',
-    disabled_commands: [],
+    agentType: DEFAULT_DESKTOP_AGENT_TYPE,
+    workDir: '',
   };
 }
 
@@ -183,6 +185,7 @@ export default function DesktopWorkspace() {
   const [defaultProject, setDefaultProject] = useState('');
   const [autoStartService, setAutoStartService] = useState(true);
   const [persistedSettings, setPersistedSettings] = useState({ defaultProject: '', autoStartService: true });
+  const [projectDialog, setProjectDialog] = useState<ProjectDialogDraft | null>(null);
   const [platformDialog, setPlatformDialog] = useState<PlatformDialogState | null>(null);
   const [weixinQr, setWeixinQr] = useState<WeixinQrState | null>(null);
   const [weixinQrLoading, setWeixinQrLoading] = useState(false);
@@ -255,13 +258,51 @@ export default function DesktopWorkspace() {
   }, [updateSelectedProject]);
 
   const handleAddProject = () => {
+    setProjectDialog(createProjectDialogDraft(projects));
+  };
+
+  const updateProjectDialog = (patch: Partial<ProjectDialogDraft>) => {
+    setProjectDialog((current) => current ? { ...current, ...patch } : current);
+  };
+
+  const handleConfirmAddProject = () => {
+    if (!projectDialog) return;
+    const name = projectDialog.name.trim();
+    const agentType = projectDialog.agentType.trim();
+    const workDir = projectDialog.workDir.trim();
+    if (!name || !agentType || !workDir) {
+      setNotice({ tone: 'warning', message: 'Project name, agent type, and work directory are required.' });
+      return;
+    }
+    if (projects.some((project) => project.name === name)) {
+      setNotice({ tone: 'warning', message: `Project "${name}" already exists.` });
+      return;
+    }
+    const nextProject = normalizeProject({
+      name,
+      agent: {
+        type: agentType,
+        options: {
+          model: getDefaultDesktopAgentModel(agentType),
+          work_dir: workDir,
+        },
+        providers: [],
+      },
+      platforms: [],
+      admin_from: '',
+      disabled_commands: [],
+    });
+    const nextIndex = projects.length;
     setConfigDraft((current) => {
       const next = clone(current || {});
       const nextProjects = ensureProjects(next);
-      nextProjects.push(createProjectDraft(nextProjects.length + 1));
-      setSelectedIndex(nextProjects.length - 1);
+      nextProjects.push(nextProject);
       return next;
     });
+    setSelectedIndex(nextIndex);
+    setSearchParams({ project: name });
+    setProjectDialog(null);
+    setNotice(null);
   };
 
   const handleRemoveProject = (index: number) => {
@@ -682,6 +723,43 @@ export default function DesktopWorkspace() {
           )}
         </div>
       </SectionCard>
+
+      <Modal
+        open={Boolean(projectDialog)}
+        onClose={() => setProjectDialog(null)}
+        title="Add project"
+      >
+        {projectDialog ? (
+          <div className="space-y-4">
+            <Input
+              label="Project name"
+              value={projectDialog.name}
+              onChange={(event) => updateProjectDialog({ name: event.target.value })}
+              autoFocus
+            />
+            <Select
+              label="Agent type"
+              value={projectDialog.agentType}
+              onChange={(event) => {
+                const agentType = event.target.value;
+                updateProjectDialog({ agentType });
+              }}
+            >
+              {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+            </Select>
+            <Input
+              label="Work directory"
+              value={projectDialog.workDir}
+              onChange={(event) => updateProjectDialog({ workDir: event.target.value })}
+              placeholder="/Users/yinyin/code/my-project"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setProjectDialog(null)}>Cancel</Button>
+              <Button onClick={handleConfirmAddProject}><Plus size={14} /> Add project</Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={Boolean(platformDialog)}
