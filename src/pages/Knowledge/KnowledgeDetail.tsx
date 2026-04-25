@@ -180,12 +180,12 @@ export default function KnowledgeDetail() {
             <div>
               <p className="font-medium">Knowledge retrieval is not configured.</p>
               <p className="mt-1 text-sm opacity-90">
-                Add the ai_vector connection in Workspace settings to upload files and search this knowledge base.
+                Add the ai_vector connection in System settings to upload files and search this knowledge base.
               </p>
             </div>
-            <Link to="/workspace">
+            <Link to="/system">
               <Button variant="secondary">
-                <Settings size={14} /> Open Workspace
+                <Settings size={14} /> Open System Settings
               </Button>
             </Link>
           </div>

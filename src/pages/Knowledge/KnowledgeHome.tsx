@@ -271,12 +271,12 @@ export default function KnowledgeHome() {
             <div>
               <p className="font-medium">Knowledge search is not configured yet.</p>
               <p className="mt-1 text-sm opacity-90">
-                Add the ai_vector base URL in Workspace settings before uploading files or running retrieval.
+                Add the ai_vector base URL in System settings before uploading files or running retrieval.
               </p>
             </div>
-            <Link to="/workspace">
+            <Link to="/system">
               <Button variant="secondary">
-                <Settings size={14} /> Open Workspace
+                <Settings size={14} /> Open System Settings
               </Button>
             </Link>
           </div>
