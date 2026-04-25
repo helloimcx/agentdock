@@ -101,7 +101,8 @@
       {
         "provider": "github",
         "owner": "helloimcx",
-        "repo": "agentdock"
+        "repo": "agentdock",
+        "releaseType": "release"
       }
     ]
   }

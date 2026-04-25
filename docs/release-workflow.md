@@ -23,7 +23,7 @@ Triggers:
 Jobs:
 
 - `test` runs `pnpm test` on Ubuntu.
-- `package-macos` runs on `main` pushes after tests pass, builds macOS `dmg` and `zip` artifacts, and uploads them as GitHub Actions artifacts.
+- `package-macos` runs on `main` pushes after tests pass, builds macOS `dmg` and `zip` artifacts with `--publish never`, and uploads them as GitHub Actions artifacts.
 
 The `main` branch artifacts are intended for validation only. They are retained for 14 days and are not formal releases.
 
@@ -42,7 +42,7 @@ The release job:
 2. Runs `pnpm test`.
 3. Publishes macOS `dmg` and `zip` artifacts with `electron-builder --publish always`.
 
-The workflow uses `secrets.GITHUB_TOKEN` through `GH_TOKEN` and requires `contents: write` permission to create or update GitHub Releases.
+The workflow uses `secrets.GITHUB_TOKEN` through `GH_TOKEN` and requires `contents: write` permission to create or update GitHub Releases. Electron Builder is configured with `releaseType: release`, so version tags publish public GitHub Releases instead of draft releases.
 
 ## Creating a Release
 
