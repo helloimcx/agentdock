@@ -8,6 +8,113 @@ import { ScheduledConversationExecutor } from '../services/local-ai-core/src/sch
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/gateway/local-core-weixin-gateway.js';
+import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
+
+test('ACP tool call update is emitted with its pending tool name', () => {
+  const appended: Array<{ content: string; kind: string }> = [];
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content, kind) => appended.push({ content, kind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        title: 'Terminal',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        title: "ls ~/Desktop - List files on the user's desktop",
+        status: 'running',
+      },
+    },
+  });
+
+  assert.deepEqual(appended, [
+    {
+      content: "🔧 Terminal: ls ~/Desktop - List files on the user's desktop - running",
+      kind: 'progress',
+    },
+  ]);
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0]?.content, appended[0]?.content);
+});
+
+test('ACP bare tool call is flushed before assistant text', () => {
+  const appended: string[] = [];
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content) => appended.push(content),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        title: 'Terminal',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'done' },
+      },
+    },
+  });
+
+  assert.deepEqual(appended, ['🔧 Terminal']);
+  assert.equal(emitted[0]?.content, '🔧 Terminal');
+  assert.equal(session.currentTurn.assistantText, 'done');
+});
 
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({

@@ -13,6 +13,17 @@ type LocalCoreAcpTurnCoordinatorOptions = {
 export class LocalCoreAcpTurnCoordinator {
   constructor(private readonly options: LocalCoreAcpTurnCoordinatorOptions) {}
 
+  flushPendingToolCall(session: AcpSessionState) {
+    const currentTurn = session.currentTurn;
+    const currentRunId = session.currentRunId;
+    const title = currentTurn?.pendingToolCallTitle?.trim();
+    if (!currentTurn || !currentRunId || !title) {
+      return;
+    }
+    currentTurn.pendingToolCallTitle = undefined;
+    this.emitProgress(session, currentRunId, `🔧 ${title}`);
+  }
+
   getPendingPermissionRequest(session: AcpSessionState | undefined, detail: ThreadDetail): ThreadPendingPermissionRequest | null {
     const runId = session?.currentRunId;
     if (!session || !runId) {
@@ -135,6 +146,7 @@ export class LocalCoreAcpTurnCoordinator {
     }
     switch (String(update.sessionUpdate || '')) {
       case 'agent_message_chunk': {
+        this.flushPendingToolCall(session);
         if (update.content?.type !== 'text') {
           return;
         }
@@ -161,42 +173,24 @@ export class LocalCoreAcpTurnCoordinator {
       }
       case 'tool_call': {
         const title = String(update.title || 'Running tool').trim();
-        const content = `🔧 ${title}`;
-        this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
-        this.options.emitBridge({
-          type: 'reply',
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          content,
-        });
+        this.flushPendingToolCall(session);
+        currentTurn.pendingToolCallTitle = title;
         return;
       }
       case 'tool_call_update': {
         const title = String(update.title || 'Tool update').trim();
         const status = String(update.status || '').trim();
-        const content = Array.isArray(update.content)
-          ? update.content
-              .map((entry: any) =>
-                entry?.type === 'content' && entry?.content?.type === 'text'
-                  ? String(entry.content.text || '')
-                  : '')
-              .filter(Boolean)
-              .join('\n')
-          : '';
+        const content = this.extractToolUpdateContent(update.content);
         if (isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
-        const message = `🔧 ${[title, status, content].filter(Boolean).join(' - ')}`;
-        this.options.appendMessage(session.threadId, 'assistant', message, 'progress');
-        this.options.emitBridge({
-          type: 'reply',
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          content: message,
-        });
+        const toolName = currentTurn.pendingToolCallTitle?.trim();
+        currentTurn.pendingToolCallTitle = undefined;
+        this.emitProgress(session, currentRunId, this.formatToolProgressMessage(toolName, title, status, content));
         return;
       }
       case 'plan': {
+        this.flushPendingToolCall(session);
         const entries = Array.isArray(update.entries) ? update.entries : [];
         if (entries.length === 0) {
           return;
@@ -218,6 +212,33 @@ export class LocalCoreAcpTurnCoordinator {
       default:
         return;
     }
+  }
+
+  private emitProgress(session: AcpSessionState, currentRunId: string, content: string) {
+    this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
+    this.options.emitBridge({
+      type: 'reply',
+      sessionKey: session.bridgeSessionKey,
+      replyCtx: currentRunId,
+      content,
+    });
+  }
+
+  private extractToolUpdateContent(content: unknown) {
+    return Array.isArray(content)
+      ? content
+          .map((entry: any) =>
+            entry?.type === 'content' && entry?.content?.type === 'text'
+              ? String(entry.content.text || '')
+              : '')
+          .filter(Boolean)
+          .join('\n')
+      : '';
+  }
+
+  private formatToolProgressMessage(toolName: string | undefined, title: string, status: string, content: string) {
+    const detail = [title, status, content].filter(Boolean).join(' - ');
+    return toolName ? `🔧 ${toolName}: ${detail || 'Tool update'}` : `🔧 ${detail || 'Tool update'}`;
   }
 }
 

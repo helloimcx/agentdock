@@ -149,6 +149,7 @@ export type RunningTurn = {
   assistantText: string;
   typingStarted: boolean;
   previewStarted: boolean;
+  pendingToolCallTitle?: string;
   permission?: RunningPermissionRequest | null;
 };
 

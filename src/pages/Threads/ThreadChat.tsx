@@ -412,16 +412,6 @@ export default function ThreadChat() {
                             >
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-sm font-medium text-slate-900 dark:text-white">{session.name}</span>
-                                <span
-                                  className={cn(
-                                    'shrink-0 rounded-full px-2 py-0.5 text-[10px]',
-                                    session.live
-                                      ? 'bg-primary/10 text-primary dark:text-primary'
-                                      : 'bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400',
-                                  )}
-                                >
-                                  {session.live ? '在线' : '离线'}
-                                </span>
                               </div>
                               <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                                 {timeAgo(session.updatedAt || session.createdAt)}

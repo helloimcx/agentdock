@@ -231,6 +231,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         assistantText: '',
         typingStarted: true,
         previewStarted: false,
+        pendingToolCallTitle: undefined,
         permission: null,
       };
       const promptPromise = this.transport.request(session, 'session/prompt', {
@@ -249,6 +250,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       if (!currentTurn || currentTurn.runId !== runId) {
         return;
       }
+      this.turnCoordinator.flushPendingToolCall(session);
       if (currentTurn.assistantText) {
         const processed = await this.responseProcessor.processAssistantResponse(threadId, currentTurn.assistantText);
         if (processed.displayContent) {
