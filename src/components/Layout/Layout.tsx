@@ -1,14 +1,10 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { useState } from 'react';
 import Sidebar from './Sidebar';
-import Header from './Header';
 import { cn } from '@/lib/utils';
 import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
-import { AdvancedDrawer } from '@/components/ui';
 
 export default function Layout() {
   const { pathname } = useLocation();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const { desktopChat } = useRuntimeFeatureSupport();
   const chatLayout = pathname.startsWith('/chat') && desktopChat;
   const compactDesktopChatLayout =
@@ -18,12 +14,15 @@ export default function Layout() {
     <div
       className={cn(
         'flex h-screen overflow-hidden',
-        'bg-background'
+        'bg-background/60 backdrop-blur-2xl'
       )}
     >
+      <div
+        className="fixed left-0 right-0 top-0 z-50 h-8 [-webkit-app-region:drag]"
+        aria-hidden="true"
+      />
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-background">
-        {compactDesktopChatLayout ? null : <Header onOpenAdvanced={() => setAdvancedOpen(true)} />}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-background/45 backdrop-blur-2xl">
         <main className={cn(
           'flex-1 min-h-0',
           chatLayout ? 'overflow-hidden' : 'overflow-y-auto',
@@ -39,7 +38,6 @@ export default function Layout() {
           </div>
         </main>
       </div>
-      <AdvancedDrawer open={advancedOpen} onClose={() => setAdvancedOpen(false)} />
     </div>
   );
 }

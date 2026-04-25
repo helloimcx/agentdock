@@ -59,10 +59,18 @@
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, 'Segoe UI', sans-serif;
-    background: hsl(var(--background));
+    background:
+      radial-gradient(circle at 16% 0%, rgba(0, 122, 255, 0.08), transparent 34%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(242, 242, 247, 0.72));
     color: hsl(var(--foreground));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark body {
+    background:
+      radial-gradient(circle at 16% 0%, rgba(10, 132, 255, 0.12), transparent 34%),
+      linear-gradient(135deg, rgba(28, 28, 30, 0.92), rgba(15, 15, 17, 0.78));
   }
 }
 

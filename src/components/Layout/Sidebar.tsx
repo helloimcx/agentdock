@@ -59,15 +59,14 @@ export default function Sidebar() {
     <aside
       className={cn(
         'h-screen flex flex-col border-r transition-all duration-300 ease-out',
-        'border-black/10 bg-[#f2f2f7]/82 backdrop-blur-2xl supports-[backdrop-filter]:bg-[#f2f2f7]/72',
-        'dark:border-white/[0.08] dark:bg-[#1c1c1e]/82 dark:supports-[backdrop-filter]:bg-[#1c1c1e]/72',
+        'border-black/10 bg-white/42 backdrop-blur-2xl supports-[backdrop-filter]:bg-white/36',
+        'dark:border-white/[0.08] dark:bg-[#1c1c1e]/58 dark:supports-[backdrop-filter]:bg-[#1c1c1e]/46',
         collapsed ? 'w-16' : 'w-56'
       )}
     >
       <div
         className={cn(
-          'flex items-center gap-3 px-4 h-14 border-b transition-colors',
-          'border-black/10 dark:border-white/[0.08]'
+          'flex h-[5.25rem] items-center gap-3 px-4 pt-7 transition-colors'
         )}
       >
         <BrandLogo showWordmark={!collapsed} />

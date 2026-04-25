@@ -107,6 +107,11 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     title: 'AgentDock',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: { x: 12, y: 12 },
+    vibrancy: process.platform === 'darwin' ? 'sidebar' : undefined,
+    visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
+    backgroundColor: process.platform === 'darwin' ? '#00ffffff' : '#f5f5f7',
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
