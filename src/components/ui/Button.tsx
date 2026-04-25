@@ -11,16 +11,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  default: 'bg-primary text-primary-foreground shadow hover:bg-accent-dim',
-  primary: 'bg-primary text-primary-foreground shadow hover:bg-accent-dim',
-  secondary: 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
-  outline: 'border border-input bg-background shadow-sm hover:bg-accent/10 hover:text-foreground',
+  default: 'bg-primary text-primary-foreground hover:bg-accent-dim',
+  primary: 'bg-primary text-primary-foreground hover:bg-accent-dim',
+  secondary: 'bg-black/[0.05] text-secondary-foreground hover:bg-black/[0.08] dark:bg-white/[0.08] dark:hover:bg-white/[0.12]',
+  outline: 'border border-input bg-background hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]',
   destructive:
-    'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
-  danger: 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
+    'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+  danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
   ghost:
-    'text-muted-foreground hover:bg-accent/10 hover:text-foreground',
-  link: 'text-primary underline-offset-4 hover:underline shadow-none',
+    'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
+  link: 'text-primary underline-offset-4 hover:underline',
 };
 
 const sizes = {

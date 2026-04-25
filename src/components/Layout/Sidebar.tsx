@@ -59,27 +59,28 @@ export default function Sidebar() {
     <aside
       className={cn(
         'h-screen flex flex-col border-r transition-all duration-300 ease-out',
-        'bg-background/85 backdrop-blur-xl',
-        collapsed ? 'w-16' : 'w-60'
+        'border-black/10 bg-[#f2f2f7]/82 backdrop-blur-2xl supports-[backdrop-filter]:bg-[#f2f2f7]/72',
+        'dark:border-white/[0.08] dark:bg-[#1c1c1e]/82 dark:supports-[backdrop-filter]:bg-[#1c1c1e]/72',
+        collapsed ? 'w-16' : 'w-56'
       )}
     >
       <div
         className={cn(
-          'flex items-center gap-3 px-4 h-16 border-b transition-colors',
-          'border-border'
+          'flex items-center gap-3 px-4 h-14 border-b transition-colors',
+          'border-black/10 dark:border-white/[0.08]'
         )}
       >
         <BrandLogo showWordmark={!collapsed} />
       </div>
 
-      <nav className="flex-1 py-4 space-y-5 px-2 overflow-y-auto">
+      <nav className="flex-1 py-3 space-y-4 px-2 overflow-y-auto">
         {navGroups.map((group) => {
           const items = visibleNavItems.filter((item) => group.ids.includes(item.id));
           if (items.length === 0) return null;
           return (
             <div key={group.label} className="space-y-1">
               {!collapsed && (
-                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   {group.label}
                 </p>
               )}
@@ -93,14 +94,15 @@ export default function Sidebar() {
                     end={item.end}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200',
+                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         isActive
-                          ? 'bg-primary/10 text-foreground ring-1 ring-primary/25'
-                          : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+                          ? 'bg-primary/[0.12] text-foreground shadow-[inset_0_0_0_1px_rgba(0,122,255,0.14)]'
+                          : 'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]'
                       )
                     }
                   >
-                    <Icon size={20} className="shrink-0" />
+                    <Icon size={18} className="shrink-0" />
                     {!collapsed && <span>{t(labelKey)}</span>}
                   </NavLink>
                 );
@@ -113,7 +115,7 @@ export default function Sidebar() {
       <div
         className={cn(
           'border-t p-2 space-y-1',
-          'border-border'
+          'border-black/10 dark:border-white/[0.08]'
         )}
       >
         <div className="relative">
@@ -121,11 +123,12 @@ export default function Sidebar() {
             type="button"
             onClick={() => setLangOpen(!langOpen)}
             className={cn(
-              'flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-200',
-              'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+              'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors duration-200',
+              'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             )}
           >
-            <Languages size={20} className="shrink-0" />
+            <Languages size={18} className="shrink-0" />
             {!collapsed && (
               <span>{languages.find((l) => l.code === i18n.language)?.label || 'English'}</span>
             )}
@@ -134,7 +137,8 @@ export default function Sidebar() {
             <div
               className={cn(
                 'absolute bottom-full left-0 mb-1 w-48 rounded-xl py-1 z-50 overflow-hidden',
-                'bg-popover text-popover-foreground backdrop-blur-xl border shadow-xl'
+                'border border-black/10 bg-white/90 text-popover-foreground shadow-[0_18px_40px_rgba(0,0,0,0.12)] backdrop-blur-2xl',
+                'dark:border-white/[0.08] dark:bg-[#2c2c2e]/90'
               )}
             >
               {languages.map((l) => (
@@ -146,7 +150,7 @@ export default function Sidebar() {
                     'w-full text-left px-3 py-2 text-sm transition-colors duration-150',
                     i18n.language === l.code
                       ? 'text-primary font-medium bg-primary/10'
-                      : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+                      : 'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]'
                   )}
                 >
                   {l.label}
@@ -160,11 +164,12 @@ export default function Sidebar() {
           type="button"
           onClick={() => setTheme(nextTheme[theme])}
           className={cn(
-            'flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-200',
-            'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+            'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors duration-200',
+            'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
           )}
         >
-          <ThemeIcon size={20} className="shrink-0" />
+          <ThemeIcon size={18} className="shrink-0" />
           {!collapsed && <span>{t(`theme.${theme}`)}</span>}
         </button>
 
@@ -173,11 +178,12 @@ export default function Sidebar() {
             type="button"
             onClick={logout}
             className={cn(
-              'flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-200',
-              'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+              'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors duration-200',
+              'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             )}
           >
-            <LogOut size={20} className="shrink-0" />
+            <LogOut size={18} className="shrink-0" />
             {!collapsed && <span>{t('login.logout')}</span>}
           </button>
         )}
@@ -186,8 +192,9 @@ export default function Sidebar() {
           type="button"
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            'flex items-center justify-center w-full px-3 py-2 rounded-xl transition-colors duration-200',
-            'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
+            'flex items-center justify-center w-full px-3 py-2 rounded-lg transition-colors duration-200',
+            'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
           )}
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}

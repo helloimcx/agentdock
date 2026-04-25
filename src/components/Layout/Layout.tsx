@@ -18,12 +18,11 @@ export default function Layout() {
     <div
       className={cn(
         'flex h-screen overflow-hidden',
-        'bg-[radial-gradient(circle_at_top_left,hsl(var(--secondary))_0,hsl(var(--background))_40%,hsl(var(--background))_78%)]',
-        'dark:bg-[radial-gradient(circle_at_top_left,hsl(263_70%_20%)_0,hsl(var(--background))_42%,hsl(var(--background))_82%)]'
+        'bg-background'
       )}
     >
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-background">
         {compactDesktopChatLayout ? null : <Header onOpenAdvanced={() => setAdvancedOpen(true)} />}
         <main className={cn(
           'flex-1 min-h-0',

@@ -6,50 +6,50 @@
 
 @layer base {
   :root {
-    --background: 270 100% 99%;
-    --foreground: 222 47% 11%;
+    --background: 240 20% 97%;
+    --foreground: 240 3% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 240 3% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 258 90% 66%;
+    --popover-foreground: 240 3% 12%;
+    --primary: 211 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 263 85% 96%;
-    --secondary-foreground: 262 83% 30%;
-    --muted: 260 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 258 90% 66%;
+    --secondary: 240 11% 93%;
+    --secondary-foreground: 240 4% 20%;
+    --muted: 240 10% 94%;
+    --muted-foreground: 240 4% 44%;
+    --accent: 211 100% 50%;
     --accent-foreground: 0 0% 100%;
-    --accent-dim: 262 83% 58%;
+    --accent-dim: 211 92% 43%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 262 54% 91%;
-    --input: 262 54% 91%;
-    --ring: 258 90% 66%;
-    --radius: 0.75rem;
+    --border: 240 6% 85%;
+    --input: 240 6% 85%;
+    --ring: 211 100% 50%;
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 267 67% 3%;
-    --foreground: 260 100% 98%;
-    --card: 268 49% 7%;
-    --card-foreground: 260 100% 98%;
-    --popover: 268 49% 7%;
-    --popover-foreground: 260 100% 98%;
-    --primary: 258 90% 66%;
+    --background: 240 4% 9%;
+    --foreground: 240 20% 96%;
+    --card: 240 4% 12%;
+    --card-foreground: 240 20% 96%;
+    --popover: 240 4% 12%;
+    --popover-foreground: 240 20% 96%;
+    --primary: 211 100% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 266 44% 12%;
-    --secondary-foreground: 260 100% 95%;
-    --muted: 266 44% 12%;
-    --muted-foreground: 260 24% 70%;
-    --accent: 258 90% 66%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 240 20% 96%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 68%;
+    --accent: 211 100% 60%;
     --accent-foreground: 0 0% 100%;
-    --accent-dim: 262 83% 58%;
+    --accent-dim: 211 90% 55%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 98%;
-    --border: 263 38% 18%;
-    --input: 263 38% 18%;
-    --ring: 258 90% 66%;
+    --border: 240 4% 22%;
+    --input: 240 4% 22%;
+    --ring: 211 100% 60%;
   }
 
   * {
@@ -58,7 +58,7 @@
 
   body {
     margin: 0;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, 'Segoe UI', sans-serif;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
     -webkit-font-smoothing: antialiased;

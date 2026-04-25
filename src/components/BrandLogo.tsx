@@ -15,8 +15,6 @@ export function BrandLogo({
   const id = useId();
   const bgId = `${id}-bg`;
   const strokeId = `${id}-stroke`;
-  const arcId = `${id}-arc`;
-  const glowId = `${id}-glow`;
 
   return (
     <div className={cn('inline-flex items-center gap-3', className)}>
@@ -29,23 +27,15 @@ export function BrandLogo({
       >
         <defs>
           <linearGradient id={bgId} x1="7" y1="5" x2="57" y2="59" gradientUnits="userSpaceOnUse">
-            <stop className="[stop-color:#FFFFFF] dark:[stop-color:#140823]" />
-            <stop offset="0.48" className="[stop-color:#F4EFFF] dark:[stop-color:#0A0312]" />
-            <stop offset="1" className="[stop-color:#DDD6FE] dark:[stop-color:#2E1065]" />
+            <stop className="[stop-color:#FFFFFF] dark:[stop-color:#3A3A3C]" />
+            <stop offset="0.52" className="[stop-color:#F5F5F7] dark:[stop-color:#2C2C2E]" />
+            <stop offset="1" className="[stop-color:#E5E5EA] dark:[stop-color:#1C1C1E]" />
           </linearGradient>
           <linearGradient id={strokeId} x1="18" y1="16" x2="47" y2="48" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#DDD6FE" />
-            <stop offset="0.38" stopColor="#A78BFA" />
-            <stop offset="1" stopColor="#6D28D9" />
+            <stop stopColor="#5AC8FA" />
+            <stop offset="0.44" stopColor="#0A84FF" />
+            <stop offset="1" stopColor="#007AFF" />
           </linearGradient>
-          <linearGradient id={arcId} x1="36" y1="17" x2="52" y2="48" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#F5F3FF" />
-            <stop offset="0.5" stopColor="#C4B5FD" />
-            <stop offset="1" stopColor="#8B5CF6" />
-          </linearGradient>
-          <filter id={glowId} x="8" y="8" width="50" height="50" colorInterpolationFilters="sRGB">
-            <feDropShadow dx="0" dy="9" stdDeviation="7" floodColor="#6D28D9" floodOpacity="0.24" />
-          </filter>
         </defs>
         <rect
           x="4"
@@ -54,7 +44,7 @@ export function BrandLogo({
           height="56"
           rx="16"
           fill={`url(#${bgId})`}
-          className="stroke-violet-200 dark:stroke-violet-400/20"
+          className="stroke-black/10 dark:stroke-white/10"
           strokeWidth="1.5"
         />
         <path
@@ -63,31 +53,31 @@ export function BrandLogo({
           strokeWidth="7.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          filter={`url(#${glowId})`}
         />
         <path
           d="M20.8 37.5H34.7"
-          className="stroke-white dark:stroke-violet-100"
+          className="stroke-white dark:stroke-white"
           strokeWidth="5.25"
           strokeLinecap="round"
         />
         <path
           d="M33.8 20.2H37.4C45.1 20.2 50 25.6 50 32.5C50 39.4 45.1 44.8 37.4 44.8H33.8"
-          stroke={`url(#${arcId})`}
+          stroke={`url(#${strokeId})`}
           strokeWidth="7"
           strokeLinecap="round"
           strokeLinejoin="round"
+          opacity="0.82"
         />
         <path
           d="M34 25.5V39.5"
-          className="stroke-violet-950/70 dark:stroke-[#10051F]"
+          className="stroke-black/70 dark:stroke-black/80"
           strokeWidth="3"
           strokeLinecap="round"
-          opacity="0.26"
+          opacity="0.18"
         />
       </svg>
       {showWordmark && (
-        <span className="text-sm font-semibold tracking-tight text-violet-950 dark:text-white">
+        <span className="text-sm font-semibold tracking-tight text-foreground">
           AgentDock
         </span>
       )}

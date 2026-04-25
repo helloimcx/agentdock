@@ -12,9 +12,10 @@ export function Card({ children, className, hover }: CardProps) {
     <div
       className={cn(
         'rounded-lg p-5 text-card-foreground transition-colors duration-200 animate-float-in',
-        'border bg-card/95 shadow-sm',
+        'border border-black/10 bg-card/92 shadow-[0_1px_2px_rgba(0,0,0,0.06)] backdrop-blur-xl',
+        'dark:border-white/[0.08] dark:bg-card/88 dark:shadow-none',
         hover &&
-          'cursor-pointer hover:border-primary/30 hover:bg-card hover:shadow-md hover:shadow-primary/5',
+          'cursor-pointer hover:border-primary/25 hover:bg-card hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] dark:hover:bg-card/95 dark:hover:shadow-none',
         className
       )}
     >

@@ -31,11 +31,12 @@ export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void
       className={cn(
         compactDesktopChatHeader ? 'h-11 px-4' : 'h-14 px-6',
         'flex items-center justify-between shrink-0',
-        'border-b bg-background/80 backdrop-blur-xl'
+        'border-b border-black/10 bg-background/72 backdrop-blur-2xl',
+        'dark:border-white/[0.08] dark:bg-background/72'
       )}
     >
       {compactDesktopChatHeader ? <div /> : (
-        <h1 className="text-lg font-semibold text-foreground tracking-tight">
+        <h1 className="text-[17px] font-semibold text-foreground tracking-tight">
           {t(titleKey)}
         </h1>
       )}
@@ -45,8 +46,8 @@ export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void
             type="button"
             onClick={handleRefresh}
             className={cn(
-              'p-2 rounded-xl transition-colors duration-200',
-              'text-muted-foreground hover:bg-accent/10 hover:text-foreground',
+              'flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200',
+              'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             )}
             aria-label={t('common.refresh')}
@@ -58,8 +59,8 @@ export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void
               type="button"
               onClick={onOpenAdvanced}
               className={cn(
-                'p-2 rounded-xl transition-colors duration-200',
-                'text-muted-foreground hover:bg-accent/10 hover:text-foreground',
+                'flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200',
+                'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
               )}
               aria-label="Open advanced diagnostics"

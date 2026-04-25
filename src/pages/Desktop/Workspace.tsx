@@ -169,7 +169,7 @@ function workDirLabel(project: DesktopProjectConfig) {
 }
 
 function noticeClass(tone: Notice['tone']) {
-  if (tone === 'success') return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200';
+  if (tone === 'success') return 'border-primary/20 bg-primary/10 text-primary dark:border-primary/25 dark:bg-primary/10 dark:text-blue-200';
   if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200';
   return 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-200';
 }
@@ -435,7 +435,7 @@ export default function DesktopWorkspace() {
                   className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition-colors ${
                     index === selectedIndex
                       ? 'border-accent/30 bg-accent/10'
-                      : 'border-violet-100 hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]'
+                      : 'border-black/10 hover:bg-black/[0.04] dark:border-white/[0.08] dark:hover:bg-white/[0.06]'
                   }`}
                 >
                   <button
@@ -447,7 +447,7 @@ export default function DesktopWorkspace() {
                     className="min-w-0 flex-1 text-left"
                   >
                     <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name || `Project ${index + 1}`}</p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-violet-200/55">
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
                       {project.agent?.type || 'unknown'} · {workDirLabel(project)} · {project.platforms?.length || 0} platforms
                     </p>
                   </button>
@@ -468,7 +468,7 @@ export default function DesktopWorkspace() {
             <EmptyState message="选择或新建项目后开始配置。" />
           ) : (
             <div className="space-y-6">
-              <div className="flex flex-wrap gap-2 border-b border-violet-100 pb-4 dark:border-violet-400/10">
+              <div className="flex flex-wrap gap-2 border-b border-black/10 pb-4 dark:border-white/[0.08]">
                 {[
                   ['basic', '基本信息'],
                   ['providers', 'Provider'],
@@ -481,7 +481,7 @@ export default function DesktopWorkspace() {
                     className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                       projectTab === key
                         ? 'bg-accent text-white'
-                        : 'bg-violet-50 text-slate-600 hover:bg-violet-100 dark:bg-white/[0.04] dark:text-violet-100/70 dark:hover:bg-white/[0.08]'
+                        : 'bg-black/[0.04] text-muted-foreground hover:bg-black/[0.07] hover:text-foreground dark:bg-white/[0.05] dark:hover:bg-white/[0.08]'
                     }`}
                   >
                     {label}
@@ -548,7 +548,7 @@ export default function DesktopWorkspace() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Providers</h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-violet-200/55">Basic endpoint and default model only.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Basic endpoint and default model only.</p>
                   </div>
                   <Button
                     size="sm"
@@ -568,8 +568,8 @@ export default function DesktopWorkspace() {
                 </div>
 
                 {(selectedProject.agent.providers || []).length === 0 ? (
-                  <div className="flex flex-col gap-3 rounded-xl border border-violet-100 px-4 py-4 dark:border-violet-400/10 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-slate-500 dark:text-violet-200/60">No providers configured.</p>
+                  <div className="flex flex-col gap-3 rounded-xl border border-black/10 px-4 py-4 dark:border-white/[0.08] sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">No providers configured.</p>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -589,7 +589,7 @@ export default function DesktopWorkspace() {
                 ) : (
                   <div className="space-y-3">
                     {(selectedProject.agent.providers || []).map((provider, index) => (
-                      <div key={`${provider.name}-${index}`} className="rounded-xl border border-violet-100 p-4 dark:border-violet-400/10">
+                      <div key={`${provider.name}-${index}`} className="rounded-xl border border-black/10 p-4 dark:border-white/[0.08]">
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <Select
                             label="Preset"
@@ -635,7 +635,7 @@ export default function DesktopWorkspace() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Platforms</h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-violet-200/55">Configure each platform with its own required connection fields.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Configure each platform with its own required connection fields.</p>
                   </div>
                   <Button
                     size="sm"
@@ -650,10 +650,10 @@ export default function DesktopWorkspace() {
                 ) : (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {(selectedProject.platforms || []).map((platform, index) => (
-                      <div key={`${platform.type}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-violet-100 p-3 dark:border-violet-400/10">
+                      <div key={`${platform.type}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-black/10 p-3 dark:border-white/[0.08]">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{platform.type}</p>
-                          <p className="mt-1 truncate text-xs text-slate-500 dark:text-violet-200/55">{platformSummary(platform)}</p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">{platformSummary(platform)}</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <Button variant="secondary" size="sm" onClick={() => openPlatformDialog(index)} aria-label={`Configure ${platform.type}`}>
@@ -680,7 +680,7 @@ export default function DesktopWorkspace() {
                 </section>
               ) : null}
 
-              <div className="flex flex-wrap gap-2 border-t border-violet-100 pt-5 dark:border-violet-400/10">
+              <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
                 <Button onClick={() => void handleSaveConfig()} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>
                   <Save size={14} /> 保存更改
                 </Button>
@@ -803,7 +803,7 @@ export default function DesktopWorkspace() {
                     }))
                   }
                 />
-                <label className="flex items-center gap-3 text-sm text-slate-700 dark:text-violet-100">
+                <label className="flex items-center gap-3 text-sm text-foreground">
                   <input
                     type="checkbox"
                     checked={platformDialog.draft.options?.auto_approve === true}
@@ -821,12 +821,12 @@ export default function DesktopWorkspace() {
 
             {platformDialog.draft.type === 'weixin' ? (
               <div className="space-y-3">
-                <div className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-3 text-sm text-slate-600 dark:border-violet-400/10 dark:bg-white/[0.04] dark:text-violet-100/70">
+                <div className="rounded-lg border border-black/10 bg-black/[0.03] px-3 py-3 text-sm text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.04]">
                   WeChat does not need an App ID or secret. Save this platform, then generate a QR code and scan it to finish login.
                 </div>
                 {weixinQr?.qrCodeUrl ? (
-                  <div className="flex flex-col items-center gap-3 rounded-lg border border-violet-100 p-4 dark:border-violet-400/10">
-                    <div className="rounded-lg border border-violet-100 bg-white p-3">
+                  <div className="flex flex-col items-center gap-3 rounded-lg border border-black/10 p-4 dark:border-white/[0.08]">
+                    <div className="rounded-lg border border-black/10 bg-white p-3">
                       <QRCodeSVG value={weixinQr.qrCodeUrl} size={176} includeMargin />
                     </div>
                     <StatusPill tone={weixinQr.status === 'confirmed' ? 'success' : weixinQr.status === 'expired' ? 'danger' : 'warning'}>
@@ -846,12 +846,12 @@ export default function DesktopWorkspace() {
             ) : null}
 
             {platformDialog.draft.type !== 'lark' && platformDialog.draft.type !== 'weixin' ? (
-              <div className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-3 text-sm text-slate-600 dark:border-violet-400/10 dark:bg-white/[0.04] dark:text-violet-100/70">
+              <div className="rounded-lg border border-black/10 bg-black/[0.03] px-3 py-3 text-sm text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.04]">
                 This platform has no daily UI fields yet. Existing advanced options are preserved in config.
               </div>
             ) : null}
 
-            <div className="flex justify-end gap-2 border-t border-violet-100 pt-4 dark:border-violet-400/10">
+            <div className="flex justify-end gap-2 border-t border-black/10 pt-4 dark:border-white/[0.08]">
               <Button variant="secondary" onClick={() => setPlatformDialog(null)}>Cancel</Button>
               <Button onClick={handleApplyPlatformDialog}>
                 <Save size={14} /> Apply
