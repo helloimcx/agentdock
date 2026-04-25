@@ -22,6 +22,17 @@ function localCoreEntryPath() {
   return appResourcePath('dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
 }
 
+function appIconPath() {
+  return appResourcePath('build', 'icon.png');
+}
+
+function applyDockIcon() {
+  const iconPath = appIconPath();
+  if (process.platform === 'darwin' && app.dock && existsSync(iconPath)) {
+    app.dock.setIcon(iconPath);
+  }
+}
+
 async function isLocalCoreHealthy(timeoutMs = 350) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -101,12 +112,14 @@ function stopLocalCoreProcess() {
 }
 
 function createWindow() {
+  const iconPath = appIconPath();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 920,
     minWidth: 1100,
     minHeight: 700,
     title: 'AgentDock',
+    icon: existsSync(iconPath) ? iconPath : undefined,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 12, y: 12 },
     vibrancy: process.platform === 'darwin' ? 'sidebar' : undefined,
@@ -141,6 +154,7 @@ function writeSmokeResult(payload: Record<string, unknown>) {
 }
 
 app.whenReady().then(async () => {
+  applyDockIcon();
   await ensureLocalCoreProcess();
   createWindow();
   if (smokeOutputPath) {

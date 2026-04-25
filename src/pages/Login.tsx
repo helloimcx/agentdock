@@ -92,7 +92,7 @@ export default function Login() {
       <div className="w-full max-w-md animate-fade-in">
         <Card className="p-8 shadow-2xl shadow-primary/10">
           <div className="flex justify-center mb-6">
-            <BrandLogo markClassName="h-14 w-14 drop-shadow-[0_14px_28px_rgba(88,28,135,0.22)]" />
+            <BrandLogo markClassName="h-14 w-14 drop-shadow-[0_14px_28px_rgba(0,122,255,0.22)]" />
           </div>
           
           <h1 className="text-2xl font-bold text-center text-foreground mb-1">{t('login.title')}</h1>
