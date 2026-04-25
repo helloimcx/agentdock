@@ -586,7 +586,7 @@ export default function ThreadChat() {
                             className={cn(
                               'rounded-[22px] px-4 py-3 text-sm',
                               isUser
-                                ? 'rounded-br-md border border-white/70 bg-white/42 text-slate-900 shadow-[0_12px_32px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-2xl dark:border-white/[0.10] dark:bg-white/[0.10] dark:text-slate-100 dark:shadow-none'
+                                ? 'chat-user-glass rounded-br-md text-slate-950 dark:text-slate-50'
                                 : isSystem
                                   ? 'rounded-bl-md border border-amber-200/80 bg-amber-50 text-amber-900 shadow-[0_6px_18px_rgba(15,23,42,0.03)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 dark:shadow-none'
                                 : isProgress
@@ -595,7 +595,7 @@ export default function ThreadChat() {
                               isToolResult && 'bg-transparent p-0 shadow-none dark:bg-transparent',
                             )}
                           >
-                            <div className={cn('mb-2 flex items-center gap-2 text-[10px]', isUser ? 'justify-end text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500')}>
+                            <div className={cn('mb-2 flex items-center gap-2 text-[10px]', isUser ? 'justify-end text-slate-600 dark:text-white/55' : 'text-slate-400 dark:text-slate-500')}>
                               {isSystem ? (
                                 <span className="tracking-[0.16em] text-amber-600 dark:text-amber-300">系统</span>
                               ) : null}

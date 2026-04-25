@@ -63,7 +63,7 @@ function InlineCode({ children, className, ...props }: React.HTMLAttributes<HTML
 export function ChatMarkdown({ content, isUser }: { content: string; isUser: boolean }) {
   if (isUser) {
     return (
-      <div className="prose prose-sm max-w-none [&_*]:text-black [&_code]:bg-black/10 [&_code]:text-black [&_a]:text-black [&_a]:underline [&>p]:my-0.5 [&_li]:my-0">
+      <div className="prose prose-sm max-w-none text-inherit [&_*]:text-inherit [&_a]:underline [&_code]:border [&_code]:border-black/10 [&_code]:bg-black/10 [&_code]:text-inherit dark:[&_code]:border-white/10 dark:[&_code]:bg-white/12 [&>p]:my-0.5 [&_li]:my-0">
         <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
       </div>
     );
