@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AgentDock is an Electron + React app that manages a `cc-connect` backend service. It runs in two modes:
-- **Desktop mode**: Electron app spawns/manages a local `cc-connect` binary, with real-time chat via WebSocket bridge
-- **Web admin mode**: Connects to a remote `cc-connect` instance via API token + server URL
+AgentDock is a pnpm monorepo — an Electron + React desktop shell that spawns and manages a **Local AI Core** backend (a Node.js HTTP server). The renderer communicates with Local AI Core via standard HTTP/WebSocket APIs, not Electron IPC.
 
-The `desktopManaged` flag in the auth store controls which mode is active, affecting routing and available features.
+Two runtime modes:
+- **Desktop mode**: Electron spawns Local AI Core as a child process, renderer talks to `127.0.0.1:9831` via HTTP/WS
+- **Web admin mode**: Connects to a remote Local AI Core instance via API token + server URL
+
+The `desktopManaged` flag in the auth store (`src/store/auth.ts`) and `managedBy` (`none` | `electron` | `local_core` | `remote`) control which mode is active, affecting routing and available features.
 
 ## Build & Dev Commands
 
@@ -17,43 +19,86 @@ All commands use `pnpm`.
 | Command | Purpose |
 |---|---|
 | `pnpm dev` | Start Vite renderer + tsc watch + Electron (via `scripts/dev.mjs`) |
+| `pnpm dev:web` | Vite renderer only at `127.0.0.1:5173` |
+| `pnpm dev:core` | Build Electron + launch Local AI Core standalone |
 | `pnpm build` | Full production build (renderer + Electron) |
 | `pnpm build:renderer` | Build only the React frontend to `dist/renderer/` |
 | `pnpm build:electron` | Build only Electron main process to `dist-electron/` |
 | `pnpm start:prod` | Run the built Electron app |
-| `pnpm e2e:smoke` | Build + run E2E smoke test |
-
-No unit test framework is configured. `pnpm e2e:smoke` is the only automated test.
+| `pnpm test` | Run tests via Node.js built-in test runner (Electron + knowledge-api + thread-permission tests) |
+| `pnpm e2e:smoke` | Full build + E2E smoke test |
+| `pnpm dist:mac` | Build + package macOS DMG/ZIP (arm64 only) |
 
 ## Architecture
 
+### Monorepo Structure
+
+```
+packages/        Shared packages (contracts, core-sdk, knowledge-api, plugin-sdk)
+services/        Local AI Core runtime service
+apps/            Future shell directories (shell-desktop, shell-web — stubs)
+shared/          Cross-process shared types (desktop.ts)
+electron/        Electron main process + preload + managed skills + tests
+src/             React renderer
+```
+
 ### Two Separate TypeScript Compilations
 1. **Renderer** (`src/`): Compiled by Vite with ESM/react-jsx, outputs to `dist/renderer/`
-2. **Electron main** (`electron/`): Compiled by `tsc` directly with CommonJS, outputs to `dist-electron/`
+2. **Electron main + services + packages** (`electron/`, `services/`, `packages/`): Compiled by `tsc` with CommonJS, outputs to `dist-electron/`
 
-Both share types from `shared/` — this is the single source of truth for interfaces crossing the IPC boundary.
+Both share types from `shared/` — the single source of truth for interfaces crossing the process boundary.
 
-### Electron IPC Flow
-```
-Renderer (React) ←→ window.desktop API ←→ preload.ts (contextBridge) ←→ main.ts (IPC handlers)
-```
-- `electron/preload.ts` exposes `window.desktop` via `contextBridge`
-- `src/api/desktop.ts` provides typed wrappers for IPC methods
-- `src/types/window.d.ts` declares the TypeScript interface for `window.desktop`
+### Electron Shell
 
-### Key Electron Classes
-- **ServiceManager** (`electron/service-manager.ts`): Manages cc-connect child process lifecycle, TOML config, port allocation
-- **BridgeAdapter** (`electron/bridge-adapter.ts`): WebSocket client for real-time bridge communication (chat, typing, buttons, cards)
+`electron/main.ts` is intentionally thin (~170 lines): it spawns Local AI Core as a child process (`ELECTRON_RUN_AS_NODE=1`), waits for health at `http://127.0.0.1:9831/api/local/v1/health`, then loads the renderer in a BrowserWindow. `electron/preload.ts` is empty — there is no Electron IPC bridge. All renderer-to-backend communication uses HTTP/WebSocket through `src/api/`.
 
-### Renderer Structure
-- **Pages**: `src/pages/` — organized by feature (Projects, Sessions, Desktop, Bridge, Cron, System)
-- **UI components**: `src/components/ui/` — custom component library (Button, Card, Badge, Modal, Input, Select, Textarea, EmptyState)
-- **API clients**: `src/api/` — `client.ts` has the base `ApiClient` class; feature modules wrap specific endpoints
-- **State**: Zustand stores in `src/store/` (`auth.ts`, `theme.ts`)
-- **Routing**: `HashRouter` in desktop mode, `BrowserRouter` in web mode (decided in `src/main.tsx`)
+`electron/managed-skills/` contains agent skill definitions (browser automation, knowledge base search) used by the Local AI Core runtime.
+
+### Local AI Core (`services/local-ai-core/`)
+
+The core backend runtime with these subsystems:
+- **ACP** (`src/acp/`): Agent Client Protocol integration — session coordination, transport, turn management, permissions, response processing
+- **CLI** (`src/cli/`): Command-line entry point
+- **Gateway** (`src/gateway/`): Lark/Feishu and WeChat channel gateways
+- **Kernel** (`src/kernel/`): Bootstrap, event bus, lifecycle, plugin registry, capability registry
+- **Plugins** (`src/plugins/builtin/`): Built-in plugins with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`, `knowledge.ai-vector`)
+- **Router** (`src/router/`): Workspace routing and route configuration
+- **Runtime** (`src/runtime/`): Core controller, server, runtime state management
+- **Scheduler** (`src/scheduler/`): Cron-based task scheduling with platform-specific adapters (Lark, WeChat)
+- **Thread** (`src/thread/`): Workspace thread ID and mapper utilities
+
+### Shared Packages (`packages/`)
+
+- **contracts**: Local Core type definitions
+- **core-sdk**: Client SDK for Local AI Core APIs
+- **knowledge-api**: AI vector provider, SQLite store, thread knowledge store
+- **plugin-sdk**: Plugin contracts and runtime types
+
+### Renderer Structure (`src/`)
+
+- **Pages** (`src/pages/`): Feature-organized — Dashboard, Login, Desktop/Workspace, Threads/ThreadChat, Knowledge, Projects, Sessions, Cron, System, Web/Chat
+- **UI components** (`src/components/ui/`): Custom component library using Radix UI primitives (Button, Card, Badge, Modal, Input/Select/Textarea, Page)
+- **API clients** (`src/api/`): `client.ts` has the base `ApiClient` singleton; feature modules wrap specific endpoints
+- **State** (`src/store/`): Zustand stores — `auth.ts` (auth + runtime mode), `theme.ts`
+- **App registry** (`src/app/`): UI contribution registry — routes and nav items registered dynamically, visibility controlled by runtime feature detection
+- **Routing**: `HashRouter` in desktop mode, `BrowserRouter` in web mode
+- **i18n** (`src/i18n/`): 5 languages (en, zh, zh-TW, ja, es)
+
+### Shared types (`shared/desktop.ts`)
+
+Central type definitions including: agent type constants (`opencode`, `claudecode`, `cursor`, `gemini`, `localcore-acp`, etc.), platform types (`telegram`, `feishu`, `lark`, `discord`, `slack`, `weixin`, etc.), provider presets, and interfaces for desktop settings, service state, runtime status, plugin config, bridge events, and config file state.
 
 ### Tech Stack
-React 19, Electron 35, Vite 6.3, TypeScript (strict), Tailwind CSS 3.4, Zustand 5, react-router-dom 7.5, i18next (5 languages), react-markdown + highlight.js
+
+React 19, Electron 35, Vite 6.3, TypeScript 5.8 (strict), Tailwind CSS 3.4, Zustand 5, react-router-dom 7.5, Radix UI, i18next, react-markdown + highlight.js, Node.js built-in test runner
+
+## Architecture Boundaries
+
+Keep the directory structure intentional with clear ownership and single-purpose modules. Page components orchestrate UI and data flow, shared components stay presentation-focused, stores own state transitions, API modules isolate transport concerns, and Local AI Core logic does not leak into renderer code except through shared contracts. Prefer small, cohesive files over broad utility modules, and move reusable behavior to the nearest appropriate shared layer only after a real second use appears.
+
+## Plugin Development
+
+Plugin contracts and runtime types belong in `packages/plugin-sdk/`. Built-in plugins live under `services/local-ai-core/src/plugins/builtin/`, one focused file per plugin with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`). Register plugins through the local core registry and declare dependencies in the manifest rather than relying on implicit load order. Put reusable kernel behavior in `services/local-ai-core/src/kernel/`, not inside individual plugins.
 
 ## Conventions
 
@@ -62,12 +107,33 @@ React 19, Electron 35, Vite 6.3, TypeScript (strict), Tailwind CSS 3.4, Zustand 
 - `PascalCase` for components and page folders, `camelCase` for functions/helpers, lowercase filenames for stores and API modules
 - Accent color `#42ff9c` (bright green) throughout the UI
 - Tailwind class-based dark mode with `@tailwindcss/typography`
-- Keep shared desktop contracts in `shared/` so renderer and Electron stay type-aligned
-- Environment variables: `AI_WORKSTATION_USER_DATA_DIR`, `AI_WORKSTATION_SMOKE_OUTPUT`
+- Keep shared contracts in `shared/` so renderer and backend stay type-aligned
+- Environment variables: `AI_WORKSTATION_USER_DATA_DIR`, `AI_WORKSTATION_SMOKE_OUTPUT`, `AI_WORKSTATION_DEV_SERVER_URL`
+
+## Testing
+
+`pnpm test` runs the Node.js built-in test runner against Electron-side tests (`electron/*.test.ts`) and knowledge-api tests (`packages/knowledge-api/test/`). `pnpm e2e:smoke` exercises the full built Electron app end to end. When adding tests, place them near the feature they cover and name them after the target module (e.g., `thread-chat-permission.test.ts`).
+
+## Agent Workflow
+
+- Before writing any code, describe the intended approach and wait for approval
+- If requirements are ambiguous, ask clarifying questions before writing code
+- If a user request conflicts with best practices, briefly explain the concern and suggest a better approach
+- When fixing a bug, start by writing a test that reproduces it, then fix the bug until the test passes
+- After writing code, list relevant edge cases and suggest test cases to cover them
+- Every time the user corrects you, reflect on what went wrong and provide a plan to avoid repeating the same mistake
+
+## Commit & PR Guidelines
+
+Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates. Avoid committing machine-specific paths, secrets, or generated output.
 
 ## Large Files
 
-These single-file components are intentionally large and contain substantial logic:
-- `src/pages/Desktop/Workspace.tsx` (~72KB) — desktop workspace management
-- `src/pages/Desktop/Chat.tsx` (~55KB) — desktop chat interface
-- `electron/main.ts` (~48KB) — Electron main process with all IPC handlers
+These files are intentionally large:
+- `src/pages/Threads/ThreadChat.tsx` (~50KB) — main thread chat UI with extensive hook decomposition
+- `src/pages/Desktop/Workspace.tsx` (~37KB) — desktop workspace management
+- `src/pages/Web/Chat.tsx` (~34KB) — web chat interface
+- `services/local-ai-core/src/gateway/local-core-weixin-gateway.ts` (~52KB) — WeChat gateway
+- `services/local-ai-core/src/gateway/local-core-lark-gateway.ts` (~41KB) — Lark gateway
+- `services/local-ai-core/src/runtime/server.ts` (~29KB) — core HTTP server
+- `services/local-ai-core/src/acp/local-core-acp-store.ts` (~30KB) — ACP session store
