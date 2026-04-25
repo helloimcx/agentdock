@@ -49,6 +49,9 @@ function parseToolResultCard(content: string): ToolResultCard | null {
   if (updateMatch) {
     const [, title, status, payload] = updateMatch;
     const trimmedPayload = payload.trim();
+    if (isEmptyRunningToolUpdateContent(title, status.trim(), trimmedPayload)) {
+      return null;
+    }
     try {
       const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
       const value = typeof parsed.output === 'string'
@@ -73,6 +76,9 @@ function parseToolResultCard(content: string): ToolResultCard | null {
   const callMatch = content.match(/^\s*🔧\s*(.+?)\s*$/);
   if (callMatch) {
     const rawTitle = callMatch[1].trim();
+    if (/^Tool update\s*-\s*running(?:\s*-\s*)?$/i.test(rawTitle)) {
+      return null;
+    }
     const [name, ...rest] = rawTitle.split(':');
     const output = rest.join(':').trim();
     return {
@@ -84,6 +90,15 @@ function parseToolResultCard(content: string): ToolResultCard | null {
   }
 
   return null;
+}
+
+function isEmptyRunningToolUpdateContent(title: string, status: string, payload: string) {
+  return /^Tool update$/i.test(title.trim()) && /^running$/i.test(status.trim()) && !payload.trim();
+}
+
+function isHiddenProgressMessage(content: string) {
+  const normalized = content.trim();
+  return /^🔧\s*Tool update\s*-\s*running(?:\s*-\s*)?$/i.test(normalized);
 }
 
 function ToolResultCardView({ card }: { card: ToolResultCard }) {
@@ -629,6 +644,9 @@ export default function ThreadChat() {
               ) : (
                 <div className="space-y-5">
                   {renderedMessages.map((message) => {
+                    if (message.kind === 'progress' && isHiddenProgressMessage(message.content)) {
+                      return null;
+                    }
                     const isUser = message.role === 'user';
                     const isSystem = message.role === 'system';
                     const isProgress = !isUser && !isSystem && message.kind === 'progress';

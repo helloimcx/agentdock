@@ -185,7 +185,8 @@ export class LocalCoreAcpTurnCoordinator {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
         const toolName = currentTurn.pendingToolCallTitle?.trim();
-        if (this.isEmptyRunningToolUpdate(toolName, title, status, content)) {
+        if (this.isEmptyRunningToolUpdate(title, status, content)) {
+          currentTurn.pendingToolCallTitle = undefined;
           return;
         }
         currentTurn.pendingToolCallTitle = undefined;
@@ -244,9 +245,8 @@ export class LocalCoreAcpTurnCoordinator {
     return toolName ? `🔧 ${toolName}: ${detail || 'Tool update'}` : `🔧 ${detail || 'Tool update'}`;
   }
 
-  private isEmptyRunningToolUpdate(toolName: string | undefined, title: string, status: string, content: string) {
-    return !toolName &&
-      !content.trim() &&
+  private isEmptyRunningToolUpdate(title: string, status: string, content: string) {
+    return !content.trim() &&
       /^running$/i.test(status) &&
       (!title.trim() || /^tool update$/i.test(title));
   }
