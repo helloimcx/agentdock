@@ -1,18 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, QrCode, Save, Settings, Trash2, Wrench } from 'lucide-react';
+import { Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, StatusPill } from '@/components/ui';
 import {
   checkWeixinQrCodeStatus,
   getWeixinQrCode,
-  getRuntimeStatus,
-  onRuntimeEvent,
   readConfigFile,
-  restartDesktopService,
-  saveDesktopSettings,
   saveStructuredConfigFile,
-  startDesktopService,
 } from '@/api/desktop';
 import {
   DEFAULT_DESKTOP_AGENT_TYPE,
@@ -26,7 +21,6 @@ import type {
   DesktopPlatformConfig,
   DesktopProjectConfig,
   DesktopProviderConfig,
-  DesktopRuntimeStatus,
 } from '../../../shared/desktop';
 
 const CUSTOM_SELECT_VALUE = '__custom__';
@@ -37,6 +31,8 @@ type Notice = {
   message: string;
 };
 
+type ProjectTab = 'basic' | 'providers' | 'platforms';
+
 type PlatformDialogState = {
   index: number | null;
   draft: DesktopPlatformConfig;
@@ -46,6 +42,7 @@ type ProjectDialogDraft = {
   name: string;
   agentType: string;
   workDir: string;
+  model: string;
 };
 
 type WeixinQrState = {
@@ -82,6 +79,7 @@ function createProjectDialogDraft(projects: DesktopProjectConfig[]): ProjectDial
     name: `project-${index}`,
     agentType: DEFAULT_DESKTOP_AGENT_TYPE,
     workDir: '',
+    model: '',
   };
 }
 
@@ -163,11 +161,11 @@ function platformSummary(platform: DesktopPlatformConfig) {
   return 'Custom platform';
 }
 
-function runtimeTone(phase?: DesktopRuntimeStatus['phase']) {
-  if (phase === 'api_ready') return 'success';
-  if (phase === 'starting') return 'warning';
-  if (phase === 'error') return 'danger';
-  return 'neutral';
+function workDirLabel(project: DesktopProjectConfig) {
+  const workDir = String(project.agent?.options?.work_dir || '').trim();
+  if (!workDir) return 'No work directory';
+  const normalized = workDir.replace(/\/+$/, '');
+  return normalized.split('/').filter(Boolean).pop() || workDir;
 }
 
 function noticeClass(tone: Notice['tone']) {
@@ -178,13 +176,10 @@ function noticeClass(tone: Notice['tone']) {
 
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [runtime, setRuntime] = useState<DesktopRuntimeStatus | null>(null);
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
   const [persistedConfig, setPersistedConfig] = useState<DesktopConnectConfig | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [defaultProject, setDefaultProject] = useState('');
-  const [autoStartService, setAutoStartService] = useState(true);
-  const [persistedSettings, setPersistedSettings] = useState({ defaultProject: '', autoStartService: true });
+  const [projectTab, setProjectTab] = useState<ProjectTab>('basic');
   const [projectDialog, setProjectDialog] = useState<ProjectDialogDraft | null>(null);
   const [platformDialog, setPlatformDialog] = useState<PlatformDialogState | null>(null);
   const [weixinQr, setWeixinQr] = useState<WeixinQrState | null>(null);
@@ -196,18 +191,11 @@ export default function DesktopWorkspace() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [runtimeState, configState] = await Promise.all([getRuntimeStatus(), readConfigFile()]);
+      const configState = await readConfigFile();
       const parsed = clone(configState.parsed || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
-      setRuntime(runtimeState);
       setConfigDraft(parsed);
       setPersistedConfig(clone(parsed));
-      setDefaultProject(runtimeState.settings.defaultProject || '');
-      setAutoStartService(Boolean(runtimeState.settings.autoStartService));
-      setPersistedSettings({
-        defaultProject: runtimeState.settings.defaultProject || '',
-        autoStartService: Boolean(runtimeState.settings.autoStartService),
-      });
       const requestedProject = searchParams.get('project');
       if (requestedProject) {
         const index = (parsed.projects || []).findIndex((project) => project.name === requestedProject);
@@ -222,18 +210,11 @@ export default function DesktopWorkspace() {
 
   useEffect(() => {
     void loadAll();
-    const stopRuntime = onRuntimeEvent((nextRuntime) => setRuntime(nextRuntime));
-    return () => stopRuntime();
   }, [loadAll]);
 
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex] || null;
   const configDirty = JSON.stringify(configDraft || {}) !== JSON.stringify(persistedConfig || {});
-  const settingsDirty =
-    defaultProject !== persistedSettings.defaultProject ||
-    autoStartService !== persistedSettings.autoStartService;
-
-  const projectNames = useMemo(() => projects.map((project) => project.name).filter(Boolean), [projects]);
 
   const updateSelectedProject = useCallback((updater: (project: DesktopProjectConfig) => DesktopProjectConfig) => {
     setConfigDraft((current) => {
@@ -270,6 +251,7 @@ export default function DesktopWorkspace() {
     const name = projectDialog.name.trim();
     const agentType = projectDialog.agentType.trim();
     const workDir = projectDialog.workDir.trim();
+    const model = projectDialog.model.trim();
     if (!name || !agentType || !workDir) {
       setNotice({ tone: 'warning', message: 'Project name, agent type, and work directory are required.' });
       return;
@@ -283,7 +265,7 @@ export default function DesktopWorkspace() {
       agent: {
         type: agentType,
         options: {
-          model: getDefaultDesktopAgentModel(agentType),
+          model: model || getDefaultDesktopAgentModel(agentType),
           work_dir: workDir,
         },
         providers: [],
@@ -314,25 +296,6 @@ export default function DesktopWorkspace() {
       setSelectedIndex(Math.max(0, Math.min(index, nextProjects.length - 1)));
       return next;
     });
-  };
-
-  const handleSaveSettings = async () => {
-    setPending('settings');
-    try {
-      const settings = await saveDesktopSettings({
-        defaultProject,
-        autoStartService,
-      });
-      setPersistedSettings({
-        defaultProject: settings.defaultProject || '',
-        autoStartService: Boolean(settings.autoStartService),
-      });
-      setNotice({ tone: 'success', message: 'Workspace settings saved.' });
-    } catch (err) {
-      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setPending('');
-    }
   };
 
   const openPlatformDialog = (index: number | null) => {
@@ -417,17 +380,14 @@ export default function DesktopWorkspace() {
     }
   };
 
-  const handleSaveConfig = async (restart = false) => {
+  const handleSaveConfig = async () => {
     if (!configDraft) return;
-    setPending(restart ? 'save-restart' : 'config');
+    setPending('config');
     try {
       const saved = await saveStructuredConfigFile(configDraft);
       setPersistedConfig(clone(saved.parsed || configDraft));
       setConfigDraft(clone(saved.parsed || configDraft));
-      if (restart) {
-        await restartDesktopService();
-      }
-      setNotice({ tone: 'success', message: restart ? 'Config saved and runtime restarted.' : 'Config saved.' });
+      setNotice({ tone: 'success', message: 'Project changes saved.' });
       await loadAll();
     } catch (err) {
       setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -443,18 +403,8 @@ export default function DesktopWorkspace() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader
-        title="Workspace"
-        description="Daily project setup for local agents. Advanced TOML and diagnostics are read-only from the top-right drawer."
-        actions={(
-          <>
-            <Button variant="secondary" onClick={() => void startDesktopService()} disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready'}>
-              Start
-            </Button>
-            <Button variant="secondary" onClick={() => void restartDesktopService()}>
-              Restart
-            </Button>
-          </>
-        )}
+        title="工作区"
+        description="创建项目，配置 Agent、工作目录、Provider 和平台接入。"
       />
 
       {notice ? (
@@ -463,129 +413,138 @@ export default function DesktopWorkspace() {
         </div>
       ) : null}
 
-      {(settingsDirty || configDirty || runtime?.pendingRestart) ? (
+      {configDirty ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
-          {runtime?.pendingRestart ? 'Saved changes need a runtime restart.' : 'You have unsaved changes.'}
+          You have unsaved project changes.
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <SectionCard title="Runtime" description="Only daily defaults are editable here.">
-            <div className="space-y-4">
-              <StatusPill tone={runtimeTone(runtime?.phase) as any}>{runtime?.phase || 'unknown'}</StatusPill>
-              <Input label="Default chat project" value={defaultProject} onChange={(event) => setDefaultProject(event.target.value)} />
-              <label className="flex items-center gap-3 text-sm text-slate-700 dark:text-violet-100">
-                <input type="checkbox" checked={autoStartService} onChange={(event) => setAutoStartService(event.target.checked)} />
-                Auto-start local runtime
-              </label>
-              <Button variant="secondary" onClick={() => void handleSaveSettings()} loading={pending === 'settings'} disabled={!settingsDirty && pending !== 'settings'}>
-                <Save size={14} /> Save defaults
-              </Button>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Projects"
-            actions={<Button size="sm" onClick={handleAddProject}><Plus size={14} /> Add</Button>}
-          >
-            {projects.length === 0 ? (
-              <EmptyState message="No projects configured." />
-            ) : (
-              <div className="space-y-2">
-                {projects.map((project, index) => (
-                  <div
-                    key={`${project.name}-${index}`}
-                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition-colors ${
-                      index === selectedIndex
-                        ? 'border-accent/30 bg-accent/10'
-                        : 'border-violet-100 hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]'
-                    }`}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <SectionCard
+          title="项目"
+          actions={<Button size="sm" onClick={handleAddProject}><Plus size={14} /> 新建项目</Button>}
+          className="lg:self-start"
+        >
+          {projects.length === 0 ? (
+            <EmptyState message="还没有项目。" />
+          ) : (
+            <div className="space-y-2">
+              {projects.map((project, index) => (
+                <div
+                  key={`${project.name}-${index}`}
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition-colors ${
+                    index === selectedIndex
+                      ? 'border-accent/30 bg-accent/10'
+                      : 'border-violet-100 hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedIndex(index);
+                      setSearchParams(project.name ? { project: project.name } : {});
+                    }}
+                    className="min-w-0 flex-1 text-left"
                   >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedIndex(index);
-                        setSearchParams(project.name ? { project: project.name } : {});
-                      }}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name || `Project ${index + 1}`}</p>
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-violet-200/55">
-                        {project.agent?.type || 'unknown'} · {project.platforms?.length || 0} platforms
-                      </p>
-                    </button>
-                    <Button variant="ghost" size="sm" onClick={() => handleRemoveProject(index)} aria-label={`Remove ${project.name}`}>
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-        </div>
+                    <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name || `Project ${index + 1}`}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-violet-200/55">
+                      {project.agent?.type || 'unknown'} · {workDirLabel(project)} · {project.platforms?.length || 0} platforms
+                    </p>
+                  </button>
+                  <Button variant="ghost" size="sm" onClick={() => handleRemoveProject(index)} aria-label={`Remove ${project.name}`}>
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
 
         <SectionCard
           title={selectedProject?.name || 'Project details'}
-          description="Daily agent, provider, and platform fields. Hidden advanced fields are preserved when saving."
+          description={selectedProject ? `${selectedProject.agent?.type || 'unknown'} · ${String(selectedProject.agent?.options?.work_dir || 'No work directory')}` : undefined}
         >
           {!selectedProject ? (
-            <EmptyState message="Select or add a project to edit daily settings." />
+            <EmptyState message="选择或新建项目后开始配置。" />
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Input
-                  label="Project name"
-                  value={selectedProject.name}
-                  onChange={(event) => updateSelectedProject((project) => ({ ...project, name: event.target.value }))}
-                />
-                <Select
-                  label="Agent type"
-                  value={getSelectValue(selectedProject.agent?.type || '', DESKTOP_AGENT_TYPE_OPTIONS)}
-                  onChange={(event) =>
-                    updateSelectedProject((project) => {
-                      const type = event.target.value === CUSTOM_SELECT_VALUE ? project.agent.type : event.target.value;
-                      return {
-                        ...project,
-                        agent: {
-                          ...project.agent,
-                          type,
-                          options: {
-                            ...(project.agent.options || {}),
-                            model: normalizeDesktopAgentModel(type, String(project.agent.options?.model || '')),
-                          },
-                        },
-                      };
-                    })
-                  }
-                >
-                  {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-                  <option value={CUSTOM_SELECT_VALUE}>custom</option>
-                </Select>
-                <Input
-                  label="Work directory"
-                  value={String(selectedProject.agent?.options?.work_dir || '')}
-                  onChange={(event) =>
-                    updateSelectedProject((project) => ({
-                      ...project,
-                      agent: { ...project.agent, options: { ...(project.agent.options || {}), work_dir: event.target.value } },
-                    }))
-                  }
-                />
-                <Input
-                  label="Default model"
-                  value={String(selectedProject.agent?.options?.model || '')}
-                  onChange={(event) =>
-                    updateSelectedProject((project) => ({
-                      ...project,
-                      agent: { ...project.agent, options: { ...(project.agent.options || {}), model: event.target.value } },
-                    }))
-                  }
-                  placeholder={getDefaultDesktopAgentModel(selectedProject.agent?.type)}
-                />
+              <div className="flex flex-wrap gap-2 border-b border-violet-100 pb-4 dark:border-violet-400/10">
+                {[
+                  ['basic', '基本信息'],
+                  ['providers', 'Provider'],
+                  ['platforms', '平台接入'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setProjectTab(key as ProjectTab)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      projectTab === key
+                        ? 'bg-accent text-white'
+                        : 'bg-violet-50 text-slate-600 hover:bg-violet-100 dark:bg-white/[0.04] dark:text-violet-100/70 dark:hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              <section className="space-y-3">
+              {projectTab === 'basic' ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Input
+                    label="Project name"
+                    value={selectedProject.name}
+                    onChange={(event) => updateSelectedProject((project) => ({ ...project, name: event.target.value }))}
+                  />
+                  <Select
+                    label="Agent type"
+                    value={getSelectValue(selectedProject.agent?.type || '', DESKTOP_AGENT_TYPE_OPTIONS)}
+                    onChange={(event) =>
+                      updateSelectedProject((project) => {
+                        const type = event.target.value === CUSTOM_SELECT_VALUE ? project.agent.type : event.target.value;
+                        return {
+                          ...project,
+                          agent: {
+                            ...project.agent,
+                            type,
+                            options: {
+                              ...(project.agent.options || {}),
+                              model: normalizeDesktopAgentModel(type, String(project.agent.options?.model || '')),
+                            },
+                          },
+                        };
+                      })
+                    }
+                  >
+                    {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                    <option value={CUSTOM_SELECT_VALUE}>custom</option>
+                  </Select>
+                  <Input
+                    label="Work directory"
+                    value={String(selectedProject.agent?.options?.work_dir || '')}
+                    onChange={(event) =>
+                      updateSelectedProject((project) => ({
+                        ...project,
+                        agent: { ...project.agent, options: { ...(project.agent.options || {}), work_dir: event.target.value } },
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Default model"
+                    value={String(selectedProject.agent?.options?.model || '')}
+                    onChange={(event) =>
+                      updateSelectedProject((project) => ({
+                        ...project,
+                        agent: { ...project.agent, options: { ...(project.agent.options || {}), model: event.target.value } },
+                      }))
+                    }
+                    placeholder={getDefaultDesktopAgentModel(selectedProject.agent?.type) || 'Use agent default model'}
+                  />
+                </div>
+              ) : null}
+
+              {projectTab === 'providers' ? (
+                <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Providers</h3>
@@ -609,7 +568,24 @@ export default function DesktopWorkspace() {
                 </div>
 
                 {(selectedProject.agent.providers || []).length === 0 ? (
-                  <EmptyState message="No providers configured." />
+                  <div className="flex flex-col gap-3 rounded-xl border border-violet-100 px-4 py-4 dark:border-violet-400/10 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-500 dark:text-violet-200/60">No providers configured.</p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        updateSelectedProject((project) => ({
+                          ...project,
+                          agent: {
+                            ...project.agent,
+                            providers: [...(project.agent.providers || []), { name: `provider-${(project.agent.providers || []).length + 1}` }],
+                          },
+                        }))
+                      }
+                    >
+                      <Plus size={14} /> Add provider
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {(selectedProject.agent.providers || []).map((provider, index) => (
@@ -651,9 +627,11 @@ export default function DesktopWorkspace() {
                     ))}
                   </div>
                 )}
-              </section>
+                </section>
+              ) : null}
 
-              <section className="space-y-3">
+              {projectTab === 'platforms' ? (
+                <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Platforms</h3>
@@ -699,14 +677,12 @@ export default function DesktopWorkspace() {
                     ))}
                   </div>
                 )}
-              </section>
+                </section>
+              ) : null}
 
               <div className="flex flex-wrap gap-2 border-t border-violet-100 pt-5 dark:border-violet-400/10">
-                <Button onClick={() => void handleSaveConfig(false)} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>
-                  <Save size={14} /> Save config
-                </Button>
-                <Button variant="secondary" onClick={() => void handleSaveConfig(true)} loading={pending === 'save-restart'} disabled={!configDirty && !runtime?.pendingRestart && pending !== 'save-restart'}>
-                  <Wrench size={14} /> Save and restart
+                <Button onClick={() => void handleSaveConfig()} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>
+                  <Save size={14} /> 保存更改
                 </Button>
               </div>
             </div>
@@ -714,20 +690,10 @@ export default function DesktopWorkspace() {
         </SectionCard>
       </div>
 
-      <SectionCard title="Project summary">
-        <div className="flex flex-wrap gap-2">
-          {projectNames.length === 0 ? (
-            <span className="text-sm text-slate-400">No projects configured.</span>
-          ) : (
-            projectNames.map((name) => <StatusPill key={name}>{name}</StatusPill>)
-          )}
-        </div>
-      </SectionCard>
-
       <Modal
         open={Boolean(projectDialog)}
         onClose={() => setProjectDialog(null)}
-        title="Add project"
+        title="新建项目"
       >
         {projectDialog ? (
           <div className="space-y-4">
@@ -753,9 +719,15 @@ export default function DesktopWorkspace() {
               onChange={(event) => updateProjectDialog({ workDir: event.target.value })}
               placeholder="/Users/yinyin/code/my-project"
             />
+            <Input
+              label="Default model"
+              value={projectDialog.model}
+              onChange={(event) => updateProjectDialog({ model: event.target.value })}
+              placeholder={getDefaultDesktopAgentModel(projectDialog.agentType) || 'Use agent default model'}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setProjectDialog(null)}>Cancel</Button>
-              <Button onClick={handleConfirmAddProject}><Plus size={14} /> Add project</Button>
+              <Button onClick={handleConfirmAddProject}><Plus size={14} /> 新建项目</Button>
             </div>
           </div>
         ) : null}

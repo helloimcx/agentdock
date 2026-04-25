@@ -1,54 +1,112 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, ArrowRight, BookOpen, Cable, FolderKanban, MessageSquare, Play, RotateCw, Server, Wrench } from 'lucide-react';
+import {
+  Activity,
+  ArrowRight,
+  BookOpen,
+  CalendarClock,
+  FolderKanban,
+  MessageSquare,
+  Server,
+  Settings,
+  Wrench,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Badge, Button, EmptyState, PageHeader, SectionCard, StatCard, StatusPill } from '@/components/ui';
-import { getStatus, type SystemStatus } from '@/api/status';
+import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { listProjects, type ProjectSummary } from '@/api/projects';
-import { getRuntimeStatus, onRuntimeEvent, restartDesktopService, startDesktopService } from '@/api/desktop';
+import { onRuntimeEvent } from '@/api/desktop';
 import { listWorkspaces } from '../../packages/core-sdk/src';
-import { formatUptime } from '@/lib/utils';
-import type { DesktopRuntimeStatus } from '../../shared/desktop';
-import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
+import { useRuntimeFeatureSupport } from '@/app/runtime';
 
-function formatRuntimePhase(phase?: DesktopRuntimeStatus['phase']) {
-  if (phase === 'api_ready') return 'ready';
-  return phase || 'stopped';
+interface QuickActionProps {
+  title: string;
+  description: string;
+  to: string;
+  icon: LucideIcon;
+  primary?: boolean;
 }
 
-function runtimeTone(phase?: DesktopRuntimeStatus['phase']) {
-  if (phase === 'api_ready') return 'success';
-  if (phase === 'starting') return 'warning';
-  if (phase === 'error') return 'danger';
-  return 'neutral';
+function QuickAction({ title, description, to, icon: Icon, primary }: QuickActionProps) {
+  return (
+    <Link
+      to={to}
+      className={[
+        'group flex min-h-[136px] flex-col justify-between rounded-xl border p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-violet-400/20',
+        primary
+          ? 'border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-50 dark:border-violet-400/20 dark:bg-violet-500/10 dark:hover:bg-violet-500/15'
+          : 'border-slate-200 bg-white hover:border-violet-200 hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-violet-400/20 dark:hover:bg-white/[0.05]',
+      ].join(' ')}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm shadow-violet-950/[0.04] dark:bg-white/[0.06] dark:text-violet-200 dark:shadow-none">
+          <Icon size={20} />
+        </div>
+        <ArrowRight size={17} className="mt-1 text-slate-300 transition-colors group-hover:text-violet-500 dark:text-white/25" />
+      </div>
+      <div>
+        <h2 className="text-base font-semibold text-slate-950 dark:text-white">{title}</h2>
+        <p className="mt-2 max-w-sm text-sm leading-5 text-slate-600 dark:text-slate-300">{description}</p>
+      </div>
+    </Link>
+  );
 }
 
 export default function Dashboard() {
   const { t } = useTranslation();
-  const [runtime, setRuntime] = useState<DesktopRuntimeStatus | null>(null);
-  const [status, setStatus] = useState<SystemStatus | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule } = useRuntimeFeatureSupport();
-  const localCoreManaged = getRuntimeProvider() === 'local_core';
+  const quickActions: QuickActionProps[] = [
+    {
+      title: '继续聊天',
+      description: '打开本地对话，继续当前项目里的 agent 线程。',
+      to: '/chat',
+      icon: MessageSquare,
+      primary: true,
+    },
+    {
+      title: '工作区',
+      description: '管理项目、平台、模型和本地运行配置。',
+      to: desktopWorkspace ? '/workspace' : '/projects',
+      icon: desktopWorkspace ? Wrench : FolderKanban,
+    },
+  ];
 
-  const fetchData = useCallback(async (runtimeOverride?: DesktopRuntimeStatus | null) => {
+  if (knowledgeModule) {
+    quickActions.push({
+      title: '知识库',
+      description: '上传文档，维护可被检索的项目资料。',
+      to: '/knowledge',
+      icon: BookOpen,
+    });
+  }
+
+  if (schedulerModule) {
+    quickActions.push({
+      title: '定时任务',
+      description: '查看和管理自动执行的计划任务。',
+      to: '/cron',
+      icon: CalendarClock,
+    });
+  }
+
+  if (!knowledgeModule || !schedulerModule) {
+    quickActions.push({
+      title: '系统设置',
+      description: '查看配置、日志和桌面应用偏好。',
+      to: '/system',
+      icon: Settings,
+    });
+  }
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      let nextRuntime = runtimeOverride ?? null;
       if (desktopRuntime) {
-        nextRuntime = runtimeOverride ?? await getRuntimeStatus();
-        setRuntime(nextRuntime);
         const workspaceData = await listWorkspaces();
-        setStatus({
-          version: 'local-core',
-          uptime_seconds: 0,
-          connected_platforms: nextRuntime.roles.platformGateway.status === 'running' ? ['gateway'] : [],
-          projects_count: workspaceData.workspaces.length,
-          bridge_adapters: [],
-        });
         setProjects((workspaceData.workspaces || []).map((workspace) => ({
           name: workspace.name,
           agent_type: workspace.agentType,
@@ -59,8 +117,7 @@ export default function Dashboard() {
         return;
       }
 
-      const [system, projectData] = await Promise.all([getStatus(), listProjects()]);
-      setStatus(system);
+      const projectData = await listProjects();
       setProjects(projectData.projects || []);
     } catch (err: any) {
       setError(err.message || String(err));
@@ -73,9 +130,8 @@ export default function Dashboard() {
     void fetchData();
     const handler = () => fetchData();
     window.addEventListener('cc:refresh', handler);
-    const stopRuntime = desktopRuntime ? onRuntimeEvent((nextRuntime) => {
-      setRuntime(nextRuntime);
-      void fetchData(nextRuntime);
+    const stopRuntime = desktopRuntime ? onRuntimeEvent(() => {
+      void fetchData();
     }) : () => {};
     return () => {
       window.removeEventListener('cc:refresh', handler);
@@ -83,26 +139,13 @@ export default function Dashboard() {
     };
   }, [desktopRuntime, fetchData]);
 
-  if (loading && !status) {
+  if (loading && projects.length === 0) {
     return <div className="flex h-64 items-center justify-center text-slate-400"><Activity className="animate-pulse" size={24} /></div>;
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <PageHeader
-        title="Home"
-        description="A quiet overview of your local runtime, workspaces, and the next action you are likely to take."
-        actions={desktopRuntime ? (
-          <>
-            <Button size="sm" onClick={() => void startDesktopService().then(() => fetchData())} disabled={runtime?.phase === 'starting' || runtime?.phase === 'api_ready'}>
-              <Play size={14} /> Start
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => void restartDesktopService().then(() => fetchData())}>
-              <RotateCw size={14} /> Restart
-            </Button>
-          </>
-        ) : null}
-      />
+    <div className="animate-fade-in space-y-6">
+      <PageHeader title="概览" />
 
       {error ? (
         <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
@@ -110,88 +153,54 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <StatCard label="Runtime" value={desktopRuntime ? formatRuntimePhase(runtime?.phase) : status?.version || '-'} accent={desktopRuntime ? runtime?.phase === 'api_ready' : true} />
-        <StatCard label={t('dashboard.projects')} value={status?.projects_count ?? projects.length} />
-        <StatCard label={t('dashboard.platforms')} value={status?.connected_platforms?.length ?? 0} />
-        <StatCard label={t('dashboard.uptime')} value={status ? formatUptime(status.uptime_seconds) : '-'} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {quickActions.map((action) => (
+          <QuickAction key={action.to} {...action} />
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <SectionCard
-          title={localCoreManaged ? 'Local AI Core' : 'Runtime status'}
-          description="Keep the local service ready, then work from Chat or Workspace."
-          actions={<StatusPill tone={runtimeTone(runtime?.phase) as any}>{desktopRuntime ? formatRuntimePhase(runtime?.phase) : 'connected'}</StatusPill>}
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Link to="/chat" className="rounded-xl border border-violet-100 p-4 transition-colors hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]">
-              <MessageSquare size={18} className="text-violet-500" />
-              <p className="mt-3 text-sm font-medium text-slate-950 dark:text-white">Open chat</p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">Start or continue a local agent thread.</p>
-            </Link>
-            {desktopWorkspace ? (
-              <Link to="/workspace" className="rounded-xl border border-violet-100 p-4 transition-colors hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]">
-                <Wrench size={18} className="text-violet-500" />
-                <p className="mt-3 text-sm font-medium text-slate-950 dark:text-white">Workspace</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">Review daily project settings.</p>
-              </Link>
-            ) : null}
-            {knowledgeModule ? (
-              <Link to="/knowledge" className="rounded-xl border border-violet-100 p-4 transition-colors hover:bg-violet-50 dark:border-violet-400/10 dark:hover:bg-white/[0.04]">
-                <BookOpen size={18} className="text-violet-500" />
-                <p className="mt-3 text-sm font-medium text-slate-950 dark:text-white">Knowledge</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">Manage searchable document libraries.</p>
-              </Link>
-            ) : null}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Automation" description={schedulerModule ? 'Scheduled tasks are available.' : 'Scheduler is disabled.'}>
-          {schedulerModule ? (
-            <Link to="/cron">
-              <Button variant="secondary" className="w-full"><Cable size={14} /> View schedules</Button>
-            </Link>
-          ) : (
-            <p className="text-sm text-slate-500 dark:text-violet-200/60">No automation module is currently enabled.</p>
-          )}
-        </SectionCard>
-      </div>
-
-      <SectionCard
-        title={t('nav.projects')}
-        description="Recent workspaces and projects."
-        actions={<Link to={desktopRuntime ? '/workspace' : '/projects'} className="text-sm font-medium text-accent hover:underline">{t('common.viewAll')}</Link>}
-      >
+      <Card className="rounded-xl p-0">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-white/[0.08]">
+          <h2 className="text-base font-semibold text-slate-950 dark:text-white">{t('nav.projects')}</h2>
+          <Link
+            to={desktopRuntime ? '/workspace' : '/projects'}
+            className="text-sm font-medium text-violet-600 transition-colors hover:text-violet-700 dark:text-violet-300 dark:hover:text-violet-200"
+          >
+            {t('common.viewAll')}
+          </Link>
+        </div>
         {projects.length === 0 ? (
-          <EmptyState message={t('projects.noProjects')} icon={FolderKanban} />
+          <div className="p-5">
+            <EmptyState message={t('projects.noProjects')} icon={FolderKanban} />
+          </div>
         ) : (
-          <div className="divide-y divide-violet-100 dark:divide-violet-400/10">
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
             {projects.slice(0, 6).map((project) => (
               <Link
                 key={project.name}
                 to={desktopRuntime ? `/workspace?project=${encodeURIComponent(project.name)}` : `/projects/${project.name}`}
-                className="group flex items-center justify-between gap-3 py-3"
+                className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors duration-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-200">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-200">
                     <Server size={17} />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name}</p>
-                    <p className="truncate text-xs text-slate-500 dark:text-violet-200/55">
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
                       {project.agent_type} · {project.platforms?.join(', ') || 'no platform'} · {project.sessions_count} sessions
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {project.heartbeat_enabled ? <Badge variant="success">heartbeat</Badge> : null}
-                  <ArrowRight size={16} className="text-slate-300 transition-colors group-hover:text-accent" />
+                  <ArrowRight size={16} className="text-slate-300 transition-colors group-hover:text-violet-500" />
                 </div>
               </Link>
             ))}
           </div>
         )}
-      </SectionCard>
+      </Card>
     </div>
   );
 }

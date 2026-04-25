@@ -251,8 +251,8 @@ export default function ThreadChat() {
 
   return (
     <>
-      <div className="h-full overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] animate-fade-in dark:border-white/[0.06] dark:bg-[#0b0f14] dark:shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
-        <div className="grid h-full grid-cols-[288px_minmax(0,1fr)]">
+      <div className="h-full min-h-0 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] animate-fade-in dark:border-white/[0.06] dark:bg-[#0b0f14] dark:shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
+        <div className="grid h-full min-h-0 grid-cols-[288px_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,#fbfcfe_0%,#f5f7fb_100%)] dark:border-white/[0.06] dark:bg-[linear-gradient(180deg,#10151c_0%,#0c1016_100%)]">
             <div className="border-b border-slate-200/80 px-4 py-4 dark:border-white/[0.06]">
               <div className="flex items-start justify-between gap-3">
