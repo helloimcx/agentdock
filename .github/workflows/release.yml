@@ -40,6 +40,9 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Build app
+        run: pnpm build
+
       - name: Publish macOS release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

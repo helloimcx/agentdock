@@ -252,6 +252,7 @@ test('lark same-thread execution policy keeps the original thread target', async
 
 test('weixin channel can request a QR code without platform options', async () => {
   const originalFetch = globalThis.fetch;
+  const stateDir = mkdtempSync(join(tmpdir(), 'weixin-channel-qr-'));
   const requests: Array<{ url: string; headers: Headers }> = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     requests.push({
@@ -276,7 +277,7 @@ test('weixin channel can request a QR code without platform options', async () =
           {
             name: 'default',
             agent: { type: 'localcore-acp', providers: [] },
-            platforms: [{ type: 'weixin', options: {} }],
+            platforms: [{ type: 'weixin', options: { state_dir: stateDir } }],
           },
         ],
       } as any),
@@ -296,6 +297,7 @@ test('weixin channel can request a QR code without platform options', async () =
     assert.equal(requests[0]?.headers.has('AuthorizationType'), false);
   } finally {
     globalThis.fetch = originalFetch;
+    rmSync(stateDir, { recursive: true, force: true });
   }
 });
 
