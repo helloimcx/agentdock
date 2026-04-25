@@ -32,21 +32,21 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
     <Link
       to={to}
       className={[
-        'group flex min-h-[136px] flex-col justify-between rounded-xl border p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-violet-400/20',
+        'group flex min-h-[136px] flex-col justify-between rounded-lg border p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring',
         primary
-          ? 'border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-50 dark:border-violet-400/20 dark:bg-violet-500/10 dark:hover:bg-violet-500/15'
-          : 'border-slate-200 bg-white hover:border-violet-200 hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-violet-400/20 dark:hover:bg-white/[0.05]',
+          ? 'border-primary/25 bg-primary/10 hover:border-primary/35 hover:bg-primary/15'
+          : 'border-border bg-card/85 hover:border-primary/25 hover:bg-card',
       ].join(' ')}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm shadow-violet-950/[0.04] dark:bg-white/[0.06] dark:text-violet-200 dark:shadow-none">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-sm">
           <Icon size={20} />
         </div>
-        <ArrowRight size={17} className="mt-1 text-slate-300 transition-colors group-hover:text-violet-500 dark:text-white/25" />
+        <ArrowRight size={17} className="mt-1 text-muted-foreground/45 transition-colors group-hover:text-primary" />
       </div>
       <div>
-        <h2 className="text-base font-semibold text-slate-950 dark:text-white">{title}</h2>
-        <p className="mt-2 max-w-sm text-sm leading-5 text-slate-600 dark:text-slate-300">{description}</p>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <p className="mt-2 max-w-sm text-sm leading-5 text-muted-foreground">{description}</p>
       </div>
     </Link>
   );
@@ -140,7 +140,7 @@ export default function Dashboard() {
   }, [desktopRuntime, fetchData]);
 
   if (loading && projects.length === 0) {
-    return <div className="flex h-64 items-center justify-center text-slate-400"><Activity className="animate-pulse" size={24} /></div>;
+    return <div className="flex h-64 items-center justify-center text-muted-foreground"><Activity className="animate-pulse" size={24} /></div>;
   }
 
   return (
@@ -148,7 +148,7 @@ export default function Dashboard() {
       <PageHeader title="概览" />
 
       {error ? (
-        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
           {error}
         </div>
       ) : null}
@@ -159,12 +159,12 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <Card className="rounded-xl p-0">
-        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-white/[0.08]">
-          <h2 className="text-base font-semibold text-slate-950 dark:text-white">{t('nav.projects')}</h2>
+      <Card className="p-0">
+        <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
+          <h2 className="text-base font-semibold text-foreground">{t('nav.projects')}</h2>
           <Link
             to={desktopRuntime ? '/workspace' : '/projects'}
-            className="text-sm font-medium text-violet-600 transition-colors hover:text-violet-700 dark:text-violet-300 dark:hover:text-violet-200"
+            className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
           >
             {t('common.viewAll')}
           </Link>
@@ -174,27 +174,27 @@ export default function Dashboard() {
             <EmptyState message={t('projects.noProjects')} icon={FolderKanban} />
           </div>
         ) : (
-          <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+          <div className="divide-y divide-border">
             {projects.slice(0, 6).map((project) => (
               <Link
                 key={project.name}
                 to={desktopRuntime ? `/workspace?project=${encodeURIComponent(project.name)}` : `/projects/${project.name}`}
-                className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors duration-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors duration-200 hover:bg-accent/10"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-200">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                     <Server size={17} />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name}</p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                    <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
                       {project.agent_type} · {project.platforms?.join(', ') || 'no platform'} · {project.sessions_count} sessions
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {project.heartbeat_enabled ? <Badge variant="success">heartbeat</Badge> : null}
-                  <ArrowRight size={16} className="text-slate-300 transition-colors group-hover:text-violet-500" />
+                  <ArrowRight size={16} className="text-muted-foreground/45 transition-colors group-hover:text-primary" />
                 </div>
               </Link>
             ))}

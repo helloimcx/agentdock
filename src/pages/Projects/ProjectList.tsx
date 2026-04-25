@@ -28,7 +28,7 @@ export default function ProjectList() {
   }, [fetch]);
 
   if (loading && projects.length === 0) {
-    return <div className="flex items-center justify-center h-64 text-gray-400 animate-pulse">Loading...</div>;
+    return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Loading...</div>;
   }
 
   if (projects.length === 0) {
@@ -44,19 +44,19 @@ export default function ProjectList() {
             <Card hover className="h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Server size={18} className="text-violet-500" />
-                  <h3 className="font-semibold text-slate-950 dark:text-white">{p.name}</h3>
+                  <Server size={18} className="text-primary" />
+                  <h3 className="font-semibold text-foreground">{p.name}</h3>
                 </div>
-                <ArrowRight size={16} className="text-slate-300 dark:text-violet-200/35" />
+                <ArrowRight size={16} className="text-muted-foreground/45" />
               </div>
               <div className="flex flex-wrap gap-1.5 mb-3">
                 <Badge variant="info">{p.agent_type}</Badge>
                 {p.platforms?.map((pl) => <Badge key={pl}>{pl}</Badge>)}
               </div>
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-violet-200/55">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{p.sessions_count} {t('nav.sessions').toLowerCase()}</span>
                 {p.heartbeat_enabled && (
-                  <span className="flex items-center gap-1 text-violet-500"><Heart size={12} /> {t('heartbeat.title')}</span>
+                  <span className="flex items-center gap-1 text-primary"><Heart size={12} /> {t('heartbeat.title')}</span>
                 )}
               </div>
             </Card>

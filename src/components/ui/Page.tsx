@@ -20,9 +20,9 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-violet-950 dark:text-white">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
         {description ? (
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-violet-200/70">{description}</p>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
@@ -48,10 +48,10 @@ export function SectionCard({
   return (
     <Card className={cn('p-0', className)}>
       {(title || description || actions) && (
-        <div className="flex flex-col gap-3 border-b border-violet-100 px-5 py-4 dark:border-violet-400/10 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            {title ? <h2 className="text-sm font-semibold text-slate-950 dark:text-white">{title}</h2> : null}
-            {description ? <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-violet-200/60">{description}</p> : null}
+            {title ? <h2 className="text-sm font-semibold text-foreground">{title}</h2> : null}
+            {description ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p> : null}
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
         </div>
@@ -64,10 +64,10 @@ export function SectionCard({
 type StatusTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 
 const statusToneClasses: Record<StatusTone, string> = {
-  neutral: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300',
-  success: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
+  neutral: 'border-border bg-muted text-muted-foreground',
+  success: 'border-primary/20 bg-primary/10 text-primary',
   warning: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
-  danger: 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-200',
+  danger: 'border-destructive/20 bg-destructive/10 text-destructive dark:text-red-200',
   info: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200',
 };
 
@@ -123,14 +123,14 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
       <button
         type="button"
         aria-label="Close advanced diagnostics"
-        className="absolute inset-0 bg-violet-950/20 backdrop-blur-[2px] dark:bg-black/45"
+        className="absolute inset-0 bg-foreground/15 backdrop-blur-[2px] dark:bg-black/45"
         onClick={onClose}
       />
-      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l border-violet-100 bg-white shadow-2xl shadow-violet-950/15 dark:border-violet-400/10 dark:bg-[#090311]">
-        <div className="flex items-start justify-between gap-4 border-b border-violet-100 px-5 py-4 dark:border-violet-400/10">
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l bg-background shadow-2xl shadow-primary/10">
+        <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-violet-950 dark:text-white">Advanced diagnostics</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-violet-200/60">Read-only runtime details for troubleshooting.</p>
+            <h2 className="text-base font-semibold text-foreground">Advanced diagnostics</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Read-only runtime details for troubleshooting.</p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close advanced diagnostics">
             <X size={16} />
@@ -139,7 +139,7 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           {error ? (
-            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-200">
+            <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive dark:text-red-200">
               {error}
             </div>
           ) : null}
@@ -147,16 +147,16 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
           <SectionCard title="Runtime" description={loading ? 'Loading diagnostics...' : 'Current local runtime state.'}>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-xs text-slate-500 dark:text-violet-200/55">Phase</p>
-                <p className="mt-1 font-medium text-slate-950 dark:text-white">{runtime?.phase || '-'}</p>
+                <p className="text-xs text-muted-foreground">Phase</p>
+                <p className="mt-1 font-medium text-foreground">{runtime?.phase || '-'}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-500 dark:text-violet-200/55">Restart</p>
-                <p className="mt-1 font-medium text-slate-950 dark:text-white">{runtime?.pendingRestart ? 'needed' : 'not needed'}</p>
+                <p className="text-xs text-muted-foreground">Restart</p>
+                <p className="mt-1 font-medium text-foreground">{runtime?.pendingRestart ? 'needed' : 'not needed'}</p>
               </div>
               <div className="col-span-2">
-                <p className="text-xs text-slate-500 dark:text-violet-200/55">Config path</p>
-                <p className="mt-1 break-all font-mono text-xs text-slate-700 dark:text-violet-100/80">
+                <p className="text-xs text-muted-foreground">Config path</p>
+                <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
                   {runtime?.settings?.configPath || runtime?.configFile?.path || '-'}
                 </p>
               </div>
@@ -166,8 +166,8 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
           <SectionCard title="Plugin health" description={plugins ? `${plugins.enabledPluginCount}/${plugins.pluginCount} enabled` : 'No plugin diagnostics loaded.'}>
             <div className="space-y-2">
               {(plugins?.plugins || []).slice(0, 8).map((plugin: any) => (
-                <div key={plugin.pluginId} className="flex items-center justify-between gap-3 rounded-lg border border-violet-100 px-3 py-2 dark:border-violet-400/10">
-                  <span className="min-w-0 truncate text-sm text-slate-700 dark:text-violet-100">{plugin.pluginId}</span>
+                <div key={plugin.pluginId} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                  <span className="min-w-0 truncate text-sm text-foreground">{plugin.pluginId}</span>
                   <Badge variant={plugin.health?.status === 'healthy' ? 'success' : plugin.health?.status === 'failed' ? 'danger' : 'warning'}>
                     {plugin.health?.status || 'unknown'}
                   </Badge>
@@ -177,7 +177,7 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
           </SectionCard>
 
           <SectionCard title="Raw config" description="Read-only TOML snapshot. Edit it outside the daily UI when needed.">
-            <pre className="max-h-72 overflow-auto rounded-lg border border-violet-100 bg-violet-50/60 p-3 font-mono text-xs leading-5 text-slate-700 dark:border-violet-400/10 dark:bg-black/20 dark:text-violet-100/80">
+            <pre className="max-h-72 overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-5 text-muted-foreground">
               {formatRaw(raw)}
             </pre>
           </SectionCard>
@@ -192,9 +192,9 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
           >
             <div className="space-y-1">
               {logs.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-violet-200/60">No logs available.</p>
+                <p className="text-sm text-muted-foreground">No logs available.</p>
               ) : logs.slice(0, 8).map((line, index) => (
-                <p key={`${index}-${line}`} className="truncate font-mono text-xs text-slate-600 dark:text-violet-100/70">{line}</p>
+                <p key={`${index}-${line}`} className="truncate font-mono text-xs text-muted-foreground">{line}</p>
               ))}
             </div>
           </SectionCard>

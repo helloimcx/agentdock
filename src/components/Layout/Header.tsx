@@ -31,12 +31,11 @@ export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void
       className={cn(
         compactDesktopChatHeader ? 'h-11 px-4' : 'h-14 px-6',
         'flex items-center justify-between shrink-0',
-        'border-b border-violet-100/90 dark:border-violet-400/[0.12]',
-        'bg-white/80 backdrop-blur-xl dark:bg-[#08030f]/82 dark:backdrop-blur-xl'
+        'border-b bg-background/80 backdrop-blur-xl'
       )}
     >
       {compactDesktopChatHeader ? <div /> : (
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
+        <h1 className="text-lg font-semibold text-foreground tracking-tight">
           {t(titleKey)}
         </h1>
       )}
@@ -47,9 +46,8 @@ export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void
             onClick={handleRefresh}
             className={cn(
               'p-2 rounded-xl transition-colors duration-200',
-              'text-slate-500 dark:text-violet-200/60',
-              'hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-violet-700 dark:hover:text-white',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40'
+              'text-muted-foreground hover:bg-accent/10 hover:text-foreground',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             )}
             aria-label={t('common.refresh')}
           >
@@ -61,9 +59,8 @@ export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void
               onClick={onOpenAdvanced}
               className={cn(
                 'p-2 rounded-xl transition-colors duration-200',
-                'text-slate-500 dark:text-violet-200/60',
-                'hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-violet-700 dark:hover:text-white',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40'
+                'text-muted-foreground hover:bg-accent/10 hover:text-foreground',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
               )}
               aria-label="Open advanced diagnostics"
             >

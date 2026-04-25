@@ -59,15 +59,14 @@ export default function Sidebar() {
     <aside
       className={cn(
         'h-screen flex flex-col border-r transition-all duration-300 ease-out',
-        'bg-white/85 backdrop-blur-xl border-violet-100/90',
-        'dark:bg-[#08030f]/90 dark:backdrop-blur-xl dark:border-violet-400/[0.12]',
+        'bg-background/85 backdrop-blur-xl',
         collapsed ? 'w-16' : 'w-60'
       )}
     >
       <div
         className={cn(
           'flex items-center gap-3 px-4 h-16 border-b transition-colors',
-          'border-violet-100/90 dark:border-violet-400/[0.12]'
+          'border-border'
         )}
       >
         <BrandLogo showWordmark={!collapsed} />
@@ -80,7 +79,7 @@ export default function Sidebar() {
           return (
             <div key={group.label} className="space-y-1">
               {!collapsed && (
-                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-violet-200/35">
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   {group.label}
                 </p>
               )}
@@ -96,8 +95,8 @@ export default function Sidebar() {
                       cn(
                         'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200',
                         isActive
-                          ? 'bg-accent/12 text-violet-950 ring-1 ring-accent/25 dark:text-white'
-                          : 'text-slate-600 dark:text-violet-200/60 hover:bg-violet-50 dark:hover:bg-white/[0.06] hover:text-violet-900 dark:hover:text-white'
+                          ? 'bg-primary/10 text-foreground ring-1 ring-primary/25'
+                          : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
                       )
                     }
                   >
@@ -114,7 +113,7 @@ export default function Sidebar() {
       <div
         className={cn(
           'border-t p-2 space-y-1',
-          'border-violet-100/90 dark:border-violet-400/[0.12]'
+          'border-border'
         )}
       >
         <div className="relative">
@@ -123,8 +122,7 @@ export default function Sidebar() {
             onClick={() => setLangOpen(!langOpen)}
             className={cn(
               'flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-200',
-              'text-gray-600 dark:text-gray-400',
-              'hover:bg-gray-100/80 dark:hover:bg-white/[0.06]'
+              'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
             )}
           >
             <Languages size={20} className="shrink-0" />
@@ -136,8 +134,7 @@ export default function Sidebar() {
             <div
               className={cn(
                 'absolute bottom-full left-0 mb-1 w-48 rounded-xl py-1 z-50 overflow-hidden',
-                'bg-white/95 backdrop-blur-xl border border-gray-200/80 shadow-xl shadow-black/10',
-                'dark:bg-[rgba(0,0,0,0.88)] dark:border-white/[0.1] dark:shadow-black/40'
+                'bg-popover text-popover-foreground backdrop-blur-xl border shadow-xl'
               )}
             >
               {languages.map((l) => (
@@ -148,8 +145,8 @@ export default function Sidebar() {
                   className={cn(
                     'w-full text-left px-3 py-2 text-sm transition-colors duration-150',
                     i18n.language === l.code
-                      ? 'text-accent font-medium bg-accent/10'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100/80 dark:hover:bg-white/[0.06]'
+                      ? 'text-primary font-medium bg-primary/10'
+                      : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
                   )}
                 >
                   {l.label}
@@ -164,8 +161,7 @@ export default function Sidebar() {
           onClick={() => setTheme(nextTheme[theme])}
           className={cn(
             'flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-200',
-            'text-gray-600 dark:text-gray-400',
-            'hover:bg-gray-100/80 dark:hover:bg-white/[0.06]'
+            'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
           )}
         >
           <ThemeIcon size={20} className="shrink-0" />
@@ -178,8 +174,7 @@ export default function Sidebar() {
             onClick={logout}
             className={cn(
               'flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all duration-200',
-              'text-gray-600 dark:text-gray-400',
-              'hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400'
+              'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
             )}
           >
             <LogOut size={20} className="shrink-0" />
@@ -192,7 +187,7 @@ export default function Sidebar() {
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
             'flex items-center justify-center w-full px-3 py-2 rounded-xl transition-colors duration-200',
-            'text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.06]'
+            'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
           )}
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}

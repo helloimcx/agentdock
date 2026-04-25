@@ -90,7 +90,7 @@ export default function ProjectDetail() {
   ];
 
   if (loading && !project) {
-    return <div className="flex items-center justify-center h-64 text-gray-400 animate-pulse">Loading...</div>;
+    return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Loading...</div>;
   }
 
   return (
@@ -116,8 +116,8 @@ export default function ProjectDetail() {
             className={cn(
               'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
               tab === key
-                ? 'bg-gray-900 dark:bg-gray-700 text-white shadow-md'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                ? 'bg-primary text-primary-foreground shadow-md'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
             )}
           >
             <Icon size={16} />
@@ -139,7 +139,7 @@ export default function ProjectDetail() {
             </div>
           </SectionCard>
           <SectionCard title={t('sessions.title')}>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               {project.sessions_count} {t('nav.sessions').toLowerCase()}
             </p>
             {project.active_session_keys?.length > 0 && (
@@ -156,7 +156,7 @@ export default function ProjectDetail() {
       {tab === 'providers' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{t('providers.title')}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('providers.title')}</h3>
             <Button size="sm" onClick={() => setShowAddProvider(true)}><Plus size={14} /> {t('providers.add')}</Button>
           </div>
           {providers.length === 0 ? (
@@ -168,10 +168,10 @@ export default function ProjectDetail() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900 dark:text-white">{p.name}</span>
+                        <span className="font-medium text-foreground">{p.name}</span>
                         {p.active && <Badge variant="success">{t('providers.active')}</Badge>}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">{p.model} {p.base_url ? `· ${p.base_url}` : ''}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{p.model} {p.base_url ? `· ${p.base_url}` : ''}</p>
                     </div>
                     <div className="flex gap-2">
                       {!p.active && (
@@ -194,7 +194,7 @@ export default function ProjectDetail() {
           {/* Models */}
           {models.length > 0 && (
             <Card>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('providers.models')}</h3>
+              <h3 className="text-sm font-semibold text-foreground mb-3">{t('providers.models')}</h3>
               <div className="flex flex-wrap gap-2">
                 {models.map((m) => (
                   <button
@@ -203,8 +203,8 @@ export default function ProjectDetail() {
                     className={cn(
                       'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                       m === currentModel
-                        ? 'bg-accent/20 text-accent border border-accent/30'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        ? 'bg-primary/15 text-primary border border-primary/30'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                     )}
                   >
                     {m}
@@ -237,16 +237,16 @@ export default function ProjectDetail() {
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card><p className="text-xs text-gray-500">{t('heartbeat.status')}</p><p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{heartbeat.paused ? t('heartbeat.paused') : t('heartbeat.running')}</p></Card>
-                <Card><p className="text-xs text-gray-500">{t('heartbeat.interval')}</p><p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{heartbeat.interval_mins}m</p></Card>
-                <Card><p className="text-xs text-gray-500">{t('heartbeat.runCount')}</p><p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{heartbeat.run_count}</p></Card>
-                <Card><p className="text-xs text-gray-500">{t('heartbeat.errorCount')}</p><p className="text-lg font-bold text-gray-900 dark:text-white mt-1">{heartbeat.error_count}</p></Card>
+                <Card><p className="text-xs text-muted-foreground">{t('heartbeat.status')}</p><p className="text-lg font-bold text-foreground mt-1">{heartbeat.paused ? t('heartbeat.paused') : t('heartbeat.running')}</p></Card>
+                <Card><p className="text-xs text-muted-foreground">{t('heartbeat.interval')}</p><p className="text-lg font-bold text-foreground mt-1">{heartbeat.interval_mins}m</p></Card>
+                <Card><p className="text-xs text-muted-foreground">{t('heartbeat.runCount')}</p><p className="text-lg font-bold text-foreground mt-1">{heartbeat.run_count}</p></Card>
+                <Card><p className="text-xs text-muted-foreground">{t('heartbeat.errorCount')}</p><p className="text-lg font-bold text-foreground mt-1">{heartbeat.error_count}</p></Card>
               </div>
               <Card>
                 <div className="space-y-2 text-sm">
-                  <p className="text-gray-500">{t('heartbeat.lastRun')}: <span className="text-gray-900 dark:text-white">{formatTime(heartbeat.last_run)}</span></p>
-                  <p className="text-gray-500">{t('heartbeat.skippedBusy')}: <span className="text-gray-900 dark:text-white">{heartbeat.skipped_busy}</span></p>
-                  {heartbeat.last_error && <p className="text-red-500">{heartbeat.last_error}</p>}
+                  <p className="text-muted-foreground">{t('heartbeat.lastRun')}: <span className="text-foreground">{formatTime(heartbeat.last_run)}</span></p>
+                  <p className="text-muted-foreground">{t('heartbeat.skippedBusy')}: <span className="text-foreground">{heartbeat.skipped_busy}</span></p>
+                  {heartbeat.last_error && <p className="text-destructive">{heartbeat.last_error}</p>}
                 </div>
               </Card>
               <div className="flex gap-2">

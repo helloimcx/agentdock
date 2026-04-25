@@ -4,11 +4,66 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  :root {
+    --background: 270 100% 99%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 258 90% 66%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 263 85% 96%;
+    --secondary-foreground: 262 83% 30%;
+    --muted: 260 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 258 90% 66%;
+    --accent-foreground: 0 0% 100%;
+    --accent-dim: 262 83% 58%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 262 54% 91%;
+    --input: 262 54% 91%;
+    --ring: 258 90% 66%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 267 67% 3%;
+    --foreground: 260 100% 98%;
+    --card: 268 49% 7%;
+    --card-foreground: 260 100% 98%;
+    --popover: 268 49% 7%;
+    --popover-foreground: 260 100% 98%;
+    --primary: 258 90% 66%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 266 44% 12%;
+    --secondary-foreground: 260 100% 95%;
+    --muted: 266 44% 12%;
+    --muted-foreground: 260 24% 70%;
+    --accent: 258 90% 66%;
+    --accent-foreground: 0 0% 100%;
+    --accent-dim: 262 83% 58%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 263 38% 18%;
+    --input: 263 38% 18%;
+    --ring: 258 90% 66%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    margin: 0;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 pre code.hljs {

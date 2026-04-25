@@ -11,11 +11,10 @@ export function Card({ children, className, hover }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-2xl p-5 transition-colors duration-200 animate-float-in',
-        'bg-white/90 border border-violet-100/90 shadow-sm shadow-violet-950/[0.03]',
-        'dark:bg-white/[0.035] dark:border-violet-400/[0.10] dark:shadow-none',
+        'rounded-lg p-5 text-card-foreground transition-colors duration-200 animate-float-in',
+        'border bg-card/95 shadow-sm',
         hover &&
-          'hover:border-violet-200 hover:bg-white cursor-pointer dark:hover:border-violet-300/20 dark:hover:bg-white/[0.055]',
+          'cursor-pointer hover:border-primary/30 hover:bg-card hover:shadow-md hover:shadow-primary/5',
         className
       )}
     >
@@ -33,17 +32,37 @@ interface StatCardProps {
 export function StatCard({ label, value, accent }: StatCardProps) {
   return (
     <Card>
-      <p className="text-xs font-medium text-slate-500 dark:text-violet-200/55 uppercase tracking-wide">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         {label}
       </p>
       <p
         className={cn(
           'text-2xl font-semibold mt-1',
-          accent ? 'text-accent' : 'text-slate-950 dark:text-white'
+          accent ? 'text-primary' : 'text-foreground'
         )}
       >
         {value}
       </p>
     </Card>
   );
+}
+
+export function CardHeader({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex flex-col space-y-1.5 p-5', className)}>{children}</div>;
+}
+
+export function CardTitle({ children, className }: { children: ReactNode; className?: string }) {
+  return <h3 className={cn('text-base font-semibold leading-none tracking-tight', className)}>{children}</h3>;
+}
+
+export function CardDescription({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn('text-sm text-muted-foreground', className)}>{children}</p>;
+}
+
+export function CardContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('p-5 pt-0', className)}>{children}</div>;
+}
+
+export function CardFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('flex items-center p-5 pt-0', className)}>{children}</div>;
 }

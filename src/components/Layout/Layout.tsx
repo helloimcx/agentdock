@@ -18,8 +18,8 @@ export default function Layout() {
     <div
       className={cn(
         'flex h-screen overflow-hidden',
-        'bg-[radial-gradient(circle_at_top_left,#f3e8ff_0,#faf5ff_34%,#ffffff_78%)]',
-        'dark:bg-[radial-gradient(circle_at_top_left,#2e1065_0,#10051f_36%,#05020a_82%)]'
+        'bg-[radial-gradient(circle_at_top_left,hsl(var(--secondary))_0,hsl(var(--background))_40%,hsl(var(--background))_78%)]',
+        'dark:bg-[radial-gradient(circle_at_top_left,hsl(263_70%_20%)_0,hsl(var(--background))_42%,hsl(var(--background))_82%)]'
       )}
     >
       <Sidebar />

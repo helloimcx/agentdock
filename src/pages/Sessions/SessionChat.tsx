@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Send, User, Bot, RotateCw, Circle, WifiOff, Copy, Check } from 'lucide-react';
-import { Badge, Button } from '@/components/ui';
+import { Badge, Button, Input } from '@/components/ui';
 import { getSession, sendMessage, type SessionDetail } from '@/api/sessions';
 import { cn } from '@/lib/utils';
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
@@ -56,26 +56,26 @@ export default function SessionChat() {
   };
 
   if (loading && !session) {
-    return <div className="flex items-center justify-center h-64 text-gray-400 animate-pulse">Loading...</div>;
+    return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Loading...</div>;
   }
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex items-center justify-between pb-4 border-b">
         <div className="flex items-center gap-3">
-          <Link to="/sessions" className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <ArrowLeft size={18} className="text-gray-400" />
+          <Link to="/sessions" className="p-2 rounded-md hover:bg-accent/10 transition-colors">
+            <ArrowLeft size={18} className="text-muted-foreground" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{session?.name || id}</h2>
+              <h2 className="text-lg font-semibold text-foreground">{session?.name || id}</h2>
               {session?.live ? (
-                <span className="flex items-center gap-1 text-[10px] text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-1.5 py-0.5 rounded-full">
+                <span className="flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
                   <Circle size={5} className="fill-current" /> live
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
                   <WifiOff size={9} /> {t('sessions.offline')}
                 </span>
               )}
@@ -83,7 +83,7 @@ export default function SessionChat() {
             <div className="flex items-center gap-2 mt-0.5">
               <Badge>{project}</Badge>
               {session?.platform && <Badge variant="info">{session.platform}</Badge>}
-              <span className="text-xs text-gray-500">{session?.session_key}</span>
+              <span className="text-xs text-muted-foreground">{session?.session_key}</span>
             </div>
           </div>
         </div>
@@ -95,28 +95,28 @@ export default function SessionChat() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-6 space-y-5">
         {(!session?.history || session.history.length === 0) && (
-          <p className="text-center text-sm text-gray-400 py-12">{t('sessions.noMessages')}</p>
+          <p className="text-center text-sm text-muted-foreground py-12">{t('sessions.noMessages')}</p>
         )}
         {session?.history?.map((msg, i) => {
           const isUser = msg.role === 'user';
           return (
             <div key={i} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
               {!isUser && (
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-1">
-                  <Bot size={16} className="text-accent" />
+                <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+                  <Bot size={16} className="text-primary" />
                 </div>
               )}
               <div className={cn(
-                'rounded-2xl px-5 py-3.5 text-sm',
+                'rounded-lg px-5 py-3.5 text-sm',
                 isUser
-                  ? 'max-w-[70%] bg-accent text-white rounded-br-md'
-                  : 'max-w-[85%] bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 text-gray-900 dark:text-gray-100 rounded-bl-md shadow-sm'
+                  ? 'max-w-[70%] bg-primary text-primary-foreground rounded-br-md'
+                  : 'max-w-[85%] bg-card border text-card-foreground rounded-bl-md shadow-sm'
               )}>
                 <ChatMarkdown content={msg.content} isUser={isUser} />
               </div>
               {isUser && (
-                <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center shrink-0 mt-1">
-                  <User size={16} className="text-gray-500" />
+                <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center shrink-0 mt-1">
+                  <User size={16} className="text-muted-foreground" />
                 </div>
               )}
             </div>
@@ -126,21 +126,22 @@ export default function SessionChat() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+      <div className="border-t pt-4">
         {session?.live ? (
           <div className="flex gap-3">
-            <input
+            <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('sessions.messageInput')}
-              className="flex-1 px-4 py-3 text-sm rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors placeholder:text-gray-400"
+              className="flex-1"
               disabled={sending}
             />
-            <button
+            <Button
               onClick={handleSend}
               disabled={sending || !input.trim()}
-              className="px-4 py-3 rounded-xl bg-accent text-white hover:bg-accent-dim transition-colors disabled:opacity-50 flex items-center gap-2"
+              size="icon"
+              aria-label={t('sessions.messageInput')}
             >
               {sending ? (
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
@@ -150,10 +151,10 @@ export default function SessionChat() {
               ) : (
                 <Send size={18} />
               )}
-            </button>
+            </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+          <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground bg-muted rounded-lg">
             <WifiOff size={14} />
             <span>{t('sessions.notLiveHint')}</span>
           </div>

@@ -110,7 +110,7 @@ export default function SystemConfig() {
       />
 
       {actionMsg ? (
-        <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200">
+        <div role="status" className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
           {actionMsg}
         </div>
       ) : null}
@@ -118,23 +118,23 @@ export default function SystemConfig() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SectionCard title="Runtime" description={loading ? 'Loading...' : 'Local service status.'}>
           <StatusPill tone={runtimeTone(runtime?.phase) as any}>{runtime?.phase || 'unknown'}</StatusPill>
-          <p className="mt-3 text-sm text-slate-500 dark:text-violet-200/60">
+          <p className="mt-3 text-sm text-muted-foreground">
             {runtime?.pendingRestart ? 'Restart required to apply saved changes.' : 'No pending restart.'}
           </p>
         </SectionCard>
         <SectionCard title="Config" description="Active config file location.">
           <div className="flex items-start gap-3">
-            <FileCode size={18} className="mt-0.5 text-violet-500" />
-            <p className="break-all font-mono text-xs leading-5 text-slate-600 dark:text-violet-100/75">
+            <FileCode size={18} className="mt-0.5 text-primary" />
+            <p className="break-all font-mono text-xs leading-5 text-muted-foreground">
               {runtime?.settings.configPath || runtime?.configFile.path || '-'}
             </p>
           </div>
         </SectionCard>
         <SectionCard title="Plugins" description="Health summary only.">
-          <p className="text-2xl font-semibold text-slate-950 dark:text-white">
+          <p className="text-2xl font-semibold text-foreground">
             {plugins ? `${plugins.enabledPluginCount}/${plugins.pluginCount}` : '-'}
           </p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-violet-200/60">enabled plugins</p>
+          <p className="mt-1 text-sm text-muted-foreground">enabled plugins</p>
         </SectionCard>
       </div>
 
@@ -162,19 +162,19 @@ export default function SystemConfig() {
 
       <SectionCard title={t('system.plugins')} description="Plugin state is read-only in the daily UI. Use backend config for advanced changes.">
         {!plugins ? (
-          <div className="py-8 text-sm text-slate-400">Loading...</div>
+          <div className="py-8 text-sm text-muted-foreground">Loading...</div>
         ) : plugins.plugins.length === 0 ? (
-          <div className="py-8 text-sm text-slate-400">No plugins registered.</div>
+          <div className="py-8 text-sm text-muted-foreground">No plugins registered.</div>
         ) : (
-          <div className="divide-y divide-violet-100 dark:divide-violet-400/10">
+          <div className="divide-y divide-border">
             {plugins.plugins.map((plugin) => (
               <div key={plugin.pluginId} className="flex items-start justify-between gap-4 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <Plug size={15} className="text-slate-400" />
-                    <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{plugin.pluginId}</p>
+                    <Plug size={15} className="text-muted-foreground" />
+                    <p className="truncate text-sm font-medium text-foreground">{plugin.pluginId}</p>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-violet-200/55">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {plugin.health.summary || plugin.manifest.provides.join(', ') || 'No declared capabilities'}
                   </p>
                 </div>

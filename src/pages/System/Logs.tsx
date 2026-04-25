@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Filter } from 'lucide-react';
-import { Card, Button, Badge, PageHeader } from '@/components/ui';
+import { Card, Button, Badge, PageHeader, Select } from '@/components/ui';
 import { getLogs } from '@/api/status';
 
 const levelColors: Record<string, string> = {
@@ -55,42 +55,42 @@ export default function SystemLogs() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <Filter size={14} className="text-gray-400" />
-          <select
+          <Filter size={14} className="text-muted-foreground" />
+          <Select
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            className="px-3 py-1.5 text-sm rounded-lg border border-violet-100 dark:border-violet-400/10 bg-white dark:bg-white/[0.04] text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
+            className="w-auto"
           >
             <option value="debug">Debug</option>
             <option value="info">Info</option>
             <option value="warn">Warn</option>
             <option value="error">Error</option>
-          </select>
+          </Select>
         </div>
-        <select
+        <Select
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
-          className="px-3 py-1.5 text-sm rounded-lg border border-violet-100 dark:border-violet-400/10 bg-white dark:bg-white/[0.04] text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent/50"
+          className="w-auto"
         >
           <option value="50">50</option>
           <option value="100">100</option>
           <option value="500">500</option>
           <option value="1000">1000</option>
-        </select>
+        </Select>
         <Button size="sm" variant="secondary" onClick={fetchLogs}>{t('common.refresh')}</Button>
       </div>
 
       {/* Log entries */}
       <Card>
         {loading ? (
-          <div className="text-gray-400 animate-pulse text-sm">Loading...</div>
+          <div className="text-muted-foreground animate-pulse text-sm">Loading...</div>
         ) : entries.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8">{t('common.noData')}</p>
+          <p className="text-sm text-muted-foreground text-center py-8">{t('common.noData')}</p>
         ) : (
           <div className="space-y-1 max-h-[65vh] overflow-y-auto font-mono text-xs">
             {entries.map((entry, i) => (
-              <div key={i} className="flex items-start gap-3 py-1.5 border-b border-gray-100 dark:border-gray-800/50 last:border-0">
-                <span className="text-gray-400 shrink-0 w-36">{entry.time?.slice(0, 19)}</span>
+              <div key={i} className="flex items-start gap-3 py-1.5 border-b last:border-0">
+                <span className="text-muted-foreground shrink-0 w-36">{entry.time?.slice(0, 19)}</span>
                 <Badge variant={levelBadge[entry.level] || 'default'}>{entry.level}</Badge>
                 <span className={`${levelColors[entry.level] || 'text-gray-500'} flex-1`}>{entry.message}</span>
               </div>

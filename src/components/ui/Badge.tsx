@@ -2,25 +2,27 @@ import { cn } from '@/lib/utils';
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
+  variant?: 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'destructive' | 'outline' | 'info';
 }
 
 const variants = {
-  default: 'bg-slate-100/90 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-white/[0.06]',
+  default: 'border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80',
+  secondary: 'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
   success:
-    'bg-violet-100/90 dark:bg-violet-900/25 text-violet-700 dark:text-violet-400 border border-violet-200/50 dark:border-violet-500/20',
+    'border-transparent bg-primary/10 text-primary dark:bg-primary/15 dark:text-primary',
   warning:
-    'bg-amber-100/90 dark:bg-amber-900/25 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-500/20',
-  danger:
-    'bg-red-100/90 dark:bg-red-900/25 text-red-700 dark:text-red-400 border border-red-200/50 dark:border-red-500/20',
-  info: 'bg-blue-100/90 dark:bg-blue-900/25 text-blue-700 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20',
+    'border-transparent bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200',
+  danger: 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-red-200',
+  destructive: 'border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80',
+  outline: 'text-foreground',
+  info: 'border-transparent bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200',
 };
 
 export function Badge({ children, variant = 'default' }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
         variants[variant]
       )}
     >
