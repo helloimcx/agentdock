@@ -58,7 +58,7 @@ type UseThreadChatSessionBrowserInput = {
   threadSearch: string;
   setSelectedKnowledgeBaseIds: (ids: string[]) => void;
 } & Pick<ThreadChatSharedHookContext, 'runtimeProvider' | 'updateTaskState'> &
-  Pick<ThreadChatSharedHookContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
+  Pick<ThreadChatSharedHookContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedHookContext, 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatConversationRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef'> &
   Pick<ThreadChatSendingRefs, 'lastSessionByProjectRef'> &
@@ -92,7 +92,6 @@ export function useThreadChatSessionBrowser({
   setThreadGroups,
   setTyping,
   applyLocalCoreThreadDetail,
-  clearLocalCorePolling,
   clearReplyTimeout,
   updateTaskState,
   holdBlankComposerRef,
@@ -143,7 +142,6 @@ export function useThreadChatSessionBrowser({
       return;
     }
     holdBlankComposerRef.current = false;
-    clearLocalCorePolling();
     updateTaskState('idle');
     setPendingPermissionRequest(null);
     setTyping(false);
@@ -171,7 +169,6 @@ export function useThreadChatSessionBrowser({
     setMessages(nextMessages);
   }, [
     applyLocalCoreThreadDetail,
-    clearLocalCorePolling,
     holdBlankComposerRef,
     lastSessionByProjectRef,
     nextMessageOrderRef,
@@ -248,13 +245,11 @@ export function useThreadChatSessionBrowser({
       progressSequenceByTurnRef.current = {};
       updateTaskState('idle');
       setTyping(false);
-      clearLocalCorePolling();
       clearReplyTimeout();
       return;
     }
     void refreshWorkspacesAndThreads();
   }, [
-    clearLocalCorePolling,
     clearReplyTimeout,
     nextMessageOrderRef,
     pendingTurnRef,
@@ -296,7 +291,6 @@ export function useThreadChatSessionBrowser({
       setTyping(false);
       updateTaskState('idle');
       setBridgeError('');
-      clearLocalCorePolling();
       clearReplyTimeout();
       void loadActiveThread(selectedWorkspaceId, targetThread.id);
       return;
@@ -315,10 +309,8 @@ export function useThreadChatSessionBrowser({
     pendingTurnRef.current = null;
     nextMessageOrderRef.current = 0;
     progressSequenceByTurnRef.current = {};
-    clearLocalCorePolling();
   }, [
     activeThreadId,
-    clearLocalCorePolling,
     clearReplyTimeout,
     holdBlankComposerRef,
     lastSessionByProjectRef,

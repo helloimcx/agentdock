@@ -8,7 +8,7 @@ import {
 } from '../../../packages/core-sdk/src';
 import type { KnowledgeBase } from '../../../packages/contracts/src';
 import { wrapUserMessageWithSchedulerProtocol } from '../../../shared/desktop';
-import type { ChatMessage, ChatTaskState } from './thread-chat-model';
+import type { ChatTaskState } from './thread-chat-model';
 import type {
   ThreadChatIdentitySetters,
   ThreadChatSendingRefs,
@@ -23,7 +23,6 @@ type UseThreadChatSendingActionsInput = {
   brandingNewThreadLabel: string;
   draft: string;
   loadActiveThread: (workspaceId: string, threadId: string) => Promise<void>;
-  messages: ChatMessage[];
   selectedKnowledgeBaseIds: string[];
   taskState: ChatTaskState;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
@@ -31,9 +30,8 @@ type UseThreadChatSendingActionsInput = {
   settlePreviewMessages: (turnKey?: string) => void;
   setDraft: Dispatch<SetStateAction<string>>;
   setSending: Dispatch<SetStateAction<boolean>>;
-  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
 } & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
-  Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
+  Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
   Pick<ThreadChatSendingRefs, 'holdBlankComposerRef' | 'lastSessionByProjectRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
@@ -46,7 +44,6 @@ export function useThreadChatSendingActions({
   brandingNewThreadLabel,
   draft,
   loadActiveThread,
-  messages,
   selectedKnowledgeBaseIds,
   runtimeProvider,
   selectedProject,
@@ -54,7 +51,6 @@ export function useThreadChatSendingActions({
   updateTaskState,
   applyLocalCoreThreadDetail,
   armReplyTimeout,
-  clearLocalCorePolling,
   clearReplyTimeout,
   refreshSessionsForProject,
   reserveNextMessageOrder,
@@ -69,7 +65,6 @@ export function useThreadChatSendingActions({
   setPendingPermissionRequest,
   setSending,
   setTyping,
-  startLocalCoreThreadPolling,
   holdBlankComposerRef,
   lastSessionByProjectRef,
   nextMessageOrderRef,
@@ -129,7 +124,6 @@ export function useThreadChatSendingActions({
     const isAwaitingReply = taskState === 'awaiting_input';
     const payloadContent = isAwaitingReply ? content : buildMessageContent(content);
     const userOrder = reserveNextMessageOrder();
-    const baselineResponseCount = messages.filter((message) => message.role !== 'user' && message.kind !== 'progress').length;
     setDraft('');
     setSending(true);
 
@@ -160,13 +154,11 @@ export function useThreadChatSendingActions({
           ? await sendThreadAction(ensured.id, payloadContent)
           : await sendThreadMessage(ensured.id, payloadContent);
         setActiveRunId(result.runId);
-        startLocalCoreThreadPolling(ensured.id, baselineResponseCount);
       } else {
         throw new Error('Managed desktop thread transport is unavailable.');
       }
     } catch (error) {
       clearReplyTimeout();
-      clearLocalCorePolling();
       pendingTurnRef.current = null;
       settlePreviewMessages();
       setPendingPermissionRequest(null);
@@ -179,14 +171,12 @@ export function useThreadChatSendingActions({
   }, [
     armReplyTimeout,
     buildMessageContent,
-    clearLocalCorePolling,
     clearReplyTimeout,
     draft,
     ensureSession,
     taskState,
     pendingTurnRef,
     reserveNextMessageOrder,
-    messages,
     selectedKnowledgeBaseIds,
     selectedProject,
     setActiveRunId,
@@ -197,7 +187,6 @@ export function useThreadChatSendingActions({
     setSending,
     settlePreviewMessages,
     setTyping,
-    startLocalCoreThreadPolling,
     updateTaskState,
     usesManagedThreadApi,
   ]);
@@ -208,7 +197,6 @@ export function useThreadChatSendingActions({
     }
     setBridgeError('');
     clearReplyTimeout();
-    clearLocalCorePolling();
     settlePreviewMessages();
     setPendingPermissionRequest(null);
     setTyping(false);
@@ -230,7 +218,6 @@ export function useThreadChatSendingActions({
     }
   }, [
     activeRunId,
-    clearLocalCorePolling,
     clearReplyTimeout,
     setBridgeError,
     setPendingPermissionRequest,

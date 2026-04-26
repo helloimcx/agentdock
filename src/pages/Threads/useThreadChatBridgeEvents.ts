@@ -38,15 +38,21 @@ function permissionSupportMessage(agentType?: string) {
   return `${name} ${branding.permissionUnsupportedLabel.replace(/^This agent\s+/i, '')}`;
 }
 
+function shouldRefreshThreadListForBridgeEvent(event: DesktopBridgeEvent) {
+  if (event.type === 'typing_stop' || event.type === 'buttons' || event.type === 'card') {
+    return true;
+  }
+  return event.type === 'reply' && !isInternalProgressMessage(event.content);
+}
+
 type UseThreadChatBridgeEventsInput = {
-  messages: ChatMessage[];
   clearActionStatuses: () => void;
   finalizeTurnMessages: (turnKey?: string) => void;
   nextProgressMessageId: (replyCtx?: string) => string;
   reserveAssistantMessageOrder: (sessionKey?: string) => number;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
   settlePreviewMessages: (turnKey?: string) => void;
-} & Pick<ThreadChatSharedHookContext, 'clearLocalCorePolling' | 'clearReplyTimeout' | 'updateTaskState'> &
+} & Pick<ThreadChatSharedHookContext, 'clearReplyTimeout' | 'updateTaskState'> &
   Pick<ThreadChatSharedHookContext, 'refreshThreadsForWorkspace' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatActiveThreadIdentity, 'activeBridgeSessionKey' | 'activeAgentType'> &
   Pick<ThreadChatConversationRefs, 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
@@ -56,7 +62,6 @@ export function useThreadChatBridgeEvents({
   activeBridgeSessionKey,
   armReplyTimeout,
   clearActionStatuses,
-  clearLocalCorePolling,
   clearReplyTimeout,
   finalizeTurnMessages,
   nextProgressMessageId,
@@ -87,7 +92,7 @@ export function useThreadChatBridgeEvents({
       taskState: taskStateRef.current,
     });
     const eventWorkspaceId = sessionProjectFromKey(event.sessionKey);
-    if (eventWorkspaceId) {
+    if (eventWorkspaceId && shouldRefreshThreadListForBridgeEvent(event)) {
       void refreshThreadsForWorkspace(eventWorkspaceId);
     }
 
@@ -421,9 +426,8 @@ export function useThreadChatBridgeEvents({
       handleBridgeEvent(event);
     });
     return () => {
-      clearLocalCorePolling();
       clearReplyTimeout();
       stopBridge();
     };
-  }, [clearLocalCorePolling, clearReplyTimeout, handleBridgeEvent]);
+  }, [clearReplyTimeout, handleBridgeEvent]);
 }

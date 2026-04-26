@@ -154,40 +154,6 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
   }));
 }
 
-export function mergePolledThreadMessages(current: ChatMessage[], polled: ChatMessage[]) {
-  const polledIds = new Set(polled.map((message) => message.id));
-  const polledSignatures = new Set(polled.map((message) => `${message.role}:${message.kind || 'final'}:${message.content}`));
-  const polledFinalAssistantContent = new Set(
-    polled
-      .filter((message) => message.role === 'assistant' && (message.kind || 'final') === 'final')
-      .map((message) => message.content),
-  );
-  const retained = current.filter((message) => {
-    if (polledIds.has(message.id)) {
-      return false;
-    }
-    if (!message.preview && message.kind !== 'progress') {
-      return false;
-    }
-    const content = message.streamTargetContent ?? message.content;
-    if (polledFinalAssistantContent.has(content)) {
-      return false;
-    }
-    if (polledSignatures.has(`${message.role}:${message.kind || 'final'}:${content}`)) {
-      return false;
-    }
-    if (message.preview) {
-      return true;
-    }
-    return !polledSignatures.has(`${message.role}:${message.kind || 'final'}:${message.content}`);
-  });
-  return sortChatMessages([...polled, ...retained]);
-}
-
-export function reconcileLoadedThreadMessages(current: ChatMessage[], loaded: ChatMessage[], sameThread: boolean) {
-  return sameThread ? mergePolledThreadMessages(current, loaded) : sortChatMessages(loaded);
-}
-
 export function toChatThreadSummary(project: string, session: Session): ChatThreadSummary {
   return {
     id: session.id,

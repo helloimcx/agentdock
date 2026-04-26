@@ -58,7 +58,6 @@ export type ThreadChatSharedActionContext = {
   selectedProject: string;
   updateTaskState: (next: ChatTaskState, reason?: string) => void;
   applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;
-  clearLocalCorePolling: () => void;
   clearReplyTimeout: () => void;
   refreshSessionsForProject: ThreadChatRefreshSessionsForProject;
 } & ThreadChatCoreSetters &
@@ -69,7 +68,6 @@ export type ThreadChatSharedHookContext = {
   selectedWorkspaceId: string;
   updateTaskState: (next: ChatTaskState, reason?: string) => void;
   applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;
-  clearLocalCorePolling: () => void;
   clearReplyTimeout: () => void;
   refreshThreadsForWorkspace: ThreadChatRefreshThreadsForWorkspace;
 } & ThreadChatCoreSetters &

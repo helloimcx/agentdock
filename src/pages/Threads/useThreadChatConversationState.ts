@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { getThread } from '../../../packages/core-sdk/src';
 import type { ThreadDetail } from '../../../packages/contracts/src';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
@@ -7,7 +6,6 @@ import {
   isInternalProgressMessage,
   isTaskInputLocked,
   isTaskRunningState,
-  reconcileLoadedThreadMessages,
   sortChatMessages,
   toCoreChatThreadSummary,
   toMessagesFromThread,
@@ -17,7 +15,6 @@ import {
   type ThreadGroup,
 } from './thread-chat-model';
 import type { PendingPermissionRequest } from './thread-chat-permission';
-import { deriveTaskStateFromThreadDetail } from './thread-chat-task-state';
 
 function advancePreviewContent(content: string, target: string) {
   if (!target) {
@@ -74,7 +71,6 @@ export function useThreadChatConversationState({
   const progressSequenceByTurnRef = useRef<Record<string, number>>({});
   const taskStateRef = useRef<ChatTaskState>('idle');
   const activeThreadIdRef = useRef('');
-  const localCorePollGenerationRef = useRef(0);
 
   const renderedMessages = useMemo(() => sortChatMessages(messages), [messages]);
   const taskRunning = isTaskRunningState(taskState);
@@ -202,12 +198,7 @@ export function useThreadChatConversationState({
     });
   }, []);
 
-  const clearLocalCorePolling = useCallback(() => {
-    localCorePollGenerationRef.current += 1;
-  }, []);
-
   const applyLocalCoreThreadDetail = useCallback((detail: ThreadDetail) => {
-    const sameThread = activeThreadIdRef.current === detail.id;
     lastSessionByProjectRef.current[detail.workspaceId] = detail.id;
     setSelectedProject(detail.workspaceId);
     setActiveSessionId(detail.id);
@@ -222,11 +213,8 @@ export function useThreadChatConversationState({
     progressSequenceByTurnRef.current = {};
     const nextMessages = toMessagesFromThread(detail.messages || []);
     pendingTurnRef.current = null;
-    setMessages((current) => {
-      const merged = reconcileLoadedThreadMessages(current, nextMessages, sameThread);
-      nextMessageOrderRef.current = merged.reduce((max, message) => Math.max(max, message.order + 1), 0);
-      return merged;
-    });
+    nextMessageOrderRef.current = nextMessages.reduce((max, message) => Math.max(max, message.order + 1), 0);
+    setMessages(sortChatMessages(nextMessages));
   }, [
     setActiveRunId,
     setActiveSessionAgentType,
@@ -238,70 +226,6 @@ export function useThreadChatConversationState({
     setThreadGroups,
     setPendingPermissionRequest,
   ]);
-
-  const startLocalCoreThreadPolling = useCallback((threadId: string, baselineResponseCount: number) => {
-    clearLocalCorePolling();
-    const generation = localCorePollGenerationRef.current;
-    const startedAt = Date.now();
-    let unchangedPolls = 0;
-    let lastSignature = '';
-
-    const tick = async () => {
-      if (localCorePollGenerationRef.current !== generation || activeThreadIdRef.current !== threadId) {
-        return;
-      }
-      try {
-        const detail = await getThread(threadId);
-        if (localCorePollGenerationRef.current !== generation || activeThreadIdRef.current !== threadId) {
-          return;
-        }
-        applyLocalCoreThreadDetail(detail);
-        const nextMessages = toMessagesFromThread(detail.messages || []);
-        const signature = nextMessages.map((message) => `${message.id}:${message.content}:${message.kind || 'final'}`).join('|');
-        unchangedPolls = signature === lastSignature ? unchangedPolls + 1 : 0;
-        lastSignature = signature;
-        const derivedState = deriveTaskStateFromThreadDetail(detail, baselineResponseCount, unchangedPolls);
-        if (derivedState?.state === 'awaiting_permission' || derivedState?.state === 'awaiting_input') {
-          clearReplyTimeout();
-          setTyping(false);
-          pendingTurnRef.current = null;
-          updateTaskState(derivedState.state, derivedState.reason);
-          return;
-        }
-        if (derivedState?.state === 'idle') {
-          setTyping(false);
-          setPendingPermissionRequest(null);
-          updateTaskState(derivedState.state, derivedState.reason);
-          return;
-        }
-        if (Date.now() - startedAt >= ASSISTANT_REPLY_TIMEOUT_MS) {
-          const responseCount = detail.messages.filter((message) => message.role !== 'user' && message.kind !== 'progress').length;
-          setTyping(false);
-          setPendingPermissionRequest(null);
-          updateTaskState('idle', 'local-core-poll-timeout');
-          if (responseCount <= baselineResponseCount) {
-            setBridgeError('Agent did not respond in time. Check Local AI Core logs or adapter status.');
-          }
-          return;
-        }
-        window.setTimeout(() => {
-          void tick();
-        }, 1500);
-      } catch (error) {
-        if (localCorePollGenerationRef.current !== generation || activeThreadIdRef.current !== threadId) {
-          return;
-        }
-        setTyping(false);
-        setPendingPermissionRequest(null);
-        updateTaskState('error', 'local-core-poll-error');
-        setBridgeError(error instanceof Error ? error.message : 'Failed to refresh the current thread.');
-      }
-    };
-
-    window.setTimeout(() => {
-      void tick();
-    }, 1500);
-  }, [applyLocalCoreThreadDetail, clearLocalCorePolling, clearReplyTimeout, pendingTurnRef, setBridgeError, setPendingPermissionRequest, updateTaskState]);
 
   useEffect(() => {
     const hasPendingPreview = messages.some((message) =>
@@ -343,7 +267,6 @@ export function useThreadChatConversationState({
     applyLocalCoreThreadDetail,
     armReplyTimeout,
     clearActionStatuses,
-    clearLocalCorePolling,
     clearReplyTimeout,
     holdBlankComposerRef,
     lastSessionByProjectRef,
@@ -361,7 +284,6 @@ export function useThreadChatConversationState({
     setPendingPermissionRequest,
     settlePreviewMessages,
     setTyping,
-    startLocalCoreThreadPolling,
     taskHint,
     taskInputLocked,
     taskRunning,

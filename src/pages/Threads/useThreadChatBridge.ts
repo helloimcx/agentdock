@@ -10,11 +10,9 @@ type UseThreadChatBridgeInput = {
   activeBridgeSessionKey: string;
   activeThreadId: string;
   activeRunId: string;
-  messages: ChatMessage[];
   runtimeProvider: 'electron' | 'local_core';
   selectedWorkspaceId: string;
   clearActionStatuses: () => void;
-  clearLocalCorePolling: () => void;
   clearReplyTimeout: () => void;
   finalizeTurnMessages: (turnKey?: string) => void;
   nextProgressMessageId: (replyCtx?: string) => string;
@@ -28,7 +26,6 @@ type UseThreadChatBridgeInput = {
   setPendingPermissionRequest: Dispatch<SetStateAction<PendingPermissionRequest | null>>;
   setPendingBridgeActionId: Dispatch<SetStateAction<string | null>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
-  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
   updateTaskState: (next: ChatTaskState) => void;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
   pendingTurnRef: MutableRefObject<{ sessionKey: string; userOrder: number } | null>;
@@ -43,10 +40,8 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
     activeBridgeSessionKey: input.activeBridgeSessionKey,
     armReplyTimeout: input.armReplyTimeout,
     clearActionStatuses: input.clearActionStatuses,
-    clearLocalCorePolling: input.clearLocalCorePolling,
     clearReplyTimeout: input.clearReplyTimeout,
     finalizeTurnMessages: input.finalizeTurnMessages,
-    messages: input.messages,
     nextProgressMessageId: input.nextProgressMessageId,
     pendingTurnRef: input.pendingTurnRef,
     progressSequenceByTurnRef: input.progressSequenceByTurnRef,
@@ -69,7 +64,6 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
     armReplyTimeout: input.armReplyTimeout,
     clearActionStatuses: input.clearActionStatuses,
     clearReplyTimeout: input.clearReplyTimeout,
-    messages: input.messages,
     reserveNextMessageOrder: input.reserveNextMessageOrder,
     runtimeProvider: input.runtimeProvider,
     selectedWorkspaceId: input.selectedWorkspaceId,
@@ -81,7 +75,6 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
     setPendingPermissionRequest: input.setPendingPermissionRequest,
     setPendingBridgeActionId: input.setPendingBridgeActionId,
     setTyping: input.setTyping,
-    startLocalCoreThreadPolling: input.startLocalCoreThreadPolling,
     updateTaskState: input.updateTaskState,
     taskStateRef: input.taskStateRef,
   });

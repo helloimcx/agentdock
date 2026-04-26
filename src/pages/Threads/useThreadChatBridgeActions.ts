@@ -12,9 +12,7 @@ import type {
 } from './thread-chat-action-types';
 
 type UseThreadChatBridgeActionsInput = {
-  messages: ChatMessage[];
   reserveNextMessageOrder: () => number;
-  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
   clearActionStatuses: () => void;
   settlePreviewMessages: (turnKey?: string) => void;
@@ -34,7 +32,6 @@ export function useThreadChatBridgeActions({
   armReplyTimeout,
   clearActionStatuses,
   clearReplyTimeout,
-  messages,
   reserveNextMessageOrder,
   runtimeProvider: _runtimeProvider,
   selectedWorkspaceId: _selectedWorkspaceId,
@@ -46,7 +43,6 @@ export function useThreadChatBridgeActions({
   setPendingPermissionRequest,
   setPendingBridgeActionId,
   setTyping,
-  startLocalCoreThreadPolling,
   updateTaskState,
 }: UseThreadChatBridgeActionsInput & Pick<ThreadChatActiveThreadIdentity, 'activeRunId'> & { setActiveRunId: Dispatch<SetStateAction<string>> }) {
   const usesManagedThreadApi = true;
@@ -57,7 +53,6 @@ export function useThreadChatBridgeActions({
     if (!activeThreadId) {
       return;
     }
-    const baselineResponseCount = messages.filter((item) => item.role !== 'user' && item.kind !== 'progress').length;
     if (!usesManagedThreadApi) {
       setBridgeError('Managed desktop thread action transport is unavailable.');
       updateTaskState('error', 'bridge-action-unavailable');
@@ -88,7 +83,6 @@ export function useThreadChatBridgeActions({
       ]);
       const result = await sendAction(activeThreadId, actionContent);
       setActiveRunId(result.runId);
-      startLocalCoreThreadPolling(activeThreadId, baselineResponseCount);
       sent = true;
       setBridgeError('');
       settlePreviewMessages(message.actionReplyCtx);
@@ -149,7 +143,6 @@ export function useThreadChatBridgeActions({
     armReplyTimeout,
     clearActionStatuses,
     clearReplyTimeout,
-    messages,
     reserveNextMessageOrder,
     sendAction,
     settlePreviewMessages,
@@ -159,7 +152,6 @@ export function useThreadChatBridgeActions({
     setPendingPermissionRequest,
     setPendingBridgeActionId,
     setTyping,
-    startLocalCoreThreadPolling,
     updateTaskState,
     usesManagedThreadApi,
   ]);

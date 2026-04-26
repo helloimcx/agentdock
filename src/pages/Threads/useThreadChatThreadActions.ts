@@ -24,7 +24,7 @@ type UseThreadChatThreadActionsInput = {
   selectedKnowledgeBaseIds: string[];
   setSearchParams: ThreadChatSearchParamsSetter;
 } & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
-  Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearLocalCorePolling' | 'clearReplyTimeout'> &
+  Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionAgentType' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
   Pick<ThreadChatModalSetters, 'setDeleteTarget' | 'setPendingSessionAction' | 'setRenameDraft' | 'setRenameTarget'> &
@@ -42,7 +42,6 @@ export function useThreadChatThreadActions({
   selectedProject,
   updateTaskState,
   applyLocalCoreThreadDetail,
-  clearLocalCorePolling,
   clearReplyTimeout,
   refreshSessionsForProject,
   setActiveRunId,
@@ -81,10 +80,8 @@ export function useThreadChatThreadActions({
     pendingTurnRef.current = null;
     nextMessageOrderRef.current = 0;
     progressSequenceByTurnRef.current = {};
-    clearLocalCorePolling();
     clearReplyTimeout();
   }, [
-    clearLocalCorePolling,
     clearReplyTimeout,
     holdBlankComposerRef,
     nextMessageOrderRef,

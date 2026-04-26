@@ -21,7 +21,6 @@ type UseThreadChatActionsInput = {
   deleteTarget: ThreadActionTarget | null;
   draft: string;
   loadActiveThread: (workspaceId: string, threadId: string) => Promise<void>;
-  messages: ChatMessage[];
   renameDraft: string;
   renameTarget: ThreadActionTarget | null;
   runtimeProvider: RuntimeProvider;
@@ -32,7 +31,6 @@ type UseThreadChatActionsInput = {
   updateTaskState: (next: ChatTaskState) => void;
   applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
-  clearLocalCorePolling: () => void;
   clearReplyTimeout: () => void;
   refreshSessionsForProject: (project: string) => Promise<Array<{ id: string; bridgeSessionKey?: string }>>;
   reserveNextMessageOrder: () => number;
@@ -53,7 +51,6 @@ type UseThreadChatActionsInput = {
   setSearchParams: (nextInit: URLSearchParams, navigateOptions?: { replace?: boolean }) => void;
   setSending: Dispatch<SetStateAction<boolean>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
-  startLocalCoreThreadPolling: (threadId: string, baselineResponseCount: number) => void;
   holdBlankComposerRef: MutableRefObject<boolean>;
   lastSessionByProjectRef: MutableRefObject<Record<string, string>>;
   nextMessageOrderRef: MutableRefObject<number>;
@@ -71,7 +68,6 @@ export function useThreadChatActions({
   deleteTarget,
   draft,
   loadActiveThread,
-  messages,
   renameDraft,
   renameTarget,
   runtimeProvider,
@@ -82,7 +78,6 @@ export function useThreadChatActions({
   updateTaskState,
   applyLocalCoreThreadDetail,
   armReplyTimeout,
-  clearLocalCorePolling,
   clearReplyTimeout,
   refreshSessionsForProject,
   reserveNextMessageOrder,
@@ -103,7 +98,6 @@ export function useThreadChatActions({
   setSearchParams,
   setSending,
   setTyping,
-  startLocalCoreThreadPolling,
   holdBlankComposerRef,
   lastSessionByProjectRef,
   nextMessageOrderRef,
@@ -116,7 +110,6 @@ export function useThreadChatActions({
     selectedProject: selectedWorkspaceId,
     updateTaskState,
     applyLocalCoreThreadDetail,
-    clearLocalCorePolling,
     clearReplyTimeout,
     refreshSessionsForProject,
     setBridgeError,
@@ -169,7 +162,6 @@ export function useThreadChatActions({
     brandingNewThreadLabel,
     draft,
     loadActiveThread,
-    messages,
     selectedKnowledgeBaseIds,
     taskState,
     armReplyTimeout,
@@ -177,7 +169,6 @@ export function useThreadChatActions({
     settlePreviewMessages,
     setDraft,
     setSending,
-    startLocalCoreThreadPolling,
     ...sharedContext,
     ...identitySetters,
     ...coreSetters,
