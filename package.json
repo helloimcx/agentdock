@@ -6,6 +6,10 @@
   "bin": {
     "agentdock": "bin/agentdock.mjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/helloimcx/agentdock.git"
+  },
   "files": [
     "bin/**",
     "dist/renderer/**",
