@@ -43,7 +43,7 @@ jobs:
         run: pnpm build:npm
 
       - name: Publish npm package
-        run: npm publish --access public --provenance
+        run: npm publish --access public
 
   release-macos:
     name: Release macOS
