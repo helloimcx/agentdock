@@ -1,4 +1,5 @@
 # TODO
+- [ ] 支持更新检测，一键更新版本（web+app）
 - [ ] 支持显示思考过程
 - [ ] 支持动态安装 agent runtime：先适配 opencode，作为插件形式提供，并提供界面让用户一键安装；自动检测是否已安装，并展示已安装等状态。
 - [ ] 增加obsidian知识库插件，通过obsidian-cli和makitdown，摆脱对ai-vector的依赖 (或者先支持本地文件夹，用markitdwon将文件转成markdown)
