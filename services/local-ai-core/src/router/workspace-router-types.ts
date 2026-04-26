@@ -146,9 +146,13 @@ export type RunningTurn = {
   runId: string;
   replyCtx: string;
   previewHandle: string;
+  thoughtPreviewHandle: string;
+  thoughtMessageId: string;
   assistantText: string;
+  thoughtText: string;
   typingStarted: boolean;
   previewStarted: boolean;
+  thoughtPreviewStarted: boolean;
   pendingToolCallTitle?: string;
   permission?: RunningPermissionRequest | null;
 };

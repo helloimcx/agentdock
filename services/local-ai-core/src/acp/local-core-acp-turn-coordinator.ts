@@ -6,6 +6,7 @@ import type { AcpSessionState, RunningPermissionRequest } from '../router/worksp
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress') => void;
+  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress') => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
 };
@@ -168,6 +169,40 @@ export class LocalCoreAcpTurnCoordinator {
           replyCtx: currentRunId,
           previewHandle: currentTurn.previewHandle,
           content: currentTurn.assistantText,
+        });
+        return;
+      }
+      case 'agent_thought_chunk': {
+        this.flushPendingToolCall(session);
+        if (update.content?.type !== 'text') {
+          return;
+        }
+        const thoughtChunk = String(update.content.text || '');
+        if (!thoughtChunk) {
+          return;
+        }
+        currentTurn.thoughtText += thoughtChunk;
+        const content = `💭 ${currentTurn.thoughtText.trim()}`;
+        if (this.options.upsertMessage) {
+          this.options.upsertMessage(session.threadId, currentTurn.thoughtMessageId, 'assistant', content, 'progress');
+        }
+        if (!currentTurn.thoughtPreviewStarted) {
+          currentTurn.thoughtPreviewStarted = true;
+          this.options.emitBridge({
+            type: 'preview_start',
+            sessionKey: session.bridgeSessionKey,
+            replyCtx: currentRunId,
+            previewHandle: currentTurn.thoughtPreviewHandle,
+            content,
+          });
+          return;
+        }
+        this.options.emitBridge({
+          type: 'update_message',
+          sessionKey: session.bridgeSessionKey,
+          replyCtx: currentRunId,
+          previewHandle: currentTurn.thoughtPreviewHandle,
+          content,
         });
         return;
       }

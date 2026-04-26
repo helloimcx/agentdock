@@ -271,6 +271,44 @@ export class LocalCoreAcpStore {
     return { id, timestamp };
   }
 
+  upsertMessage(threadId: string, id: string, role: LocalMessageRow['role'], content: string, kind: LocalMessageRow['kind']) {
+    const timestamp = new Date().toISOString();
+    const excerpt = normalizeMessageContent(content);
+    const existing = this.db.prepare('SELECT id FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as { id: string } | undefined;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (existing) {
+        this.db.prepare(`
+          UPDATE messages
+          SET content = ?, timestamp = ?, kind = ?
+          WHERE id = ? AND thread_id = ?
+        `).run(content, timestamp, kind, id, threadId);
+      } else {
+        const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
+        const nextSeq = Number(nextSequenceRow?.next_seq || 0);
+        this.db.prepare(`
+          INSERT INTO messages (id, thread_id, role, content, timestamp, kind, seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(id, threadId, role, content, timestamp, kind, nextSeq);
+        this.db.prepare(`
+          UPDATE threads
+          SET history_count = history_count + 1
+          WHERE id = ?
+        `).run(threadId);
+      }
+      this.db.prepare(`
+        UPDATE threads
+        SET updated_at = ?, excerpt = ?
+        WHERE id = ?
+      `).run(timestamp, excerpt, threadId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { id, timestamp };
+  }
+
   updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {
     const now = new Date().toISOString();
     const existing = this.db.prepare('SELECT id FROM runs WHERE id = ?').get(runId) as { id: string } | undefined;

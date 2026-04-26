@@ -176,6 +176,7 @@ function noticeClass(tone: Notice['tone']) {
 
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedProject = searchParams.get('project') || '';
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
   const [persistedConfig, setPersistedConfig] = useState<DesktopConnectConfig | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -188,7 +189,7 @@ export default function DesktopWorkspace() {
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
     try {
       const configState = await readConfigFile();
@@ -196,9 +197,8 @@ export default function DesktopWorkspace() {
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
       setPersistedConfig(clone(parsed));
-      const requestedProject = searchParams.get('project');
-      if (requestedProject) {
-        const index = (parsed.projects || []).findIndex((project) => project.name === requestedProject);
+      if (projectName) {
+        const index = (parsed.projects || []).findIndex((project) => project.name === projectName);
         setSelectedIndex(index >= 0 ? index : 0);
       }
     } catch (err) {
@@ -206,15 +206,23 @@ export default function DesktopWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  }, []);
 
   useEffect(() => {
-    void loadAll();
+    void loadAll(requestedProject);
   }, [loadAll]);
 
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex] || null;
   const configDirty = JSON.stringify(configDraft || {}) !== JSON.stringify(persistedConfig || {});
+
+  useEffect(() => {
+    if (!configDraft || !requestedProject) return;
+    const index = projects.findIndex((project) => project.name === requestedProject);
+    if (index >= 0 && index !== selectedIndex) {
+      setSelectedIndex(index);
+    }
+  }, [configDraft, projects, requestedProject, selectedIndex]);
 
   const updateSelectedProject = useCallback((updater: (project: DesktopProjectConfig) => DesktopProjectConfig) => {
     setConfigDraft((current) => {

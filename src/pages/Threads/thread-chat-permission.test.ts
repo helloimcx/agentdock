@@ -8,7 +8,13 @@ import {
   taskStateForBridgeButtons,
   taskStateReasonForBridgeButtons,
 } from './thread-chat-task-state';
-import { mergePolledThreadMessages, type ChatMessage } from './thread-chat-model';
+import {
+  findStreamingPreviewMessage,
+  mergePolledThreadMessages,
+  reconcileLoadedThreadMessages,
+  shouldReplacePreviewWithReply,
+  type ChatMessage,
+} from './thread-chat-model';
 
 type TestMessage = PermissionPromptMessage & {
   id: string;
@@ -182,4 +188,157 @@ test('mergePolledThreadMessages drops previews once the final answer is persiste
   const merged = mergePolledThreadMessages(current, polled);
 
   assert.deepEqual(merged.map((message) => message.id), ['assistant-1']);
+});
+
+test('mergePolledThreadMessages drops a progress preview once the same progress is persisted', () => {
+  const current: ChatMessage[] = [
+    {
+      id: 'thought-preview',
+      role: 'assistant',
+      content: '💭 checking',
+      streamTargetContent: '💭 checking',
+      kind: 'progress',
+      order: 1,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+  const polled: ChatMessage[] = [
+    {
+      id: 'persisted-thought',
+      role: 'assistant',
+      content: '💭 checking',
+      kind: 'progress',
+      order: 1,
+    },
+  ];
+
+  const merged = mergePolledThreadMessages(current, polled);
+
+  assert.deepEqual(merged.map((message) => message.id), ['persisted-thought']);
+});
+
+test('mergePolledThreadMessages keeps thought previews when only the final answer is persisted', () => {
+  const current: ChatMessage[] = [
+    {
+      id: 'thought-preview',
+      role: 'assistant',
+      content: '💭 checking',
+      streamTargetContent: '💭 checking',
+      kind: 'progress',
+      order: 1,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+  const polled: ChatMessage[] = [
+    {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'final answer',
+      kind: 'final',
+      order: 2,
+    },
+  ];
+
+  const merged = mergePolledThreadMessages(current, polled);
+
+  assert.deepEqual(merged.map((message) => message.id), ['thought-preview', 'assistant-1']);
+});
+
+test('reply replacement removes only the matching answer preview from a multi-message turn', () => {
+  const current: ChatMessage[] = [
+    {
+      id: 'thought-preview',
+      role: 'assistant',
+      content: '💭 checking',
+      streamTargetContent: '💭 checking the request',
+      kind: 'progress',
+      order: 1,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+    {
+      id: 'answer-preview',
+      role: 'assistant',
+      content: 'Hi',
+      streamTargetContent: 'Hi! How can I help you today?',
+      kind: 'progress',
+      order: 2,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+
+  const retained = current.filter((message) =>
+    !shouldReplacePreviewWithReply(message, 'Hi! How can I help you today?', 'run-1'),
+  );
+
+  assert.deepEqual(retained.map((message) => message.id), ['thought-preview']);
+});
+
+test('reconcileLoadedThreadMessages replaces messages when switching to a different thread', () => {
+  const current: ChatMessage[] = [
+    {
+      id: 'old-progress',
+      role: 'assistant',
+      content: '🔧 Terminal',
+      kind: 'progress',
+      order: 0,
+      turnKey: 'old-run',
+    },
+  ];
+
+  assert.deepEqual(reconcileLoadedThreadMessages(current, [], false), []);
+});
+
+test('findStreamingPreviewMessage keeps distinct preview handles in the same turn separate', () => {
+  const messages: ChatMessage[] = [
+    {
+      id: 'thought-preview',
+      role: 'assistant',
+      content: '💭 checking',
+      kind: 'progress',
+      order: 0,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+
+  assert.equal(findStreamingPreviewMessage(messages, 'assistant-preview', 'run-1'), undefined);
+  assert.equal(findStreamingPreviewMessage(messages, 'thought-preview', 'run-1')?.id, 'thought-preview');
+  assert.equal(findStreamingPreviewMessage(messages, undefined, 'run-1')?.id, 'thought-preview');
+});
+
+test('shouldReplacePreviewWithReply keeps thought previews when final answer arrives', () => {
+  const thoughtPreview: ChatMessage = {
+    id: 'thought-preview',
+    role: 'assistant',
+    content: '💭 checking',
+    streamTargetContent: '💭 checking the request',
+    kind: 'progress',
+    order: 0,
+    turnKey: 'run-1',
+    preview: true,
+    previewPlainText: true,
+  };
+  const answerPreview: ChatMessage = {
+    id: 'answer-preview',
+    role: 'assistant',
+    content: 'Hi',
+    streamTargetContent: 'Hi! How can I help you today?',
+    kind: 'progress',
+    order: 1,
+    turnKey: 'run-1',
+    preview: true,
+    previewPlainText: true,
+  };
+
+  assert.equal(shouldReplacePreviewWithReply(thoughtPreview, 'Hi! How can I help you today?', 'run-1'), false);
+  assert.equal(shouldReplacePreviewWithReply(answerPreview, 'Hi! How can I help you today?', 'run-1'), true);
 });

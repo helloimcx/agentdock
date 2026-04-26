@@ -94,6 +94,24 @@ export function isAwaitingInputMessage(content?: string) {
   );
 }
 
+export function findStreamingPreviewMessage(messages: ChatMessage[], previewHandle?: string, replyCtx?: string) {
+  if (previewHandle) {
+    return messages.find((message) => message.id === previewHandle);
+  }
+  if (!replyCtx) {
+    return undefined;
+  }
+  return messages.find((message) => message.preview && message.turnKey === replyCtx);
+}
+
+export function shouldReplacePreviewWithReply(message: ChatMessage, replyContent?: string, replyCtx?: string) {
+  if (!message.preview || !replyCtx || message.turnKey !== replyCtx) {
+    return false;
+  }
+  const content = message.streamTargetContent ?? message.content;
+  return Boolean(replyContent && content === replyContent && !isInternalProgressMessage(content));
+}
+
 export function extractVisibleMessageContent(content?: string) {
   if (!content) {
     return '';
@@ -155,12 +173,19 @@ export function mergePolledThreadMessages(current: ChatMessage[], polled: ChatMe
     if (polledFinalAssistantContent.has(content)) {
       return false;
     }
+    if (polledSignatures.has(`${message.role}:${message.kind || 'final'}:${content}`)) {
+      return false;
+    }
     if (message.preview) {
       return true;
     }
     return !polledSignatures.has(`${message.role}:${message.kind || 'final'}:${message.content}`);
   });
   return sortChatMessages([...polled, ...retained]);
+}
+
+export function reconcileLoadedThreadMessages(current: ChatMessage[], loaded: ChatMessage[], sameThread: boolean) {
+  return sameThread ? mergePolledThreadMessages(current, loaded) : sortChatMessages(loaded);
 }
 
 export function toChatThreadSummary(project: string, session: Session): ChatThreadSummary {

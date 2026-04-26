@@ -9,6 +9,7 @@ import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/s
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/gateway/local-core-weixin-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
+import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];
@@ -164,6 +165,98 @@ test('ACP plan updates are persisted and emitted as thinking progress', () => {
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0]?.type, 'reply');
   assert.equal(emitted[0]?.content, appended[0]?.content);
+});
+
+test('ACP thought chunks are streamed as thinking preview updates', () => {
+  const appended: Array<{ content: string; kind: string }> = [];
+  const upserted: Array<{ id: string; content: string; kind: string }> = [];
+  const emitted: Array<{ content?: string; type: string; previewHandle?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content, kind) => appended.push({ content, kind }),
+    upsertMessage: (_threadId, id, _role, content, kind) => upserted.push({ id, content, kind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; previewHandle?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      thoughtPreviewHandle: 'thought-preview-1',
+      thoughtMessageId: 'run-1-thought',
+      assistantText: '',
+      thoughtText: '',
+      typingStarted: true,
+      previewStarted: false,
+      thoughtPreviewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: '先理解问题' },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: '，再检查代码' },
+      },
+    },
+  });
+
+  assert.deepEqual(appended, []);
+  assert.deepEqual(upserted, [
+    {
+      id: 'run-1-thought',
+      content: '💭 先理解问题',
+      kind: 'progress',
+    },
+    {
+      id: 'run-1-thought',
+      content: '💭 先理解问题，再检查代码',
+      kind: 'progress',
+    },
+  ]);
+  assert.deepEqual(emitted.map((event) => event.type), ['preview_start', 'update_message']);
+  assert.equal(emitted[0]?.previewHandle, 'thought-preview-1');
+  assert.equal(emitted[0]?.content, '💭 先理解问题');
+  assert.equal(emitted[1]?.content, '💭 先理解问题，再检查代码');
+  assert.equal(session.currentTurn.thoughtText, '先理解问题，再检查代码');
+});
+
+test('ACP store upserts thought progress as one durable message', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-thought-store-'));
+  const store = new LocalCoreAcpStore(userDataPath);
+  try {
+    const thread = store.createThread('project-1', 'Thread');
+    store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '💭 先理解问题', 'progress');
+    store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '💭 先理解问题，再检查代码', 'progress');
+
+    const detail = store.getThread(thread.id, []);
+
+    assert.equal(detail.messages.length, 1);
+    assert.equal(detail.messages[0]?.id, 'run-1-thought');
+    assert.equal(detail.messages[0]?.kind, 'progress');
+    assert.equal(detail.messages[0]?.content, '💭 先理解问题，再检查代码');
+    assert.equal(detail.historyCount, 1);
+  } finally {
+    store.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
 });
 
 test('ACP skips empty generic running tool updates', () => {

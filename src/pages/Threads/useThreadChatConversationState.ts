@@ -4,9 +4,10 @@ import type { ThreadDetail } from '../../../packages/contracts/src';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
   formatTaskHint,
+  isInternalProgressMessage,
   isTaskInputLocked,
   isTaskRunningState,
-  mergePolledThreadMessages,
+  reconcileLoadedThreadMessages,
   sortChatMessages,
   toCoreChatThreadSummary,
   toMessagesFromThread,
@@ -187,14 +188,15 @@ export function useThreadChatConversationState({
       if (candidates.length === 0) {
         return current;
       }
-      const lastId = candidates[candidates.length - 1]?.id;
+      const finalMessage = [...candidates].reverse().find((message) => !isInternalProgressMessage(message.content));
+      const finalId = finalMessage?.id;
       return current.map((message) => {
         if (message.turnKey !== turnKey || message.preview) {
           return message;
         }
         return {
           ...message,
-          kind: message.id === lastId ? 'final' : 'progress',
+          kind: finalId && message.id === finalId ? 'final' : 'progress',
         };
       });
     });
@@ -205,6 +207,7 @@ export function useThreadChatConversationState({
   }, []);
 
   const applyLocalCoreThreadDetail = useCallback((detail: ThreadDetail) => {
+    const sameThread = activeThreadIdRef.current === detail.id;
     lastSessionByProjectRef.current[detail.workspaceId] = detail.id;
     setSelectedProject(detail.workspaceId);
     setActiveSessionId(detail.id);
@@ -220,7 +223,7 @@ export function useThreadChatConversationState({
     const nextMessages = toMessagesFromThread(detail.messages || []);
     pendingTurnRef.current = null;
     setMessages((current) => {
-      const merged = mergePolledThreadMessages(current, nextMessages);
+      const merged = reconcileLoadedThreadMessages(current, nextMessages, sameThread);
       nextMessageOrderRef.current = merged.reduce((max, message) => Math.max(max, message.order + 1), 0);
       return merged;
     });

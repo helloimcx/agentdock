@@ -59,6 +59,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       appendMessage: (threadId, role, content, kind) => {
         this.options.store.appendMessage(threadId, role, content, kind);
       },
+      upsertMessage: (threadId, id, role, content, kind) => {
+        this.options.store.upsertMessage(threadId, id, role, content, kind);
+      },
       updateRunStatus: (runId, threadId, status) => {
         this.options.store.updateRun(runId, threadId, status);
       },
@@ -228,9 +231,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         runId,
         replyCtx: runId,
         previewHandle: randomUUID(),
+        thoughtPreviewHandle: randomUUID(),
+        thoughtMessageId: `${runId}-thought`,
         assistantText: '',
+        thoughtText: '',
         typingStarted: true,
         previewStarted: false,
+        thoughtPreviewStarted: false,
         pendingToolCallTitle: undefined,
         permission: null,
       };

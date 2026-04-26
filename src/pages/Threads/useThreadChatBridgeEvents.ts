@@ -14,11 +14,13 @@ import {
 } from './thread-chat-task-state';
 import {
   canStreamingPromoteTaskState,
+  findStreamingPreviewMessage,
   isAwaitingInputMessage,
   isInternalProgressMessage,
   isPermissionActionRow,
   normalizeBridgeActionRows,
   sessionProjectFromKey,
+  shouldReplacePreviewWithReply,
   type ChatMessage,
 } from './thread-chat-model';
 import type {
@@ -104,10 +106,7 @@ export function useThreadChatBridgeEvents({
           setPendingPermissionRequest(null);
           setBridgeError('');
           setMessages((current) => {
-            const existing = current.find((message) =>
-              (event.previewHandle && message.id === event.previewHandle) ||
-              (message.preview && event.replyCtx && message.turnKey === event.replyCtx),
-            );
+            const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
             const previewId = existing?.id || event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`;
             const next = current.filter((message) => message.id !== previewId);
             next.push({
@@ -133,10 +132,7 @@ export function useThreadChatBridgeEvents({
         armReplyTimeout();
         setBridgeError('');
         setMessages((current) => {
-          const existing = current.find((message) =>
-            (event.previewHandle && message.id === event.previewHandle) ||
-            (message.preview && event.replyCtx && message.turnKey === event.replyCtx),
-          );
+          const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
           const previewId = existing?.id || event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`;
           const next = current.filter((message) => message.id !== previewId);
           next.push({
@@ -165,10 +161,7 @@ export function useThreadChatBridgeEvents({
           setBridgeError('');
           setMessages((current) =>
             {
-              const existing = current.find((message) =>
-                (event.previewHandle && message.id === event.previewHandle) ||
-                (message.preview && event.replyCtx && message.turnKey === event.replyCtx),
-              );
+              const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
               if (existing) {
                 return current.map((message) =>
                   message.id === existing.id
@@ -209,10 +202,7 @@ export function useThreadChatBridgeEvents({
         setBridgeError('');
         setMessages((current) =>
           {
-            const existing = current.find((message) =>
-              (event.previewHandle && message.id === event.previewHandle) ||
-              (message.preview && event.replyCtx && message.turnKey === event.replyCtx),
-            );
+            const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
             if (existing) {
               return current.map((message) =>
                 message.id === existing.id
@@ -290,7 +280,7 @@ export function useThreadChatBridgeEvents({
         setBridgeError('');
         setMessages((current) => [
           ...current.filter((message) =>
-            !(message.preview && message.turnKey === event.replyCtx) &&
+            !shouldReplacePreviewWithReply(message, event.content, event.replyCtx) &&
             message.id !== replyMessageId
           ),
           {
