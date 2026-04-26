@@ -32,8 +32,8 @@ export function useThreadChatRuntimeState({
   const refreshRuntime = useCallback(async () => {
     const nextRuntime = await getRuntimeStatus();
     setRuntime(nextRuntime);
-    if (!nextRuntime.roles.conversation.lastError && !selectedProject) {
-      setSelectedProject(requestedProject || nextRuntime.settings.defaultProject);
+    if (!nextRuntime.roles.conversation.lastError && !selectedProject && !requestedProject && nextRuntime.settings.defaultProject) {
+      setSelectedProject(nextRuntime.settings.defaultProject);
     }
   }, [requestedProject, selectedProject, setSelectedProject]);
 

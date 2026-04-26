@@ -107,14 +107,27 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       status: 'running',
       startedAt: new Date().toISOString(),
     };
+    const configFile = await this.readConfigFile();
+    const settings = this.state.getSettings();
+    const workspaceIds = Array.isArray(configFile.parsed?.projects)
+      ? configFile.parsed.projects
+          .map((project) => String(project?.name || '').trim())
+          .filter(Boolean)
+      : [];
+    const defaultProject = workspaceIds.includes(settings.defaultProject)
+      ? settings.defaultProject
+      : workspaceIds[0] || '';
     return {
       mode: 'desktop',
       phase: 'api_ready',
       pendingRestart: false,
       service,
       roles: deriveDesktopRuntimeRoles(service),
-      settings: this.state.getSettings(),
-      configFile: await this.readConfigFile(),
+      settings: {
+        ...settings,
+        defaultProject,
+      },
+      configFile,
       logs: this.getLogs(200),
       pluginDiagnostics: await this.getPluginDiagnostics(),
     };

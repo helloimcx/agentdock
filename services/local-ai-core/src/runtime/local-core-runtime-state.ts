@@ -10,11 +10,7 @@ import type {
 } from '../../../../packages/contracts/src/index.js';
 
 const DEFAULT_CONFIG = `# Managed by Local AI Core
-[[projects]]
-name = "default"
-
-[projects.agent]
-type = "opencode"
+# Add [[projects]] entries from the workspace page before starting a conversation.
 `;
 const LOG_FILE_NAME = 'local-core.log';
 const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024;
@@ -78,7 +74,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
     this.settings = {
       ...this.settings,
-      ...(input.defaultProject ? { defaultProject: input.defaultProject } : {}),
+      ...(input.defaultProject !== undefined ? { defaultProject: input.defaultProject } : {}),
       ...(typeof input.autoStartService === 'boolean' ? { autoStartService: input.autoStartService } : {}),
       ...(input.configPath ? { configPath: input.configPath } : {}),
       plugins: input.plugins
@@ -196,7 +192,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   private loadSettings(): DesktopSettings {
     const defaults: RuntimeSettingsFile = {
       configPath: join(this.runtimeDir, 'config.toml'),
-      defaultProject: 'default',
+      defaultProject: '',
       autoStartService: true,
       plugins: {},
       knowledge: {

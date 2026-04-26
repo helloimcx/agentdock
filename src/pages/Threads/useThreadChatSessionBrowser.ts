@@ -22,6 +22,29 @@ import type {
   ThreadChatSharedHookContext,
 } from './thread-chat-action-types';
 
+function chooseWorkspaceId({
+  current,
+  requested,
+  runtimeDefault,
+  workspaceIds,
+}: {
+  current: string;
+  requested: string;
+  runtimeDefault?: string;
+  workspaceIds: string[];
+}) {
+  if (current && workspaceIds.includes(current)) {
+    return current;
+  }
+  if (requested && workspaceIds.includes(requested)) {
+    return requested;
+  }
+  if (runtimeDefault && workspaceIds.includes(runtimeDefault)) {
+    return runtimeDefault;
+  }
+  return workspaceIds[0] || '';
+}
+
 type UseThreadChatSessionBrowserInput = {
   activeThreadId: string;
   requestedWorkspaceId: string;
@@ -181,6 +204,12 @@ export function useThreadChatSessionBrowser({
       ? (await listWorkspaces()).workspaces.map((workspace) => workspace.id)
       : (await listProjects()).projects.map((project) => project.name);
     setProjects(nextWorkspaceIds);
+    const nextSelectedWorkspaceId = chooseWorkspaceId({
+      current: selectedWorkspaceId,
+      requested: requestedWorkspaceId,
+      runtimeDefault: runtimeDefaultWorkspaceId,
+      workspaceIds: nextWorkspaceIds,
+    });
     const nextGroups = (
       await Promise.all(
         nextWorkspaceIds.map(async (workspaceId) => ({
@@ -190,12 +219,13 @@ export function useThreadChatSessionBrowser({
       )
     ).sort((a, b) => a.project.localeCompare(b.project));
     setThreadGroups(nextGroups);
-    setSelectedProject((current) => current || requestedWorkspaceId || runtimeDefaultWorkspaceId || nextWorkspaceIds[0] || '');
+    setSelectedProject(nextSelectedWorkspaceId);
     return nextGroups;
   }, [
     refreshThreadsForWorkspace,
     requestedWorkspaceId,
     runtimeDefaultWorkspaceId,
+    selectedWorkspaceId,
     serviceRunning,
     setProjects,
     setSelectedKnowledgeBaseIds,
