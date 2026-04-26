@@ -1,14 +1,28 @@
 {
-  "name": "agentdock",
-  "private": true,
+  "name": "@kafca/agentdock",
   "version": "0.1.7",
   "type": "module",
   "main": "dist-electron/electron/main.js",
+  "bin": {
+    "agentdock": "bin/agentdock.mjs"
+  },
+  "files": [
+    "bin/**",
+    "dist/renderer/**",
+    "dist-electron/**",
+    "build/icon.png",
+    "README.md",
+    "package.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:web": "pnpm exec vite --host 127.0.0.1 --port 5173",
     "dev:core": "pnpm build:electron && node scripts/launch-core.mjs",
     "build": "vite build && node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json",
+    "build:npm": "VITE_LOCAL_AI_CORE_BASE=/api/local/v1 pnpm build",
     "build:web": "vite build",
     "build:renderer": "vite build",
     "build:electron": "node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json",
