@@ -8,6 +8,7 @@ import {
   taskStateForBridgeButtons,
   taskStateReasonForBridgeButtons,
 } from './thread-chat-task-state';
+import { mergePolledThreadMessages, type ChatMessage } from './thread-chat-model';
 
 type TestMessage = PermissionPromptMessage & {
   id: string;
@@ -114,4 +115,71 @@ test('deriveTaskStateFromThreadDetail recognizes permission and input blocking s
     state: 'awaiting_input',
     reason: 'local-core-poll-awaiting-input',
   });
+});
+
+test('mergePolledThreadMessages keeps active streaming previews during polling', () => {
+  const current: ChatMessage[] = [
+    {
+      id: 'user-1',
+      role: 'user',
+      content: 'hello',
+      kind: 'final',
+      order: 0,
+    },
+    {
+      id: 'run-1-preview',
+      role: 'assistant',
+      content: 'thinking',
+      streamTargetContent: 'thinking through the answer',
+      kind: 'progress',
+      order: 1,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+  const polled: ChatMessage[] = [
+    {
+      id: 'persisted-user-1',
+      role: 'user',
+      content: 'hello',
+      kind: 'final',
+      order: 0,
+    },
+  ];
+
+  const merged = mergePolledThreadMessages(current, polled);
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[1]?.id, 'run-1-preview');
+  assert.equal(merged[1]?.content, 'thinking');
+});
+
+test('mergePolledThreadMessages drops previews once the final answer is persisted', () => {
+  const current: ChatMessage[] = [
+    {
+      id: 'run-1-preview',
+      role: 'assistant',
+      content: 'final answer',
+      streamTargetContent: 'final answer',
+      kind: 'progress',
+      order: 1,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+  const polled: ChatMessage[] = [
+    {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: 'final answer',
+      kind: 'final',
+      order: 1,
+    },
+  ];
+
+  const merged = mergePolledThreadMessages(current, polled);
+
+  assert.deepEqual(merged.map((message) => message.id), ['assistant-1']);
 });

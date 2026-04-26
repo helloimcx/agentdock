@@ -958,6 +958,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
 
   private renderTurnCard(turn: LarkTurnState) {
     const sections: string[] = [];
+    if (turn.thinkingSteps.length > 0) {
+      sections.push(`**思考过程**\n${turn.thinkingSteps.map((step) => `• ${step.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
+    }
     if (turn.finalText) {
       sections.push(turn.finalText);
     } else if (turn.previewText) {

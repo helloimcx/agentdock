@@ -1,6 +1,6 @@
-import type { Session } from '@/api/sessions';
+import type { Session } from '../api/sessions';
 
-export function sessionLabel(session: Pick<Session, 'name' | 'user_name' | 'chat_name' | 'id'>) {
+export function sessionLabel(session: { id: string; name?: string; user_name?: string; chat_name?: string }) {
   return session.name || session.user_name || session.chat_name || `Session ${session.id.slice(0, 8)}`;
 }
 

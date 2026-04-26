@@ -77,6 +77,7 @@ type WeixinTurnState = {
   processing: boolean;
   previewText: string;
   finalText: string;
+  thinkingSteps: string[];
   statusLines: string[];
   buttonRows: Array<Array<{ text: string; data: string }>>;
   lastSentAt: number;
@@ -1248,6 +1249,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       processing: false,
       previewText: '',
       finalText: '',
+      thinkingSteps: [],
       statusLines: [],
       buttonRows: [],
       lastSentAt: 0,
@@ -1267,6 +1269,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       turn.processing = true;
       turn.previewText = '';
       turn.finalText = '';
+      turn.thinkingSteps = [];
       turn.statusLines = [];
       turn.buttonRows = [];
       return;
@@ -1301,12 +1304,19 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       return;
     }
     if (!content) return;
+    if (content.startsWith('💭 ')) {
+      this.pushUnique(turn.thinkingSteps, content.slice(3).trim());
+      return;
+    }
     turn.finalText = content;
     turn.previewText = content;
   }
 
   private renderTurnText(turn: WeixinTurnState): string {
     const sections: string[] = [];
+    if (turn.thinkingSteps.length > 0) {
+      sections.push(`**思考过程**\n${turn.thinkingSteps.map((step) => `• ${step.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
+    }
     if (turn.finalText) {
       sections.push(turn.finalText);
     } else if (turn.previewText) {
@@ -1325,6 +1335,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   private isTerminalBridgeMessage(event: DesktopBridgeEvent, rendered: string): boolean {
     if (event.type === 'buttons') return true;
     if (event.type !== 'reply') return false;
+    const eventContent = String(event.content || '').trim();
+    if (eventContent.startsWith('🔧 ') || eventContent.startsWith('💭 ')) return false;
     const normalized = rendered.trim();
     if (!normalized) return false;
     if (normalized.startsWith('🔧 ') || normalized.startsWith('💭 ')) return false;

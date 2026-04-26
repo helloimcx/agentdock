@@ -6,6 +6,7 @@ import {
   formatTaskHint,
   isTaskInputLocked,
   isTaskRunningState,
+  mergePolledThreadMessages,
   sortChatMessages,
   toCoreChatThreadSummary,
   toMessagesFromThread,
@@ -217,9 +218,12 @@ export function useThreadChatConversationState({
     holdBlankComposerRef.current = false;
     progressSequenceByTurnRef.current = {};
     const nextMessages = toMessagesFromThread(detail.messages || []);
-    nextMessageOrderRef.current = nextMessages.length;
     pendingTurnRef.current = null;
-    setMessages(nextMessages);
+    setMessages((current) => {
+      const merged = mergePolledThreadMessages(current, nextMessages);
+      nextMessageOrderRef.current = merged.reduce((max, message) => Math.max(max, message.order + 1), 0);
+      return merged;
+    });
   }, [
     setActiveRunId,
     setActiveSessionAgentType,

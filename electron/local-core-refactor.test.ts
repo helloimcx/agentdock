@@ -116,6 +116,56 @@ test('ACP bare tool call is flushed before assistant text', () => {
   assert.equal(session.currentTurn.assistantText, 'done');
 });
 
+test('ACP plan updates are persisted and emitted as thinking progress', () => {
+  const appended: Array<{ content: string; kind: string }> = [];
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content, kind) => appended.push({ content, kind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'plan',
+        entries: [
+          { content: '检查消息流' },
+          { content: '修复持久化' },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(appended, [
+    {
+      content: '💭 检查消息流 | 修复持久化',
+      kind: 'progress',
+    },
+  ]);
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0]?.type, 'reply');
+  assert.equal(emitted[0]?.content, appended[0]?.content);
+});
+
 test('ACP skips empty generic running tool updates', () => {
   const appended: string[] = [];
   const emitted: Array<{ content?: string; type: string }> = [];

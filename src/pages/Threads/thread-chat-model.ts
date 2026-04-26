@@ -1,4 +1,4 @@
-import type { Session } from '@/api/sessions';
+import type { Session } from '../../api/sessions';
 import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
 import type {
   DesktopBridgeButtonOption,
@@ -8,7 +8,7 @@ import {
   isPermissionButtonOption,
   normalizeDesktopBridgeButtonOption,
 } from '../../../shared/desktop';
-import { sessionLabel } from '@/lib/session-utils';
+import { sessionLabel } from '../../lib/session-utils';
 
 export const ASSISTANT_REPLY_TIMEOUT_MS = 90000;
 
@@ -134,6 +134,33 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
     order: index,
     timestamp: message.timestamp,
   }));
+}
+
+export function mergePolledThreadMessages(current: ChatMessage[], polled: ChatMessage[]) {
+  const polledIds = new Set(polled.map((message) => message.id));
+  const polledSignatures = new Set(polled.map((message) => `${message.role}:${message.kind || 'final'}:${message.content}`));
+  const polledFinalAssistantContent = new Set(
+    polled
+      .filter((message) => message.role === 'assistant' && (message.kind || 'final') === 'final')
+      .map((message) => message.content),
+  );
+  const retained = current.filter((message) => {
+    if (polledIds.has(message.id)) {
+      return false;
+    }
+    if (!message.preview && message.kind !== 'progress') {
+      return false;
+    }
+    const content = message.streamTargetContent ?? message.content;
+    if (polledFinalAssistantContent.has(content)) {
+      return false;
+    }
+    if (message.preview) {
+      return true;
+    }
+    return !polledSignatures.has(`${message.role}:${message.kind || 'final'}:${message.content}`);
+  });
+  return sortChatMessages([...polled, ...retained]);
 }
 
 export function toChatThreadSummary(project: string, session: Session): ChatThreadSummary {
