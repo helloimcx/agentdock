@@ -419,7 +419,7 @@ export default function DesktopWorkspace() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
         <SectionCard
           title="项目"
           actions={<Button size="sm" onClick={handleAddProject}><Plus size={14} /> 新建项目</Button>}
@@ -462,13 +462,17 @@ export default function DesktopWorkspace() {
 
         <SectionCard
           title={selectedProject?.name || 'Project details'}
-          description={selectedProject ? `${selectedProject.agent?.type || 'unknown'} · ${String(selectedProject.agent?.options?.work_dir || 'No work directory')}` : undefined}
+          description={selectedProject ? (
+            <span className="break-all">
+              {selectedProject.agent?.type || 'unknown'} · {String(selectedProject.agent?.options?.work_dir || 'No work directory')}
+            </span>
+          ) : undefined}
         >
           {!selectedProject ? (
             <EmptyState message="选择或新建项目后开始配置。" />
           ) : (
             <div className="space-y-6">
-              <div className="flex flex-wrap gap-2 border-b border-black/10 pb-4 dark:border-white/[0.08]">
+              <div className="flex gap-2 overflow-x-auto border-b border-black/10 pb-4 [scrollbar-width:none] dark:border-white/[0.08] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
                 {[
                   ['basic', '基本信息'],
                   ['providers', 'Provider'],
@@ -478,7 +482,7 @@ export default function DesktopWorkspace() {
                     key={key}
                     type="button"
                     onClick={() => setProjectTab(key as ProjectTab)}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                       projectTab === key
                         ? 'bg-accent text-white'
                         : 'bg-black/[0.04] text-muted-foreground hover:bg-black/[0.07] hover:text-foreground dark:bg-white/[0.05] dark:hover:bg-white/[0.08]'
@@ -545,7 +549,7 @@ export default function DesktopWorkspace() {
 
               {projectTab === 'providers' ? (
                 <section className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Providers</h3>
                     <p className="mt-1 text-sm text-muted-foreground">Basic endpoint and default model only.</p>
@@ -632,7 +636,7 @@ export default function DesktopWorkspace() {
 
               {projectTab === 'platforms' ? (
                 <section className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Platforms</h3>
                     <p className="mt-1 text-sm text-muted-foreground">Configure each platform with its own required connection fields.</p>
@@ -681,7 +685,7 @@ export default function DesktopWorkspace() {
               ) : null}
 
               <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
-                <Button onClick={() => void handleSaveConfig()} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>
+                <Button className="w-full sm:w-auto" onClick={() => void handleSaveConfig()} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>
                   <Save size={14} /> 保存更改
                 </Button>
               </div>
@@ -725,9 +729,9 @@ export default function DesktopWorkspace() {
               onChange={(event) => updateProjectDialog({ model: event.target.value })}
               placeholder={getDefaultDesktopAgentModel(projectDialog.agentType) || 'Use agent default model'}
             />
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setProjectDialog(null)}>Cancel</Button>
-              <Button onClick={handleConfirmAddProject}><Plus size={14} /> 新建项目</Button>
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setProjectDialog(null)}>Cancel</Button>
+              <Button className="w-full sm:w-auto" onClick={handleConfirmAddProject}><Plus size={14} /> 新建项目</Button>
             </div>
           </div>
         ) : null}
@@ -834,11 +838,11 @@ export default function DesktopWorkspace() {
                     </StatusPill>
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={() => void handleGenerateWeixinQr()} loading={weixinQrLoading}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleGenerateWeixinQr()} loading={weixinQrLoading}>
                     <QrCode size={14} /> Generate QR
                   </Button>
-                  <Button variant="secondary" onClick={() => void handleCheckWeixinQr()} loading={weixinQrLoading} disabled={!weixinQr?.ticket}>
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleCheckWeixinQr()} loading={weixinQrLoading} disabled={!weixinQr?.ticket}>
                     Check status
                   </Button>
                 </div>
@@ -851,9 +855,9 @@ export default function DesktopWorkspace() {
               </div>
             ) : null}
 
-            <div className="flex justify-end gap-2 border-t border-black/10 pt-4 dark:border-white/[0.08]">
-              <Button variant="secondary" onClick={() => setPlatformDialog(null)}>Cancel</Button>
-              <Button onClick={handleApplyPlatformDialog}>
+            <div className="flex flex-col-reverse gap-2 border-t border-black/10 pt-4 dark:border-white/[0.08] sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setPlatformDialog(null)}>Cancel</Button>
+              <Button className="w-full sm:w-auto" onClick={handleApplyPlatformDialog}>
                 <Save size={14} /> Apply
               </Button>
             </div>

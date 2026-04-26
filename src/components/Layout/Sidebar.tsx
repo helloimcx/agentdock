@@ -55,10 +55,17 @@ export default function Sidebar() {
     .listNavItems()
     .filter((item) => item.visible?.({ desktopManaged, features }) ?? true);
 
+  const navItemNodes = visibleNavItems.map((item) => {
+    const Icon = item.icon;
+    const labelKey = item.resolveLabelKey?.({ desktopManaged, features, runtimeProvider }) || item.labelKey;
+    return { ...item, Icon, labelKey };
+  });
+
   return (
+    <>
     <aside
       className={cn(
-        'relative h-screen flex flex-col overflow-hidden border-r transition-all duration-300 ease-out',
+        'relative hidden h-[100dvh] flex-col overflow-hidden border-r transition-all duration-300 ease-out md:flex',
         'border-white/55 bg-white/24 shadow-[inset_-1px_0_0_rgba(255,255,255,0.36)] backdrop-blur-[34px] supports-[backdrop-filter]:bg-white/18',
         'dark:border-white/[0.10] dark:bg-[#1c1c1e]/34 dark:shadow-[inset_-1px_0_0_rgba(255,255,255,0.08)] dark:supports-[backdrop-filter]:bg-[#1c1c1e]/26',
         collapsed ? 'w-16' : 'w-56'
@@ -204,5 +211,36 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+    <nav
+      className={cn(
+        'fixed inset-x-0 bottom-0 z-50 border-t px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:hidden',
+        'border-black/10 bg-white/88 shadow-[0_-12px_32px_rgba(15,23,42,0.10)] backdrop-blur-2xl',
+        'dark:border-white/[0.08] dark:bg-[#111113]/88 dark:shadow-[0_-16px_42px_rgba(0,0,0,0.34)]',
+      )}
+      aria-label="Primary navigation"
+    >
+      <div className="flex items-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {navItemNodes.map(({ id, path, end, Icon, labelKey }) => (
+          <NavLink
+            key={id}
+            to={path}
+            end={end}
+            className={({ isActive }) =>
+              cn(
+                'flex min-w-[4.5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[11px] font-medium transition-colors',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.07]',
+              )
+            }
+          >
+            <Icon size={18} className="shrink-0" />
+            <span className="max-w-[4.25rem] truncate">{t(labelKey)}</span>
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+    </>
   );
 }

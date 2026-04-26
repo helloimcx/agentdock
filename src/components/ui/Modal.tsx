@@ -18,8 +18,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <DialogPrimitive.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4',
-            'rounded-lg border bg-popover p-6 text-popover-foreground shadow-lg outline-none animate-fade-in',
+            'fixed inset-x-4 top-1/2 z-50 grid max-h-[calc(100dvh-2rem)] max-w-lg -translate-y-1/2 gap-4 overflow-y-auto',
+            'rounded-lg border bg-popover p-5 text-popover-foreground shadow-lg outline-none sm:left-1/2 sm:right-auto sm:w-[calc(100%-2rem)] sm:-translate-x-1/2 sm:p-6',
             className
           )}
         >

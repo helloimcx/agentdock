@@ -13,12 +13,12 @@ export default function Layout() {
   return (
     <div
       className={cn(
-        'flex h-screen overflow-hidden',
+        'flex h-[100dvh] overflow-hidden',
         'bg-background/60 backdrop-blur-2xl'
       )}
     >
       <div
-        className="fixed left-0 right-0 top-0 z-50 h-8 [-webkit-app-region:drag]"
+        className="fixed left-0 right-0 top-0 z-50 hidden h-8 [-webkit-app-region:drag] md:block"
         aria-hidden="true"
       />
       <Sidebar />
@@ -26,7 +26,7 @@ export default function Layout() {
         <main className={cn(
           'flex-1 min-h-0',
           chatLayout ? 'overflow-hidden' : 'overflow-y-auto',
-          compactDesktopChatLayout ? 'p-0' : 'p-6',
+          compactDesktopChatLayout ? 'p-0' : 'p-4 pb-24 sm:p-6 sm:pb-6',
         )}>
           <div
             className={cn(
