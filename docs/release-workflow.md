@@ -44,6 +44,8 @@ The release job:
 
 The workflow uses `secrets.GITHUB_TOKEN` through `GH_TOKEN` and requires `contents: write` permission to create or update GitHub Releases. Electron Builder is configured with `releaseType: release`, so version tags publish public GitHub Releases instead of draft releases.
 
+The npm publish job uses npm trusted publishing through GitHub Actions OIDC (`id-token: write`) and runs `npm publish --provenance`. Configure `@kafca/agentdock` on npm with this GitHub repository and `.github/workflows/release.yml` as a trusted publisher before cutting a release. Do not use a classic 2FA-protected `NPM_TOKEN` for this workflow, because npm will require an interactive OTP and fail CI with `EOTP`.
+
 ## Creating a Release
 
 Update `package.json` version first, then tag that commit:
