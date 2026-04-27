@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity,
+  AlertCircle,
   ArrowRight,
   BookOpen,
   CalendarClock,
@@ -9,15 +10,16 @@ import {
   Cpu,
   FolderKanban,
   MessageSquare,
+  RefreshCw,
   Server,
   Settings,
   Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { listProjects, type ProjectSummary } from '@/api/projects';
-import { listInstalledAgentRuntimes, onRuntimeEvent } from '@/api/desktop';
+import { listInstalledAgentRuntimes, onRuntimeEvent, refreshInstalledAgentRuntimes } from '@/api/desktop';
 import { listWorkspaces } from '../../packages/core-sdk/src';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
 import type { InstalledAgentRuntime } from '../../packages/contracts/src';
@@ -60,6 +62,7 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [agentRuntimes, setAgentRuntimes] = useState<InstalledAgentRuntime[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshingRuntimes, setRefreshingRuntimes] = useState(false);
   const [error, setError] = useState('');
   const [runtimeError, setRuntimeError] = useState('');
   const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule } = useRuntimeFeatureSupport();
@@ -146,6 +149,18 @@ export default function Dashboard() {
     }
   }, [desktopRuntime]);
 
+  const refreshRuntimes = useCallback(async () => {
+    setRefreshingRuntimes(true);
+    setRuntimeError('');
+    try {
+      setAgentRuntimes(await refreshInstalledAgentRuntimes());
+    } catch (err: any) {
+      setRuntimeError(err.message || String(err));
+    } finally {
+      setRefreshingRuntimes(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchData();
     const handler = () => fetchData();
@@ -196,31 +211,50 @@ export default function Dashboard() {
             <div>
               <h2 className="text-base font-semibold text-foreground">本机 Agent Runtime</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                仅显示已在本机 PATH、项目配置或内置包中检测到的 runtime。
+                显示本机 runtime 安装检测状态，不执行安装或登录检查。
               </p>
             </div>
-            <Badge variant={installedAgentRuntimes.length > 0 ? 'success' : 'default'}>
-              {installedAgentRuntimes.length} installed
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={installedAgentRuntimes.length > 0 ? 'success' : 'default'}>
+                {installedAgentRuntimes.length} installed
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                loading={refreshingRuntimes}
+                onClick={refreshRuntimes}
+                title="刷新 runtime 检测"
+              >
+                <RefreshCw size={15} />
+                刷新
+              </Button>
+            </div>
           </div>
           {runtimeError ? (
             <div className="px-5 py-4 text-sm text-amber-700 dark:text-amber-200">
               检测失败：{runtimeError}
             </div>
-          ) : installedAgentRuntimes.length === 0 ? (
+          ) : agentRuntimes.length === 0 ? (
             <div className="p-5">
-              <EmptyState message="未检测到已安装的 Agent Runtime" icon={Cpu} />
+              <EmptyState message="还没有 runtime 检测结果" icon={Cpu} />
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
-              {installedAgentRuntimes.map((runtime) => (
+              {agentRuntimes.map((runtime) => (
                 <div
                   key={runtime.agentType}
                   className="rounded-2xl border border-black/[0.08] bg-white/50 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-white/[0.055]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                      <div className={[
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                        runtime.status === 'installed'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+                          : runtime.status === 'error'
+                            ? 'bg-red-500/10 text-red-600 dark:text-red-200'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-200',
+                      ].join(' ')}>
                         <Cpu size={19} />
                       </div>
                       <div className="min-w-0">
@@ -228,17 +262,33 @@ export default function Dashboard() {
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">{runtime.agentType}</p>
                       </div>
                     </div>
-                    <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-500" />
+                    {runtime.status === 'installed' ? (
+                      <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-500" />
+                    ) : (
+                      <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-500" />
+                    )}
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <Badge variant="success">installed</Badge>
+                    <Badge variant={runtime.status === 'installed' ? 'success' : runtime.status === 'error' ? 'danger' : 'warning'}>
+                      {runtime.status}
+                    </Badge>
                     <Badge>{runtime.source}</Badge>
+                    {runtime.version ? <Badge variant="secondary">v{runtime.version}</Badge> : null}
                   </div>
-                  {runtime.command ? (
+                  <p className="mt-3 text-sm leading-5 text-muted-foreground">{runtime.summary}</p>
+                  {runtime.binaryPath || runtime.command ? (
                     <p className="mt-3 truncate rounded-lg bg-black/[0.045] px-2.5 py-2 font-mono text-xs text-muted-foreground dark:bg-white/[0.06]">
-                      {runtime.command}
+                      {runtime.binaryPath || runtime.command}
                     </p>
                   ) : null}
+                  {runtime.recommendedActions[0] ? (
+                    <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                      {runtime.recommendedActions[0].description}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Last checked {new Date(runtime.detectedAt).toLocaleString()}
+                  </p>
                 </div>
               ))}
             </div>

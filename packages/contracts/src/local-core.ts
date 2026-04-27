@@ -319,11 +319,36 @@ export interface LocalCoreCapabilitySnapshot {
   ui: LocalCoreUiCapability[];
 }
 
+export type RuntimeDetectionStatus = 'installed' | 'not_installed' | 'error' | 'unknown';
+export type RuntimeDetectionIssueSeverity = 'info' | 'warning' | 'error';
+
+export interface RuntimeDetectionIssue {
+  code: string;
+  severity: RuntimeDetectionIssueSeverity;
+  message: string;
+  help?: string;
+}
+
+export interface RuntimeDetectionRecommendedAction {
+  label: string;
+  description: string;
+  href?: string;
+}
+
 export interface InstalledAgentRuntime {
   agentType: string;
+  runtimeId: string;
   displayName: string;
+  status: RuntimeDetectionStatus;
   installed: boolean;
   command?: string;
+  binaryPath?: string;
+  version?: string;
+  detectedAt: string;
+  summary: string;
+  details?: string;
+  issues: RuntimeDetectionIssue[];
+  recommendedActions: RuntimeDetectionRecommendedAction[];
   source: 'path' | 'config' | 'bundled' | 'builtin';
   error?: string;
 }

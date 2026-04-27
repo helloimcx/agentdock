@@ -92,6 +92,7 @@ export interface LocalAiCoreBindings extends EventEmitter {
   getCapabilities(): Promise<LocalCoreCapabilities>;
   getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot>;
   listInstalledAgentRuntimes(): Promise<InstalledAgentRuntime[]>;
+  refreshInstalledAgentRuntimes(runtimeId?: string): Promise<InstalledAgentRuntime[]>;
   getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
@@ -265,6 +266,30 @@ export class LocalAiCoreServer {
       }
       if (req.method === 'GET' && path === '/api/local/v1/runtime/agent-runtimes') {
         json(res, 200, { runtimes: await this.bindings.listInstalledAgentRuntimes() });
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/runtimes') {
+        json(res, 200, { runtimes: await this.bindings.listInstalledAgentRuntimes() });
+        return;
+      }
+      if (req.method === 'GET' && path.startsWith('/api/local/v1/runtimes/')) {
+        const runtimeId = decodeURIComponent(path.slice('/api/local/v1/runtimes/'.length));
+        const runtimes = await this.bindings.listInstalledAgentRuntimes();
+        const runtime = runtimes.find((entry) => entry.runtimeId === runtimeId || entry.agentType === runtimeId);
+        if (!runtime) {
+          json(res, 404, null, false, 'Runtime not found');
+          return;
+        }
+        json(res, 200, runtime);
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/runtimes/refresh') {
+        json(res, 200, { runtimes: await this.bindings.refreshInstalledAgentRuntimes() });
+        return;
+      }
+      if (req.method === 'POST' && path.startsWith('/api/local/v1/runtimes/') && path.endsWith('/refresh')) {
+        const runtimeId = decodeURIComponent(path.slice('/api/local/v1/runtimes/'.length, -'/refresh'.length));
+        json(res, 200, { runtimes: await this.bindings.refreshInstalledAgentRuntimes(runtimeId) });
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/runtime/config') {

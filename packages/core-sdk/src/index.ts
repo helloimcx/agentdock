@@ -173,6 +173,22 @@ export async function listInstalledAgentRuntimes() {
   return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('GET', '/runtime/agent-runtimes');
 }
 
+export async function listRuntimeDetections() {
+  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('GET', '/runtimes');
+}
+
+export async function getRuntimeDetection(runtimeId: string) {
+  return coreRequest<InstalledAgentRuntime>('GET', `/runtimes/${encodeURIComponent(runtimeId)}`);
+}
+
+export async function refreshRuntimeDetections() {
+  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('POST', '/runtimes/refresh');
+}
+
+export async function refreshRuntimeDetection(runtimeId: string) {
+  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('POST', `/runtimes/${encodeURIComponent(runtimeId)}/refresh`);
+}
+
 export async function readCoreConfigFile() {
   return coreRequest<ConfigFileState>('GET', '/runtime/config');
 }

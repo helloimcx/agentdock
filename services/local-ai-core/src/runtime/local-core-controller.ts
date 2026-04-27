@@ -336,6 +336,18 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     });
   }
 
+  async refreshInstalledAgentRuntimes(runtimeId?: string): Promise<InstalledAgentRuntime[]> {
+    const runtimes = await this.listInstalledAgentRuntimes();
+    const filtered = runtimeId
+      ? runtimes.filter((runtime) => runtime.runtimeId === runtimeId || runtime.agentType === runtimeId)
+      : runtimes;
+    this.handleLog(runtimeId
+      ? `Refreshed runtime detection for ${runtimeId}.`
+      : 'Refreshed runtime detection for all runtimes.');
+    this.emit('runtime-detection', filtered);
+    return filtered;
+  }
+
   async getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics> {
     return this.kernel.diagnostics.snapshot();
   }
