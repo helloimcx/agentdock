@@ -319,6 +319,15 @@ export interface LocalCoreCapabilitySnapshot {
   ui: LocalCoreUiCapability[];
 }
 
+export interface InstalledAgentRuntime {
+  agentType: string;
+  displayName: string;
+  installed: boolean;
+  command?: string;
+  source: 'path' | 'config' | 'bundled' | 'builtin';
+  error?: string;
+}
+
 export type LocalCorePluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'ui' | 'composite';
 export type LocalCorePluginHealthStatus = 'healthy' | 'degraded' | 'failed';
 export type LocalCorePluginConfigFieldType = 'string' | 'number' | 'boolean' | 'json';

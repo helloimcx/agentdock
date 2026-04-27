@@ -40,6 +40,7 @@ import type {
   ThreadDetail,
   ThreadSummary,
   WorkspaceSummary,
+  InstalledAgentRuntime,
 } from '../../../../packages/contracts/src/index.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
@@ -90,6 +91,7 @@ export interface LocalAiCoreBindings extends EventEmitter {
   searchKnowledgeBase(knowledgeBaseId: string, input: KnowledgeSearchInput): Promise<KnowledgeSearchResult[]>;
   getCapabilities(): Promise<LocalCoreCapabilities>;
   getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot>;
+  listInstalledAgentRuntimes(): Promise<InstalledAgentRuntime[]>;
   getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
@@ -259,6 +261,10 @@ export class LocalAiCoreServer {
       if (req.method === 'GET' && path === '/api/local/v1/runtime/logs') {
         const limit = Number(url.searchParams.get('limit') || '200');
         json(res, 200, this.bindings.getLogs(limit));
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/runtime/agent-runtimes') {
+        json(res, 200, { runtimes: await this.bindings.listInstalledAgentRuntimes() });
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/runtime/config') {

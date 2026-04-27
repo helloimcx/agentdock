@@ -36,6 +36,7 @@ import type {
   ThreadDetail,
   ThreadSummary,
   WorkspaceSummary,
+  InstalledAgentRuntime,
 } from '../../contracts/src';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
@@ -166,6 +167,10 @@ export async function restartCoreService() {
 export async function getCoreLogs(limit?: number) {
   const suffix = typeof limit === 'number' ? `?limit=${encodeURIComponent(String(limit))}` : '';
   return coreRequest<string[]>('GET', `/runtime/logs${suffix}`);
+}
+
+export async function listInstalledAgentRuntimes() {
+  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('GET', '/runtime/agent-runtimes');
 }
 
 export async function readCoreConfigFile() {

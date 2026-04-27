@@ -5,6 +5,8 @@ import {
   ArrowRight,
   BookOpen,
   CalendarClock,
+  CheckCircle2,
+  Cpu,
   FolderKanban,
   MessageSquare,
   Server,
@@ -15,9 +17,10 @@ import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { listProjects, type ProjectSummary } from '@/api/projects';
-import { onRuntimeEvent } from '@/api/desktop';
+import { listInstalledAgentRuntimes, onRuntimeEvent } from '@/api/desktop';
 import { listWorkspaces } from '../../packages/core-sdk/src';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
+import type { InstalledAgentRuntime } from '../../packages/contracts/src';
 
 interface QuickActionProps {
   title: string;
@@ -55,9 +58,12 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
 export default function Dashboard() {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [agentRuntimes, setAgentRuntimes] = useState<InstalledAgentRuntime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [runtimeError, setRuntimeError] = useState('');
   const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule } = useRuntimeFeatureSupport();
+  const installedAgentRuntimes = agentRuntimes.filter((runtime) => runtime.installed);
   const quickActions: QuickActionProps[] = [
     {
       title: '继续聊天',
@@ -104,9 +110,16 @@ export default function Dashboard() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
+    setRuntimeError('');
     try {
       if (desktopRuntime) {
-        const workspaceData = await listWorkspaces();
+        const [workspaceData, runtimeResult] = await Promise.all([
+          listWorkspaces(),
+          listInstalledAgentRuntimes().then(
+            (runtimes) => ({ status: 'fulfilled' as const, runtimes }),
+            (err: any) => ({ status: 'rejected' as const, error: err }),
+          ),
+        ]);
         setProjects((workspaceData.workspaces || []).map((workspace) => ({
           name: workspace.name,
           agent_type: workspace.agentType,
@@ -114,11 +127,18 @@ export default function Dashboard() {
           sessions_count: workspace.sessionsCount,
           heartbeat_enabled: workspace.heartbeatEnabled,
         })));
+        if (runtimeResult.status === 'fulfilled') {
+          setAgentRuntimes(runtimeResult.runtimes);
+        } else {
+          setAgentRuntimes([]);
+          setRuntimeError(runtimeResult.error?.message || String(runtimeResult.error));
+        }
         return;
       }
 
       const projectData = await listProjects();
       setProjects(projectData.projects || []);
+      setAgentRuntimes([]);
     } catch (err: any) {
       setError(err.message || String(err));
     } finally {
@@ -147,7 +167,7 @@ export default function Dashboard() {
     <div className="animate-fade-in space-y-8">
       <PageHeader
         title="概览"
-        description="继续最近的工作，或进入项目、知识和自动化配置。"
+        description={`继续最近的工作，或进入项目、知识和自动化配置。当前版本 v${__APP_VERSION__}`}
       />
 
       {error ? (
@@ -169,6 +189,62 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+
+      {desktopRuntime ? (
+        <Card className="overflow-hidden p-0">
+          <div className="flex flex-col gap-3 border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07] sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">本机 Agent Runtime</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                仅显示已在本机 PATH、项目配置或内置包中检测到的 runtime。
+              </p>
+            </div>
+            <Badge variant={installedAgentRuntimes.length > 0 ? 'success' : 'default'}>
+              {installedAgentRuntimes.length} installed
+            </Badge>
+          </div>
+          {runtimeError ? (
+            <div className="px-5 py-4 text-sm text-amber-700 dark:text-amber-200">
+              检测失败：{runtimeError}
+            </div>
+          ) : installedAgentRuntimes.length === 0 ? (
+            <div className="p-5">
+              <EmptyState message="未检测到已安装的 Agent Runtime" icon={Cpu} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
+              {installedAgentRuntimes.map((runtime) => (
+                <div
+                  key={runtime.agentType}
+                  className="rounded-2xl border border-black/[0.08] bg-white/50 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-white/[0.055]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                        <Cpu size={19} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{runtime.displayName}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{runtime.agentType}</p>
+                      </div>
+                    </div>
+                    <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-500" />
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Badge variant="success">installed</Badge>
+                    <Badge>{runtime.source}</Badge>
+                  </div>
+                  {runtime.command ? (
+                    <p className="mt-3 truncate rounded-lg bg-black/[0.045] px-2.5 py-2 font-mono text-xs text-muted-foreground dark:bg-white/[0.06]">
+                      {runtime.command}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      ) : null}
 
       <Card className="p-0">
         <div className="flex items-center justify-between gap-4 border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">

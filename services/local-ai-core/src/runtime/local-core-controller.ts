@@ -37,6 +37,7 @@ import type {
   KnowledgeUploadResult,
   KnowledgeSearchInput,
   KnowledgeSearchResult,
+  InstalledAgentRuntime,
 } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime, KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
@@ -45,6 +46,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { SchedulerService } from '../scheduler/scheduler-service.js';
 import type { LocalAiCoreBindings } from './server.js';
+import { detectInstalledAgentRuntimes } from './agent-runtime-detector.js';
 
 export class LocalCoreController extends EventEmitter implements LocalAiCoreBindings {
   private readonly state: LocalCoreRuntimeState;
@@ -325,6 +327,13 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot> {
     return this.kernel.getCapabilitySnapshot().snapshot;
+  }
+
+  async listInstalledAgentRuntimes(): Promise<InstalledAgentRuntime[]> {
+    const configFile = await this.readConfigFile();
+    return detectInstalledAgentRuntimes({
+      config: configFile.parsed,
+    });
   }
 
   async getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics> {

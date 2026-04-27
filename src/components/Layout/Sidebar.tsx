@@ -128,6 +128,12 @@ export default function Sidebar() {
           'border-black/10 dark:border-white/[0.08]'
         )}
       >
+        {!collapsed && (
+          <div className="px-3 pb-1 pt-0.5 text-[11px] font-medium text-muted-foreground/75">
+            AgentDock v{__APP_VERSION__}
+          </div>
+        )}
+
         <div className="relative">
           <button
             type="button"

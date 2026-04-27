@@ -16,6 +16,7 @@ import type {
   LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   LocalCorePluginDiagnostics,
+  InstalledAgentRuntime,
   WorkspaceStreamingProbeResult,
 } from '../../packages/contracts/src';
 import {
@@ -27,6 +28,7 @@ import {
   getThread as getCoreThread,
   getCoreLogs,
   getCoreRuntime,
+  listInstalledAgentRuntimes as listCoreInstalledAgentRuntimes,
   getCapabilitySnapshot as getCoreCapabilitySnapshot,
   getPluginDiagnostics as getCorePluginDiagnostics,
   getLarkGatewayStatus as getCoreLarkGatewayStatus,
@@ -65,6 +67,7 @@ type DesktopProvider = {
   stopService: () => Promise<unknown>;
   restartService: () => Promise<unknown>;
   getLogs: (limit?: number) => Promise<string[]>;
+  listInstalledAgentRuntimes: () => Promise<InstalledAgentRuntime[]>;
   readConfigFile: () => Promise<ConfigFileState>;
   saveRawConfigFile: (raw: string) => Promise<ConfigFileState>;
   saveStructuredConfigFile: (config: unknown) => Promise<ConfigFileState>;
@@ -116,6 +119,7 @@ const electronProvider: DesktopProvider = {
   stopService: () => requireDesktopBridge().stopService(),
   restartService: () => requireDesktopBridge().restartService(),
   getLogs: (limit?: number) => requireDesktopBridge().getLogs(limit),
+  listInstalledAgentRuntimes: () => listCoreInstalledAgentRuntimes().then((result) => result.runtimes),
   readConfigFile: () => requireDesktopBridge().readConfigFile(),
   saveRawConfigFile: (raw: string) => requireDesktopBridge().saveRawConfigFile(raw),
   saveStructuredConfigFile: (config: unknown) => requireDesktopBridge().saveStructuredConfigFile(config),
@@ -159,6 +163,7 @@ const localCoreProvider: DesktopProvider = {
   stopService: () => stopCoreService(),
   restartService: () => restartCoreService(),
   getLogs: (limit?: number) => getCoreLogs(limit),
+  listInstalledAgentRuntimes: () => listCoreInstalledAgentRuntimes().then((result) => result.runtimes),
   readConfigFile: () => readCoreConfigFile(),
   saveRawConfigFile: (raw: string) => saveCoreRawConfigFile(raw),
   saveStructuredConfigFile: (config: unknown) => saveCoreStructuredConfigFile(config),
@@ -241,6 +246,8 @@ export const startDesktopService = () => requireProvider().startService();
 export const stopDesktopService = () => requireProvider().stopService();
 export const restartDesktopService = () => requireProvider().restartService();
 export const getDesktopLogs = (limit?: number) => requireProvider().getLogs(limit);
+export const listInstalledAgentRuntimes = (): Promise<InstalledAgentRuntime[]> =>
+  requireProvider().listInstalledAgentRuntimes();
 export const readConfigFile = (): Promise<ConfigFileState> => requireProvider().readConfigFile();
 export const saveRawConfigFile = (raw: string): Promise<ConfigFileState> => requireProvider().saveRawConfigFile(raw);
 export const saveStructuredConfigFile = (config: unknown): Promise<ConfigFileState> => requireProvider().saveStructuredConfigFile(config);
