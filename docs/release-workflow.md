@@ -36,15 +36,29 @@ Triggers:
 - Pushes to tags matching `v*`
 - Manual `workflow_dispatch`
 
-The release job:
+The release workflow:
 
 1. Installs dependencies with `pnpm install --frozen-lockfile`.
 2. Runs `pnpm test`.
 3. Publishes macOS `dmg` and `zip` artifacts with `electron-builder --publish always`.
+4. Publishes the npm package.
+5. Deploys the published npm package to the Ubuntu server.
 
 The workflow uses `secrets.GITHUB_TOKEN` through `GH_TOKEN` and requires `contents: write` permission to create or update GitHub Releases. Electron Builder is configured with `releaseType: release`, so version tags publish public GitHub Releases instead of draft releases.
 
 The npm publish job uses npm trusted publishing through GitHub Actions OIDC (`id-token: write`) and runs `npm publish --access public` without `NODE_AUTH_TOKEN` or an npm `.npmrc`. Configure `@kafca/agentdock` on npm with this GitHub repository and `.github/workflows/release.yml` as a trusted publisher before cutting a release. The publish job installs npm `11.5.1` because trusted publishing requires npm CLI `11.5.1` or later. Do not use a classic 2FA-protected `NPM_TOKEN` for this workflow, because npm will require an interactive OTP and fail CI with `EOTP`. Do not enable `--provenance` while this GitHub repository is private; npm only accepts provenance from public GitHub source repositories.
+
+The Ubuntu deployment job runs after `publish-npm` succeeds. It reads the version from `package.json`, verifies tag releases match that version, SSHes into `ubuntu@43.155.247.199`, installs `@kafca/agentdock@VERSION`, restarts `agentdock`, and checks `http://127.0.0.1:14173/api/local/v1/health`.
+
+Required GitHub secret:
+
+- `DEPLOY_SSH_PRIVATE_KEY`: private key for an SSH identity that can log in as `ubuntu` on `43.155.247.199`.
+
+Required server setup:
+
+- `ubuntu` can SSH in with the matching public key in `/home/ubuntu/.ssh/authorized_keys`.
+- `ubuntu` can run `sudo -n npm install -g ...` and `sudo -n systemctl restart agentdock` non-interactively.
+- `/etc/systemd/system/agentdock.service` exists and starts `agentdock serve --host 127.0.0.1 --port 14173`.
 
 ## Creating a Release
 

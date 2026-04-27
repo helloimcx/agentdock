@@ -45,6 +45,72 @@ jobs:
       - name: Publish npm package
         run: npm publish --access public
 
+  deploy-ubuntu:
+    name: Deploy Ubuntu server
+    runs-on: ubuntu-latest
+    needs: publish-npm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./package.json').version")"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [[ "${tag_version}" != "${package_version}" ]]; then
+              echo "Tag version ${tag_version} does not match package.json version ${package_version}" >&2
+              exit 1
+            fi
+          fi
+
+          echo "package_version=${package_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup SSH key
+        shell: bash
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DEPLOY_SSH_PRIVATE_KEY}" ]]; then
+            echo "DEPLOY_SSH_PRIVATE_KEY is not configured" >&2
+            exit 1
+          fi
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_PRIVATE_KEY}" > ~/.ssh/agentdock_deploy
+          chmod 600 ~/.ssh/agentdock_deploy
+          ssh-keyscan -H 43.155.247.199 >> ~/.ssh/known_hosts
+
+      - name: Deploy npm package to Ubuntu
+        shell: bash
+        env:
+          AGENTDOCK_VERSION: ${{ steps.version.outputs.package_version }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/agentdock_deploy ubuntu@43.155.247.199 "AGENTDOCK_VERSION='${AGENTDOCK_VERSION}' bash -s" <<'EOF'
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if sudo -n npm install -g "@kafca/agentdock@${AGENTDOCK_VERSION}"; then
+              break
+            fi
+
+            if [[ "${attempt}" == "6" ]]; then
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          sudo -n systemctl restart agentdock
+          sleep 3
+          curl -fsS http://127.0.0.1:14173/api/local/v1/health
+          EOF
+
   release-macos:
     name: Release macOS
     runs-on: macos-latest
