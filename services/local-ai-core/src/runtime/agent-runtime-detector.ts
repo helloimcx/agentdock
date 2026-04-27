@@ -237,7 +237,7 @@ function detectRuntimeVersion(
     });
     return { version: parseVersionOutput(output) };
   } catch (err: any) {
-    const timedOut = err?.code === 'ETIMEDOUT' || err?.signal === 'SIGTERM' || err?.killed;
+    const timedOut = err?.code === 'ETIMEDOUT' || err?.signal === 'SIGTERM' || (typeof err?.message === 'string' && err.message.includes('ETIMEDOUT'));
     return {
       issue: {
         code: timedOut ? 'version_detection_timeout' : 'version_detection_failed',
