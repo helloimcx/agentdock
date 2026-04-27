@@ -58,7 +58,7 @@ Required GitHub secret:
 Required server setup:
 
 - `agentdock-deploy` can SSH in with the matching public key in `/home/agentdock-deploy/.ssh/authorized_keys`.
-- `/usr/local/sbin/deploy-agentdock` is owned by root and validates the version argument before installing `@kafca/agentdock@VERSION`, restarting `agentdock`, and checking health.
+- `/usr/local/sbin/deploy-agentdock` is owned by root and matches `scripts/deploy-agentdock-server.sh`. It validates the version argument before installing `@kafca/agentdock@VERSION`, restarting `agentdock`, and checking health.
 - `/etc/sudoers.d/agentdock-deploy` allows `agentdock-deploy` to run only `/usr/local/sbin/deploy-agentdock *` non-interactively.
 - `/etc/systemd/system/agentdock.service` exists and starts `agentdock serve --host 127.0.0.1 --port 14173`.
 
