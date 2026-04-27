@@ -109,7 +109,7 @@ test('agent runtime detector keeps runtime installed when version command times 
   const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-version-timeout-'));
   try {
     const opencode = join(dir, 'opencode');
-    writeFileSync(opencode, '#!/bin/sh\nsleep 2\n', 'utf8');
+    writeFileSync(opencode, '#!/bin/sh\nexec sleep 2\n', 'utf8');
     chmodSync(opencode, 0o755);
 
     const opencodeRuntime = detectInstalledAgentRuntimes({
