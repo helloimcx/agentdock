@@ -556,52 +556,57 @@ Turn built-in integrations into a stable plugin platform.
 
 ### Phase 1: Local Agent Installation Detection Only
 
-- [ ] Define installation status values: `installed`, `not_installed`, `error`,
+- [x] Define installation status values: `installed`, `not_installed`, `error`,
   and `unknown`.
-- [ ] Add shared runtime detection result types.
-- [ ] Add shared runtime issue and remediation types.
+- [x] Add shared runtime detection result types.
+- [x] Add shared runtime issue and remediation types.
 - [ ] Add Local AI Core runtime detection registry.
-- [ ] Add Local AI Core runtime detection service.
-- [ ] Add timeout handling for detection commands.
-- [ ] Add startup runtime detection.
-- [ ] Add manual runtime refresh.
-- [ ] Persist the latest runtime detection result.
-- [ ] Emit runtime detection events.
-- [ ] Add opencode detection adapter.
-- [ ] Detect opencode binary path.
-- [ ] Detect opencode version.
-- [ ] Handle opencode not installed.
+  - Deferred: the current implementation uses a centralized detector plus
+    service/store. A pluggable adapter registry should be added with the plugin
+    SDK work, after the Phase 2 task/workspace model is stable.
+- [x] Add Local AI Core runtime detection service.
+- [x] Add timeout handling for detection commands.
+- [x] Add startup runtime detection.
+- [x] Add manual runtime refresh.
+- [x] Persist the latest runtime detection result.
+- [x] Emit runtime detection events.
+- [x] Add opencode detection adapter.
+- [x] Detect opencode binary path.
+- [x] Detect opencode version.
+- [x] Handle opencode not installed.
 - [ ] Add Claude Code detection adapter.
+  - Partial: bundled `claude-agent-acp` detection exists for the current desktop
+    runtime path. Direct `claude` CLI detection is still pending.
 - [ ] Detect Claude Code through the `claude` command.
-- [ ] Add Codex detection adapter.
-- [ ] Detect Codex through the `codex` command.
-- [ ] Handle opencode detection command failure.
-- [ ] Handle opencode detection timeout.
-- [ ] Add runtime list API.
-- [ ] Add single runtime status API.
-- [ ] Add refresh-all API.
-- [ ] Add refresh-one-runtime API.
-- [ ] Add renderer runtime status page or panel.
-- [ ] Add runtime status badges.
-- [ ] Add runtime details drawer or panel.
-- [ ] Add recommended manual action text.
-- [ ] Add Local AI Core unavailable state.
-- [ ] Add detection running state.
-- [ ] Add no supported local agents installed state.
-- [ ] Add diagnostics logging for detection.
-- [ ] Verify detection does not attempt installation.
-- [ ] Verify detection does not require provider login checks.
+- [x] Add Codex detection adapter.
+- [x] Detect Codex through the `codex` command.
+- [x] Handle opencode detection command failure.
+- [x] Handle opencode detection timeout.
+- [x] Add runtime list API.
+- [x] Add single runtime status API.
+- [x] Add refresh-all API.
+- [x] Add refresh-one-runtime API.
+- [x] Add renderer runtime status page or panel.
+- [x] Add runtime status badges.
+- [x] Add runtime details drawer or panel.
+- [x] Add recommended manual action text.
+- [x] Add Local AI Core unavailable state.
+- [x] Add detection running state.
+- [x] Add no supported local agents installed state.
+- [x] Add diagnostics logging for detection.
+- [x] Verify detection does not attempt installation.
+- [x] Verify detection does not require provider login checks.
 
 ### Phase 2: Workspace And Task Control Center
 
-- [ ] Define workspace registry model.
-- [ ] Add workspace persistence in Local AI Core.
-- [ ] Add workspace add/remove/update flows.
-- [ ] Detect basic Git metadata for workspaces.
-- [ ] Add workspace health summary.
-- [ ] Define task model.
-- [ ] Define task lifecycle statuses.
-- [ ] Define task timeline item types.
+- [ ] Define workspace registry model. Next.
+- [ ] Add workspace persistence in Local AI Core. Next.
+- [ ] Add workspace add/remove/update flows. Next.
+- [ ] Detect basic Git metadata for workspaces. Next.
+- [ ] Add workspace health summary. Next.
+- [ ] Define task model. Next.
+- [ ] Define task lifecycle statuses. Next.
+- [ ] Define task timeline item types. Next.
 - [ ] Persist task records in Local AI Core.
 - [ ] Associate tasks with workspace, runtime, thread, and device.
 - [ ] Add active task list.
@@ -711,14 +716,14 @@ Turn built-in integrations into a stable plugin platform.
 
 ### Documentation Checklist
 
-- [ ] Create `docs/runtime-detection.md`.
+- [x] Create `docs/runtime-detection.md`.
 - [ ] Create `docs/task-model.md`.
 - [ ] Create `docs/security-approval.md`.
 - [ ] Create `docs/mobile-companion.md`.
 - [ ] Create `docs/cross-device-workspaces.md`.
 - [ ] Create `docs/plugin-sdk-plan.md`.
-- [ ] Keep `docs/todo.md` aligned with this development plan.
-- [ ] Add validation commands or manual QA notes to each detailed design doc.
+- [x] Keep `docs/todo.md` aligned with this development plan.
+- [x] Add validation commands or manual QA notes to each detailed design doc.
 
 ## Success Metrics
 
@@ -746,18 +751,51 @@ Turn built-in integrations into a stable plugin platform.
 
 ## Near-Term Backlog
 
-- Draft runtime detection TypeScript types.
-- Inventory current Local AI Core APIs that can host runtime detection.
-- Add opencode detection command research.
-- Design local agent installation status UI states.
+- Define Phase 2 workspace registry contracts.
+- Define Phase 2 task contracts and lifecycle statuses.
+- Add Local AI Core persistence for workspace and task records.
+- Add workspace registry API endpoints.
+- Add task list/detail API endpoints.
+- Connect existing thread/runtime flows to task records.
+- Add dashboard active tasks and waiting-for-user sections.
 - Design task lifecycle states.
 - Design approval request shape.
 - Design device pairing flow.
 - Decide whether the first mobile companion is PWA, React Native, or another
   host.
-- Add documentation for runtime detection limitations.
+- Add direct Claude Code `claude` command detection.
 
 ## Phase 1 Implementation Breakdown
+
+Status: complete for the first shippable runtime detection slice.
+
+Implemented:
+
+- Shared runtime detection result, issue, and recommended action contracts.
+- Local AI Core runtime detection service and persisted store.
+- Startup detection and manual refresh.
+- Runtime list, single runtime, refresh-all, and refresh-one APIs.
+- Runtime detection events for started, completed, failed, and status-changed
+  states.
+- Version and binary path detection for supported command-based runtimes.
+- Timeout and failure handling that keeps a resolved runtime marked installed
+  even when version detection fails.
+- Dashboard runtime status UI with installed, not installed, error, unknown, and
+  checking states.
+
+Validation:
+
+- `pnpm build:electron`
+- `node --test dist-electron/electron/agent-runtime-detector.test.js dist-electron/electron/runtime-detection-service.test.js`
+- `pnpm build:renderer`
+- `pnpm test`
+
+Known Phase 1 follow-ups:
+
+- Direct Claude Code CLI detection through the `claude` command.
+- A true pluggable runtime detection adapter registry. This is intentionally
+  deferred until plugin SDK hardening so Phase 2 can proceed on stable workspace
+  and task primitives.
 
 This phase should be treated as the first shippable product slice. The user
 should be able to open the app and immediately understand whether the current
@@ -970,6 +1008,42 @@ Suggested cases:
 ## Phase 2 Implementation Breakdown
 
 Phase 2 turns runtime visibility into a daily-use agent workstation.
+
+### Phase 2 Preparation Status
+
+Phase 1 has established the runtime status input needed by the control center:
+
+- Runtime detection results are normalized in shared contracts.
+- Local AI Core owns runtime detection state through a service and persisted
+  store.
+- Startup detection, manual refresh, and detection events are available.
+- The dashboard can show installed, missing, errored, unknown, and checking
+  runtime states.
+
+Phase 2 should now add the product objects that runtime status attaches to:
+workspaces and tasks. The first implementation slice should be contracts and
+Local AI Core persistence, then dashboard/workspace/task UI.
+
+Recommended Phase 2 execution order:
+
+1. Add workspace and task contracts in `packages/contracts`.
+2. Add file-backed or SQLite-backed Local AI Core persistence for workspaces and
+   tasks.
+3. Expose workspace registry and task list/detail APIs.
+4. Attach existing threads and runtime choices to task records where possible.
+5. Add dashboard sections for active tasks, waiting-for-user tasks, and recent
+   completions.
+6. Add workspace detail and task detail views.
+
+Phase 2 first-slice acceptance criteria:
+
+- A workspace has a stable id, path, display name, default runtime, Git summary,
+  health summary, and recent task ids.
+- A task has a stable id, workspace id, runtime id, thread id, status, timeline,
+  timestamps, summary, and error fields.
+- Local AI Core can list active tasks, recent tasks, and task detail after an app
+  restart.
+- The dashboard remains useful when no task has run yet.
 
 ### 1. Workspace Registry
 

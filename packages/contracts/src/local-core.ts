@@ -353,6 +353,16 @@ export interface InstalledAgentRuntime {
   error?: string;
 }
 
+export interface RuntimeDetectionListResponse {
+  runtimes: InstalledAgentRuntime[];
+  checking: boolean;
+}
+
+export interface RuntimeDetectionEventBase {
+  runtimeId?: string;
+  detectedAt: string;
+}
+
 export type LocalCorePluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'ui' | 'composite';
 export type LocalCorePluginHealthStatus = 'healthy' | 'degraded' | 'failed';
 export type LocalCorePluginConfigFieldType = 'string' | 'number' | 'boolean' | 'json';
@@ -519,6 +529,10 @@ export interface LocalCoreHealth {
 
 export type LocalCoreEvent =
   | { type: 'runtime.updated'; runtime: DesktopRuntimeStatus }
+  | ({ type: 'runtime.detect.started' } & RuntimeDetectionEventBase)
+  | ({ type: 'runtime.detect.completed'; runtimes: InstalledAgentRuntime[] } & RuntimeDetectionEventBase)
+  | ({ type: 'runtime.detect.failed'; error: string } & RuntimeDetectionEventBase)
+  | { type: 'runtime.status.changed'; runtime: InstalledAgentRuntime }
   | { type: 'thread.updated'; thread: ThreadSummary }
   | { type: 'message.created'; threadId: string; message: ThreadMessage; stream?: DesktopBridgeEvent }
   | { type: 'message.updated'; threadId: string; message: Partial<ThreadMessage>; stream?: DesktopBridgeEvent }

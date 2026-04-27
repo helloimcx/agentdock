@@ -41,6 +41,7 @@ import type {
   ThreadSummary,
   WorkspaceSummary,
   InstalledAgentRuntime,
+  RuntimeDetectionListResponse,
 } from '../../../../packages/contracts/src/index.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
@@ -93,6 +94,7 @@ export interface LocalAiCoreBindings extends EventEmitter {
   getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot>;
   listInstalledAgentRuntimes(): Promise<InstalledAgentRuntime[]>;
   refreshInstalledAgentRuntimes(runtimeId?: string): Promise<InstalledAgentRuntime[]>;
+  isRuntimeDetectionRunning(runtimeId?: string): boolean;
   getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
@@ -195,6 +197,9 @@ export class LocalAiCoreServer {
     this.bindings.on('scheduler-run', (run: ScheduledJobRun) => {
       this.broadcast({ type: 'scheduler.run.updated', run });
     });
+    this.bindings.on('runtime-detection', (event: LocalCoreEvent) => {
+      this.broadcast(event);
+    });
   }
 
   async start() {
@@ -265,11 +270,11 @@ export class LocalAiCoreServer {
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/runtime/agent-runtimes') {
-        json(res, 200, { runtimes: await this.bindings.listInstalledAgentRuntimes() });
+        json(res, 200, await this.runtimeDetectionResponse());
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/runtimes') {
-        json(res, 200, { runtimes: await this.bindings.listInstalledAgentRuntimes() });
+        json(res, 200, await this.runtimeDetectionResponse());
         return;
       }
       if (req.method === 'GET' && path.startsWith('/api/local/v1/runtimes/')) {
@@ -284,12 +289,14 @@ export class LocalAiCoreServer {
         return;
       }
       if (req.method === 'POST' && path === '/api/local/v1/runtimes/refresh') {
-        json(res, 200, { runtimes: await this.bindings.refreshInstalledAgentRuntimes() });
+        const runtimes = await this.bindings.refreshInstalledAgentRuntimes();
+        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning() });
         return;
       }
       if (req.method === 'POST' && path.startsWith('/api/local/v1/runtimes/') && path.endsWith('/refresh')) {
         const runtimeId = decodeURIComponent(path.slice('/api/local/v1/runtimes/'.length, -'/refresh'.length));
-        json(res, 200, { runtimes: await this.bindings.refreshInstalledAgentRuntimes(runtimeId) });
+        const runtimes = await this.bindings.refreshInstalledAgentRuntimes(runtimeId);
+        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning(runtimeId) });
         return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/runtime/config') {
@@ -625,6 +632,13 @@ export class LocalAiCoreServer {
     for (const client of this.sseClients) {
       client.write(payload);
     }
+  }
+
+  private async runtimeDetectionResponse(): Promise<RuntimeDetectionListResponse> {
+    return {
+      runtimes: await this.bindings.listInstalledAgentRuntimes(),
+      checking: this.bindings.isRuntimeDetectionRunning(),
+    };
   }
 
   private findThreadIdFromSessionKey(sessionKey: string) {

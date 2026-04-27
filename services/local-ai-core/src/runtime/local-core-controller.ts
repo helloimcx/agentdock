@@ -46,7 +46,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { SchedulerService } from '../scheduler/scheduler-service.js';
 import type { LocalAiCoreBindings } from './server.js';
-import { detectInstalledAgentRuntimes } from './agent-runtime-detector.js';
+import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 
 export class LocalCoreController extends EventEmitter implements LocalAiCoreBindings {
   private readonly state: LocalCoreRuntimeState;
@@ -57,6 +57,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly scheduler: SchedulerService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
+  private readonly runtimeDetection: RuntimeDetectionService;
   private readonly busUnsubscribers: Array<() => void> = [];
 
   constructor(
@@ -76,6 +77,12 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.channelRuntime = this.runtime.channelRuntime;
     this.weixinChannelRuntime = this.runtime.weixinChannelRuntime;
     this.scheduler = this.runtime.scheduler;
+    this.runtimeDetection = new RuntimeDetectionService({
+      userDataPath,
+      readConfig: async () => (await this.readConfigFile()).parsed,
+      log: (message) => this.handleLog(message),
+      emit: (event) => this.handleRuntimeDetectionEvent(event),
+    });
     this.busUnsubscribers.push(
       this.kernel.context.bus.on('platform.bridge.updated', (event) => {
         this.emit('bridge', event);
@@ -95,6 +102,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   async init() {
     await this.runtime.start();
     await this.emitRuntime();
+    void this.runtimeDetection.refreshOnStartup();
   }
 
   async close() {
@@ -330,22 +338,15 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async listInstalledAgentRuntimes(): Promise<InstalledAgentRuntime[]> {
-    const configFile = await this.readConfigFile();
-    return detectInstalledAgentRuntimes({
-      config: configFile.parsed,
-    });
+    return this.runtimeDetection.list();
   }
 
   async refreshInstalledAgentRuntimes(runtimeId?: string): Promise<InstalledAgentRuntime[]> {
-    const runtimes = await this.listInstalledAgentRuntimes();
-    const filtered = runtimeId
-      ? runtimes.filter((runtime) => runtime.runtimeId === runtimeId || runtime.agentType === runtimeId)
-      : runtimes;
-    this.handleLog(runtimeId
-      ? `Refreshed runtime detection for ${runtimeId}.`
-      : 'Refreshed runtime detection for all runtimes.');
-    this.emit('runtime-detection', filtered);
-    return filtered;
+    return this.runtimeDetection.refresh(runtimeId);
+  }
+
+  isRuntimeDetectionRunning(runtimeId?: string): boolean {
+    return this.runtimeDetection.isChecking(runtimeId);
   }
 
   async getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics> {
@@ -354,6 +355,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {
     return this.workspaceRouter.probeWorkspaceStreaming(workspaceId);
+  }
+
+  private handleRuntimeDetectionEvent(event: RuntimeDetectionEvent) {
+    this.emit('runtime-detection', event);
   }
 
   async listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]> {

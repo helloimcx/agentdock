@@ -19,7 +19,12 @@ import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { listProjects, type ProjectSummary } from '@/api/projects';
-import { listInstalledAgentRuntimes, onRuntimeEvent, refreshInstalledAgentRuntimes } from '@/api/desktop';
+import {
+  listInstalledAgentRuntimes,
+  onRuntimeDetectionEvent,
+  onRuntimeEvent,
+  refreshInstalledAgentRuntimes,
+} from '@/api/desktop';
 import { listWorkspaces } from '../../packages/core-sdk/src';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
 import type { InstalledAgentRuntime } from '../../packages/contracts/src';
@@ -63,6 +68,7 @@ export default function Dashboard() {
   const [agentRuntimes, setAgentRuntimes] = useState<InstalledAgentRuntime[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshingRuntimes, setRefreshingRuntimes] = useState(false);
+  const [runtimeDetectionRunning, setRuntimeDetectionRunning] = useState(false);
   const [error, setError] = useState('');
   const [runtimeError, setRuntimeError] = useState('');
   const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule } = useRuntimeFeatureSupport();
@@ -151,6 +157,7 @@ export default function Dashboard() {
 
   const refreshRuntimes = useCallback(async () => {
     setRefreshingRuntimes(true);
+    setRuntimeDetectionRunning(true);
     setRuntimeError('');
     try {
       setAgentRuntimes(await refreshInstalledAgentRuntimes());
@@ -158,6 +165,7 @@ export default function Dashboard() {
       setRuntimeError(err.message || String(err));
     } finally {
       setRefreshingRuntimes(false);
+      setRuntimeDetectionRunning(false);
     }
   }, []);
 
@@ -168,9 +176,31 @@ export default function Dashboard() {
     const stopRuntime = desktopRuntime ? onRuntimeEvent(() => {
       void fetchData();
     }) : () => {};
+    const stopRuntimeDetection = desktopRuntime ? onRuntimeDetectionEvent((event) => {
+      if (event.type === 'runtime.detect.started') {
+        setRuntimeDetectionRunning(true);
+        return;
+      }
+      if (event.type === 'runtime.detect.completed') {
+        setRuntimeDetectionRunning(false);
+        setAgentRuntimes(event.runtimes);
+        return;
+      }
+      if (event.type === 'runtime.detect.failed') {
+        setRuntimeDetectionRunning(false);
+        setRuntimeError(event.error);
+        return;
+      }
+      if (event.type === 'runtime.status.changed') {
+        setAgentRuntimes((current) => current.map((runtime) =>
+          runtime.runtimeId === event.runtime.runtimeId ? event.runtime : runtime
+        ));
+      }
+    }) : () => {};
     return () => {
       window.removeEventListener('cc:refresh', handler);
       stopRuntime();
+      stopRuntimeDetection();
     };
   }, [desktopRuntime, fetchData]);
 
@@ -218,6 +248,9 @@ export default function Dashboard() {
               <Badge variant={installedAgentRuntimes.length > 0 ? 'success' : 'default'}>
                 {installedAgentRuntimes.length} installed
               </Badge>
+              {runtimeDetectionRunning ? (
+                <Badge variant="info">checking</Badge>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
@@ -276,6 +309,11 @@ export default function Dashboard() {
                     {runtime.version ? <Badge variant="secondary">v{runtime.version}</Badge> : null}
                   </div>
                   <p className="mt-3 text-sm leading-5 text-muted-foreground">{runtime.summary}</p>
+                  {runtime.issues[0] ? (
+                    <p className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-200">
+                      {runtime.issues[0].message}
+                    </p>
+                  ) : null}
                   {runtime.binaryPath || runtime.command ? (
                     <p className="mt-3 truncate rounded-lg bg-black/[0.045] px-2.5 py-2 font-mono text-xs text-muted-foreground dark:bg-white/[0.06]">
                       {runtime.binaryPath || runtime.command}

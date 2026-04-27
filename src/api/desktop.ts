@@ -14,6 +14,7 @@ import type {
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelPairingRequest,
+  LocalCoreEvent,
   LocalCorePairingRequest,
   LocalCorePluginDiagnostics,
   InstalledAgentRuntime,
@@ -56,6 +57,7 @@ import {
   listLarkPendingPairings as listCoreLarkPendingPairings,
   startCoreService,
   stopCoreService,
+  subscribeEvents,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   getWeixinQrCode as getCoreWeixinQrCode,
   checkWeixinQrCodeStatus as checkCoreWeixinQrCodeStatus,
@@ -105,6 +107,7 @@ type DesktopProvider = {
   listLarkAuthorizedUsers: (workspaceId?: string) => Promise<LocalCoreAuthorizedUser[]>;
   probeWorkspaceStreaming: (workspaceId: string) => Promise<WorkspaceStreamingProbeResult>;
   onRuntimeEvent: (listener: (runtime: DesktopRuntimeStatus) => void) => () => void;
+  onRuntimeDetectionEvent: (listener: (event: LocalCoreEvent) => void) => () => void;
   onBridgeEvent: (listener: (event: DesktopBridgeEvent) => void) => () => void;
 };
 
@@ -157,6 +160,11 @@ const electronProvider: DesktopProvider = {
   listLarkAuthorizedUsers: (workspaceId?: string) => requireDesktopBridge().listLarkAuthorizedUsers(workspaceId),
   probeWorkspaceStreaming: (workspaceId: string) => requireDesktopBridge().probeWorkspaceStreaming(workspaceId),
   onRuntimeEvent: (listener) => requireDesktopBridge().onRuntimeEvent(listener),
+  onRuntimeDetectionEvent: (listener) => subscribeEvents((event) => {
+    if (event.type.startsWith('runtime.detect.') || event.type === 'runtime.status.changed') {
+      listener(event);
+    }
+  }),
   onBridgeEvent: (listener) => onBridgeUpdated(listener),
 };
 
@@ -204,6 +212,11 @@ const localCoreProvider: DesktopProvider = {
   listLarkAuthorizedUsers: (workspaceId?: string) => listCoreLarkAuthorizedUsers(workspaceId).then((result) => result.users),
   probeWorkspaceStreaming: (workspaceId: string) => probeCoreWorkspaceStreaming(workspaceId),
   onRuntimeEvent: (listener) => onRuntimeUpdated(listener),
+  onRuntimeDetectionEvent: (listener) => subscribeEvents((event) => {
+    if (event.type.startsWith('runtime.detect.') || event.type === 'runtime.status.changed') {
+      listener(event);
+    }
+  }),
   onBridgeEvent: (listener) => onBridgeUpdated(listener),
 };
 
@@ -305,4 +318,6 @@ export const listLarkAuthorizedUsers = (workspaceId?: string): Promise<LocalCore
 export const probeWorkspaceStreaming = (workspaceId: string): Promise<WorkspaceStreamingProbeResult> =>
   requireProvider().probeWorkspaceStreaming(workspaceId);
 export const onRuntimeEvent = (listener: (runtime: DesktopRuntimeStatus) => void) => requireProvider().onRuntimeEvent(listener);
+export const onRuntimeDetectionEvent = (listener: (event: LocalCoreEvent) => void) =>
+  requireProvider().onRuntimeDetectionEvent(listener);
 export const onBridgeEvent = (listener: (event: DesktopBridgeEvent) => void) => requireProvider().onBridgeEvent(listener);

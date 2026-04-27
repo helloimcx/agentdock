@@ -37,6 +37,7 @@ import type {
   ThreadSummary,
   WorkspaceSummary,
   InstalledAgentRuntime,
+  RuntimeDetectionListResponse,
 } from '../../contracts/src';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
@@ -98,6 +99,10 @@ function ensureEventSource() {
   };
   [
     'runtime.updated',
+    'runtime.detect.started',
+    'runtime.detect.completed',
+    'runtime.detect.failed',
+    'runtime.status.changed',
     'thread.updated',
     'message.created',
     'message.updated',
@@ -170,11 +175,11 @@ export async function getCoreLogs(limit?: number) {
 }
 
 export async function listInstalledAgentRuntimes() {
-  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('GET', '/runtime/agent-runtimes');
+  return coreRequest<RuntimeDetectionListResponse>('GET', '/runtime/agent-runtimes');
 }
 
 export async function listRuntimeDetections() {
-  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('GET', '/runtimes');
+  return coreRequest<RuntimeDetectionListResponse>('GET', '/runtimes');
 }
 
 export async function getRuntimeDetection(runtimeId: string) {
@@ -182,11 +187,11 @@ export async function getRuntimeDetection(runtimeId: string) {
 }
 
 export async function refreshRuntimeDetections() {
-  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('POST', '/runtimes/refresh');
+  return coreRequest<RuntimeDetectionListResponse>('POST', '/runtimes/refresh');
 }
 
 export async function refreshRuntimeDetection(runtimeId: string) {
-  return coreRequest<{ runtimes: InstalledAgentRuntime[] }>('POST', `/runtimes/${encodeURIComponent(runtimeId)}/refresh`);
+  return coreRequest<RuntimeDetectionListResponse>('POST', `/runtimes/${encodeURIComponent(runtimeId)}/refresh`);
 }
 
 export async function readCoreConfigFile() {
