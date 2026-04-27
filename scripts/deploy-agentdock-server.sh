@@ -8,12 +8,26 @@ if ! [[ "${version}" =~ ^[0-9]+[.][0-9]+[.][0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; the
 fi
 
 package="@kafca/agentdock@${version}"
-for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do
+for attempt in $(seq 1 60); do
+  if npm view "${package}" version >/dev/null 2>&1; then
+    break
+  fi
+
+  if [[ "${attempt}" == "60" ]]; then
+    echo "Package ${package} is not visible from npm after waiting" >&2
+    exit 1
+  fi
+
+  echo "Waiting for ${package} to become visible on npm (${attempt}/60)"
+  sleep 10
+done
+
+for attempt in 1 2 3; do
   if npm install -g "${package}"; then
     break
   fi
 
-  if [[ "${attempt}" == "18" ]]; then
+  if [[ "${attempt}" == "3" ]]; then
     exit 1
   fi
 
