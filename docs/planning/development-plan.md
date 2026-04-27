@@ -34,6 +34,13 @@ on the current machine.
 
 ## Phase 0: Product And Architecture Baseline
 
+Status: Complete. Baseline docs live in:
+
+- `docs/product/product-baseline.md`
+- `docs/product/glossary.md`
+- `docs/architecture/state-ownership.md`
+- `docs/architecture/runtime-installation-boundary.md`
+
 ### Goal
 
 Turn the product direction into a shared implementation baseline.
@@ -542,17 +549,25 @@ Turn built-in integrations into a stable plugin platform.
 
 ### Phase 0: Product And Architecture Baseline
 
-- [ ] Confirm the one-sentence product positioning.
-- [ ] Finalize user-facing terminology for runtimes, workspaces, tasks, devices,
+- [x] Confirm the one-sentence product positioning.
+  - Documented in `docs/product/product-baseline.md`.
+- [x] Finalize user-facing terminology for runtimes, workspaces, tasks, devices,
   plugins, approvals, and Local AI Core.
-- [ ] Define which state belongs in Local AI Core, renderer, Electron, and shared
+  - Documented in `docs/product/glossary.md`.
+- [x] Define which state belongs in Local AI Core, renderer, Electron, and shared
   contracts.
-- [ ] Draft runtime detection contracts.
-- [ ] Draft task status contracts.
-- [ ] Draft workspace registry contracts.
-- [ ] Draft device registry contracts.
-- [ ] Document the future runtime installation boundary without implementing
+  - Documented in `docs/architecture/state-ownership.md`.
+- [x] Draft runtime detection contracts.
+  - Implemented in shared contracts and documented in `docs/features/runtime-detection.md`.
+- [x] Draft task status contracts.
+  - Implemented in shared contracts and documented in `docs/features/workspace-task-model.md`.
+- [x] Draft workspace registry contracts.
+  - Implemented in shared contracts and documented in `docs/features/workspace-task-model.md`.
+- [x] Draft device registry contracts.
+  - Drafted in `docs/features/device-workspace-registry.md`.
+- [x] Document the future runtime installation boundary without implementing
   installation.
+  - Documented in `docs/architecture/runtime-installation-boundary.md`.
 
 ### Phase 1: Local Agent Installation Detection Only
 
@@ -716,13 +731,18 @@ Turn built-in integrations into a stable plugin platform.
 
 ### Documentation Checklist
 
-- [x] Create `docs/runtime-detection.md`.
-- [x] Create `docs/task-model.md`.
-- [ ] Create `docs/security-approval.md`.
-- [ ] Create `docs/mobile-companion.md`.
-- [ ] Create `docs/cross-device-workspaces.md`.
-- [ ] Create `docs/plugin-sdk-plan.md`.
-- [x] Keep `docs/todo.md` aligned with this development plan.
+- [x] Create `docs/product/product-baseline.md`.
+- [x] Create `docs/product/glossary.md`.
+- [x] Create `docs/architecture/state-ownership.md`.
+- [x] Create `docs/architecture/runtime-installation-boundary.md`.
+- [x] Create `docs/features/runtime-detection.md`.
+- [x] Create `docs/features/workspace-task-model.md`.
+- [x] Create `docs/features/device-workspace-registry.md`.
+- [ ] Create `docs/features/security-approval.md`.
+- [ ] Create `docs/features/mobile-companion.md`.
+- [ ] Create `docs/features/cross-device-workspaces.md`.
+- [ ] Create `docs/features/plugin-sdk-plan.md`.
+- [x] Keep `docs/planning/todo.md` aligned with this development plan.
 - [x] Add validation commands or manual QA notes to each detailed design doc.
 
 ## Success Metrics
@@ -1376,12 +1396,17 @@ knowledge plugins can build on this foundation.
 
 As implementation begins, split detailed designs into smaller focused docs:
 
-- `docs/runtime-detection.md`
-- `docs/task-model.md`
-- `docs/security-approval.md`
-- `docs/mobile-companion.md`
-- `docs/cross-device-workspaces.md`
-- `docs/plugin-sdk-plan.md`
+- `docs/product/product-baseline.md`
+- `docs/product/glossary.md`
+- `docs/architecture/state-ownership.md`
+- `docs/architecture/runtime-installation-boundary.md`
+- `docs/features/runtime-detection.md`
+- `docs/features/workspace-task-model.md`
+- `docs/features/device-workspace-registry.md`
+- `docs/features/security-approval.md`
+- `docs/features/mobile-companion.md`
+- `docs/features/cross-device-workspaces.md`
+- `docs/features/plugin-sdk-plan.md`
 
 Each doc should include:
 

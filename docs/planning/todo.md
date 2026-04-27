@@ -1,4 +1,6 @@
 # TODO
+- [x] Phase 0 文档基线：产品一句话、术语表、状态归属、runtime installation 预留边界。
+- [x] docs 目录按 product / architecture / features / operations / planning / reports 分类整理。
 - [x] 支持显示版本号
 - [x] 支持显示思考过程
 - [x] 没有配置im的时候也要支持定时任务
