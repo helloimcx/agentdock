@@ -6,9 +6,19 @@ import type {
   AgentTaskListQuery,
   AgentTaskListResponse,
   AgentTaskUpdateInput,
+  ApprovalRequest,
+  ApprovalRequestCreateInput,
+  ApprovalRequestListQuery,
+  ApprovalRequestListResponse,
+  ApprovalRequestResolveInput,
+  AuditEventListQuery,
+  AuditEventListResponse,
+  CommandRiskClassification,
   DesktopBridgeEvent,
   LocalCoreCapabilities,
   ScheduledJob,
+  WorkspaceSecuritySettings,
+  WorkspaceSecuritySettingsUpdateInput,
   DesktopProjectConfig,
   ThreadDetail,
   ThreadSummary,
@@ -22,6 +32,7 @@ import type {
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { decodeThreadId } from '../thread/workspace-thread-id.js';
+import { classifyCommandRisk } from '../security/command-risk.js';
 import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 
@@ -173,6 +184,51 @@ export class WorkspaceRouter {
 
   updateAgentTask(taskId: string, input: AgentTaskUpdateInput): AgentTask {
     return this.store.updateAgentTask(taskId, input);
+  }
+
+  getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {
+    return this.store.getWorkspaceSecuritySettings(workspaceId);
+  }
+
+  updateWorkspaceSecuritySettings(workspaceId: string, input: WorkspaceSecuritySettingsUpdateInput): WorkspaceSecuritySettings {
+    return this.store.updateWorkspaceSecuritySettings(workspaceId, input);
+  }
+
+  classifyCommand(command: string, workspaceId?: string): CommandRiskClassification {
+    const classification = classifyCommandRisk(command);
+    this.store.createAuditEvent({
+      type: 'command.classified',
+      workspaceId,
+      actor: 'local',
+      summary: `Command classified as ${classification.riskLevel}.`,
+      riskLevel: classification.riskLevel,
+      metadata: { classification: { ...classification } },
+    });
+    return classification;
+  }
+
+  listApprovalRequests(query: ApprovalRequestListQuery = {}): ApprovalRequestListResponse {
+    return this.store.listApprovalRequests(query);
+  }
+
+  getApprovalRequest(approvalId: string): ApprovalRequest {
+    const approval = this.store.getApprovalRequest(approvalId);
+    if (!approval) {
+      throw new Error(`Approval not found: ${approvalId}`);
+    }
+    return approval;
+  }
+
+  createApprovalRequest(input: ApprovalRequestCreateInput): ApprovalRequest {
+    return this.store.createApprovalRequest(input);
+  }
+
+  resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): ApprovalRequest {
+    return this.store.resolveApprovalRequest(approvalId, input);
+  }
+
+  listAuditEvents(query: AuditEventListQuery = {}): AuditEventListResponse {
+    return this.store.listAuditEvents(query);
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {

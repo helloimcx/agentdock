@@ -18,6 +18,7 @@ This directory is organized by documentation purpose.
 - [Runtime Detection](features/runtime-detection.md): Phase 1 runtime detection behavior and APIs.
 - [Workspace Task Model](features/workspace-task-model.md): Phase 2 workspace registry and task model.
 - [Device And Workspace Registry](features/device-workspace-registry.md): Phase 0 registry ownership and device contract draft.
+- [Security, Approval, And Audit](features/security-approval.md): Phase 3 permission model, approvals, command risk, and audit log.
 
 ## Operations
 

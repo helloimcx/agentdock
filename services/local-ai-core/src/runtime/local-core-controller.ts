@@ -43,9 +43,19 @@ import type {
   AgentTaskListQuery,
   AgentTaskListResponse,
   AgentTaskUpdateInput,
+  ApprovalRequest,
+  ApprovalRequestCreateInput,
+  ApprovalRequestListQuery,
+  ApprovalRequestListResponse,
+  ApprovalRequestResolveInput,
+  AuditEventListQuery,
+  AuditEventListResponse,
+  CommandRiskClassification,
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
+  WorkspaceSecuritySettings,
+  WorkspaceSecuritySettingsUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime, KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
@@ -236,6 +246,38 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async updateAgentTask(taskId: string, input: AgentTaskUpdateInput): Promise<AgentTask> {
     return this.workspaceRouter.updateAgentTask(taskId, input);
+  }
+
+  async getWorkspaceSecuritySettings(workspaceId: string): Promise<WorkspaceSecuritySettings> {
+    return this.workspaceRouter.getWorkspaceSecuritySettings(workspaceId);
+  }
+
+  async updateWorkspaceSecuritySettings(workspaceId: string, input: WorkspaceSecuritySettingsUpdateInput): Promise<WorkspaceSecuritySettings> {
+    return this.workspaceRouter.updateWorkspaceSecuritySettings(workspaceId, input);
+  }
+
+  async classifyCommand(command: string, workspaceId?: string): Promise<CommandRiskClassification> {
+    return this.workspaceRouter.classifyCommand(command, workspaceId);
+  }
+
+  async listApprovalRequests(query: ApprovalRequestListQuery = {}): Promise<ApprovalRequestListResponse> {
+    return this.workspaceRouter.listApprovalRequests(query);
+  }
+
+  async getApprovalRequest(approvalId: string): Promise<ApprovalRequest> {
+    return this.workspaceRouter.getApprovalRequest(approvalId);
+  }
+
+  async createApprovalRequest(input: ApprovalRequestCreateInput): Promise<ApprovalRequest> {
+    return this.workspaceRouter.createApprovalRequest(input);
+  }
+
+  async resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): Promise<ApprovalRequest> {
+    return this.workspaceRouter.resolveApprovalRequest(approvalId, input);
+  }
+
+  async listAuditEvents(query: AuditEventListQuery = {}): Promise<AuditEventListResponse> {
+    return this.workspaceRouter.listAuditEvents(query);
   }
 
   async listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]> {

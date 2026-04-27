@@ -637,25 +637,39 @@ Turn built-in integrations into a stable plugin platform.
 
 ### Phase 3: Security, Approval, And Audit
 
-- [ ] Define permission scopes.
-- [ ] Define permission levels: `deny`, `ask`, and `allow`.
-- [ ] Add workspace security settings.
-- [ ] Add approval request contract.
-- [ ] Add approval persistence.
-- [ ] Add desktop approval UI.
-- [ ] Add approval resolve flow.
-- [ ] Add command risk classification baseline.
-- [ ] Add high-risk command rules.
-- [ ] Add medium-risk command rules.
-- [ ] Add audit event contract.
-- [ ] Persist audit events.
-- [ ] Add audit log UI.
-- [ ] Add secret redaction baseline for logs.
-- [ ] Add permission change audit events.
-- [ ] Add task lifecycle audit events.
-- [ ] Add approval audit events.
-- [ ] Research checkpoint and rollback options.
-- [ ] Implement the safest initial rollback/checkpoint strategy.
+- [x] Define permission scopes.
+  - Documented in `docs/features/security-approval.md`.
+- [x] Define permission levels: `deny`, `ask`, and `allow`.
+  - Documented in `docs/features/security-approval.md`.
+- [x] Add workspace security settings.
+  - Persisted through `workspace_security_settings`.
+- [x] Add approval request contract.
+  - Implemented in `packages/contracts/src/local-core.ts`.
+- [x] Add approval persistence.
+  - Persisted through `approval_requests`.
+- [x] Add desktop approval UI.
+  - Thread permission cards remain the interactive approval surface; Dashboard adds pending approval overview.
+- [x] Add approval resolve flow.
+  - ACP permission responses resolve approval records.
+- [x] Add command risk classification baseline.
+  - Implemented in `services/local-ai-core/src/security/command-risk.ts`.
+- [x] Add high-risk command rules.
+- [x] Add medium-risk command rules.
+- [x] Add audit event contract.
+  - Implemented in `packages/contracts/src/local-core.ts`.
+- [x] Persist audit events.
+  - Persisted through `audit_events`.
+- [x] Add audit log UI.
+  - Dashboard adds recent audit overview.
+- [x] Add secret redaction baseline for logs.
+  - Applied to task logs, approval text, and audit summaries.
+- [x] Add permission change audit events.
+- [x] Add task lifecycle audit events.
+- [x] Add approval audit events.
+- [x] Research checkpoint and rollback options.
+  - Documented in `docs/features/security-approval.md`.
+- [x] Implement the safest initial rollback/checkpoint strategy.
+  - Safest initial strategy is no automatic rollback yet; defer to VCS-aware checkpoints once command execution guards can map file changes reliably.
 
 ### Phase 4: Mobile Companion MVP
 
@@ -738,7 +752,7 @@ Turn built-in integrations into a stable plugin platform.
 - [x] Create `docs/features/runtime-detection.md`.
 - [x] Create `docs/features/workspace-task-model.md`.
 - [x] Create `docs/features/device-workspace-registry.md`.
-- [ ] Create `docs/features/security-approval.md`.
+- [x] Create `docs/features/security-approval.md`.
 - [ ] Create `docs/features/mobile-companion.md`.
 - [ ] Create `docs/features/cross-device-workspaces.md`.
 - [ ] Create `docs/features/plugin-sdk-plan.md`.

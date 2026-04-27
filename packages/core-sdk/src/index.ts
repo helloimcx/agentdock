@@ -43,9 +43,19 @@ import type {
   AgentTaskListQuery,
   AgentTaskListResponse,
   AgentTaskUpdateInput,
+  ApprovalRequest,
+  ApprovalRequestCreateInput,
+  ApprovalRequestListQuery,
+  ApprovalRequestListResponse,
+  ApprovalRequestResolveInput,
+  AuditEventListQuery,
+  AuditEventListResponse,
+  CommandRiskClassification,
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
+  WorkspaceSecuritySettings,
+  WorkspaceSecuritySettingsUpdateInput,
 } from '../../contracts/src';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
@@ -347,6 +357,51 @@ export async function createAgentTask(input: AgentTaskCreateInput) {
 
 export async function updateAgentTask(taskId: string, input: AgentTaskUpdateInput) {
   return coreRequest<AgentTask>('PATCH', `/tasks/${encodeURIComponent(taskId)}`, input);
+}
+
+export async function getWorkspaceSecuritySettings(workspaceId: string) {
+  return coreRequest<WorkspaceSecuritySettings>('GET', `/workspace-security/${encodeURIComponent(workspaceId)}`);
+}
+
+export async function updateWorkspaceSecuritySettings(workspaceId: string, input: WorkspaceSecuritySettingsUpdateInput) {
+  return coreRequest<WorkspaceSecuritySettings>('PATCH', `/workspace-security/${encodeURIComponent(workspaceId)}`, input);
+}
+
+export async function classifyCommand(command: string, workspaceId?: string) {
+  return coreRequest<CommandRiskClassification>('POST', '/security/command-risk', { command, workspaceId });
+}
+
+export async function listApprovalRequests(query: ApprovalRequestListQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.workspaceId) params.set('workspace_id', query.workspaceId);
+  if (query.taskId) params.set('task_id', query.taskId);
+  if (query.status) params.set('status', Array.isArray(query.status) ? query.status.join(',') : query.status);
+  if (query.limit) params.set('limit', String(query.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return coreRequest<ApprovalRequestListResponse>('GET', `/approvals${suffix}`);
+}
+
+export async function getApprovalRequest(approvalId: string) {
+  return coreRequest<ApprovalRequest>('GET', `/approvals/${encodeURIComponent(approvalId)}`);
+}
+
+export async function createApprovalRequest(input: ApprovalRequestCreateInput) {
+  return coreRequest<ApprovalRequest>('POST', '/approvals', input);
+}
+
+export async function resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput) {
+  return coreRequest<ApprovalRequest>('POST', `/approvals/${encodeURIComponent(approvalId)}/resolve`, input);
+}
+
+export async function listAuditEvents(query: AuditEventListQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.workspaceId) params.set('workspace_id', query.workspaceId);
+  if (query.taskId) params.set('task_id', query.taskId);
+  if (query.approvalId) params.set('approval_id', query.approvalId);
+  if (query.type) params.set('type', Array.isArray(query.type) ? query.type.join(',') : query.type);
+  if (query.limit) params.set('limit', String(query.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return coreRequest<AuditEventListResponse>('GET', `/audit-events${suffix}`);
 }
 
 export async function listScheduledJobs(workspaceId?: string) {

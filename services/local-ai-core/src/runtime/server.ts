@@ -47,9 +47,19 @@ import type {
   AgentTaskListQuery,
   AgentTaskListResponse,
   AgentTaskUpdateInput,
+  ApprovalRequest,
+  ApprovalRequestCreateInput,
+  ApprovalRequestListQuery,
+  ApprovalRequestListResponse,
+  ApprovalRequestResolveInput,
+  AuditEventListQuery,
+  AuditEventListResponse,
+  CommandRiskClassification,
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
+  WorkspaceSecuritySettings,
+  WorkspaceSecuritySettingsUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
@@ -72,6 +82,14 @@ export interface LocalAiCoreBindings extends EventEmitter {
   getAgentTask(taskId: string): Promise<AgentTask>;
   createAgentTask(input: AgentTaskCreateInput): Promise<AgentTask>;
   updateAgentTask(taskId: string, input: AgentTaskUpdateInput): Promise<AgentTask>;
+  getWorkspaceSecuritySettings(workspaceId: string): Promise<WorkspaceSecuritySettings>;
+  updateWorkspaceSecuritySettings(workspaceId: string, input: WorkspaceSecuritySettingsUpdateInput): Promise<WorkspaceSecuritySettings>;
+  classifyCommand(command: string, workspaceId?: string): Promise<CommandRiskClassification>;
+  listApprovalRequests(query?: ApprovalRequestListQuery): Promise<ApprovalRequestListResponse>;
+  getApprovalRequest(approvalId: string): Promise<ApprovalRequest>;
+  createApprovalRequest(input: ApprovalRequestCreateInput): Promise<ApprovalRequest>;
+  resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): Promise<ApprovalRequest>;
+  listAuditEvents(query?: AuditEventListQuery): Promise<AuditEventListResponse>;
   listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]>;
   getScheduledJob(jobId: string): Promise<ScheduledJob>;
   createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob>;
@@ -475,6 +493,65 @@ export class LocalAiCoreServer {
           json(res, 200, await this.bindings.deleteWorkspaceRegistryEntry(workspaceId));
           return;
         }
+      }
+      if (path.startsWith('/api/local/v1/workspace-security/')) {
+        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/workspace-security/'.length));
+        if (req.method === 'GET') {
+          json(res, 200, await this.bindings.getWorkspaceSecuritySettings(workspaceId));
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.updateWorkspaceSecuritySettings(workspaceId, body as unknown as WorkspaceSecuritySettingsUpdateInput));
+          return;
+        }
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/security/command-risk') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.classifyCommand(String(body.command || ''), String(body.workspaceId || '') || undefined));
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/approvals') {
+        const statusParam = url.searchParams.get('status') || '';
+        const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as ApprovalRequestListQuery['status'] : undefined;
+        json(res, 200, await this.bindings.listApprovalRequests({
+          workspaceId: url.searchParams.get('workspace_id') || undefined,
+          taskId: url.searchParams.get('task_id') || undefined,
+          status,
+          limit: Number(url.searchParams.get('limit') || '50'),
+        }));
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/approvals') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createApprovalRequest(body as unknown as ApprovalRequestCreateInput));
+        return;
+      }
+      if (path.startsWith('/api/local/v1/approvals/')) {
+        const suffix = path.slice('/api/local/v1/approvals/'.length);
+        if (req.method === 'POST' && suffix.endsWith('/resolve')) {
+          const approvalId = decodeURIComponent(suffix.slice(0, -'/resolve'.length));
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.resolveApprovalRequest(approvalId, body as unknown as ApprovalRequestResolveInput));
+          return;
+        }
+        if (req.method === 'GET') {
+          const approvalId = decodeURIComponent(suffix);
+          json(res, 200, await this.bindings.getApprovalRequest(approvalId));
+          return;
+        }
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/audit-events') {
+        const typeParam = url.searchParams.get('type') || '';
+        const type = typeParam ? typeParam.split(',').map((item) => item.trim()).filter(Boolean) as AuditEventListQuery['type'] : undefined;
+        json(res, 200, await this.bindings.listAuditEvents({
+          workspaceId: url.searchParams.get('workspace_id') || undefined,
+          taskId: url.searchParams.get('task_id') || undefined,
+          approvalId: url.searchParams.get('approval_id') || undefined,
+          type,
+          limit: Number(url.searchParams.get('limit') || '50'),
+        }));
+        return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/tasks') {
         const statusParam = url.searchParams.get('status') || '';

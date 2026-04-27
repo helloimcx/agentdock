@@ -134,6 +134,54 @@ export type LocalAgentTaskRow = {
   metadata_json: string;
 };
 
+export type LocalWorkspaceSecuritySettingsRow = {
+  workspace_id: string;
+  permissions_json: string;
+  allow_paths_json: string;
+  deny_paths_json: string;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type LocalApprovalRequestRow = {
+  id: string;
+  workspace_id: string;
+  task_id: string | null;
+  thread_id: string | null;
+  run_id: string | null;
+  device_id: string;
+  kind: string;
+  status: string;
+  risk_level: string;
+  title: string;
+  description: string;
+  requested_action: string;
+  command: string | null;
+  scopes_json: string;
+  options_json: string;
+  requested_by: string | null;
+  resolved_by: string | null;
+  resolution: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  expires_at: string | null;
+  metadata_json: string;
+};
+
+export type LocalAuditEventRow = {
+  id: string;
+  type: string;
+  workspace_id: string | null;
+  task_id: string | null;
+  approval_id: string | null;
+  actor: string | null;
+  summary: string;
+  risk_level: string | null;
+  created_at: string;
+  metadata_json: string;
+};
+
 export type LocalPlatformPairingRow = {
   code: string;
   workspace_id: string;
@@ -170,6 +218,7 @@ export type LocalPlatformThreadBindingRow = {
 
 export type RunningPermissionRequest = {
   requestId: number | string;
+  approvalId?: string;
   toolTitle?: string;
   isSchedulerAdd?: boolean;
   options: Array<{

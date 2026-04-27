@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Server,
   Settings,
+  ShieldCheck,
   Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -26,9 +27,9 @@ import {
   onRuntimeEvent,
   refreshInstalledAgentRuntimes,
 } from '@/api/desktop';
-import { listAgentTasks, listWorkspaces } from '../../packages/core-sdk/src';
+import { listAgentTasks, listAuditEvents, listApprovalRequests, listWorkspaces } from '../../packages/core-sdk/src';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
-import type { AgentTask, InstalledAgentRuntime } from '../../packages/contracts/src';
+import type { AgentTask, ApprovalRequest, AuditEvent, InstalledAgentRuntime } from '../../packages/contracts/src';
 
 interface QuickActionProps {
   title: string;
@@ -117,6 +118,79 @@ function TaskPanel({
   );
 }
 
+function ApprovalPanel({ approvals }: { approvals: ApprovalRequest[] }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">待审批</h2>
+            <p className="mt-1 text-sm text-muted-foreground">高风险操作会在这里等待确认或拒绝。</p>
+          </div>
+          <Badge variant={approvals.length > 0 ? 'warning' : 'secondary'}>{approvals.length}</Badge>
+        </div>
+      </div>
+      {approvals.length === 0 ? (
+        <div className="p-5">
+          <EmptyState message="暂无待审批操作" icon={ShieldCheck} />
+        </div>
+      ) : (
+        <div className="divide-y divide-black/[0.08] dark:divide-white/[0.07]">
+          {approvals.map((approval) => (
+            <div key={approval.approvalId} className="px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{approval.title}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {approval.workspaceId} · {approval.kind}
+                  </p>
+                </div>
+                <Badge variant={approval.riskLevel === 'high' ? 'danger' : 'warning'}>{approval.riskLevel}</Badge>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{approval.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function AuditPanel({ events }: { events: AuditEvent[] }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
+        <h2 className="text-base font-semibold text-foreground">审计记录</h2>
+        <p className="mt-1 text-sm text-muted-foreground">最近的任务、审批和权限事件。</p>
+      </div>
+      {events.length === 0 ? (
+        <div className="p-5">
+          <EmptyState message="暂无审计记录" icon={ShieldCheck} />
+        </div>
+      ) : (
+        <div className="divide-y divide-black/[0.08] dark:divide-white/[0.07]">
+          {events.map((event) => (
+            <div key={event.auditId} className="px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{event.summary}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {event.type} · {event.actor || 'system'}
+                  </p>
+                </div>
+                {event.riskLevel ? <Badge variant={event.riskLevel === 'high' ? 'danger' : 'secondary'}>{event.riskLevel}</Badge> : null}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {new Date(event.createdAt).toLocaleString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -124,6 +198,8 @@ export default function Dashboard() {
   const [activeTasks, setActiveTasks] = useState<AgentTask[]>([]);
   const [waitingTasks, setWaitingTasks] = useState<AgentTask[]>([]);
   const [recentTasks, setRecentTasks] = useState<AgentTask[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshingRuntimes, setRefreshingRuntimes] = useState(false);
   const [runtimeDetectionRunning, setRuntimeDetectionRunning] = useState(false);
@@ -192,9 +268,15 @@ export default function Dashboard() {
           listAgentTasks({ status: 'waiting_for_user', limit: 6 }),
           listAgentTasks({ status: ['completed', 'failed', 'cancelled'], limit: 6 }),
         ]);
+        const [approvalData, auditData] = await Promise.all([
+          listApprovalRequests({ status: 'pending', limit: 6 }),
+          listAuditEvents({ limit: 6 }),
+        ]);
         setActiveTasks(activeTaskData.tasks || []);
         setWaitingTasks(waitingTaskData.tasks || []);
         setRecentTasks(recentTaskData.tasks || []);
+        setPendingApprovals(approvalData.approvals || []);
+        setAuditEvents(auditData.events || []);
         setProjects((workspaceData.workspaces || []).map((workspace) => ({
           name: workspace.name,
           agent_type: workspace.agentType,
@@ -217,6 +299,8 @@ export default function Dashboard() {
       setActiveTasks([]);
       setWaitingTasks([]);
       setRecentTasks([]);
+      setPendingApprovals([]);
+      setAuditEvents([]);
     } catch (err: any) {
       setError(err.message || String(err));
     } finally {
@@ -424,6 +508,13 @@ export default function Dashboard() {
             tasks={recentTasks}
             empty="暂无最近任务"
           />
+        </section>
+      ) : null}
+
+      {desktopRuntime ? (
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <ApprovalPanel approvals={pendingApprovals} />
+          <AuditPanel events={auditEvents} />
         </section>
       ) : null}
 

@@ -15,6 +15,7 @@ import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpSessionCoordinator } from './local-core-acp-session-coordinator.js';
 import { LocalCoreAcpResponseProcessor } from './local-core-acp-response-processor.js';
+import { classifyCommandRisk } from '../security/command-risk.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -70,6 +71,36 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
             status: status === 'awaiting_input' ? 'waiting_for_user' : 'running',
           });
         }
+      },
+      createApprovalRequest: ({ threadId, runId, title, description, command, options }) => {
+        const row = this.options.store.getThreadRow(threadId);
+        if (!row) {
+          return undefined;
+        }
+        const task = this.options.store.getAgentTaskByRunId(runId);
+        const classification = classifyCommandRisk(command || description || title);
+        const approval = this.options.store.createApprovalRequest({
+          workspaceId: row.workspace_id,
+          taskId: task?.taskId,
+          threadId,
+          runId,
+          deviceId: 'local',
+          kind: classification.scopes.includes('git.modify') ? 'git' : 'command',
+          riskLevel: classification.riskLevel,
+          title,
+          description,
+          requestedAction: command || description || title,
+          command,
+          scopes: classification.scopes,
+          options: options.map((option) => ({
+            optionId: option.optionId,
+            label: option.name || option.optionId,
+            action: option.normalizedAction === 'deny' ? 'reject' : 'approve',
+          })),
+          requestedBy: 'agent',
+          metadata: { classification },
+        });
+        return approval.approvalId;
       },
       sendRaw: (session, payload) => this.transport.sendRaw(session, payload),
     });
@@ -209,6 +240,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     });
     if (!accepted) {
       throw new Error(session.closeReason || 'ACP session is not writable');
+    }
+    if (pendingPermission.approvalId) {
+      this.options.store.resolveApprovalRequest(pendingPermission.approvalId, {
+        status: matched.normalizedAction === 'deny' ? 'rejected' : 'approved',
+        resolvedBy: 'local',
+        resolution: matched.name || matched.optionId,
+      });
     }
     session.pendingPermissionByRun.delete(session.currentRunId);
     this.emitBridgeEvent({

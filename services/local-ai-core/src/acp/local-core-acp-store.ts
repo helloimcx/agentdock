@@ -17,6 +17,19 @@ import type {
   AgentTaskListResponse,
   AgentTaskStatus,
   AgentTaskUpdateInput,
+  ApprovalRequest,
+  ApprovalRequestCreateInput,
+  ApprovalRequestListQuery,
+  ApprovalRequestListResponse,
+  ApprovalRequestResolveInput,
+  AuditEvent,
+  AuditEventListQuery,
+  AuditEventListResponse,
+  AuditEventType,
+  SecurityPermissionLevel,
+  SecurityPermissionScope,
+  WorkspaceSecuritySettings,
+  WorkspaceSecuritySettingsUpdateInput,
   WorkspaceGitSummary,
   WorkspaceHealthSummary,
   WorkspaceRegistryCreateInput,
@@ -34,6 +47,9 @@ import type {
   LocalRunRow,
   LocalThreadRow,
   LocalAgentTaskRow,
+  LocalApprovalRequestRow,
+  LocalAuditEventRow,
+  LocalWorkspaceSecuritySettingsRow,
   LocalWorkspaceRegistryRow,
 } from '../router/workspace-router-types.js';
 import { normalizeMessageContent } from '../thread/workspace-thread-mappers.js';
@@ -195,6 +211,58 @@ export class LocalCoreAcpStore {
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_workspace_updated ON agent_tasks (workspace_id, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_status_updated ON agent_tasks (status, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_run ON agent_tasks (run_id);
+      CREATE TABLE IF NOT EXISTS workspace_security_settings (
+        workspace_id TEXT PRIMARY KEY,
+        permissions_json TEXT NOT NULL,
+        allow_paths_json TEXT NOT NULL DEFAULT '[]',
+        deny_paths_json TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL,
+        updated_by TEXT
+      );
+      CREATE TABLE IF NOT EXISTS approval_requests (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        task_id TEXT,
+        thread_id TEXT,
+        run_id TEXT,
+        device_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        risk_level TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        requested_action TEXT NOT NULL,
+        command TEXT,
+        scopes_json TEXT NOT NULL DEFAULT '[]',
+        options_json TEXT NOT NULL DEFAULT '[]',
+        requested_by TEXT,
+        resolved_by TEXT,
+        resolution TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        resolved_at TEXT,
+        expires_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_approval_requests_workspace_updated ON approval_requests (workspace_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_approval_requests_status_updated ON approval_requests (status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_approval_requests_task ON approval_requests (task_id);
+      CREATE INDEX IF NOT EXISTS idx_approval_requests_run ON approval_requests (run_id);
+      CREATE TABLE IF NOT EXISTS audit_events (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        workspace_id TEXT,
+        task_id TEXT,
+        approval_id TEXT,
+        actor TEXT,
+        summary TEXT NOT NULL,
+        risk_level TEXT,
+        created_at TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_events_workspace_created ON audit_events (workspace_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_events_task_created ON audit_events (task_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_events_type_created ON audit_events (type, created_at DESC);
     `);
     this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
   }
@@ -481,6 +549,265 @@ export class LocalCoreAcpStore {
       .run(new Date().toISOString(), new Date().toISOString(), workspaceId);
   }
 
+  getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {
+    const row = this.db.prepare(`
+      SELECT workspace_id, permissions_json, allow_paths_json, deny_paths_json, updated_at, updated_by
+      FROM workspace_security_settings
+      WHERE workspace_id = ?
+    `).get(workspaceId) as LocalWorkspaceSecuritySettingsRow | undefined;
+    if (row) {
+      return this.toWorkspaceSecuritySettings(row);
+    }
+    const now = new Date().toISOString();
+    return {
+      workspaceId,
+      permissions: defaultPermissions(),
+      allowPaths: [],
+      denyPaths: [],
+      updatedAt: now,
+    };
+  }
+
+  updateWorkspaceSecuritySettings(workspaceId: string, input: WorkspaceSecuritySettingsUpdateInput): WorkspaceSecuritySettings {
+    const existing = this.getWorkspaceSecuritySettings(workspaceId);
+    const now = new Date().toISOString();
+    const next: WorkspaceSecuritySettings = {
+      workspaceId,
+      permissions: {
+        ...existing.permissions,
+        ...(input.permissions || {}),
+      },
+      allowPaths: Array.isArray(input.allowPaths) ? input.allowPaths : existing.allowPaths,
+      denyPaths: Array.isArray(input.denyPaths) ? input.denyPaths : existing.denyPaths,
+      updatedAt: now,
+      updatedBy: input.updatedBy || existing.updatedBy,
+    };
+    this.db.prepare(`
+      INSERT INTO workspace_security_settings (workspace_id, permissions_json, allow_paths_json, deny_paths_json, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id) DO UPDATE SET
+        permissions_json = excluded.permissions_json,
+        allow_paths_json = excluded.allow_paths_json,
+        deny_paths_json = excluded.deny_paths_json,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `).run(
+      workspaceId,
+      JSON.stringify(next.permissions),
+      JSON.stringify(next.allowPaths),
+      JSON.stringify(next.denyPaths),
+      now,
+      next.updatedBy || null,
+    );
+    this.createAuditEvent({
+      type: 'permission.changed',
+      workspaceId,
+      actor: next.updatedBy || 'local',
+      summary: 'Workspace security settings changed.',
+      metadata: {
+        permissions: next.permissions,
+        allowPaths: next.allowPaths,
+        denyPaths: next.denyPaths,
+      },
+    });
+    return this.getWorkspaceSecuritySettings(workspaceId);
+  }
+
+  createApprovalRequest(input: ApprovalRequestCreateInput): ApprovalRequest {
+    const id = `approval:${randomUUID()}`;
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO approval_requests (
+        id, workspace_id, task_id, thread_id, run_id, device_id, kind, status, risk_level, title, description,
+        requested_action, command, scopes_json, options_json, requested_by, created_at, updated_at, expires_at, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.workspaceId,
+      input.taskId || null,
+      input.threadId || null,
+      input.runId || null,
+      input.deviceId || 'local',
+      input.kind,
+      input.riskLevel,
+      input.title,
+      redactSecrets(input.description),
+      redactSecrets(input.requestedAction),
+      input.command ? redactSecrets(input.command) : null,
+      JSON.stringify(input.scopes || []),
+      JSON.stringify(input.options || []),
+      input.requestedBy || null,
+      now,
+      now,
+      input.expiresAt || null,
+      JSON.stringify(input.metadata || {}),
+    );
+    const approval = this.getApprovalRequest(id)!;
+    this.createAuditEvent({
+      type: 'approval.requested',
+      workspaceId: approval.workspaceId,
+      taskId: approval.taskId,
+      approvalId: approval.approvalId,
+      actor: approval.requestedBy || 'agent',
+      summary: approval.title,
+      riskLevel: approval.riskLevel,
+      metadata: {
+        kind: approval.kind,
+        requestedAction: approval.requestedAction,
+        scopes: approval.scopes,
+      },
+    });
+    if (approval.taskId) {
+      this.updateAgentTask(approval.taskId, {
+        approvalId: approval.approvalId,
+        timelineItem: {
+          type: 'approval_requested',
+          title: approval.title,
+          description: approval.description,
+          metadata: { approvalId: approval.approvalId, riskLevel: approval.riskLevel },
+        },
+      });
+    }
+    return approval;
+  }
+
+  listApprovalRequests(query: ApprovalRequestListQuery = {}): ApprovalRequestListResponse {
+    const predicates: string[] = [];
+    const params: Array<string | number> = [];
+    if (query.workspaceId) {
+      predicates.push('workspace_id = ?');
+      params.push(query.workspaceId);
+    }
+    if (query.taskId) {
+      predicates.push('task_id = ?');
+      params.push(query.taskId);
+    }
+    if (query.status) {
+      const statuses = Array.isArray(query.status) ? query.status : [query.status];
+      predicates.push(`status IN (${statuses.map(() => '?').join(', ')})`);
+      params.push(...statuses);
+    }
+    const limit = Math.max(1, Math.min(Number(query.limit || 50), 100));
+    const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM approval_requests
+      ${where}
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(...params, limit) as LocalApprovalRequestRow[];
+    return { approvals: rows.map((row) => this.toApprovalRequest(row)) };
+  }
+
+  getApprovalRequest(approvalId: string): ApprovalRequest | undefined {
+    const row = this.db.prepare('SELECT * FROM approval_requests WHERE id = ?').get(approvalId) as LocalApprovalRequestRow | undefined;
+    return row ? this.toApprovalRequest(row) : undefined;
+  }
+
+  resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): ApprovalRequest {
+    const existing = this.getApprovalRequest(approvalId);
+    if (!existing) {
+      throw new Error(`Approval not found: ${approvalId}`);
+    }
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE approval_requests
+      SET status = ?, resolved_by = ?, resolution = ?, resolved_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      input.status,
+      input.resolvedBy || existing.resolvedBy || 'local',
+      input.resolution || existing.resolution || null,
+      now,
+      now,
+      approvalId,
+    );
+    const approval = this.getApprovalRequest(approvalId)!;
+    this.createAuditEvent({
+      type: input.status === 'rejected' ? 'approval.rejected' : 'approval.resolved',
+      workspaceId: approval.workspaceId,
+      taskId: approval.taskId,
+      approvalId: approval.approvalId,
+      actor: approval.resolvedBy || 'local',
+      summary: `Approval ${input.status}: ${approval.title}`,
+      riskLevel: approval.riskLevel,
+      metadata: { resolution: approval.resolution },
+    });
+    if (approval.taskId) {
+      this.updateAgentTask(approval.taskId, {
+        timelineItem: {
+          type: 'approval_resolved',
+          title: `Approval ${input.status}`,
+          description: approval.resolution || approval.title,
+          metadata: { approvalId: approval.approvalId, status: input.status },
+        },
+      });
+    }
+    return approval;
+  }
+
+  createAuditEvent(input: {
+    type: AuditEventType;
+    workspaceId?: string;
+    taskId?: string;
+    approvalId?: string;
+    actor?: string;
+    summary: string;
+    riskLevel?: AuditEvent['riskLevel'];
+    metadata?: Record<string, unknown>;
+  }): AuditEvent {
+    const id = `audit:${randomUUID()}`;
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO audit_events (id, type, workspace_id, task_id, approval_id, actor, summary, risk_level, created_at, metadata_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.type,
+      input.workspaceId || null,
+      input.taskId || null,
+      input.approvalId || null,
+      input.actor || null,
+      redactSecrets(input.summary),
+      input.riskLevel || null,
+      now,
+      JSON.stringify(input.metadata || {}),
+    );
+    return this.toAuditEvent(this.db.prepare('SELECT * FROM audit_events WHERE id = ?').get(id) as LocalAuditEventRow);
+  }
+
+  listAuditEvents(query: AuditEventListQuery = {}): AuditEventListResponse {
+    const predicates: string[] = [];
+    const params: Array<string | number> = [];
+    if (query.workspaceId) {
+      predicates.push('workspace_id = ?');
+      params.push(query.workspaceId);
+    }
+    if (query.taskId) {
+      predicates.push('task_id = ?');
+      params.push(query.taskId);
+    }
+    if (query.approvalId) {
+      predicates.push('approval_id = ?');
+      params.push(query.approvalId);
+    }
+    if (query.type) {
+      const types = Array.isArray(query.type) ? query.type : [query.type];
+      predicates.push(`type IN (${types.map(() => '?').join(', ')})`);
+      params.push(...types);
+    }
+    const limit = Math.max(1, Math.min(Number(query.limit || 50), 100));
+    const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM audit_events
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(...params, limit) as LocalAuditEventRow[];
+    return { events: rows.map((row) => this.toAuditEvent(row)) };
+  }
+
   createAgentTask(input: AgentTaskCreateInput & { deviceId: string; runId?: string; status?: AgentTaskStatus }): AgentTask {
     const id = `task:${randomUUID()}`;
     const now = new Date().toISOString();
@@ -505,7 +832,7 @@ export class LocalCoreAcpStore {
       input.threadId || null,
       input.runId || null,
       input.title,
-      input.prompt || null,
+      input.prompt ? redactSecrets(input.prompt) : null,
       status,
       now,
       now,
@@ -514,7 +841,16 @@ export class LocalCoreAcpStore {
       JSON.stringify(timeline),
       JSON.stringify(input.metadata || {}),
     );
-    return this.getAgentTask(id)!;
+    const task = this.getAgentTask(id)!;
+    this.createAuditEvent({
+      type: 'task.created',
+      workspaceId: task.workspaceId,
+      taskId: task.taskId,
+      actor: 'local',
+      summary: `Task created: ${task.title}`,
+      metadata: { runtimeId: task.runtimeId, threadId: task.threadId, runId: task.runId },
+    });
+    return task;
   }
 
   listAgentTasks(query: AgentTaskListQuery = {}): AgentTaskListResponse {
@@ -587,6 +923,7 @@ export class LocalCoreAcpStore {
         id: input.log.id || `log:${randomUUID()}`,
         timestamp: input.log.timestamp || now,
         ...input.log,
+        message: redactSecrets(input.log.message),
       });
     }
     if (input.artifact) {
@@ -621,7 +958,18 @@ export class LocalCoreAcpStore {
       JSON.stringify(input.metadata || existing.metadata || {}),
       taskId,
     );
-    return this.getAgentTask(taskId)!;
+    const task = this.getAgentTask(taskId)!;
+    if (input.status && input.status !== existing.status) {
+      this.createAuditEvent({
+        type: 'task.updated',
+        workspaceId: task.workspaceId,
+        taskId: task.taskId,
+        actor: 'local',
+        summary: `Task status changed to ${input.status}.`,
+        metadata: { previousStatus: existing.status, status: input.status, runId: task.runId },
+      });
+    }
+    return task;
   }
 
   listScheduledJobs(workspaceId?: string): ScheduledJob[] {
@@ -1155,6 +1503,63 @@ export class LocalCoreAcpStore {
     };
   }
 
+  private toWorkspaceSecuritySettings(row: LocalWorkspaceSecuritySettingsRow): WorkspaceSecuritySettings {
+    return {
+      workspaceId: row.workspace_id,
+      permissions: {
+        ...defaultPermissions(),
+        ...parseJson(row.permissions_json, {}),
+      },
+      allowPaths: parseJson(row.allow_paths_json, []),
+      denyPaths: parseJson(row.deny_paths_json, []),
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by || undefined,
+    };
+  }
+
+  private toApprovalRequest(row: LocalApprovalRequestRow): ApprovalRequest {
+    return {
+      approvalId: row.id,
+      workspaceId: row.workspace_id,
+      taskId: row.task_id || undefined,
+      threadId: row.thread_id || undefined,
+      runId: row.run_id || undefined,
+      deviceId: row.device_id,
+      kind: row.kind as ApprovalRequest['kind'],
+      status: row.status as ApprovalRequest['status'],
+      riskLevel: row.risk_level as ApprovalRequest['riskLevel'],
+      title: row.title,
+      description: row.description,
+      requestedAction: row.requested_action,
+      command: row.command || undefined,
+      scopes: parseJson(row.scopes_json, []),
+      options: parseJson(row.options_json, []),
+      requestedBy: row.requested_by || undefined,
+      resolvedBy: row.resolved_by || undefined,
+      resolution: row.resolution || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      resolvedAt: row.resolved_at || undefined,
+      expiresAt: row.expires_at || undefined,
+      metadata: parseJson(row.metadata_json, {}),
+    };
+  }
+
+  private toAuditEvent(row: LocalAuditEventRow): AuditEvent {
+    return {
+      auditId: row.id,
+      type: row.type as AuditEventType,
+      workspaceId: row.workspace_id || undefined,
+      taskId: row.task_id || undefined,
+      approvalId: row.approval_id || undefined,
+      actor: row.actor || undefined,
+      summary: row.summary,
+      riskLevel: row.risk_level as AuditEvent['riskLevel'] || undefined,
+      createdAt: row.created_at,
+      metadata: parseJson(row.metadata_json, {}),
+    };
+  }
+
   private ensureColumn(table: string, column: string, definition: string) {
     const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (rows.some((row) => row.name === column)) {
@@ -1170,4 +1575,22 @@ function parseJson<T>(value: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function defaultPermissions(): Record<SecurityPermissionScope, SecurityPermissionLevel> {
+  return {
+    'workspace.read': 'allow',
+    'workspace.write': 'ask',
+    'command.execute': 'ask',
+    'network.access': 'ask',
+    'secrets.access': 'deny',
+    'git.modify': 'ask',
+  };
+}
+
+export function redactSecrets(value: string): string {
+  return value
+    .replace(/\b(sk-[A-Za-z0-9_-]{12,})\b/g, '[REDACTED_SECRET]')
+    .replace(/\b([A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*|[A-Za-z0-9_]*SECRET[A-Za-z0-9_]*|[A-Za-z0-9_]*KEY[A-Za-z0-9_]*)=([^\s]+)/gi, '$1=[REDACTED_SECRET]')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED_SECRET]');
 }

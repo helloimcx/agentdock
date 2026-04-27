@@ -8,6 +8,14 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress') => void;
   upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress') => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
+  createApprovalRequest?: (input: {
+    threadId: string;
+    runId: string;
+    title: string;
+    description: string;
+    command?: string;
+    options: RunningPermissionRequest['options'];
+  }) => string | undefined;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
 };
 
@@ -111,6 +119,17 @@ export class LocalCoreAcpTurnCoordinator {
       isSchedulerAdd,
       options,
     };
+    const approvalId = this.options.createApprovalRequest?.({
+      threadId: session.threadId,
+      runId: currentRunId,
+      title: toolTitle ? `Approve ${toolTitle}` : 'Approve agent action',
+      description: toolTitle || 'Agent requested permission before continuing.',
+      command: toolTitle,
+      options,
+    });
+    if (approvalId) {
+      permissionRequest.approvalId = approvalId;
+    }
     session.pendingPermissionByRun.set(currentRunId, permissionRequest);
     if (session.currentTurn) {
       session.currentTurn.permission = permissionRequest;
