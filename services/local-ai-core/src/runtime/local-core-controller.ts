@@ -38,6 +38,14 @@ import type {
   KnowledgeSearchInput,
   KnowledgeSearchResult,
   InstalledAgentRuntime,
+  AgentTask,
+  AgentTaskCreateInput,
+  AgentTaskListQuery,
+  AgentTaskListResponse,
+  AgentTaskUpdateInput,
+  WorkspaceRegistryCreateInput,
+  WorkspaceRegistryEntry,
+  WorkspaceRegistryUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime, KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
@@ -192,6 +200,42 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
     return this.workspaceRouter.listWorkspaces();
+  }
+
+  async listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]> {
+    return this.workspaceRouter.listWorkspaceRegistry();
+  }
+
+  async getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry> {
+    return this.workspaceRouter.getWorkspaceRegistryEntry(workspaceId);
+  }
+
+  async createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput): Promise<WorkspaceRegistryEntry> {
+    return this.workspaceRouter.createWorkspaceRegistryEntry(input);
+  }
+
+  async updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): Promise<WorkspaceRegistryEntry> {
+    return this.workspaceRouter.updateWorkspaceRegistryEntry(workspaceId, input);
+  }
+
+  async deleteWorkspaceRegistryEntry(workspaceId: string) {
+    return this.workspaceRouter.deleteWorkspaceRegistryEntry(workspaceId);
+  }
+
+  async listAgentTasks(query: AgentTaskListQuery = {}): Promise<AgentTaskListResponse> {
+    return this.workspaceRouter.listAgentTasks(query);
+  }
+
+  async getAgentTask(taskId: string): Promise<AgentTask> {
+    return this.workspaceRouter.getAgentTask(taskId);
+  }
+
+  async createAgentTask(input: AgentTaskCreateInput): Promise<AgentTask> {
+    return this.workspaceRouter.createAgentTask(input);
+  }
+
+  async updateAgentTask(taskId: string, input: AgentTaskUpdateInput): Promise<AgentTask> {
+    return this.workspaceRouter.updateAgentTask(taskId, input);
   }
 
   async listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]> {

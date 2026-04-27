@@ -64,6 +64,12 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       },
       updateRunStatus: (runId, threadId, status) => {
         this.options.store.updateRun(runId, threadId, status);
+        const task = this.options.store.getAgentTaskByRunId(runId);
+        if (task) {
+          this.options.store.updateAgentTask(task.taskId, {
+            status: status === 'awaiting_input' ? 'waiting_for_user' : 'running',
+          });
+        }
       },
       sendRaw: (session, payload) => this.transport.sendRaw(session, payload),
     });
@@ -151,6 +157,16 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     const runId = `run:${threadId}:${Date.now()}`;
     this.options.runThreadMap.set(runId, threadId);
     this.options.store.updateRun(runId, threadId, 'running');
+    this.options.store.createAgentTask({
+      workspaceId: row.workspace_id,
+      deviceId: 'local',
+      runtimeId: row.agent_type,
+      threadId,
+      runId,
+      title: content.trim().slice(0, 80) || row.title || 'Agent task',
+      prompt: content,
+      status: 'running',
+    });
     this.options.eventBus.emit({
       type: 'run.started',
       payload: {
@@ -326,6 +342,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       }
       const nextStatus = result?.stopReason === 'cancelled' ? 'interrupted' : 'completed';
       this.options.store.updateRun(runId, threadId, nextStatus);
+      const task = this.options.store.getAgentTaskByRunId(runId);
+      if (task) {
+        this.options.store.updateAgentTask(task.taskId, {
+          status: nextStatus === 'interrupted' ? 'cancelled' : 'completed',
+          summary: result?.stopReason === 'cancelled' ? 'Request cancelled.' : 'Task completed.',
+        });
+      }
       this.options.eventBus.emit({
         type: 'run.completed',
         payload: {
@@ -343,6 +366,13 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     } catch (error) {
       const errorContent = `Agent error: ${error instanceof Error ? error.message : String(error)}`;
       this.options.store.updateRun(runId, threadId, 'failed');
+      const task = this.options.store.getAgentTaskByRunId(runId);
+      if (task) {
+        this.options.store.updateAgentTask(task.taskId, {
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       this.options.store.appendMessage(threadId, 'assistant', errorContent, 'final');
       this.options.eventBus.emit({
         type: 'thread.message.accepted',

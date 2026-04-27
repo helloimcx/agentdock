@@ -38,6 +38,14 @@ import type {
   WorkspaceSummary,
   InstalledAgentRuntime,
   RuntimeDetectionListResponse,
+  AgentTask,
+  AgentTaskCreateInput,
+  AgentTaskListQuery,
+  AgentTaskListResponse,
+  AgentTaskUpdateInput,
+  WorkspaceRegistryCreateInput,
+  WorkspaceRegistryEntry,
+  WorkspaceRegistryUpdateInput,
 } from '../../contracts/src';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
@@ -297,6 +305,48 @@ export async function checkWeixinQrCodeStatus(workspaceId: string, ticket: strin
 
 export async function listWorkspaces() {
   return coreRequest<{ workspaces: WorkspaceSummary[] }>('GET', '/workspaces');
+}
+
+export async function listWorkspaceRegistry() {
+  return coreRequest<{ workspaces: WorkspaceRegistryEntry[] }>('GET', '/workspace-registry');
+}
+
+export async function getWorkspaceRegistryEntry(workspaceId: string) {
+  return coreRequest<WorkspaceRegistryEntry>('GET', `/workspace-registry/${encodeURIComponent(workspaceId)}`);
+}
+
+export async function createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput) {
+  return coreRequest<WorkspaceRegistryEntry>('POST', '/workspace-registry', input);
+}
+
+export async function updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput) {
+  return coreRequest<WorkspaceRegistryEntry>('PATCH', `/workspace-registry/${encodeURIComponent(workspaceId)}`, input);
+}
+
+export async function deleteWorkspaceRegistryEntry(workspaceId: string) {
+  return coreRequest<{ deleted: boolean }>('DELETE', `/workspace-registry/${encodeURIComponent(workspaceId)}`);
+}
+
+export async function listAgentTasks(query: AgentTaskListQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.workspaceId) params.set('workspace_id', query.workspaceId);
+  if (query.runtimeId) params.set('runtime_id', query.runtimeId);
+  if (query.status) params.set('status', Array.isArray(query.status) ? query.status.join(',') : query.status);
+  if (query.limit) params.set('limit', String(query.limit));
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return coreRequest<AgentTaskListResponse>('GET', `/tasks${suffix}`);
+}
+
+export async function getAgentTask(taskId: string) {
+  return coreRequest<AgentTask>('GET', `/tasks/${encodeURIComponent(taskId)}`);
+}
+
+export async function createAgentTask(input: AgentTaskCreateInput) {
+  return coreRequest<AgentTask>('POST', '/tasks', input);
+}
+
+export async function updateAgentTask(taskId: string, input: AgentTaskUpdateInput) {
+  return coreRequest<AgentTask>('PATCH', `/tasks/${encodeURIComponent(taskId)}`, input);
 }
 
 export async function listScheduledJobs(workspaceId?: string) {

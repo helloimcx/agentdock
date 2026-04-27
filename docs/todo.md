@@ -3,9 +3,9 @@
 - [x] 支持显示思考过程
 - [x] 没有配置im的时候也要支持定时任务
 - [x] 完成 Phase 1 本机 Agent Runtime 检测：状态模型、持久化、启动检测、手动刷新、事件和 Dashboard 展示。
-- [ ] Phase 2 第一刀：定义 workspace registry 和 task model contracts。
-- [ ] Phase 2 第二刀：在 Local AI Core 中持久化 workspace 和 task records。
-- [ ] Phase 2 第三刀：增加 dashboard active tasks、waiting-for-user、recent completions 区块。
+- [x] Phase 2 第一刀：定义 workspace registry 和 task model contracts。
+- [x] Phase 2 第二刀：在 Local AI Core 中持久化 workspace 和 task records。
+- [x] Phase 2 第三刀：增加 dashboard active tasks、waiting-for-user、recent completions 区块。
 - [ ] 增加obsidian知识库插件，通过obsidian-cli和makitdown，摆脱对ai-vector的依赖 (或者先支持本地文件夹，用markitdwon将文件转成markdown)
 - [ ] 支持手机端部署 Local AI Core。
 - [ ] 支持手机 app。

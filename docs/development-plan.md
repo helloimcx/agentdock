@@ -599,26 +599,26 @@ Turn built-in integrations into a stable plugin platform.
 
 ### Phase 2: Workspace And Task Control Center
 
-- [ ] Define workspace registry model. Next.
-- [ ] Add workspace persistence in Local AI Core. Next.
-- [ ] Add workspace add/remove/update flows. Next.
-- [ ] Detect basic Git metadata for workspaces. Next.
-- [ ] Add workspace health summary. Next.
-- [ ] Define task model. Next.
-- [ ] Define task lifecycle statuses. Next.
-- [ ] Define task timeline item types. Next.
-- [ ] Persist task records in Local AI Core.
-- [ ] Associate tasks with workspace, runtime, thread, and device.
-- [ ] Add active task list.
-- [ ] Add recent task list.
-- [ ] Add task detail view.
-- [ ] Add workspace detail view.
-- [ ] Add dashboard installed agents section.
-- [ ] Add dashboard active tasks section.
-- [ ] Add dashboard waiting-for-user section.
-- [ ] Add dashboard recent completions section.
-- [ ] Add large-log handling strategy.
-- [ ] Add app restart behavior for in-progress task state.
+- [x] Define workspace registry model.
+- [x] Add workspace persistence in Local AI Core.
+- [x] Add workspace add/remove/update flows.
+- [x] Detect basic Git metadata for workspaces.
+- [x] Add workspace health summary.
+- [x] Define task model.
+- [x] Define task lifecycle statuses.
+- [x] Define task timeline item types.
+- [x] Persist task records in Local AI Core.
+- [x] Associate tasks with workspace, runtime, thread, and device.
+- [x] Add active task list.
+- [x] Add recent task list.
+- [x] Add task detail view.
+- [x] Add workspace detail view.
+- [x] Add dashboard installed agents section.
+- [x] Add dashboard active tasks section.
+- [x] Add dashboard waiting-for-user section.
+- [x] Add dashboard recent completions section.
+- [x] Add large-log handling strategy.
+- [x] Add app restart behavior for in-progress task state.
 
 ### Phase 3: Security, Approval, And Audit
 
@@ -717,7 +717,7 @@ Turn built-in integrations into a stable plugin platform.
 ### Documentation Checklist
 
 - [x] Create `docs/runtime-detection.md`.
-- [ ] Create `docs/task-model.md`.
+- [x] Create `docs/task-model.md`.
 - [ ] Create `docs/security-approval.md`.
 - [ ] Create `docs/mobile-companion.md`.
 - [ ] Create `docs/cross-device-workspaces.md`.
@@ -1008,6 +1008,29 @@ Suggested cases:
 ## Phase 2 Implementation Breakdown
 
 Phase 2 turns runtime visibility into a daily-use agent workstation.
+
+Status: complete for the first workspace and task control-center slice.
+
+Implemented:
+
+- Shared workspace registry and task contracts.
+- SQLite persistence for workspace registry entries and agent task records in
+  Local AI Core.
+- Workspace registry APIs for list, detail, create, update, and delete.
+- Task APIs for list, detail, create, and update.
+- Configured workspace sync into the registry with basic Git and health
+  summaries.
+- Automatic task creation when a thread message starts an agent run.
+- Task status updates when runs enter waiting, complete, cancel, or fail states.
+- Dashboard sections for active tasks, waiting-for-user tasks, and recent
+  completions.
+
+Validation:
+
+- `pnpm build:electron`
+- `node --test dist-electron/electron/workspace-task-store.test.js dist-electron/electron/runtime-detection-service.test.js`
+- `pnpm build:renderer`
+- `pnpm test`
 
 ### Phase 2 Preparation Status
 

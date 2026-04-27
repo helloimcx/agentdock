@@ -1,10 +1,21 @@
+import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import type {
+  AgentTask,
+  AgentTaskCreateInput,
+  AgentTaskListQuery,
+  AgentTaskListResponse,
+  AgentTaskUpdateInput,
   DesktopBridgeEvent,
   LocalCoreCapabilities,
   ScheduledJob,
   DesktopProjectConfig,
   ThreadDetail,
   ThreadSummary,
+  WorkspaceGitSummary,
+  WorkspaceRegistryCreateInput,
+  WorkspaceRegistryEntry,
+  WorkspaceRegistryUpdateInput,
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
 } from '../../../../packages/contracts/src/index.js';
@@ -101,6 +112,67 @@ export class WorkspaceRouter {
       });
     }
     return [...workspaceMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]> {
+    await this.syncConfiguredWorkspaces();
+    return this.store.listWorkspaceRegistry();
+  }
+
+  async getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry> {
+    await this.syncConfiguredWorkspaces();
+    const workspace = this.store.getWorkspaceRegistryEntry(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${workspaceId}`);
+    }
+    return workspace;
+  }
+
+  async createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput): Promise<WorkspaceRegistryEntry> {
+    return this.store.upsertWorkspaceRegistryEntry({
+      ...input,
+      deviceId: 'local',
+      git: detectGitSummary(input.path),
+      health: workspaceHealth(input.path),
+    });
+  }
+
+  async updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): Promise<WorkspaceRegistryEntry> {
+    const next = this.store.updateWorkspaceRegistryEntry(workspaceId, input);
+    return this.store.upsertWorkspaceRegistryEntry({
+      workspaceId: next.workspaceId,
+      displayName: next.displayName,
+      path: next.path,
+      deviceId: next.deviceId,
+      defaultRuntimeId: next.defaultRuntimeId,
+      git: detectGitSummary(next.path),
+      health: workspaceHealth(next.path),
+      metadata: next.metadata,
+    });
+  }
+
+  async deleteWorkspaceRegistryEntry(workspaceId: string) {
+    return this.store.deleteWorkspaceRegistryEntry(workspaceId);
+  }
+
+  listAgentTasks(query: AgentTaskListQuery = {}): AgentTaskListResponse {
+    return this.store.listAgentTasks(query);
+  }
+
+  getAgentTask(taskId: string): AgentTask {
+    const task = this.store.getAgentTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return task;
+  }
+
+  createAgentTask(input: AgentTaskCreateInput): AgentTask {
+    return this.store.createAgentTask({ ...input, deviceId: 'local' });
+  }
+
+  updateAgentTask(taskId: string, input: AgentTaskUpdateInput): AgentTask {
+    return this.store.updateAgentTask(taskId, input);
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
@@ -423,6 +495,30 @@ export class WorkspaceRouter {
     return projects.filter((project) => this.resolveProjectRoute(configState, project));
   }
 
+  private async syncConfiguredWorkspaces() {
+    const config = await this.options.readConfigState();
+    const projects = Array.isArray(config.parsed?.projects) ? config.parsed.projects : [];
+    for (const project of projects) {
+      const route = this.resolveProjectRoute(config, project);
+      if (!route) {
+        continue;
+      }
+      const path = inferWorkspacePath(project);
+      this.store.upsertWorkspaceRegistryEntry({
+        workspaceId: project.name,
+        displayName: project.name,
+        path,
+        deviceId: 'local',
+        defaultRuntimeId: route.agentType,
+        git: detectGitSummary(path),
+        health: workspaceHealth(path),
+        metadata: {
+          platforms: normalizePlatformTypes(project),
+        },
+      });
+    }
+  }
+
   private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readConfigState']>>, project: DesktopProjectConfig) {
     for (const runtime of this.options.getAgentRuntimes?.() || []) {
       if (!runtime.matchesProject(project)) {
@@ -461,4 +557,89 @@ export class WorkspaceRouter {
 
 export function createWorkspaceRouter(options: WorkspaceRouterOptions) {
   return new WorkspaceRouter(options);
+}
+
+function inferWorkspacePath(project: DesktopProjectConfig) {
+  const options = project.agent?.options || {};
+  for (const key of ['cwd', 'path', 'workspacePath', 'root']) {
+    const value = options[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function workspaceHealth(path: string) {
+  if (!path) {
+    return {
+      status: 'warning' as const,
+      summary: 'Workspace path is not configured.',
+      issues: [{
+        code: 'workspace_path_missing',
+        severity: 'warning' as const,
+        message: 'Workspace path is not configured.',
+        help: 'Set a workspace path in the project agent options.',
+      }],
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  if (!existsSync(path)) {
+    return {
+      status: 'error' as const,
+      summary: 'Workspace path does not exist.',
+      issues: [{
+        code: 'workspace_path_not_found',
+        severity: 'error' as const,
+        message: `Workspace path does not exist: ${path}`,
+        help: 'Update the workspace path or restore the missing directory.',
+      }],
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  return {
+    status: 'healthy' as const,
+    summary: 'Workspace is available.',
+    issues: [],
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function detectGitSummary(path: string): WorkspaceGitSummary {
+  if (!path || !existsSync(path)) {
+    return { isRepo: false };
+  }
+  try {
+    const isRepo = git(path, ['rev-parse', '--is-inside-work-tree']) === 'true';
+    if (!isRepo) {
+      return { isRepo: false };
+    }
+    const branch = git(path, ['branch', '--show-current']) || undefined;
+    const remote = git(path, ['config', '--get', 'remote.origin.url']) || undefined;
+    const status = git(path, ['status', '--porcelain']);
+    const sha = git(path, ['rev-parse', '--short', 'HEAD']) || '';
+    const message = git(path, ['log', '-1', '--pretty=%s']) || '';
+    const committedAt = git(path, ['log', '-1', '--pretty=%cI']) || undefined;
+    return {
+      isRepo: true,
+      branch,
+      remote,
+      dirty: Boolean(status),
+      lastCommit: sha ? { sha, message, committedAt } : undefined,
+    };
+  } catch (error) {
+    return {
+      isRepo: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function git(cwd: string, args: string[]) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout: 1500,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
 }

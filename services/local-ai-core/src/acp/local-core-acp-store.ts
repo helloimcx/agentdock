@@ -11,6 +11,17 @@ import type {
   ScheduledJobUpdateInput,
   ThreadDetail,
   ThreadSummary,
+  AgentTask,
+  AgentTaskCreateInput,
+  AgentTaskListQuery,
+  AgentTaskListResponse,
+  AgentTaskStatus,
+  AgentTaskUpdateInput,
+  WorkspaceGitSummary,
+  WorkspaceHealthSummary,
+  WorkspaceRegistryCreateInput,
+  WorkspaceRegistryEntry,
+  WorkspaceRegistryUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
 import type {
@@ -22,6 +33,8 @@ import type {
   LocalScheduledJobRunRow,
   LocalRunRow,
   LocalThreadRow,
+  LocalAgentTaskRow,
+  LocalWorkspaceRegistryRow,
 } from '../router/workspace-router-types.js';
 import { normalizeMessageContent } from '../thread/workspace-thread-mappers.js';
 import { encodeThreadId } from '../thread/workspace-thread-id.js';
@@ -142,6 +155,46 @@ export class LocalCoreAcpStore {
         FOREIGN KEY (job_id) REFERENCES scheduled_jobs(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_scheduled_job_runs_job_triggered ON scheduled_job_runs (job_id, triggered_at DESC);
+      CREATE TABLE IF NOT EXISTS workspace_registry (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        default_runtime_id TEXT,
+        git_json TEXT NOT NULL DEFAULT '{}',
+        health_json TEXT NOT NULL DEFAULT '{}',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_opened_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_workspace_registry_updated ON workspace_registry (updated_at DESC);
+      CREATE TABLE IF NOT EXISTS agent_tasks (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        runtime_id TEXT NOT NULL,
+        thread_id TEXT,
+        run_id TEXT,
+        title TEXT NOT NULL,
+        prompt TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        queued_at TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        summary TEXT,
+        error TEXT,
+        timeline_json TEXT NOT NULL DEFAULT '[]',
+        logs_json TEXT NOT NULL DEFAULT '[]',
+        artifacts_json TEXT NOT NULL DEFAULT '[]',
+        approval_ids_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_workspace_updated ON agent_tasks (workspace_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_status_updated ON agent_tasks (status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_run ON agent_tasks (run_id);
     `);
     this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
   }
@@ -338,6 +391,237 @@ export class LocalCoreAcpStore {
       FROM runs
       WHERE id = ?
     `).get(runId) as LocalRunRow | undefined;
+  }
+
+  listWorkspaceRegistry(): WorkspaceRegistryEntry[] {
+    const rows = this.db.prepare(`
+      SELECT id, display_name, path, device_id, default_runtime_id, git_json, health_json, metadata_json, created_at, updated_at, last_opened_at
+      FROM workspace_registry
+      ORDER BY display_name ASC
+    `).all() as LocalWorkspaceRegistryRow[];
+    return rows.map((row) => this.toWorkspaceRegistryEntry(row));
+  }
+
+  getWorkspaceRegistryEntry(workspaceId: string): WorkspaceRegistryEntry | undefined {
+    const row = this.db.prepare(`
+      SELECT id, display_name, path, device_id, default_runtime_id, git_json, health_json, metadata_json, created_at, updated_at, last_opened_at
+      FROM workspace_registry
+      WHERE id = ?
+    `).get(workspaceId) as LocalWorkspaceRegistryRow | undefined;
+    return row ? this.toWorkspaceRegistryEntry(row) : undefined;
+  }
+
+  upsertWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput & {
+    workspaceId?: string;
+    deviceId: string;
+    git?: WorkspaceGitSummary;
+    health?: WorkspaceHealthSummary;
+  }): WorkspaceRegistryEntry {
+    const id = input.workspaceId || input.displayName;
+    const now = new Date().toISOString();
+    const existing = this.getWorkspaceRegistryEntry(id);
+    const health = input.health || existing?.health || {
+      status: 'unknown' as const,
+      summary: 'Workspace health has not been checked.',
+      issues: [],
+    };
+    this.db.prepare(`
+      INSERT INTO workspace_registry (
+        id, display_name, path, device_id, default_runtime_id, git_json, health_json, metadata_json, created_at, updated_at, last_opened_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        display_name = excluded.display_name,
+        path = excluded.path,
+        device_id = excluded.device_id,
+        default_runtime_id = excluded.default_runtime_id,
+        git_json = excluded.git_json,
+        health_json = excluded.health_json,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at
+    `).run(
+      id,
+      input.displayName,
+      input.path,
+      input.deviceId,
+      input.defaultRuntimeId || null,
+      JSON.stringify(input.git || existing?.git || {}),
+      JSON.stringify(health),
+      JSON.stringify(input.metadata || existing?.metadata || {}),
+      existing?.createdAt || now,
+      now,
+      existing?.lastOpenedAt || null,
+    );
+    return this.getWorkspaceRegistryEntry(id)!;
+  }
+
+  updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): WorkspaceRegistryEntry {
+    const existing = this.getWorkspaceRegistryEntry(workspaceId);
+    if (!existing) {
+      throw new Error(`Workspace not found: ${workspaceId}`);
+    }
+    return this.upsertWorkspaceRegistryEntry({
+      workspaceId,
+      displayName: input.displayName || existing.displayName,
+      path: input.path || existing.path,
+      deviceId: existing.deviceId,
+      defaultRuntimeId: input.defaultRuntimeId === null ? undefined : input.defaultRuntimeId || existing.defaultRuntimeId,
+      git: existing.git,
+      health: existing.health,
+      metadata: input.metadata || existing.metadata,
+    });
+  }
+
+  deleteWorkspaceRegistryEntry(workspaceId: string) {
+    this.db.prepare('DELETE FROM workspace_registry WHERE id = ?').run(workspaceId);
+    return { deleted: true };
+  }
+
+  touchWorkspaceRegistryEntry(workspaceId: string) {
+    this.db.prepare('UPDATE workspace_registry SET last_opened_at = ?, updated_at = ? WHERE id = ?')
+      .run(new Date().toISOString(), new Date().toISOString(), workspaceId);
+  }
+
+  createAgentTask(input: AgentTaskCreateInput & { deviceId: string; runId?: string; status?: AgentTaskStatus }): AgentTask {
+    const id = `task:${randomUUID()}`;
+    const now = new Date().toISOString();
+    const status = input.status || 'created';
+    const timeline = [{
+      id: `timeline:${randomUUID()}`,
+      type: 'status_change' as const,
+      title: `Task ${status}`,
+      status,
+      timestamp: now,
+    }];
+    this.db.prepare(`
+      INSERT INTO agent_tasks (
+        id, workspace_id, device_id, runtime_id, thread_id, run_id, title, prompt, status, created_at, updated_at, queued_at,
+        started_at, completed_at, summary, error, timeline_json, logs_json, artifacts_json, approval_ids_json, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, '[]', '[]', '[]', ?)
+    `).run(
+      id,
+      input.workspaceId,
+      input.deviceId,
+      input.runtimeId,
+      input.threadId || null,
+      input.runId || null,
+      input.title,
+      input.prompt || null,
+      status,
+      now,
+      now,
+      status === 'queued' ? now : null,
+      status === 'running' ? now : null,
+      JSON.stringify(timeline),
+      JSON.stringify(input.metadata || {}),
+    );
+    return this.getAgentTask(id)!;
+  }
+
+  listAgentTasks(query: AgentTaskListQuery = {}): AgentTaskListResponse {
+    const predicates: string[] = [];
+    const params: Array<string | number> = [];
+    if (query.workspaceId) {
+      predicates.push('workspace_id = ?');
+      params.push(query.workspaceId);
+    }
+    if (query.runtimeId) {
+      predicates.push('runtime_id = ?');
+      params.push(query.runtimeId);
+    }
+    if (query.status) {
+      const statuses = Array.isArray(query.status) ? query.status : [query.status];
+      predicates.push(`status IN (${statuses.map(() => '?').join(', ')})`);
+      params.push(...statuses);
+    }
+    const limit = Math.max(1, Math.min(Number(query.limit || 50), 100));
+    const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM agent_tasks
+      ${where}
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(...params, limit) as LocalAgentTaskRow[];
+    return { tasks: rows.map((row) => this.toAgentTask(row)) };
+  }
+
+  getAgentTask(taskId: string): AgentTask | undefined {
+    const row = this.db.prepare('SELECT * FROM agent_tasks WHERE id = ?').get(taskId) as LocalAgentTaskRow | undefined;
+    return row ? this.toAgentTask(row) : undefined;
+  }
+
+  getAgentTaskByRunId(runId: string): AgentTask | undefined {
+    const row = this.db.prepare('SELECT * FROM agent_tasks WHERE run_id = ? ORDER BY updated_at DESC LIMIT 1').get(runId) as LocalAgentTaskRow | undefined;
+    return row ? this.toAgentTask(row) : undefined;
+  }
+
+  updateAgentTask(taskId: string, input: AgentTaskUpdateInput): AgentTask {
+    const existing = this.getAgentTask(taskId);
+    if (!existing) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    const now = new Date().toISOString();
+    const nextStatus = input.status || existing.status;
+    const timeline = [...existing.timeline];
+    const logs = [...existing.logs];
+    const artifacts = [...existing.artifacts];
+    const approvalIds = [...existing.approvalIds];
+    if (input.status && input.status !== existing.status) {
+      timeline.push({
+        id: `timeline:${randomUUID()}`,
+        type: 'status_change',
+        title: `Task ${input.status}`,
+        status: input.status,
+        timestamp: now,
+      });
+    }
+    if (input.timelineItem) {
+      timeline.push({
+        id: input.timelineItem.id || `timeline:${randomUUID()}`,
+        timestamp: input.timelineItem.timestamp || now,
+        ...input.timelineItem,
+      });
+    }
+    if (input.log) {
+      logs.push({
+        id: input.log.id || `log:${randomUUID()}`,
+        timestamp: input.log.timestamp || now,
+        ...input.log,
+      });
+    }
+    if (input.artifact) {
+      artifacts.push({
+        id: input.artifact.id || `artifact:${randomUUID()}`,
+        ...input.artifact,
+      });
+    }
+    if (input.approvalId && !approvalIds.includes(input.approvalId)) {
+      approvalIds.push(input.approvalId);
+    }
+    this.db.prepare(`
+      UPDATE agent_tasks
+      SET status = ?, thread_id = ?, run_id = ?, title = ?, updated_at = ?, queued_at = ?, started_at = ?, completed_at = ?,
+          summary = ?, error = ?, timeline_json = ?, logs_json = ?, artifacts_json = ?, approval_ids_json = ?, metadata_json = ?
+      WHERE id = ?
+    `).run(
+      nextStatus,
+      input.threadId || existing.threadId || null,
+      input.runId || existing.runId || null,
+      input.title || existing.title,
+      now,
+      existing.queuedAt || (nextStatus === 'queued' ? now : null),
+      existing.startedAt || (nextStatus === 'running' ? now : null),
+      existing.completedAt || (['completed', 'failed', 'cancelled'].includes(nextStatus) ? now : null),
+      input.summary ?? existing.summary ?? null,
+      input.error === null ? null : input.error ?? existing.error ?? null,
+      JSON.stringify(timeline),
+      JSON.stringify(logs),
+      JSON.stringify(artifacts),
+      JSON.stringify(approvalIds),
+      JSON.stringify(input.metadata || existing.metadata || {}),
+      taskId,
+    );
+    return this.getAgentTask(taskId)!;
   }
 
   listScheduledJobs(workspaceId?: string): ScheduledJob[] {
@@ -811,11 +1095,79 @@ export class LocalCoreAcpStore {
     };
   }
 
+  private toWorkspaceRegistryEntry(row: LocalWorkspaceRegistryRow): WorkspaceRegistryEntry {
+    const activeTaskCount = Number((this.db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM agent_tasks
+      WHERE workspace_id = ? AND status IN ('created', 'queued', 'running', 'waiting_for_user')
+    `).get(row.id) as { total: number } | undefined)?.total || 0);
+    const recentTaskRows = this.db.prepare(`
+      SELECT id
+      FROM agent_tasks
+      WHERE workspace_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 8
+    `).all(row.id) as Array<{ id: string }>;
+    return {
+      workspaceId: row.id,
+      displayName: row.display_name,
+      path: row.path,
+      deviceId: row.device_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      lastOpenedAt: row.last_opened_at || undefined,
+      defaultRuntimeId: row.default_runtime_id || undefined,
+      git: parseJson(row.git_json, { isRepo: false }),
+      health: parseJson(row.health_json, {
+        status: 'unknown',
+        summary: 'Workspace health has not been checked.',
+        issues: [],
+      }),
+      activeTaskCount,
+      recentTaskIds: recentTaskRows.map((item) => item.id),
+      metadata: parseJson(row.metadata_json, {}),
+    };
+  }
+
+  private toAgentTask(row: LocalAgentTaskRow): AgentTask {
+    return {
+      taskId: row.id,
+      workspaceId: row.workspace_id,
+      deviceId: row.device_id,
+      runtimeId: row.runtime_id,
+      threadId: row.thread_id || undefined,
+      runId: row.run_id || undefined,
+      title: row.title,
+      prompt: row.prompt || undefined,
+      status: row.status as AgentTaskStatus,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      queuedAt: row.queued_at || undefined,
+      startedAt: row.started_at || undefined,
+      completedAt: row.completed_at || undefined,
+      summary: row.summary || undefined,
+      error: row.error || undefined,
+      timeline: parseJson(row.timeline_json, []),
+      logs: parseJson(row.logs_json, []),
+      artifacts: parseJson(row.artifacts_json, []),
+      approvalIds: parseJson(row.approval_ids_json, []),
+      metadata: parseJson(row.metadata_json, {}),
+    };
+  }
+
   private ensureColumn(table: string, column: string, definition: string) {
     const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (rows.some((row) => row.name === column)) {
       return;
     }
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function parseJson<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
   }
 }

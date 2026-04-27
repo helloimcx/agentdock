@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Cpu,
   FolderKanban,
+  ListChecks,
   MessageSquare,
   RefreshCw,
   Server,
@@ -25,9 +26,9 @@ import {
   onRuntimeEvent,
   refreshInstalledAgentRuntimes,
 } from '@/api/desktop';
-import { listWorkspaces } from '../../packages/core-sdk/src';
+import { listAgentTasks, listWorkspaces } from '../../packages/core-sdk/src';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
-import type { InstalledAgentRuntime } from '../../packages/contracts/src';
+import type { AgentTask, InstalledAgentRuntime } from '../../packages/contracts/src';
 
 interface QuickActionProps {
   title: string;
@@ -62,10 +63,67 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
   );
 }
 
+function TaskPanel({
+  title,
+  description,
+  tasks,
+  empty,
+  urgent,
+}: {
+  title: string;
+  description: string;
+  tasks: AgentTask[];
+  empty: string;
+  urgent?: boolean;
+}) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          </div>
+          <Badge variant={urgent && tasks.length > 0 ? 'warning' : 'secondary'}>{tasks.length}</Badge>
+        </div>
+      </div>
+      {tasks.length === 0 ? (
+        <div className="p-5">
+          <EmptyState message={empty} icon={ListChecks} />
+        </div>
+      ) : (
+        <div className="divide-y divide-black/[0.08] dark:divide-white/[0.07]">
+          {tasks.map((task) => (
+            <div key={task.taskId} className="px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {task.workspaceId} · {task.runtimeId}
+                  </p>
+                </div>
+                <Badge variant={task.status === 'failed' ? 'danger' : task.status === 'completed' ? 'success' : 'info'}>
+                  {task.status}
+                </Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Updated {new Date(task.updatedAt).toLocaleString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [agentRuntimes, setAgentRuntimes] = useState<InstalledAgentRuntime[]>([]);
+  const [activeTasks, setActiveTasks] = useState<AgentTask[]>([]);
+  const [waitingTasks, setWaitingTasks] = useState<AgentTask[]>([]);
+  const [recentTasks, setRecentTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshingRuntimes, setRefreshingRuntimes] = useState(false);
   const [runtimeDetectionRunning, setRuntimeDetectionRunning] = useState(false);
@@ -129,6 +187,14 @@ export default function Dashboard() {
             (err: any) => ({ status: 'rejected' as const, error: err }),
           ),
         ]);
+        const [activeTaskData, waitingTaskData, recentTaskData] = await Promise.all([
+          listAgentTasks({ status: ['created', 'queued', 'running'], limit: 6 }),
+          listAgentTasks({ status: 'waiting_for_user', limit: 6 }),
+          listAgentTasks({ status: ['completed', 'failed', 'cancelled'], limit: 6 }),
+        ]);
+        setActiveTasks(activeTaskData.tasks || []);
+        setWaitingTasks(waitingTaskData.tasks || []);
+        setRecentTasks(recentTaskData.tasks || []);
         setProjects((workspaceData.workspaces || []).map((workspace) => ({
           name: workspace.name,
           agent_type: workspace.agentType,
@@ -148,6 +214,9 @@ export default function Dashboard() {
       const projectData = await listProjects();
       setProjects(projectData.projects || []);
       setAgentRuntimes([]);
+      setActiveTasks([]);
+      setWaitingTasks([]);
+      setRecentTasks([]);
     } catch (err: any) {
       setError(err.message || String(err));
     } finally {
@@ -332,6 +401,30 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
+      ) : null}
+
+      {desktopRuntime ? (
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <TaskPanel
+            title="运行中任务"
+            description="正在排队或执行的 agent 工作。"
+            tasks={activeTasks}
+            empty="暂无运行中的任务"
+          />
+          <TaskPanel
+            title="等待处理"
+            description="需要用户输入或审批的任务。"
+            tasks={waitingTasks}
+            empty="暂无等待处理的任务"
+            urgent
+          />
+          <TaskPanel
+            title="最近完成"
+            description="最近结束、失败或取消的任务。"
+            tasks={recentTasks}
+            empty="暂无最近任务"
+          />
+        </section>
       ) : null}
 
       <Card className="p-0">

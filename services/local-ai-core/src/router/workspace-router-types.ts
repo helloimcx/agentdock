@@ -96,6 +96,44 @@ export type LocalScheduledJobRunRow = {
   platform_message_id: string | null;
 };
 
+export type LocalWorkspaceRegistryRow = {
+  id: string;
+  display_name: string;
+  path: string;
+  device_id: string;
+  default_runtime_id: string | null;
+  git_json: string;
+  health_json: string;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+  last_opened_at: string | null;
+};
+
+export type LocalAgentTaskRow = {
+  id: string;
+  workspace_id: string;
+  device_id: string;
+  runtime_id: string;
+  thread_id: string | null;
+  run_id: string | null;
+  title: string;
+  prompt: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  queued_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  summary: string | null;
+  error: string | null;
+  timeline_json: string;
+  logs_json: string;
+  artifacts_json: string;
+  approval_ids_json: string;
+  metadata_json: string;
+};
+
 export type LocalPlatformPairingRow = {
   code: string;
   workspace_id: string;

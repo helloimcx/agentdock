@@ -10,6 +10,69 @@ export interface WorkspaceSummary {
   heartbeatEnabled: boolean;
 }
 
+export type WorkspaceRegistryHealthStatus = 'healthy' | 'warning' | 'error' | 'unknown';
+export type WorkspaceRegistryIssueSeverity = 'info' | 'warning' | 'error';
+
+export interface WorkspaceGitSummary {
+  isRepo: boolean;
+  branch?: string;
+  remote?: string;
+  dirty?: boolean;
+  ahead?: number;
+  behind?: number;
+  lastCommit?: {
+    sha: string;
+    message: string;
+    authorName?: string;
+    committedAt?: string;
+  };
+  error?: string;
+}
+
+export interface WorkspaceRegistryIssue {
+  code: string;
+  severity: WorkspaceRegistryIssueSeverity;
+  message: string;
+  help?: string;
+}
+
+export interface WorkspaceHealthSummary {
+  status: WorkspaceRegistryHealthStatus;
+  summary: string;
+  issues: WorkspaceRegistryIssue[];
+  checkedAt?: string;
+}
+
+export interface WorkspaceRegistryEntry {
+  workspaceId: string;
+  displayName: string;
+  path: string;
+  deviceId: string;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenedAt?: string;
+  defaultRuntimeId?: string;
+  git?: WorkspaceGitSummary;
+  health: WorkspaceHealthSummary;
+  activeTaskCount: number;
+  recentTaskIds: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkspaceRegistryCreateInput {
+  displayName: string;
+  path: string;
+  defaultRuntimeId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkspaceRegistryUpdateInput {
+  displayName?: string;
+  path?: string;
+  defaultRuntimeId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ThreadSummary {
   id: string;
   workspaceId: string;
@@ -56,6 +119,121 @@ export interface RunSummary {
   status: 'queued' | 'running' | 'awaiting_input' | 'completed' | 'failed' | 'interrupted';
   startedAt: string;
   updatedAt: string;
+}
+
+export type AgentTaskStatus =
+  | 'created'
+  | 'queued'
+  | 'running'
+  | 'waiting_for_user'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type AgentTaskTimelineItemType =
+  | 'status_change'
+  | 'message'
+  | 'command'
+  | 'file_change'
+  | 'approval_requested'
+  | 'approval_resolved'
+  | 'error'
+  | 'summary';
+
+export interface AgentTaskTimelineItem {
+  id: string;
+  type: AgentTaskTimelineItemType;
+  title: string;
+  timestamp: string;
+  description?: string;
+  status?: AgentTaskStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskLogEntry {
+  id: string;
+  timestamp: string;
+  level: 'debug' | 'info' | 'warning' | 'error';
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskArtifact {
+  id: string;
+  kind: 'file' | 'diff' | 'url' | 'text' | (string & {});
+  title: string;
+  path?: string;
+  url?: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentTask {
+  taskId: string;
+  workspaceId: string;
+  deviceId: string;
+  runtimeId: string;
+  threadId?: string;
+  runId?: string;
+  title: string;
+  prompt?: string;
+  status: AgentTaskStatus;
+  createdAt: string;
+  updatedAt: string;
+  queuedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  summary?: string;
+  error?: string;
+  timeline: AgentTaskTimelineItem[];
+  logs: AgentTaskLogEntry[];
+  artifacts: AgentTaskArtifact[];
+  approvalIds: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskCreateInput {
+  workspaceId: string;
+  runtimeId: string;
+  threadId?: string;
+  title: string;
+  prompt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskUpdateInput {
+  status?: AgentTaskStatus;
+  threadId?: string;
+  runId?: string;
+  title?: string;
+  summary?: string;
+  error?: string | null;
+  timelineItem?: Omit<AgentTaskTimelineItem, 'id' | 'timestamp'> & {
+    id?: string;
+    timestamp?: string;
+  };
+  log?: Omit<AgentTaskLogEntry, 'id' | 'timestamp'> & {
+    id?: string;
+    timestamp?: string;
+  };
+  artifact?: Omit<AgentTaskArtifact, 'id'> & {
+    id?: string;
+  };
+  approvalId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskListQuery {
+  workspaceId?: string;
+  runtimeId?: string;
+  status?: AgentTaskStatus | AgentTaskStatus[];
+  limit?: number;
+  cursor?: string;
+}
+
+export interface AgentTaskListResponse {
+  tasks: AgentTask[];
+  nextCursor?: string;
 }
 
 export interface ChannelRoute {

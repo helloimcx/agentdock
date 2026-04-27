@@ -42,6 +42,14 @@ import type {
   WorkspaceSummary,
   InstalledAgentRuntime,
   RuntimeDetectionListResponse,
+  AgentTask,
+  AgentTaskCreateInput,
+  AgentTaskListQuery,
+  AgentTaskListResponse,
+  AgentTaskUpdateInput,
+  WorkspaceRegistryCreateInput,
+  WorkspaceRegistryEntry,
+  WorkspaceRegistryUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
@@ -55,6 +63,15 @@ export interface LocalAiCoreBindings extends EventEmitter {
   saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
   saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
   listWorkspaces(): Promise<WorkspaceSummary[]>;
+  listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]>;
+  getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry>;
+  createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput): Promise<WorkspaceRegistryEntry>;
+  updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): Promise<WorkspaceRegistryEntry>;
+  deleteWorkspaceRegistryEntry(workspaceId: string): Promise<{ deleted: boolean }>;
+  listAgentTasks(query?: AgentTaskListQuery): Promise<AgentTaskListResponse>;
+  getAgentTask(taskId: string): Promise<AgentTask>;
+  createAgentTask(input: AgentTaskCreateInput): Promise<AgentTask>;
+  updateAgentTask(taskId: string, input: AgentTaskUpdateInput): Promise<AgentTask>;
   listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]>;
   getScheduledJob(jobId: string): Promise<ScheduledJob>;
   createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob>;
@@ -433,6 +450,59 @@ export class LocalAiCoreServer {
       if (req.method === 'GET' && path === '/api/local/v1/workspaces') {
         json(res, 200, { workspaces: await this.bindings.listWorkspaces() });
         return;
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/workspace-registry') {
+        json(res, 200, { workspaces: await this.bindings.listWorkspaceRegistry() });
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/workspace-registry') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createWorkspaceRegistryEntry(body as unknown as WorkspaceRegistryCreateInput));
+        return;
+      }
+      if (path.startsWith('/api/local/v1/workspace-registry/')) {
+        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/workspace-registry/'.length));
+        if (req.method === 'GET') {
+          json(res, 200, await this.bindings.getWorkspaceRegistryEntry(workspaceId));
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.updateWorkspaceRegistryEntry(workspaceId, body as unknown as WorkspaceRegistryUpdateInput));
+          return;
+        }
+        if (req.method === 'DELETE') {
+          json(res, 200, await this.bindings.deleteWorkspaceRegistryEntry(workspaceId));
+          return;
+        }
+      }
+      if (req.method === 'GET' && path === '/api/local/v1/tasks') {
+        const statusParam = url.searchParams.get('status') || '';
+        const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as AgentTaskListQuery['status'] : undefined;
+        json(res, 200, await this.bindings.listAgentTasks({
+          workspaceId: url.searchParams.get('workspace_id') || undefined,
+          runtimeId: url.searchParams.get('runtime_id') || undefined,
+          status,
+          limit: Number(url.searchParams.get('limit') || '50'),
+        }));
+        return;
+      }
+      if (req.method === 'POST' && path === '/api/local/v1/tasks') {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createAgentTask(body as unknown as AgentTaskCreateInput));
+        return;
+      }
+      if (path.startsWith('/api/local/v1/tasks/')) {
+        const taskId = decodeURIComponent(path.slice('/api/local/v1/tasks/'.length));
+        if (req.method === 'GET') {
+          json(res, 200, await this.bindings.getAgentTask(taskId));
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.updateAgentTask(taskId, body as unknown as AgentTaskUpdateInput));
+          return;
+        }
       }
       if (req.method === 'GET' && path === '/api/local/v1/threads') {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');
