@@ -187,8 +187,8 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      deliveryTargets: ['lark', 'weixin'],
-      platforms: ['lark', 'weixin'],
+      deliveryTargets: ['local', 'lark', 'weixin'],
+      platforms: ['local', 'lark', 'weixin'],
     });
 
     await runtime.start();
@@ -222,8 +222,8 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      deliveryTargets: ['lark', 'weixin'],
-      platforms: ['lark', 'weixin'],
+      deliveryTargets: ['local', 'lark', 'weixin'],
+      platforms: ['local', 'lark', 'weixin'],
     });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -298,8 +298,8 @@ test('runtime bootstrap keeps disabled plugins diagnosable without contributing 
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
-      deliveryTargets: ['weixin'],
-      platforms: ['weixin'],
+      deliveryTargets: ['local', 'weixin'],
+      platforms: ['local', 'weixin'],
     });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });

@@ -86,7 +86,7 @@ export interface ScheduledJobExecutionTarget {
 export interface ScheduledJob {
   id: string;
   workspaceId: string;
-  platform: 'lark' | (string & {});
+  platform: 'local' | 'lark' | (string & {});
   route: ScheduledJobRoute;
   executionMode: ScheduledJobExecutionMode;
   triggerType: ScheduledJobTriggerType;
@@ -118,7 +118,7 @@ export interface ScheduledJobRun {
 
 export interface ScheduledJobCreateInput {
   workspaceId: string;
-  platform: 'lark' | (string & {});
+  platform: 'local' | 'lark' | (string & {});
   route: ScheduledJobRoute;
   executionMode?: ScheduledJobExecutionMode;
   triggerType: ScheduledJobTriggerType;

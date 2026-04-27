@@ -39,6 +39,7 @@ import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowled
 import { createBuiltinNoopKnowledgePlugin } from '../plugins/builtin/knowledge-noop-plugin.js';
 import { createBuiltinCronSchedulerPlugin } from '../plugins/builtin/scheduler-cron-plugin.js';
 import { createBuiltinLarkSchedulerPlugin } from '../plugins/builtin/scheduler-lark-plugin.js';
+import { createBuiltinLocalSchedulerPlugin } from '../plugins/builtin/scheduler-local-plugin.js';
 import { createBuiltinWeixinSchedulerPlugin } from '../plugins/builtin/scheduler-weixin-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
@@ -255,6 +256,10 @@ export function bootstrapLocalCoreRuntime(options: {
         setConfig: (input) => state.updateKnowledgeConfig(input),
       });
   const schedulerPlugins = [
+    createBuiltinLocalSchedulerPlugin({
+      store,
+      getWorkspaceRouter: () => workspaceRouter,
+    }),
     createBuiltinLarkSchedulerPlugin({
       store,
       getWorkspaceRouter: () => workspaceRouter,

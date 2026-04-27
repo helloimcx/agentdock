@@ -102,6 +102,76 @@ test('lac scheduler add posts a persistent Lark job from env context', async () 
   assert.match(read().stdout, /Created scheduler job job-1/);
 });
 
+test('lac scheduler add posts a local job without IM context', async () => {
+  let capturedBody: string | null = null;
+  const server = createServer(async (req, res) => {
+    if (req.method === 'POST' && req.url === '/api/local/v1/scheduler/jobs') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      capturedBody = Buffer.concat(chunks).toString('utf8');
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          id: 'job-local-1',
+          workspaceId: '知识库',
+          platform: 'local',
+          route: {
+            type: 'local.thread',
+            channelId: '知识库',
+          },
+          executionMode: 'same-thread',
+          triggerType: 'cron',
+          cronExpr: '*/5 * * * *',
+          promptTemplate: 'ping local',
+          description: 'local ping',
+          enabled: true,
+          concurrencyPolicy: 'skip_if_running',
+          createdAt: '2026-04-22T06:00:00.000Z',
+          updatedAt: '2026-04-22T06:00:00.000Z',
+        },
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'add', '--cron', '*/5 * * * *', '--message', 'ping local', '--desc', 'local ping'],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert(capturedBody);
+  assert.deepEqual(JSON.parse(capturedBody), {
+    workspaceId: '知识库',
+    platform: 'local',
+    route: {
+      type: 'local.thread',
+      channelId: '知识库',
+    },
+    executionMode: 'same-thread',
+    triggerType: 'cron',
+    cronExpr: '*/5 * * * *',
+    promptTemplate: 'ping local',
+    description: 'local ping',
+    enabled: true,
+  });
+  assert.match(read().stdout, /Created scheduler job job-local-1/);
+});
+
+
 test('lac scheduler list shows workspace jobs by default', async () => {
   const server = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/api/local/v1/scheduler/jobs?workspace_id=%E7%9F%A5%E8%AF%86%E5%BA%93') {

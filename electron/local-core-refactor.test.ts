@@ -7,6 +7,7 @@ import { LocalCoreAcpResponseProcessor } from '../services/local-ai-core/src/acp
 import { ScheduledConversationExecutor } from '../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
+import { LocalScheduleAdapter } from '../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/gateway/local-core-weixin-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
@@ -461,6 +462,62 @@ test('scheduled conversation executor uses execution policy hooks around a threa
     'after:thread-1',
   ]);
   assert.equal(result.replyText, 'done');
+});
+
+test('local scheduler adapter runs a workspace thread without channel delivery', async () => {
+  const calls: string[] = [];
+  const job = {
+    id: 'job-local-1',
+    workspaceId: '知识库',
+    platform: 'local',
+    route: { type: 'local.thread', channelId: '知识库' },
+    executionMode: 'same-thread',
+    triggerType: 'cron',
+    cronExpr: '*/5 * * * *',
+    promptTemplate: 'ping local',
+    description: 'local ping',
+    enabled: true,
+    concurrencyPolicy: 'skip_if_running',
+    createdAt: '2026-04-22T06:00:00.000Z',
+    updatedAt: '2026-04-22T06:00:00.000Z',
+  } as const;
+  const adapter = new LocalScheduleAdapter({
+    store: {
+      getRun: () => ({ status: 'completed' }),
+    } as any,
+    getWorkspaceRouter: () => ({
+      listThreads: async (workspaceId: string) => {
+        calls.push(`list:${workspaceId}`);
+        return [];
+      },
+      createThread: async (workspaceId: string, title: string) => {
+        calls.push(`create:${workspaceId}:${title}`);
+        return { id: 'thread-local-1', title };
+      },
+      sendThreadMessage: async (threadId: string, prompt: string) => {
+        calls.push(`send:${threadId}:${prompt}`);
+        return { runId: 'run-local-1' };
+      },
+      getThread: async (threadId: string) => ({
+        id: threadId,
+        messages: [
+          { role: 'assistant', kind: 'final', content: 'local done' },
+        ],
+      }),
+    }) as any,
+  });
+
+  const result = await adapter.execute({ job, triggeredAt: '2026-04-22T06:00:00.000Z' });
+
+  assert.deepEqual(calls, [
+    'list:知识库',
+    'create:知识库:[Scheduled] local ping',
+    'send:thread-local-1:ping local',
+  ]);
+  assert.equal(result.threadId, 'thread-local-1');
+  assert.equal(result.runId, 'run-local-1');
+  assert.equal(result.replyText, 'local done');
+  assert.equal(result.platformMessageId, undefined);
 });
 
 test('scheduler run lifecycle updates run and job state through explicit transitions', () => {

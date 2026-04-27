@@ -65,11 +65,10 @@ function toForm(job?: CronJob | null): SchedulerFormState {
 function toPayload(form: SchedulerFormState): CronJobCreateInput {
   return {
     workspaceId: form.workspaceId,
-    platform: 'lark',
+    platform: 'local',
     route: {
-      type: 'channel.chat',
-      channelId: form.chatId || form.workspaceId || 'default',
-      participantId: form.platformUserId || 'default',
+      type: 'local.thread',
+      channelId: form.workspaceId || 'local',
       ...(form.threadId ? { threadId: form.threadId } : {}),
     },
     executionMode: form.executionMode || 'same-thread',
