@@ -10,6 +10,7 @@ export {
 export { Button } from './Button';
 export { Badge } from './Badge';
 export { Modal } from './Modal';
-export { Input, Select, Textarea } from './Input';
+export { Input, Textarea } from './Input';
+export { Select } from './Select';
 export { EmptyState } from './EmptyState';
 export { AdvancedDrawer, PageHeader, SectionCard, StatusPill } from './Page';

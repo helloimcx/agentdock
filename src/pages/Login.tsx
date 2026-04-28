@@ -10,6 +10,7 @@ import { isDesktopApp, isWebApp } from '@/app/runtime';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button, Card, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { setAppLanguage } from '@/i18n';
 
 const languages = [
   { code: 'en', label: 'EN' },
@@ -68,7 +69,7 @@ export default function Login() {
           {languages.map(l => (
             <button
               key={l.code}
-              onClick={() => { i18n.changeLanguage(l.code); localStorage.setItem('cc_lang', l.code); }}
+              onClick={() => void setAppLanguage(l.code)}
               className={cn('px-2.5 py-1.5 text-xs font-medium transition-colors',
                 i18n.language === l.code
                   ? 'bg-primary/15 text-primary'

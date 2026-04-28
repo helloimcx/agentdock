@@ -16,6 +16,7 @@ import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
 import { rendererUiContributions } from '@/app/ui-contributions';
 import { BrandLogo } from '@/components/BrandLogo';
+import { setAppLanguage } from '@/i18n';
 
 const languages = [
   { code: 'en', label: 'English' },
@@ -42,8 +43,7 @@ export default function Sidebar() {
   const [langOpen, setLangOpen] = useState(false);
 
   const changeLang = (code: string) => {
-    i18n.changeLanguage(code);
-    localStorage.setItem('cc_lang', code);
+    void setAppLanguage(code);
     setLangOpen(false);
   };
 

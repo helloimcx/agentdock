@@ -6,16 +6,19 @@ import App from './App';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import { Button } from './components/ui';
 import './index.css';
-import './i18n';
+import { initializeI18n } from './i18n';
 import { useAuthStore } from './store/auth';
 import { useThemeStore } from './store/theme';
-import { getDesktopLogs, getRuntimeCapabilitySnapshot, getRuntimeStatus, initializeDesktopProvider, onRuntimeEvent } from './api/desktop';
+import {
+  getDesktopLogs,
+  getRuntimeCapabilitySnapshot,
+  getRuntimeStatus,
+  initializeDesktopProvider,
+  LOCAL_AI_CORE_BASE,
+  onRuntimeEvent,
+} from './api/runtime-bootstrap';
 import { api } from './api/client';
 import { getRuntimeProvider, setRuntimeCapabilitySnapshot } from './app/runtime';
-import { LOCAL_AI_CORE_BASE } from '../packages/core-sdk/src';
-
-useAuthStore.getState().init();
-useThemeStore.getState().init();
 
 type BootstrapState =
   | { status: 'loading' }
@@ -186,8 +189,16 @@ function BootstrapApp() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <AppErrorBoundary>
-    <BootstrapApp />
-  </AppErrorBoundary>,
-);
+async function start() {
+  await initializeI18n();
+  useAuthStore.getState().init();
+  useThemeStore.getState().init();
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <AppErrorBoundary>
+      <BootstrapApp />
+    </AppErrorBoundary>,
+  );
+}
+
+void start();
