@@ -243,6 +243,16 @@ export type RunningTurn = {
   pendingToolCallTitle?: string;
   pendingToolCallId?: string;
   pendingToolCallDetail?: string;
+  activeToolCallKey?: string;
+  pendingToolCalls?: Record<string, {
+    key: string;
+    title: string;
+    messageId: string;
+    detail?: string;
+    sequence: number;
+    emitted?: boolean;
+  }>;
+  pendingToolCallOrder?: string[];
   toolCallSequence?: number;
   permission?: RunningPermissionRequest | null;
 };

@@ -143,6 +143,93 @@ test('ACP tool call running and completed updates share one message id', () => {
   assert.deepEqual(emitted.map((event) => event.messageId), ['run-1-tool-1', 'run-1-tool-1']);
 });
 
+test('ACP concurrent tool call updates are matched by call id', () => {
+  const upserted: Array<{ id: string; content: string; kind: string }> = [];
+  const emitted: Array<{ content?: string; type: string; messageId?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => assert.fail('tool updates should be upserted'),
+    upsertMessage: (_threadId, id, _role, content, kind) => upserted.push({ id, content, kind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; messageId?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        id: 'call-a',
+        title: 'Terminal',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        id: 'call-b',
+        title: 'Read',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        id: 'call-b',
+        title: 'Read package.json',
+        status: 'running',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        id: 'call-a',
+        title: 'Tool update',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'terminal output',
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(upserted.length, 2);
+  assert.equal(upserted[0]?.id, 'run-1-tool-2');
+  assert.equal(upserted[0]?.content, '🔧 Read: Read package.json - running');
+  assert.equal(upserted[1]?.id, 'run-1-tool-1');
+  assert.equal(upserted[1]?.content, '🔧 Terminal: completed - terminal output');
+  assert.deepEqual(emitted.map((event) => event.messageId), ['run-1-tool-2', 'run-1-tool-1']);
+});
+
 test('ACP permission tool parameters are preserved in completed tool cards', () => {
   const upserted: Array<{ id: string; content: string; kind: string }> = [];
   const emitted: Array<{ content?: string; type: string; messageId?: string }> = [];

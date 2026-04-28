@@ -295,6 +295,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         pendingToolCallTitle: undefined,
         pendingToolCallId: undefined,
         pendingToolCallDetail: undefined,
+        activeToolCallKey: undefined,
+        pendingToolCalls: {},
+        pendingToolCallOrder: [],
         toolCallSequence: 0,
         permission: null,
       };

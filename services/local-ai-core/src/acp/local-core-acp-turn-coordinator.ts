@@ -3,6 +3,8 @@ import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.j
 import { formatToolCallContent, normalizePermissionAction, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
 
+type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
+
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress') => void;
@@ -25,15 +27,28 @@ export class LocalCoreAcpTurnCoordinator {
   flushPendingToolCall(session: AcpSessionState) {
     const currentTurn = session.currentTurn;
     const currentRunId = session.currentRunId;
-    const title = currentTurn?.pendingToolCallTitle?.trim();
-    if (!currentTurn || !currentRunId || !title) {
+    if (!currentTurn || !currentRunId) {
       return;
     }
-    const messageId = currentTurn.pendingToolCallId;
-    currentTurn.pendingToolCallTitle = undefined;
-    currentTurn.pendingToolCallId = undefined;
-    currentTurn.pendingToolCallDetail = undefined;
-    this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId);
+    const pending = this.getToolCallsInOrder(currentTurn)
+      .filter((toolCall) => !toolCall.emitted);
+    if (pending.length === 0) {
+      const title = currentTurn.pendingToolCallTitle?.trim();
+      if (!title) {
+        return;
+      }
+      const messageId = currentTurn.pendingToolCallId;
+      currentTurn.pendingToolCallTitle = undefined;
+      currentTurn.pendingToolCallId = undefined;
+      currentTurn.pendingToolCallDetail = undefined;
+      this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId);
+      return;
+    }
+    for (const toolCall of pending) {
+      toolCall.emitted = true;
+      this.emitProgress(session, currentRunId, `🔧 ${toolCall.title}`, toolCall.messageId);
+    }
+    this.syncLegacyPendingToolCall(currentTurn, this.resolveFallbackToolCall(currentTurn));
   }
 
   getPendingPermissionRequest(session: AcpSessionState | undefined, detail: ThreadDetail): ThreadPendingPermissionRequest | null {
@@ -138,6 +153,11 @@ export class LocalCoreAcpTurnCoordinator {
       session.currentTurn.permission = permissionRequest;
       if (toolTitle && toolTitle !== 'Permission required before continuing.') {
         session.currentTurn.pendingToolCallDetail = toolTitle;
+        const toolCall = this.resolveFallbackToolCall(session.currentTurn);
+        if (toolCall) {
+          toolCall.detail = toolTitle;
+          this.syncLegacyPendingToolCall(session.currentTurn, toolCall);
+        }
       }
     }
     this.options.updateRunStatus(currentRunId, session.threadId, 'awaiting_input');
@@ -233,12 +253,26 @@ export class LocalCoreAcpTurnCoordinator {
       }
       case 'tool_call': {
         const title = String(update.title || 'Running tool').trim();
-        this.flushPendingToolCall(session);
         const nextSequence = (currentTurn.toolCallSequence || 0) + 1;
         currentTurn.toolCallSequence = nextSequence;
-        currentTurn.pendingToolCallTitle = title;
-        currentTurn.pendingToolCallId = `${currentRunId}-tool-${nextSequence}`;
-        currentTurn.pendingToolCallDetail = undefined;
+        const key = this.extractToolCallKey(update) || `sequence:${nextSequence}`;
+        const toolCall = {
+          key,
+          title,
+          messageId: `${currentRunId}-tool-${nextSequence}`,
+          sequence: nextSequence,
+          emitted: false,
+        };
+        currentTurn.pendingToolCalls = {
+          ...(currentTurn.pendingToolCalls || {}),
+          [key]: toolCall,
+        };
+        currentTurn.pendingToolCallOrder = [
+          ...(currentTurn.pendingToolCallOrder || []).filter((item) => item !== key),
+          key,
+        ];
+        currentTurn.activeToolCallKey = key;
+        this.syncLegacyPendingToolCall(currentTurn, toolCall);
         return;
       }
       case 'tool_call_update': {
@@ -248,25 +282,39 @@ export class LocalCoreAcpTurnCoordinator {
         if (isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
-        const toolName = currentTurn.pendingToolCallTitle?.trim();
-        const messageId = currentTurn.pendingToolCallId;
-        const priorDetail = currentTurn.pendingToolCallDetail?.trim();
+        const toolCall = this.resolveToolCallForUpdate(currentTurn, update);
+        const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
+        const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
+        const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
         if (this.isEmptyRunningToolUpdate(title, status, content)) {
-          currentTurn.pendingToolCallTitle = undefined;
-          currentTurn.pendingToolCallId = undefined;
-          currentTurn.pendingToolCallDetail = undefined;
+          if (toolCall) {
+            this.deleteToolCall(currentTurn, toolCall.key);
+          } else {
+            currentTurn.pendingToolCallTitle = undefined;
+            currentTurn.pendingToolCallId = undefined;
+            currentTurn.pendingToolCallDetail = undefined;
+          }
+          this.syncLegacyPendingToolCall(currentTurn, this.resolveFallbackToolCall(currentTurn));
           return;
         }
         const displayTitle = this.resolveToolUpdateDisplayTitle(title, status, priorDetail);
         if (!this.isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
+          if (toolCall) {
+            toolCall.detail = displayTitle;
+          }
           currentTurn.pendingToolCallDetail = displayTitle;
         }
         if (this.isTerminalToolStatus(status)) {
-          currentTurn.pendingToolCallTitle = undefined;
-          currentTurn.pendingToolCallId = undefined;
-          currentTurn.pendingToolCallDetail = undefined;
+          if (toolCall) {
+            this.deleteToolCall(currentTurn, toolCall.key);
+          } else {
+            currentTurn.pendingToolCallTitle = undefined;
+            currentTurn.pendingToolCallId = undefined;
+            currentTurn.pendingToolCallDetail = undefined;
+          }
         }
         this.emitProgress(session, currentRunId, this.formatToolProgressMessage(toolName, displayTitle, status, content), messageId);
+        this.syncLegacyPendingToolCall(currentTurn, this.resolveFallbackToolCall(currentTurn));
         return;
       }
       case 'plan': {
@@ -330,6 +378,9 @@ export class LocalCoreAcpTurnCoordinator {
     if (priorDetail && (this.isTerminalToolStatus(status) || /^tool update$/i.test(title.trim()))) {
       return priorDetail;
     }
+    if (this.isTerminalToolStatus(status) && /^tool update$/i.test(title.trim())) {
+      return '';
+    }
     return title;
   }
 
@@ -341,6 +392,64 @@ export class LocalCoreAcpTurnCoordinator {
 
   private isTerminalToolStatus(status: string) {
     return /^(completed|failed|error|cancelled|canceled)$/i.test(status.trim());
+  }
+
+  private extractToolCallKey(update: Record<string, unknown>) {
+    for (const key of ['toolCallId', 'tool_call_id', 'callId', 'call_id', 'invocationId', 'invocation_id', 'id']) {
+      const value = update[key];
+      if (typeof value === 'string' || typeof value === 'number') {
+        const normalized = String(value).trim();
+        if (normalized) {
+          return normalized;
+        }
+      }
+    }
+    return '';
+  }
+
+  private resolveToolCallForUpdate(currentTurn: NonNullable<AcpSessionState['currentTurn']>, update: Record<string, unknown>) {
+    const explicitKey = this.extractToolCallKey(update);
+    if (explicitKey && currentTurn.pendingToolCalls?.[explicitKey]) {
+      currentTurn.activeToolCallKey = explicitKey;
+      return currentTurn.pendingToolCalls[explicitKey];
+    }
+    return this.resolveFallbackToolCall(currentTurn);
+  }
+
+  private resolveFallbackToolCall(currentTurn: NonNullable<AcpSessionState['currentTurn']>) {
+    const active = currentTurn.activeToolCallKey
+      ? currentTurn.pendingToolCalls?.[currentTurn.activeToolCallKey]
+      : undefined;
+    if (active) {
+      return active;
+    }
+    const ordered = this.getToolCallsInOrder(currentTurn);
+    return ordered[ordered.length - 1];
+  }
+
+  private getToolCallsInOrder(currentTurn: NonNullable<AcpSessionState['currentTurn']>) {
+    const toolCalls = currentTurn.pendingToolCalls || {};
+    const orderedKeys = currentTurn.pendingToolCallOrder || [];
+    return orderedKeys
+      .map((key) => toolCalls[key])
+      .filter((toolCall): toolCall is RunningToolCall => Boolean(toolCall));
+  }
+
+  private deleteToolCall(currentTurn: NonNullable<AcpSessionState['currentTurn']>, key: string) {
+    if (currentTurn.pendingToolCalls) {
+      delete currentTurn.pendingToolCalls[key];
+    }
+    currentTurn.pendingToolCallOrder = (currentTurn.pendingToolCallOrder || []).filter((item) => item !== key);
+    if (currentTurn.activeToolCallKey === key) {
+      currentTurn.activeToolCallKey = undefined;
+    }
+  }
+
+  private syncLegacyPendingToolCall(currentTurn: NonNullable<AcpSessionState['currentTurn']>, toolCall?: RunningToolCall) {
+    currentTurn.pendingToolCallTitle = toolCall?.title;
+    currentTurn.pendingToolCallId = toolCall?.messageId;
+    currentTurn.pendingToolCallDetail = toolCall?.detail;
+    currentTurn.activeToolCallKey = toolCall?.key;
   }
 }
 
