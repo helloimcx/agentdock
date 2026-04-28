@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
-import { toPendingPermissionRequest, type PermissionPromptMessage } from './thread-chat-permission';
+import {
+  shouldEchoBridgeActionResponse,
+  toPendingPermissionRequest,
+  type PermissionPromptMessage,
+} from './thread-chat-permission';
 import {
   taskStateAfterTypingStop,
   taskStateForBridgeButtons,
@@ -9,6 +13,7 @@ import {
 } from './thread-chat-task-state';
 import {
   findStreamingPreviewMessage,
+  sortChatMessages,
   shouldReplacePreviewWithReply,
   type ChatMessage,
 } from './thread-chat-model';
@@ -66,6 +71,44 @@ test('taskStateForBridgeButtons prioritizes interactive permission requests', ()
   assert.equal(taskStateReasonForBridgeButtons(true, false), 'bridge-buttons-awaiting-input');
   assert.equal(taskStateForBridgeButtons(false, false), 'idle');
   assert.equal(taskStateReasonForBridgeButtons(false, false), 'bridge-buttons-idle');
+});
+
+test('interactive permission responses are not echoed as user chat messages', () => {
+  assert.equal(shouldEchoBridgeActionResponse({
+    actionMode: 'permission',
+    actionInteractive: true,
+  }), false);
+  assert.equal(shouldEchoBridgeActionResponse({
+    actionMode: 'generic',
+    actionInteractive: true,
+  }), true);
+  assert.equal(shouldEchoBridgeActionResponse({
+    actionMode: 'permission',
+    actionInteractive: false,
+  }), true);
+});
+
+test('chat message sorting preserves stored order before timestamps', () => {
+  const messages: ChatMessage[] = [
+    {
+      id: 'tool',
+      role: 'assistant',
+      content: 'tool',
+      kind: 'progress',
+      order: 2,
+      timestamp: '2026-04-28T10:00:00.000Z',
+    },
+    {
+      id: 'thought',
+      role: 'assistant',
+      content: 'thought',
+      kind: 'progress',
+      order: 1,
+      timestamp: '2026-04-28T10:01:00.000Z',
+    },
+  ];
+
+  assert.deepEqual(sortChatMessages(messages).map((message) => message.id), ['thought', 'tool']);
 });
 
 test('reply replacement removes only the matching answer preview from a multi-message turn', () => {

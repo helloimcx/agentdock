@@ -68,6 +68,162 @@ test('ACP tool call update is emitted with its pending tool name', () => {
   assert.equal(emitted[0]?.content, appended[0]?.content);
 });
 
+test('ACP tool call running and completed updates share one message id', () => {
+  const upserted: Array<{ id: string; content: string; kind: string }> = [];
+  const emitted: Array<{ content?: string; type: string; messageId?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => assert.fail('tool updates should be upserted'),
+    upsertMessage: (_threadId, id, _role, content, kind) => upserted.push({ id, content, kind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; messageId?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        title: 'Find',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        title: "Find `src/pages/Threads/**/*`",
+        status: 'running',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        title: 'Tool update',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'src/pages/Threads/ThreadChat.tsx',
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(upserted.length, 2);
+  assert.equal(upserted[0]?.id, upserted[1]?.id);
+  assert.equal(upserted[0]?.id, 'run-1-tool-1');
+  assert.equal(upserted[0]?.content, "🔧 Find: Find `src/pages/Threads/**/*` - running");
+  assert.equal(upserted[1]?.content, '🔧 Find: Find `src/pages/Threads/**/*` - completed - src/pages/Threads/ThreadChat.tsx');
+  assert.equal(emitted.length, 2);
+  assert.deepEqual(emitted.map((event) => event.messageId), ['run-1-tool-1', 'run-1-tool-1']);
+});
+
+test('ACP permission tool parameters are preserved in completed tool cards', () => {
+  const upserted: Array<{ id: string; content: string; kind: string }> = [];
+  const emitted: Array<{ content?: string; type: string; messageId?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    upsertMessage: (_threadId, id, _role, content, kind) => upserted.push({ id, content, kind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; messageId?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    pendingPermissionByRun: new Map(),
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        title: 'Terminal',
+      },
+    },
+  });
+  coordinator.handleAgentRequest(session, {
+    method: 'session/request_permission',
+    id: 42,
+    params: {
+      toolCall: {
+        title: 'Terminal',
+        parameters: {
+          command: 'ls -la ~/Desktop',
+          cwd: '/Users/mochuxian',
+        },
+      },
+      options: [
+        { optionId: 'allow-once', name: 'Allow', kind: 'allow_once' },
+      ],
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        title: 'Tool update',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'Desktop file list',
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(upserted.length, 1);
+  assert.equal(upserted[0]?.id, 'run-1-tool-1');
+  assert.match(upserted[0]?.content || '', /Terminal/);
+  assert.match(upserted[0]?.content || '', /parameters:/);
+  assert.match(upserted[0]?.content || '', /ls -la ~\/Desktop/);
+  assert.match(upserted[0]?.content || '', /completed - Desktop file list/);
+});
+
 test('ACP bare tool call is flushed before assistant text', () => {
   const appended: string[] = [];
   const emitted: Array<{ content?: string; type: string }> = [];

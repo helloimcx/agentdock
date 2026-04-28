@@ -201,15 +201,15 @@ export function chatThreadMatchesSearch(thread: ChatThreadSummary, query: string
 
 export function sortChatMessages(messages: ChatMessage[]) {
   return [...messages].sort((a, b) => {
+    if (a.order !== b.order) {
+      return a.order - b.order;
+    }
     const aTime = a.timestamp ? new Date(a.timestamp).getTime() : Number.NaN;
     const bTime = b.timestamp ? new Date(b.timestamp).getTime() : Number.NaN;
     const aHasTime = Number.isFinite(aTime);
     const bHasTime = Number.isFinite(bTime);
     if (aHasTime && bHasTime && aTime !== bTime) {
       return aTime - bTime;
-    }
-    if (a.order !== b.order) {
-      return a.order - b.order;
     }
     return a.id.localeCompare(b.id);
   });

@@ -241,6 +241,9 @@ export type RunningTurn = {
   previewStarted: boolean;
   thoughtPreviewStarted: boolean;
   pendingToolCallTitle?: string;
+  pendingToolCallId?: string;
+  pendingToolCallDetail?: string;
+  toolCallSequence?: number;
   permission?: RunningPermissionRequest | null;
 };
 

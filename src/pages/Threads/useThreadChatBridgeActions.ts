@@ -4,7 +4,10 @@ import {
   type DesktopBridgeButtonOption,
 } from '../../../shared/desktop';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
-import type { PendingPermissionRequest } from './thread-chat-permission';
+import {
+  shouldEchoBridgeActionResponse,
+  type PendingPermissionRequest,
+} from './thread-chat-permission';
 import type {
   ThreadChatActiveThreadIdentity,
   ThreadChatSendingRefs,
@@ -60,9 +63,12 @@ export function useThreadChatBridgeActions({
     }
     const actionContent = normalizePermissionResponse(action.data) || action.data;
     const actionLabel = normalizePermissionResponse(action.data) || action.text || action.data;
-    const userOrder = reserveNextMessageOrder();
+    const shouldEchoAction = shouldEchoBridgeActionResponse(message);
+    const isInteractivePermission = !shouldEchoAction;
+    const userOrder = isInteractivePermission ? -1 : reserveNextMessageOrder();
     const actionMessageId = `${crypto.randomUUID()}-user-action`;
     let sent = false;
+    let insertedActionMessage = false;
     setPendingBridgeActionId(message.id);
     setMessages((current) =>
       current.map((item) =>
@@ -77,10 +83,13 @@ export function useThreadChatBridgeActions({
         : current,
     );
     try {
-      setMessages((current) => [
-        ...current,
-        { id: actionMessageId, role: 'user', content: actionLabel, order: userOrder, timestamp: new Date().toISOString() },
-      ]);
+      if (shouldEchoAction) {
+        insertedActionMessage = true;
+        setMessages((current) => [
+          ...current,
+          { id: actionMessageId, role: 'user', content: actionLabel, order: userOrder, timestamp: new Date().toISOString() },
+        ]);
+      }
       const result = await sendAction(activeThreadId, actionContent);
       setActiveRunId(result.runId);
       sent = true;
@@ -89,7 +98,7 @@ export function useThreadChatBridgeActions({
       setTyping(true);
       clearReplyTimeout();
       clearActionStatuses();
-      if (message.actionMode === 'permission' && message.actionInteractive) {
+      if (isInteractivePermission) {
         updateTaskState('permission_submitted', 'bridge-permission-submitted');
         armReplyTimeout('permission_continue');
         setPendingPermissionRequest(null);
@@ -111,10 +120,12 @@ export function useThreadChatBridgeActions({
       }
     } catch (error) {
       setBridgeError(error instanceof Error ? error.message : 'Failed to send permission response.');
-      setMessages((current) => current.filter((item) => item.id !== actionMessageId));
+      if (insertedActionMessage) {
+        setMessages((current) => current.filter((item) => item.id !== actionMessageId));
+      }
       updateTaskState(
-        message.actionMode === 'permission' && message.actionInteractive ? 'awaiting_permission' : 'error',
-        message.actionMode === 'permission' && message.actionInteractive
+        isInteractivePermission ? 'awaiting_permission' : 'error',
+        isInteractivePermission
           ? 'bridge-permission-submit-failed'
           : 'bridge-action-submit-failed',
       );

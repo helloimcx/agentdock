@@ -24,6 +24,12 @@ export type PermissionTaskState =
   | 'error'
   | 'stopping';
 
+export function shouldEchoBridgeActionResponse(
+  message: Pick<PermissionPromptMessage, 'actionMode' | 'actionInteractive'>,
+) {
+  return !(message.actionMode === 'permission' && message.actionInteractive);
+}
+
 export function toPendingPermissionRequest<T extends PermissionPromptMessage>(message: T): PendingPermissionRequest | null {
   if (
     !message.id ||

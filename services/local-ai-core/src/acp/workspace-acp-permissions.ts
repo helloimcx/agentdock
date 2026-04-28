@@ -36,7 +36,25 @@ export function formatToolCallContent(toolCall: Record<string, unknown> | null |
         .filter(Boolean)
         .join('\n')
     : '';
-  return [title, content].filter(Boolean).join('\n\n') || 'Permission required before continuing.';
+  const detailFields = ['parameters', 'parameter', 'params', 'arguments', 'args', 'input'];
+  const details = detailFields
+    .map((key) => formatToolCallDetailField(key, toolCall[key]))
+    .filter(Boolean);
+  return [title, content, ...details].filter(Boolean).join('\n\n') || 'Permission required before continuing.';
+}
+
+function formatToolCallDetailField(key: string, value: unknown) {
+  if (value == null || value === '') {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return `${key}:\n${value.trim()}`;
+  }
+  try {
+    return `${key}:\n${JSON.stringify(value, null, 2)}`;
+  } catch {
+    return `${key}:\n${String(value)}`;
+  }
 }
 
 export function toPermissionButtonRows(

@@ -29,8 +29,11 @@ export class LocalCoreAcpTurnCoordinator {
     if (!currentTurn || !currentRunId || !title) {
       return;
     }
+    const messageId = currentTurn.pendingToolCallId;
     currentTurn.pendingToolCallTitle = undefined;
-    this.emitProgress(session, currentRunId, `🔧 ${title}`);
+    currentTurn.pendingToolCallId = undefined;
+    currentTurn.pendingToolCallDetail = undefined;
+    this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId);
   }
 
   getPendingPermissionRequest(session: AcpSessionState | undefined, detail: ThreadDetail): ThreadPendingPermissionRequest | null {
@@ -133,6 +136,9 @@ export class LocalCoreAcpTurnCoordinator {
     session.pendingPermissionByRun.set(currentRunId, permissionRequest);
     if (session.currentTurn) {
       session.currentTurn.permission = permissionRequest;
+      if (toolTitle && toolTitle !== 'Permission required before continuing.') {
+        session.currentTurn.pendingToolCallDetail = toolTitle;
+      }
     }
     this.options.updateRunStatus(currentRunId, session.threadId, 'awaiting_input');
     const permissionPrompt = [
@@ -228,7 +234,11 @@ export class LocalCoreAcpTurnCoordinator {
       case 'tool_call': {
         const title = String(update.title || 'Running tool').trim();
         this.flushPendingToolCall(session);
+        const nextSequence = (currentTurn.toolCallSequence || 0) + 1;
+        currentTurn.toolCallSequence = nextSequence;
         currentTurn.pendingToolCallTitle = title;
+        currentTurn.pendingToolCallId = `${currentRunId}-tool-${nextSequence}`;
+        currentTurn.pendingToolCallDetail = undefined;
         return;
       }
       case 'tool_call_update': {
@@ -239,12 +249,24 @@ export class LocalCoreAcpTurnCoordinator {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
         const toolName = currentTurn.pendingToolCallTitle?.trim();
+        const messageId = currentTurn.pendingToolCallId;
+        const priorDetail = currentTurn.pendingToolCallDetail?.trim();
         if (this.isEmptyRunningToolUpdate(title, status, content)) {
           currentTurn.pendingToolCallTitle = undefined;
+          currentTurn.pendingToolCallId = undefined;
+          currentTurn.pendingToolCallDetail = undefined;
           return;
         }
-        currentTurn.pendingToolCallTitle = undefined;
-        this.emitProgress(session, currentRunId, this.formatToolProgressMessage(toolName, title, status, content));
+        const displayTitle = this.resolveToolUpdateDisplayTitle(title, status, priorDetail);
+        if (!this.isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
+          currentTurn.pendingToolCallDetail = displayTitle;
+        }
+        if (this.isTerminalToolStatus(status)) {
+          currentTurn.pendingToolCallTitle = undefined;
+          currentTurn.pendingToolCallId = undefined;
+          currentTurn.pendingToolCallDetail = undefined;
+        }
+        this.emitProgress(session, currentRunId, this.formatToolProgressMessage(toolName, displayTitle, status, content), messageId);
         return;
       }
       case 'plan': {
@@ -272,12 +294,17 @@ export class LocalCoreAcpTurnCoordinator {
     }
   }
 
-  private emitProgress(session: AcpSessionState, currentRunId: string, content: string) {
-    this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
+  private emitProgress(session: AcpSessionState, currentRunId: string, content: string, messageId?: string) {
+    if (messageId && this.options.upsertMessage) {
+      this.options.upsertMessage(session.threadId, messageId, 'assistant', content, 'progress');
+    } else {
+      this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
+    }
     this.options.emitBridge({
       type: 'reply',
       sessionKey: session.bridgeSessionKey,
       replyCtx: currentRunId,
+      messageId,
       content,
     });
   }
@@ -299,10 +326,21 @@ export class LocalCoreAcpTurnCoordinator {
     return toolName ? `🔧 ${toolName}: ${detail || 'Tool update'}` : `🔧 ${detail || 'Tool update'}`;
   }
 
+  private resolveToolUpdateDisplayTitle(title: string, status: string, priorDetail?: string) {
+    if (priorDetail && (this.isTerminalToolStatus(status) || /^tool update$/i.test(title.trim()))) {
+      return priorDetail;
+    }
+    return title;
+  }
+
   private isEmptyRunningToolUpdate(title: string, status: string, content: string) {
     return !content.trim() &&
       /^running$/i.test(status) &&
       (!title.trim() || /^tool update$/i.test(title));
+  }
+
+  private isTerminalToolStatus(status: string) {
+    return /^(completed|failed|error|cancelled|canceled)$/i.test(status.trim());
   }
 }
 

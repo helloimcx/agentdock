@@ -293,6 +293,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         previewStarted: false,
         thoughtPreviewStarted: false,
         pendingToolCallTitle: undefined,
+        pendingToolCallId: undefined,
+        pendingToolCallDetail: undefined,
+        toolCallSequence: 0,
         permission: null,
       };
       const promptPromise = this.transport.request(session, 'session/prompt', {

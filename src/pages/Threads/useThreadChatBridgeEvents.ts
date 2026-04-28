@@ -278,26 +278,42 @@ export function useThreadChatBridgeEvents({
         }
         setPendingPermissionRequest(null);
         setBridgeError('');
-        const replyMessageId = nextProgressMessageId(event.replyCtx);
+        const replyMessageId = event.messageId || nextProgressMessageId(event.replyCtx);
         if (!isInternalProgressMessage(event.content) && event.replyCtx) {
           delete progressSequenceByTurnRef.current[event.replyCtx];
         }
         setBridgeError('');
-        setMessages((current) => [
-          ...current.filter((message) =>
-            !shouldReplacePreviewWithReply(message, event.content, event.replyCtx) &&
-            message.id !== replyMessageId
-          ),
-          {
-            id: replyMessageId,
-            role: 'assistant',
-            content: event.content || '',
-            kind: 'progress',
-            order: reserveAssistantMessageOrder(event.sessionKey),
-            timestamp: new Date().toISOString(),
-            turnKey: event.replyCtx,
-          },
-        ]);
+        setMessages((current) => {
+          const existing = current.find((message) => message.id === replyMessageId);
+          const timestamp = new Date().toISOString();
+          if (existing) {
+            return current.map((message) =>
+              message.id === replyMessageId
+                ? {
+                    ...message,
+                    content: event.content || '',
+                    kind: 'progress',
+                    timestamp,
+                    turnKey: event.replyCtx,
+                  }
+                : message,
+            );
+          }
+          return [
+            ...current.filter((message) =>
+              !shouldReplacePreviewWithReply(message, event.content, event.replyCtx)
+            ),
+            {
+              id: replyMessageId,
+              role: 'assistant',
+              content: event.content || '',
+              kind: 'progress',
+              order: reserveAssistantMessageOrder(event.sessionKey),
+              timestamp,
+              turnKey: event.replyCtx,
+            },
+          ];
+        });
         break;
       }
       case 'buttons':
