@@ -45,6 +45,16 @@ type PermissionCard = {
   actionInteractive: true;
 };
 
+function isInteractivePermissionMessage(message: ChatMessage, pendingPermissionRequest?: PermissionCard | null) {
+  if (pendingPermissionRequest?.id === message.id) {
+    return true;
+  }
+  return message.role !== 'user' && (
+    (message.actionMode === 'permission' && message.actionInteractive) ||
+    isPermissionPromptContent(message.content)
+  );
+}
+
 function parseToolResultCard(content: string): ToolResultCard | null {
   const updateMatch = content.match(/^\s*(?:🔧\s*)?(Tool update)\s*-\s*([^-]+?)\s*-\s*([\s\S]+?)\s*$/i);
   if (updateMatch) {
@@ -160,16 +170,26 @@ function isPermissionPromptContent(content: string) {
 
 function PermissionRequestCardView({
   card,
+  className,
+  testId = 'desktop-chat-permission-card',
   loading,
   onAction,
 }: {
   card: PermissionCard;
+  className?: string;
+  testId?: string;
   loading: boolean;
   onAction: (action: NonNullable<ChatMessage['actions']>[number][number]) => void;
 }) {
   const parsed = parsePermissionCardContent(card.content);
   return (
-    <div className="overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50/90 shadow-[0_10px_26px_rgba(180,83,9,0.08)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:shadow-none">
+    <div
+      data-testid={testId}
+      className={cn(
+        'overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50/90 shadow-[0_10px_26px_rgba(180,83,9,0.08)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:shadow-none',
+        className,
+      )}
+    >
       <div className="flex items-center justify-between gap-3 border-b border-amber-200/80 px-4 py-3 dark:border-amber-400/15">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200">
@@ -324,6 +344,18 @@ export default function ThreadChat() {
 
   const isRuntimeStarting = runtime?.phase === 'starting';
   const selectedKnowledgeCount = selectedKnowledgeBaseIds.length;
+  const composerPermissionCard = pendingPermissionRequest
+    ? {
+        id: pendingPermissionRequest.id,
+        content: pendingPermissionRequest.content,
+        actions: pendingPermissionRequest.actions,
+        actionReplyCtx: pendingPermissionRequest.actionReplyCtx,
+        actionPending: pendingPermissionRequest.actionPending,
+        actionStatus: pendingPermissionRequest.actionStatus,
+        actionMode: 'permission' as const,
+        actionInteractive: true as const,
+      }
+    : null;
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -680,29 +712,13 @@ export default function ThreadChat() {
                     if (message.kind === 'progress' && isHiddenProgressMessage(message.content)) {
                       return null;
                     }
+                    if (isInteractivePermissionMessage(message, composerPermissionCard)) {
+                      return null;
+                    }
                     const isUser = message.role === 'user';
                     const isSystem = message.role === 'system';
                     const isProgress = !isUser && !isSystem && message.kind === 'progress';
-                    const pendingPermissionForMessage = pendingPermissionRequest?.id === message.id ? pendingPermissionRequest : null;
-                    const permissionCard = !isUser && (
-                      pendingPermissionForMessage ||
-                      (
-                        (message.actionMode === 'permission' && message.actionInteractive) ||
-                        isPermissionPromptContent(message.content)
-                          ? {
-                              id: message.id,
-                              content: message.content,
-                              actions: message.actions || [],
-                              actionReplyCtx: message.actionReplyCtx,
-                              actionPending: message.actionPending,
-                              actionStatus: message.actionStatus,
-                              actionMode: 'permission' as const,
-                              actionInteractive: true as const,
-                            }
-                          : null
-                      )
-                    );
-                    const toolResultCard = !isUser && !permissionCard ? parseToolResultCard(message.content) : null;
+                    const toolResultCard = !isUser ? parseToolResultCard(message.content) : null;
                     const isToolResult = Boolean(toolResultCard);
                     return (
                       <div key={message.id} className={cn('flex gap-2 sm:gap-3', isUser ? 'justify-end' : 'justify-start')}>
@@ -762,13 +778,7 @@ export default function ThreadChat() {
                                 <span data-testid="desktop-chat-message-timestamp">{formatMessageTimestamp(message.timestamp)}</span>
                               ) : null}
                             </div>
-                            {permissionCard ? (
-                              <PermissionRequestCardView
-                                card={permissionCard}
-                                loading={pendingBridgeActionId === permissionCard.id}
-                                onAction={(action) => void handleBridgeAction(permissionCard, action)}
-                              />
-                            ) : !isUser && message.preview && message.previewPlainText ? (
+                            {!isUser && message.preview && message.previewPlainText ? (
                               <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-inherit">
                                 {message.content}
                               </div>
@@ -777,7 +787,7 @@ export default function ThreadChat() {
                             ) : (
                               <ChatMarkdown content={message.content} isUser={isUser} />
                             )}
-                            {!permissionCard && !isUser && message.actions && message.actions.length > 0 ? (
+                            {!isUser && message.actions && message.actions.length > 0 ? (
                               <div className="mt-4 space-y-2">
                                 {message.actions.map((row, rowIndex) => (
                                   <div key={`${message.id}-actions-${rowIndex}`} className="flex flex-wrap gap-2">
@@ -974,59 +984,71 @@ export default function ThreadChat() {
                 </div>
 
                 <div className="mt-2.5">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:gap-3">
-                    <Textarea
-                      data-testid="desktop-chat-input"
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey && !taskInputLocked) {
-                          event.preventDefault();
-                          void handleSend();
-                        }
-                      }}
-                      rows={3}
-                      placeholder={
-                        !serviceRunning
-                          ? branding.startFirstPlaceholder
-                          : !transportReady
-                            ? branding.waitingRuntimePlaceholder
-                            : taskState === 'awaiting_input'
-                              ? 'Agent 正在等待你的回复，可直接继续输入。'
-                              : taskInputLocked
-                                ? '任务正在运行，点击停止可中断当前执行。'
-                                : branding.sendPlaceholder
-                      }
-                      disabled={!serviceRunning || !transportReady || sending || !selectedProject || taskInputLocked}
-                      className="min-h-[76px] rounded-[20px] border-slate-200 bg-white px-3 py-2.5 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[94px] sm:px-4 sm:py-3"
+                  {composerPermissionCard ? (
+                    <PermissionRequestCardView
+                      card={composerPermissionCard}
+                      loading={pendingBridgeActionId === composerPermissionCard.id}
+                      onAction={(action) => void handleBridgeAction(composerPermissionCard, action)}
+                      testId="desktop-chat-composer-permission-card"
+                      className="border-primary/45 bg-white shadow-[0_14px_34px_rgba(0,122,255,0.12)] dark:border-primary/35 dark:bg-[#090d12]"
                     />
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:gap-3">
+                        <Textarea
+                          data-testid="desktop-chat-input"
+                          value={draft}
+                          onChange={(event) => setDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey && !taskInputLocked) {
+                              event.preventDefault();
+                              void handleSend();
+                            }
+                          }}
+                          rows={3}
+                          placeholder={
+                            !serviceRunning
+                              ? branding.startFirstPlaceholder
+                              : !transportReady
+                                ? branding.waitingRuntimePlaceholder
+                                : taskState === 'awaiting_input'
+                                  ? 'Agent 正在等待你的回复，可直接继续输入。'
+                                  : taskInputLocked
+                                    ? '任务正在运行，点击停止可中断当前执行。'
+                                    : branding.sendPlaceholder
+                          }
+                          disabled={!serviceRunning || !transportReady || sending || !selectedProject || taskInputLocked}
+                          className="min-h-[76px] rounded-[20px] border-slate-200 bg-white px-3 py-2.5 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[94px] sm:px-4 sm:py-3"
+                        />
 
-                    {taskRunning ? (
-                      <Button
-                        variant="danger"
-                        onClick={() => void handleStopTask()}
-                        disabled={(!activeSessionKey && !activeRunId) || taskState === 'stopping'}
-                        data-testid="desktop-chat-stop-task"
-                        className="h-12 min-w-12 rounded-[20px] bg-red-50 px-3 text-red-600 hover:bg-red-100 dark:bg-red-500/12 dark:text-red-200 dark:hover:bg-red-500/18 sm:h-14 sm:min-w-[124px] sm:px-5"
-                      >
-                        <LoaderCircle size={16} className="animate-spin" />
-                        <span className="hidden sm:inline">{taskState === 'stopping' ? '停止中' : '停止任务'}</span>
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() => void handleSend()}
-                        disabled={!draft.trim() || !serviceRunning || !transportReady || sending || !selectedProject}
-                        data-testid="desktop-chat-send"
-                        className="h-12 w-12 rounded-full px-0 shadow-none sm:h-14 sm:w-14"
-                      >
-                        <Send size={18} />
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-1.5 hidden items-center justify-between px-1 pr-[4.5rem] text-[11px] text-slate-500 dark:text-slate-400 sm:flex">
-                    <span>Enter 发送，Shift + Enter 换行</span>
-                    <span>{selectedProject ? '范围会随当前线程保存' : '请先选择项目'}</span>
-                  </div>
+                        {taskRunning ? (
+                          <Button
+                            variant="danger"
+                            onClick={() => void handleStopTask()}
+                            disabled={(!activeSessionKey && !activeRunId) || taskState === 'stopping'}
+                            data-testid="desktop-chat-stop-task"
+                            className="h-12 min-w-12 rounded-[20px] bg-red-50 px-3 text-red-600 hover:bg-red-100 dark:bg-red-500/12 dark:text-red-200 dark:hover:bg-red-500/18 sm:h-14 sm:min-w-[124px] sm:px-5"
+                          >
+                            <LoaderCircle size={16} className="animate-spin" />
+                            <span className="hidden sm:inline">{taskState === 'stopping' ? '停止中' : '停止任务'}</span>
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => void handleSend()}
+                            disabled={!draft.trim() || !serviceRunning || !transportReady || sending || !selectedProject}
+                            data-testid="desktop-chat-send"
+                            className="h-12 w-12 rounded-full px-0 shadow-none sm:h-14 sm:w-14"
+                          >
+                            <Send size={18} />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-1.5 hidden items-center justify-between px-1 pr-[4.5rem] text-[11px] text-slate-500 dark:text-slate-400 sm:flex">
+                        <span>Enter 发送，Shift + Enter 换行</span>
+                        <span>{selectedProject ? '范围会随当前线程保存' : '请先选择项目'}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

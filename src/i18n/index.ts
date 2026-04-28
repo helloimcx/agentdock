@@ -11,6 +11,9 @@ const languageLoaders = {
 } as const;
 
 export type AppLanguage = keyof typeof languageLoaders;
+type TranslationResources = Record<string, unknown>;
+
+const loadedResources: Partial<Record<AppLanguage, TranslationResources>> = {};
 
 function isAppLanguage(language: string): language is AppLanguage {
   return language in languageLoaders;
@@ -30,11 +33,14 @@ function initialLanguage() {
 }
 
 async function loadLanguage(language: AppLanguage) {
-  if (i18n.hasResourceBundle(language, 'translation')) {
+  if (loadedResources[language]) {
     return;
   }
   const resources = await languageLoaders[language]();
-  i18n.addResourceBundle(language, 'translation', resources.default, true, true);
+  loadedResources[language] = resources.default as TranslationResources;
+  if (i18n.isInitialized) {
+    i18n.addResourceBundle(language, 'translation', loadedResources[language], true, true);
+  }
 }
 
 export async function initializeI18n() {
@@ -47,6 +53,12 @@ export async function initializeI18n() {
     await i18n.use(initReactI18next).init({
       lng: language,
       fallbackLng: fallbackLanguage,
+      resources: Object.fromEntries(
+        Object.entries(loadedResources).map(([resourceLanguage, resources]) => [
+          resourceLanguage,
+          { translation: resources },
+        ]),
+      ),
       interpolation: { escapeValue: false },
     });
   }
