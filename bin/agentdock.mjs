@@ -6,6 +6,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createBrotliCompress, createGzip } from 'node:zlib';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rendererRoot = path.join(packageRoot, 'dist', 'renderer');
@@ -140,16 +141,85 @@ function mimeType(filePath) {
   }[ext] || 'application/octet-stream';
 }
 
-function sendFile(res, filePath) {
-  const stream = createReadStream(filePath);
+function isCompressible(filePath) {
+  return new Set(['.css', '.html', '.js', '.json', '.map', '.svg', '.txt']).has(path.extname(filePath).toLowerCase());
+}
+
+function preferredEncoding(req, filePath) {
+  if (!isCompressible(filePath)) {
+    return null;
+  }
+  const accepted = String(req.headers['accept-encoding'] || '');
+  if (/\bbr\b/.test(accepted)) {
+    return 'br';
+  }
+  if (/\bgzip\b/.test(accepted)) {
+    return 'gzip';
+  }
+  return null;
+}
+
+function isImmutableAsset(filePath) {
+  const relative = path.relative(rendererRoot, filePath).split(path.sep).join('/');
+  return relative.startsWith('assets/');
+}
+
+function staticEtag(filePath, stat) {
+  const relative = path.relative(rendererRoot, filePath).split(path.sep).join('/');
+  return `W/"${relative}:${stat.size}:${Math.trunc(stat.mtimeMs)}"`;
+}
+
+function matchesEtag(req, etag) {
+  return String(req.headers['if-none-match'] || '')
+    .split(',')
+    .map((value) => value.trim())
+    .includes(etag);
+}
+
+function sendFile(req, res, filePath) {
+  const stat = statSync(filePath);
+  const etag = staticEtag(filePath, stat);
   res.statusCode = 200;
   res.setHeader('Content-Type', mimeType(filePath));
+  res.setHeader('ETag', etag);
+  res.setHeader('Last-Modified', stat.mtime.toUTCString());
+  res.setHeader(
+    'Cache-Control',
+    isImmutableAsset(filePath)
+      ? 'public, max-age=31536000, immutable'
+      : 'no-cache',
+  );
+  if (matchesEtag(req, etag)) {
+    res.statusCode = 304;
+    res.end();
+    return;
+  }
+  const encoding = preferredEncoding(req, filePath);
+  if (encoding) {
+    res.setHeader('Content-Encoding', encoding);
+    res.setHeader('Vary', 'Accept-Encoding');
+  } else {
+    res.setHeader('Content-Length', stat.size);
+  }
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  const stream = createReadStream(filePath);
   stream.on('error', () => {
     if (!res.headersSent) {
       res.statusCode = 500;
     }
     res.end('Internal server error');
   });
+  if (encoding === 'br') {
+    stream.pipe(createBrotliCompress()).pipe(res);
+    return;
+  }
+  if (encoding === 'gzip') {
+    stream.pipe(createGzip()).pipe(res);
+    return;
+  }
   stream.pipe(res);
 }
 
@@ -213,7 +283,7 @@ function startWebServer({ host, port, coreOrigin }) {
       res.end('Not found');
       return;
     }
-    sendFile(res, filePath);
+    sendFile(req, res, filePath);
   });
   server.listen(port, host, () => {
     console.log(`[agentdock] Web listening at http://${host}:${port}`);

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import {
   Clock,
@@ -12,20 +12,21 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
-import Dashboard from '@/pages/Dashboard';
-import ThreadChat from '@/pages/Threads/ThreadChat';
-import WebChat from '@/pages/Web/Chat';
-import DesktopWorkspace from '@/pages/Desktop/Workspace';
-import ProjectList from '@/pages/Projects/ProjectList';
-import ProjectDetail from '@/pages/Projects/ProjectDetail';
-import SessionList from '@/pages/Sessions/SessionList';
-import SessionChat from '@/pages/Sessions/SessionChat';
-import CronList from '@/pages/Cron/CronList';
-import SystemConfig from '@/pages/System/Config';
-import SystemLogs from '@/pages/System/Logs';
-import KnowledgeHome from '@/pages/Knowledge/KnowledgeHome';
-import KnowledgeDetail from '@/pages/Knowledge/KnowledgeDetail';
 import type { RuntimeFeatureSupport } from '@/app/runtime';
+
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const ThreadChat = lazy(() => import('@/pages/Threads/ThreadChat'));
+const WebChat = lazy(() => import('@/pages/Web/Chat'));
+const DesktopWorkspace = lazy(() => import('@/pages/Desktop/Workspace'));
+const ProjectList = lazy(() => import('@/pages/Projects/ProjectList'));
+const ProjectDetail = lazy(() => import('@/pages/Projects/ProjectDetail'));
+const SessionList = lazy(() => import('@/pages/Sessions/SessionList'));
+const SessionChat = lazy(() => import('@/pages/Sessions/SessionChat'));
+const CronList = lazy(() => import('@/pages/Cron/CronList'));
+const SystemConfig = lazy(() => import('@/pages/System/Config'));
+const SystemLogs = lazy(() => import('@/pages/System/Logs'));
+const KnowledgeHome = lazy(() => import('@/pages/Knowledge/KnowledgeHome'));
+const KnowledgeDetail = lazy(() => import('@/pages/Knowledge/KnowledgeDetail'));
 
 export type UiContributionContext = {
   desktopManaged: boolean;
