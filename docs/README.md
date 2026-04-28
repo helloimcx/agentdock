@@ -10,6 +10,7 @@ This directory is organized by documentation purpose.
 ## Architecture
 
 - [Overview](architecture/overview.md): current Local AI Core-first architecture.
+- [ACP Protocol Fields And Examples](architecture/acp-protocol.md): AgentDock-supported ACP JSON-RPC fields, bridge events, and example flows.
 - [State Ownership](architecture/state-ownership.md): where runtime, workspace, task, device, and approval state belongs.
 - [Runtime Installation Boundary](architecture/runtime-installation-boundary.md): reserved shape for future installation support without implementing installers.
 
