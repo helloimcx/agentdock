@@ -445,6 +445,42 @@ test('runtime logs are persisted to local-core.log', () => {
   }
 });
 
+test('controller logs are persisted to local-core.log', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-controller-logs-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    const controller = new LocalCoreController(userDataPath, runtime);
+    const emittedLogs: string[] = [];
+    controller.on('logs', (line) => emittedLogs.push(line));
+
+    (controller as any).handleLog('localcore-lark inbound message for project-1');
+
+    const logPath = join(userDataPath, 'runtime', 'local-core.log');
+    const raw = readFileSync(logPath, 'utf-8');
+    assert.deepEqual(emittedLogs, ['localcore-lark inbound message for project-1']);
+    assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* localcore-lark inbound message for project-1/m);
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('controller buffers bootstrap logs until runtime state is assigned', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-bootstrap-logs-'));
+  try {
+    const controller = new LocalCoreController(userDataPath);
+    const logPath = join(userDataPath, 'runtime', 'local-core.log');
+    const raw = readFileSync(logPath, 'utf-8');
+    assert.match(raw, /\[plugin:builtin\.agent-codex\] registered/);
+    assert.equal((raw.match(/\[plugin:builtin\.agent-codex\] registered/g) || []).length, 1);
+    void controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('channel plugin lifecycle start and stop are driven by the kernel lifecycle', async () => {
   const calls: string[] = [];
   const registry = new LocalCorePluginRegistry();

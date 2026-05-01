@@ -146,6 +146,7 @@ function normalizePlatformDraft(platform: DesktopPlatformConfig): DesktopPlatfor
         ...options,
         app_id: String(options.app_id || '').trim(),
         app_secret: String(options.app_secret || '').trim(),
+        card_actions: options.card_actions === true,
       },
     };
   }
@@ -827,6 +828,19 @@ export default function DesktopWorkspace() {
                     }
                   />
                   Auto-approve Lark users
+                </label>
+                <label className="flex items-center gap-3 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={platformDialog.draft.options?.card_actions === true}
+                    onChange={(event) =>
+                      updatePlatformDialogDraft((platform) => ({
+                        ...platform,
+                        options: { ...(platform.options || {}), card_actions: event.target.checked },
+                      }))
+                    }
+                  />
+                  Enable Lark card action buttons
                 </label>
               </div>
             ) : null}

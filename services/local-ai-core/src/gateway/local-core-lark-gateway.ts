@@ -14,7 +14,7 @@ import type {
   LocalCorePairingRequest,
 } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime, EventBus } from '../../../../packages/plugin-sdk/src/index.js';
-import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
+import { normalizeDesktopPlatformType, normalizePermissionResponse, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 
@@ -27,6 +27,7 @@ type LarkWorkspaceBinding = {
   encryptKey: string;
   verificationToken: string;
   autoApprove: boolean;
+  cardActionsEnabled: boolean;
   enabled: boolean;
   project: DesktopProjectConfig;
 };
@@ -37,6 +38,7 @@ type LarkRuntimeState = {
   status: LocalCoreLarkGatewayStatus['status'];
   connected: boolean;
   appId: string;
+  cardActionsEnabled: boolean;
   lastError?: string;
   connectedAt?: string;
   client?: any;
@@ -57,6 +59,8 @@ type LarkTurnState = {
   sessionKey: string;
   replyCtx?: string;
   messageId?: string;
+  finalMessageId?: string;
+  progressMessageIds: Record<string, string>;
   permissionMessageId?: string;
   awaitingPermission: boolean;
   sourceMessageId?: string;
@@ -69,6 +73,14 @@ type LarkTurnState = {
   statusLines: string[];
   buttonRows: Array<Array<{ text: string; data: string }>>;
   lastPatchedAt: number;
+  lastPatchedAtByMessageId: Record<string, number>;
+};
+
+type LarkOutboundRender = {
+  key: string;
+  text: string;
+  buttonRows: Array<Array<{ text: string; data: string }>>;
+  isFinal: boolean;
 };
 
 type LocalCoreLarkGatewayOptions = {
@@ -82,9 +94,9 @@ type LocalCoreLarkGatewayOptions = {
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 
 export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
-  // Lark card action callbacks are unreliable in current WS-only setup (code 200340).
-  // Keep permission approval on explicit text commands: allow all / allow / deny.
-  private readonly enableCardActions = false;
+  // Lark returns 200340 when card action events are not enabled in the app's
+  // event subscription. Keep card actions opt-in so text approval always works.
+  private readonly defaultCardActionsEnabled = false;
   // Keep permission state in a dedicated card to avoid mixing order in the main reply card.
   private readonly mirrorPermissionStateInMainCard = false;
   private readonly runtime = new Map<string, LarkRuntimeState>();
@@ -121,6 +133,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             status: 'disabled',
             connected: false,
             appId: binding.appId,
+            cardActionsEnabled: binding.cardActionsEnabled,
           });
         }
         continue;
@@ -339,7 +352,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             this.options.store.clearPlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId);
           }
           if (event.type === 'buttons') {
-            const permissionCard = this.renderPermissionCard(turn, event);
+            const permissionCard = this.renderPermissionCard(turn, event, Boolean(state.cardActionsEnabled));
             if (permissionCard.text || permissionCard.buttonRows.length > 0) {
               if (!turn.permissionMessageId) {
                 const createdId = await this.sendTextAsCard(
@@ -370,33 +383,38 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             return;
           }
           this.consumeBridgeEvent(turn, event);
-          const rendered = this.renderTurnCard(turn);
+          const rendered = this.renderBridgeEventMessage(turn, event);
           if (!rendered.text && rendered.buttonRows.length === 0) {
             this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${event.type}`);
             return;
           }
+          const existingMessageId = this.getRenderedMessageId(turn, rendered);
           const shouldThrottle =
             event.type === 'update_message' &&
-            turn.messageId &&
-            Date.now() - turn.lastPatchedAt < 900;
+            rendered.isFinal &&
+            existingMessageId &&
+            Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < 900;
           this.options.log?.(
-            `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(turn.messageId)} throttle=${shouldThrottle}`,
+            `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(existingMessageId)} throttle=${shouldThrottle}`,
           );
           if (shouldThrottle) {
             return;
           }
-          if (!turn.messageId) {
+          if (!existingMessageId) {
             const createdId = await this.sendTextAsCard(state, route.chatId, rendered.text, rendered.buttonRows, sessionKey, binding.thread_id);
             if (createdId) {
-              turn.messageId = createdId;
-              this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId);
+              this.setRenderedMessageId(turn, rendered, createdId);
+              if (rendered.isFinal) {
+                this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId);
+              }
               this.options.log?.(`localcore-lark sent new card message ${createdId} for sessionKey=${sessionKey}`);
             }
             return;
           }
-          await this.patchTextCard(state, turn.messageId, rendered.text, rendered.buttonRows, sessionKey, binding.thread_id);
+          await this.patchTextCard(state, existingMessageId, rendered.text, rendered.buttonRows, sessionKey, binding.thread_id);
           turn.lastPatchedAt = Date.now();
-          this.options.log?.(`localcore-lark patched card message ${turn.messageId} for sessionKey=${sessionKey}`);
+          turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
+          this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
         } catch (error) {
           this.options.log?.(`localcore-lark bridge send failed for sessionKey=${sessionKey}: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -588,10 +606,12 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status: 'starting',
       connected: false,
       appId: binding.appId,
+      cardActionsEnabled: binding.cardActionsEnabled,
     };
     this.runtime.set(binding.workspaceId, status);
     this.notifyRuntimeStateChanged();
     try {
+      this.options.log?.(`localcore-lark starting workspace=${binding.workspaceId} app=${this.maskLarkAppId(binding.appId)} cardActions=${binding.cardActionsEnabled}`);
       const mod = await this.getLarkModule();
       status.client = new mod.Client({
         appId: binding.appId,
@@ -606,8 +626,11 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       });
       status.eventDispatcher.register({
         'im.message.receive_v1': async (data: Record<string, unknown>) => {
-          this.options.log?.(`localcore-lark received im.message.receive_v1 for ${binding.workspaceId}`);
-          await this.handleMessageEvent(binding.workspaceId, data);
+          this.options.log?.(`localcore-lark received im.message.receive_v1 for ${binding.workspaceId}: ${this.summarizeLarkEvent(data)}`);
+          void this.handleMessageEvent(binding.workspaceId, data).catch((error) => {
+            this.options.log?.(`localcore-lark inbound message failed for ${binding.workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
+          });
+          return {};
         },
         'card.action.trigger': async (data: Record<string, unknown>) => {
           this.options.log?.(`localcore-lark received card.action.trigger for ${binding.workspaceId}`);
@@ -615,12 +638,15 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           return {};
         },
       });
+      this.options.log?.(`localcore-lark event dispatcher registered for ${binding.workspaceId}`);
       status.wsClient = new mod.WSClient({
         appId: binding.appId,
         appSecret: binding.appSecret,
         domain: mod.Domain.Feishu,
         loggerLevel: mod.LoggerLevel.info,
       });
+      this.attachWsDiagnostics(binding.workspaceId, status.wsClient);
+      this.options.log?.(`localcore-lark ws starting for ${binding.workspaceId}`);
       await status.wsClient.start({
         eventDispatcher: status.eventDispatcher,
       });
@@ -628,6 +654,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status.connected = true;
       status.connectedAt = new Date().toISOString();
       status.lastError = undefined;
+      this.options.log?.(`localcore-lark ws ready for ${binding.workspaceId}`);
     } catch (error) {
       status.status = 'error';
       status.connected = false;
@@ -642,9 +669,12 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     if (!state) {
       return;
     }
+    this.options.log?.(`localcore-lark stopping workspace=${workspaceId} status=${state.status}`);
     try {
       await state.wsClient?.stop?.();
-    } catch {
+      this.options.log?.(`localcore-lark stopped workspace=${workspaceId}`);
+    } catch (error) {
+      this.options.log?.(`localcore-lark stop failed for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
       // Best effort: current SDK versions may not implement stop().
     }
     this.runtime.set(workspaceId, {
@@ -653,6 +683,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status: 'stopped',
       connected: false,
       appId: state.appId,
+      cardActionsEnabled: state.cardActionsEnabled,
     });
     this.notifyRuntimeStateChanged();
   }
@@ -672,6 +703,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       : data;
     const message = (payload as any)?.message;
     const sender = (payload as any)?.sender;
+    this.options.log?.(`localcore-lark handling message event for ${workspaceId}: ${this.summarizeLarkPayload(payload)}`);
     if (!message || !sender) {
       this.options.log?.(`localcore-lark ignored event without message/sender for ${workspaceId}: ${JSON.stringify(Object.keys(data || {}))}`);
       return;
@@ -684,13 +716,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
     const text = String(parsedContent.text || '').trim();
     if (!text) {
-      this.options.log?.(`localcore-lark ignored non-text message for ${workspaceId}: ${String(message.message_type || 'unknown')}`);
+      this.options.log?.(`localcore-lark ignored non-text message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
       return;
     }
     const platformUserId = String(sender.sender_id?.user_id || sender.sender_id?.open_id || '').trim();
     const chatId = String(message.chat_id || platformUserId).trim();
     if (!platformUserId || !chatId) {
-      this.options.log?.(`localcore-lark ignored message without sender/chat for ${workspaceId}`);
+      this.options.log?.(`localcore-lark ignored message without sender/chat for ${workspaceId}: senderKeys=${JSON.stringify(Object.keys(sender?.sender_id || {}))} chat=${String(message.chat_id || '')}`);
       return;
     }
     this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} text=${JSON.stringify(text.slice(0, 120))}`);
@@ -706,6 +738,71 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       text,
       messageId: String(message.message_id || randomUUID()),
     });
+  }
+
+  private attachWsDiagnostics(workspaceId: string, wsClient: any) {
+    const on = typeof wsClient?.on === 'function' ? wsClient.on.bind(wsClient) : null;
+    if (!on) {
+      this.options.log?.(`localcore-lark ws diagnostics unavailable for ${workspaceId}: client has no on()`);
+      return;
+    }
+    for (const eventName of ['open', 'connect', 'connected', 'ready', 'close', 'closed', 'disconnect', 'error', 'reconnect']) {
+      try {
+        on(eventName, (...args: unknown[]) => {
+          this.options.log?.(`localcore-lark ws event ${eventName} for ${workspaceId}: ${this.summarizeWsArgs(args)}`);
+        });
+      } catch (error) {
+        this.options.log?.(`localcore-lark ws diagnostic hook failed for ${workspaceId} event=${eventName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  private summarizeLarkEvent(data: Record<string, unknown>) {
+    const payload = ((data as any)?.event && typeof (data as any).event === 'object')
+      ? (data as any).event
+      : data;
+    return this.summarizeLarkPayload(payload);
+  }
+
+  private summarizeLarkPayload(payload: Record<string, unknown>) {
+    const message = (payload as any)?.message || {};
+    const sender = (payload as any)?.sender || {};
+    const senderId = sender?.sender_id || {};
+    const content = typeof message.content === 'string' ? message.content : '';
+    return [
+      `message=${String(message.message_id || '') || 'missing'}`,
+      `type=${String(message.message_type || '') || 'missing'}`,
+      `chat=${String(message.chat_id || '') || 'missing'}`,
+      `sender=${String(senderId.user_id || senderId.open_id || '') || 'missing'}`,
+      `contentBytes=${Buffer.byteLength(content, 'utf8')}`,
+      `keys=${JSON.stringify(Object.keys(payload || {}))}`,
+    ].join(' ');
+  }
+
+  private summarizeWsArgs(args: unknown[]) {
+    if (args.length === 0) {
+      return 'no-args';
+    }
+    return args.map((arg) => {
+      if (arg instanceof Error) {
+        return `${arg.name}: ${arg.message}`;
+      }
+      if (typeof arg === 'string') {
+        return arg.slice(0, 200);
+      }
+      if (arg && typeof arg === 'object') {
+        return JSON.stringify(Object.keys(arg as Record<string, unknown>));
+      }
+      return String(arg);
+    }).join(' ');
+  }
+
+  private maskLarkAppId(appId: string) {
+    const value = String(appId || '').trim();
+    if (value.length <= 8) {
+      return value ? '***' : '';
+    }
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
 
   private collectBindings(config: DesktopConnectConfig | null | undefined): LarkWorkspaceBinding[] {
@@ -728,6 +825,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           verificationToken: String(platform.options.verification_token || '').trim(),
           autoApprove: String(platform.options.auto_approve || '').trim().toLowerCase() === 'true'
             || platform.options.auto_approve === true,
+          cardActionsEnabled: String(platform.options.card_actions || platform.options.enable_card_actions || '').trim().toLowerCase() === 'true'
+            || platform.options.card_actions === true
+            || platform.options.enable_card_actions === true
+            || this.defaultCardActionsEnabled,
           enabled: Boolean(String(platform.options.app_id || '').trim() && String(platform.options.app_secret || '').trim()),
           project,
         }));
@@ -758,12 +859,12 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           tag: 'button',
           text: {
             tag: 'plain_text',
-            content: button.text,
+            content: this.formatPermissionButtonLabel(button),
           },
-          type: index === 0 ? 'primary' : 'default',
+          type: this.resolveLarkButtonType(button, index),
           value: {
             action: 'permission_response',
-            response: button.data,
+            response: normalizePermissionResponse(button.data) || button.data,
             session_key: sessionKey || '',
             thread_id: threadId || '',
           },
@@ -865,11 +966,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       processing: false,
       previewText: '',
       finalText: '',
+      progressMessageIds: {},
       thinkingSteps: [],
       toolCalls: [],
       statusLines: [],
       buttonRows: [],
       lastPatchedAt: 0,
+      lastPatchedAtByMessageId: {},
     };
     this.outboundTurns.set(sessionKey, turn);
     return turn;
@@ -880,12 +983,14 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     if (existing) {
       if (messageId && !existing.messageId) {
         existing.messageId = messageId;
+        existing.finalMessageId = messageId;
       }
       return existing;
     }
     const turn = this.createTurnState(sessionKey);
     if (messageId) {
       turn.messageId = messageId;
+      turn.finalMessageId = messageId;
     }
     return turn;
   }
@@ -896,6 +1001,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       // Always start a fresh card for each generation phase.
       // This keeps Feishu message order aligned with user-visible timeline.
       turn.messageId = undefined;
+      turn.finalMessageId = undefined;
+      turn.progressMessageIds = {};
       turn.processing = true;
       turn.permissionMessageId = undefined;
       turn.previewText = '';
@@ -904,6 +1011,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       turn.toolCalls = [];
       turn.buttonRows = [];
       turn.statusLines = [];
+      turn.lastPatchedAtByMessageId = {};
       return;
     }
     if (event.type === 'typing_stop') {
@@ -922,16 +1030,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
     if (event.type === 'buttons') {
       turn.awaitingPermission = true;
-      turn.buttonRows = this.enableCardActions && Array.isArray(event.buttonRows)
-        ? event.buttonRows
-            .map((row) =>
-              Array.isArray(row)
-                ? row
-                    .filter((button): button is { text: string; data: string } => Boolean(button?.text && button?.data))
-                    .map((button) => ({ text: button.text, data: button.data }))
-                : [])
-            .filter((row) => row.length > 0)
-        : [];
+      turn.buttonRows = [];
       if (this.mirrorPermissionStateInMainCard && content) {
         this.pushUnique(turn.statusLines, `等待确认: ${content}`);
       }
@@ -956,41 +1055,107 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     turn.previewText = content;
   }
 
-  private renderTurnCard(turn: LarkTurnState) {
-    const sections: string[] = [];
-    if (turn.thinkingSteps.length > 0) {
-      sections.push(`**思考过程**\n${turn.thinkingSteps.map((step) => `• ${step.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
+  private renderBridgeEventMessage(turn: LarkTurnState, event: DesktopBridgeEvent): LarkOutboundRender {
+    const content = String(event.content || '').trim();
+    if (event.type === 'preview_start' || event.type === 'update_message') {
+      if (content.startsWith('💭 ')) {
+        return this.renderProgressMessage(event.previewHandle || 'thinking-preview', content);
+      }
+      if (content.startsWith('🔧 ')) {
+        return this.renderProgressMessage(this.progressKey('tool', event), content);
+      }
+      return {
+        key: 'final',
+        text: content,
+        buttonRows: turn.buttonRows,
+        isFinal: true,
+      };
     }
-    if (turn.finalText) {
-      sections.push(turn.finalText);
-    } else if (turn.previewText) {
-      sections.push(turn.previewText);
-    } else if (turn.processing && turn.toolCalls.length > 0) {
-      sections.push(`**处理中**\n${this.formatCompactToolLines(turn.toolCalls).join('\n')}`);
-    } else if (turn.processing) {
-      sections.push('**处理中**\n正在思考...');
+    if (event.type === 'status') {
+      return this.renderProgressMessage(this.progressKey('status', event), content.startsWith('⏳ ') ? content : `⏳ ${content}`);
+    }
+    if (event.type === 'reply') {
+      if (content.startsWith('💭 ')) {
+        return this.renderProgressMessage(this.progressKey('thinking', event), content);
+      }
+      if (content.startsWith('🔧 ')) {
+        return this.renderProgressMessage(this.progressKey('tool', event), content);
+      }
+      if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {
+        return this.renderProgressMessage(this.progressKey('status', event), content);
+      }
+      return {
+        key: 'final',
+        text: content,
+        buttonRows: turn.buttonRows,
+        isFinal: true,
+      };
+    }
+    if (event.type === 'typing_start' || event.type === 'typing_stop') {
+      return { key: 'noop', text: '', buttonRows: [], isFinal: false };
     }
     return {
-      text: sections.join('\n\n').trim(),
-      buttonRows: turn.buttonRows,
+      key: 'noop',
+      text: '',
+      buttonRows: [],
+      isFinal: false,
     };
   }
 
-  private renderPermissionCard(turn: LarkTurnState, event: DesktopBridgeEvent) {
+  private renderProgressMessage(key: string, text: string): LarkOutboundRender {
+    return {
+      key,
+      text,
+      buttonRows: [],
+      isFinal: false,
+    };
+  }
+
+  private progressKey(prefix: string, event: DesktopBridgeEvent) {
+    const stableId = String(event.messageId || event.previewHandle || '').trim();
+    if (stableId) {
+      return `${prefix}:${stableId}`;
+    }
+    const content = String(event.content || '').trim().replace(/\s+/g, ' ');
+    return `${prefix}:${content.slice(0, 120)}`;
+  }
+
+  private getRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender) {
+    if (rendered.isFinal) {
+      return turn.finalMessageId || turn.messageId;
+    }
+    return turn.progressMessageIds[rendered.key];
+  }
+
+  private setRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender, messageId: string) {
+    if (rendered.isFinal) {
+      turn.finalMessageId = messageId;
+      turn.messageId = messageId;
+      return;
+    }
+    turn.progressMessageIds[rendered.key] = messageId;
+  }
+
+  private renderPermissionCard(turn: LarkTurnState, event: DesktopBridgeEvent, cardActionsEnabled: boolean) {
     const summary = this.buildPermissionSummary(turn, String(event.content || '').trim());
     const sections = [
       '**需要工具确认**',
       summary.command ? `\`${summary.command}\`` : '',
       summary.reason || '',
-      '回复：`allow` / `allow all` / `deny`',
+      cardActionsEnabled
+        ? '也可以直接回复：`allow` / `allow all` / `deny`'
+        : '请直接回复：`allow` / `allow all` / `deny`',
     ].filter(Boolean);
-    const buttonRows = this.enableCardActions && Array.isArray(event.buttonRows)
+    const buttonRows = cardActionsEnabled && Array.isArray(event.buttonRows)
       ? event.buttonRows
           .map((row) =>
             Array.isArray(row)
               ? row
                   .filter((button): button is { text: string; data: string } => Boolean(button?.text && button?.data))
-                  .map((button) => ({ text: button.text, data: button.data }))
+                  .map((button) => ({
+                    text: this.formatPermissionButtonLabel(button),
+                    data: normalizePermissionResponse(button.data) || button.data,
+                  }))
               : [])
           .filter((row) => row.length > 0)
       : [];
@@ -1021,7 +1186,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       if (!value || value.action !== 'permission_response') {
         return;
       }
-      const response = String(value.response || '').trim();
+      const response = normalizePermissionResponse(String(value.response || '').trim()) || String(value.response || '').trim();
       const threadId = String(value.thread_id || '').trim();
       if (!response || !threadId) {
         return;
@@ -1046,6 +1211,31 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     if (target.length > 6) {
       target.splice(0, target.length - 6);
     }
+  }
+
+  private formatPermissionButtonLabel(button: { text: string; data: string }) {
+    const response = normalizePermissionResponse(button.data) || normalizePermissionResponse(button.text);
+    switch (response) {
+      case 'allow':
+        return '允许一次';
+      case 'allow all':
+        return '始终允许';
+      case 'deny':
+        return '拒绝';
+      default:
+        return button.text;
+    }
+  }
+
+  private resolveLarkButtonType(button: { text: string; data: string }, index: number) {
+    const response = normalizePermissionResponse(button.data) || normalizePermissionResponse(button.text);
+    if (response === 'deny') {
+      return 'danger';
+    }
+    if (response === 'allow') {
+      return 'primary';
+    }
+    return index === 0 ? 'primary' : 'default';
   }
 
   private buildPermissionSummary(turn: LarkTurnState, rawContent: string) {

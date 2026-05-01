@@ -77,6 +77,8 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly runtimeDetection: RuntimeDetectionService;
   private readonly busUnsubscribers: Array<() => void> = [];
+  private readonly pendingLogs: string[] = [];
+  private handlingLog = false;
 
   constructor(
     private readonly userDataPath: string,
@@ -101,6 +103,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       log: (message) => this.handleLog(message),
       emit: (event) => this.handleRuntimeDetectionEvent(event),
     });
+    this.flushPendingLogs();
     this.busUnsubscribers.push(
       this.kernel.context.bus.on('platform.bridge.updated', (event) => {
         this.emit('bridge', event);
@@ -549,7 +552,37 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   private handleLog(message: string) {
+    if (this.handlingLog) {
+      return;
+    }
+    const state = (this as unknown as { state?: LocalCoreRuntimeState }).state;
+    if (!state) {
+      this.pendingLogs.push(message);
+      this.emit('logs', message);
+      return;
+    }
+    this.handlingLog = true;
+    try {
+      state.pushLog?.(message);
+    } finally {
+      this.handlingLog = false;
+    }
     this.emit('logs', message);
+  }
+
+  private flushPendingLogs() {
+    if (this.pendingLogs.length === 0) {
+      return;
+    }
+    const logs = this.pendingLogs.splice(0);
+    this.handlingLog = true;
+    try {
+      for (const message of logs) {
+        this.state.pushLog?.(message);
+      }
+    } finally {
+      this.handlingLog = false;
+    }
   }
 
   private resolveChannelRuntime(platform: string): ChannelRuntime {

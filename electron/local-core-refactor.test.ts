@@ -9,6 +9,7 @@ import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/s
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalScheduleAdapter } from '../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/gateway/local-core-weixin-gateway.js';
+import { LocalCoreLarkGateway } from '../services/local-ai-core/src/gateway/local-core-lark-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 
@@ -501,6 +502,453 @@ test('ACP store upserts thought progress as one durable message', () => {
     store.close();
     rmSync(userDataPath, { recursive: true, force: true });
   }
+});
+
+test('lark bridge keeps thought preview and final answer in separate messages', async () => {
+  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const patchedCards: Array<{ messageId: string; text: string }> = [];
+  const storedMessageIds: string[] = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          const messageId = `lark-msg-${createdCards.length + 1}`;
+          const card = JSON.parse(String(request.data.content || '{}'));
+          createdCards.push({
+            messageId,
+            text: String(card.elements?.[0]?.content || ''),
+          });
+          return { data: { message_id: messageId } };
+        },
+        patch: async (request: any) => {
+          const card = JSON.parse(String(request.data.content || '{}'));
+          patchedCards.push({
+            messageId: String(request.path.message_id || ''),
+            text: String(card.elements?.[0]?.content || ''),
+          });
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      updatePlatformThreadMessageId: (_workspaceId: string, _chatId: string, _platformUserId: string, messageId: string) => {
+        storedMessageIds.push(messageId);
+      },
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'preview_start',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 先理解问题',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 先理解问题，再检查代码',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: '最终回答',
+  } as any);
+
+  assert.equal(createdCards.length, 2);
+  assert.equal(createdCards[0]?.text, '💭 先理解问题');
+  assert.equal(createdCards[1]?.text, '最终回答');
+  assert.equal(patchedCards.length, 1);
+  assert.equal(patchedCards[0]?.messageId, 'lark-msg-1');
+  assert.equal(patchedCards[0]?.text, '💭 先理解问题，再检查代码');
+  assert.deepEqual(storedMessageIds, ['lark-msg-2']);
+});
+
+test('lark bridge does not leave typing placeholders or throttle thought updates', async () => {
+  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const patchedCards: Array<{ messageId: string; text: string }> = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          const messageId = `lark-msg-${createdCards.length + 1}`;
+          const card = JSON.parse(String(request.data.content || '{}'));
+          createdCards.push({
+            messageId,
+            text: String(card.elements?.[0]?.content || ''),
+          });
+          return { data: { message_id: messageId } };
+        },
+        patch: async (request: any) => {
+          const card = JSON.parse(String(request.data.content || '{}'));
+          patchedCards.push({
+            messageId: String(request.path.message_id || ''),
+            text: String(card.elements?.[0]?.content || ''),
+          });
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      updatePlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'typing_start',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'preview_start',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 The user',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 The user sent a short casual message.',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 The user sent a short casual message. I should reply briefly.',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'typing_stop',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+  } as any);
+
+  assert.deepEqual(createdCards.map((card) => card.text), ['💭 The user']);
+  assert.deepEqual(patchedCards.map((card) => card.text), [
+    '💭 The user sent a short casual message.',
+    '💭 The user sent a short casual message. I should reply briefly.',
+  ]);
+  assert.ok(!createdCards.some((card) => /处理中|正在思考/.test(card.text)));
+});
+
+test('lark permission requests render as clickable card buttons', async () => {
+  const createdCards: any[] = [];
+  const threadActions: Array<{ threadId: string; action: string }> = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          createdCards.push(JSON.parse(String(request.data.content || '{}')));
+          return { data: { message_id: 'permission-msg-1' } };
+        },
+        patch: async () => {},
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({
+      sendThreadAction: async (threadId: string, action: string) => {
+        threadActions.push({ threadId, action });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    cardActionsEnabled: true,
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'buttons',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: [
+      '等待工具确认',
+      '',
+      'Terminal',
+      '',
+      'parameters:',
+      '{"command":"ls"}',
+      '',
+      '请选择一个选项继续执行。',
+    ].join('\n'),
+    buttonRows: [[
+      { text: 'allow', data: 'allow' },
+      { text: 'allow all', data: 'allow all' },
+      { text: 'deny', data: 'deny' },
+    ]],
+  } as any);
+
+  const actionElement = createdCards[0]?.elements?.find((element: any) => element.tag === 'action');
+  assert.equal(createdCards.length, 1);
+  assert.match(createdCards[0]?.elements?.[0]?.content || '', /需要工具确认/);
+  assert.deepEqual(
+    actionElement?.actions?.map((action: any) => ({
+      label: action.text?.content,
+      type: action.type,
+      response: action.value?.response,
+      threadId: action.value?.thread_id,
+    })),
+    [
+      { label: '允许一次', type: 'primary', response: 'allow', threadId: 'thread-1' },
+      { label: '始终允许', type: 'default', response: 'allow all', threadId: 'thread-1' },
+      { label: '拒绝', type: 'danger', response: 'deny', threadId: 'thread-1' },
+    ],
+  );
+
+  await internals.handleCardActionEvent('default', {
+    event: {
+      action: {
+        value: {
+          action: 'permission_response',
+          response: 'allow all',
+          thread_id: 'thread-1',
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(threadActions, [
+    { threadId: 'thread-1', action: 'allow all' },
+  ]);
+});
+
+test('lark permission requests fall back to text commands when card actions are disabled', async () => {
+  const createdCards: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    cardActionsEnabled: false,
+    client: {
+      im: {
+        message: {
+          create: async (request: any) => {
+            createdCards.push(JSON.parse(String(request.data.content || '{}')));
+            return { data: { message_id: 'permission-msg-1' } };
+          },
+          patch: async () => {},
+        },
+      },
+    },
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'buttons',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: '等待工具确认\n\nTerminal\n\n请选择一个选项继续执行。',
+    buttonRows: [[
+      { text: 'allow', data: 'allow' },
+      { text: 'deny', data: 'deny' },
+    ]],
+  } as any);
+
+  assert.equal(createdCards.length, 1);
+  assert.match(createdCards[0]?.elements?.[0]?.content || '', /请直接回复/);
+  assert.equal(createdCards[0]?.elements?.some((element: any) => element.tag === 'action'), false);
+});
+
+test('lark message callbacks acknowledge before long thread runs finish', async () => {
+  let registeredHandlers: Record<string, (data: Record<string, unknown>) => Promise<unknown>> = {};
+  let sentMessages = 0;
+  const logs: string[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'default',
+        platform_user_id: 'user-1',
+        chat_id: 'chat-1',
+        display_name: 'User',
+        thread_id: 'thread-1',
+      }),
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      getLatestRunForThread: () => null,
+      clearPlatformThreadMessageId: () => {},
+      listPendingPairings: () => [],
+      listAuthorizedUsers: () => [],
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'claudecode', providers: [] },
+          platforms: [{ type: 'lark', options: { app_id: 'app-1', app_secret: 'secret-1', auto_approve: true } }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async () => {
+        sentMessages++;
+        return new Promise(() => {});
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+    log: (message) => logs.push(message),
+  });
+  (gateway as any).larkModulePromise = Promise.resolve({
+    AppType: { SelfBuild: 'self-build' },
+    Domain: { Feishu: 'feishu' },
+    LoggerLevel: { info: 'info' },
+    Client: class {},
+    EventDispatcher: class {
+      register(handlers: Record<string, (data: Record<string, unknown>) => Promise<unknown>>) {
+        registeredHandlers = handlers;
+      }
+    },
+    WSClient: class {
+      async start() {}
+    },
+  });
+
+  await gateway.enable('default');
+  const handler = registeredHandlers['im.message.receive_v1'];
+  assert.equal(typeof handler, 'function');
+
+  const result = await Promise.race([
+    handler({
+      event: {
+        sender: { sender_id: { user_id: 'user-1' } },
+        message: {
+          message_id: 'msg-1',
+          chat_id: 'chat-1',
+          message_type: 'text',
+          content: JSON.stringify({ text: 'hi' }),
+        },
+      },
+    }),
+    new Promise((resolve) => setTimeout(() => resolve('timed-out'), 25)),
+  ]);
+
+  assert.notEqual(result, 'timed-out');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(sentMessages, 1);
+  assert.ok(logs.some((line) =>
+    line.includes('received im.message.receive_v1') &&
+    line.includes('message=msg-1') &&
+    line.includes('type=text') &&
+    line.includes('chat=chat-1') &&
+    line.includes('sender=user-1')
+  ));
+  assert.ok(logs.some((line) => line.includes('handling message event') && line.includes('contentBytes=')));
 });
 
 test('ACP skips empty generic running tool updates', () => {
