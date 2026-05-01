@@ -19,6 +19,8 @@ The codebase uses TypeScript with `strict` mode enabled and the `@` alias for `s
 ## Architecture Boundaries
 Keep the directory structure intentional, with clear ownership and single-purpose modules. Page components should orchestrate UI and data flow, shared components should stay presentation-focused, stores should own state transitions, API modules should isolate transport concerns, and Electron or Local AI Core logic should not leak into renderer code except through shared contracts. Prefer small, cohesive files over broad utility modules, and move reusable behavior to the nearest appropriate shared layer only after a real second use appears.
 
+When changing chat UI styles, consider all chat surfaces together: desktop app, web, mobile H5, and the different channel/session entry points.
+
 ## Plugin Development
 Plugin contracts and runtime types belong in `packages/plugin-sdk/`; keep cross-process data shapes in shared contracts instead of duplicating them in plugins. Built-in Local AI Core plugins live under `services/local-ai-core/src/plugins/builtin/`, with one focused file or folder per plugin and lowercase dotted ids such as `channel.lark` or `scheduler.cron`. Register plugins through the local core registry and declare dependencies in the manifest rather than relying on implicit load order. Put reusable kernel behavior in `services/local-ai-core/src/kernel/`, not inside individual plugins, and avoid adding dynamic plugin loading until the static registration path is stable.
 

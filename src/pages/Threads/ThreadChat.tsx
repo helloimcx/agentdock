@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowUp,
   Bot,
   Check,
   Circle,
@@ -10,7 +11,6 @@ import {
   Pencil,
   RotateCw,
   Search,
-  Send,
   ShieldCheck,
   Terminal,
   Trash2,
@@ -1047,7 +1047,7 @@ export default function ThreadChat() {
                     />
                   ) : (
                     <>
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:gap-3">
+                      <div className="relative">
                         <Textarea
                           data-testid="desktop-chat-input"
                           value={draft}
@@ -1071,7 +1071,7 @@ export default function ThreadChat() {
                                     : branding.sendPlaceholder
                           }
                           disabled={!serviceRunning || !transportReady || sending || !selectedProject || taskInputLocked}
-                          className="min-h-[76px] rounded-[20px] border-slate-200 bg-white px-3 py-2.5 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[94px] sm:px-4 sm:py-3"
+                          className="min-h-[104px] rounded-[24px] border-slate-200 bg-white px-4 pb-16 pt-3 text-[15px] leading-6 text-slate-900 shadow-[0_12px_34px_rgba(15,23,42,0.08)] placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[116px] sm:px-5 sm:pt-4"
                         />
 
                         {taskRunning ? (
@@ -1080,7 +1080,7 @@ export default function ThreadChat() {
                             onClick={() => void handleStopTask()}
                             disabled={(!activeSessionKey && !activeRunId) || taskState === 'stopping'}
                             data-testid="desktop-chat-stop-task"
-                            className="h-12 min-w-12 rounded-[20px] bg-red-50 px-3 text-red-600 hover:bg-red-100 dark:bg-red-500/12 dark:text-red-200 dark:hover:bg-red-500/18 sm:h-14 sm:min-w-[124px] sm:px-5"
+                            className="absolute bottom-3 right-3 h-11 min-w-11 rounded-full bg-red-50 px-3 text-red-600 shadow-none hover:bg-red-100 dark:bg-red-500/12 dark:text-red-200 dark:hover:bg-red-500/18 sm:h-12 sm:min-w-[118px] sm:px-5"
                           >
                             <LoaderCircle size={16} className="animate-spin" />
                             <span className="hidden sm:inline">{taskState === 'stopping' ? '停止中' : '停止任务'}</span>
@@ -1090,9 +1090,9 @@ export default function ThreadChat() {
                             onClick={() => void handleSend()}
                             disabled={!draft.trim() || !serviceRunning || !transportReady || sending || !selectedProject}
                             data-testid="desktop-chat-send"
-                            className="h-12 w-12 rounded-full px-0 shadow-none sm:h-14 sm:w-14"
+                            className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
                           >
-                            <Send size={18} />
+                            {sending ? <LoaderCircle size={18} className="animate-spin" /> : <ArrowUp size={22} strokeWidth={2.2} />}
                           </Button>
                         )}
                       </div>

@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Send, User, Bot, RotateCw, Circle, WifiOff, Copy, Check } from 'lucide-react';
-import { Badge, Button, Input } from '@/components/ui';
+import { ArrowLeft, ArrowUp, User, Bot, RotateCw, Circle, WifiOff } from 'lucide-react';
+import { Badge, Button, Textarea } from '@/components/ui';
 import { getSession, sendMessage, type SessionDetail } from '@/api/sessions';
 import { cn } from '@/lib/utils';
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
@@ -128,13 +128,14 @@ export default function SessionChat() {
       {/* Input */}
       <div className="border-t pt-4">
         {session?.live ? (
-          <div className="flex gap-3">
-            <Input
+          <div className="relative">
+            <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('sessions.messageInput')}
-              className="flex-1"
+              rows={2}
+              className="min-h-[88px] rounded-[24px] border-gray-200 bg-white px-4 pb-14 pt-3 text-[15px] leading-6 shadow-[0_12px_34px_rgba(15,23,42,0.08)] dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.42)] sm:min-h-[96px] sm:px-5 sm:pt-4"
               disabled={sending}
             />
             <Button
@@ -142,6 +143,7 @@ export default function SessionChat() {
               disabled={sending || !input.trim()}
               size="icon"
               aria-label={t('sessions.messageInput')}
+              className="absolute bottom-3 right-3 h-10 w-10 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-11 sm:w-11"
             >
               {sending ? (
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
@@ -149,7 +151,7 @@ export default function SessionChat() {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
               ) : (
-                <Send size={18} />
+                <ArrowUp size={20} strokeWidth={2.2} />
               )}
             </Button>
           </div>

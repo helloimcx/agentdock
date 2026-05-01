@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import {
+  ArrowUp,
   Bot,
   LoaderCircle,
   MessageSquare,
   Pencil,
   RefreshCw,
   Search,
-  Send,
   Trash2,
   User,
 } from 'lucide-react';
@@ -812,32 +812,31 @@ export default function WebChat() {
             </div>
           )}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1">
-              <Textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSend();
-                  }
-                }}
-                rows={3}
-                placeholder={selectedProject ? t('sessions.messageInput') : t('sessions.projectRequired')}
-                disabled={!selectedProject || !activeSessionReady || sending || pollingState === 'polling' || pollingState === 'activating'}
-                data-testid="web-chat-input"
-              />
-            </div>
+          <div className="relative">
+            <Textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleSend();
+                }
+              }}
+              rows={3}
+              placeholder={selectedProject ? t('sessions.messageInput') : t('sessions.projectRequired')}
+              disabled={!selectedProject || !activeSessionReady || sending || pollingState === 'polling' || pollingState === 'activating'}
+              className="min-h-[104px] rounded-[24px] border-gray-200 bg-white px-4 pb-16 pt-3 text-[15px] leading-6 shadow-[0_12px_34px_rgba(15,23,42,0.08)] dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.42)] sm:min-h-[112px] sm:px-5 sm:pt-4"
+              data-testid="web-chat-input"
+            />
             <Button
               onClick={() => void handleSend()}
               disabled={!canSend}
-              loading={sending}
-              size="lg"
-              className="sm:self-stretch"
+              size="icon"
+              aria-label={t('sessions.send')}
+              className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
               data-testid="web-chat-send"
             >
-              <Send size={16} /> {t('sessions.send')}
+              {sending ? <LoaderCircle size={18} className="animate-spin" /> : <ArrowUp size={22} strokeWidth={2.2} />}
             </Button>
           </div>
           {!activeSessionReady && activeSession && (
