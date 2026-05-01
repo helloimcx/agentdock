@@ -10,6 +10,7 @@
 - [x] Phase 2 第三刀：增加 dashboard active tasks、waiting-for-user、recent completions 区块。
 - [x] Phase 3 安全/审批/审计第一版：permission model、workspace security settings、approval persistence、risk classification、audit log、Dashboard 概览。
 - [x] 给出完整ACP协议字段定义和示例文档。
+- [ ] 在Agents.md说明改动聊天ui样式的时候，要同时考虑web，app，手机h5和各种channels
 - [ ] 增加obsidian知识库插件，通过obsidian-cli和makitdown，摆脱对ai-vector的依赖 (或者先支持本地文件夹，用markitdwon将文件转成markdown)
 - [ ] 支持手机端部署 Local AI Core。
 - [ ] 支持手机 app。
