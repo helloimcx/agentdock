@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
+  ChannelInboundContentPart,
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
@@ -53,6 +54,7 @@ type LarkInboundMessage = {
   displayName: string;
   text: string;
   messageId: string;
+  contentParts?: ChannelInboundContentPart[];
 };
 
 type LarkTurnState = {
@@ -554,7 +556,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       return { paired: true, threadId };
     }
     this.options.store.clearPlatformThreadMessageId(input.workspaceId, input.chatId, input.platformUserId);
-    await router.sendThreadMessage(threadId, wrapUserMessageWithSchedulerProtocol(input.text));
+    const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
+    await router.sendThreadMessage(threadId, this.createThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
   }
 
@@ -714,18 +717,40 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     } catch {
       parsedContent = {};
     }
+    const messageType = String(message.message_type || '').trim().toLowerCase();
     const text = String(parsedContent.text || '').trim();
-    if (!text) {
-      this.options.log?.(`localcore-lark ignored non-text message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
+    const contentParts: ChannelInboundContentPart[] = [];
+    if (text) {
+      contentParts.push({ type: 'text', text });
+    }
+    if (messageType === 'image') {
+      const imageKey = String(parsedContent.image_key || parsedContent.file_key || '').trim();
+      if (imageKey) {
+        try {
+          contentParts.push(await this.downloadMessageImage(workspaceId, String(message.message_id || ''), imageKey));
+        } catch (error) {
+          const errorText = `[Image download failed: ${error instanceof Error ? error.message : String(error)}]`;
+          contentParts.push({ type: 'text', text: errorText });
+          this.options.log?.(`localcore-lark image download failed for ${workspaceId}: message=${String(message.message_id || '')} imageKey=${imageKey} error=${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+    if (contentParts.length === 0) {
+      this.options.log?.(`localcore-lark ignored unsupported message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
       return;
     }
+    const displayText = text || (contentParts.some((part) => part.type === 'image') ? '[Image]' : contentParts
+      .filter((part): part is Extract<ChannelInboundContentPart, { type: 'text' }> => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n\n')
+      .trim());
     const platformUserId = String(sender.sender_id?.user_id || sender.sender_id?.open_id || '').trim();
     const chatId = String(message.chat_id || platformUserId).trim();
     if (!platformUserId || !chatId) {
       this.options.log?.(`localcore-lark ignored message without sender/chat for ${workspaceId}: senderKeys=${JSON.stringify(Object.keys(sender?.sender_id || {}))} chat=${String(message.chat_id || '')}`);
       return;
     }
-    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} text=${JSON.stringify(text.slice(0, 120))}`);
+    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
     await this.handleInboundMessage({
       workspaceId,
       platformUserId,
@@ -735,9 +760,101 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         (payload as any)?.sender?.sender_id?.open_id ||
         `Lark ${platformUserId.slice(-6)}`
       ),
-      text,
+      text: displayText,
       messageId: String(message.message_id || randomUUID()),
+      contentParts,
     });
+  }
+
+  private createWrappedContentParts(wrappedText: string, parts?: ChannelInboundContentPart[]) {
+    const nonTextParts = Array.isArray(parts)
+      ? parts.filter((part) => part.type !== 'text')
+      : [];
+    return [
+      { type: 'text' as const, text: wrappedText },
+      ...nonTextParts,
+    ];
+  }
+
+  private createThreadMessageInput(wrappedText: string, parts?: ChannelInboundContentPart[]) {
+    const hasNonTextPart = Array.isArray(parts) && parts.some((part) => part.type !== 'text');
+    if (!hasNonTextPart) {
+      return wrappedText;
+    }
+    return {
+      displayText: wrappedText,
+      contentParts: this.createWrappedContentParts(wrappedText, parts),
+    };
+  }
+
+  private async downloadMessageImage(workspaceId: string, messageId: string, imageKey: string): Promise<ChannelInboundContentPart> {
+    const state = this.runtime.get(workspaceId);
+    if (!state?.client) {
+      throw new Error('Lark client is not connected');
+    }
+    if (!messageId) {
+      throw new Error('Lark image message is missing message_id');
+    }
+    const resource = await state.client.im.messageResource.get({
+      path: {
+        message_id: messageId,
+        file_key: imageKey,
+      },
+      params: {
+        type: 'image',
+      },
+    });
+    const buffer = await this.readLarkResourceBuffer(resource);
+    if (buffer.length === 0) {
+      throw new Error('Lark image resource is empty');
+    }
+    const headerMime = this.extractHeaderMimeType(resource?.headers);
+    return {
+      type: 'image',
+      data: buffer.toString('base64'),
+      mimeType: headerMime || this.sniffImageMimeType(buffer),
+      fileName: `${imageKey}.${this.sniffImageExtension(buffer)}`,
+    };
+  }
+
+  private async readLarkResourceBuffer(resource: any): Promise<Buffer> {
+    const readable = resource?.getReadableStream?.();
+    if (!readable || typeof readable.on !== 'function') {
+      throw new Error('Lark resource did not provide a readable stream');
+    }
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      readable.on('data', (chunk: Buffer | Uint8Array | string) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      readable.on('error', reject);
+      readable.on('end', resolve);
+    });
+    return Buffer.concat(chunks);
+  }
+
+  private extractHeaderMimeType(headers: unknown) {
+    const value = headers && typeof headers === 'object'
+      ? (headers as Record<string, unknown>)['content-type'] || (headers as Record<string, unknown>)['Content-Type']
+      : '';
+    return String(value || '').split(';')[0]?.trim() || '';
+  }
+
+  private sniffImageMimeType(buffer: Buffer) {
+    if (buffer[0] === 0xff && buffer[1] === 0xd8) return 'image/jpeg';
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif';
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) return 'image/webp';
+    return 'application/octet-stream';
+  }
+
+  private sniffImageExtension(buffer: Buffer) {
+    const mimeType = this.sniffImageMimeType(buffer);
+    if (mimeType === 'image/jpeg') return 'jpg';
+    if (mimeType === 'image/png') return 'png';
+    if (mimeType === 'image/gif') return 'gif';
+    if (mimeType === 'image/webp') return 'webp';
+    return 'bin';
   }
 
   private attachWsDiagnostics(workspaceId: string, wsClient: any) {

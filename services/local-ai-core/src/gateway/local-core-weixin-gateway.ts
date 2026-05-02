@@ -4,6 +4,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
+  ChannelInboundContentPart,
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
@@ -65,6 +66,7 @@ type WeixinInboundMessage = {
   text: string;
   messageId: string;
   contextToken?: string;
+  contentParts?: ChannelInboundContentPart[];
 };
 
 type WeixinTurnState = {
@@ -768,7 +770,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       input.contextToken || input.messageId,
       'weixin',
     );
-    await router.sendThreadMessage(threadId, wrapUserMessageWithSchedulerProtocol(input.text));
+    const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
+    await router.sendThreadMessage(threadId, this.createThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
   }
 
@@ -1001,6 +1004,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
           // Handle attachments
           let attachmentText = '';
+          const attachmentParts: ChannelInboundContentPart[] = [];
           if (mediaItems.length > 0) {
             const uploadsDir = path.join(binding.stateDir, 'weixin-uploads');
             for (const [idx, item] of mediaItems.entries()) {
@@ -1009,6 +1013,14 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
                 if (att) {
                   attachmentText += attachmentText ? '\n' : '';
                   attachmentText += att.kind === 'image' ? `[Image: ${att.path}]` : `[File "${att.name}": ${att.path}]`;
+                  if (att.kind === 'image' && att.data) {
+                    attachmentParts.push({
+                      type: 'image',
+                      data: att.data,
+                      mimeType: att.mimeType,
+                      fileName: att.name,
+                    });
+                  }
                 }
               } catch (dlErr) {
                 this.options.log?.(`localcore-weixin attachment download failed (${conversationId}#${idx}): ${formatError(dlErr)}`);
@@ -1027,6 +1039,10 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
             text: fullText,
             messageId: msgId,
             contextToken: msg.context_token,
+            contentParts: [
+              ...(text ? [{ type: 'text' as const, text }] : []),
+              ...attachmentParts,
+            ],
           });
         }
       } catch (err) {
@@ -1196,7 +1212,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     idx: number,
     uploadsDir: string,
     binding: WeixinWorkspaceBinding,
-  ): Promise<{ path: string; kind: 'image' | 'file'; name: string } | null> {
+  ): Promise<{ path: string; kind: 'image' | 'file'; name: string; data?: string; mimeType?: string } | null> {
     const itemData = item.image_item ?? item.file_item ?? null;
     const encryptQueryParam = itemData?.media?.encrypt_query_param;
     if (!encryptQueryParam) return null;
@@ -1235,7 +1251,41 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
     fs.mkdirSync(uploadsDir, { recursive: true });
     fs.writeFileSync(filePath, resultBuf);
-    return { path: filePath, kind, name: declaredName };
+    return {
+      path: filePath,
+      kind,
+      name: declaredName,
+      data: kind === 'image' ? resultBuf.toString('base64') : undefined,
+      mimeType: kind === 'image' ? this.mimeTypeForImageExt(ext) : undefined,
+    };
+  }
+
+  private createWrappedContentParts(wrappedText: string, parts?: ChannelInboundContentPart[]) {
+    const nonTextParts = Array.isArray(parts)
+      ? parts.filter((part) => part.type !== 'text')
+      : [];
+    return [
+      { type: 'text' as const, text: wrappedText },
+      ...nonTextParts,
+    ];
+  }
+
+  private createThreadMessageInput(wrappedText: string, parts?: ChannelInboundContentPart[]) {
+    const hasNonTextPart = Array.isArray(parts) && parts.some((part) => part.type !== 'text');
+    if (!hasNonTextPart) {
+      return wrappedText;
+    }
+    return {
+      displayText: wrappedText,
+      contentParts: this.createWrappedContentParts(wrappedText, parts),
+    };
+  }
+
+  private mimeTypeForImageExt(ext: string) {
+    if (ext === '.jpg') return 'image/jpeg';
+    if (ext === '.png') return 'image/png';
+    if (ext === '.gif') return 'image/gif';
+    return 'application/octet-stream';
   }
 
   // ==================== Private: Turn State ====================

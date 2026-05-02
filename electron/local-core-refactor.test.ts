@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { LocalCoreAcpResponseProcessor } from '../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
 import { ScheduledConversationExecutor } from '../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
@@ -855,6 +856,104 @@ test('lark permission requests fall back to text commands when card actions are 
   assert.equal(createdCards.length, 1);
   assert.match(createdCards[0]?.elements?.[0]?.content || '', /请直接回复/);
   assert.equal(createdCards[0]?.elements?.some((element: any) => element.tag === 'action'), false);
+});
+
+test('lark image messages are downloaded and forwarded as generic channel image parts', async () => {
+  const sentMessages: any[] = [];
+  const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const client = {
+    im: {
+      messageResource: {
+        get: async (request: any) => {
+          assert.equal(request.path.message_id, 'msg-image-1');
+          assert.equal(request.path.file_key, 'img-key-1');
+          assert.equal(request.params.type, 'image');
+          return {
+            headers: { 'content-type': 'image/png' },
+            getReadableStream: () => Readable.from([pngBytes]),
+          };
+        },
+      },
+      messageReaction: {
+        create: async () => ({ data: { reaction_id: 'reaction-1' } }),
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'default',
+        platform: 'lark',
+        platform_user_id: 'user-1',
+        chat_id: 'chat-1',
+        display_name: 'User',
+        thread_id: 'thread-1',
+      }),
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      getLatestRunForThread: () => null,
+      clearPlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => ({
+      projects: [{
+        name: 'default',
+        root: '/tmp/project',
+        platforms: [{
+          type: 'lark',
+          options: {
+            app_id: 'app-1',
+            app_secret: 'secret-1',
+          },
+        }],
+      }],
+    }) as any,
+    getWorkspaceRouter: () => ({
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (threadId: string, content: any) => {
+        sentMessages.push({ threadId, content });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+
+  await internals.handleMessageEvent('default', {
+    event: {
+      sender: {
+        sender_id: { user_id: 'user-1' },
+      },
+      message: {
+        message_id: 'msg-image-1',
+        message_type: 'image',
+        chat_id: 'chat-1',
+        content: JSON.stringify({ image_key: 'img-key-1' }),
+      },
+    },
+  });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0]?.threadId, 'thread-1');
+  assert.match(sentMessages[0]?.content?.displayText, /\[User Message\]\n\[Image\]\n\[\/User Message\]/);
+  assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'image']);
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'image/png');
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, pngBytes.toString('base64'));
 });
 
 test('lark message callbacks acknowledge before long thread runs finish', async () => {

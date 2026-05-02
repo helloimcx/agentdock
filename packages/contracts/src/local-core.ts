@@ -235,6 +235,24 @@ export interface ThreadMessage {
   kind?: 'final' | 'progress' | 'system';
 }
 
+export type ChannelInboundContentPart =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'image';
+      data?: string;
+      mimeType?: string;
+      uri?: string;
+      fileName?: string;
+    };
+
+export interface ChannelInboundMessageContent {
+  displayText: string;
+  contentParts: ChannelInboundContentPart[];
+}
+
 export interface ThreadPendingPermissionRequest {
   id: string;
   content: string;

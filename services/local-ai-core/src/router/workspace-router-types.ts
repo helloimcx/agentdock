@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type {
+  ChannelInboundMessageContent,
   ConfigFileState,
   LocalCoreCapabilities,
   ThreadDetail,
@@ -316,7 +317,7 @@ export type WorkspaceThreadBackend = {
   getThread(threadId: string): Promise<ThreadDetail>;
   renameThread(threadId: string, title: string): Promise<ThreadDetail>;
   deleteThread(threadId: string): Promise<{ deleted: boolean }>;
-  sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }>;
+  sendThreadMessage(threadId: string, content: string | ChannelInboundMessageContent): Promise<{ runId: string }>;
   sendThreadAction(threadId: string, content: string): Promise<{ runId: string }>;
   interruptRun(runId: string): Promise<{ interrupted: boolean }>;
 };

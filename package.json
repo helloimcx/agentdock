@@ -1,6 +1,6 @@
 {
   "name": "@kafca/agentdock",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "bin": {

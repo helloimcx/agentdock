@@ -13,6 +13,7 @@ import type {
   ApprovalRequestResolveInput,
   AuditEventListQuery,
   AuditEventListResponse,
+  ChannelInboundMessageContent,
   CommandRiskClassification,
   DesktopBridgeEvent,
   LocalCoreCapabilities,
@@ -271,7 +272,7 @@ export class WorkspaceRouter {
     return { deleted: true };
   }
 
-  async sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }> {
+  async sendThreadMessage(threadId: string, content: string | ChannelInboundMessageContent): Promise<{ runId: string }> {
     const { workspaceId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
     return this.localCoreAcp.sendThreadMessage(threadId, content, route.config);

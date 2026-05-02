@@ -15,7 +15,7 @@
 - [ ] 支持手机端部署 Local AI Core。
 - [ ] 支持手机 app。
 - [ ] 支持跨设备互联：在一个 app 中能看到不同设备的工作区。
-- [ ] Lark 通道图片消息支持：当前 Gateway 直接丢弃非文本消息，需支持 image 消息类型的解析、图片下载、多模态内容传递至 Agent（涉及 Gateway、ACP Store、Turn Coordinator 三层改造）。 codex
+- [x] Lark 通道图片消息支持：当前 Gateway 直接丢弃非文本消息，需支持 image 消息类型的解析、图片下载、多模态内容传递至 Agent（涉及 Gateway、ACP Store、Turn Coordinator 三层改造）。 codex
 - [x] 增加 Codex ACP Agent 的适配。 codex
 - [ ] 增加对 Hermes Agent 的原生支持。 codex
 - [ ] app版支持computer use

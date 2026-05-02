@@ -15,6 +15,8 @@ import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpSessionCoordinator } from './local-core-acp-session-coordinator.js';
 import { LocalCoreAcpResponseProcessor } from './local-core-acp-response-processor.js';
+import type { ThreadMessageInput } from './local-core-acp-content.js';
+import { normalizeThreadMessageInput } from './local-core-acp-content.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -165,7 +167,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     return { deleted: true };
   }
 
-  async sendThreadMessage(threadId: string, content: string, config?: LocalCoreProjectConfig): Promise<{ runId: string }> {
+  async sendThreadMessage(threadId: string, input: ThreadMessageInput, config?: LocalCoreProjectConfig): Promise<{ runId: string }> {
     if (!config) {
       throw new Error('localcore-acp message send requires a workspace config.');
     }
@@ -173,6 +175,8 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     if (!row) {
       throw new Error(`Thread not found: ${threadId}`);
     }
+    const message = normalizeThreadMessageInput(input);
+    const content = message.displayText;
     this.options.store.appendMessage(threadId, 'user', content, 'final');
     this.options.eventBus.emit({
       type: 'thread.message.accepted',
@@ -208,7 +212,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         sessionKey: row.bridge_session_key,
       },
     });
-    void this.runPrompt(threadId, runId, row.bridge_session_key, config, content).catch((error) => {
+    void this.runPrompt(threadId, runId, row.bridge_session_key, config, message).catch((error) => {
       this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
     });
     return { runId };
@@ -266,7 +270,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     runId: string,
     bridgeSessionKey: string,
     config: LocalCoreProjectConfig,
-    content: string,
+    input: ThreadMessageInput,
   ) {
     const row = this.options.store.getThreadRow(threadId);
     if (!row) {
@@ -277,6 +281,8 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       sessionKey: bridgeSessionKey,
       replyCtx: runId,
     });
+    const message = normalizeThreadMessageInput(input);
+    const content = message.displayText;
     let session: AcpSessionState | null = null;
     try {
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config);
@@ -304,12 +310,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       const promptPromise = this.transport.request(session, 'session/prompt', {
         sessionId: session.sessionId,
         messageId: randomUUID(),
-        prompt: [
-          {
-            type: 'text',
-            text: content,
-          },
-        ],
+        prompt: message.contentParts,
       }, ACP_PROMPT_TIMEOUT_MS) as Promise<{ stopReason?: string }>;
       session.promptPromise = promptPromise;
       const result = await promptPromise;

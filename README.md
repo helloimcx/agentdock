@@ -15,6 +15,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ### 2026-05-02
 
+- 新增通用 channel 图片消息到 ACP 多模态传递。
 - 新增 Codex Agent ACP 支持，并接入 runtime 检测与交互权限流程。
 
 ## 快速开始
