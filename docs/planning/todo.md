@@ -20,3 +20,4 @@
 - [ ] 增加对 Hermes Agent 的原生支持。 codex
 - [ ] app版支持computer use
 - [ ] channel支持回传文件
+- [ ] 工具调用卡片默认折叠工具结果
