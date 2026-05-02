@@ -19,3 +19,4 @@
 - [x] 增加 Codex ACP Agent 的适配。 codex
 - [ ] 增加对 Hermes Agent 的原生支持。 codex
 - [ ] app版支持computer use
+- [ ] channel支持回传文件
