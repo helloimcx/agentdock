@@ -1,6 +1,7 @@
 export const DEFAULT_DESKTOP_AGENT_TYPE = 'opencode';
 export const DEFAULT_DESKTOP_OPENCODE_MODEL = 'opencode/minimax-m2.5-free';
 export const DEFAULT_DESKTOP_CLAUDECODE_MODEL = '';
+export const DESKTOP_CODEX_ACP_PACKAGE = '@zed-industries/codex-acp';
 export const DESKTOP_CLAUDECODE_ACP_PACKAGE = '@agentclientprotocol/claude-agent-acp';
 export const DESKTOP_LARK_SDK_PACKAGE = '@larksuiteoapi/node-sdk';
 export const DESKTOP_AGENT_TYPE_OPTIONS = [
@@ -38,7 +39,7 @@ export const DESKTOP_PROVIDER_PRESET_OPTIONS = [
   'ollama',
 ] as const;
 export const DESKTOP_PROVIDER_THINKING_OPTIONS = ['', 'enabled', 'disabled'] as const;
-export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['opencode', 'claudecode', 'acp', 'localcore-acp'] as const;
+export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['opencode', 'codex', 'claudecode', 'acp', 'localcore-acp'] as const;
 export const LOCALCORE_ACP_AGENT_TYPE = 'localcore-acp';
 export const SCHEDULER_PROTOCOL_INSTRUCTION = [
   '[Scheduler Tools]',
@@ -287,6 +288,7 @@ export function isAcpAgentType(agentType?: string | null) {
   const normalized = String(agentType || '').trim().toLowerCase();
   return normalized === 'acp'
     || normalized === 'opencode'
+    || normalized === 'codex'
     || normalized === 'claudecode'
     || normalized === LOCALCORE_ACP_AGENT_TYPE;
 }

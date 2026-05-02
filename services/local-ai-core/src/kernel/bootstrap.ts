@@ -28,6 +28,7 @@ import { LocalCoreEventBus } from './event-bus.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import {
+  createBuiltinCodexAgentPlugin,
   createBuiltinClaudeCodeAgentPlugin,
   createBuiltinLocalCoreAcpAgentPlugin,
   createBuiltinOpencodeAgentPlugin,
@@ -88,7 +89,7 @@ export function bootstrapLocalCoreKernel(options?: {
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
   const builtIns = [
-    ...['codex', 'cursor', 'gemini', 'qoder', 'iflow'].map((agentType) =>
+    ...['cursor', 'gemini', 'qoder', 'iflow'].map((agentType) =>
       createBuiltinStaticAgentCapabilityPlugin(agentType)
     ),
     createBuiltinLocalCoreAcpAgentPlugin(),
@@ -232,6 +233,7 @@ export function bootstrapLocalCoreRuntime(options: {
   const agentPlugins = [
     localCoreAgentPlugin,
     createBuiltinOpencodeAgentPlugin(),
+    createBuiltinCodexAgentPlugin(),
     createBuiltinClaudeCodeAgentPlugin(),
   ];
   let workspaceRouter!: WorkspaceRouter;

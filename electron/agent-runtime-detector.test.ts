@@ -10,10 +10,12 @@ test('agent runtime detector only marks commands present on PATH as installed', 
   try {
     const opencode = join(dir, 'opencode');
     writeFileSync(opencode, '#!/bin/sh\nexit 0\n', 'utf8');
+    writeFileSync(join(dir, 'package.json'), '{}\n', 'utf8');
     chmodSync(opencode, 0o755);
 
     const runtimes = detectInstalledAgentRuntimes({
       env: { PATH: dir },
+      requireFrom: join(dir, 'package.json'),
     });
     const byType = new Map(runtimes.map((runtime) => [runtime.agentType, runtime]));
 
@@ -30,6 +32,17 @@ test('agent runtime detector only marks commands present on PATH as installed', 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('agent runtime detector reports bundled codex ACP when available', () => {
+  const codex = detectInstalledAgentRuntimes({
+    env: { PATH: '' },
+  }).find((runtime) => runtime.agentType === 'codex');
+
+  assert.equal(codex?.installed, true);
+  assert.equal(codex?.status, 'installed');
+  assert.equal(codex?.source, 'bundled');
+  assert.match(codex?.command || '', /@zed-industries[/\\]codex-acp[/\\]bin[/\\]codex-acp\.js$/);
 });
 
 test('agent runtime detector honors configured project commands', () => {

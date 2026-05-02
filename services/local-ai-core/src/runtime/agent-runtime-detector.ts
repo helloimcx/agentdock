@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import type { DesktopConnectConfig, InstalledAgentRuntime } from '../../../../packages/contracts/src/index.js';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
+  DESKTOP_CODEX_ACP_PACKAGE,
   DESKTOP_CLAUDECODE_ACP_PACKAGE,
   LOCALCORE_ACP_AGENT_TYPE,
 } from '../../../../shared/desktop.js';
@@ -30,7 +31,7 @@ const DISPLAY_NAMES: Record<string, string> = {
 
 const COMMAND_CANDIDATES: Record<string, string[]> = {
   opencode: ['opencode'],
-  codex: ['codex'],
+  codex: ['codex-acp', 'codex'],
   claudecode: ['claude-agent-acp'],
   cursor: ['cursor-agent', 'cursor'],
   gemini: ['gemini'],
@@ -79,8 +80,14 @@ export function detectInstalledAgentRuntimes(
         : missingRuntime(agentType, detectedAt, `Configured command not found: ${configured}`);
     }
 
-    if (agentType === 'claudecode') {
-      const bundled = resolveBundledClaudeAgentAcp(options.requireFrom);
+    if (agentType === 'codex' || agentType === 'claudecode') {
+      const bundled = agentType === 'codex'
+        ? resolveBundledAcpPackage(options.requireFrom, DESKTOP_CODEX_ACP_PACKAGE, ['bin/codex-acp.js'])
+        : resolveBundledAcpPackage(options.requireFrom, DESKTOP_CLAUDECODE_ACP_PACKAGE, [
+            'dist/cli.js',
+            'bin/claude-agent-acp.js',
+            'cli.js',
+          ]);
       if (bundled) {
         return installedRuntime(agentType, bundled, 'bundled', detectedAt, env, versionTimeoutMs);
       }
@@ -257,18 +264,22 @@ function parseVersionOutput(output: string) {
   return match?.[0] || text || undefined;
 }
 
-function resolveBundledClaudeAgentAcp(requireFrom?: string) {
+function resolveBundledAcpPackage(requireFrom: string | undefined, packageName: string, candidates: string[]) {
   try {
     const require = createRequire(requireFrom || join(process.cwd(), 'package.json'));
-    const packageJsonPath = require.resolve(`${DESKTOP_CLAUDECODE_ACP_PACKAGE}/package.json`);
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
     const packageDir = dirname(packageJsonPath);
-    for (const candidate of [
-      join(packageDir, 'dist', 'cli.js'),
-      join(packageDir, 'bin', 'claude-agent-acp.js'),
-      join(packageDir, 'cli.js'),
-    ]) {
-      if (existsSync(candidate)) {
-        return candidate;
+    const packageJson = require(packageJsonPath) as { bin?: string | Record<string, string> };
+    const binField = packageJson.bin;
+    if (typeof binField === 'string') {
+      candidates = [binField, ...candidates];
+    } else if (binField && typeof binField === 'object') {
+      candidates = [...Object.values(binField), ...candidates];
+    }
+    for (const candidate of candidates) {
+      const candidatePath = join(packageDir, candidate);
+      if (existsSync(candidatePath)) {
+        return candidatePath;
       }
     }
     return packageJsonPath;

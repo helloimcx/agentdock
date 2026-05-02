@@ -30,7 +30,7 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
   assert.deepEqual(kernel.getCapabilitySnapshot(), {
     adapters: {
       channels: ['localcore-acp'],
-      agents: ['codex', 'cursor', 'gemini', 'qoder', 'iflow', 'localcore-acp'],
+      agents: ['cursor', 'gemini', 'qoder', 'iflow', 'localcore-acp'],
       knowledge: false,
       knowledgeProviders: [],
     },
@@ -42,7 +42,6 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
     },
     snapshot: {
       agents: [
-        { id: 'agent.codex', agentType: 'codex', displayName: 'codex' },
         { id: 'agent.cursor', agentType: 'cursor', displayName: 'cursor' },
         { id: 'agent.gemini', agentType: 'gemini', displayName: 'gemini' },
         { id: 'agent.qoder', agentType: 'qoder', displayName: 'qoder' },
@@ -128,12 +127,11 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
   await kernel.lifecycle.initAll();
   const diagnostics = await kernel.diagnostics.snapshot();
 
-  assert.equal(diagnostics.pluginCount, 7);
-  assert.equal(diagnostics.enabledPluginCount, 7);
+  assert.equal(diagnostics.pluginCount, 6);
+  assert.equal(diagnostics.enabledPluginCount, 6);
   assert.deepEqual(
     diagnostics.plugins.map((plugin) => plugin.pluginId).sort(),
     [
-      'builtin.agent-codex',
       'builtin.agent-cursor',
       'builtin.agent-gemini',
       'builtin.agent-iflow',
@@ -149,7 +147,6 @@ test('kernel lifecycle initializes plugins and diagnostics report health', async
       health: plugin.health,
     })),
     [
-      'builtin.agent-codex',
       'builtin.agent-cursor',
       'builtin.agent-gemini',
       'builtin.agent-qoder',
@@ -172,13 +169,13 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
     });
 
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.agents, [
-      'codex',
       'cursor',
       'gemini',
       'qoder',
       'iflow',
       'localcore-acp',
       'opencode',
+      'codex',
       'claudecode',
     ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
@@ -207,13 +204,13 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
     });
 
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.agents, [
-      'codex',
       'cursor',
       'gemini',
       'qoder',
       'iflow',
       'localcore-acp',
       'opencode',
+      'codex',
       'claudecode',
     ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
@@ -225,6 +222,45 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       deliveryTargets: ['local', 'lark', 'weixin'],
       platforms: ['local', 'lark', 'weixin'],
     });
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('codex agent runtime routes projects through the bundled ACP adapter', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    await runtime.state.saveRawConfigFile(`
+[[projects]]
+name = "codex-workspace"
+
+[projects.agent]
+type = "codex"
+`);
+    const configState = await runtime.state.readConfigFile();
+    const project = configState.parsed?.projects?.find((entry) => entry.name === 'codex-workspace');
+    const codexRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'codex');
+    const route = project ? codexRuntime?.createRoute(configState, project) : null;
+
+    assert.equal(route?.agentType, 'codex');
+    assert.equal(route?.config.command, process.execPath);
+    assert.match(route?.config.args[0] || '', /@zed-industries[/\\]codex-acp[/\\]bin[/\\]codex-acp\.js$/);
+    assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), [
+      {
+        id: 'codex-workspace',
+        name: 'codex-workspace',
+        agentType: 'codex',
+        platforms: [],
+        sessionsCount: 0,
+        heartbeatEnabled: false,
+      },
+    ]);
+
+    await runtime.stop();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
@@ -589,7 +625,7 @@ type = "claudecode"
 
     assert.deepEqual(
       runtime.agentRuntimes.map((entry) => entry.agentType),
-      ['localcore-acp', 'opencode'],
+      ['localcore-acp', 'opencode', 'codex'],
     );
     assert.equal(
       runtime.kernel.getCapabilitySnapshot().snapshot.agents.some((capability) => capability.agentType === 'claudecode'),

@@ -11,6 +11,12 @@
 
 React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18next · react-markdown
 
+## New
+
+### 2026-05-02
+
+- 新增 Codex Agent ACP 支持，并接入 runtime 检测与交互权限流程。
+
 ## 快速开始
 
 ```bash

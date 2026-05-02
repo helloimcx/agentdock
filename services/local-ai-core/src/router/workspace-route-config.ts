@@ -3,6 +3,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../packages/contracts/src/index.js';
 import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
 import {
+  DESKTOP_CODEX_ACP_PACKAGE,
   DESKTOP_CLAUDECODE_ACP_PACKAGE,
   DEFAULT_DESKTOP_OPENCODE_MODEL,
   LOCALCORE_ACP_AGENT_TYPE,
@@ -180,21 +181,29 @@ function shouldUseOpenAiCompatibleProvider(providerId: string) {
   return !builtInNonCompatibleProviders.has(providerId);
 }
 
-function resolveBundledClaudeCodeCommand() {
+function resolveBundledAcpCommand(packageName: string, binName: string) {
   const require = createRequire(__filename);
-  const packageJsonPath = require.resolve(`${DESKTOP_CLAUDECODE_ACP_PACKAGE}/package.json`);
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageJson = require(packageJsonPath) as { bin?: string | Record<string, string> };
   const binField = packageJson.bin;
   const relativeBinPath = typeof binField === 'string'
     ? binField
-    : binField?.['claude-agent-acp'];
+    : binField?.[binName];
   if (!relativeBinPath) {
-    throw new Error(`Bundled package "${DESKTOP_CLAUDECODE_ACP_PACKAGE}" does not declare the claude-agent-acp bin.`);
+    throw new Error(`Bundled package "${packageName}" does not declare the ${binName} bin.`);
   }
   return {
     command: process.execPath,
     args: [resolve(dirname(packageJsonPath), relativeBinPath)],
   };
+}
+
+function resolveBundledCodexCommand() {
+  return resolveBundledAcpCommand(DESKTOP_CODEX_ACP_PACKAGE, 'codex-acp');
+}
+
+function resolveBundledClaudeCodeCommand() {
+  return resolveBundledAcpCommand(DESKTOP_CLAUDECODE_ACP_PACKAGE, 'claude-agent-acp');
 }
 
 export function toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): AgentLaunchConfig {
@@ -231,18 +240,23 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
         ANTHROPIC_MODEL: model,
       }
     : {};
+  const bundledCodex = agentType === 'codex'
+    ? resolveBundledCodexCommand()
+    : null;
   const bundledClaudeCode = agentType === 'claudecode'
     ? resolveBundledClaudeCodeCommand()
     : null;
   const inferredCommand = agentType === 'opencode'
     ? 'opencode'
-    : bundledClaudeCode?.command || '';
+    : bundledCodex?.command || bundledClaudeCode?.command || '';
   const command = String(project.agent?.options?.command || inferredCommand).trim();
   if (!command) {
     throw new Error(`Workspace "${project.name}" requires [projects.agent.options].command for Local AI Core ACP execution.`);
   }
   const defaultArgs = agentType === 'opencode'
     ? ['acp']
+    : agentType === 'codex'
+      ? [...(bundledCodex?.args || [])]
     : agentType === 'claudecode'
       ? [...(bundledClaudeCode?.args || [])]
       : [];
