@@ -292,6 +292,7 @@ export function useThreadChatBridgeEvents({
                 ? {
                     ...message,
                     content: event.content || '',
+                    toolCall: event.toolCall,
                     kind: 'progress',
                     timestamp,
                     turnKey: event.replyCtx,
@@ -307,6 +308,7 @@ export function useThreadChatBridgeEvents({
               id: replyMessageId,
               role: 'assistant',
               content: event.content || '',
+              toolCall: event.toolCall,
               kind: 'progress',
               order: reserveAssistantMessageOrder(event.sessionKey),
               timestamp,

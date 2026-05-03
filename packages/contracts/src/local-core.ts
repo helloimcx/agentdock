@@ -1,4 +1,4 @@
-import type { DesktopBridgeEvent, DesktopRuntimeStatus } from '../../../shared/desktop';
+import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
 
 export interface WorkspaceSummary {
@@ -257,6 +257,7 @@ export interface ThreadMessage {
   content: string;
   timestamp: string;
   kind?: 'final' | 'progress' | 'system';
+  toolCall?: DesktopBridgeToolCall;
 }
 
 export type ChannelInboundContentPart =

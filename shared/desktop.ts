@@ -345,6 +345,16 @@ export function isAcpAgentType(agentType?: string | null) {
     || normalized === LOCALCORE_ACP_AGENT_TYPE;
 }
 
+export interface DesktopBridgeToolCall {
+  id?: string;
+  name: string;
+  status: string;
+  input?: unknown;
+  output: string;
+  label?: string;
+  detail?: string;
+}
+
 export interface DesktopBridgeEvent {
   type:
     | 'register_ack'
@@ -362,6 +372,7 @@ export interface DesktopBridgeEvent {
   previewHandle?: string;
   content?: string;
   messageId?: string;
+  toolCall?: DesktopBridgeToolCall;
   ok?: boolean;
   error?: string;
   card?: Record<string, unknown>;

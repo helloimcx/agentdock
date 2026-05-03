@@ -50,6 +50,7 @@ export type LocalMessageRow = {
   thread_id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  tool_call_json: string | null;
   timestamp: string;
   kind: 'final' | 'progress' | 'system';
   seq: number;
@@ -250,6 +251,7 @@ export type RunningTurn = {
     title: string;
     messageId: string;
     detail?: string;
+    input?: unknown;
     sequence: number;
     emitted?: boolean;
   }>;

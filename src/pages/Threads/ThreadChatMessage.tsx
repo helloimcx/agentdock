@@ -18,6 +18,7 @@ import {
   parsePermissionCardContent,
   parseToolResultCard,
   shouldCollapseToolResultByDefault,
+  toolCallToResultCard,
   type PermissionCard,
   type ToolResultCard,
 } from './thread-chat-message-blocks';
@@ -166,7 +167,7 @@ export function ThreadChatMessage({
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isProgress = !isUser && !isSystem && message.kind === 'progress';
-  const toolResultCard = !isUser ? parseToolResultCard(message.content) : null;
+  const toolResultCard = !isUser ? toolCallToResultCard(message.toolCall) || parseToolResultCard(message.content) : null;
   const isToolResult = Boolean(toolResultCard);
   return (
     <div className={cn('flex gap-2 sm:gap-3', isUser ? 'justify-end' : 'justify-start')}>

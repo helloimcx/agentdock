@@ -59,11 +59,11 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     });
     this.turnCoordinator = new LocalCoreAcpTurnCoordinator({
       emitBridge: (event) => this.emitBridgeEvent(event),
-      appendMessage: (threadId, role, content, kind) => {
-        this.options.store.appendMessage(threadId, role, content, kind);
+      appendMessage: (threadId, role, content, kind, toolCall) => {
+        this.options.store.appendMessage(threadId, role, content, kind, toolCall);
       },
-      upsertMessage: (threadId, id, role, content, kind) => {
-        this.options.store.upsertMessage(threadId, id, role, content, kind);
+      upsertMessage: (threadId, id, role, content, kind, toolCall) => {
+        this.options.store.upsertMessage(threadId, id, role, content, kind, toolCall);
       },
       updateRunStatus: (runId, threadId, status) => {
         this.options.store.updateRun(runId, threadId, status);

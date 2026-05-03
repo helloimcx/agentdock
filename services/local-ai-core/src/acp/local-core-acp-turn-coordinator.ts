@@ -1,4 +1,4 @@
-import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, DesktopBridgeToolCall, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
 import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.js';
 import {
   applyAssistantMessageChunk,
@@ -30,8 +30,8 @@ import type { AcpSessionState } from '../router/workspace-router-types.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
-  appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress') => void;
-  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress') => void;
+  appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall) => void;
+  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall) => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
@@ -57,12 +57,24 @@ export class LocalCoreAcpTurnCoordinator {
       currentTurn.pendingToolCallTitle = undefined;
       currentTurn.pendingToolCallId = undefined;
       currentTurn.pendingToolCallDetail = undefined;
-      this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId);
+      this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId, createToolCallPayload({
+        id: currentTurn.activeToolCallKey,
+        name: title,
+        status: 'running',
+        content: '',
+      }));
       return;
     }
     for (const toolCall of pending) {
       toolCall.emitted = true;
-      this.emitProgress(session, currentRunId, `🔧 ${toolCall.title}`, toolCall.messageId);
+      this.emitProgress(session, currentRunId, `🔧 ${toolCall.title}`, toolCall.messageId, createToolCallPayload({
+        id: toolCall.key,
+        name: toolCall.title,
+        status: 'running',
+        input: toolCall.input,
+        detail: toolCall.detail,
+        content: '',
+      }));
     }
     syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
   }
@@ -262,7 +274,21 @@ export class LocalCoreAcpTurnCoordinator {
             currentTurn.pendingToolCallDetail = undefined;
           }
         }
-        this.emitProgress(session, currentRunId, formatToolProgressMessage({ toolName, title: displayTitle, status, content }), messageId);
+        const toolCallPayload = createToolCallPayload({
+          id: toolCall?.key || currentTurn.activeToolCallKey,
+          name: toolName || displayTitle || 'Tool update',
+          status,
+          input: toolCall?.input,
+          detail: displayTitle,
+          content,
+        });
+        this.emitProgress(
+          session,
+          currentRunId,
+          formatToolProgressMessage({ toolName, title: displayTitle, status, content }),
+          messageId,
+          toolCallPayload,
+        );
         syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
         return;
       }
@@ -290,11 +316,17 @@ export class LocalCoreAcpTurnCoordinator {
     }
   }
 
-  private emitProgress(session: AcpSessionState, currentRunId: string, content: string, messageId?: string) {
+  private emitProgress(
+    session: AcpSessionState,
+    currentRunId: string,
+    content: string,
+    messageId?: string,
+    toolCall?: DesktopBridgeToolCall,
+  ) {
     if (messageId && this.options.upsertMessage) {
-      this.options.upsertMessage(session.threadId, messageId, 'assistant', content, 'progress');
+      this.options.upsertMessage(session.threadId, messageId, 'assistant', content, 'progress', toolCall);
     } else {
-      this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
+      this.options.appendMessage(session.threadId, 'assistant', content, 'progress', toolCall);
     }
     this.options.emitBridge({
       type: 'reply',
@@ -302,7 +334,28 @@ export class LocalCoreAcpTurnCoordinator {
       replyCtx: currentRunId,
       messageId,
       content,
+      toolCall,
     });
   }
 
+}
+
+function createToolCallPayload(input: {
+  id?: string;
+  name: string;
+  status: string;
+  input?: unknown;
+  detail?: string;
+  content: string;
+}): DesktopBridgeToolCall {
+  const status = input.status.trim() || 'running';
+  return {
+    id: input.id,
+    name: input.name.trim() || 'Tool call',
+    status,
+    input: input.input,
+    output: input.content,
+    detail: input.detail?.trim() || undefined,
+    label: /^running$/i.test(status) ? '工具调用' : '工具结果',
+  };
 }

@@ -47,6 +47,7 @@ import {
 } from '../../../../packages/contracts/src/index.js';
 import { createScheduledJobId } from '../scheduler/job-id.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
+import type { DesktopBridgeToolCall } from '../../../../shared/desktop.js';
 import type {
   LocalMessageRow,
   LocalPlatformPairingRow,
@@ -94,6 +95,7 @@ export class LocalCoreAcpStore {
         thread_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        tool_call_json TEXT,
         timestamp TEXT NOT NULL,
         kind TEXT NOT NULL,
         seq INTEGER NOT NULL,
@@ -274,6 +276,7 @@ export class LocalCoreAcpStore {
       CREATE INDEX IF NOT EXISTS idx_audit_events_task_created ON audit_events (task_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_events_type_created ON audit_events (type, created_at DESC);
     `);
+    this.ensureColumn('messages', 'tool_call_json', 'TEXT');
     this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
   }
 
@@ -340,7 +343,7 @@ export class LocalCoreAcpStore {
       throw new Error(`Thread not found: ${threadId}`);
     }
     const messages = this.db.prepare(`
-      SELECT id, thread_id, role, content, timestamp, kind, seq
+      SELECT id, thread_id, role, content, tool_call_json, timestamp, kind, seq
       FROM messages
       WHERE thread_id = ?
       ORDER BY seq ASC
@@ -360,6 +363,7 @@ export class LocalCoreAcpStore {
         id: message.id,
         role: message.role,
         content: message.content,
+        toolCall: parseJson<DesktopBridgeToolCall | null>(message.tool_call_json || 'null', null) || undefined,
         timestamp: message.timestamp,
         kind: message.kind,
       })),
@@ -377,7 +381,13 @@ export class LocalCoreAcpStore {
     this.db.prepare('DELETE FROM threads WHERE id = ?').run(threadId);
   }
 
-  appendMessage(threadId: string, role: LocalMessageRow['role'], content: string, kind: LocalMessageRow['kind']) {
+  appendMessage(
+    threadId: string,
+    role: LocalMessageRow['role'],
+    content: string,
+    kind: LocalMessageRow['kind'],
+    toolCall?: DesktopBridgeToolCall,
+  ) {
     const timestamp = new Date().toISOString();
     const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
@@ -386,9 +396,18 @@ export class LocalCoreAcpStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.db.prepare(`
-        INSERT INTO messages (id, thread_id, role, content, timestamp, kind, seq)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, threadId, role, content, timestamp, kind, nextSeq);
+        INSERT INTO messages (id, thread_id, role, content, tool_call_json, timestamp, kind, seq)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        threadId,
+        role,
+        content,
+        toolCall ? JSON.stringify(toolCall) : null,
+        timestamp,
+        kind,
+        nextSeq,
+      );
       this.db.prepare(`
         UPDATE threads
         SET updated_at = ?, history_count = history_count + 1, excerpt = ?
@@ -402,7 +421,14 @@ export class LocalCoreAcpStore {
     return { id, timestamp };
   }
 
-  upsertMessage(threadId: string, id: string, role: LocalMessageRow['role'], content: string, kind: LocalMessageRow['kind']) {
+  upsertMessage(
+    threadId: string,
+    id: string,
+    role: LocalMessageRow['role'],
+    content: string,
+    kind: LocalMessageRow['kind'],
+    toolCall?: DesktopBridgeToolCall,
+  ) {
     const timestamp = new Date().toISOString();
     const excerpt = normalizeMessageContent(content);
     const existing = this.db.prepare('SELECT id FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as { id: string } | undefined;
@@ -411,16 +437,16 @@ export class LocalCoreAcpStore {
       if (existing) {
         this.db.prepare(`
           UPDATE messages
-          SET content = ?, timestamp = ?, kind = ?
+          SET content = ?, tool_call_json = ?, timestamp = ?, kind = ?
           WHERE id = ? AND thread_id = ?
-        `).run(content, timestamp, kind, id, threadId);
+        `).run(content, toolCall ? JSON.stringify(toolCall) : null, timestamp, kind, id, threadId);
       } else {
         const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
         const nextSeq = Number(nextSequenceRow?.next_seq || 0);
         this.db.prepare(`
-          INSERT INTO messages (id, thread_id, role, content, timestamp, kind, seq)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(id, threadId, role, content, timestamp, kind, nextSeq);
+          INSERT INTO messages (id, thread_id, role, content, tool_call_json, timestamp, kind, seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, threadId, role, content, toolCall ? JSON.stringify(toolCall) : null, timestamp, kind, nextSeq);
         this.db.prepare(`
           UPDATE threads
           SET history_count = history_count + 1

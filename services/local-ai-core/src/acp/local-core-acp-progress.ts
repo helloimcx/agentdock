@@ -17,6 +17,7 @@ export type PendingToolCallRegistration = {
   key: string;
   title: string;
   messageId: string;
+  input?: unknown;
   sequence: number;
   emitted: boolean;
 };
@@ -45,7 +46,7 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
   if (!text) {
     return null;
   }
-  currentTurn.thoughtText += text;
+  currentTurn.thoughtText = mergeStreamingText(currentTurn.thoughtText, text);
   const content = `💭 ${currentTurn.thoughtText.trim()}`;
   if (!currentTurn.thoughtPreviewStarted) {
     currentTurn.thoughtPreviewStarted = true;
@@ -64,6 +65,25 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
   };
 }
 
+function mergeStreamingText(current: string, next: string) {
+  if (!current) {
+    return next;
+  }
+  if (next.startsWith(current)) {
+    return next;
+  }
+  if (current.endsWith(next)) {
+    return current;
+  }
+  const maxOverlap = Math.min(current.length, next.length);
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    if (current.endsWith(next.slice(0, size))) {
+      return current + next.slice(size);
+    }
+  }
+  return current + next;
+}
+
 export function registerPendingToolCall(input: {
   currentTurn: RunningTurn;
   runId: string;
@@ -73,10 +93,12 @@ export function registerPendingToolCall(input: {
   const nextSequence = (input.currentTurn.toolCallSequence || 0) + 1;
   input.currentTurn.toolCallSequence = nextSequence;
   const key = extractToolCallKey(input.update) || `sequence:${nextSequence}`;
+  const toolInput = extractToolCallInput(input.update);
   const toolCall = {
     key,
     title,
     messageId: `${input.runId}-tool-${nextSequence}`,
+    ...(toolInput === undefined ? {} : { input: toolInput }),
     sequence: nextSequence,
     emitted: false,
   };
@@ -207,4 +229,13 @@ export function extractToolCallKey(update: Record<string, unknown>) {
     }
   }
   return '';
+}
+
+export function extractToolCallInput(update: Record<string, unknown>) {
+  for (const key of ['input', 'parameters', 'arguments', 'args']) {
+    if (Object.prototype.hasOwnProperty.call(update, key)) {
+      return update[key];
+    }
+  }
+  return undefined;
 }

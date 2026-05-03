@@ -532,6 +532,29 @@ test('ACP progress projection applies assistant and thought chunks with bridge m
   });
 });
 
+test('ACP thought chunks merge provider snapshots without duplicating text', () => {
+  const currentTurn = {
+    thoughtPreviewHandle: 'thought-preview-1',
+    thoughtMessageId: 'run-1-thought',
+    thoughtText: '',
+    thoughtPreviewStarted: false,
+  } as any;
+
+  assert.deepEqual(applyThoughtChunk(currentTurn, 'The user wants to see their desktop files.'), {
+    bridgeType: 'preview_start',
+    previewHandle: 'thought-preview-1',
+    messageId: 'run-1-thought',
+    content: '💭 The user wants to see their desktop files.',
+  });
+  assert.deepEqual(applyThoughtChunk(currentTurn, 'The user wants to see their desktop files. Let me show them.'), {
+    bridgeType: 'update_message',
+    previewHandle: 'thought-preview-1',
+    messageId: 'run-1-thought',
+    content: '💭 The user wants to see their desktop files. Let me show them.',
+  });
+  assert.equal(currentTurn.thoughtText, 'The user wants to see their desktop files. Let me show them.');
+});
+
 test('ACP progress projection registers pending tool calls in order', () => {
   const currentTurn = {
     toolCallSequence: 0,
@@ -541,11 +564,12 @@ test('ACP progress projection registers pending tool calls in order', () => {
   assert.deepEqual(registerPendingToolCall({
     currentTurn,
     runId: 'run-1',
-    update: { id: 'call-a', title: 'Terminal' },
+    update: { id: 'call-a', title: 'Terminal', parameters: { command: 'npm test' } },
   }), {
     key: 'call-a',
     title: 'Terminal',
     messageId: 'run-1-tool-1',
+    input: { command: 'npm test' },
     sequence: 1,
     emitted: false,
   });
@@ -659,12 +683,12 @@ test('ACP tool call running and completed updates share one message id', () => {
 });
 
 test('ACP concurrent tool call updates are matched by call id', () => {
-  const upserted: Array<{ id: string; content: string; kind: string }> = [];
-  const emitted: Array<{ content?: string; type: string; messageId?: string }> = [];
+  const upserted: Array<{ id: string; content: string; kind: string; toolCall?: any }> = [];
+  const emitted: Array<{ content?: string; type: string; messageId?: string; toolCall?: any }> = [];
   const coordinator = new LocalCoreAcpTurnCoordinator({
     appendMessage: () => assert.fail('tool updates should be upserted'),
-    upsertMessage: (_threadId, id, _role, content, kind) => upserted.push({ id, content, kind }),
-    emitBridge: (event) => emitted.push(event as { content?: string; type: string; messageId?: string }),
+    upsertMessage: (_threadId, id, _role, content, kind, toolCall) => upserted.push({ id, content, kind, toolCall }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; messageId?: string; toolCall?: any }),
     updateRunStatus: () => {},
     sendRaw: () => true,
   });
@@ -692,6 +716,7 @@ test('ACP concurrent tool call updates are matched by call id', () => {
         sessionUpdate: 'tool_call',
         id: 'call-a',
         title: 'Terminal',
+        parameters: { command: 'npm test' },
       },
     },
   });
@@ -743,6 +768,16 @@ test('ACP concurrent tool call updates are matched by call id', () => {
   assert.equal(upserted[1]?.id, 'run-1-tool-1');
   assert.equal(upserted[1]?.content, '🔧 Terminal: completed - terminal output');
   assert.deepEqual(emitted.map((event) => event.messageId), ['run-1-tool-2', 'run-1-tool-1']);
+  assert.deepEqual(upserted[1]?.toolCall, {
+    id: 'call-a',
+    name: 'Terminal',
+    status: 'completed',
+    input: { command: 'npm test' },
+    output: 'terminal output',
+    detail: undefined,
+    label: '工具结果',
+  });
+  assert.deepEqual(emitted[1]?.toolCall, upserted[1]?.toolCall);
 });
 
 test('ACP permission tool parameters are preserved in completed tool cards', () => {
@@ -1064,6 +1099,36 @@ test('ACP store upserts thought progress as one durable message', () => {
     assert.equal(detail.messages[0]?.kind, 'progress');
     assert.equal(detail.messages[0]?.content, '💭 先理解问题，再检查代码');
     assert.equal(detail.historyCount, 1);
+  } finally {
+    store.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP store preserves structured tool call progress metadata', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-tool-store-'));
+  const store = new LocalCoreAcpStore(userDataPath);
+  try {
+    const thread = store.createThread('project-1', 'Thread');
+    store.upsertMessage(thread.id, 'run-1-tool-1', 'assistant', '🔧 bash: completed - total 32', 'progress', {
+      id: 'call-1',
+      name: 'bash',
+      status: 'completed',
+      input: { command: 'ls -la ~/Desktop' },
+      detail: 'ls -la ~/Desktop',
+      output: 'total 32',
+      label: '工具结果',
+    });
+
+    const detail = store.getThread(thread.id, []);
+
+    assert.equal(detail.messages.length, 1);
+    assert.equal(detail.messages[0]?.id, 'run-1-tool-1');
+    assert.equal(detail.messages[0]?.toolCall?.name, 'bash');
+    assert.equal(detail.messages[0]?.toolCall?.status, 'completed');
+    assert.deepEqual(detail.messages[0]?.toolCall?.input, { command: 'ls -la ~/Desktop' });
+    assert.equal(detail.messages[0]?.toolCall?.detail, 'ls -la ~/Desktop');
+    assert.equal(detail.messages[0]?.toolCall?.output, 'total 32');
   } finally {
     store.close();
     rmSync(userDataPath, { recursive: true, force: true });

@@ -2,6 +2,7 @@ import type { Session } from '../../api/sessions';
 import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
 import type {
   DesktopBridgeButtonOption,
+  DesktopBridgeToolCall,
   DesktopRuntimeStatus,
 } from '../../../shared/desktop';
 import {
@@ -16,6 +17,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  toolCall?: DesktopBridgeToolCall;
   streamTargetContent?: string;
   kind?: 'final' | 'progress';
   order: number;
@@ -200,6 +202,7 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
     id: message.id || `${index}-${message.timestamp || message.role}`,
     role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
     content: message.role === 'user' ? extractVisibleMessageContent(message.content) : message.content,
+    toolCall: message.toolCall,
     kind:
       message.kind === 'progress'
         ? 'progress'

@@ -28,6 +28,7 @@ import {
   parsePermissionCardContent,
   parseToolResultCard,
   shouldCollapseToolResultByDefault,
+  toolCallToResultCard,
 } from './thread-chat-message-blocks';
 import {
   canSubmitComposer,
@@ -444,6 +445,32 @@ test('tool result card parsing preserves tool name and decoded output', () => {
   assert.equal(card.label, '工具结果');
   assert.equal(card.subtitle, 'package.json');
   assert.equal(shouldCollapseToolResultByDefault(card), true);
+});
+
+test('tool result card parsing accepts status-first tool updates', () => {
+  const card = parseToolResultCard('🔧 bash: completed - total 32\n-rw-r--r-- file.md');
+
+  assert.ok(card);
+  assert.equal(card.title, 'bash');
+  assert.equal(card.status, 'completed');
+  assert.equal(card.output, 'total 32\n-rw-r--r-- file.md');
+  assert.equal(card.label, '工具结果');
+});
+
+test('tool result card prefers structured tool call fields', () => {
+  const card = toolCallToResultCard({
+    name: 'bash',
+    status: 'completed',
+    input: { command: 'ls -la ~/Desktop', cwd: '/Users/yinyin' },
+    output: 'total 32',
+    label: '工具结果',
+  });
+
+  assert.ok(card);
+  assert.equal(card.title, 'bash');
+  assert.equal(card.status, 'completed');
+  assert.equal(card.subtitle, 'ls -la ~/Desktop');
+  assert.equal(card.output, 'total 32');
 });
 
 test('running empty tool update stays hidden instead of rendering an empty card', () => {
