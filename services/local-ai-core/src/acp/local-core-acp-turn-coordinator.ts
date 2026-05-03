@@ -1,6 +1,6 @@
 import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
 import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.js';
-import { formatToolCallContent, normalizePermissionAction, toPermissionButtonRows } from './workspace-acp-permissions.js';
+import { formatToolCallContent, normalizePermissionOptionAction, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
 
 type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
@@ -104,7 +104,11 @@ export class LocalCoreAcpTurnCoordinator {
             optionId: String(option?.optionId || '').trim(),
             name: String(option?.name || option?.optionId || '').trim(),
             kind: String(option?.kind || '').trim(),
-            normalizedAction: normalizePermissionAction(option?.kind),
+            normalizedAction: normalizePermissionOptionAction({
+              optionId: option?.optionId,
+              name: option?.name,
+              kind: option?.kind,
+            }),
           }))
           .filter((option: { optionId: string }) => option.optionId)
       : [];

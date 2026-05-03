@@ -77,9 +77,19 @@ const PERMISSION_RESPONSE_MAP: Record<string, 'allow' | 'deny' | 'allow all'> = 
   deny: 'deny',
   'allow all': 'allow all',
   allowall: 'allow all',
+  allow_all: 'allow all',
+  allow_always: 'allow all',
+  always: 'allow all',
+  always_allow: 'allow all',
+  'always allow': 'allow all',
+  'allow always': 'allow all',
+  '始终允许': 'allow all',
+  '永久允许': 'allow all',
   'perm:allow': 'allow',
   'perm:deny': 'deny',
   'perm:allow_all': 'allow all',
+  'perm:allow_always': 'allow all',
+  'perm:always': 'allow all',
 };
 
 export type DesktopServiceStatus = 'stopped' | 'starting' | 'running' | 'error';

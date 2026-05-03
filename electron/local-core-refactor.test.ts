@@ -13,7 +13,7 @@ import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/channel/we
 import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { normalizePermissionAction } from '../services/local-ai-core/src/acp/workspace-acp-permissions.js';
+import { normalizePermissionAction, normalizePermissionOptionAction } from '../services/local-ai-core/src/acp/workspace-acp-permissions.js';
 
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];
@@ -76,6 +76,24 @@ test('ACP permission normalization treats allow_all as allow all', () => {
   assert.equal(normalizePermissionAction('allow_always'), 'allow all');
   assert.equal(normalizePermissionAction('always'), 'allow all');
   assert.equal(normalizePermissionAction('allow_once'), 'allow');
+});
+
+test('ACP permission normalization preserves always-allow option semantics', () => {
+  assert.equal(normalizePermissionOptionAction({
+    optionId: 'approve',
+    name: 'Always allow',
+    kind: 'allow',
+  }), 'allow all');
+  assert.equal(normalizePermissionOptionAction({
+    optionId: 'allow-all-tools',
+    name: '始终允许',
+    kind: 'allow',
+  }), 'allow all');
+  assert.equal(normalizePermissionOptionAction({
+    optionId: 'allow_once',
+    name: 'Allow once',
+    kind: 'allow',
+  }), 'allow');
 });
 
 test('ACP tool call running and completed updates share one message id', () => {
@@ -319,6 +337,58 @@ test('ACP permission tool parameters are preserved in completed tool cards', () 
   assert.match(upserted[0]?.content || '', /parameters:/);
   assert.match(upserted[0]?.content || '', /ls -la ~\/Desktop/);
   assert.match(upserted[0]?.content || '', /completed - Desktop file list/);
+});
+
+test('ACP permission button rows preserve always allow actions', () => {
+  const emitted: Array<{ type: string; buttonRows?: Array<Array<{ text: string; data: string }>> }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    emitBridge: (event) => emitted.push(event as { type: string; buttonRows?: Array<Array<{ text: string; data: string }>> }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    pendingPermissionByRun: new Map(),
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentRequest(session, {
+    method: 'session/request_permission',
+    id: 42,
+    params: {
+      toolCall: {
+        title: 'Terminal',
+        parameters: {
+          command: 'system_profiler SPHardwareDataType',
+        },
+      },
+      options: [
+        { optionId: 'approve-once', name: 'Allow once', kind: 'allow' },
+        { optionId: 'approve-always', name: 'Always allow', kind: 'allow' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject' },
+      ],
+    },
+  });
+
+  assert.deepEqual(emitted[0]?.buttonRows, [[
+    { text: 'allow', data: 'allow' },
+    { text: 'allow all', data: 'allow all' },
+    { text: 'deny', data: 'deny' },
+  ]]);
+  assert.equal(session.pendingPermissionByRun.get('run-1')?.options[1]?.optionId, 'approve-always');
 });
 
 test('ACP bare tool call is flushed before assistant text', () => {
