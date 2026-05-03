@@ -20,7 +20,16 @@ export type LocalAiCoreRoute =
   | { name: 'scheduler.job.runs'; jobId: string }
   | { name: 'scheduler.job.run'; jobId: string }
   | { name: 'scheduler.job.update'; jobId: string }
-  | { name: 'scheduler.job.delete'; jobId: string };
+  | { name: 'scheduler.job.delete'; jobId: string }
+  | { name: 'threads.list' }
+  | { name: 'threads.create' }
+  | { name: 'thread.get'; threadId: string }
+  | { name: 'thread.rename'; threadId: string }
+  | { name: 'thread.update-knowledge-bases'; threadId: string }
+  | { name: 'thread.delete'; threadId: string }
+  | { name: 'thread.messages.send'; threadId: string }
+  | { name: 'thread.actions.send'; threadId: string }
+  | { name: 'run.interrupt'; runId: string };
 
 const API_PREFIX = '/api/local/v1';
 
@@ -69,6 +78,12 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (segments[0] === 'scheduler' && segments[1] === 'jobs') {
     return parseSchedulerJobsRoute(normalizedMethod, segments);
   }
+  if (segments[0] === 'threads') {
+    return parseThreadsRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'runs') {
+    return parseRunsRoute(normalizedMethod, segments);
+  }
 
   return null;
 }
@@ -114,6 +129,46 @@ function parseSchedulerJobsRoute(method: string, segments: string[]): LocalAiCor
   }
   if (method === 'DELETE' && segments.length === 3) {
     return { name: 'scheduler.job.delete', jobId };
+  }
+  return null;
+}
+
+function parseThreadsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'threads.list' };
+  }
+  if (method === 'POST' && segments.length === 1) {
+    return { name: 'threads.create' };
+  }
+  const threadId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!threadId) {
+    return null;
+  }
+  if (method === 'GET' && segments.length === 2) {
+    return { name: 'thread.get', threadId };
+  }
+  if (method === 'PATCH' && segments.length === 2) {
+    return { name: 'thread.rename', threadId };
+  }
+  if (method === 'DELETE' && segments.length === 2) {
+    return { name: 'thread.delete', threadId };
+  }
+  if (method === 'PATCH' && segments.length === 3 && segments[2] === 'knowledge-bases') {
+    return { name: 'thread.update-knowledge-bases', threadId };
+  }
+  if (method === 'POST' && segments.length === 3 && segments[2] === 'messages') {
+    return { name: 'thread.messages.send', threadId };
+  }
+  if (method === 'POST' && segments.length === 3 && segments[2] === 'actions') {
+    return { name: 'thread.actions.send', threadId };
+  }
+  return null;
+}
+
+function parseRunsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  const runId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (method === 'POST' && runId && segments.length === 3 && segments[2] === 'interrupt') {
+    return { name: 'run.interrupt', runId };
   }
   return null;
 }

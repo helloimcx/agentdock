@@ -497,62 +497,6 @@ export class LocalAiCoreServer {
           return;
         }
       }
-      if (req.method === 'GET' && path === '/api/local/v1/threads') {
-        const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { threads: workspaceId ? await this.bindings.listThreads(workspaceId) : [] });
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/threads') {
-        const body = await readJsonBody(req);
-        json(
-          res,
-          200,
-          await this.bindings.createThread(String(body.workspaceId || ''), String(body.title || '') || undefined),
-        );
-        return;
-      }
-      if (req.method === 'GET' && path.startsWith('/api/local/v1/threads/')) {
-        const threadId = decodeURIComponent(path.slice('/api/local/v1/threads/'.length));
-        json(res, 200, await this.bindings.getThread(threadId));
-        return;
-      }
-      if (req.method === 'PATCH' && path.startsWith('/api/local/v1/threads/') && path.endsWith('/knowledge-bases')) {
-        const threadId = decodeURIComponent(path.slice('/api/local/v1/threads/'.length, -'/knowledge-bases'.length));
-        const body = await readJsonBody(req);
-        const knowledgeBaseIds = Array.isArray(body.knowledgeBaseIds)
-          ? body.knowledgeBaseIds.map((value) => String(value || ''))
-          : [];
-        json(res, 200, await this.bindings.updateThreadKnowledgeBases(threadId, knowledgeBaseIds));
-        return;
-      }
-      if (req.method === 'PATCH' && path.startsWith('/api/local/v1/threads/')) {
-        const threadId = decodeURIComponent(path.slice('/api/local/v1/threads/'.length));
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.renameThread(threadId, String(body.title || '')));
-        return;
-      }
-      if (req.method === 'DELETE' && path.startsWith('/api/local/v1/threads/')) {
-        const threadId = decodeURIComponent(path.slice('/api/local/v1/threads/'.length));
-        json(res, 200, await this.bindings.deleteThread(threadId));
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/threads/') && path.endsWith('/messages')) {
-        const threadId = decodeURIComponent(path.slice('/api/local/v1/threads/'.length, -'/messages'.length));
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.sendThreadMessage(threadId, String(body.content || '')));
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/threads/') && path.endsWith('/actions')) {
-        const threadId = decodeURIComponent(path.slice('/api/local/v1/threads/'.length, -'/actions'.length));
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.sendThreadAction(threadId, String(body.content || '')));
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/runs/') && path.endsWith('/interrupt')) {
-        const runId = decodeURIComponent(path.slice('/api/local/v1/runs/'.length, -'/interrupt'.length));
-        json(res, 200, await this.bindings.interruptRun(runId));
-        return;
-      }
       if (req.method === 'GET' && path === '/api/local/v1/knowledge/sources') {
         json(res, 200, { sources: await this.bindings.listKnowledgeSources() });
         return;
@@ -761,6 +705,52 @@ export class LocalAiCoreServer {
       }
       case 'scheduler.job.delete':
         json(res, 200, await this.bindings.deleteScheduledJob(route.jobId));
+        return;
+      case 'threads.list': {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { threads: workspaceId ? await this.bindings.listThreads(workspaceId) : [] });
+        return;
+      }
+      case 'threads.create': {
+        const body = await readJsonBody(req);
+        json(
+          res,
+          200,
+          await this.bindings.createThread(String(body.workspaceId || ''), String(body.title || '') || undefined),
+        );
+        return;
+      }
+      case 'thread.get':
+        json(res, 200, await this.bindings.getThread(route.threadId));
+        return;
+      case 'thread.update-knowledge-bases': {
+        const body = await readJsonBody(req);
+        const knowledgeBaseIds = Array.isArray(body.knowledgeBaseIds)
+          ? body.knowledgeBaseIds.map((value) => String(value || ''))
+          : [];
+        json(res, 200, await this.bindings.updateThreadKnowledgeBases(route.threadId, knowledgeBaseIds));
+        return;
+      }
+      case 'thread.rename': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.renameThread(route.threadId, String(body.title || '')));
+        return;
+      }
+      case 'thread.delete':
+        json(res, 200, await this.bindings.deleteThread(route.threadId));
+        return;
+      case 'thread.messages.send': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.sendThreadMessage(route.threadId, String(body.content || '')));
+        return;
+      }
+      case 'thread.actions.send': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.sendThreadAction(route.threadId, String(body.content || '')));
+        return;
+      }
+      case 'run.interrupt':
+        json(res, 200, await this.bindings.interruptRun(route.runId));
         return;
     }
   }

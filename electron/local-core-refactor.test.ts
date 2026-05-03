@@ -45,6 +45,36 @@ test('local core route parser keeps scheduler job get, runs, and run distinct', 
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/scheduler/jobs/job-abc/run'), null);
 });
 
+test('local core route parser keeps thread actions separate from generic thread routes', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/threads'), { name: 'threads.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/threads'), { name: 'threads.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/threads/workspace%2Fa%3A%3Athread%2F1'), {
+    name: 'thread.get',
+    threadId: 'workspace/a::thread/1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/threads/thread-1/knowledge-bases'), {
+    name: 'thread.update-knowledge-bases',
+    threadId: 'thread-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/threads/thread-1/messages'), {
+    name: 'thread.messages.send',
+    threadId: 'thread-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/threads/thread-1/actions'), {
+    name: 'thread.actions.send',
+    threadId: 'thread-1',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/threads/thread-1/messages'), null);
+});
+
+test('local core route parser only accepts run interrupt action with POST', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/runs/run-1/interrupt'), {
+    name: 'run.interrupt',
+    runId: 'run-1',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/runs/run-1/interrupt'), null);
+});
+
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];
   const emitted: Array<{ content?: string; type: string }> = [];
