@@ -16,13 +16,18 @@ import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  deletePendingToolCall,
   extractToolCallKey,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
+  getToolCallsInOrder,
   isEmptyRunningToolUpdate,
   registerPendingToolCall,
+  resolveFallbackToolCall,
+  resolveToolCallForUpdate,
   resolveToolUpdateDisplayTitle,
+  syncLegacyPendingToolCall,
 } from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
 import {
   applyPendingPermissionRequest,
@@ -516,6 +521,16 @@ test('ACP progress projection registers pending tool calls in order', () => {
   });
   assert.deepEqual(currentTurn.pendingToolCallOrder, ['call-a', 'sequence:2']);
   assert.equal(currentTurn.activeToolCallKey, 'sequence:2');
+  assert.deepEqual(getToolCallsInOrder(currentTurn).map((toolCall) => toolCall.key), ['call-a', 'sequence:2']);
+  assert.equal(resolveFallbackToolCall(currentTurn)?.key, 'sequence:2');
+  assert.equal(resolveToolCallForUpdate(currentTurn, { id: 'call-a' })?.key, 'call-a');
+  assert.equal(currentTurn.activeToolCallKey, 'call-a');
+  syncLegacyPendingToolCall(currentTurn, currentTurn.pendingToolCalls['call-a']);
+  assert.equal(currentTurn.pendingToolCallTitle, 'Terminal');
+  assert.equal(currentTurn.pendingToolCallId, 'run-1-tool-1');
+  deletePendingToolCall(currentTurn, 'call-a');
+  assert.deepEqual(currentTurn.pendingToolCallOrder, ['sequence:2']);
+  assert.equal(currentTurn.activeToolCallKey, undefined);
 });
 
 test('ACP progress projection ignores empty plan entries', () => {

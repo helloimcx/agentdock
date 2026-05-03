@@ -82,7 +82,11 @@ Checklist:
   - [x] ACP running permission request and approval input construction live in focused lifecycle helpers.
   - [x] ACP pending permission state writes live in focused lifecycle helpers.
 - [ ] Common bug fixes touch fewer layers than before.
-- [ ] State transitions can be tested without launching Electron or a full Local AI Core server.
+  - [x] Runtime route matching fixes can touch parser tests and dispatch without editing unrelated handlers.
+  - [x] ACP permission/progress fixes can touch lifecycle or projection helpers without editing persistence stores.
+- [x] State transitions can be tested without launching Electron or a full Local AI Core server.
+  - [x] ACP streaming, tool-call, and permission transitions are covered through direct helper tests.
+  - [x] Runtime route selection is covered through direct parser tests.
 
 ## Phase 4: Bug Triage Checklist
 

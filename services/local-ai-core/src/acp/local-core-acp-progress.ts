@@ -1,6 +1,7 @@
 import type { AcpSessionState } from '../router/workspace-router-types.js';
 
 type RunningTurn = NonNullable<AcpSessionState['currentTurn']>;
+type RunningToolCall = NonNullable<RunningTurn['pendingToolCalls']>[string];
 
 export type MessagePreviewProjection = {
   bridgeType: 'preview_start' | 'update_message';
@@ -89,6 +90,51 @@ export function registerPendingToolCall(input: {
   ];
   input.currentTurn.activeToolCallKey = key;
   return toolCall;
+}
+
+export function resolveToolCallForUpdate(currentTurn: RunningTurn, update: Record<string, unknown>) {
+  const explicitKey = extractToolCallKey(update);
+  if (explicitKey && currentTurn.pendingToolCalls?.[explicitKey]) {
+    currentTurn.activeToolCallKey = explicitKey;
+    return currentTurn.pendingToolCalls[explicitKey];
+  }
+  return resolveFallbackToolCall(currentTurn);
+}
+
+export function resolveFallbackToolCall(currentTurn: RunningTurn) {
+  const active = currentTurn.activeToolCallKey
+    ? currentTurn.pendingToolCalls?.[currentTurn.activeToolCallKey]
+    : undefined;
+  if (active) {
+    return active;
+  }
+  const ordered = getToolCallsInOrder(currentTurn);
+  return ordered[ordered.length - 1];
+}
+
+export function getToolCallsInOrder(currentTurn: RunningTurn) {
+  const toolCalls = currentTurn.pendingToolCalls || {};
+  const orderedKeys = currentTurn.pendingToolCallOrder || [];
+  return orderedKeys
+    .map((key) => toolCalls[key])
+    .filter((toolCall): toolCall is RunningToolCall => Boolean(toolCall));
+}
+
+export function deletePendingToolCall(currentTurn: RunningTurn, key: string) {
+  if (currentTurn.pendingToolCalls) {
+    delete currentTurn.pendingToolCalls[key];
+  }
+  currentTurn.pendingToolCallOrder = (currentTurn.pendingToolCallOrder || []).filter((item) => item !== key);
+  if (currentTurn.activeToolCallKey === key) {
+    currentTurn.activeToolCallKey = undefined;
+  }
+}
+
+export function syncLegacyPendingToolCall(currentTurn: RunningTurn, toolCall?: RunningToolCall) {
+  currentTurn.pendingToolCallTitle = toolCall?.title;
+  currentTurn.pendingToolCallId = toolCall?.messageId;
+  currentTurn.pendingToolCallDetail = toolCall?.detail;
+  currentTurn.activeToolCallKey = toolCall?.key;
 }
 
 export function extractToolUpdateContent(content: unknown) {
