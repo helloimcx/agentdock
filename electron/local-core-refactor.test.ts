@@ -9,7 +9,7 @@ import { ScheduledConversationExecutor } from '../services/local-ai-core/src/sch
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalScheduleAdapter } from '../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
-import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
+import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
 import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
@@ -1358,6 +1358,105 @@ test('lark image messages are downloaded and forwarded as generic channel image 
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, pngBytes.toString('base64'));
 });
 
+test('lark file messages are downloaded and forwarded as generic channel file parts', async () => {
+  const sentMessages: any[] = [];
+  const fileBytes = Buffer.from('file content');
+  const client = {
+    im: {
+      messageResource: {
+        get: async (request: any) => {
+          assert.equal(request.path.message_id, 'msg-file-in-1');
+          assert.equal(request.path.file_key, 'file-key-in-1');
+          assert.equal(request.params.type, 'file');
+          return {
+            headers: { 'content-type': 'application/pdf' },
+            getReadableStream: () => Readable.from([fileBytes]),
+          };
+        },
+      },
+      messageReaction: {
+        create: async () => ({ data: { reaction_id: 'reaction-1' } }),
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'default',
+        platform: 'lark',
+        platform_user_id: 'user-1',
+        chat_id: 'chat-1',
+        display_name: 'User',
+        thread_id: 'thread-1',
+      }),
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      getLatestRunForThread: () => null,
+      clearPlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => ({
+      projects: [{
+        name: 'default',
+        root: '/tmp/project',
+        platforms: [{
+          type: 'lark',
+          options: {
+            app_id: 'app-1',
+            app_secret: 'secret-1',
+          },
+        }],
+      }],
+    }) as any,
+    getWorkspaceRouter: () => ({
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (threadId: string, content: any) => {
+        sentMessages.push({ threadId, content });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+
+  await internals.handleMessageEvent('default', {
+    event: {
+      sender: {
+        sender_id: { user_id: 'user-1' },
+      },
+      message: {
+        message_id: 'msg-file-in-1',
+        message_type: 'file',
+        chat_id: 'chat-1',
+        content: JSON.stringify({ file_key: 'file-key-in-1', file_name: 'report.pdf' }),
+      },
+    },
+  });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0]?.threadId, 'thread-1');
+  assert.match(sentMessages[0]?.content?.displayText, /\[User Message\]\n\[File: report\.pdf\]\n\[\/User Message\]/);
+  assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'file']);
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'application/pdf');
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, fileBytes.toString('base64'));
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.fileName, 'report.pdf');
+});
+
 test('lark channel can upload and send a local file', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'lark-file-send-'));
   try {
@@ -2450,6 +2549,37 @@ test('weixin inbound message handling is idempotent by message identity', async 
 
   assert.equal(sentThreadMessages.length, 1);
   assert.match(sentThreadMessages[0] || '', /hello/);
+});
+
+test('weixin downloaded file attachment becomes a structured file content part', () => {
+  const part = createWeixinAttachmentContentPart({
+    path: '/tmp/report.pdf',
+    kind: 'file',
+    name: 'report.pdf',
+  });
+
+  assert.deepEqual(part, {
+    type: 'file',
+    path: '/tmp/report.pdf',
+    fileName: 'report.pdf',
+  });
+});
+
+test('weixin downloaded image attachment keeps image data content part', () => {
+  const part = createWeixinAttachmentContentPart({
+    path: '/tmp/image.png',
+    kind: 'image',
+    name: 'image.png',
+    data: 'aW1n',
+    mimeType: 'image/png',
+  });
+
+  assert.deepEqual(part, {
+    type: 'image',
+    data: 'aW1n',
+    mimeType: 'image/png',
+    fileName: 'image.png',
+  });
 });
 
 test('weixin bridge skips duplicate rendered replies', async () => {

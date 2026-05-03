@@ -20,6 +20,7 @@ import type {
 } from '../../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
+import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import {
   channelPlatformKey,
@@ -144,6 +145,31 @@ function splitTextByUtf8Bytes(text: string, maxBytes: number): string[] {
   }
   pushCurrent();
   return chunks;
+}
+
+export type WeixinDownloadedMedia = {
+  path: string;
+  kind: 'image' | 'file';
+  name: string;
+  data?: string;
+  mimeType?: string;
+};
+
+export function createWeixinAttachmentContentPart(att: WeixinDownloadedMedia): ChannelInboundContentPart | null {
+  if (att.kind === 'image') {
+    if (!att.data) return null;
+    return {
+      type: 'image',
+      data: att.data,
+      mimeType: att.mimeType,
+      fileName: att.name,
+    };
+  }
+  return {
+    type: 'file',
+    path: att.path,
+    fileName: att.name,
+  };
 }
 
 function truncateTextByUtf8Bytes(text: string, maxBytes: number): string {
@@ -751,7 +777,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       platformKey,
     );
     const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
-    await router.sendThreadMessage(threadId, this.createThreadMessageInput(wrappedText, input.contentParts));
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
   }
 
@@ -933,14 +959,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
                 if (att) {
                   attachmentText += attachmentText ? '\n' : '';
                   attachmentText += att.kind === 'image' ? `[Image: ${att.path}]` : `[File "${att.name}": ${att.path}]`;
-                  if (att.kind === 'image' && att.data) {
-                    attachmentParts.push({
-                      type: 'image',
-                      data: att.data,
-                      mimeType: att.mimeType,
-                      fileName: att.name,
-                    });
-                  }
+                  const part = createWeixinAttachmentContentPart(att);
+                  if (part) attachmentParts.push(part);
                 }
               } catch (dlErr) {
                 this.options.log?.(`localcore-weixin attachment download failed (${conversationId}#${idx}): ${formatError(dlErr)}`);
@@ -1120,7 +1140,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     idx: number,
     uploadsDir: string,
     binding: WeixinWorkspaceBinding,
-  ): Promise<{ path: string; kind: 'image' | 'file'; name: string; data?: string; mimeType?: string } | null> {
+  ): Promise<WeixinDownloadedMedia | null> {
     const itemData = item.image_item ?? item.file_item ?? null;
     const encryptQueryParam = itemData?.media?.encrypt_query_param;
     if (!encryptQueryParam) return null;
@@ -1165,27 +1185,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       name: declaredName,
       data: kind === 'image' ? resultBuf.toString('base64') : undefined,
       mimeType: kind === 'image' ? this.mimeTypeForImageExt(ext) : undefined,
-    };
-  }
-
-  private createWrappedContentParts(wrappedText: string, parts?: ChannelInboundContentPart[]) {
-    const nonTextParts = Array.isArray(parts)
-      ? parts.filter((part) => part.type !== 'text')
-      : [];
-    return [
-      { type: 'text' as const, text: wrappedText },
-      ...nonTextParts,
-    ];
-  }
-
-  private createThreadMessageInput(wrappedText: string, parts?: ChannelInboundContentPart[]) {
-    const hasNonTextPart = Array.isArray(parts) && parts.some((part) => part.type !== 'text');
-    if (!hasNonTextPart) {
-      return wrappedText;
-    }
-    return {
-      displayText: wrappedText,
-      contentParts: this.createWrappedContentParts(wrappedText, parts),
     };
   }
 

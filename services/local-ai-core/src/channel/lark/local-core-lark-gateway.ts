@@ -21,6 +21,7 @@ import type {
 } from '../../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
+import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import {
   buildInteractiveCard,
@@ -716,7 +717,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
     this.options.store.clearPlatformThreadMessageId(input.workspaceId, input.chatId, input.platformUserId);
     const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
-    await router.sendThreadMessage(threadId, this.createThreadMessageInput(wrappedText, input.contentParts));
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
   }
 
@@ -927,15 +928,29 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         }
       }
     }
+    if (messageType === 'file') {
+      const fileKey = String(parsedContent.file_key || '').trim();
+      if (fileKey) {
+        try {
+          contentParts.push(await this.downloadMessageFile(
+            workspaceId,
+            String(message.message_id || ''),
+            fileKey,
+            String(parsedContent.file_name || parsedContent.name || '').trim(),
+            instanceId,
+          ));
+        } catch (error) {
+          const errorText = `[File download failed: ${error instanceof Error ? error.message : String(error)}]`;
+          contentParts.push({ type: 'text', text: errorText });
+          this.options.log?.(`localcore-lark file download failed for ${workspaceId}: message=${String(message.message_id || '')} fileKey=${fileKey} error=${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
     if (contentParts.length === 0) {
       this.options.log?.(`localcore-lark ignored unsupported message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
       return;
     }
-    const displayText = text || (contentParts.some((part) => part.type === 'image') ? '[Image]' : contentParts
-      .filter((part): part is Extract<ChannelInboundContentPart, { type: 'text' }> => part.type === 'text')
-      .map((part) => part.text)
-      .join('\n\n')
-      .trim());
+    const displayText = text || this.summarizeInboundContentParts(contentParts);
     const platformUserId = String(sender.sender_id?.user_id || sender.sender_id?.open_id || '').trim();
     const chatId = String(message.chat_id || platformUserId).trim();
     if (!platformUserId || !chatId) {
@@ -958,27 +973,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       messageId: String(message.message_id || randomUUID()),
       contentParts,
     });
-  }
-
-  private createWrappedContentParts(wrappedText: string, parts?: ChannelInboundContentPart[]) {
-    const nonTextParts = Array.isArray(parts)
-      ? parts.filter((part) => part.type !== 'text')
-      : [];
-    return [
-      { type: 'text' as const, text: wrappedText },
-      ...nonTextParts,
-    ];
-  }
-
-  private createThreadMessageInput(wrappedText: string, parts?: ChannelInboundContentPart[]) {
-    const hasNonTextPart = Array.isArray(parts) && parts.some((part) => part.type !== 'text');
-    if (!hasNonTextPart) {
-      return wrappedText;
-    }
-    return {
-      displayText: wrappedText,
-      contentParts: this.createWrappedContentParts(wrappedText, parts),
-    };
   }
 
   private async downloadMessageImage(workspaceId: string, messageId: string, imageKey: string, instanceId?: string): Promise<ChannelInboundContentPart> {
@@ -1009,6 +1003,59 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       mimeType: headerMime || this.sniffImageMimeType(buffer),
       fileName: `${imageKey}.${this.sniffImageExtension(buffer)}`,
     };
+  }
+
+  private async downloadMessageFile(workspaceId: string, messageId: string, fileKey: string, fileName: string, instanceId?: string): Promise<ChannelInboundContentPart> {
+    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
+    if (!state?.client) {
+      throw new Error('Lark client is not connected');
+    }
+    if (!messageId) {
+      throw new Error('Lark file message is missing message_id');
+    }
+    const resource = await state.client.im.messageResource.get({
+      path: {
+        message_id: messageId,
+        file_key: fileKey,
+      },
+      params: {
+        type: 'file',
+      },
+    });
+    const buffer = await this.readLarkResourceBuffer(resource);
+    if (buffer.length === 0) {
+      throw new Error('Lark file resource is empty');
+    }
+    return {
+      type: 'file',
+      data: buffer.toString('base64'),
+      mimeType: this.extractHeaderMimeType(resource?.headers) || 'application/octet-stream',
+      fileName: fileName || fileKey,
+      size: buffer.length,
+    };
+  }
+
+  private summarizeInboundContentParts(parts: ChannelInboundContentPart[]) {
+    const text = parts
+      .filter((part): part is Extract<ChannelInboundContentPart, { type: 'text' }> => part.type === 'text')
+      .map((part) => part.text)
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+    if (text) return text;
+    const attachmentSummary = parts
+      .map((part) => {
+        if (part.type === 'image') {
+          return '[Image]';
+        }
+        if (part.type === 'file') {
+          return part.fileName ? `[File: ${part.fileName}]` : '[File]';
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+    return attachmentSummary;
   }
 
   private async readLarkResourceBuffer(resource: any): Promise<Buffer> {

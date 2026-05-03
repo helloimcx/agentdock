@@ -6,7 +6,7 @@ Use this checklist to reduce repeated regressions in Thread Chat, Local AI Core,
 
 - [ ] Permission UI state is owned by Local AI Core, not inferred from message actions.
 - [ ] Thinking, tool progress, tool results, and final answers cannot overwrite each other.
-- [ ] Lark-first work is checked for shared channel impact before implementation.
+- [x] Lark-first work is checked for shared channel impact before implementation.
 - [ ] Form values, API enums, persisted values, and shared contracts use one parsing path.
 - [ ] Release fixes are separated from broad feature or refactor work when possible.
 - [ ] Production build behavior is verified, not assumed from dev mode.
@@ -20,7 +20,7 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
 - [ ] Remove duplicated ad hoc types for the same concept across renderer, Local AI Core, plugins, and shared packages.
 - [ ] Add parser or validation helpers for enum-like values: execution mode, trigger type, platform, content type, permission outcome, task state, and run state.
 - [ ] Confirm renderer code does not infer durable permission or run state from message text/actions.
-- [ ] Confirm channel adapters convert to and from shared content contracts.
+- [x] Confirm channel adapters convert to and from shared content contracts.
 - [ ] Confirm a developer can answer "where does this state live?" from one contract and one owner document.
 
 ## Phase 2: Lock Golden Path Tests
@@ -30,7 +30,10 @@ Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer stat
 - [ ] Permission request appears, survives refresh, accepts a choice, and updates style after submission.
 - [ ] Thinking, tool progress, tool result, and final response render as separate blocks.
 - [ ] Final response does not delete or overwrite prior thinking/tool blocks.
-- [ ] Lark and Weixin inbound text/image/file inputs normalize into the same core content model.
+- [x] Lark and Weixin inbound text/image/file inputs normalize into the same core content model.
+  - [x] Shared channel thread message helper keeps text wrapping and non-text attachments consistent across Lark and Weixin.
+  - [x] Weixin downloaded image and file attachments become structured inbound content parts.
+  - [x] Lark file messages become structured inbound file content parts.
 - [ ] File return supports current workspace paths and allowed absolute paths through one outbound content path.
 - [ ] Scheduler commands resolve short job ids, thread scope, execution mode, and side-thread behavior consistently.
 - [ ] Production build contains renderer assets.
@@ -52,7 +55,7 @@ Checklist:
 
 - [ ] Page components orchestrate UI and data flow only.
 - [ ] Message-block rendering decisions live in focused presentation components.
-- [ ] State transitions are extracted into pure functions with tests.
+- [x] State transitions are extracted into pure functions with tests.
 - [ ] Runtime server route registration is split from request handlers.
 - [ ] ACP persistence is separated from streaming event processing.
 - [ ] Permission lifecycle handling is separated from generic message processing.
@@ -127,3 +130,6 @@ Before tagging a release:
 - [x] Add regression tests for permission lifecycle.
 - [x] Add regression tests for thinking/final answer separation.
 - [x] Split the next Thread Chat fix by first extracting pure state transitions, then changing UI.
+- [x] Extract shared Lark/Weixin channel thread message input construction.
+- [x] Preserve Weixin downloaded file attachments as structured inbound content parts.
+- [x] Add Lark inbound file download and structured file content coverage.
