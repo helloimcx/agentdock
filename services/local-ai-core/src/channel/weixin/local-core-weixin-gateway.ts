@@ -13,108 +13,52 @@ import type {
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
-  DesktopProjectConfig,
   LocalCoreAuthorizedUser,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
-  LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
 } from '../../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime, EventBus } from '../../../../../packages/plugin-sdk/src/index.js';
-import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
-import { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
-import type { WorkspaceRouter } from '../../router/workspace-router.js';
+import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
+import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
-
-// ==================== Types ====================
-
-type WeixinWorkspaceBinding = {
-  workspaceId: string;
-  instanceId: string;
-  displayName: string;
-  platformKey: string;
-  token: string;
-  accountId: string;
-  baseUrl: string;
-  cdnBaseUrl: string;
-  allowFrom: string;
-  routeTag: string;
-  longPollTimeoutMs: number;
-  stateDir: string;
-  proxy: string;
-  proxyUsername: string;
-  proxyPassword: string;
-  enabled: boolean;
-  project: DesktopProjectConfig;
-};
-
-type WeixinCredentials = {
-  token: string;
-  baseUrl?: string;
-  botId?: string;
-  userId?: string;
-  savedAt: string;
-};
-
-type WeixinRuntimeState = {
-  workspaceId: string;
-  instanceId: string;
-  displayName: string;
-  platformKey: string;
-  enabled: boolean;
-  status: LocalCoreChannelGatewayStatus['status'];
-  connected: boolean;
-  accountId: string;
-  lastError?: string;
-  connectedAt?: string;
-  abortController?: AbortController;
-};
-
-type WeixinInboundMessage = {
-  workspaceId: string;
-  instanceId?: string;
-  platformKey?: string;
-  platformUserId: string;
-  chatId: string;
-  displayName: string;
-  text: string;
-  messageId: string;
-  contextToken?: string;
-  contentParts?: ChannelInboundContentPart[];
-};
-
-type WeixinTurnState = {
-  sessionKey: string;
-  messageId?: string;
-  sourceMessageId?: string;
-  sentCount: number;
-  foldedProgressCount: number;
-  awaitingPermission: boolean;
-  processing: boolean;
-  previewText: string;
-  finalText: string;
-  thinkingSteps: string[];
-  statusLines: string[];
-  buttonRows: Array<Array<{ text: string; data: string }>>;
-  lastSentAt: number;
-  lastSentText: string;
-};
-
-type LocalCoreWeixinGatewayOptions = {
-  store: LocalCoreAcpStore;
-  readConfig: () => Promise<DesktopConnectConfig | null | undefined>;
-  getWorkspaceRouter: () => WorkspaceRouter;
-  eventBus: EventBus;
-  log?: (message: string) => void;
-};
+import {
+  channelPlatformKey,
+  collectWeixinWorkspaceBindings,
+  getWeixinBufPath,
+  loadWeixinBuf,
+  runtimeKey,
+  saveWeixinBuf,
+  saveWeixinCredentials,
+} from './config.js';
+import {
+  API_TIMEOUT_MS,
+  FILE_ITEM_TYPE,
+  getWeixinUpdates,
+  getWeixinUploadUrl,
+  IMAGE_ITEM_TYPE,
+  isWeixinApiError,
+  sendWeixinFileMessage,
+  sendWeixinTextMessageChunk,
+  TEXT_ITEM_TYPE,
+  uploadEncryptedBufferToWeixinCdn,
+  VOICE_ITEM_TYPE,
+  weixinApiGet,
+} from './transport.js';
+import type {
+  LocalCoreWeixinGatewayOptions,
+  QrCodeStatusResp,
+  UploadedWeixinFile,
+  WeixinInboundMessage,
+  WeixinRawItem,
+  WeixinRuntimeState,
+  WeixinThreadRoute,
+  WeixinTurnState,
+  WeixinWorkspaceBinding,
+} from './types.js';
 
 // ==================== Constants ====================
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
-const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
-const DEFAULT_CDN_BASE_URL = 'https://novac2c.cdn.weixin.qq.com/c2c';
-const LONG_POLL_TIMEOUT_MS = 35_000;
-const API_TIMEOUT_MS = 15_000;
 const RETRY_DELAY_MS = 2_000;
 const BACKOFF_DELAY_MS = 30_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -124,95 +68,8 @@ const WEIXIN_CONTEXT_REPLY_MAX_BYTES = 3500;
 const WEIXIN_CONTEXT_SEND_LIMIT = 10;
 const WEIXIN_RESERVED_TERMINAL_SENDS = 1;
 const WEIXIN_PROGRESS_SEND_BUDGET = WEIXIN_CONTEXT_SEND_LIMIT - WEIXIN_RESERVED_TERMINAL_SENDS;
-const WEIXIN_CHANNEL_VERSION = '2.1.7';
-const WEIXIN_ILINK_APP_ID = 'bot';
-const WEIXIN_ILINK_APP_CLIENT_VERSION = '131335';
 const RESPONSE_TIMEOUT_MS = 5 * 60 * 1000;
-const TEXT_ITEM_TYPE = 1;
-const IMAGE_ITEM_TYPE = 2;
-const VOICE_ITEM_TYPE = 3;
-const FILE_ITEM_TYPE = 4;
-const UPLOAD_MEDIA_TYPE_FILE = 3;
 const WEIXIN_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
-
-function normalizeChannelInstanceId(value: unknown, fallback: string) {
-  const raw = String(value || '').trim();
-  const normalized = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 80);
-  return normalized || fallback;
-}
-
-function channelPlatformKey(platform: string, instanceId: string) {
-  return instanceId === 'default' ? platform : `${platform}:${instanceId}`;
-}
-
-function runtimeKey(workspaceId: string, instanceId: string) {
-  return `${workspaceId}::${instanceId}`;
-}
-
-// ==================== Internal API types ====================
-
-type GetUpdatesResp = {
-  ret?: number;
-  errcode?: number;
-  errmsg?: string;
-  msgs?: WeixinRawMessage[];
-  get_updates_buf?: string;
-  longpolling_timeout_ms?: number;
-};
-
-type SendMessageResp = {
-  ret?: number;
-  errcode?: number;
-  errmsg?: string;
-};
-
-type GetUploadUrlResp = {
-  ret?: number;
-  errcode?: number;
-  errmsg?: string;
-  upload_param?: string;
-};
-
-type UploadedWeixinFile = {
-  fileKey: string;
-  encryptedQueryParam: string;
-  aesKeyHex: string;
-  fileSize: number;
-  cipherSize: number;
-};
-
-type QrCodeStatusResp = {
-  status?: string;
-  bot_token?: string;
-  baseurl?: string;
-  ilink_bot_id?: string;
-  ilink_user_id?: string;
-  user_name?: string;
-  user_id?: string;
-  errcode?: number;
-  errmsg?: string;
-};
-
-type WeixinMediaData = {
-  media?: { encrypt_query_param?: string; aes_key?: string };
-  aeskey?: string;
-  file_name?: string;
-};
-
-type WeixinRawItem = {
-  type?: number;
-  text_item?: { text?: string };
-  voice_item?: { text?: string };
-  image_item?: WeixinMediaData;
-  file_item?: WeixinMediaData;
-};
-
-type WeixinRawMessage = {
-  from_user_id?: string;
-  context_token?: string;
-  msg_id?: string;
-  item_list?: WeixinRawItem[];
-};
 
 // ==================== Utilities ====================
 
@@ -240,21 +97,6 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const onAbort = () => { clearTimeout(t); reject(new Error('aborted')); };
     signal?.addEventListener('abort', onAbort, { once: true });
   });
-}
-
-function safeFilePart(value: string): string {
-  return String(value || 'default').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'default';
-}
-
-function createWechatUin(): string {
-  return Buffer.from(String(crypto.randomInt(0, 0xffffffff))).toString('base64');
-}
-
-function createIlinkHeaders(): Record<string, string> {
-  return {
-    'iLink-App-Id': WEIXIN_ILINK_APP_ID,
-    'iLink-App-ClientVersion': WEIXIN_ILINK_APP_CLIENT_VERSION,
-  };
 }
 
 function utf8ByteLength(value: string): number {
@@ -332,7 +174,7 @@ function stripToolResultForWeixin(content: string): string {
 
 export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRuntime {
   private readonly runtime = new Map<string, WeixinRuntimeState>();
-  private readonly threadRouting = new Map<string, { workspaceId: string; instanceId: string; platformKey: string; platformUserId: string; chatId: string; threadId: string }>();
+  private readonly threadRouting = new Map<string, WeixinThreadRoute>();
   private readonly outboundEventChains = new Map<string, Promise<void>>();
   private readonly outboundTurns = new Map<string, WeixinTurnState>();
   private readonly processedInboundMessages = new Map<string, number>();
@@ -386,7 +228,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   async testConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelConnectionResult> {
     const binding = await this.getBinding(workspaceId, instanceId);
     try {
-      const bufPath = this.getBufPath(binding);
+      const bufPath = getWeixinBufPath(binding);
       fs.accessSync(bufPath);
       return { success: true, platform: 'weixin', workspaceId, instanceId: binding.instanceId, appId: binding.accountId };
     } catch {
@@ -464,7 +306,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
   async getQrCode(workspaceId: string, instanceId?: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string; instanceId: string; displayName: string }> {
     const binding = await this.getBinding(workspaceId, instanceId);
-    const data = await this.apiGet<{ qrcode?: string; qrcode_img_content?: string; expired?: number; errcode?: number; errmsg?: string }>(
+    const data = await weixinApiGet<{ qrcode?: string; qrcode_img_content?: string; expired?: number; errcode?: number; errmsg?: string }>(
       binding,
       `ilink/bot/get_bot_qrcode?bot_type=3`,
     );
@@ -484,7 +326,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     userId?: string;
   }> {
     const binding = await this.getBinding(workspaceId, instanceId);
-    const data = await this.apiGet<QrCodeStatusResp>(binding, `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(ticket)}`);
+    const data = await weixinApiGet<QrCodeStatusResp>(binding, `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(ticket)}`);
     if (data.errcode && data.errcode !== 0) {
       throw new Error(`Failed to check QR code status: ${data.errmsg || data.errcode}`);
     }
@@ -493,7 +335,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       if (!data.bot_token) {
         throw new Error('WeChat QR code confirmed but no bot token was returned.');
       }
-      this.saveCredentials(binding, {
+      saveWeixinCredentials(binding, {
         token: data.bot_token,
         baseUrl: data.baseurl || binding.baseUrl,
         botId: data.ilink_bot_id,
@@ -936,49 +778,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   }
 
   private collectBindings(config: DesktopConnectConfig | null | undefined): WeixinWorkspaceBinding[] {
-    const projects = Array.isArray(config?.projects) ? config!.projects! : [];
-    return projects.flatMap((project) => {
-      const platforms = Array.isArray(project.platforms) ? project.platforms : [];
-      return platforms
-        .map((platform) => ({
-          platformType: normalizeDesktopPlatformType(platform?.type),
-          options: platform?.options && typeof platform.options === 'object'
-            ? platform.options as Record<string, unknown>
-            : {},
-        }))
-        .filter((p) => p.platformType === 'weixin')
-        .map((p, index) => {
-          const instanceId = normalizeChannelInstanceId(p.options.instance_id || p.options.id, index === 0 ? 'default' : `weixin-${index + 1}`);
-          const stateDir = String(p.options.state_dir || this.getDefaultStateDir()).trim();
-          const credentials = this.loadCredentials(project.name, stateDir, instanceId);
-          const configuredToken = String(p.options.token || '').trim();
-          const configuredBaseUrl = String(p.options.base_url || '').trim();
-          const accountId = String(p.options.account_id || credentials?.botId || 'qr-login').trim();
-          return {
-            workspaceId: project.name,
-            instanceId,
-            displayName: String(p.options.name || p.options.display_name || `WeChat ${index + 1}`).trim(),
-            platformKey: channelPlatformKey('weixin', instanceId),
-            token: configuredToken || credentials?.token || '',
-            accountId,
-            baseUrl: configuredBaseUrl || credentials?.baseUrl || DEFAULT_BASE_URL,
-            cdnBaseUrl: String(p.options.cdn_base_url || DEFAULT_CDN_BASE_URL).trim(),
-            allowFrom: String(p.options.allow_from || '*').trim(),
-            routeTag: String(p.options.route_tag || '').trim(),
-            longPollTimeoutMs: Number(p.options.long_poll_timeout_ms || LONG_POLL_TIMEOUT_MS) || LONG_POLL_TIMEOUT_MS,
-            stateDir,
-            proxy: String(p.options.proxy || '').trim(),
-            proxyUsername: String(p.options.proxy_username || '').trim(),
-            proxyPassword: String(p.options.proxy_password || '').trim(),
-            enabled: true,
-            project,
-          };
-        });
-    });
-  }
-
-  private getDefaultStateDir(): string {
-    return path.join(process.cwd(), 'weixin-monitor');
+    return collectWeixinWorkspaceBindings(config);
   }
 
   // ==================== Private: Workspace Lifecycle ====================
@@ -1059,42 +859,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
   // ==================== Private: Long-poll Monitor ====================
 
-  private getBufPath(binding: WeixinWorkspaceBinding): string {
-    return path.join(binding.stateDir, `${binding.accountId}.buf`);
-  }
-
-  private getCredentialsPath(workspaceId: string, stateDir: string, instanceId = 'default'): string {
-    const suffix = instanceId === 'default' ? '' : `.${safeFilePart(instanceId)}`;
-    return path.join(stateDir, `${safeFilePart(workspaceId)}${suffix}.credentials.json`);
-  }
-
-  private loadCredentials(workspaceId: string, stateDir: string, instanceId = 'default'): WeixinCredentials | null {
-    try {
-      const raw = fs.readFileSync(this.getCredentialsPath(workspaceId, stateDir, instanceId), 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<WeixinCredentials>;
-      const token = String(parsed.token || '').trim();
-      if (!token) return null;
-      return {
-        token,
-        baseUrl: parsed.baseUrl ? String(parsed.baseUrl) : undefined,
-        botId: parsed.botId ? String(parsed.botId) : undefined,
-        userId: parsed.userId ? String(parsed.userId) : undefined,
-        savedAt: parsed.savedAt ? String(parsed.savedAt) : new Date().toISOString(),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private saveCredentials(binding: WeixinWorkspaceBinding, credentials: WeixinCredentials): void {
-    fs.mkdirSync(binding.stateDir, { recursive: true });
-    fs.writeFileSync(
-      this.getCredentialsPath(binding.workspaceId, binding.stateDir, binding.instanceId),
-      JSON.stringify(credentials, null, 2),
-      'utf-8',
-    );
-  }
-
   private normalizeQrStatus(status: string | undefined): 'wait' | 'signed' | 'confirmed' | 'expired' {
     const normalized = String(status || 'wait').trim().toLowerCase();
     if (normalized === 'scaned' || normalized === 'scanned' || normalized === 'signed') return 'signed';
@@ -1103,28 +867,16 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     return 'wait';
   }
 
-  private loadBuf(binding: WeixinWorkspaceBinding): string {
-    try {
-      return fs.readFileSync(this.getBufPath(binding), 'utf-8');
-    } catch { return ''; }
-  }
-
-  private saveBuf(binding: WeixinWorkspaceBinding, buf: string): void {
-    const dir = binding.stateDir;
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.getBufPath(binding), buf, 'utf-8');
-  }
-
   private async runMonitorLoop(
     binding: WeixinWorkspaceBinding,
     signal: AbortSignal,
   ): Promise<void> {
-    let buf = this.loadBuf(binding);
+    let buf = loadWeixinBuf(binding);
     let consecutiveFailures = 0;
 
     while (!signal.aborted) {
       try {
-        const resp = await this.getUpdates(binding, buf, signal);
+        const resp = await getWeixinUpdates(binding, buf, signal);
         const isApiError = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
 
         if (isApiError) {
@@ -1153,7 +905,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
         if (resp.get_updates_buf) {
           buf = resp.get_updates_buf;
-          this.saveBuf(binding, buf);
+          saveWeixinBuf(binding, buf);
         }
 
         for (const msg of resp.msgs ?? []) {
@@ -1231,85 +983,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
   // ==================== Private: HTTP API ====================
 
-  private async apiPost<T>(
-    binding: WeixinWorkspaceBinding,
-    endpoint: string,
-    bodyObj: unknown,
-    timeoutMs: number,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    const url = `${binding.baseUrl.replace(/\/$/, '')}/${endpoint}`;
-    const body = JSON.stringify(bodyObj);
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const onAbort = () => controller.abort();
-    signal?.addEventListener('abort', onAbort, { once: true });
-
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Content-Length': String(Buffer.byteLength(body, 'utf-8')),
-        'X-WECHAT-UIN': createWechatUin(),
-        ...createIlinkHeaders(),
-      };
-      if (binding.token) {
-        headers.AuthorizationType = 'ilink_bot_token';
-        headers.Authorization = `Bearer ${binding.token}`;
-      }
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body,
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as T;
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-    }
-  }
-
-  private async apiGet<T>(
-    binding: WeixinWorkspaceBinding,
-    endpoint: string,
-    timeoutMs = API_TIMEOUT_MS,
-  ): Promise<T> {
-    const url = `${binding.baseUrl.replace(/\/$/, '')}/${endpoint}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const headers: Record<string, string> = createIlinkHeaders();
-      if (binding.token) {
-        headers.AuthorizationType = 'ilink_bot_token';
-        headers.Authorization = `Bearer ${binding.token}`;
-      }
-      const res = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as T;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  private async getUpdates(
-    binding: WeixinWorkspaceBinding,
-    buf: string,
-    signal?: AbortSignal,
-  ): Promise<GetUpdatesResp> {
-    return this.apiPost<GetUpdatesResp>(
-      binding, 'ilink/bot/getupdates',
-      { get_updates_buf: buf, base_info: { channel_version: WEIXIN_CHANNEL_VERSION } },
-      binding.longPollTimeoutMs,
-      signal,
-    );
-  }
-
   private async sendTextMessage(
     state: WeixinRuntimeState,
     toUserId: string,
@@ -1324,41 +997,15 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       : splitTextByUtf8Bytes(stripped, WEIXIN_TEXT_MESSAGE_MAX_BYTES);
     for (const [index, chunk] of chunks.entries()) {
       const finalChunk = options.final && index === chunks.length - 1;
-      const resp = await this.sendTextMessageChunk(binding, toUserId, chunk, contextToken, {
+      const resp = await sendWeixinTextMessageChunk(binding, toUserId, chunk, contextToken, {
         clientId: options.clientId,
         final: finalChunk,
       });
-      if (this.isSendMessageError(resp)) {
+      if (isWeixinApiError(resp)) {
         throw new Error(`WeChat sendmessage failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''} chunk=${index + 1}/${chunks.length} bytes=${utf8ByteLength(chunk)} context=${contextToken ? 'yes' : 'no'} message_state=${finalChunk ? 2 : 1}`);
       }
     }
     this.options.log?.(`localcore-weixin sent message to ${toUserId} for workspace ${state.workspaceId}${chunks.length > 1 ? ` chunks=${chunks.length}` : ''}`);
-  }
-
-  private async sendTextMessageChunk(
-    binding: WeixinWorkspaceBinding,
-    toUserId: string,
-    text: string,
-    contextToken?: string,
-    options: { clientId?: string; final?: boolean } = {},
-  ): Promise<SendMessageResp> {
-    return this.apiPost<SendMessageResp>(
-      binding,
-      'ilink/bot/sendmessage',
-      {
-        msg: {
-          from_user_id: '',
-          to_user_id: toUserId,
-          client_id: options.clientId || `openclaw-weixin-${crypto.randomUUID()}`,
-          message_type: 2,
-          message_state: options.final === false ? 1 : 2,
-          item_list: [{ type: TEXT_ITEM_TYPE, text_item: { text } }],
-          ...(contextToken ? { context_token: contextToken } : {}),
-        },
-        base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
-      },
-      API_TIMEOUT_MS,
-    );
   }
 
   private async sendFileMessage(
@@ -1369,35 +1016,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     contextToken?: string,
   ): Promise<string> {
     const clientId = `openclaw-weixin-${crypto.randomUUID()}`;
-    const resp = await this.apiPost<SendMessageResp>(
-      binding,
-      'ilink/bot/sendmessage',
-      {
-        msg: {
-          from_user_id: '',
-          to_user_id: toUserId,
-          client_id: clientId,
-          message_type: 2,
-          message_state: 2,
-          item_list: [{
-            type: FILE_ITEM_TYPE,
-            file_item: {
-              media: {
-                encrypt_query_param: uploaded.encryptedQueryParam,
-                aes_key: Buffer.from(uploaded.aesKeyHex).toString('base64'),
-                encrypt_type: 1,
-              },
-              file_name: fileName,
-              len: String(uploaded.fileSize),
-            },
-          }],
-          ...(contextToken ? { context_token: contextToken } : {}),
-        },
-        base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
-      },
-      API_TIMEOUT_MS,
-    );
-    if (this.isSendMessageError(resp)) {
+    const resp = await sendWeixinFileMessage(binding, toUserId, fileName, uploaded, contextToken, { clientId });
+    if (isWeixinApiError(resp)) {
       throw new Error(`WeChat send file failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''}`);
     }
     return clientId;
@@ -1425,10 +1045,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     };
   }
 
-  private isSendMessageError(resp: SendMessageResp): boolean {
-    return (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
-  }
-
   private async uploadFileToCdn(
     binding: WeixinWorkspaceBinding,
     toUserId: string,
@@ -1440,26 +1056,19 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     const aesKeyHex = aesKey.toString('hex');
     const rawMd5 = crypto.createHash('md5').update(plaintext).digest('hex');
     const cipherSize = this.getAesEcbPaddedSize(plaintext.length);
-    const uploadUrlResp = await this.apiPost<GetUploadUrlResp>(
+    const uploadUrlResp = await getWeixinUploadUrl(
       binding,
-      'ilink/bot/getuploadurl',
-      {
-        filekey: fileKey,
-        media_type: UPLOAD_MEDIA_TYPE_FILE,
-        to_user_id: toUserId,
-        rawsize: plaintext.length,
-        rawfilemd5: rawMd5,
-        filesize: cipherSize,
-        no_need_thumb: true,
-        aeskey: aesKeyHex,
-        base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
-      },
-      API_TIMEOUT_MS,
+      fileKey,
+      toUserId,
+      plaintext.length,
+      rawMd5,
+      cipherSize,
+      aesKeyHex,
     );
-    if (this.isSendMessageError(uploadUrlResp) || !uploadUrlResp.upload_param) {
+    if (isWeixinApiError(uploadUrlResp) || !uploadUrlResp.upload_param) {
       throw new Error(`WeChat getuploadurl failed: ret=${uploadUrlResp.ret} errcode=${uploadUrlResp.errcode}${uploadUrlResp.errmsg ? ` errmsg=${uploadUrlResp.errmsg}` : ''}`);
     }
-    const encryptedQueryParam = await this.uploadEncryptedBufferToCdn(binding, plaintext, uploadUrlResp.upload_param, fileKey, aesKey);
+    const encryptedQueryParam = await uploadEncryptedBufferToWeixinCdn(binding, plaintext, uploadUrlResp.upload_param, fileKey, aesKey);
     return {
       fileKey,
       encryptedQueryParam,
@@ -1467,33 +1076,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       fileSize: plaintext.length,
       cipherSize,
     };
-  }
-
-  private async uploadEncryptedBufferToCdn(
-    binding: WeixinWorkspaceBinding,
-    plaintext: Buffer,
-    uploadParam: string,
-    fileKey: string,
-    aesKey: Buffer,
-  ) {
-    const cipher = crypto.createCipheriv('aes-128-ecb', aesKey, null);
-    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-    const url = `${binding.cdnBaseUrl.replace(/\/$/, '')}/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(fileKey)}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-      },
-      body: new Uint8Array(ciphertext),
-    });
-    if (!res.ok) {
-      throw new Error(`WeChat CDN upload failed: HTTP ${res.status}`);
-    }
-    const encryptedQueryParam = res.headers.get('x-encrypted-param') || '';
-    if (!encryptedQueryParam) {
-      throw new Error('WeChat CDN upload response missing x-encrypted-param');
-    }
-    return encryptedQueryParam;
   }
 
   private getAesEcbPaddedSize(size: number) {
