@@ -1,5 +1,7 @@
 import { normalizePermissionOptionAction } from './workspace-acp-permissions.js';
-import type { RunningPermissionRequest } from '../router/workspace-router-types.js';
+import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
+
+type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
 
 export type PermissionApprovalInput = {
   threadId: string;
@@ -68,6 +70,34 @@ export function createPermissionPrompt(toolTitle: string) {
     '',
     '若按钮没有显示，请直接回复：allow all / allow / deny',
   ].join('\n');
+}
+
+export function applyPendingPermissionRequest(input: {
+  session: AcpSessionState;
+  runId: string;
+  permissionRequest: RunningPermissionRequest;
+  resolveFallbackToolCall: (currentTurn: NonNullable<AcpSessionState['currentTurn']>) => RunningToolCall | undefined;
+  syncLegacyPendingToolCall: (
+    currentTurn: NonNullable<AcpSessionState['currentTurn']>,
+    toolCall?: RunningToolCall,
+  ) => void;
+}) {
+  input.session.pendingPermissionByRun.set(input.runId, input.permissionRequest);
+  const currentTurn = input.session.currentTurn;
+  if (!currentTurn) {
+    return;
+  }
+  currentTurn.permission = input.permissionRequest;
+  const toolTitle = input.permissionRequest.toolTitle;
+  if (!toolTitle || toolTitle === 'Permission required before continuing.') {
+    return;
+  }
+  currentTurn.pendingToolCallDetail = toolTitle;
+  const toolCall = input.resolveFallbackToolCall(currentTurn);
+  if (toolCall) {
+    toolCall.detail = toolTitle;
+    input.syncLegacyPendingToolCall(currentTurn, toolCall);
+  }
 }
 
 export function isSchedulerAddCommand(value: unknown) {

@@ -75,9 +75,10 @@ Checklist:
 - [ ] ACP persistence is separated from streaming event processing.
   - [x] ACP progress message formatting and filtering live in focused pure projection helpers.
   - [x] ACP tool call payload key parsing lives in the same pure projection helper.
-- [ ] Permission lifecycle handling is separated from generic message processing.
+- [x] Permission lifecycle handling is separated from generic message processing.
   - [x] ACP permission option parsing and fallback prompt construction live in focused lifecycle helpers.
   - [x] ACP running permission request and approval input construction live in focused lifecycle helpers.
+  - [x] ACP pending permission state writes live in focused lifecycle helpers.
 - [ ] Common bug fixes touch fewer layers than before.
 - [ ] State transitions can be tested without launching Electron or a full Local AI Core server.
 

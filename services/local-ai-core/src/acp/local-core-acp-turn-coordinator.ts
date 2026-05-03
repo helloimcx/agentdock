@@ -10,6 +10,7 @@ import {
   resolveToolUpdateDisplayTitle,
 } from './local-core-acp-progress.js';
 import {
+  applyPendingPermissionRequest,
   createPermissionApprovalInput,
   createPermissionPrompt,
   createRunningPermissionRequest,
@@ -144,18 +145,13 @@ export class LocalCoreAcpTurnCoordinator {
       options,
       approvalId,
     });
-    session.pendingPermissionByRun.set(currentRunId, permissionRequest);
-    if (session.currentTurn) {
-      session.currentTurn.permission = permissionRequest;
-      if (toolTitle && toolTitle !== 'Permission required before continuing.') {
-        session.currentTurn.pendingToolCallDetail = toolTitle;
-        const toolCall = this.resolveFallbackToolCall(session.currentTurn);
-        if (toolCall) {
-          toolCall.detail = toolTitle;
-          this.syncLegacyPendingToolCall(session.currentTurn, toolCall);
-        }
-      }
-    }
+    applyPendingPermissionRequest({
+      session,
+      runId: currentRunId,
+      permissionRequest,
+      resolveFallbackToolCall: (currentTurn) => this.resolveFallbackToolCall(currentTurn),
+      syncLegacyPendingToolCall: (currentTurn, toolCall) => this.syncLegacyPendingToolCall(currentTurn, toolCall),
+    });
     this.options.updateRunStatus(currentRunId, session.threadId, 'awaiting_input');
     const permissionPrompt = createPermissionPrompt(toolTitle);
     this.options.appendMessage(session.threadId, 'assistant', permissionPrompt, 'progress');

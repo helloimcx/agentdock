@@ -22,6 +22,7 @@ import {
   resolveToolUpdateDisplayTitle,
 } from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
 import {
+  applyPendingPermissionRequest,
   createPermissionApprovalInput,
   createPermissionPrompt,
   createRunningPermissionRequest,
@@ -367,6 +368,57 @@ test('ACP permission lifecycle parses actionable options and fallback prompt con
   assert.equal(isSchedulerAddCommand('Terminal: lac scheduler add --cron "* * * * *"'), true);
   assert.match(createPermissionPrompt('Terminal: npm test'), /Terminal: npm test/);
   assert.match(createPermissionPrompt('Terminal: npm test'), /allow all \/ allow \/ deny/);
+});
+
+test('ACP permission lifecycle writes pending permission state and tool detail together', () => {
+  const permissionRequest = createRunningPermissionRequest({
+    requestId: 42,
+    toolTitle: 'Terminal: npm test',
+    options: [],
+    approvalId: 'approval-1',
+  });
+  const toolCall: any = {
+    key: 'call-1',
+    title: 'Terminal',
+    messageId: 'run-1-tool-1',
+    sequence: 1,
+    emitted: false,
+  };
+  const currentTurn: any = {
+    runId: 'run-1',
+    replyCtx: 'run-1',
+    previewHandle: 'preview-1',
+    thoughtPreviewHandle: 'thought-preview-1',
+    thoughtMessageId: 'run-1-thought',
+    assistantText: '',
+    thoughtText: '',
+    typingStarted: true,
+    previewStarted: false,
+    thoughtPreviewStarted: false,
+    permission: null,
+    pendingToolCalls: { 'call-1': toolCall },
+    pendingToolCallOrder: ['call-1'],
+    activeToolCallKey: 'call-1',
+  };
+  const session = {
+    currentTurn,
+    pendingPermissionByRun: new Map(),
+  } as any;
+  const synced: string[] = [];
+
+  applyPendingPermissionRequest({
+    session,
+    runId: 'run-1',
+    permissionRequest,
+    resolveFallbackToolCall: () => toolCall,
+    syncLegacyPendingToolCall: (_turn, nextToolCall) => synced.push(nextToolCall?.detail || ''),
+  });
+
+  assert.equal(session.pendingPermissionByRun.get('run-1'), permissionRequest);
+  assert.equal(currentTurn.permission, permissionRequest);
+  assert.equal(currentTurn.pendingToolCallDetail, 'Terminal: npm test');
+  assert.equal(toolCall.detail, 'Terminal: npm test');
+  assert.deepEqual(synced, ['Terminal: npm test']);
 });
 
 test('ACP progress projection extracts tool output and formats durable progress content', () => {
