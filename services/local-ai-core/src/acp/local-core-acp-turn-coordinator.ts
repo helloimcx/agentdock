@@ -1,12 +1,15 @@
 import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
 import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.js';
 import {
+  applyAssistantMessageChunk,
+  applyThoughtChunk,
   extractToolCallKey,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
   isEmptyRunningToolUpdate,
   isTerminalToolStatus,
+  registerPendingToolCall,
   resolveToolUpdateDisplayTitle,
 } from './local-core-acp-progress.js';
 import {
@@ -180,24 +183,16 @@ export class LocalCoreAcpTurnCoordinator {
         if (update.content?.type !== 'text') {
           return;
         }
-        currentTurn.assistantText += String(update.content.text || '');
-        if (!currentTurn.previewStarted) {
-          currentTurn.previewStarted = true;
-          this.options.emitBridge({
-            type: 'preview_start',
-            sessionKey: session.bridgeSessionKey,
-            replyCtx: currentRunId,
-            previewHandle: currentTurn.previewHandle,
-            content: currentTurn.assistantText,
-          });
+        const projection = applyAssistantMessageChunk(currentTurn, String(update.content.text || ''));
+        if (!projection) {
           return;
         }
         this.options.emitBridge({
-          type: 'update_message',
+          type: projection.bridgeType,
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          previewHandle: currentTurn.previewHandle,
-          content: currentTurn.assistantText,
+          previewHandle: projection.previewHandle,
+          content: projection.content,
         });
         return;
       }
@@ -206,56 +201,24 @@ export class LocalCoreAcpTurnCoordinator {
         if (update.content?.type !== 'text') {
           return;
         }
-        const thoughtChunk = String(update.content.text || '');
-        if (!thoughtChunk) {
+        const projection = applyThoughtChunk(currentTurn, String(update.content.text || ''));
+        if (!projection) {
           return;
         }
-        currentTurn.thoughtText += thoughtChunk;
-        const content = `💭 ${currentTurn.thoughtText.trim()}`;
         if (this.options.upsertMessage) {
-          this.options.upsertMessage(session.threadId, currentTurn.thoughtMessageId, 'assistant', content, 'progress');
-        }
-        if (!currentTurn.thoughtPreviewStarted) {
-          currentTurn.thoughtPreviewStarted = true;
-          this.options.emitBridge({
-            type: 'preview_start',
-            sessionKey: session.bridgeSessionKey,
-            replyCtx: currentRunId,
-            previewHandle: currentTurn.thoughtPreviewHandle,
-            content,
-          });
-          return;
+          this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress');
         }
         this.options.emitBridge({
-          type: 'update_message',
+          type: projection.bridgeType,
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          previewHandle: currentTurn.thoughtPreviewHandle,
-          content,
+          previewHandle: projection.previewHandle,
+          content: projection.content,
         });
         return;
       }
       case 'tool_call': {
-        const title = String(update.title || 'Running tool').trim();
-        const nextSequence = (currentTurn.toolCallSequence || 0) + 1;
-        currentTurn.toolCallSequence = nextSequence;
-        const key = extractToolCallKey(update) || `sequence:${nextSequence}`;
-        const toolCall = {
-          key,
-          title,
-          messageId: `${currentRunId}-tool-${nextSequence}`,
-          sequence: nextSequence,
-          emitted: false,
-        };
-        currentTurn.pendingToolCalls = {
-          ...(currentTurn.pendingToolCalls || {}),
-          [key]: toolCall,
-        };
-        currentTurn.pendingToolCallOrder = [
-          ...(currentTurn.pendingToolCallOrder || []).filter((item) => item !== key),
-          key,
-        ];
-        currentTurn.activeToolCallKey = key;
+        const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
         this.syncLegacyPendingToolCall(currentTurn, toolCall);
         return;
       }

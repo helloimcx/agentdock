@@ -1,3 +1,96 @@
+import type { AcpSessionState } from '../router/workspace-router-types.js';
+
+type RunningTurn = NonNullable<AcpSessionState['currentTurn']>;
+
+export type MessagePreviewProjection = {
+  bridgeType: 'preview_start' | 'update_message';
+  previewHandle: string;
+  content: string;
+};
+
+export type ThoughtProgressProjection = MessagePreviewProjection & {
+  messageId: string;
+};
+
+export type PendingToolCallRegistration = {
+  key: string;
+  title: string;
+  messageId: string;
+  sequence: number;
+  emitted: boolean;
+};
+
+export function applyAssistantMessageChunk(currentTurn: RunningTurn, text: string): MessagePreviewProjection | null {
+  if (!text) {
+    return null;
+  }
+  currentTurn.assistantText += text;
+  if (!currentTurn.previewStarted) {
+    currentTurn.previewStarted = true;
+    return {
+      bridgeType: 'preview_start',
+      previewHandle: currentTurn.previewHandle,
+      content: currentTurn.assistantText,
+    };
+  }
+  return {
+    bridgeType: 'update_message',
+    previewHandle: currentTurn.previewHandle,
+    content: currentTurn.assistantText,
+  };
+}
+
+export function applyThoughtChunk(currentTurn: RunningTurn, text: string): ThoughtProgressProjection | null {
+  if (!text) {
+    return null;
+  }
+  currentTurn.thoughtText += text;
+  const content = `💭 ${currentTurn.thoughtText.trim()}`;
+  if (!currentTurn.thoughtPreviewStarted) {
+    currentTurn.thoughtPreviewStarted = true;
+    return {
+      bridgeType: 'preview_start',
+      previewHandle: currentTurn.thoughtPreviewHandle,
+      messageId: currentTurn.thoughtMessageId,
+      content,
+    };
+  }
+  return {
+    bridgeType: 'update_message',
+    previewHandle: currentTurn.thoughtPreviewHandle,
+    messageId: currentTurn.thoughtMessageId,
+    content,
+  };
+}
+
+export function registerPendingToolCall(input: {
+  currentTurn: RunningTurn;
+  runId: string;
+  update: Record<string, unknown>;
+}): PendingToolCallRegistration {
+  const title = String(input.update.title || 'Running tool').trim();
+  const nextSequence = (input.currentTurn.toolCallSequence || 0) + 1;
+  input.currentTurn.toolCallSequence = nextSequence;
+  const key = extractToolCallKey(input.update) || `sequence:${nextSequence}`;
+  const toolCall = {
+    key,
+    title,
+    messageId: `${input.runId}-tool-${nextSequence}`,
+    sequence: nextSequence,
+    emitted: false,
+  };
+  input.currentTurn.pendingToolCalls = {
+    ...(input.currentTurn.pendingToolCalls || {}),
+    [key]: toolCall,
+  };
+  input.currentTurn.pendingToolCallOrder = [
+    ...(input.currentTurn.pendingToolCallOrder || []).filter((item) => item !== key),
+    key,
+  ];
+  input.currentTurn.activeToolCallKey = key;
+  return toolCall;
+}
+
 export function extractToolUpdateContent(content: unknown) {
   return Array.isArray(content)
     ? content

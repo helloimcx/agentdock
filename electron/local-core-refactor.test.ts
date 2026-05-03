@@ -14,11 +14,14 @@ import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 import {
+  applyAssistantMessageChunk,
+  applyThoughtChunk,
   extractToolCallKey,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
   isEmptyRunningToolUpdate,
+  registerPendingToolCall,
   resolveToolUpdateDisplayTitle,
 } from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
 import {
@@ -446,6 +449,73 @@ test('ACP progress projection extracts tool output and formats durable progress 
     status: 'running',
     content: '',
   }), true);
+});
+
+test('ACP progress projection applies assistant and thought chunks with bridge metadata', () => {
+  const currentTurn = {
+    previewHandle: 'preview-1',
+    thoughtPreviewHandle: 'thought-preview-1',
+    thoughtMessageId: 'run-1-thought',
+    assistantText: '',
+    thoughtText: '',
+    previewStarted: false,
+    thoughtPreviewStarted: false,
+  } as any;
+
+  assert.deepEqual(applyAssistantMessageChunk(currentTurn, 'hello'), {
+    bridgeType: 'preview_start',
+    previewHandle: 'preview-1',
+    content: 'hello',
+  });
+  assert.deepEqual(applyAssistantMessageChunk(currentTurn, ' world'), {
+    bridgeType: 'update_message',
+    previewHandle: 'preview-1',
+    content: 'hello world',
+  });
+  assert.deepEqual(applyThoughtChunk(currentTurn, '先理解'), {
+    bridgeType: 'preview_start',
+    previewHandle: 'thought-preview-1',
+    messageId: 'run-1-thought',
+    content: '💭 先理解',
+  });
+  assert.deepEqual(applyThoughtChunk(currentTurn, '，再修改'), {
+    bridgeType: 'update_message',
+    previewHandle: 'thought-preview-1',
+    messageId: 'run-1-thought',
+    content: '💭 先理解，再修改',
+  });
+});
+
+test('ACP progress projection registers pending tool calls in order', () => {
+  const currentTurn = {
+    toolCallSequence: 0,
+    pendingToolCalls: {},
+    pendingToolCallOrder: [],
+  } as any;
+  assert.deepEqual(registerPendingToolCall({
+    currentTurn,
+    runId: 'run-1',
+    update: { id: 'call-a', title: 'Terminal' },
+  }), {
+    key: 'call-a',
+    title: 'Terminal',
+    messageId: 'run-1-tool-1',
+    sequence: 1,
+    emitted: false,
+  });
+  assert.deepEqual(registerPendingToolCall({
+    currentTurn,
+    runId: 'run-1',
+    update: { title: 'Read' },
+  }), {
+    key: 'sequence:2',
+    title: 'Read',
+    messageId: 'run-1-tool-2',
+    sequence: 2,
+    emitted: false,
+  });
+  assert.deepEqual(currentTurn.pendingToolCallOrder, ['call-a', 'sequence:2']);
+  assert.equal(currentTurn.activeToolCallKey, 'sequence:2');
 });
 
 test('ACP progress projection ignores empty plan entries', () => {
