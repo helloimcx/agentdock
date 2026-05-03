@@ -5,7 +5,7 @@ Use this checklist to reduce repeated regressions in Thread Chat, Local AI Core,
 ## Problem Patterns To Watch
 
 - [x] Permission UI state is owned by Local AI Core, not inferred from message actions.
-- [ ] Thinking, tool progress, tool results, and final answers cannot overwrite each other.
+- [x] Thinking, tool progress, tool results, and final answers cannot overwrite each other.
 - [x] Lark-first work is checked for shared channel impact before implementation.
 - [x] Form values, API enums, persisted values, and shared contracts use one parsing path.
   - [x] Scheduler execution mode, trigger type, and channel platform values normalize through shared contract helpers.
@@ -37,8 +37,8 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
 Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer state tests.
 
 - [ ] Permission request appears, survives refresh, accepts a choice, and updates style after submission.
-- [ ] Thinking, tool progress, tool result, and final response render as separate blocks.
-- [ ] Final response does not delete or overwrite prior thinking/tool blocks.
+- [x] Thinking, tool progress, tool result, and final response render as separate blocks.
+- [x] Final response does not delete or overwrite prior thinking/tool blocks.
 - [x] Lark and Weixin inbound text/image/file inputs normalize into the same core content model.
   - [x] Shared channel thread message helper keeps text wrapping and non-text attachments consistent across Lark and Weixin.
   - [x] Weixin downloaded image and file attachments become structured inbound content parts.

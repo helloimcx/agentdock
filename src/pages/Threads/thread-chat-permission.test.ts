@@ -253,6 +253,61 @@ test('finalizeTurnMessageKinds marks only the last non-progress turn message as 
   ]);
 });
 
+test('thinking, tool progress, tool result, and final answer remain separate blocks in one turn', () => {
+  const messages: ChatMessage[] = [
+    {
+      id: 'thought',
+      role: 'assistant',
+      content: '💭 checking the request',
+      kind: 'final',
+      order: 1,
+      turnKey: 'run-1',
+    },
+    {
+      id: 'tool-progress',
+      role: 'assistant',
+      content: '🔧 Read: package.json - running',
+      kind: 'final',
+      order: 2,
+      turnKey: 'run-1',
+    },
+    {
+      id: 'tool-result',
+      role: 'assistant',
+      content: '🔧 Read: package.json - completed - {"output":"ok"}',
+      kind: 'final',
+      order: 3,
+      turnKey: 'run-1',
+    },
+    {
+      id: 'answer',
+      role: 'assistant',
+      content: 'Done',
+      kind: 'progress',
+      order: 4,
+      turnKey: 'run-1',
+    },
+  ];
+
+  const afterReplyReplacement = messages.filter((message) =>
+    !shouldReplacePreviewWithReply(message, 'Done', 'run-1'),
+  );
+  const finalized = finalizeTurnMessageKinds(afterReplyReplacement, 'run-1');
+
+  assert.deepEqual(finalized.map((message) => message.id), [
+    'thought',
+    'tool-progress',
+    'tool-result',
+    'answer',
+  ]);
+  assert.deepEqual(finalized.map((message) => [message.id, message.kind]), [
+    ['thought', 'progress'],
+    ['tool-progress', 'progress'],
+    ['tool-result', 'progress'],
+    ['answer', 'final'],
+  ]);
+});
+
 test('settlePreviewMessages settles only previews for the requested turn', () => {
   const messages: ChatMessage[] = [
     {
