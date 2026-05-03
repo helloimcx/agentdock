@@ -62,7 +62,9 @@ Priority files:
 
 Checklist:
 
-- [ ] Page components orchestrate UI and data flow only.
+- [x] Page components orchestrate UI and data flow only.
+  - [x] Thread Chat page-level knowledge, session, project, and composer derivations live in focused pure helpers.
+  - [x] Thread Chat message visibility decisions live outside the page shell and are covered by direct tests.
 - [x] Message-block rendering decisions live in focused presentation components.
 - [x] State transitions are extracted into pure functions with tests.
 - [x] Runtime server route registration is split from request handlers.
@@ -81,9 +83,10 @@ Checklist:
   - [x] ACP permission option parsing and fallback prompt construction live in focused lifecycle helpers.
   - [x] ACP running permission request and approval input construction live in focused lifecycle helpers.
   - [x] ACP pending permission state writes live in focused lifecycle helpers.
-- [ ] Common bug fixes touch fewer layers than before.
+- [x] Common bug fixes touch fewer layers than before.
   - [x] Runtime route matching fixes can touch parser tests and dispatch without editing unrelated handlers.
   - [x] ACP permission/progress fixes can touch lifecycle or projection helpers without editing persistence stores.
+  - [x] Thread Chat page projection fixes can touch page-state helpers and focused tests without editing controller hooks.
 - [x] State transitions can be tested without launching Electron or a full Local AI Core server.
   - [x] ACP streaming, tool-call, and permission transitions are covered through direct helper tests.
   - [x] Runtime route selection is covered through direct parser tests.

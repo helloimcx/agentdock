@@ -27,6 +27,19 @@ import {
   parseToolResultCard,
   shouldCollapseToolResultByDefault,
 } from './thread-chat-message-blocks';
+import {
+  canSubmitComposer,
+  filterKnowledgeBases,
+  getComposerPlaceholder,
+  getVisibleProjects,
+  getVisibleSessionGroups,
+  hasVisibleSessions,
+  orderKnowledgeBases,
+  shouldRenderThreadChatMessage,
+  toComposerPermissionCard,
+  toSelectedKnowledgeBases,
+} from './thread-chat-page-state';
+import type { KnowledgeBase } from '../../../packages/contracts/src';
 
 type TestMessage = PermissionPromptMessage & {
   id: string;
@@ -49,6 +62,20 @@ function createMessage(overrides: Partial<TestMessage> & { id: string }): TestMe
     order: 0,
     ...rest,
     id,
+  };
+}
+
+function createKnowledgeBase(overrides: Partial<KnowledgeBase> & { id: string; name: string }): KnowledgeBase {
+  return {
+    description: '',
+    folderId: null,
+    creatorName: '',
+    icon: '',
+    fileCount: 0,
+    wordCount: 0,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -381,4 +408,114 @@ test('permission card content hides fallback transport instructions', () => {
 
   assert.equal(parsed.title, '等待工具确认');
   assert.deepEqual(parsed.bodyLines, ['需要读取文件']);
+});
+
+test('thread chat page state keeps knowledge selections stable and searchable', () => {
+  const bases = [
+    createKnowledgeBase({ id: 'kb-z', name: '知识库 Z', description: 'alpha', fileCount: 3 }),
+    createKnowledgeBase({ id: 'kb-a', name: '知识库 A', description: 'beta', fileCount: 1 }),
+  ];
+
+  assert.deepEqual(toSelectedKnowledgeBases(['kb-missing', 'kb-a'], bases), [
+    { id: 'kb-missing', name: 'kb-missing', fileCount: 0 },
+    { id: 'kb-a', name: '知识库 A', fileCount: 1 },
+  ]);
+  assert.deepEqual(filterKnowledgeBases(bases, 'beta').map((base) => base.id), ['kb-a']);
+  assert.deepEqual(orderKnowledgeBases(bases, ['kb-z']).map((base) => base.id), ['kb-z', 'kb-a']);
+});
+
+test('thread chat page state derives visible navigation without renderer state mutation', () => {
+  const groups = [
+    { project: 'a', sessions: [] },
+    {
+      project: 'b',
+      sessions: [{
+        id: 'thread-1',
+        project: 'b',
+        name: 'Thread',
+        live: false,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        excerpt: '',
+      }],
+    },
+  ];
+
+  assert.deepEqual(getVisibleSessionGroups(groups, 'b').map((group) => group.project), ['b']);
+  assert.deepEqual(getVisibleProjects(['a'], 'b'), ['b', 'a']);
+  assert.equal(hasVisibleSessions(getVisibleSessionGroups(groups, 'b')), true);
+  assert.equal(hasVisibleSessions(getVisibleSessionGroups(groups, 'a')), false);
+});
+
+test('thread chat page state hides composer permission duplicates and empty progress rows', () => {
+  const pendingCard = toComposerPermissionCard({
+    id: 'permission-1',
+    content: '等待工具确认',
+    actions: createPermissionActions(),
+    actionReplyCtx: 'run-1',
+    actionPending: false,
+    actionStatus: undefined,
+    actionMode: 'permission',
+    actionInteractive: true,
+  });
+
+  assert.ok(pendingCard);
+  assert.equal(pendingCard.actionMode, 'permission');
+  assert.equal(pendingCard.actionInteractive, true);
+  assert.equal(shouldRenderThreadChatMessage({
+    id: 'permission-1',
+    role: 'assistant',
+    content: '等待工具确认',
+    kind: 'final',
+    order: 1,
+    actionMode: 'permission',
+    actionInteractive: true,
+    actions: createPermissionActions(),
+  }, pendingCard), false);
+  assert.equal(shouldRenderThreadChatMessage({
+    id: 'empty-tool',
+    role: 'assistant',
+    content: '🔧 Tool update - running - ',
+    kind: 'progress',
+    order: 2,
+  }, pendingCard), false);
+  assert.equal(shouldRenderThreadChatMessage({
+    id: 'answer',
+    role: 'assistant',
+    content: 'Done',
+    kind: 'final',
+    order: 3,
+  }, pendingCard), true);
+});
+
+test('thread chat page state centralizes composer placeholder and submit gating', () => {
+  const base = {
+    serviceRunning: true,
+    transportReady: true,
+    taskState: 'idle' as const,
+    taskInputLocked: false,
+    startFirstPlaceholder: 'start',
+    waitingRuntimePlaceholder: 'waiting',
+    sendPlaceholder: 'send',
+  };
+
+  assert.equal(getComposerPlaceholder({ ...base, serviceRunning: false }), 'start');
+  assert.equal(getComposerPlaceholder({ ...base, transportReady: false }), 'waiting');
+  assert.equal(getComposerPlaceholder({ ...base, taskState: 'awaiting_input' }), 'Agent 正在等待你的回复，可直接继续输入。');
+  assert.equal(getComposerPlaceholder({ ...base, taskInputLocked: true }), '任务正在运行，点击停止可中断当前执行。');
+  assert.equal(getComposerPlaceholder(base), 'send');
+  assert.equal(canSubmitComposer({
+    draft: ' hello ',
+    serviceRunning: true,
+    transportReady: true,
+    sending: false,
+    selectedProject: 'project',
+  }), true);
+  assert.equal(canSubmitComposer({
+    draft: ' ',
+    serviceRunning: true,
+    transportReady: true,
+    sending: false,
+    selectedProject: 'project',
+  }), false);
 });

@@ -20,9 +20,17 @@ import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/session-utils';
 import { formatRuntimePhase } from './thread-chat-model';
 import {
-  isHiddenProgressMessage,
-  isInteractivePermissionMessage,
-} from './thread-chat-message-blocks';
+  canSubmitComposer,
+  filterKnowledgeBases,
+  getComposerPlaceholder,
+  getVisibleProjects,
+  getVisibleSessionGroups,
+  hasVisibleSessions as hasAnyVisibleSessions,
+  orderKnowledgeBases,
+  shouldRenderThreadChatMessage,
+  toComposerPermissionCard,
+  toSelectedKnowledgeBases,
+} from './thread-chat-page-state';
 import {
   PermissionRequestCardView,
   ThreadChatMessage,
@@ -85,70 +93,52 @@ export default function ThreadChat() {
   } = useThreadChatController();
 
   const selectedKnowledgeBases = useMemo(
-    () =>
-      selectedKnowledgeBaseIds.map((knowledgeBaseId) => {
-        const matched = availableKnowledgeBases.find((base) => base.id === knowledgeBaseId);
-        return {
-          id: knowledgeBaseId,
-          name: matched?.name || knowledgeBaseId,
-          fileCount: matched?.fileCount || 0,
-        };
-      }),
+    () => toSelectedKnowledgeBases(selectedKnowledgeBaseIds, availableKnowledgeBases),
     [availableKnowledgeBases, selectedKnowledgeBaseIds],
   );
 
-  const filteredKnowledgeBases = useMemo(() => {
-    const query = knowledgeSearch.trim().toLowerCase();
-    if (!query) {
-      return availableKnowledgeBases;
-    }
-    return availableKnowledgeBases.filter((base) =>
-      [base.name, base.description, base.id].join(' ').toLowerCase().includes(query),
-    );
-  }, [availableKnowledgeBases, knowledgeSearch]);
+  const filteredKnowledgeBases = useMemo(
+    () => filterKnowledgeBases(availableKnowledgeBases, knowledgeSearch),
+    [availableKnowledgeBases, knowledgeSearch],
+  );
 
-  const orderedKnowledgeBases = useMemo(() => {
-    const selectedIds = new Set(selectedKnowledgeBaseIds);
-    return [...filteredKnowledgeBases].sort((a, b) => {
-      const aSelected = selectedIds.has(a.id);
-      const bSelected = selectedIds.has(b.id);
-      if (aSelected !== bSelected) {
-        return aSelected ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name, 'zh-CN');
-    });
-  }, [filteredKnowledgeBases, selectedKnowledgeBaseIds]);
+  const orderedKnowledgeBases = useMemo(
+    () => orderKnowledgeBases(filteredKnowledgeBases, selectedKnowledgeBaseIds),
+    [filteredKnowledgeBases, selectedKnowledgeBaseIds],
+  );
 
   const visibleSessionGroups = useMemo(() => {
-    if (!selectedProject) {
-      return filteredSessionGroups;
-    }
-    return filteredSessionGroups.filter((group) => group.project === selectedProject);
+    return getVisibleSessionGroups(filteredSessionGroups, selectedProject);
   }, [filteredSessionGroups, selectedProject]);
   const visibleProjects = useMemo(
-    () => (selectedProject && !projects.includes(selectedProject) ? [selectedProject, ...projects] : projects),
+    () => getVisibleProjects(projects, selectedProject),
     [projects, selectedProject],
   );
 
   const hasVisibleSessions = useMemo(
-    () => visibleSessionGroups.some((group) => group.sessions.length > 0),
+    () => hasAnyVisibleSessions(visibleSessionGroups),
     [visibleSessionGroups],
   );
 
   const isRuntimeStarting = runtime?.phase === 'starting';
   const selectedKnowledgeCount = selectedKnowledgeBaseIds.length;
-  const composerPermissionCard = pendingPermissionRequest
-    ? {
-        id: pendingPermissionRequest.id,
-        content: pendingPermissionRequest.content,
-        actions: pendingPermissionRequest.actions,
-        actionReplyCtx: pendingPermissionRequest.actionReplyCtx,
-        actionPending: pendingPermissionRequest.actionPending,
-        actionStatus: pendingPermissionRequest.actionStatus,
-        actionMode: 'permission' as const,
-        actionInteractive: true as const,
-      }
-    : null;
+  const composerPermissionCard = toComposerPermissionCard(pendingPermissionRequest);
+  const composerPlaceholder = getComposerPlaceholder({
+    serviceRunning,
+    transportReady,
+    taskState,
+    taskInputLocked,
+    startFirstPlaceholder: branding.startFirstPlaceholder,
+    waitingRuntimePlaceholder: branding.waitingRuntimePlaceholder,
+    sendPlaceholder: branding.sendPlaceholder,
+  });
+  const composerCanSubmit = canSubmitComposer({
+    draft,
+    serviceRunning,
+    transportReady,
+    sending,
+    selectedProject,
+  });
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -502,10 +492,7 @@ export default function ThreadChat() {
               ) : (
                 <div className="space-y-5">
                   {renderedMessages.map((message) => {
-                    if (message.kind === 'progress' && isHiddenProgressMessage(message.content)) {
-                      return null;
-                    }
-                    if (isInteractivePermissionMessage(message, composerPermissionCard)) {
+                    if (!shouldRenderThreadChatMessage(message, composerPermissionCard)) {
                       return null;
                     }
                     return (
@@ -687,17 +674,7 @@ export default function ThreadChat() {
                             }
                           }}
                           rows={3}
-                          placeholder={
-                            !serviceRunning
-                              ? branding.startFirstPlaceholder
-                              : !transportReady
-                                ? branding.waitingRuntimePlaceholder
-                                : taskState === 'awaiting_input'
-                                  ? 'Agent 正在等待你的回复，可直接继续输入。'
-                                  : taskInputLocked
-                                    ? '任务正在运行，点击停止可中断当前执行。'
-                                    : branding.sendPlaceholder
-                          }
+                          placeholder={composerPlaceholder}
                           disabled={!serviceRunning || !transportReady || sending || !selectedProject || taskInputLocked}
                           className="min-h-[104px] rounded-[24px] border-slate-200 bg-white px-4 pb-16 pt-3 text-[15px] leading-6 text-slate-900 shadow-[0_12px_34px_rgba(15,23,42,0.08)] placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[116px] sm:px-5 sm:pt-4"
                         />
@@ -716,7 +693,7 @@ export default function ThreadChat() {
                         ) : (
                           <Button
                             onClick={() => void handleSend()}
-                            disabled={!draft.trim() || !serviceRunning || !transportReady || sending || !selectedProject}
+                            disabled={!composerCanSubmit}
                             data-testid="desktop-chat-send"
                             className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
                           >
