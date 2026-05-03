@@ -56,6 +56,7 @@ type LarkRuntimeState = {
   status: LocalCoreLarkGatewayStatus['status'];
   connected: boolean;
   appId: string;
+  autoApprove: boolean;
   cardActionsEnabled: boolean;
   lastError?: string;
   connectedAt?: string;
@@ -81,6 +82,7 @@ type LarkTurnState = {
   replyCtx?: string;
   messageId?: string;
   finalMessageId?: string;
+  replyMessageId?: string;
   progressMessageIds: Record<string, string>;
   permissionMessageId?: string;
   awaitingPermission: boolean;
@@ -102,6 +104,7 @@ type LarkOutboundRender = {
   text: string;
   buttonRows: Array<Array<{ text: string; data: string }>>;
   isFinal: boolean;
+  finalSource?: 'stream' | 'reply';
 };
 
 function foldToolResultForLark(content: string): string {
@@ -185,6 +188,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             status: 'disabled',
             connected: false,
             appId: binding.appId,
+            autoApprove: binding.autoApprove,
             cardActionsEnabled: binding.cardActionsEnabled,
           });
         }
@@ -668,10 +672,19 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       },
     });
     this.options.store.expirePendingPairings();
-    const binding = await this.getBinding(input.workspaceId, instanceId);
+    const runtimeState = this.resolveRuntimeState(input.workspaceId, instanceId).state;
+    let binding: LarkWorkspaceBinding | undefined;
+    try {
+      binding = await this.getBinding(input.workspaceId, instanceId);
+    } catch (error) {
+      if (!runtimeState) {
+        throw error;
+      }
+      this.options.log?.(`localcore-lark using active runtime binding snapshot for ${input.workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
     if (!authorized) {
-      if (binding.autoApprove) {
+      if (binding?.autoApprove || runtimeState?.autoApprove) {
         const authorizedAt = new Date().toISOString();
         this.options.store.createAuthorizedUser({
           id: `lark-user-${randomUUID()}`,
@@ -860,6 +873,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status: 'starting',
       connected: false,
       appId: binding.appId,
+      autoApprove: binding.autoApprove,
       cardActionsEnabled: binding.cardActionsEnabled,
     };
     this.runtime.set(key, status);
@@ -887,8 +901,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           return {};
         },
         'card.action.trigger': async (data: Record<string, unknown>) => {
-          this.options.log?.(`localcore-lark received card.action.trigger for ${binding.workspaceId}`);
-          void this.handleCardActionEvent(binding.workspaceId, data);
+          this.options.log?.(`localcore-lark received card.action.trigger for ${binding.workspaceId}/${binding.instanceId}`);
+          void this.handleCardActionEvent(binding.workspaceId, binding.instanceId, data);
           return {};
         },
       });
@@ -945,6 +959,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status: 'stopped',
       connected: false,
       appId: state.appId,
+      autoApprove: state.autoApprove,
       cardActionsEnabled: state.cardActionsEnabled,
     });
     this.notifyRuntimeStateChanged();
@@ -1464,6 +1479,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       // This keeps Feishu message order aligned with user-visible timeline.
       turn.messageId = undefined;
       turn.finalMessageId = undefined;
+      turn.replyMessageId = undefined;
       turn.progressMessageIds = {};
       turn.processing = true;
       turn.permissionMessageId = undefined;
@@ -1531,6 +1547,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         text: content,
         buttonRows: turn.buttonRows,
         isFinal: true,
+        finalSource: 'stream',
       };
     }
     if (event.type === 'status') {
@@ -1551,6 +1568,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         text: content,
         buttonRows: turn.buttonRows,
         isFinal: true,
+        finalSource: 'reply',
       };
     }
     if (event.type === 'typing_start' || event.type === 'typing_stop') {
@@ -1584,6 +1602,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
 
   private getRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender) {
     if (rendered.isFinal) {
+      if (rendered.finalSource === 'reply') {
+        return turn.replyMessageId;
+      }
       return turn.finalMessageId || turn.messageId;
     }
     return turn.progressMessageIds[rendered.key];
@@ -1591,6 +1612,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
 
   private setRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender, messageId: string) {
     if (rendered.isFinal) {
+      if (rendered.finalSource === 'reply') {
+        turn.replyMessageId = messageId;
+        return;
+      }
       turn.finalMessageId = messageId;
       turn.messageId = messageId;
       return;
@@ -1639,7 +1664,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return lines.join('\n\n');
   }
 
-  private async handleCardActionEvent(workspaceId: string, data: Record<string, unknown>) {
+  private async handleCardActionEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
+    const legacyCall = typeof instanceIdOrData === 'object';
+    const instanceId = legacyCall ? 'default' : instanceIdOrData;
+    const data = (legacyCall ? instanceIdOrData : maybeData) || {};
     try {
       const payload = ((data as any)?.event && typeof (data as any).event === 'object')
         ? (data as any).event
@@ -1654,23 +1682,24 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         return;
       }
       const router = this.options.getWorkspaceRouter();
+      await this.markPermissionCardActionHandled(workspaceId, instanceId, data, payload, value, response, threadId);
       await router.sendThreadAction(threadId, response);
-      await this.markPermissionCardActionHandled(workspaceId, data, payload, value, response, threadId);
-      this.options.log?.(`localcore-lark processed card action for ${workspaceId}: ${response}`);
+      this.options.log?.(`localcore-lark processed card action for ${workspaceId}/${instanceId}: ${response}`);
     } catch (error) {
-      this.options.log?.(`localcore-lark card action failed for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.options.log?.(`localcore-lark card action failed for ${workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   private async markPermissionCardActionHandled(
     workspaceId: string,
+    instanceId: string,
     rootPayload: Record<string, unknown>,
     payload: Record<string, unknown>,
     value: Record<string, unknown>,
     response: string,
     threadId: string,
   ) {
-    const state = this.runtime.get(workspaceId);
+    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
     if (!state?.client) {
       return;
     }

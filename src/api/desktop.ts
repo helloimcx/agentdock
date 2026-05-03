@@ -214,7 +214,7 @@ const localCoreProvider: DesktopProvider = {
   getLarkQrCode: (workspaceId: string, instanceId?: string) => getCoreLarkQrCode(workspaceId, instanceId),
   checkLarkQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreLarkQrCodeStatus(workspaceId, ticket, instanceId),
   listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
-  getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => getCoreLarkGatewayStatus(workspaceId),
+  getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => getCoreLarkGatewayStatus(workspaceId, instanceId),
   testLarkConnection: (workspaceId: string, instanceId?: string) => testCoreLarkConnection(workspaceId, instanceId),
   enableLarkGateway: (workspaceId: string, instanceId?: string) => enableCoreLarkGateway(workspaceId, instanceId),
   disableLarkGateway: (workspaceId: string, instanceId?: string) => disableCoreLarkGateway(workspaceId, instanceId),

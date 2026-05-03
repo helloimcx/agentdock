@@ -570,20 +570,20 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     return this.listChannelGatewayStatuses('lark') as Promise<LocalCoreLarkGatewayStatus[]>;
   }
 
-  async getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.getChannelGatewayStatus('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
+  async getLarkGatewayStatus(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> {
+    return this.getChannelGatewayStatus('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
   }
 
-  async testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult> {
-    return this.testChannelConnection('lark', workspaceId) as Promise<LocalCoreLarkConnectionResult>;
+  async testLarkConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult> {
+    return this.testChannelConnection('lark', workspaceId, instanceId) as Promise<LocalCoreLarkConnectionResult>;
   }
 
-  async enableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.enableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
+  async enableLarkGateway(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> {
+    return this.enableChannelGateway('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
   }
 
-  async disableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.disableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
+  async disableLarkGateway(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> {
+    return this.disableChannelGateway('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
   }
 
   async listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]> {

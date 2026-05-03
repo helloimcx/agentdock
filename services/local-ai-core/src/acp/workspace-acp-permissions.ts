@@ -4,7 +4,12 @@ type DesktopBridgeButtonNormalizer = (input: { text: string; data: string }) => 
 
 export function normalizePermissionAction(kind?: string | null) {
   const normalized = String(kind || '').trim().toLowerCase();
-  if (normalized === 'allow_always') {
+  if (
+    normalized === 'allow_always' ||
+    normalized === 'allow_all' ||
+    normalized === 'allowall' ||
+    normalized === 'always'
+  ) {
     return 'allow all';
   }
   if (normalized.startsWith('allow')) {
