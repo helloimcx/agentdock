@@ -47,7 +47,23 @@ export type LocalAiCoreRoute =
   | { name: 'tasks.list' }
   | { name: 'tasks.create' }
   | { name: 'task.get'; taskId: string }
-  | { name: 'task.update'; taskId: string };
+  | { name: 'task.update'; taskId: string }
+  | { name: 'knowledge.sources.list' }
+  | { name: 'knowledge.config.read' }
+  | { name: 'knowledge.config.update' }
+  | { name: 'knowledge.folders.list' }
+  | { name: 'knowledge.folders.create' }
+  | { name: 'knowledge.folder.update'; folderId: string }
+  | { name: 'knowledge.folder.delete'; folderId: string }
+  | { name: 'knowledge.bases.list' }
+  | { name: 'knowledge.bases.create' }
+  | { name: 'knowledge.base.get'; knowledgeBaseId: string }
+  | { name: 'knowledge.base.update'; knowledgeBaseId: string }
+  | { name: 'knowledge.base.delete'; knowledgeBaseId: string }
+  | { name: 'knowledge.base.files.list'; knowledgeBaseId: string }
+  | { name: 'knowledge.base.files.upload'; knowledgeBaseId: string }
+  | { name: 'knowledge.base.file.delete'; knowledgeBaseId: string; fileId: string }
+  | { name: 'knowledge.base.search'; knowledgeBaseId: string };
 
 const API_PREFIX = '/api/local/v1';
 
@@ -122,6 +138,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
   if (segments[0] === 'tasks') {
     return parseTasksRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'knowledge') {
+    return parseKnowledgeRoute(normalizedMethod, segments);
   }
 
   return null;
@@ -306,6 +325,97 @@ function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute |
   }
   if (method === 'PATCH') {
     return { name: 'task.update', taskId };
+  }
+  return null;
+}
+
+function parseKnowledgeRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'sources') {
+    return { name: 'knowledge.sources.list' };
+  }
+  if (segments.length === 2 && segments[1] === 'config') {
+    if (method === 'GET') {
+      return { name: 'knowledge.config.read' };
+    }
+    if (method === 'POST') {
+      return { name: 'knowledge.config.update' };
+    }
+    return null;
+  }
+  if (segments[1] === 'folders') {
+    return parseKnowledgeFoldersRoute(method, segments);
+  }
+  if (segments[1] === 'bases') {
+    return parseKnowledgeBasesRoute(method, segments);
+  }
+  return null;
+}
+
+function parseKnowledgeFoldersRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 2) {
+    if (method === 'GET') {
+      return { name: 'knowledge.folders.list' };
+    }
+    if (method === 'POST') {
+      return { name: 'knowledge.folders.create' };
+    }
+    return null;
+  }
+  const folderId = segments.length >= 3 ? decodeURIComponent(segments[2] || '') : '';
+  if (!folderId || segments.length !== 3) {
+    return null;
+  }
+  if (method === 'PATCH') {
+    return { name: 'knowledge.folder.update', folderId };
+  }
+  if (method === 'DELETE') {
+    return { name: 'knowledge.folder.delete', folderId };
+  }
+  return null;
+}
+
+function parseKnowledgeBasesRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 2) {
+    if (method === 'GET') {
+      return { name: 'knowledge.bases.list' };
+    }
+    if (method === 'POST') {
+      return { name: 'knowledge.bases.create' };
+    }
+    return null;
+  }
+
+  const knowledgeBaseId = segments.length >= 3 ? decodeURIComponent(segments[2] || '') : '';
+  if (!knowledgeBaseId) {
+    return null;
+  }
+  if (segments.length === 3) {
+    if (method === 'GET') {
+      return { name: 'knowledge.base.get', knowledgeBaseId };
+    }
+    if (method === 'PATCH') {
+      return { name: 'knowledge.base.update', knowledgeBaseId };
+    }
+    if (method === 'DELETE') {
+      return { name: 'knowledge.base.delete', knowledgeBaseId };
+    }
+    return null;
+  }
+  if (segments.length === 4 && segments[3] === 'files') {
+    if (method === 'GET') {
+      return { name: 'knowledge.base.files.list', knowledgeBaseId };
+    }
+    if (method === 'POST') {
+      return { name: 'knowledge.base.files.upload', knowledgeBaseId };
+    }
+    return null;
+  }
+  if (method === 'DELETE' && segments.length === 5 && segments[3] === 'files') {
+    const fileId = decodeURIComponent(segments[4] || '');
+    return fileId ? { name: 'knowledge.base.file.delete', knowledgeBaseId, fileId } : null;
+  }
+  if (method === 'POST' && segments.length === 4 && segments[3] === 'search') {
+    return { name: 'knowledge.base.search', knowledgeBaseId };
   }
   return null;
 }

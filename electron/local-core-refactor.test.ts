@@ -116,6 +116,42 @@ test('local core route parser keeps task collection and task detail routes disti
   assert.equal(parseLocalAiCoreRoute('DELETE', '/api/local/v1/tasks/task-1'), null);
 });
 
+test('local core route parser keeps knowledge collection and folder routes distinct', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/sources'), { name: 'knowledge.sources.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/config'), { name: 'knowledge.config.read' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/knowledge/config'), { name: 'knowledge.config.update' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/folders'), { name: 'knowledge.folders.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/knowledge/folders'), { name: 'knowledge.folders.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/knowledge/folders/folder%2Fone'), {
+    name: 'knowledge.folder.update',
+    folderId: 'folder/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/folders/folder-1'), null);
+});
+
+test('local core route parser keeps knowledge base files and search routes distinct', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/bases'), { name: 'knowledge.bases.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/knowledge/bases'), { name: 'knowledge.bases.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/bases/base%2Fone'), {
+    name: 'knowledge.base.get',
+    knowledgeBaseId: 'base/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/knowledge/bases/base%2Fone/files'), {
+    name: 'knowledge.base.files.list',
+    knowledgeBaseId: 'base/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/knowledge/bases/base%2Fone/search'), {
+    name: 'knowledge.base.search',
+    knowledgeBaseId: 'base/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('DELETE', '/api/local/v1/knowledge/bases/base%2Fone/files/file%2Fone'), {
+    name: 'knowledge.base.file.delete',
+    knowledgeBaseId: 'base/one',
+    fileId: 'file/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('PATCH', '/api/local/v1/knowledge/bases/base-1/files'), null);
+});
+
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];
   const emitted: Array<{ content?: string; type: string }> = [];
