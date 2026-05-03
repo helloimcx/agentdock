@@ -77,6 +77,10 @@ test('local core route parser only accepts run interrupt action with POST', () =
 
 test('local core route parser keeps workspace state routes bounded to one id segment', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces'), { name: 'workspaces.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/workspaces/workspace%2Fone/streaming-probe'), {
+    name: 'workspace.streaming-probe',
+    workspaceId: 'workspace/one',
+  });
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-registry'), { name: 'workspace-registry.create' });
   assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/workspace-registry/workspace%2Fone'), {
     name: 'workspace-registry.update',
@@ -88,6 +92,7 @@ test('local core route parser keeps workspace state routes bounded to one id seg
   });
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/workspace-registry/workspace-1/extra'), null);
   assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-security/workspace-1'), null);
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/workspace-1/streaming-probe'), null);
 });
 
 test('local core route parser keeps approval resolution separate from approval detail', () => {
@@ -150,6 +155,72 @@ test('local core route parser keeps knowledge base files and search routes disti
     fileId: 'file/one',
   });
   assert.equal(parseLocalAiCoreRoute('PATCH', '/api/local/v1/knowledge/bases/base-1/files'), null);
+});
+
+test('local core route parser recognizes capability, plugin, and event routes', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/capabilities'), { name: 'capabilities.read' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/capabilities/snapshot'), { name: 'capabilities.snapshot' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/plugins/diagnostics'), { name: 'plugins.diagnostics' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/events'), { name: 'events.stream' });
+  assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/events'), null);
+});
+
+test('local core route parser keeps platform read routes distinct', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/platforms/lark'), {
+    name: 'platform.gateways.list',
+    platform: 'lark',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/platforms/lark/pairings'), {
+    name: 'platform.pairings.list',
+    platform: 'lark',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/platforms/lark/users'), {
+    name: 'platform.users.list',
+    platform: 'lark',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/platforms/lark/workspace%2Fone'), {
+    name: 'platform.gateway.get',
+    platform: 'lark',
+    workspaceId: 'workspace/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/platforms/lark/workspace%2Fone/qrcode/status'), {
+    name: 'platform.qrcode.status',
+    platform: 'lark',
+    workspaceId: 'workspace/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/platforms/lark/workspace-1/qrcode'), null);
+});
+
+test('local core route parser keeps platform write routes distinct', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/pairings/approve'), {
+    name: 'platform.pairing.approve',
+    platform: 'lark',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/pairings/reject'), {
+    name: 'platform.pairing.reject',
+    platform: 'lark',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/workspace%2Fone/test'), {
+    name: 'platform.gateway.test',
+    platform: 'lark',
+    workspaceId: 'workspace/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/workspace%2Fone/files'), {
+    name: 'platform.file.send',
+    platform: 'lark',
+    workspaceId: 'workspace/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/workspace%2Fone/messages'), {
+    name: 'platform.message.send',
+    platform: 'lark',
+    workspaceId: 'workspace/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/workspace%2Fone/qrcode'), {
+    name: 'platform.qrcode.create',
+    platform: 'lark',
+    workspaceId: 'workspace/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/pairings/qrcode'), null);
 });
 
 test('ACP tool call update is emitted with its pending tool name', () => {

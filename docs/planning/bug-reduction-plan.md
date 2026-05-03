@@ -65,11 +65,13 @@ Checklist:
 - [ ] Page components orchestrate UI and data flow only.
 - [x] Message-block rendering decisions live in focused presentation components.
 - [x] State transitions are extracted into pure functions with tests.
-- [ ] Runtime server route registration is split from request handlers.
+- [x] Runtime server route registration is split from request handlers.
   - [x] Runtime and scheduler job routes parse through a focused route descriptor before handler dispatch.
   - [x] Thread and run interrupt routes parse through the same focused route descriptor.
   - [x] Workspace, security, approval, audit, and task routes parse through the same focused route descriptor.
   - [x] Knowledge routes parse through the same focused route descriptor.
+  - [x] Capability, plugin diagnostics, event stream, and workspace probe routes parse through the same focused route descriptor.
+  - [x] Platform gateway and pairing routes parse through the same focused route descriptor.
 - [ ] ACP persistence is separated from streaming event processing.
 - [ ] Permission lifecycle handling is separated from generic message processing.
 - [ ] Common bug fixes touch fewer layers than before.

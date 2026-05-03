@@ -63,7 +63,25 @@ export type LocalAiCoreRoute =
   | { name: 'knowledge.base.files.list'; knowledgeBaseId: string }
   | { name: 'knowledge.base.files.upload'; knowledgeBaseId: string }
   | { name: 'knowledge.base.file.delete'; knowledgeBaseId: string; fileId: string }
-  | { name: 'knowledge.base.search'; knowledgeBaseId: string };
+  | { name: 'knowledge.base.search'; knowledgeBaseId: string }
+  | { name: 'capabilities.read' }
+  | { name: 'capabilities.snapshot' }
+  | { name: 'plugins.diagnostics' }
+  | { name: 'workspace.streaming-probe'; workspaceId: string }
+  | { name: 'events.stream' }
+  | { name: 'platform.gateways.list'; platform: string }
+  | { name: 'platform.pairings.list'; platform: string }
+  | { name: 'platform.users.list'; platform: string }
+  | { name: 'platform.gateway.get'; platform: string; workspaceId: string }
+  | { name: 'platform.qrcode.status'; platform: string; workspaceId: string }
+  | { name: 'platform.pairing.approve'; platform: string }
+  | { name: 'platform.pairing.reject'; platform: string }
+  | { name: 'platform.gateway.test'; platform: string; workspaceId: string }
+  | { name: 'platform.gateway.enable'; platform: string; workspaceId: string }
+  | { name: 'platform.gateway.disable'; platform: string; workspaceId: string }
+  | { name: 'platform.file.send'; platform: string; workspaceId: string }
+  | { name: 'platform.message.send'; platform: string; workspaceId: string }
+  | { name: 'platform.qrcode.create'; platform: string; workspaceId: string };
 
 const API_PREFIX = '/api/local/v1';
 
@@ -141,6 +159,18 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
   if (segments[0] === 'knowledge') {
     return parseKnowledgeRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'capabilities') {
+    return parseCapabilitiesRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'plugins') {
+    return parsePluginsRoute(normalizedMethod, segments);
+  }
+  if (normalizedMethod === 'GET' && segments.length === 1 && segments[0] === 'events') {
+    return { name: 'events.stream' };
+  }
+  if (segments[0] === 'platforms') {
+    return parsePlatformsRoute(normalizedMethod, segments);
   }
 
   return null;
@@ -234,6 +264,10 @@ function parseRunsRoute(method: string, segments: string[]): LocalAiCoreRoute | 
 function parseWorkspacesRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   if (method === 'GET' && segments.length === 1) {
     return { name: 'workspaces.list' };
+  }
+  const workspaceId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (method === 'POST' && workspaceId && segments.length === 3 && segments[2] === 'streaming-probe') {
+    return { name: 'workspace.streaming-probe', workspaceId };
   }
   return null;
 }
@@ -416,6 +450,94 @@ function parseKnowledgeBasesRoute(method: string, segments: string[]): LocalAiCo
   }
   if (method === 'POST' && segments.length === 4 && segments[3] === 'search') {
     return { name: 'knowledge.base.search', knowledgeBaseId };
+  }
+  return null;
+}
+
+function parseCapabilitiesRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'capabilities.read' };
+  }
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'snapshot') {
+    return { name: 'capabilities.snapshot' };
+  }
+  return null;
+}
+
+function parsePluginsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'diagnostics') {
+    return { name: 'plugins.diagnostics' };
+  }
+  return null;
+}
+
+function parsePlatformsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  const platform = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!platform) {
+    return null;
+  }
+  if (method === 'GET') {
+    return parsePlatformReadRoute(platform, segments);
+  }
+  if (method === 'POST') {
+    return parsePlatformWriteRoute(platform, segments);
+  }
+  return null;
+}
+
+function parsePlatformReadRoute(platform: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 2) {
+    return { name: 'platform.gateways.list', platform };
+  }
+  if (segments.length === 3 && segments[2] === 'pairings') {
+    return { name: 'platform.pairings.list', platform };
+  }
+  if (segments.length === 3 && segments[2] === 'users') {
+    return { name: 'platform.users.list', platform };
+  }
+  const workspaceId = segments.length >= 3 ? decodeURIComponent(segments[2] || '') : '';
+  if (!workspaceId) {
+    return null;
+  }
+  if (segments.length === 3) {
+    return { name: 'platform.gateway.get', platform, workspaceId };
+  }
+  if (segments.length === 5 && segments[3] === 'qrcode' && segments[4] === 'status') {
+    return { name: 'platform.qrcode.status', platform, workspaceId };
+  }
+  return null;
+}
+
+function parsePlatformWriteRoute(platform: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 4 && segments[2] === 'pairings' && segments[3] === 'approve') {
+    return { name: 'platform.pairing.approve', platform };
+  }
+  if (segments.length === 4 && segments[2] === 'pairings' && segments[3] === 'reject') {
+    return { name: 'platform.pairing.reject', platform };
+  }
+
+  const workspaceId = segments.length >= 3 ? decodeURIComponent(segments[2] || '') : '';
+  const action = segments[3] || '';
+  if (!workspaceId || segments.length !== 4 || segments[2] === 'pairings') {
+    return null;
+  }
+  if (action === 'test') {
+    return { name: 'platform.gateway.test', platform, workspaceId };
+  }
+  if (action === 'enable') {
+    return { name: 'platform.gateway.enable', platform, workspaceId };
+  }
+  if (action === 'disable') {
+    return { name: 'platform.gateway.disable', platform, workspaceId };
+  }
+  if (action === 'files') {
+    return { name: 'platform.file.send', platform, workspaceId };
+  }
+  if (action === 'messages') {
+    return { name: 'platform.message.send', platform, workspaceId };
+  }
+  if (action === 'qrcode') {
+    return { name: 'platform.qrcode.create', platform, workspaceId };
   }
   return null;
 }

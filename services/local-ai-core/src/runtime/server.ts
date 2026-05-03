@@ -298,110 +298,6 @@ export class LocalAiCoreServer {
         await this.handleParsedRoute(route, req, res, url);
         return;
       }
-      if (req.method === 'GET' && path.startsWith('/api/local/v1/platforms/')) {
-        const suffix = path.slice('/api/local/v1/platforms/'.length);
-        const segments = suffix.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
-        const [platform = '', workspaceOrCollection = '', action = ''] = segments;
-        const instanceId = String(url.searchParams.get('instance_id') || url.searchParams.get('instanceId') || '').trim() || undefined;
-        if (!platform) {
-          json(res, 404, null, false, 'Platform not found');
-          return;
-        }
-        if (segments.length === 1) {
-          json(res, 200, { gateways: await this.bindings.listChannelGatewayStatuses(platform) });
-          return;
-        }
-        if (workspaceOrCollection === 'pairings' && segments.length === 2) {
-          const workspaceId = String(url.searchParams.get('workspace_id') || '');
-          json(res, 200, { pairings: await this.bindings.listChannelPendingPairings(platform, workspaceId || undefined) });
-          return;
-        }
-        if (workspaceOrCollection === 'users' && segments.length === 2) {
-          const workspaceId = String(url.searchParams.get('workspace_id') || '');
-          json(res, 200, { users: await this.bindings.listChannelAuthorizedUsers(platform, workspaceId || undefined) });
-          return;
-        }
-        if (segments.length === 2) {
-          json(res, 200, await this.bindings.getChannelGatewayStatus(platform, workspaceOrCollection, instanceId));
-          return;
-        }
-        if (segments.length === 4 && action === 'qrcode' && segments[3] === 'status') {
-          const ticket = String(url.searchParams.get('ticket') || '');
-          if (!ticket) {
-            json(res, 400, null, false, 'Missing ticket parameter');
-            return;
-          }
-          json(res, 200, await this.bindings.checkChannelQrCodeStatus(platform, workspaceOrCollection, ticket, instanceId));
-          return;
-        }
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/platforms/')) {
-        const suffix = path.slice('/api/local/v1/platforms/'.length);
-        const segments = suffix.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
-        const [platform = '', workspaceOrCollection = '', action = ''] = segments;
-        const instanceId = String(url.searchParams.get('instance_id') || url.searchParams.get('instanceId') || '').trim() || undefined;
-        if (!platform) {
-          json(res, 404, null, false, 'Platform not found');
-          return;
-        }
-        if (workspaceOrCollection === 'pairings' && action === 'approve') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.approveChannelPairing(platform, String(body.code || '')));
-          return;
-        }
-        if (workspaceOrCollection === 'pairings' && action === 'reject') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.rejectChannelPairing(platform, String(body.code || '')));
-          return;
-        }
-        if (action === 'test') {
-          json(res, 200, await this.bindings.testChannelConnection(platform, workspaceOrCollection, instanceId));
-          return;
-        }
-        if (action === 'enable') {
-          json(res, 200, await this.bindings.enableChannelGateway(platform, workspaceOrCollection, instanceId));
-          return;
-        }
-        if (action === 'disable') {
-          json(res, 200, await this.bindings.disableChannelGateway(platform, workspaceOrCollection, instanceId));
-          return;
-        }
-        if (action === 'files') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.sendChannelFile(platform, workspaceOrCollection, body as unknown as ChannelFileSendInput));
-          return;
-        }
-        if (action === 'messages') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.sendChannelMessage(platform, workspaceOrCollection, body as unknown as ChannelOutboundMessageInput));
-          return;
-        }
-        if (segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {
-          json(res, 200, await this.bindings.getChannelQrCode(platform, workspaceOrCollection, instanceId));
-          return;
-        }
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/capabilities') {
-        json(res, 200, await this.bindings.getCapabilities());
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/capabilities/snapshot') {
-        json(res, 200, await this.bindings.getCapabilitySnapshot());
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/plugins/diagnostics') {
-        json(res, 200, await this.bindings.getPluginDiagnostics());
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/workspaces/') && path.endsWith('/streaming-probe')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/workspaces/'.length, -'/streaming-probe'.length));
-        json(res, 200, await this.bindings.probeWorkspaceStreaming(workspaceId));
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/events') {
-        this.attachSseClient(res);
-        return;
-      }
       json(res, 404, null, false, `Unknown route: ${path}`);
     } catch (error) {
       json(res, 500, null, false, error instanceof Error ? error.message : String(error));
@@ -547,6 +443,9 @@ export class LocalAiCoreServer {
         return;
       case 'workspaces.list':
         json(res, 200, { workspaces: await this.bindings.listWorkspaces() });
+        return;
+      case 'workspace.streaming-probe':
+        json(res, 200, await this.bindings.probeWorkspaceStreaming(route.workspaceId));
         return;
       case 'workspace-registry.list':
         json(res, 200, { workspaces: await this.bindings.listWorkspaceRegistry() });
@@ -710,7 +609,80 @@ export class LocalAiCoreServer {
         json(res, 200, { results: await this.bindings.searchKnowledgeBase(route.knowledgeBaseId, body as unknown as KnowledgeSearchInput) });
         return;
       }
+      case 'capabilities.read':
+        json(res, 200, await this.bindings.getCapabilities());
+        return;
+      case 'capabilities.snapshot':
+        json(res, 200, await this.bindings.getCapabilitySnapshot());
+        return;
+      case 'plugins.diagnostics':
+        json(res, 200, await this.bindings.getPluginDiagnostics());
+        return;
+      case 'events.stream':
+        this.attachSseClient(res);
+        return;
+      case 'platform.gateways.list':
+        json(res, 200, { gateways: await this.bindings.listChannelGatewayStatuses(route.platform) });
+        return;
+      case 'platform.pairings.list': {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { pairings: await this.bindings.listChannelPendingPairings(route.platform, workspaceId || undefined) });
+        return;
+      }
+      case 'platform.users.list': {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { users: await this.bindings.listChannelAuthorizedUsers(route.platform, workspaceId || undefined) });
+        return;
+      }
+      case 'platform.gateway.get':
+        json(res, 200, await this.bindings.getChannelGatewayStatus(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        return;
+      case 'platform.qrcode.status': {
+        const ticket = String(url.searchParams.get('ticket') || '');
+        if (!ticket) {
+          json(res, 400, null, false, 'Missing ticket parameter');
+          return;
+        }
+        json(res, 200, await this.bindings.checkChannelQrCodeStatus(route.platform, route.workspaceId, ticket, this.channelInstanceId(url)));
+        return;
+      }
+      case 'platform.pairing.approve': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.approveChannelPairing(route.platform, String(body.code || '')));
+        return;
+      }
+      case 'platform.pairing.reject': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.rejectChannelPairing(route.platform, String(body.code || '')));
+        return;
+      }
+      case 'platform.gateway.test':
+        json(res, 200, await this.bindings.testChannelConnection(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        return;
+      case 'platform.gateway.enable':
+        json(res, 200, await this.bindings.enableChannelGateway(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        return;
+      case 'platform.gateway.disable':
+        json(res, 200, await this.bindings.disableChannelGateway(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        return;
+      case 'platform.file.send': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.sendChannelFile(route.platform, route.workspaceId, body as unknown as ChannelFileSendInput));
+        return;
+      }
+      case 'platform.message.send': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.sendChannelMessage(route.platform, route.workspaceId, body as unknown as ChannelOutboundMessageInput));
+        return;
+      }
+      case 'platform.qrcode.create':
+        json(res, 200, await this.bindings.getChannelQrCode(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        return;
     }
+  }
+
+  private channelInstanceId(url: URL) {
+    return String(url.searchParams.get('instance_id') || url.searchParams.get('instanceId') || '').trim() || undefined;
   }
 
   private attachSseClient(res: ServerResponse) {
