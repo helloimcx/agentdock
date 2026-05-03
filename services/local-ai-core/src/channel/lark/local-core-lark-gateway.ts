@@ -93,6 +93,15 @@ type LarkOutboundRender = {
   isFinal: boolean;
 };
 
+function foldToolResultForLark(content: string): string {
+  const normalized = String(content || '').trim();
+  if (!normalized.startsWith('🔧 ')) return normalized;
+
+  const parts = normalized.split(' - ');
+  if (parts.length <= 2) return normalized;
+  return parts.slice(0, 2).join(' - ');
+}
+
 type LocalCoreLarkGatewayOptions = {
   store: LocalCoreAcpStore;
   readConfig: () => Promise<DesktopConnectConfig | null | undefined>;
@@ -1262,7 +1271,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private consumeBridgeEvent(turn: LarkTurnState, event: DesktopBridgeEvent) {
-    const content = String(event.content || '').trim();
+    const content = foldToolResultForLark(String(event.content || '').trim());
     if (event.type === 'typing_start') {
       // Always start a fresh card for each generation phase.
       // This keeps Feishu message order aligned with user-visible timeline.
@@ -1322,7 +1331,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private renderBridgeEventMessage(turn: LarkTurnState, event: DesktopBridgeEvent): LarkOutboundRender {
-    const content = String(event.content || '').trim();
+    const content = foldToolResultForLark(String(event.content || '').trim());
     if (event.type === 'preview_start' || event.type === 'update_message') {
       if (content.startsWith('💭 ')) {
         return this.renderProgressMessage(event.previewHandle || 'thinking-preview', content);
@@ -1459,10 +1468,120 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       }
       const router = this.options.getWorkspaceRouter();
       await router.sendThreadAction(threadId, response);
+      await this.markPermissionCardActionHandled(workspaceId, data, payload, value, response, threadId);
       this.options.log?.(`localcore-lark processed card action for ${workspaceId}: ${response}`);
     } catch (error) {
       this.options.log?.(`localcore-lark card action failed for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private async markPermissionCardActionHandled(
+    workspaceId: string,
+    rootPayload: Record<string, unknown>,
+    payload: Record<string, unknown>,
+    value: Record<string, unknown>,
+    response: string,
+    threadId: string,
+  ) {
+    const state = this.runtime.get(workspaceId);
+    if (!state?.client) {
+      return;
+    }
+    const sessionKey = String(value.session_key || '').trim();
+    const turn = sessionKey ? this.outboundTurns.get(sessionKey) : undefined;
+    const messageId = this.extractCardActionMessageId(rootPayload, payload, value) || turn?.permissionMessageId;
+    if (!messageId) {
+      this.options.log?.(`localcore-lark could not find permission card message id for workspace=${workspaceId} sessionKey=${sessionKey || 'missing'}`);
+      return;
+    }
+    try {
+      await this.patchTextCard(
+        state,
+        messageId,
+        [
+          '**工具确认已处理**',
+          `已选择：${this.formatPermissionResponseLabel(response)}`,
+          '等待代理继续执行...',
+        ].join('\n\n'),
+        [],
+        sessionKey || undefined,
+        threadId,
+      );
+      if (turn) {
+        turn.awaitingPermission = false;
+        turn.buttonRows = [];
+      }
+    } catch (error) {
+      this.options.log?.(`localcore-lark failed to patch handled permission card ${messageId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private extractCardActionMessageId(...payloads: Array<Record<string, unknown> | undefined>) {
+    for (const payload of payloads) {
+      const messageId = this.extractKnownCardActionMessageId(payload);
+      if (messageId) {
+        return messageId;
+      }
+    }
+    for (const payload of payloads) {
+      const messageId = this.findNestedCardActionMessageId(payload);
+      if (messageId) {
+        return messageId;
+      }
+    }
+    return '';
+  }
+
+  private extractKnownCardActionMessageId(payload: Record<string, unknown> | undefined) {
+    const source = payload as any;
+    if (!source || typeof source !== 'object') {
+      return '';
+    }
+    const candidates = [
+      source?.permission_message_id,
+      source?.action_message_id,
+      source?.context?.open_message_id,
+      source?.context?.message_id,
+      source?.event?.context?.open_message_id,
+      source?.event?.context?.message_id,
+      source?.event_context?.open_message_id,
+      source?.event_context?.message_id,
+      source?.message?.message_id,
+      source?.message?.open_message_id,
+      source?.event?.message?.message_id,
+      source?.event?.message?.open_message_id,
+      source?.message_id,
+      source?.open_message_id,
+    ];
+    return candidates
+      .map((candidate) => String(candidate || '').trim())
+      .find(Boolean) || '';
+  }
+
+  private findNestedCardActionMessageId(payload: unknown, seen = new Set<unknown>()): string {
+    if (!payload || typeof payload !== 'object' || seen.has(payload)) {
+      return '';
+    }
+    seen.add(payload);
+    if (Array.isArray(payload)) {
+      for (const item of payload) {
+        const nested = this.findNestedCardActionMessageId(item, seen);
+        if (nested) return nested;
+      }
+      return '';
+    }
+    const source = payload as Record<string, unknown>;
+    for (const key of ['open_message_id', 'message_id', 'permission_message_id', 'action_message_id']) {
+      const value = source[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+    for (const value of Object.values(source)) {
+      const nested = this.findNestedCardActionMessageId(value, seen);
+      if (nested) return nested;
+    }
+    return '';
   }
 
   private pushUnique(target: string[], value: string) {
@@ -1480,8 +1599,11 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private formatPermissionButtonLabel(button: { text: string; data: string }) {
-    const response = normalizePermissionResponse(button.data) || normalizePermissionResponse(button.text);
-    switch (response) {
+    return this.formatPermissionResponseLabel(button.data || button.text);
+  }
+
+  private formatPermissionResponseLabel(response: string) {
+    switch (normalizePermissionResponse(response) || response) {
       case 'allow':
         return '允许一次';
       case 'allow all':
@@ -1489,7 +1611,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       case 'deny':
         return '拒绝';
       default:
-        return button.text;
+        return response;
     }
   }
 

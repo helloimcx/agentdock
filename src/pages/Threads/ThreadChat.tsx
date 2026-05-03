@@ -3,6 +3,8 @@ import {
   ArrowUp,
   Bot,
   Check,
+  ChevronDown,
+  ChevronRight,
   Circle,
   Database,
   LoaderCircle,
@@ -165,8 +167,14 @@ function isHiddenProgressMessage(content: string) {
   return /^🔧\s*Tool update\s*-\s*running(?:\s*-\s*)?$/i.test(normalized);
 }
 
+function shouldCollapseToolResultByDefault(card: ToolResultCard) {
+  return card.label === '工具结果' && Boolean(card.output.trim());
+}
+
 function ToolResultCardView({ card }: { card: ToolResultCard }) {
   const completed = card.status.toLowerCase() === 'completed';
+  const [expanded, setExpanded] = useState(() => !shouldCollapseToolResultByDefault(card));
+  const hasOutput = Boolean(card.output.trim());
   return (
     <div className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-slate-50/95 shadow-[0_8px_22px_rgba(15,23,42,0.04)] dark:border-white/[0.07] dark:bg-[#111820] dark:shadow-none">
       <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06]">
@@ -182,20 +190,45 @@ function ToolResultCardView({ card }: { card: ToolResultCard }) {
             </p>
           </div>
         </div>
-        <span
-          className={cn(
-            'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]',
-            completed
-              ? 'bg-primary/10 text-primary dark:text-primary'
-              : 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-          )}
-        >
-          {card.status}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={cn(
+              'rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]',
+              completed
+                ? 'bg-primary/10 text-primary dark:text-primary'
+                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+            )}
+          >
+            {card.status}
+          </span>
+          {hasOutput ? (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-label={expanded ? '折叠工具结果' : '展开工具结果'}
+              data-testid="desktop-tool-result-toggle"
+              onClick={() => setExpanded((current) => !current)}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-slate-300 dark:hover:bg-white/[0.08]"
+            >
+              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+          ) : null}
+        </div>
       </div>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[12px] leading-5 text-slate-700 [scrollbar-gutter:stable] dark:text-slate-200">
-        {card.output || '无输出'}
-      </pre>
+      {expanded ? (
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[12px] leading-5 text-slate-700 [scrollbar-gutter:stable] dark:text-slate-200">
+          {card.output || '无输出'}
+        </pre>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs text-slate-500 transition hover:bg-slate-100/70 dark:text-slate-400 dark:hover:bg-white/[0.04]"
+        >
+          <ChevronRight size={14} />
+          <span className="truncate">工具结果已折叠</span>
+        </button>
+      )}
     </div>
   );
 }

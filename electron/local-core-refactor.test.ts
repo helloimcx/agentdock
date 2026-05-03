@@ -694,6 +694,7 @@ test('lark bridge does not leave typing placeholders or throttle thought updates
 
 test('lark permission requests render as clickable card buttons', async () => {
   const createdCards: any[] = [];
+  const patchedCards: any[] = [];
   const threadActions: Array<{ threadId: string; action: string }> = [];
   const client = {
     im: {
@@ -702,7 +703,12 @@ test('lark permission requests render as clickable card buttons', async () => {
           createdCards.push(JSON.parse(String(request.data.content || '{}')));
           return { data: { message_id: 'permission-msg-1' } };
         },
-        patch: async () => {},
+        patch: async (request: any) => {
+          patchedCards.push({
+            messageId: request.path?.message_id,
+            card: JSON.parse(String(request.data.content || '{}')),
+          });
+        },
       },
     },
   };
@@ -788,7 +794,11 @@ test('lark permission requests render as clickable card buttons', async () => {
           action: 'permission_response',
           response: 'allow all',
           thread_id: 'thread-1',
+          session_key: 'session:thread-1',
         },
+      },
+      context: {
+        open_message_id: 'permission-msg-1',
       },
     },
   });
@@ -796,6 +806,129 @@ test('lark permission requests render as clickable card buttons', async () => {
   assert.deepEqual(threadActions, [
     { threadId: 'thread-1', action: 'allow all' },
   ]);
+  assert.equal(patchedCards.length, 1);
+  assert.equal(patchedCards[0]?.messageId, 'permission-msg-1');
+  assert.match(patchedCards[0]?.card?.elements?.[0]?.content || '', /工具确认已处理/);
+  assert.equal(patchedCards[0]?.card?.elements?.some((element: any) => element.tag === 'action'), false);
+});
+
+test('lark channel folds tool result output in progress cards', async () => {
+  const createdCards: any[] = [];
+  const patchedCards: any[] = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          createdCards.push(JSON.parse(String(request.data.content || '{}')));
+          return { data: { message_id: 'tool-msg-1' } };
+        },
+        patch: async (request: any) => {
+          patchedCards.push(JSON.parse(String(request.data.content || '{}')));
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    messageId: 'tool-1',
+    content: '🔧 Terminal: ls - completed - secret terminal output',
+  } as any);
+
+  const text = createdCards[0]?.elements?.[0]?.content || patchedCards[0]?.elements?.[0]?.content || '';
+  assert.match(text, /Terminal: ls - completed/);
+  assert.doesNotMatch(text, /secret terminal output/);
+});
+
+test('lark card action message id can be extracted from full callback payload', async () => {
+  const patchedCards: any[] = [];
+  const threadActions: Array<{ threadId: string; action: string }> = [];
+  const client = {
+    im: {
+      message: {
+        patch: async (request: any) => {
+          patchedCards.push({
+            messageId: request.path?.message_id,
+            card: JSON.parse(String(request.data.content || '{}')),
+          });
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {} as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({
+      sendThreadAction: async (threadId: string, action: string) => {
+        threadActions.push({ threadId, action });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+
+  await internals.handleCardActionEvent('default', {
+    schema: '2.0',
+    event: {
+      action: {
+        value: {
+          action: 'permission_response',
+          response: 'allow',
+          thread_id: 'thread-1',
+        },
+      },
+    },
+    event_context: {
+      open_message_id: 'permission-msg-nested',
+    },
+  });
+
+  assert.deepEqual(threadActions, [
+    { threadId: 'thread-1', action: 'allow' },
+  ]);
+  assert.equal(patchedCards[0]?.messageId, 'permission-msg-nested');
+  assert.equal(patchedCards[0]?.card?.elements?.some((element: any) => element.tag === 'action'), false);
 });
 
 test('lark permission requests fall back to text commands when card actions are disabled', async () => {

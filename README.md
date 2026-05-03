@@ -13,6 +13,12 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## New
 
+### 2026-05-03
+
+- 优化 channel 工具与权限交互：Lark 工具结果默认隐藏详细输出，权限按钮点击完成后移除可重复点击按钮。
+- 新增通用 channel outbound 文件回传能力，支持通过当前或指定 Lark/微信会话发送本地文件。
+- 调整 Local AI Core channel 目录结构，将 Lark、微信实现隔离到独立模块，并保留公共文件处理能力。
+
 ### 2026-05-02
 
 - 新增通用 channel 图片消息到 ACP 多模态传递。
