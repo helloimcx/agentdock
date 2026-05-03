@@ -30,6 +30,16 @@ export function shouldEchoBridgeActionResponse(
   return !(message.actionMode === 'permission' && message.actionInteractive);
 }
 
+export function isStructuredPermissionMessage(
+  message: Pick<PermissionPromptMessage, 'id' | 'role' | 'actionMode' | 'actionInteractive'>,
+  pendingPermissionRequest?: Pick<PendingPermissionRequest, 'id'> | null,
+) {
+  if (pendingPermissionRequest?.id === message.id) {
+    return true;
+  }
+  return message.role !== 'user' && message.actionMode === 'permission' && Boolean(message.actionInteractive);
+}
+
 export function toPendingPermissionRequest<T extends PermissionPromptMessage>(message: T): PendingPermissionRequest | null {
   if (
     !message.id ||

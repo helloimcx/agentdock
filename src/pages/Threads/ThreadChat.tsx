@@ -27,6 +27,7 @@ import { startDesktopService } from '@/api/desktop';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/session-utils';
 import { formatMessageTimestamp, formatRuntimePhase, type ChatMessage } from './thread-chat-model';
+import { isStructuredPermissionMessage } from './thread-chat-permission';
 import { useThreadChatController } from './useThreadChatController';
 
 type ToolResultCard = {
@@ -49,13 +50,7 @@ type PermissionCard = {
 };
 
 function isInteractivePermissionMessage(message: ChatMessage, pendingPermissionRequest?: PermissionCard | null) {
-  if (pendingPermissionRequest?.id === message.id) {
-    return true;
-  }
-  return message.role !== 'user' && (
-    (message.actionMode === 'permission' && message.actionInteractive) ||
-    isPermissionPromptContent(message.content)
-  );
+  return isStructuredPermissionMessage(message, pendingPermissionRequest);
 }
 
 function parseToolResultCard(content: string): ToolResultCard | null {
@@ -248,10 +243,6 @@ function parsePermissionCardContent(content: string) {
     title,
     bodyLines,
   };
-}
-
-function isPermissionPromptContent(content: string) {
-  return /等待工具确认/.test(content) && /allow all\s*\/\s*allow\s*\/\s*deny/i.test(content);
 }
 
 function PermissionRequestCardView({

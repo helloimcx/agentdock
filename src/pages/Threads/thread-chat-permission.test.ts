@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
 import {
+  isStructuredPermissionMessage,
   shouldEchoBridgeActionResponse,
   toPendingPermissionRequest,
   type PermissionPromptMessage,
@@ -88,6 +89,27 @@ test('interactive permission responses are not echoed as user chat messages', ()
   assert.equal(shouldEchoBridgeActionResponse({
     actionMode: 'permission',
     actionInteractive: false,
+  }), true);
+});
+
+test('structured permission detection does not infer durable permission state from message text', () => {
+  const textOnlyPermissionPrompt: PermissionPromptMessage = {
+    id: 'text-only',
+    role: 'assistant',
+    content: '等待工具确认\nallow all / allow / deny',
+  };
+  assert.equal(isStructuredPermissionMessage(textOnlyPermissionPrompt), false);
+  assert.equal(isStructuredPermissionMessage({
+    id: 'structured',
+    role: 'assistant',
+    actionMode: 'permission',
+    actionInteractive: true,
+  }), true);
+  assert.equal(isStructuredPermissionMessage({
+    id: 'pending-from-core',
+    role: 'assistant',
+  }, {
+    id: 'pending-from-core',
   }), true);
 });
 

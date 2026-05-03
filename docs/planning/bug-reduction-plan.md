@@ -4,7 +4,7 @@ Use this checklist to reduce repeated regressions in Thread Chat, Local AI Core,
 
 ## Problem Patterns To Watch
 
-- [ ] Permission UI state is owned by Local AI Core, not inferred from message actions.
+- [x] Permission UI state is owned by Local AI Core, not inferred from message actions.
 - [ ] Thinking, tool progress, tool results, and final answers cannot overwrite each other.
 - [x] Lark-first work is checked for shared channel impact before implementation.
 - [x] Form values, API enums, persisted values, and shared contracts use one parsing path.
@@ -28,7 +28,7 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
   - [x] Permission outcome.
   - [x] Task state.
   - [x] Run state.
-- [ ] Confirm renderer code does not infer durable permission or run state from message text/actions.
+- [x] Confirm renderer code does not infer durable permission or run state from message text/actions.
 - [x] Confirm channel adapters convert to and from shared content contracts.
 - [x] Confirm a developer can answer "where does this state live?" from one contract and one owner document.
 
