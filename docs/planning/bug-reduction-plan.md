@@ -122,8 +122,8 @@ Before tagging a release:
 
 ## Immediate Next Checklist
 
-- [ ] Add a message block contract note to the ACP protocol documentation.
-- [ ] Add a channel content contract note covering text, image, file, and permission-card delivery.
-- [ ] Add regression tests for permission lifecycle.
-- [ ] Add regression tests for thinking/final answer separation.
-- [ ] Split the next Thread Chat fix by first extracting pure state transitions, then changing UI.
+- [x] Add a message block contract note to the ACP protocol documentation.
+- [x] Add a channel content contract note covering text, image, file, and permission-card delivery.
+- [x] Add regression tests for permission lifecycle.
+- [x] Add regression tests for thinking/final answer separation.
+- [x] Split the next Thread Chat fix by first extracting pure state transitions, then changing UI.

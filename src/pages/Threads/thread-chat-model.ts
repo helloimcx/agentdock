@@ -112,6 +112,63 @@ export function shouldReplacePreviewWithReply(message: ChatMessage, replyContent
   return Boolean(replyContent && content === replyContent && !isInternalProgressMessage(content));
 }
 
+export function advancePreviewContent(content: string, target: string) {
+  if (!target) {
+    return '';
+  }
+  if (!content || !target.startsWith(content)) {
+    return target.slice(0, Math.min(target.length, Math.max(1, Math.ceil(target.length / 24))));
+  }
+  if (content === target) {
+    return target;
+  }
+  const remaining = target.length - content.length;
+  const step = remaining > 160 ? 14 : remaining > 80 ? 8 : remaining > 24 ? 4 : 2;
+  return target.slice(0, Math.min(target.length, content.length + step));
+}
+
+export function settlePreviewMessages(messages: ChatMessage[], turnKey?: string) {
+  let changed = false;
+  const next = messages.map((message) => {
+    if (!message.preview) {
+      return message;
+    }
+    if (turnKey && message.turnKey !== turnKey) {
+      return message;
+    }
+    changed = true;
+    return {
+      ...message,
+      content: message.streamTargetContent ?? message.content,
+      streamTargetContent: undefined,
+      preview: false,
+      previewPlainText: false,
+    };
+  });
+  return changed ? next : messages;
+}
+
+export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: string) {
+  if (!turnKey) {
+    return messages;
+  }
+  const candidates = messages.filter((message) => message.turnKey === turnKey && !message.preview);
+  if (candidates.length === 0) {
+    return messages;
+  }
+  const finalMessage = [...candidates].reverse().find((message) => !isInternalProgressMessage(message.content));
+  const finalId = finalMessage?.id;
+  return messages.map((message) => {
+    if (message.turnKey !== turnKey || message.preview) {
+      return message;
+    }
+    return {
+      ...message,
+      kind: finalId && message.id === finalId ? 'final' : 'progress',
+    };
+  });
+}
+
 export function extractVisibleMessageContent(content?: string) {
   if (!content) {
     return '';

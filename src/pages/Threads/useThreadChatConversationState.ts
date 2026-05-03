@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type { ThreadDetail } from '../../../packages/contracts/src';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
+  advancePreviewContent,
+  finalizeTurnMessageKinds,
   formatTaskHint,
-  isInternalProgressMessage,
   isTaskInputLocked,
   isTaskRunningState,
+  settlePreviewMessages as settlePreviewMessageList,
   sortChatMessages,
   toCoreChatThreadSummary,
   toMessagesFromThread,
@@ -15,21 +17,6 @@ import {
   type ThreadGroup,
 } from './thread-chat-model';
 import type { PendingPermissionRequest } from './thread-chat-permission';
-
-function advancePreviewContent(content: string, target: string) {
-  if (!target) {
-    return '';
-  }
-  if (!content || !target.startsWith(content)) {
-    return target.slice(0, Math.min(target.length, Math.max(1, Math.ceil(target.length / 24))));
-  }
-  if (content === target) {
-    return target;
-  }
-  const remaining = target.length - content.length;
-  const step = remaining > 160 ? 14 : remaining > 80 ? 8 : remaining > 24 ? 4 : 2;
-  return target.slice(0, Math.min(target.length, content.length + step));
-}
 
 type UseThreadChatConversationStateInput = {
   activeThreadId: string;
@@ -129,26 +116,7 @@ export function useThreadChatConversationState({
   }, []);
 
   const settlePreviewMessages = useCallback((turnKey?: string) => {
-    setMessages((current) => {
-      let changed = false;
-      const next = current.map((message) => {
-        if (!message.preview) {
-          return message;
-        }
-        if (turnKey && message.turnKey !== turnKey) {
-          return message;
-        }
-        changed = true;
-        return {
-          ...message,
-          content: message.streamTargetContent ?? message.content,
-          streamTargetContent: undefined,
-          preview: false,
-          previewPlainText: false,
-        };
-      });
-      return changed ? next : current;
-    });
+    setMessages((current) => settlePreviewMessageList(current, turnKey));
   }, []);
 
   const reserveNextMessageOrder = useCallback(() => {
@@ -176,26 +144,7 @@ export function useThreadChatConversationState({
   }, []);
 
   const finalizeTurnMessages = useCallback((turnKey?: string) => {
-    if (!turnKey) {
-      return;
-    }
-    setMessages((current) => {
-      const candidates = current.filter((message) => message.turnKey === turnKey && !message.preview);
-      if (candidates.length === 0) {
-        return current;
-      }
-      const finalMessage = [...candidates].reverse().find((message) => !isInternalProgressMessage(message.content));
-      const finalId = finalMessage?.id;
-      return current.map((message) => {
-        if (message.turnKey !== turnKey || message.preview) {
-          return message;
-        }
-        return {
-          ...message,
-          kind: finalId && message.id === finalId ? 'final' : 'progress',
-        };
-      });
-    });
+    setMessages((current) => finalizeTurnMessageKinds(current, turnKey));
   }, []);
 
   const applyLocalCoreThreadDetail = useCallback((detail: ThreadDetail) => {

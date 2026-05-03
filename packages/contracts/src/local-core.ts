@@ -246,6 +246,16 @@ export type ChannelInboundContentPart =
       mimeType?: string;
       uri?: string;
       fileName?: string;
+    }
+  | {
+      type: 'file';
+      data?: string;
+      mimeType?: string;
+      uri?: string;
+      path?: string;
+      fileName?: string;
+      size?: number;
+      metadata?: Record<string, unknown>;
     };
 
 export interface ChannelInboundMessageContent {
@@ -412,6 +422,21 @@ export type ChannelOutboundMessagePart =
       path: string;
       fileName?: string;
       mimeType?: string;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: 'image';
+      data?: string;
+      path?: string;
+      uri?: string;
+      fileName?: string;
+      mimeType?: string;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: 'permission_card';
+      text: string;
+      actions: DesktopBridgeButtonOption[][];
       metadata?: Record<string, unknown>;
     };
 

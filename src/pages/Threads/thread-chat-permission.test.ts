@@ -12,7 +12,10 @@ import {
   taskStateReasonForBridgeButtons,
 } from './thread-chat-task-state';
 import {
+  advancePreviewContent,
+  finalizeTurnMessageKinds,
   findStreamingPreviewMessage,
+  settlePreviewMessages,
   sortChatMessages,
   shouldReplacePreviewWithReply,
   type ChatMessage,
@@ -189,4 +192,81 @@ test('shouldReplacePreviewWithReply keeps thought previews when final answer arr
 
   assert.equal(shouldReplacePreviewWithReply(thoughtPreview, 'Hi! How can I help you today?', 'run-1'), false);
   assert.equal(shouldReplacePreviewWithReply(answerPreview, 'Hi! How can I help you today?', 'run-1'), true);
+});
+
+test('finalizeTurnMessageKinds marks only the last non-progress turn message as final', () => {
+  const messages: ChatMessage[] = [
+    {
+      id: 'thought',
+      role: 'assistant',
+      content: '💭 checking',
+      kind: 'final',
+      order: 1,
+      turnKey: 'run-1',
+    },
+    {
+      id: 'tool',
+      role: 'assistant',
+      content: '🔧 Read file',
+      kind: 'final',
+      order: 2,
+      turnKey: 'run-1',
+    },
+    {
+      id: 'answer',
+      role: 'assistant',
+      content: 'Done',
+      kind: 'progress',
+      order: 3,
+      turnKey: 'run-1',
+    },
+  ];
+
+  const finalized = finalizeTurnMessageKinds(messages, 'run-1');
+
+  assert.deepEqual(finalized.map((message) => [message.id, message.kind]), [
+    ['thought', 'progress'],
+    ['tool', 'progress'],
+    ['answer', 'final'],
+  ]);
+});
+
+test('settlePreviewMessages settles only previews for the requested turn', () => {
+  const messages: ChatMessage[] = [
+    {
+      id: 'preview-1',
+      role: 'assistant',
+      content: 'Hel',
+      streamTargetContent: 'Hello',
+      kind: 'progress',
+      order: 1,
+      turnKey: 'run-1',
+      preview: true,
+      previewPlainText: true,
+    },
+    {
+      id: 'preview-2',
+      role: 'assistant',
+      content: 'Wor',
+      streamTargetContent: 'World',
+      kind: 'progress',
+      order: 2,
+      turnKey: 'run-2',
+      preview: true,
+      previewPlainText: true,
+    },
+  ];
+
+  const settled = settlePreviewMessages(messages, 'run-1');
+
+  assert.equal(settled[0]?.content, 'Hello');
+  assert.equal(settled[0]?.preview, false);
+  assert.equal(settled[1]?.content, 'Wor');
+  assert.equal(settled[1]?.preview, true);
+});
+
+test('advancePreviewContent moves monotonically toward the target content', () => {
+  assert.equal(advancePreviewContent('', 'Hello'), 'H');
+  assert.equal(advancePreviewContent('Hel', 'Hello'), 'Hello');
+  assert.equal(advancePreviewContent('Mismatch', 'Hello'), 'H');
 });
