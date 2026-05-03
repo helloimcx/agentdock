@@ -29,6 +29,7 @@ This directory is organized by documentation purpose.
 ## Planning
 
 - [Development Plan](planning/development-plan.md): phased implementation plan.
+- [Bug Reduction Plan](planning/bug-reduction-plan.md): guardrails for repeated bug patterns, core contracts, tests, and release checks.
 - [TODO](planning/todo.md): short running checklist.
 
 ## Reports

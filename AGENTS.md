@@ -30,6 +30,8 @@ Before writing any code, describe the intended approach and wait for approval. I
 ## Testing Guidelines
 There is no unit-test runner configured in this snapshot. The current verification path is `pnpm e2e:smoke`, which exercises the built Electron app end to end. When adding tests, place them near the feature they cover or under a dedicated test directory, and name them after the target module, for example `ProjectList.test.tsx`.
 
+Use TDD selectively where it prevents repeated regressions. Bug fixes should start with the smallest failing test that reproduces the issue, then pass by fixing the underlying invariant. Cross-layer features should add contract or state-machine coverage first, especially for ACP streaming, permission lifecycle, thread/task state, channel content normalization, scheduler behavior, and shared enum parsing. Pure UI polish, copy changes, and exploratory product work do not require strict TDD; validate them with focused manual checks, screenshots when useful, or smoke/e2e coverage. Release and packaging issues should be guarded with `pnpm build` and `pnpm e2e:smoke`.
+
 ## Commit & Pull Request Guidelines
 This workspace snapshot does not include `.git`, so local history could not be inspected. Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates.
 
