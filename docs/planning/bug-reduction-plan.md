@@ -10,8 +10,12 @@ Use this checklist to reduce repeated regressions in Thread Chat, Local AI Core,
 - [x] Form values, API enums, persisted values, and shared contracts use one parsing path.
   - [x] Scheduler execution mode, trigger type, and channel platform values normalize through shared contract helpers.
   - [x] Permission response, approval state, content type, task state, run state, and scheduled run state normalize through shared helpers.
-- [ ] Release fixes are separated from broad feature or refactor work when possible.
-- [ ] Production build behavior is verified, not assumed from dev mode.
+- [x] Release fixes are separated from broad feature or refactor work when possible.
+  - [x] CI main-branch artifacts are validation-only and are prevented from publishing formal releases.
+  - [x] Formal release publishing stays behind version-tag release workflow checks.
+- [x] Production build behavior is verified, not assumed from dev mode.
+  - [x] Production renderer assets are checked after `pnpm build:renderer`.
+  - [x] Production smoke launches the built Electron entry and verifies runtime capabilities plus plugin diagnostics.
 
 ## Phase 1: Freeze Core Contracts
 
@@ -19,7 +23,10 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
 
 - [x] Define canonical contracts for `Thread`, `Run`, `Task`, `PermissionRequest`, `MessageBlock`, `Attachment`, `ChannelInboundContent`, and `ChannelOutboundContent`.
 - [x] Document which fields are persisted, streamed, rendered, and platform-specific.
-- [ ] Remove duplicated ad hoc types for the same concept across renderer, Local AI Core, plugins, and shared packages.
+- [x] Remove duplicated ad hoc types for the same concept across renderer, Local AI Core, plugins, and shared packages.
+  - [x] Renderer pending permission state aliases the shared `ThreadPendingPermissionRequest` contract.
+  - [x] Thread Chat task-state helpers reuse the canonical `ChatTaskState` type instead of redeclaring it.
+  - [x] Architecture tests guard these hotspot type boundaries against new ad hoc duplicates.
 - [x] Add parser or validation helpers for enum-like values: execution mode, trigger type, platform, content type, permission outcome, task state, and run state.
   - [x] Scheduler execution mode.
   - [x] Scheduler trigger type.
@@ -36,7 +43,10 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
 
 Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer state tests.
 
-- [ ] Permission request appears, survives refresh, accepts a choice, and updates style after submission.
+- [x] Permission request appears, survives refresh, accepts a choice, and updates style after submission.
+  - [x] ACP pending permission requests are projected back into refreshed thread detail payloads.
+  - [x] Renderer permission prompts map to composer cards after refresh.
+  - [x] Permission submission styling is handled by a focused renderer projection helper.
 - [x] Thinking, tool progress, tool result, and final response render as separate blocks.
 - [x] Final response does not delete or overwrite prior thinking/tool blocks.
 - [x] Lark and Weixin inbound text/image/file inputs normalize into the same core content model.
@@ -47,7 +57,9 @@ Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer stat
 - [x] Scheduler commands resolve short job ids, thread scope, execution mode, and side-thread behavior consistently.
 - [x] Production build contains renderer assets.
 - [x] Packaged app can open without blank page.
-- [ ] Every repeated historical bug has a regression test or a written reason why it is not automated yet.
+- [x] Every repeated historical bug has a regression test or a written reason why it is not automated yet.
+  - [x] Permission lifecycle, streaming block separation, route parsing, channel normalization, scheduler behavior, and production packaging have focused regression coverage.
+  - [x] Full release-candidate smoke remains documented as `pnpm e2e:smoke` because it launches packaged Electron scenarios.
 - [x] `pnpm test` remains the fast local gate.
 - [x] `pnpm e2e:smoke` remains the release candidate gate.
 

@@ -15,14 +15,7 @@ export type PermissionPromptMessage = {
 
 export type PendingPermissionRequest = ThreadPendingPermissionRequest;
 
-export type PermissionTaskState =
-  | 'idle'
-  | 'running'
-  | 'awaiting_input'
-  | 'awaiting_permission'
-  | 'permission_submitted'
-  | 'error'
-  | 'stopping';
+export const permissionSubmittedStatus = 'Permission sent. Waiting for the agent to continue…';
 
 export function shouldEchoBridgeActionResponse(
   message: Pick<PermissionPromptMessage, 'actionMode' | 'actionInteractive'>,
@@ -63,5 +56,22 @@ export function toPendingPermissionRequest<T extends PermissionPromptMessage>(me
     actionStatus: message.actionStatus,
     actionMode: 'permission',
     actionInteractive: true,
+  };
+}
+
+export function markPermissionMessageSubmitted<T extends {
+  actions?: DesktopBridgeButtonOption[][];
+  actionPending?: boolean;
+  actionStatus?: string;
+}>(message: T): Omit<T, 'actions' | 'actionPending' | 'actionStatus'> & {
+  actions: [];
+  actionPending: false;
+  actionStatus: string;
+} {
+  return {
+    ...message,
+    actions: [],
+    actionPending: false,
+    actionStatus: permissionSubmittedStatus,
   };
 }

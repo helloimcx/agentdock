@@ -46,3 +46,29 @@ test('message and channel contract docs cover canonical concepts and field lifec
   assert.match(content, /Thinking blocks are not overwritten by final answer blocks/, 'thinking/final separation invariant must remain documented');
   assert.match(content, /Sending files through a channel uses one outbound path/, 'outbound file path invariant must remain documented');
 });
+
+test('thread chat renderer state types reuse canonical contracts instead of ad hoc duplicates', () => {
+  const taskStateSource = readFileSync(join(rootDir, 'src', 'pages', 'Threads', 'thread-chat-task-state.ts'), 'utf8');
+  const permissionSource = readFileSync(join(rootDir, 'src', 'pages', 'Threads', 'thread-chat-permission.ts'), 'utf8');
+
+  assert.match(
+    taskStateSource,
+    /import type \{ ChatTaskState \} from '\.\/thread-chat-model';/,
+    'task-state helpers must reuse the canonical Thread Chat task-state type',
+  );
+  assert.doesNotMatch(
+    taskStateSource,
+    /type ChatTaskState\s*=/,
+    'task-state helpers must not redeclare ChatTaskState',
+  );
+  assert.match(
+    permissionSource,
+    /export type PendingPermissionRequest = ThreadPendingPermissionRequest;/,
+    'renderer pending permission state must alias the shared thread permission contract',
+  );
+  assert.doesNotMatch(
+    permissionSource,
+    /type PermissionTaskState\s*=/,
+    'permission helpers must not carry a second task-state union',
+  );
+});

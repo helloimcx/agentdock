@@ -429,6 +429,47 @@ test('ACP permission lifecycle writes pending permission state and tool detail t
   assert.deepEqual(synced, ['Terminal: npm test']);
 });
 
+test('ACP pending permission is projected into refreshed thread detail payloads', () => {
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    emitBridge: () => {},
+    appendMessage: () => {},
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const permissionRequest = createRunningPermissionRequest({
+    requestId: 42,
+    toolTitle: 'Terminal: npm test',
+    options: parsePermissionOptions([
+      { optionId: 'approve-once', name: 'Allow once', kind: 'allow' },
+      { optionId: 'reject', name: 'Deny', kind: 'reject' },
+    ]),
+    approvalId: 'approval-1',
+  });
+  const session = {
+    currentRunId: 'run-1',
+    pendingPermissionByRun: new Map([['run-1', permissionRequest]]),
+  } as any;
+  const detail = {
+    messages: [
+      {
+        id: 'permission-message',
+        role: 'assistant',
+        content: '等待工具确认',
+      },
+    ],
+  } as any;
+
+  const pending = coordinator.getPendingPermissionRequest(session, detail);
+
+  assert.ok(pending);
+  assert.equal(pending.id, 'permission-message');
+  assert.equal(pending.content, '等待工具确认');
+  assert.equal(pending.actionReplyCtx, 'run-1');
+  assert.equal(pending.actionMode, 'permission');
+  assert.equal(pending.actionInteractive, true);
+  assert.deepEqual(pending.actions.flat().map((action) => action.data), ['allow', 'deny']);
+});
+
 test('ACP progress projection extracts tool output and formats durable progress content', () => {
   assert.equal(extractToolCallKey({ tool_call_id: ' call-a ' }), 'call-a');
   assert.equal(extractToolCallKey({ invocationId: 42 }), '42');

@@ -5,6 +5,7 @@ import {
 } from '../../../shared/desktop';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
 import {
+  markPermissionMessageSubmitted,
   shouldEchoBridgeActionResponse,
   type PendingPermissionRequest,
 } from './thread-chat-permission';
@@ -105,12 +106,7 @@ export function useThreadChatBridgeActions({
         setMessages((current) =>
           current.map((item) =>
             item.id === message.id
-              ? {
-                  ...item,
-                  actions: [],
-                  actionPending: false,
-                  actionStatus: 'Permission sent. Waiting for the agent to continue…',
-                }
+              ? markPermissionMessageSubmitted(item)
               : item,
           ),
         );

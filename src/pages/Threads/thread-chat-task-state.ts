@@ -1,11 +1,4 @@
-type ChatTaskState =
-  | 'idle'
-  | 'running'
-  | 'awaiting_input'
-  | 'awaiting_permission'
-  | 'permission_submitted'
-  | 'error'
-  | 'stopping';
+import type { ChatTaskState } from './thread-chat-model';
 
 export function taskStateAfterTypingStop(taskState: ChatTaskState): ChatTaskState {
   return taskState === 'awaiting_permission' ? 'awaiting_permission' : 'idle';

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
 import {
   isStructuredPermissionMessage,
+  markPermissionMessageSubmitted,
+  permissionSubmittedStatus,
   shouldEchoBridgeActionResponse,
   toPendingPermissionRequest,
   type PermissionPromptMessage,
@@ -93,6 +95,57 @@ test('toPendingPermissionRequest returns an actionable permission prompt payload
   assert.equal(prompt.id, 'latest-permission');
   assert.deepEqual(prompt.actions, createPermissionActions());
   assert.equal(prompt.actionReplyCtx, 'run-1');
+});
+
+test('permission prompt projection keeps refreshable state and submitted styling explicit', () => {
+  const prompt = toPendingPermissionRequest(createMessage({
+    id: 'permission-1',
+    order: 3,
+    content: '等待工具确认',
+    actionMode: 'permission',
+    actionInteractive: true,
+    actionReplyCtx: 'run-1',
+    actions: createPermissionActions(),
+  }));
+
+  assert.ok(prompt);
+  assert.equal(prompt.id, 'permission-1');
+  assert.equal(prompt.actionMode, 'permission');
+  assert.equal(prompt.actionInteractive, true);
+  assert.equal(prompt.actionReplyCtx, 'run-1');
+  assert.deepEqual(prompt.actions, createPermissionActions());
+
+  const submitted = markPermissionMessageSubmitted({
+    id: 'permission-1',
+    actions: createPermissionActions(),
+    actionPending: true,
+  });
+
+  assert.deepEqual(submitted.actions, []);
+  assert.equal(submitted.actionPending, false);
+  assert.equal(submitted.actionStatus, permissionSubmittedStatus);
+});
+
+test('pending permission from refreshed thread detail becomes the composer permission card', () => {
+  const pending = {
+    id: 'permission-1',
+    content: '等待工具确认',
+    actions: createPermissionActions(),
+    actionReplyCtx: 'run-1',
+    actionPending: false,
+    actionStatus: undefined,
+    actionMode: 'permission' as const,
+    actionInteractive: true as const,
+  };
+
+  const card = toComposerPermissionCard(pending);
+
+  assert.ok(card);
+  assert.equal(card.id, 'permission-1');
+  assert.equal(card.actionReplyCtx, 'run-1');
+  assert.equal(card.actionMode, 'permission');
+  assert.equal(card.actionInteractive, true);
+  assert.deepEqual(card.actions, createPermissionActions());
 });
 
 test('taskStateAfterTypingStop keeps awaiting_permission prompts visible', () => {
