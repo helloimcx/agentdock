@@ -564,7 +564,7 @@ test('ACP progress projection registers pending tool calls in order', () => {
   assert.deepEqual(registerPendingToolCall({
     currentTurn,
     runId: 'run-1',
-    update: { id: 'call-a', title: 'Terminal', parameters: { command: 'npm test' } },
+    update: { id: 'call-a', title: 'Terminal', rawInput: { command: 'npm test' } },
   }), {
     key: 'call-a',
     title: 'Terminal',
@@ -716,7 +716,7 @@ test('ACP concurrent tool call updates are matched by call id', () => {
         sessionUpdate: 'tool_call',
         id: 'call-a',
         title: 'Terminal',
-        parameters: { command: 'npm test' },
+        rawInput: { command: 'npm test' },
       },
     },
   });
@@ -778,6 +778,67 @@ test('ACP concurrent tool call updates are matched by call id', () => {
     label: '工具结果',
   });
   assert.deepEqual(emitted[1]?.toolCall, upserted[1]?.toolCall);
+});
+
+test('ACP tool call update backfills rawInput from pi ACP updates', () => {
+  const upserted: Array<{ id: string; content: string; toolCall?: any }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => assert.fail('tool updates should be upserted'),
+    upsertMessage: (_threadId, id, _role, content, _kind, toolCall) => upserted.push({ id, content, toolCall }),
+    emitBridge: () => {},
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call-a',
+        title: 'bash',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'call-a',
+        status: 'completed',
+        rawInput: { command: 'ls -la ~/Desktop' },
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'total 32',
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(upserted[0]?.toolCall?.name, 'bash');
+  assert.deepEqual(upserted[0]?.toolCall?.input, { command: 'ls -la ~/Desktop' });
 });
 
 test('ACP permission tool parameters are preserved in completed tool cards', () => {

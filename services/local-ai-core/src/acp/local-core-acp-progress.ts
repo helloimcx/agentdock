@@ -232,7 +232,7 @@ export function extractToolCallKey(update: Record<string, unknown>) {
 }
 
 export function extractToolCallInput(update: Record<string, unknown>) {
-  for (const key of ['input', 'parameters', 'arguments', 'args']) {
+  for (const key of ['input', 'parameters', 'arguments', 'args', 'rawInput']) {
     if (Object.prototype.hasOwnProperty.call(update, key)) {
       return update[key];
     }

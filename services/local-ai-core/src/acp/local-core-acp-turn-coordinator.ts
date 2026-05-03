@@ -4,6 +4,7 @@ import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
   deletePendingToolCall,
+  extractToolCallInput,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
@@ -244,6 +245,10 @@ export class LocalCoreAcpTurnCoordinator {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
         const toolCall = resolveToolCallForUpdate(currentTurn, update);
+        const updateInput = extractToolCallInput(update);
+        if (toolCall && updateInput !== undefined) {
+          toolCall.input = updateInput;
+        }
         const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
         const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
         const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
@@ -278,7 +283,7 @@ export class LocalCoreAcpTurnCoordinator {
           id: toolCall?.key || currentTurn.activeToolCallKey,
           name: toolName || displayTitle || 'Tool update',
           status,
-          input: toolCall?.input,
+          input: updateInput === undefined ? toolCall?.input : updateInput,
           detail: displayTitle,
           content,
         });
