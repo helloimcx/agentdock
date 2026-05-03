@@ -49,8 +49,8 @@ function toForm(job?: CronJob | null): SchedulerFormState {
   }
   return {
     workspaceId: job.workspaceId,
-    executionMode: job.executionMode,
-    triggerType: job.triggerType,
+    executionMode: job.executionMode as SchedulerFormState['executionMode'],
+    triggerType: job.triggerType as SchedulerFormState['triggerType'],
     cronExpr: job.cronExpr || '0 9 * * *',
     runAt: job.runAt ? String(job.runAt).slice(0, 16) : '',
     promptTemplate: job.promptTemplate,
