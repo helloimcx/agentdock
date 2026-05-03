@@ -381,122 +381,6 @@ export class LocalAiCoreServer {
           return;
         }
       }
-      if (req.method === 'GET' && path === '/api/local/v1/workspaces') {
-        json(res, 200, { workspaces: await this.bindings.listWorkspaces() });
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/workspace-registry') {
-        json(res, 200, { workspaces: await this.bindings.listWorkspaceRegistry() });
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/workspace-registry') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createWorkspaceRegistryEntry(body as unknown as WorkspaceRegistryCreateInput));
-        return;
-      }
-      if (path.startsWith('/api/local/v1/workspace-registry/')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/workspace-registry/'.length));
-        if (req.method === 'GET') {
-          json(res, 200, await this.bindings.getWorkspaceRegistryEntry(workspaceId));
-          return;
-        }
-        if (req.method === 'PATCH') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.updateWorkspaceRegistryEntry(workspaceId, body as unknown as WorkspaceRegistryUpdateInput));
-          return;
-        }
-        if (req.method === 'DELETE') {
-          json(res, 200, await this.bindings.deleteWorkspaceRegistryEntry(workspaceId));
-          return;
-        }
-      }
-      if (path.startsWith('/api/local/v1/workspace-security/')) {
-        const workspaceId = decodeURIComponent(path.slice('/api/local/v1/workspace-security/'.length));
-        if (req.method === 'GET') {
-          json(res, 200, await this.bindings.getWorkspaceSecuritySettings(workspaceId));
-          return;
-        }
-        if (req.method === 'PATCH') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.updateWorkspaceSecuritySettings(workspaceId, body as unknown as WorkspaceSecuritySettingsUpdateInput));
-          return;
-        }
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/security/command-risk') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.classifyCommand(String(body.command || ''), String(body.workspaceId || '') || undefined));
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/approvals') {
-        const statusParam = url.searchParams.get('status') || '';
-        const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as ApprovalRequestListQuery['status'] : undefined;
-        json(res, 200, await this.bindings.listApprovalRequests({
-          workspaceId: url.searchParams.get('workspace_id') || undefined,
-          taskId: url.searchParams.get('task_id') || undefined,
-          status,
-          limit: Number(url.searchParams.get('limit') || '50'),
-        }));
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/approvals') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createApprovalRequest(body as unknown as ApprovalRequestCreateInput));
-        return;
-      }
-      if (path.startsWith('/api/local/v1/approvals/')) {
-        const suffix = path.slice('/api/local/v1/approvals/'.length);
-        if (req.method === 'POST' && suffix.endsWith('/resolve')) {
-          const approvalId = decodeURIComponent(suffix.slice(0, -'/resolve'.length));
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.resolveApprovalRequest(approvalId, body as unknown as ApprovalRequestResolveInput));
-          return;
-        }
-        if (req.method === 'GET') {
-          const approvalId = decodeURIComponent(suffix);
-          json(res, 200, await this.bindings.getApprovalRequest(approvalId));
-          return;
-        }
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/audit-events') {
-        const typeParam = url.searchParams.get('type') || '';
-        const type = typeParam ? typeParam.split(',').map((item) => item.trim()).filter(Boolean) as AuditEventListQuery['type'] : undefined;
-        json(res, 200, await this.bindings.listAuditEvents({
-          workspaceId: url.searchParams.get('workspace_id') || undefined,
-          taskId: url.searchParams.get('task_id') || undefined,
-          approvalId: url.searchParams.get('approval_id') || undefined,
-          type,
-          limit: Number(url.searchParams.get('limit') || '50'),
-        }));
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/tasks') {
-        const statusParam = url.searchParams.get('status') || '';
-        const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as AgentTaskListQuery['status'] : undefined;
-        json(res, 200, await this.bindings.listAgentTasks({
-          workspaceId: url.searchParams.get('workspace_id') || undefined,
-          runtimeId: url.searchParams.get('runtime_id') || undefined,
-          status,
-          limit: Number(url.searchParams.get('limit') || '50'),
-        }));
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/tasks') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createAgentTask(body as unknown as AgentTaskCreateInput));
-        return;
-      }
-      if (path.startsWith('/api/local/v1/tasks/')) {
-        const taskId = decodeURIComponent(path.slice('/api/local/v1/tasks/'.length));
-        if (req.method === 'GET') {
-          json(res, 200, await this.bindings.getAgentTask(taskId));
-          return;
-        }
-        if (req.method === 'PATCH') {
-          const body = await readJsonBody(req);
-          json(res, 200, await this.bindings.updateAgentTask(taskId, body as unknown as AgentTaskUpdateInput));
-          return;
-        }
-      }
       if (req.method === 'GET' && path === '/api/local/v1/knowledge/sources') {
         json(res, 200, { sources: await this.bindings.listKnowledgeSources() });
         return;
@@ -752,6 +636,101 @@ export class LocalAiCoreServer {
       case 'run.interrupt':
         json(res, 200, await this.bindings.interruptRun(route.runId));
         return;
+      case 'workspaces.list':
+        json(res, 200, { workspaces: await this.bindings.listWorkspaces() });
+        return;
+      case 'workspace-registry.list':
+        json(res, 200, { workspaces: await this.bindings.listWorkspaceRegistry() });
+        return;
+      case 'workspace-registry.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createWorkspaceRegistryEntry(body as unknown as WorkspaceRegistryCreateInput));
+        return;
+      }
+      case 'workspace-registry.get':
+        json(res, 200, await this.bindings.getWorkspaceRegistryEntry(route.workspaceId));
+        return;
+      case 'workspace-registry.update': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateWorkspaceRegistryEntry(route.workspaceId, body as unknown as WorkspaceRegistryUpdateInput));
+        return;
+      }
+      case 'workspace-registry.delete':
+        json(res, 200, await this.bindings.deleteWorkspaceRegistryEntry(route.workspaceId));
+        return;
+      case 'workspace-security.get':
+        json(res, 200, await this.bindings.getWorkspaceSecuritySettings(route.workspaceId));
+        return;
+      case 'workspace-security.update': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateWorkspaceSecuritySettings(route.workspaceId, body as unknown as WorkspaceSecuritySettingsUpdateInput));
+        return;
+      }
+      case 'security.command-risk.classify': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.classifyCommand(String(body.command || ''), String(body.workspaceId || '') || undefined));
+        return;
+      }
+      case 'approvals.list': {
+        const statusParam = url.searchParams.get('status') || '';
+        const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as ApprovalRequestListQuery['status'] : undefined;
+        json(res, 200, await this.bindings.listApprovalRequests({
+          workspaceId: url.searchParams.get('workspace_id') || undefined,
+          taskId: url.searchParams.get('task_id') || undefined,
+          status,
+          limit: Number(url.searchParams.get('limit') || '50'),
+        }));
+        return;
+      }
+      case 'approvals.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createApprovalRequest(body as unknown as ApprovalRequestCreateInput));
+        return;
+      }
+      case 'approval.get':
+        json(res, 200, await this.bindings.getApprovalRequest(route.approvalId));
+        return;
+      case 'approval.resolve': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.resolveApprovalRequest(route.approvalId, body as unknown as ApprovalRequestResolveInput));
+        return;
+      }
+      case 'audit-events.list': {
+        const typeParam = url.searchParams.get('type') || '';
+        const type = typeParam ? typeParam.split(',').map((item) => item.trim()).filter(Boolean) as AuditEventListQuery['type'] : undefined;
+        json(res, 200, await this.bindings.listAuditEvents({
+          workspaceId: url.searchParams.get('workspace_id') || undefined,
+          taskId: url.searchParams.get('task_id') || undefined,
+          approvalId: url.searchParams.get('approval_id') || undefined,
+          type,
+          limit: Number(url.searchParams.get('limit') || '50'),
+        }));
+        return;
+      }
+      case 'tasks.list': {
+        const statusParam = url.searchParams.get('status') || '';
+        const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as AgentTaskListQuery['status'] : undefined;
+        json(res, 200, await this.bindings.listAgentTasks({
+          workspaceId: url.searchParams.get('workspace_id') || undefined,
+          runtimeId: url.searchParams.get('runtime_id') || undefined,
+          status,
+          limit: Number(url.searchParams.get('limit') || '50'),
+        }));
+        return;
+      }
+      case 'tasks.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createAgentTask(body as unknown as AgentTaskCreateInput));
+        return;
+      }
+      case 'task.get':
+        json(res, 200, await this.bindings.getAgentTask(route.taskId));
+        return;
+      case 'task.update': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateAgentTask(route.taskId, body as unknown as AgentTaskUpdateInput));
+        return;
+      }
     }
   }
 

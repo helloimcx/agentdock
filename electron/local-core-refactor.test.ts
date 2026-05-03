@@ -75,6 +75,47 @@ test('local core route parser only accepts run interrupt action with POST', () =
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/runs/run-1/interrupt'), null);
 });
 
+test('local core route parser keeps workspace state routes bounded to one id segment', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces'), { name: 'workspaces.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-registry'), { name: 'workspace-registry.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/workspace-registry/workspace%2Fone'), {
+    name: 'workspace-registry.update',
+    workspaceId: 'workspace/one',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspace-security/workspace%2Fone'), {
+    name: 'workspace-security.get',
+    workspaceId: 'workspace/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/workspace-registry/workspace-1/extra'), null);
+  assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-security/workspace-1'), null);
+});
+
+test('local core route parser keeps approval resolution separate from approval detail', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/approvals'), { name: 'approvals.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/approvals'), { name: 'approvals.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/approvals/approval-1'), {
+    name: 'approval.get',
+    approvalId: 'approval-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/approvals/approval-1/resolve'), {
+    name: 'approval.resolve',
+    approvalId: 'approval-1',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/approvals/approval-1/resolve'), null);
+});
+
+test('local core route parser keeps task collection and task detail routes distinct', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/audit-events'), { name: 'audit-events.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/security/command-risk'), { name: 'security.command-risk.classify' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/tasks'), { name: 'tasks.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/tasks'), { name: 'tasks.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/tasks/task%2Fone'), {
+    name: 'task.update',
+    taskId: 'task/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('DELETE', '/api/local/v1/tasks/task-1'), null);
+});
+
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];
   const emitted: Array<{ content?: string; type: string }> = [];

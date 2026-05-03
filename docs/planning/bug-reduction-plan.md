@@ -68,6 +68,7 @@ Checklist:
 - [ ] Runtime server route registration is split from request handlers.
   - [x] Runtime and scheduler job routes parse through a focused route descriptor before handler dispatch.
   - [x] Thread and run interrupt routes parse through the same focused route descriptor.
+  - [x] Workspace, security, approval, audit, and task routes parse through the same focused route descriptor.
 - [ ] ACP persistence is separated from streaming event processing.
 - [ ] Permission lifecycle handling is separated from generic message processing.
 - [ ] Common bug fixes touch fewer layers than before.

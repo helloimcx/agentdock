@@ -29,7 +29,25 @@ export type LocalAiCoreRoute =
   | { name: 'thread.delete'; threadId: string }
   | { name: 'thread.messages.send'; threadId: string }
   | { name: 'thread.actions.send'; threadId: string }
-  | { name: 'run.interrupt'; runId: string };
+  | { name: 'run.interrupt'; runId: string }
+  | { name: 'workspaces.list' }
+  | { name: 'workspace-registry.list' }
+  | { name: 'workspace-registry.create' }
+  | { name: 'workspace-registry.get'; workspaceId: string }
+  | { name: 'workspace-registry.update'; workspaceId: string }
+  | { name: 'workspace-registry.delete'; workspaceId: string }
+  | { name: 'workspace-security.get'; workspaceId: string }
+  | { name: 'workspace-security.update'; workspaceId: string }
+  | { name: 'security.command-risk.classify' }
+  | { name: 'approvals.list' }
+  | { name: 'approvals.create' }
+  | { name: 'approval.get'; approvalId: string }
+  | { name: 'approval.resolve'; approvalId: string }
+  | { name: 'audit-events.list' }
+  | { name: 'tasks.list' }
+  | { name: 'tasks.create' }
+  | { name: 'task.get'; taskId: string }
+  | { name: 'task.update'; taskId: string };
 
 const API_PREFIX = '/api/local/v1';
 
@@ -83,6 +101,27 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
   if (segments[0] === 'runs') {
     return parseRunsRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'workspaces') {
+    return parseWorkspacesRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'workspace-registry') {
+    return parseWorkspaceRegistryRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'workspace-security') {
+    return parseWorkspaceSecurityRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'security') {
+    return parseSecurityRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'approvals') {
+    return parseApprovalsRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'audit-events') {
+    return parseAuditEventsRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'tasks') {
+    return parseTasksRoute(normalizedMethod, segments);
   }
 
   return null;
@@ -169,6 +208,104 @@ function parseRunsRoute(method: string, segments: string[]): LocalAiCoreRoute | 
   const runId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
   if (method === 'POST' && runId && segments.length === 3 && segments[2] === 'interrupt') {
     return { name: 'run.interrupt', runId };
+  }
+  return null;
+}
+
+function parseWorkspacesRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'workspaces.list' };
+  }
+  return null;
+}
+
+function parseWorkspaceRegistryRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'workspace-registry.list' };
+  }
+  if (method === 'POST' && segments.length === 1) {
+    return { name: 'workspace-registry.create' };
+  }
+  const workspaceId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!workspaceId || segments.length !== 2) {
+    return null;
+  }
+  if (method === 'GET') {
+    return { name: 'workspace-registry.get', workspaceId };
+  }
+  if (method === 'PATCH') {
+    return { name: 'workspace-registry.update', workspaceId };
+  }
+  if (method === 'DELETE') {
+    return { name: 'workspace-registry.delete', workspaceId };
+  }
+  return null;
+}
+
+function parseWorkspaceSecurityRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  const workspaceId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!workspaceId || segments.length !== 2) {
+    return null;
+  }
+  if (method === 'GET') {
+    return { name: 'workspace-security.get', workspaceId };
+  }
+  if (method === 'PATCH') {
+    return { name: 'workspace-security.update', workspaceId };
+  }
+  return null;
+}
+
+function parseSecurityRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'POST' && segments.length === 2 && segments[1] === 'command-risk') {
+    return { name: 'security.command-risk.classify' };
+  }
+  return null;
+}
+
+function parseApprovalsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'approvals.list' };
+  }
+  if (method === 'POST' && segments.length === 1) {
+    return { name: 'approvals.create' };
+  }
+  const approvalId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!approvalId) {
+    return null;
+  }
+  if (method === 'GET' && segments.length === 2) {
+    return { name: 'approval.get', approvalId };
+  }
+  if (method === 'POST' && segments.length === 3 && segments[2] === 'resolve') {
+    return { name: 'approval.resolve', approvalId };
+  }
+  return null;
+}
+
+function parseAuditEventsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'audit-events.list' };
+  }
+  return null;
+}
+
+function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'tasks.list' };
+  }
+  if (method === 'POST' && segments.length === 1) {
+    return { name: 'tasks.create' };
+  }
+  const taskId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!taskId || segments.length !== 2) {
+    return null;
+  }
+  if (method === 'GET') {
+    return { name: 'task.get', taskId };
+  }
+  if (method === 'PATCH') {
+    return { name: 'task.update', taskId };
   }
   return null;
 }
