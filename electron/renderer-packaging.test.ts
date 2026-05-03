@@ -22,6 +22,26 @@ test('production package config includes renderer build output', () => {
   );
 });
 
+test('release validation scripts keep local and candidate gates intact', () => {
+  const packageJson = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf8')) as {
+    scripts?: Record<string, string>;
+  };
+  const testScript = packageJson.scripts?.test || '';
+  const smokeScript = packageJson.scripts?.['e2e:smoke'] || '';
+
+  assert.match(testScript, /\bpnpm build:renderer\b/, 'pnpm test must build renderer assets');
+  assert.match(testScript, /\bpnpm build:electron\b/, 'pnpm test must compile Electron and Local AI Core tests');
+  assert.match(testScript, /\bnode --test\b/, 'pnpm test must run the Node test suite');
+  assert.match(testScript, /dist-electron\/electron\/\*\.test\.js/, 'pnpm test must include Electron tests');
+  assert.match(testScript, /dist-electron\/packages\/knowledge-api\/test\/\*\.test\.js/, 'pnpm test must include package tests');
+  assert.match(testScript, /dist-electron\/src\/pages\/Threads\/thread-chat-permission\.test\.js/, 'pnpm test must include renderer state tests');
+
+  const buildIndex = smokeScript.indexOf('pnpm build');
+  const smokeIndex = smokeScript.indexOf('node scripts/e2e-smoke.mjs');
+  assert.ok(buildIndex >= 0, 'pnpm e2e:smoke must start from a production build');
+  assert.ok(smokeIndex > buildIndex, 'pnpm e2e:smoke must run smoke checks after the production build');
+});
+
 test('production renderer build has a loadable entry document and assets', () => {
   const rendererDir = join(rootDir, 'dist', 'renderer');
   const indexPath = join(rendererDir, 'index.html');

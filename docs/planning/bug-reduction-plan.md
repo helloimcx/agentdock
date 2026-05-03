@@ -48,8 +48,8 @@ Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer stat
 - [x] Production build contains renderer assets.
 - [x] Packaged app can open without blank page.
 - [ ] Every repeated historical bug has a regression test or a written reason why it is not automated yet.
-- [ ] `pnpm test` remains the fast local gate.
-- [ ] `pnpm e2e:smoke` remains the release candidate gate.
+- [x] `pnpm test` remains the fast local gate.
+- [x] `pnpm e2e:smoke` remains the release candidate gate.
 
 ## Phase 3: Reduce Hotspot File Risk
 
