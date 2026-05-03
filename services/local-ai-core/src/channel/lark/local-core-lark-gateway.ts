@@ -12,137 +12,51 @@ import type {
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
-  DesktopProjectConfig,
   LocalCoreAuthorizedUser,
-  LocalCoreChannelConnectionResult,
-  LocalCoreChannelGatewayStatus,
-  LocalCoreChannelPairingRequest,
   LocalCoreChannelQrCode,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCorePairingRequest,
 } from '../../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime, EventBus } from '../../../../../packages/plugin-sdk/src/index.js';
-import { normalizeDesktopPlatformType, normalizePermissionResponse, wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
-import { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
-import type { WorkspaceRouter } from '../../router/workspace-router.js';
+import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
+import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
-
-type LarkModule = typeof import('@larksuiteoapi/node-sdk');
-
-type LarkWorkspaceBinding = {
-  workspaceId: string;
-  instanceId: string;
-  displayName: string;
-  platformKey: string;
-  appId: string;
-  appSecret: string;
-  encryptKey: string;
-  verificationToken: string;
-  autoApprove: boolean;
-  cardActionsEnabled: boolean;
-  brand: 'feishu' | 'lark';
-  enabled: boolean;
-  project: DesktopProjectConfig;
-};
-
-type LarkRuntimeState = {
-  workspaceId: string;
-  instanceId: string;
-  displayName: string;
-  platformKey: string;
-  enabled: boolean;
-  status: LocalCoreLarkGatewayStatus['status'];
-  connected: boolean;
-  appId: string;
-  autoApprove: boolean;
-  cardActionsEnabled: boolean;
-  lastError?: string;
-  connectedAt?: string;
-  client?: any;
-  wsClient?: any;
-  eventDispatcher?: any;
-};
-
-type LarkInboundMessage = {
-  workspaceId: string;
-  instanceId?: string;
-  platformKey?: string;
-  platformUserId: string;
-  chatId: string;
-  displayName: string;
-  text: string;
-  messageId: string;
-  contentParts?: ChannelInboundContentPart[];
-};
-
-type LarkTurnState = {
-  sessionKey: string;
-  replyCtx?: string;
-  messageId?: string;
-  finalMessageId?: string;
-  replyMessageId?: string;
-  progressMessageIds: Record<string, string>;
-  permissionMessageId?: string;
-  awaitingPermission: boolean;
-  sourceMessageId?: string;
-  acknowledgementReactionId?: string;
-  processing: boolean;
-  previewText: string;
-  finalText: string;
-  thinkingSteps: string[];
-  toolCalls: string[];
-  statusLines: string[];
-  buttonRows: Array<Array<{ text: string; data: string }>>;
-  lastPatchedAt: number;
-  lastPatchedAtByMessageId: Record<string, number>;
-};
-
-type LarkOutboundRender = {
-  key: string;
-  text: string;
-  buttonRows: Array<Array<{ text: string; data: string }>>;
-  isFinal: boolean;
-  finalSource?: 'stream' | 'reply';
-};
-
-function foldToolResultForLark(content: string): string {
-  const normalized = String(content || '').trim();
-  if (!normalized.startsWith('🔧 ')) return normalized;
-
-  const parts = normalized.split(' - ');
-  if (parts.length <= 2) return normalized;
-  return parts.slice(0, 2).join(' - ');
-}
-
-type LocalCoreLarkGatewayOptions = {
-  store: LocalCoreAcpStore;
-  readConfig: () => Promise<DesktopConnectConfig | null | undefined>;
-  getWorkspaceRouter: () => WorkspaceRouter;
-  eventBus: EventBus;
-  log?: (message: string) => void;
-};
+import {
+  buildInteractiveCard,
+  extractCardActionMessageId,
+  extractCardActionValue,
+  formatPermissionResponseLabel,
+  renderPendingPairingCard,
+  renderPermissionCard,
+} from './cards.js';
+import { channelPlatformKey, collectLarkWorkspaceBindings, runtimeKey } from './config.js';
+import {
+  DEFAULT_LARK_QR_EXPIRES_IN,
+  getLarkOpenBase,
+  LARK_APP_REGISTRATION_SETUP_PATH,
+  pollAppRegistration,
+  requestAppRegistration,
+} from './registration.js';
+import {
+  consumeLarkBridgeEvent,
+  createLarkTurnState,
+  getLarkRenderedMessageId,
+  renderLarkBridgeEventMessage,
+  setLarkRenderedMessageId,
+} from './runtime-state.js';
+import type {
+  LarkInboundMessage,
+  LarkModule,
+  LarkRuntimeState,
+  LarkThreadRoute,
+  LarkTurnState,
+  LarkWorkspaceBinding,
+  LocalCoreLarkGatewayOptions,
+} from './types.js';
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
-const DEFAULT_LARK_QR_EXPIRES_IN = 180;
-const LARK_APP_REGISTRATION_PATH = '/oauth/v1/app/registration';
-const LARK_APP_REGISTRATION_SETUP_PATH = '/page/openclaw';
-
-function normalizeChannelInstanceId(value: unknown, fallback: string) {
-  const raw = String(value || '').trim();
-  const normalized = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 80);
-  return normalized || fallback;
-}
-
-function channelPlatformKey(platform: string, instanceId: string) {
-  return instanceId === 'default' ? platform : `${platform}:${instanceId}`;
-}
-
-function runtimeKey(workspaceId: string, instanceId: string) {
-  return `${workspaceId}::${instanceId}`;
-}
 
 export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
   // Lark returns 200340 when card action events are not enabled in the app's
@@ -151,7 +65,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   // Keep permission state in a dedicated card to avoid mixing order in the main reply card.
   private readonly mirrorPermissionStateInMainCard = false;
   private readonly runtime = new Map<string, LarkRuntimeState>();
-  private readonly threadRouting = new Map<string, { workspaceId: string; instanceId: string; platformKey: string; platformUserId: string; chatId: string; threadId: string }>();
+  private readonly threadRouting = new Map<string, LarkThreadRoute>();
   private readonly outboundEventChains = new Map<string, Promise<void>>();
   private readonly outboundTurns = new Map<string, LarkTurnState>();
   private readonly mutedThreadBridgeCounts = new Map<string, number>();
@@ -226,7 +140,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
 
   async getQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
     const binding = await this.getBinding(workspaceId, instanceId);
-    const data = await this.requestAppRegistration(binding);
+    const data = await requestAppRegistration(binding);
     const ticket = String(data.device_code || '').trim();
     const userCode = String(data.user_code || '').trim();
     if (!ticket || !userCode) {
@@ -236,7 +150,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       ticket,
       expiresIn: Number(data.expires_in || DEFAULT_LARK_QR_EXPIRES_IN) || DEFAULT_LARK_QR_EXPIRES_IN,
       interval: Number(data.interval || 5) || 5,
-      qrCodeUrl: `${this.getLarkOpenBase(binding)}${LARK_APP_REGISTRATION_SETUP_PATH}?user_code=${encodeURIComponent(userCode)}&from=openclaw`,
+      qrCodeUrl: `${getLarkOpenBase(binding)}${LARK_APP_REGISTRATION_SETUP_PATH}?user_code=${encodeURIComponent(userCode)}&from=openclaw`,
       instanceId: binding.instanceId,
       displayName: binding.displayName,
     };
@@ -244,7 +158,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
 
   async checkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> {
     const binding = await this.getBinding(workspaceId, instanceId);
-    const data = await this.pollAppRegistration(binding, ticket);
+    const data = await pollAppRegistration(binding, ticket);
     const error = String(data.error || '').trim();
     if (error === 'authorization_pending' || error === 'slow_down') {
       return { status: 'wait' };
@@ -580,7 +494,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             this.options.store.clearPlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId);
           }
           if (event.type === 'buttons') {
-            const permissionCard = this.renderPermissionCard(turn, event, Boolean(state.cardActionsEnabled));
+            const permissionCard = renderPermissionCard(turn, event, Boolean(state.cardActionsEnabled));
             if (permissionCard.text || permissionCard.buttonRows.length > 0) {
               if (!turn.permissionMessageId) {
                 const createdId = await this.sendTextAsCard(
@@ -611,12 +525,12 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             return;
           }
           this.consumeBridgeEvent(turn, event);
-          const rendered = this.renderBridgeEventMessage(turn, event);
+          const rendered = renderLarkBridgeEventMessage(turn, event);
           if (!rendered.text && rendered.buttonRows.length === 0) {
             this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${event.type}`);
             return;
           }
-          const existingMessageId = this.getRenderedMessageId(turn, rendered);
+          const existingMessageId = getLarkRenderedMessageId(turn, rendered);
           const shouldThrottle =
             event.type === 'update_message' &&
             rendered.isFinal &&
@@ -631,7 +545,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           if (!existingMessageId) {
             const createdId = await this.sendTextAsCard(state, route.chatId, rendered.text, rendered.buttonRows, sessionKey, binding.thread_id);
             if (createdId) {
-              this.setRenderedMessageId(turn, rendered, createdId);
+              setLarkRenderedMessageId(turn, rendered, createdId);
               if (rendered.isFinal) {
                 this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
               }
@@ -722,7 +636,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         });
         this.notifyRuntimeStateChanged();
       }
-      await this.sendImmediateCard(input.workspaceId, input.chatId, this.renderPendingPairingCard(pairingCode), instanceId);
+      await this.sendImmediateCard(input.workspaceId, input.chatId, renderPendingPairingCard(pairingCode), instanceId);
       return { paired: false };
     }
     const router = this.options.getWorkspaceRouter();
@@ -1202,85 +1116,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
 
-  private getLarkAccountsBase(binding: LarkWorkspaceBinding) {
-    return binding.brand === 'lark' ? 'https://accounts.larksuite.com' : 'https://accounts.feishu.cn';
-  }
-
-  private getLarkOpenBase(binding: LarkWorkspaceBinding) {
-    return binding.brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
-  }
-
-  private async requestAppRegistration(binding: LarkWorkspaceBinding): Promise<Record<string, unknown>> {
-    return this.callAppRegistration(binding, {
-      action: 'begin',
-      archetype: 'PersonalAgent',
-      auth_method: 'client_secret',
-      request_user_info: 'open_id tenant_brand',
-    });
-  }
-
-  private async pollAppRegistration(binding: LarkWorkspaceBinding, deviceCode: string): Promise<Record<string, unknown>> {
-    return this.callAppRegistration(binding, {
-      action: 'poll',
-      device_code: deviceCode,
-    });
-  }
-
-  private async callAppRegistration(binding: LarkWorkspaceBinding, formValues: Record<string, string>): Promise<Record<string, unknown>> {
-    const form = new URLSearchParams();
-    for (const [key, value] of Object.entries(formValues)) {
-      form.set(key, value);
-    }
-    const response = await fetch(`${this.getLarkAccountsBase(binding)}${LARK_APP_REGISTRATION_PATH}`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: form.toString(),
-    });
-    const text = await response.text();
-    const parsed = text ? JSON.parse(text) as Record<string, unknown> : {};
-    if (!response.ok) {
-      throw new Error(`Lark app registration failed (${response.status}): ${String(parsed.error_description || parsed.error || text || response.statusText)}`);
-    }
-    return parsed;
-  }
-
   private collectBindings(config: DesktopConnectConfig | null | undefined): LarkWorkspaceBinding[] {
-    const projects = Array.isArray(config?.projects) ? config!.projects! : [];
-    return projects.flatMap((project) => {
-      const platforms = Array.isArray(project.platforms) ? project.platforms : [];
-      return platforms
-        .map((platform) => ({
-          platformType: normalizeDesktopPlatformType(platform?.type),
-          options: platform?.options && typeof platform.options === 'object'
-            ? platform.options as Record<string, unknown>
-            : {},
-        }))
-        .filter((platform) => platform.platformType === 'lark')
-        .map((platform, index) => {
-          const instanceId = normalizeChannelInstanceId(platform.options.instance_id || platform.options.id, index === 0 ? 'default' : `lark-${index + 1}`);
-          return {
-          workspaceId: project.name,
-          instanceId,
-          displayName: String(platform.options.name || platform.options.display_name || `Lark ${index + 1}`).trim(),
-          platformKey: channelPlatformKey('lark', instanceId),
-          appId: String(platform.options.app_id || '').trim(),
-          appSecret: String(platform.options.app_secret || '').trim(),
-          encryptKey: String(platform.options.encrypt_key || '').trim(),
-          verificationToken: String(platform.options.verification_token || '').trim(),
-          autoApprove: String(platform.options.auto_approve || '').trim().toLowerCase() === 'true'
-            || platform.options.auto_approve === true,
-          cardActionsEnabled: String(platform.options.card_actions || platform.options.enable_card_actions || '').trim().toLowerCase() === 'true'
-            || platform.options.card_actions === true
-            || platform.options.enable_card_actions === true
-            || this.defaultCardActionsEnabled,
-          brand: String(platform.options.brand || platform.options.lark_brand || '').trim().toLowerCase() === 'lark' ? 'lark' : 'feishu',
-          enabled: Boolean(String(platform.options.app_id || '').trim() && String(platform.options.app_secret || '').trim()),
-          project,
-        };
-        });
+    return collectLarkWorkspaceBindings(config, {
+      defaultCardActionsEnabled: this.defaultCardActionsEnabled,
     });
   }
 
@@ -1289,46 +1127,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       this.larkModulePromise = import('@larksuiteoapi/node-sdk');
     }
     return this.larkModulePromise;
-  }
-
-  private buildInteractiveCard(
-    text: string,
-    buttonRows: Array<Array<{ text: string; data: string }>> = [],
-    sessionKey?: string,
-    threadId?: string,
-  ) {
-    const elements: Array<Record<string, unknown>> = [];
-    if (text) {
-      elements.push({ tag: 'markdown', content: text });
-    }
-    for (const row of buttonRows) {
-      const actions = row
-        .filter((button) => button.text && button.data)
-        .map((button, index) => ({
-          tag: 'button',
-          text: {
-            tag: 'plain_text',
-            content: this.formatPermissionButtonLabel(button),
-          },
-          type: this.resolveLarkButtonType(button, index),
-          value: {
-            action: 'permission_response',
-            response: normalizePermissionResponse(button.data) || button.data,
-            session_key: sessionKey || '',
-            thread_id: threadId || '',
-          },
-        }));
-      if (actions.length) {
-        elements.push({
-          tag: 'action',
-          actions,
-        });
-      }
-    }
-    return {
-      config: { wide_screen_mode: true },
-      elements,
-    };
   }
 
   private async sendTextAsCard(
@@ -1346,7 +1144,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       data: {
         receive_id: chatId,
         msg_type: 'interactive',
-        content: JSON.stringify(this.buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
+        content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
       },
     });
     return String(response?.data?.message_id || '').trim();
@@ -1394,7 +1192,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         message_id: messageId,
       },
       data: {
-        content: JSON.stringify(this.buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
+        content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
       },
     });
   }
@@ -1436,21 +1234,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private createTurnState(sessionKey: string, sourceMessageId?: string) {
-    const turn: LarkTurnState = {
-      sessionKey,
-      sourceMessageId,
-      awaitingPermission: false,
-      processing: false,
-      previewText: '',
-      finalText: '',
-      progressMessageIds: {},
-      thinkingSteps: [],
-      toolCalls: [],
-      statusLines: [],
-      buttonRows: [],
-      lastPatchedAt: 0,
-      lastPatchedAtByMessageId: {},
-    };
+    const turn = createLarkTurnState(sessionKey, sourceMessageId);
     this.outboundTurns.set(sessionKey, turn);
     return turn;
   }
@@ -1473,195 +1257,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private consumeBridgeEvent(turn: LarkTurnState, event: DesktopBridgeEvent) {
-    const content = foldToolResultForLark(String(event.content || '').trim());
-    if (event.type === 'typing_start') {
-      // Always start a fresh card for each generation phase.
-      // This keeps Feishu message order aligned with user-visible timeline.
-      turn.messageId = undefined;
-      turn.finalMessageId = undefined;
-      turn.replyMessageId = undefined;
-      turn.progressMessageIds = {};
-      turn.processing = true;
-      turn.permissionMessageId = undefined;
-      turn.previewText = '';
-      turn.finalText = '';
-      turn.thinkingSteps = [];
-      turn.toolCalls = [];
-      turn.buttonRows = [];
-      turn.statusLines = [];
-      turn.lastPatchedAtByMessageId = {};
-      return;
-    }
-    if (event.type === 'typing_stop') {
-      turn.processing = false;
-      return;
-    }
-    if (event.type === 'preview_start' || event.type === 'update_message') {
-      turn.previewText = content;
-      return;
-    }
-    if (event.type === 'status') {
-      if (content) {
-        this.pushUnique(turn.statusLines, content);
-      }
-      return;
-    }
-    if (event.type === 'buttons') {
-      turn.awaitingPermission = true;
-      turn.buttonRows = [];
-      if (this.mirrorPermissionStateInMainCard && content) {
-        this.pushUnique(turn.statusLines, `等待确认: ${content}`);
-      }
-      return;
-    }
-    if (!content) {
-      return;
-    }
-    if (content.startsWith('💭 ')) {
-      this.pushUnique(turn.thinkingSteps, content.slice(3).trim());
-      return;
-    }
-    if (content.startsWith('🔧 ')) {
-      this.pushUnique(turn.toolCalls, content.slice(3).trim());
-      return;
-    }
-    if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {
-      this.pushUnique(turn.statusLines, content.slice(3).trim());
-      return;
-    }
-    turn.finalText = content;
-    turn.previewText = content;
-  }
-
-  private renderBridgeEventMessage(turn: LarkTurnState, event: DesktopBridgeEvent): LarkOutboundRender {
-    const content = foldToolResultForLark(String(event.content || '').trim());
-    if (event.type === 'preview_start' || event.type === 'update_message') {
-      if (content.startsWith('💭 ')) {
-        return this.renderProgressMessage(event.previewHandle || 'thinking-preview', content);
-      }
-      if (content.startsWith('🔧 ')) {
-        return this.renderProgressMessage(this.progressKey('tool', event), content);
-      }
-      return {
-        key: 'final',
-        text: content,
-        buttonRows: turn.buttonRows,
-        isFinal: true,
-        finalSource: 'stream',
-      };
-    }
-    if (event.type === 'status') {
-      return this.renderProgressMessage(this.progressKey('status', event), content.startsWith('⏳ ') ? content : `⏳ ${content}`);
-    }
-    if (event.type === 'reply') {
-      if (content.startsWith('💭 ')) {
-        return this.renderProgressMessage(this.progressKey('thinking', event), content);
-      }
-      if (content.startsWith('🔧 ')) {
-        return this.renderProgressMessage(this.progressKey('tool', event), content);
-      }
-      if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {
-        return this.renderProgressMessage(this.progressKey('status', event), content);
-      }
-      return {
-        key: 'final',
-        text: content,
-        buttonRows: turn.buttonRows,
-        isFinal: true,
-        finalSource: 'reply',
-      };
-    }
-    if (event.type === 'typing_start' || event.type === 'typing_stop') {
-      return { key: 'noop', text: '', buttonRows: [], isFinal: false };
-    }
-    return {
-      key: 'noop',
-      text: '',
-      buttonRows: [],
-      isFinal: false,
-    };
-  }
-
-  private renderProgressMessage(key: string, text: string): LarkOutboundRender {
-    return {
-      key,
-      text,
-      buttonRows: [],
-      isFinal: false,
-    };
-  }
-
-  private progressKey(prefix: string, event: DesktopBridgeEvent) {
-    const stableId = String(event.messageId || event.previewHandle || '').trim();
-    if (stableId) {
-      return `${prefix}:${stableId}`;
-    }
-    const content = String(event.content || '').trim().replace(/\s+/g, ' ');
-    return `${prefix}:${content.slice(0, 120)}`;
-  }
-
-  private getRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender) {
-    if (rendered.isFinal) {
-      if (rendered.finalSource === 'reply') {
-        return turn.replyMessageId;
-      }
-      return turn.finalMessageId || turn.messageId;
-    }
-    return turn.progressMessageIds[rendered.key];
-  }
-
-  private setRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender, messageId: string) {
-    if (rendered.isFinal) {
-      if (rendered.finalSource === 'reply') {
-        turn.replyMessageId = messageId;
-        return;
-      }
-      turn.finalMessageId = messageId;
-      turn.messageId = messageId;
-      return;
-    }
-    turn.progressMessageIds[rendered.key] = messageId;
-  }
-
-  private renderPermissionCard(turn: LarkTurnState, event: DesktopBridgeEvent, cardActionsEnabled: boolean) {
-    const summary = this.buildPermissionSummary(turn, String(event.content || '').trim());
-    const sections = [
-      '**需要工具确认**',
-      summary.command ? `\`${summary.command}\`` : '',
-      summary.reason || '',
-      cardActionsEnabled
-        ? '也可以直接回复：`allow` / `allow all` / `deny`'
-        : '请直接回复：`allow` / `allow all` / `deny`',
-    ].filter(Boolean);
-    const buttonRows = cardActionsEnabled && Array.isArray(event.buttonRows)
-      ? event.buttonRows
-          .map((row) =>
-            Array.isArray(row)
-              ? row
-                  .filter((button): button is { text: string; data: string } => Boolean(button?.text && button?.data))
-                  .map((button) => ({
-                    text: this.formatPermissionButtonLabel(button),
-                    data: normalizePermissionResponse(button.data) || button.data,
-                  }))
-              : [])
-          .filter((row) => row.length > 0)
-      : [];
-    return {
-      text: sections.join('\n\n').trim(),
-      buttonRows,
-    };
-  }
-
-  private renderPendingPairingCard(code: string) {
-    const lines = [
-      '**已收到消息**',
-      '当前账号还未授权接入这个工作区。',
-      '请在桌面端完成审批后再次发送消息。',
-    ];
-    if (code) {
-      lines.push(`配对码：\`${code}\``);
-    }
-    return lines.join('\n\n');
+    consumeLarkBridgeEvent(turn, event, {
+      mirrorPermissionStateInMainCard: this.mirrorPermissionStateInMainCard,
+    });
   }
 
   private async handleCardActionEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
@@ -1669,22 +1267,14 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const instanceId = legacyCall ? 'default' : instanceIdOrData;
     const data = (legacyCall ? instanceIdOrData : maybeData) || {};
     try {
-      const payload = ((data as any)?.event && typeof (data as any).event === 'object')
-        ? (data as any).event
-        : data;
-      const value = payload?.action?.value;
-      if (!value || value.action !== 'permission_response') {
-        return;
-      }
-      const response = normalizePermissionResponse(String(value.response || '').trim()) || String(value.response || '').trim();
-      const threadId = String(value.thread_id || '').trim();
-      if (!response || !threadId) {
+      const action = extractCardActionValue(data);
+      if (!action) {
         return;
       }
       const router = this.options.getWorkspaceRouter();
-      await this.markPermissionCardActionHandled(workspaceId, instanceId, data, payload, value, response, threadId);
-      await router.sendThreadAction(threadId, response);
-      this.options.log?.(`localcore-lark processed card action for ${workspaceId}/${instanceId}: ${response}`);
+      await this.markPermissionCardActionHandled(workspaceId, instanceId, data, action.event, action.value, action.response, action.threadId);
+      await router.sendThreadAction(action.threadId, action.response);
+      this.options.log?.(`localcore-lark processed card action for ${workspaceId}/${instanceId}: ${action.response}`);
     } catch (error) {
       this.options.log?.(`localcore-lark card action failed for ${workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1705,7 +1295,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
     const sessionKey = String(value.session_key || '').trim();
     const turn = sessionKey ? this.outboundTurns.get(sessionKey) : undefined;
-    const messageId = this.extractCardActionMessageId(rootPayload, payload, value) || turn?.permissionMessageId;
+    const messageId = extractCardActionMessageId(rootPayload, payload, value) || turn?.permissionMessageId;
     if (!messageId) {
       this.options.log?.(`localcore-lark could not find permission card message id for workspace=${workspaceId} sessionKey=${sessionKey || 'missing'}`);
       return;
@@ -1716,7 +1306,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         messageId,
         [
           '**工具确认已处理**',
-          `已选择：${this.formatPermissionResponseLabel(response)}`,
+          `已选择：${formatPermissionResponseLabel(response)}`,
           '等待代理继续执行...',
         ].join('\n\n'),
         [],
@@ -1730,138 +1320,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     } catch (error) {
       this.options.log?.(`localcore-lark failed to patch handled permission card ${messageId}: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  private extractCardActionMessageId(...payloads: Array<Record<string, unknown> | undefined>) {
-    for (const payload of payloads) {
-      const messageId = this.extractKnownCardActionMessageId(payload);
-      if (messageId) {
-        return messageId;
-      }
-    }
-    for (const payload of payloads) {
-      const messageId = this.findNestedCardActionMessageId(payload);
-      if (messageId) {
-        return messageId;
-      }
-    }
-    return '';
-  }
-
-  private extractKnownCardActionMessageId(payload: Record<string, unknown> | undefined) {
-    const source = payload as any;
-    if (!source || typeof source !== 'object') {
-      return '';
-    }
-    const candidates = [
-      source?.permission_message_id,
-      source?.action_message_id,
-      source?.context?.open_message_id,
-      source?.context?.message_id,
-      source?.event?.context?.open_message_id,
-      source?.event?.context?.message_id,
-      source?.event_context?.open_message_id,
-      source?.event_context?.message_id,
-      source?.message?.message_id,
-      source?.message?.open_message_id,
-      source?.event?.message?.message_id,
-      source?.event?.message?.open_message_id,
-      source?.message_id,
-      source?.open_message_id,
-    ];
-    return candidates
-      .map((candidate) => String(candidate || '').trim())
-      .find(Boolean) || '';
-  }
-
-  private findNestedCardActionMessageId(payload: unknown, seen = new Set<unknown>()): string {
-    if (!payload || typeof payload !== 'object' || seen.has(payload)) {
-      return '';
-    }
-    seen.add(payload);
-    if (Array.isArray(payload)) {
-      for (const item of payload) {
-        const nested = this.findNestedCardActionMessageId(item, seen);
-        if (nested) return nested;
-      }
-      return '';
-    }
-    const source = payload as Record<string, unknown>;
-    for (const key of ['open_message_id', 'message_id', 'permission_message_id', 'action_message_id']) {
-      const value = source[key];
-      if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-      }
-    }
-    for (const value of Object.values(source)) {
-      const nested = this.findNestedCardActionMessageId(value, seen);
-      if (nested) return nested;
-    }
-    return '';
-  }
-
-  private pushUnique(target: string[], value: string) {
-    const normalized = value.trim();
-    if (!normalized) {
-      return;
-    }
-    if (target[target.length - 1] === normalized) {
-      return;
-    }
-    target.push(normalized);
-    if (target.length > 6) {
-      target.splice(0, target.length - 6);
-    }
-  }
-
-  private formatPermissionButtonLabel(button: { text: string; data: string }) {
-    return this.formatPermissionResponseLabel(button.data || button.text);
-  }
-
-  private formatPermissionResponseLabel(response: string) {
-    switch (normalizePermissionResponse(response) || response) {
-      case 'allow':
-        return '允许一次';
-      case 'allow all':
-        return '始终允许';
-      case 'deny':
-        return '拒绝';
-      default:
-        return response;
-    }
-  }
-
-  private resolveLarkButtonType(button: { text: string; data: string }, index: number) {
-    const response = normalizePermissionResponse(button.data) || normalizePermissionResponse(button.text);
-    if (response === 'deny') {
-      return 'danger';
-    }
-    if (response === 'allow') {
-      return 'primary';
-    }
-    return index === 0 ? 'primary' : 'default';
-  }
-
-  private buildPermissionSummary(turn: LarkTurnState, rawContent: string) {
-    const lastTool = turn.toolCalls[turn.toolCalls.length - 1] || '';
-    const [commandPart = '', reasonPart = ''] = lastTool.split(/\s+-\s+/, 2);
-    const compactContent = rawContent
-      .replace(/\s+/g, ' ')
-      .replace(/请选择一个选项继续执行。?/g, '')
-      .replace(/若按钮没有显示，请直接回复：?\s*allow all \/ allow \/ deny/gi, '')
-      .replace(/等待工具确认/gi, '')
-      .trim();
-    return {
-      command: commandPart.trim(),
-      reason: reasonPart.trim() || compactContent,
-    };
-  }
-
-  private formatCompactToolLines(toolCalls: string[]) {
-    return toolCalls.slice(-2).map((line) => {
-      const compact = line.replace(/\s+/g, ' ').trim();
-      return compact.startsWith('Terminal') ? '• Terminal' : `• ${compact}`;
-    });
   }
 
   private async sendImmediateCard(workspaceId: string, chatId: string, text: string, instanceId?: string) {
