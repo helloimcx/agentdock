@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../packages/contracts/src/index.js';
 import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
@@ -40,10 +40,13 @@ export function isLocalCoreNativeAcpProject(project?: DesktopProjectConfig | nul
     || agentType === LOCALCORE_ACP_AGENT_TYPE;
 }
 
-function resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {
+function resolveAgentModel(project: DesktopProjectConfig, providers: DesktopProviderConfig[]) {
   const agentType = String(project.agent?.type || '').trim().toLowerCase();
   const rawModel = String(project.agent?.options?.model || '').trim();
   const normalizedModel = normalizeDesktopAgentModel(agentType, rawModel);
+  if (agentType === 'pi') {
+    return rawModel || getFirstProviderModelId(providers);
+  }
   if (agentType !== 'opencode') {
     return normalizedModel;
   }
@@ -55,6 +58,16 @@ function resolveOpencodeModel(project: DesktopProjectConfig, providers: DesktopP
     return configuredProviderModel;
   }
   return normalizedModel;
+}
+
+function getFirstProviderModelId(providers: DesktopProviderConfig[]) {
+  for (const provider of providers) {
+    const modelId = getProviderDefaultModelId(provider);
+    if (modelId) {
+      return modelId;
+    }
+  }
+  return '';
 }
 
 function getFirstProviderModelRef(providers: DesktopProviderConfig[]) {
@@ -172,6 +185,111 @@ function collectPiProviderEnv(providers: DesktopProviderConfig[]) {
     }
   }
   return env;
+}
+
+function resolvePiProviderModel(providers: DesktopProviderConfig[], model: string) {
+  const [explicitProvider, explicitModel] = splitProviderModelRef(model);
+  if (explicitProvider && explicitModel) {
+    return {
+      providerId: normalizePiProviderId(explicitProvider),
+      modelId: explicitModel,
+    };
+  }
+  for (const provider of providers) {
+    const providerId = normalizePiProviderId(provider.name);
+    const modelId = getProviderDefaultModelId(provider);
+    if (providerId && modelId && (!model || model === modelId)) {
+      return { providerId, modelId };
+    }
+  }
+  const fallbackProvider = providers.find((provider) => normalizePiProviderId(provider.name));
+  return {
+    providerId: normalizePiProviderId(fallbackProvider?.name),
+    modelId: model,
+  };
+}
+
+function splitProviderModelRef(value: string) {
+  const trimmed = value.trim();
+  const slashIndex = trimmed.indexOf('/');
+  if (slashIndex <= 0 || slashIndex >= trimmed.length - 1) {
+    return ['', trimmed] as const;
+  }
+  return [trimmed.slice(0, slashIndex), trimmed.slice(slashIndex + 1)] as const;
+}
+
+function normalizePiProviderId(providerName?: string | null) {
+  const providerId = normalizeProviderId(providerName);
+  const aliases: Record<string, string> = {
+    google: 'google',
+    gemini: 'google',
+    kimi: 'kimi-coding',
+    moonshot: 'moonshotai',
+    zhipuai: 'zai',
+  };
+  return aliases[providerId] || providerId;
+}
+
+function piProviderAgentDir(configState: ConfigFileState, projectName: string) {
+  const configDir = dirname(configState.path);
+  const safeProjectName = String(projectName || 'workspace')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'workspace';
+  return resolve(configDir, '.pi-agent', safeProjectName);
+}
+
+function writeJsonFile(path: string, value: unknown, mode = 0o600) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode });
+  chmodSync(path, mode);
+}
+
+function writePiProviderRuntimeConfig(configState: ConfigFileState, project: DesktopProjectConfig, providers: DesktopProviderConfig[], model: string): Record<string, string> {
+  if (providers.length === 0) {
+    return {};
+  }
+  const { providerId, modelId } = resolvePiProviderModel(providers, model);
+  const agentDir = piProviderAgentDir(configState, project.name);
+  mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+  chmodSync(agentDir, 0o700);
+
+  const auth: Record<string, { type: 'api_key'; key: string }> = {};
+  const modelProviders: Record<string, {
+    name?: string;
+    baseUrl?: string;
+    apiKey?: string;
+  }> = {};
+
+  for (const provider of providers) {
+    const id = normalizePiProviderId(provider.name);
+    if (!id) {
+      continue;
+    }
+    const apiKey = String(provider.api_key || '').trim();
+    const baseUrl = String(provider.base_url || '').trim();
+    if (apiKey) {
+      auth[id] = { type: 'api_key', key: apiKey };
+    }
+    if (baseUrl || apiKey) {
+      modelProviders[id] = {
+        name: String(provider.name || id).trim() || id,
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(apiKey ? { apiKey } : {}),
+      };
+    }
+  }
+
+  writeJsonFile(resolve(agentDir, 'auth.json'), auth);
+  writeJsonFile(resolve(agentDir, 'models.json'), { providers: modelProviders });
+  writeJsonFile(resolve(agentDir, 'settings.json'), {
+    ...(providerId ? { defaultProvider: providerId } : {}),
+    ...(modelId ? { defaultModel: modelId } : {}),
+    quietStartup: true,
+  }, 0o644);
+
+  return {
+    PI_CODING_AGENT_DIR: agentDir,
+  };
 }
 
 function normalizeOpencodeProviderId(value?: string | null) {
@@ -317,7 +435,7 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
     : {};
   const agentType = String(project.agent?.type || '').trim().toLowerCase();
   const providers = Array.isArray(project.agent?.providers) ? project.agent.providers : [];
-  const model = resolveOpencodeModel(project, providers);
+  const model = resolveAgentModel(project, providers);
   const providerEnv = collectProviderEnv(providers);
   const piProviderEnv = agentType === 'pi'
     ? collectPiProviderEnv(providers)
@@ -342,9 +460,13 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
   const bundledPiCommand = agentType === 'pi'
     ? resolveBundledPiCommand()
     : '';
+  const piProviderRuntimeEnv = agentType === 'pi'
+    ? writePiProviderRuntimeConfig(configState, project, providers, model)
+    : {};
   const inferredPiEnv: Record<string, string> = agentType === 'pi'
     ? {
         ...piProviderEnv,
+        ...piProviderRuntimeEnv,
         PI_ACP_PI_COMMAND: bundledPiCommand,
       }
     : {};

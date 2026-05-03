@@ -301,6 +301,7 @@ OPENAI_API_KEY = "override-openai-key"
     assert.match(route?.config.args[0] || '', /pi-acp[/\\]dist[/\\]index\.js$/);
     assert.match(route?.config.env.PI_ACP_PI_COMMAND || '', /@mariozechner[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/);
     assert.equal(route?.config.env.OPENAI_API_KEY, 'override-openai-key');
+    assert.match(route?.config.env.PI_CODING_AGENT_DIR || '', /[\\/]\.pi-agent[\\/]pi-workspace$/);
     assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), [
       {
         id: 'pi-workspace',
@@ -311,6 +312,59 @@ OPENAI_API_KEY = "override-openai-key"
         heartbeatEnabled: false,
       },
     ]);
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('pi agent runtime writes provider auth and default model into Pi config dir', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    await runtime.state.saveRawConfigFile(`
+[[projects]]
+name = "deepseek-workspace"
+
+[projects.agent]
+type = "pi"
+
+[[projects.agent.providers]]
+name = "DeepSeek"
+api_key = "test-deepseek-key"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-flash"
+`);
+    const configState = await runtime.state.readConfigFile();
+    const project = configState.parsed?.projects?.find((entry) => entry.name === 'deepseek-workspace');
+    const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
+    const route = project ? piRuntime?.createRoute(configState, project) : null;
+    const piAgentDir = route?.config.env.PI_CODING_AGENT_DIR || '';
+
+    assert.equal(route?.config.model, 'deepseek-v4-flash');
+    assert.equal(route?.config.env.DEEPSEEK_API_KEY, 'test-deepseek-key');
+    assert.match(piAgentDir, /[\\/]\.pi-agent[\\/]deepseek-workspace$/);
+    assert.deepEqual(JSON.parse(readFileSync(join(piAgentDir, 'auth.json'), 'utf8')), {
+      deepseek: { type: 'api_key', key: 'test-deepseek-key' },
+    });
+    assert.deepEqual(JSON.parse(readFileSync(join(piAgentDir, 'settings.json'), 'utf8')), {
+      defaultProvider: 'deepseek',
+      defaultModel: 'deepseek-v4-flash',
+      quietStartup: true,
+    });
+    assert.deepEqual(JSON.parse(readFileSync(join(piAgentDir, 'models.json'), 'utf8')), {
+      providers: {
+        deepseek: {
+          name: 'DeepSeek',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'test-deepseek-key',
+        },
+      },
+    });
 
     await runtime.stop();
   } finally {
