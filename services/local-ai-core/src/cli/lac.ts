@@ -17,6 +17,7 @@ type StdIo = {
 type CliContext = {
   baseUrl: string;
   workspaceId: string;
+  workspacePath: string;
   threadId: string;
   platform: string;
   routeType: string;
@@ -109,6 +110,7 @@ async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.P
         type: 'file',
         path: filePath,
         fileName: getFlag(flags, 'name') || undefined,
+        metadata: context.workspacePath ? { workspacePath: context.workspacePath } : undefined,
       }],
     },
   );
@@ -268,6 +270,7 @@ function resolveContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv): C
   return {
     baseUrl: getFlag(flags, 'base-url') || String(env.LOCAL_AI_CORE_BASE || DEFAULT_BASE_URL),
     workspaceId: getFlag(flags, 'workspace') || String(env.LOCAL_AI_WORKSPACE_ID || ''),
+    workspacePath: getFlag(flags, 'workspace-path') || String(env.LOCAL_AI_WORKSPACE_PATH || ''),
     threadId: normalizeMaybeBooleanFlag(getFlag(flags, 'thread')) || String(env.LOCAL_AI_THREAD_ID || ''),
     platform,
     routeType: String(env.LOCAL_AI_ROUTE_TYPE || '') || (platform === 'lark' && chatId && platformUserId ? 'channel.chat' : ''),
@@ -352,7 +355,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler del <job-id> [--json]',
     '  lac scheduler run <job-id> [--json]',
-    '  lac channel send-file --path "<file>" [--target <chat-or-user-id>] [--workspace <id>] [--platform lark] [--name <filename>] [--json]',
+    '  lac channel send-file --path "<file>" [--target <chat-or-user-id>] [--workspace <id>] [--workspace-path <path>] [--platform lark] [--name <filename>] [--json]',
   ].join('\n') + '\n');
 }
 

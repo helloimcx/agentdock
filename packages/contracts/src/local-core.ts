@@ -527,6 +527,7 @@ export interface ChannelFileSendInput {
   channelId: string;
   participantId?: string;
   fileName?: string;
+  workspacePath?: string;
 }
 
 export interface ChannelFileSendResult {

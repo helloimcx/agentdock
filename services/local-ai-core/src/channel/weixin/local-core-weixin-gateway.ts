@@ -1052,6 +1052,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     const file = await prepareChannelFile({
       path: part.path,
       fileName: part.fileName,
+      workspacePath: typeof part.metadata?.workspacePath === 'string' ? part.metadata.workspacePath : undefined,
       maxBytes: WEIXIN_MAX_UPLOAD_FILE_SIZE,
       platformLabel: 'WeChat',
     });

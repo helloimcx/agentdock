@@ -271,6 +271,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const file = await prepareChannelFile({
       path: part.path,
       fileName: part.fileName,
+      workspacePath: typeof part.metadata?.workspacePath === 'string' ? part.metadata.workspacePath : undefined,
       maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
       platformLabel: 'Lark',
     });

@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
 
 export type PreparedChannelFile = {
   path: string;
@@ -10,10 +10,11 @@ export type PreparedChannelFile = {
 export async function prepareChannelFile(input: {
   path: string;
   fileName?: string;
+  workspacePath?: string;
   maxBytes?: number;
   platformLabel: string;
 }): Promise<PreparedChannelFile> {
-  const filePath = String(input.path || '').trim();
+  const filePath = resolveChannelFilePath(input.path, input.workspacePath);
   if (!filePath) {
     throw new Error('Missing file path');
   }
@@ -34,6 +35,18 @@ export async function prepareChannelFile(input: {
     fileName: sanitizeChannelFileName(input.fileName || basename(filePath)),
     fileSize: fileStat.size,
   };
+}
+
+export function resolveChannelFilePath(filePath: string, workspacePath?: string) {
+  const normalized = String(filePath || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  if (isAbsolute(normalized)) {
+    return normalized;
+  }
+  const workspaceRoot = String(workspacePath || '').trim();
+  return workspaceRoot ? resolve(workspaceRoot, normalized) : normalized;
 }
 
 export function sanitizeChannelFileName(fileName: string) {

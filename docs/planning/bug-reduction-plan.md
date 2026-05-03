@@ -43,7 +43,7 @@ Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer stat
   - [x] Shared channel thread message helper keeps text wrapping and non-text attachments consistent across Lark and Weixin.
   - [x] Weixin downloaded image and file attachments become structured inbound content parts.
   - [x] Lark file messages become structured inbound file content parts.
-- [ ] File return supports current workspace paths and allowed absolute paths through one outbound content path.
+- [x] File return supports current workspace paths and allowed absolute paths through one outbound content path.
 - [x] Scheduler commands resolve short job ids, thread scope, execution mode, and side-thread behavior consistently.
 - [x] Production build contains renderer assets.
 - [x] Packaged app can open without blank page.

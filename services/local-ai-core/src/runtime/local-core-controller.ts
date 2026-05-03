@@ -509,6 +509,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
           type: 'file',
           path: input.path,
           fileName: input.fileName,
+          metadata: input.workspacePath ? { workspacePath: input.workspacePath } : undefined,
         }],
       });
       const attachment = result.attachments?.[0];

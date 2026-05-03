@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpSessionCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
 import { SchedulerService } from '../services/local-ai-core/src/scheduler/scheduler-service.js';
 
 test('workspace registry entries persist in LocalCoreAcpStore', () => {
@@ -27,6 +28,64 @@ test('workspace registry entries persist in LocalCoreAcpStore', () => {
     assert.equal(workspace?.defaultRuntimeId, 'opencode');
     assert.equal(workspace?.health.status, 'healthy');
     nextStore.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP runtime env includes the current workspace path for file returns', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-env-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    store.upsertWorkspaceRegistryEntry({
+      workspaceId: 'workspace-a',
+      displayName: 'Workspace A',
+      path: '/tmp/workspace-a',
+      deviceId: 'local',
+      defaultRuntimeId: 'opencode',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+    const thread = store.createThread('workspace-a', 'Thread');
+    let capturedRuntimeEnv: Record<string, string> | undefined;
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          capturedRuntimeEnv = input.runtimeEnv;
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+          };
+        },
+        initializeSession: async () => {},
+        request: async () => ({ sessionId: 'session-1' }),
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: () => true,
+      } as any,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+    });
+
+    await coordinator.ensureSession(thread.id, 'session:thread-1', {
+      workspaceId: 'workspace-a',
+      agentType: 'opencode',
+      command: 'opencode',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    });
+
+    assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_ID, 'workspace-a');
+    assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_PATH, '/tmp/workspace-a');
+    store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }

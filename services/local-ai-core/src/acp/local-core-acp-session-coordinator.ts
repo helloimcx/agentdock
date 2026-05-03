@@ -168,6 +168,10 @@ export class LocalCoreAcpSessionCoordinator {
       LOCAL_AI_WORKSPACE_ID: row.workspace_id,
       LOCAL_AI_THREAD_ID: threadId,
     };
+    const workspace = this.options.store.getWorkspaceRegistryEntry(row.workspace_id);
+    if (workspace?.path) {
+      env.LOCAL_AI_WORKSPACE_PATH = workspace.path;
+    }
     if (binding) {
       env.LOCAL_AI_PLATFORM = binding.platform;
       env.LOCAL_AI_ROUTE_TYPE = 'lark_chat';
