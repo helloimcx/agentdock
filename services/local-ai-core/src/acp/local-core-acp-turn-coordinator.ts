@@ -1,6 +1,7 @@
 import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
 import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.js';
 import {
+  extractToolCallKey,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
@@ -8,9 +9,16 @@ import {
   isTerminalToolStatus,
   resolveToolUpdateDisplayTitle,
 } from './local-core-acp-progress.js';
-import { createPermissionPrompt, parsePermissionOptions } from './local-core-acp-permission-lifecycle.js';
+import {
+  createPermissionApprovalInput,
+  createPermissionPrompt,
+  createRunningPermissionRequest,
+  isSchedulerAddCommand,
+  parsePermissionOptions,
+  type PermissionApprovalInput,
+} from './local-core-acp-permission-lifecycle.js';
 import { formatToolCallContent, toPermissionButtonRows } from './workspace-acp-permissions.js';
-import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
+import type { AcpSessionState } from '../router/workspace-router-types.js';
 
 type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
 
@@ -19,14 +27,7 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress') => void;
   upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress') => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
-  createApprovalRequest?: (input: {
-    threadId: string;
-    runId: string;
-    title: string;
-    description: string;
-    command?: string;
-    options: RunningPermissionRequest['options'];
-  }) => string | undefined;
+  createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
 };
 
@@ -131,23 +132,18 @@ export class LocalCoreAcpTurnCoordinator {
       return;
     }
     const buttonRows = toPermissionButtonRows(options, normalizeDesktopBridgeButtonOption);
-    const permissionRequest: RunningPermissionRequest = {
-      requestId: payload.id,
-      toolTitle,
-      isSchedulerAdd,
-      options,
-    };
-    const approvalId = this.options.createApprovalRequest?.({
+    const approvalId = this.options.createApprovalRequest?.(createPermissionApprovalInput({
       threadId: session.threadId,
       runId: currentRunId,
-      title: toolTitle ? `Approve ${toolTitle}` : 'Approve agent action',
-      description: toolTitle || 'Agent requested permission before continuing.',
-      command: toolTitle,
+      toolTitle,
       options,
+    }));
+    const permissionRequest = createRunningPermissionRequest({
+      requestId: payload.id,
+      toolTitle,
+      options,
+      approvalId,
     });
-    if (approvalId) {
-      permissionRequest.approvalId = approvalId;
-    }
     session.pendingPermissionByRun.set(currentRunId, permissionRequest);
     if (session.currentTurn) {
       session.currentTurn.permission = permissionRequest;
@@ -247,7 +243,7 @@ export class LocalCoreAcpTurnCoordinator {
         const title = String(update.title || 'Running tool').trim();
         const nextSequence = (currentTurn.toolCallSequence || 0) + 1;
         currentTurn.toolCallSequence = nextSequence;
-        const key = this.extractToolCallKey(update) || `sequence:${nextSequence}`;
+        const key = extractToolCallKey(update) || `sequence:${nextSequence}`;
         const toolCall = {
           key,
           title,
@@ -348,21 +344,8 @@ export class LocalCoreAcpTurnCoordinator {
     });
   }
 
-  private extractToolCallKey(update: Record<string, unknown>) {
-    for (const key of ['toolCallId', 'tool_call_id', 'callId', 'call_id', 'invocationId', 'invocation_id', 'id']) {
-      const value = update[key];
-      if (typeof value === 'string' || typeof value === 'number') {
-        const normalized = String(value).trim();
-        if (normalized) {
-          return normalized;
-        }
-      }
-    }
-    return '';
-  }
-
   private resolveToolCallForUpdate(currentTurn: NonNullable<AcpSessionState['currentTurn']>, update: Record<string, unknown>) {
-    const explicitKey = this.extractToolCallKey(update);
+    const explicitKey = extractToolCallKey(update);
     if (explicitKey && currentTurn.pendingToolCalls?.[explicitKey]) {
       currentTurn.activeToolCallKey = explicitKey;
       return currentTurn.pendingToolCalls[explicitKey];
@@ -405,8 +388,4 @@ export class LocalCoreAcpTurnCoordinator {
     currentTurn.pendingToolCallDetail = toolCall?.detail;
     currentTurn.activeToolCallKey = toolCall?.key;
   }
-}
-
-function isSchedulerAddCommand(value: unknown) {
-  return /\blac\s+scheduler\s+add\b/.test(String(value || ''));
 }

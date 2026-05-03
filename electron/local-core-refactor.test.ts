@@ -14,6 +14,7 @@ import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 import {
+  extractToolCallKey,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
@@ -21,7 +22,10 @@ import {
   resolveToolUpdateDisplayTitle,
 } from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
 import {
+  createPermissionApprovalInput,
   createPermissionPrompt,
+  createRunningPermissionRequest,
+  isSchedulerAddCommand,
   parsePermissionOptions,
 } from '../services/local-ai-core/src/acp/local-core-acp-permission-lifecycle.js';
 import { normalizePermissionAction, normalizePermissionOptionAction } from '../services/local-ai-core/src/acp/workspace-acp-permissions.js';
@@ -316,11 +320,12 @@ test('ACP permission normalization preserves always-allow option semantics', () 
 });
 
 test('ACP permission lifecycle parses actionable options and fallback prompt content', () => {
-  assert.deepEqual(parsePermissionOptions([
+  const options = parsePermissionOptions([
     { optionId: 'approve-once', name: 'Allow once', kind: 'allow' },
     { optionId: 'approve-always', name: 'Always allow', kind: 'allow' },
     { optionId: '', name: 'missing id', kind: 'reject' },
-  ]), [
+  ]);
+  assert.deepEqual(options, [
     {
       optionId: 'approve-once',
       name: 'Allow once',
@@ -334,11 +339,40 @@ test('ACP permission lifecycle parses actionable options and fallback prompt con
       normalizedAction: 'allow all',
     },
   ]);
+  assert.deepEqual(createRunningPermissionRequest({
+    requestId: 42,
+    toolTitle: 'Terminal: lac scheduler add --cron "* * * * *"',
+    options,
+    approvalId: 'approval-1',
+  }), {
+    requestId: 42,
+    approvalId: 'approval-1',
+    toolTitle: 'Terminal: lac scheduler add --cron "* * * * *"',
+    isSchedulerAdd: true,
+    options,
+  });
+  assert.deepEqual(createPermissionApprovalInput({
+    threadId: 'thread-1',
+    runId: 'run-1',
+    toolTitle: 'Terminal: npm test',
+    options,
+  }), {
+    threadId: 'thread-1',
+    runId: 'run-1',
+    title: 'Approve Terminal: npm test',
+    description: 'Terminal: npm test',
+    command: 'Terminal: npm test',
+    options,
+  });
+  assert.equal(isSchedulerAddCommand('Terminal: lac scheduler add --cron "* * * * *"'), true);
   assert.match(createPermissionPrompt('Terminal: npm test'), /Terminal: npm test/);
   assert.match(createPermissionPrompt('Terminal: npm test'), /allow all \/ allow \/ deny/);
 });
 
 test('ACP progress projection extracts tool output and formats durable progress content', () => {
+  assert.equal(extractToolCallKey({ tool_call_id: ' call-a ' }), 'call-a');
+  assert.equal(extractToolCallKey({ invocationId: 42 }), '42');
+  assert.equal(extractToolCallKey({ id: '   ' }), '');
   assert.equal(extractToolUpdateContent([
     { type: 'content', content: { type: 'text', text: 'first line' } },
     { type: 'content', content: { type: 'image', text: 'ignored' } },

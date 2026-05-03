@@ -56,3 +56,16 @@ export function formatPlanProgress(entries: unknown[]) {
     .join(' | ');
   return summary ? `💭 ${summary}` : '';
 }
+
+export function extractToolCallKey(update: Record<string, unknown>) {
+  for (const key of ['toolCallId', 'tool_call_id', 'callId', 'call_id', 'invocationId', 'invocation_id', 'id']) {
+    const value = update[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      const normalized = String(value).trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+  return '';
+}
