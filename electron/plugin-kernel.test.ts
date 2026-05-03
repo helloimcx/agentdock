@@ -176,6 +176,7 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
       'qoder',
       'iflow',
       'localcore-acp',
+      'pi',
       'opencode',
       'codex',
       'claudecode',
@@ -211,6 +212,7 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       'qoder',
       'iflow',
       'localcore-acp',
+      'pi',
       'opencode',
       'codex',
       'claudecode',
@@ -256,6 +258,54 @@ type = "codex"
         id: 'codex-workspace',
         name: 'codex-workspace',
         agentType: 'codex',
+        platforms: [],
+        sessionsCount: 0,
+        heartbeatEnabled: false,
+      },
+    ]);
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('pi agent runtime routes projects through bundled pi ACP and coding agent', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    await runtime.state.saveRawConfigFile(`
+[[projects]]
+name = "pi-workspace"
+
+[projects.agent]
+type = "pi"
+
+[[projects.agent.providers]]
+name = "openai"
+api_key = "test-openai-key"
+
+[projects.agent.options.env]
+OPENAI_API_KEY = "override-openai-key"
+`);
+    const configState = await runtime.state.readConfigFile();
+    const project = configState.parsed?.projects?.find((entry) => entry.name === 'pi-workspace');
+    const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
+    const route = project ? piRuntime?.createRoute(configState, project) : null;
+
+    assert.equal(route?.agentType, 'pi');
+    assert.equal(route?.config.command, process.execPath);
+    assert.match(route?.config.args[0] || '', /pi-acp[/\\]dist[/\\]index\.js$/);
+    assert.match(route?.config.env.PI_ACP_PI_COMMAND || '', /@mariozechner[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/);
+    assert.equal(route?.config.env.OPENAI_API_KEY, 'override-openai-key');
+    assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), [
+      {
+        id: 'pi-workspace',
+        name: 'pi-workspace',
+        agentType: 'pi',
         platforms: [],
         sessionsCount: 0,
         heartbeatEnabled: false,
@@ -667,6 +717,7 @@ test('agent runtime selection is registry-based and disabled runtimes do not rou
           defaultCollection: 'personal_knowledge',
         },
         plugins: {
+          'builtin.agent-pi': { enabled: false },
           'builtin.agent-claudecode': { enabled: false },
         },
       }),
@@ -681,6 +732,12 @@ name = "claude-workspace"
 
 [projects.agent]
 type = "claudecode"
+
+[[projects]]
+name = "pi-workspace"
+
+[projects.agent]
+type = "pi"
 `);
 
     assert.deepEqual(
@@ -689,6 +746,10 @@ type = "claudecode"
     );
     assert.equal(
       runtime.kernel.getCapabilitySnapshot().snapshot.agents.some((capability) => capability.agentType === 'claudecode'),
+      false,
+    );
+    assert.equal(
+      runtime.kernel.getCapabilitySnapshot().snapshot.agents.some((capability) => capability.agentType === 'pi'),
       false,
     );
     assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), []);

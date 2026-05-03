@@ -24,4 +24,4 @@
 - [x] 权限请求按钮点击完成后应该要更新样式
 - [x] lark支持扫码新建和绑定机器人
 - [ ] app，web，channels支持常用斜杠命令，特别是/mode，用来调整工具权限
-- [ ] 新增pi mono内置agent实现，不用安装claude等coding agent也能用
+- [x] 新增pi mono内置agent实现，不用安装claude等coding agent也能用

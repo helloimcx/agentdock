@@ -18,6 +18,7 @@ This directory is organized by documentation purpose.
 ## Features
 
 - [Runtime Detection](features/runtime-detection.md): Phase 1 runtime detection behavior and APIs.
+- [Pi Agent](features/pi-agent.md): built-in Pi coding agent runtime over Local AI Core ACP.
 - [Workspace Task Model](features/workspace-task-model.md): Phase 2 workspace registry and task model.
 - [Device And Workspace Registry](features/device-workspace-registry.md): Phase 0 registry ownership and device contract draft.
 - [Security, Approval, And Audit](features/security-approval.md): Phase 3 permission model, approvals, command risk, and audit log.

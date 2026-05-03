@@ -24,6 +24,8 @@ test('agent runtime detector only marks commands present on PATH as installed', 
     assert.equal(byType.get('opencode')?.source, 'path');
     assert.equal(byType.get('opencode')?.command, opencode);
     assert.equal(byType.get('opencode')?.binaryPath, opencode);
+    assert.equal(byType.get('pi')?.installed, false);
+    assert.equal(byType.get('pi')?.status, 'not_installed');
     assert.equal(byType.get('codex')?.installed, false);
     assert.equal(byType.get('codex')?.status, 'not_installed');
     assert.equal(byType.get('localcore-acp')?.installed, true);
@@ -32,6 +34,17 @@ test('agent runtime detector only marks commands present on PATH as installed', 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('agent runtime detector reports bundled pi coding agent when available', () => {
+  const pi = detectInstalledAgentRuntimes({
+    env: { PATH: '' },
+  }).find((runtime) => runtime.agentType === 'pi');
+
+  assert.equal(pi?.installed, true);
+  assert.equal(pi?.status, 'installed');
+  assert.equal(pi?.source, 'bundled');
+  assert.match(pi?.command || '', /@mariozechner[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/);
 });
 
 test('agent runtime detector reports bundled codex ACP when available', () => {
@@ -43,6 +56,41 @@ test('agent runtime detector reports bundled codex ACP when available', () => {
   assert.equal(codex?.status, 'installed');
   assert.equal(codex?.source, 'bundled');
   assert.match(codex?.command || '', /@zed-industries[/\\]codex-acp[/\\]bin[/\\]codex-acp\.js$/);
+});
+
+test('agent runtime detector honors configured pi command before bundled runtime', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-pi-config-'));
+  try {
+    const customPi = join(dir, 'custom-pi');
+    writeFileSync(customPi, '#!/bin/sh\nexit 0\n', 'utf8');
+    chmodSync(customPi, 0o755);
+
+    const runtimes = detectInstalledAgentRuntimes({
+      env: { PATH: '' },
+      config: {
+        projects: [
+          {
+            name: 'configured-pi',
+            agent: {
+              type: 'pi',
+              options: {
+                command: customPi,
+              },
+            },
+            platforms: [],
+          },
+        ],
+      },
+    });
+    const pi = runtimes.find((runtime) => runtime.agentType === 'pi');
+
+    assert.equal(pi?.installed, true);
+    assert.equal(pi?.status, 'installed');
+    assert.equal(pi?.source, 'config');
+    assert.equal(pi?.command, customPi);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('agent runtime detector honors configured project commands', () => {
@@ -75,6 +123,28 @@ test('agent runtime detector honors configured project commands', () => {
     assert.equal(codex?.status, 'installed');
     assert.equal(codex?.source, 'config');
     assert.equal(codex?.command, customCodex);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('agent runtime detector reports pi version when PATH command succeeds', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-pi-version-'));
+  try {
+    const pi = join(dir, 'pi');
+    writeFileSync(pi, '#!/bin/sh\necho "pi 0.72.1"\n', 'utf8');
+    writeFileSync(join(dir, 'package.json'), '{}\n', 'utf8');
+    chmodSync(pi, 0o755);
+
+    const piRuntime = detectInstalledAgentRuntimes({
+      env: { PATH: dir },
+      requireFrom: join(dir, 'package.json'),
+    }).find((runtime) => runtime.agentType === 'pi');
+
+    assert.equal(piRuntime?.status, 'installed');
+    assert.equal(piRuntime?.source, 'path');
+    assert.equal(piRuntime?.version, '0.72.1');
+    assert.equal(piRuntime?.issues.length, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

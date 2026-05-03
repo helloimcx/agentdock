@@ -150,6 +150,7 @@ function changedRuntimes(previous: InstalledAgentRuntime[], next: InstalledAgent
 
 function displayName(agentType: string) {
   const names: Record<string, string> = {
+    pi: 'Pi',
     opencode: 'OpenCode',
     codex: 'Codex',
     claudecode: 'Claude Code',

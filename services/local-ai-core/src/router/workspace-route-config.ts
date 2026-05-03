@@ -1,10 +1,13 @@
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../packages/contracts/src/index.js';
 import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   DESKTOP_CODEX_ACP_PACKAGE,
   DESKTOP_CLAUDECODE_ACP_PACKAGE,
+  DESKTOP_PI_ACP_PACKAGE,
+  DESKTOP_PI_CODING_AGENT_PACKAGE,
   DEFAULT_DESKTOP_OPENCODE_MODEL,
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
@@ -159,12 +162,68 @@ function collectProviderEnv(providers: DesktopProviderConfig[]) {
   return env;
 }
 
+function collectPiProviderEnv(providers: DesktopProviderConfig[]) {
+  const env: Record<string, string> = {};
+  for (const provider of providers) {
+    const apiKey = String(provider.api_key || '').trim();
+    const envName = piProviderApiKeyEnvName(provider.name);
+    if (apiKey && envName) {
+      env[envName] = apiKey;
+    }
+  }
+  return env;
+}
+
 function normalizeOpencodeProviderId(value?: string | null) {
   return String(value || '')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function normalizeProviderId(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function piProviderApiKeyEnvName(providerName?: string | null) {
+  const providerId = normalizeProviderId(providerName);
+  const envNames: Record<string, string> = {
+    anthropic: 'ANTHROPIC_API_KEY',
+    'azure-openai': 'AZURE_OPENAI_API_KEY',
+    'azure-openai-responses': 'AZURE_OPENAI_API_KEY',
+    cerebras: 'CEREBRAS_API_KEY',
+    cloudflare: 'CLOUDFLARE_API_KEY',
+    'cloudflare-ai-gateway': 'CLOUDFLARE_API_KEY',
+    'cloudflare-workers-ai': 'CLOUDFLARE_API_KEY',
+    deepseek: 'DEEPSEEK_API_KEY',
+    fireworks: 'FIREWORKS_API_KEY',
+    gemini: 'GEMINI_API_KEY',
+    google: 'GEMINI_API_KEY',
+    groq: 'GROQ_API_KEY',
+    huggingface: 'HF_TOKEN',
+    kimi: 'KIMI_API_KEY',
+    'kimi-coding': 'KIMI_API_KEY',
+    minimax: 'MINIMAX_API_KEY',
+    'minimax-cn': 'MINIMAX_CN_API_KEY',
+    mistral: 'MISTRAL_API_KEY',
+    moonshot: 'KIMI_API_KEY',
+    openai: 'OPENAI_API_KEY',
+    opencode: 'OPENCODE_API_KEY',
+    'opencode-go': 'OPENCODE_API_KEY',
+    openrouter: 'OPENROUTER_API_KEY',
+    siliconflow: 'SILICONFLOW_API_KEY',
+    vercel: 'AI_GATEWAY_API_KEY',
+    'vercel-ai-gateway': 'AI_GATEWAY_API_KEY',
+    xai: 'XAI_API_KEY',
+    zai: 'ZAI_API_KEY',
+    zhipuai: 'ZAI_API_KEY',
+  };
+  return envNames[providerId] || '';
 }
 
 function opencodeProviderApiKeyEnvName(providerId: string) {
@@ -183,7 +242,7 @@ function shouldUseOpenAiCompatibleProvider(providerId: string) {
 
 function resolveBundledAcpCommand(packageName: string, binName: string) {
   const require = createRequire(__filename);
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJsonPath = resolveBundledPackageJsonPath(packageName);
   const packageJson = require(packageJsonPath) as { bin?: string | Record<string, string> };
   const binField = packageJson.bin;
   const relativeBinPath = typeof binField === 'string'
@@ -198,12 +257,46 @@ function resolveBundledAcpCommand(packageName: string, binName: string) {
   };
 }
 
+function resolveBundledPackageJsonPath(packageName: string) {
+  const require = createRequire(__filename);
+  try {
+    return require.resolve(`${packageName}/package.json`);
+  } catch (error: any) {
+    if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
+      throw error;
+    }
+  }
+  for (const basePath of require.resolve.paths(packageName) || []) {
+    const packageJsonPath = resolve(basePath, ...packageName.split('/'), 'package.json');
+    if (existsSync(packageJsonPath)) {
+      return packageJsonPath;
+    }
+  }
+  let current = dirname(require.resolve(packageName));
+  while (current && current !== dirname(current)) {
+    const packageJsonPath = resolve(current, 'package.json');
+    if (existsSync(packageJsonPath)) {
+      return packageJsonPath;
+    }
+    current = dirname(current);
+  }
+  throw new Error(`Bundled package "${packageName}" package.json could not be resolved.`);
+}
+
 function resolveBundledCodexCommand() {
   return resolveBundledAcpCommand(DESKTOP_CODEX_ACP_PACKAGE, 'codex-acp');
 }
 
 function resolveBundledClaudeCodeCommand() {
   return resolveBundledAcpCommand(DESKTOP_CLAUDECODE_ACP_PACKAGE, 'claude-agent-acp');
+}
+
+function resolveBundledPiAcpCommand() {
+  return resolveBundledAcpCommand(DESKTOP_PI_ACP_PACKAGE, 'pi-acp');
+}
+
+function resolveBundledPiCommand() {
+  return resolveBundledAcpCommand(DESKTOP_PI_CODING_AGENT_PACKAGE, 'pi').args[0];
 }
 
 export function toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): AgentLaunchConfig {
@@ -226,6 +319,9 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
   const providers = Array.isArray(project.agent?.providers) ? project.agent.providers : [];
   const model = resolveOpencodeModel(project, providers);
   const providerEnv = collectProviderEnv(providers);
+  const piProviderEnv = agentType === 'pi'
+    ? collectPiProviderEnv(providers)
+    : {};
   const opencodeInlineConfig = agentType === 'opencode'
     ? buildOpencodeInlineConfig(model, providers)
     : null;
@@ -240,6 +336,18 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
         ANTHROPIC_MODEL: model,
       }
     : {};
+  const bundledPiAcp = agentType === 'pi'
+    ? resolveBundledPiAcpCommand()
+    : null;
+  const bundledPiCommand = agentType === 'pi'
+    ? resolveBundledPiCommand()
+    : '';
+  const inferredPiEnv: Record<string, string> = agentType === 'pi'
+    ? {
+        ...piProviderEnv,
+        PI_ACP_PI_COMMAND: bundledPiCommand,
+      }
+    : {};
   const bundledCodex = agentType === 'codex'
     ? resolveBundledCodexCommand()
     : null;
@@ -248,13 +356,15 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
     : null;
   const inferredCommand = agentType === 'opencode'
     ? 'opencode'
-    : bundledCodex?.command || bundledClaudeCode?.command || '';
+    : bundledPiAcp?.command || bundledCodex?.command || bundledClaudeCode?.command || '';
   const command = String(project.agent?.options?.command || inferredCommand).trim();
   if (!command) {
     throw new Error(`Workspace "${project.name}" requires [projects.agent.options].command for Local AI Core ACP execution.`);
   }
   const defaultArgs = agentType === 'opencode'
     ? ['acp']
+    : agentType === 'pi'
+      ? [...(bundledPiAcp?.args || [])]
     : agentType === 'codex'
       ? [...(bundledCodex?.args || [])]
     : agentType === 'claudecode'
@@ -267,9 +377,10 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
     command,
     args: args.length > 0 ? args : defaultArgs,
     env: {
-      ...providerEnv,
       ...inferredOpencodeEnv,
       ...inferredClaudeCodeEnv,
+      ...inferredPiEnv,
+      ...providerEnv,
       ...env,
     },
     model,

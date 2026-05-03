@@ -91,6 +91,15 @@ export function createBuiltinOpencodeAgentPlugin() {
   });
 }
 
+export function createBuiltinPiAgentPlugin() {
+  return createBuiltinAgentPlugin({
+    pluginId: 'builtin.agent-pi',
+    agentType: 'pi',
+    match: (normalizedAgentType) => normalizedAgentType === 'pi',
+    displayName: 'Pi',
+  });
+}
+
 export function createBuiltinCodexAgentPlugin() {
   return createBuiltinAgentPlugin({
     pluginId: 'builtin.agent-codex',

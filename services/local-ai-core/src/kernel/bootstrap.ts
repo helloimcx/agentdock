@@ -32,6 +32,7 @@ import {
   createBuiltinClaudeCodeAgentPlugin,
   createBuiltinLocalCoreAcpAgentPlugin,
   createBuiltinOpencodeAgentPlugin,
+  createBuiltinPiAgentPlugin,
   createBuiltinStaticAgentCapabilityPlugin,
 } from '../plugins/builtin/agent-localcore-acp-plugin.js';
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
@@ -233,6 +234,7 @@ export function bootstrapLocalCoreRuntime(options: {
   }
   const agentPlugins = [
     localCoreAgentPlugin,
+    createBuiltinPiAgentPlugin(),
     createBuiltinOpencodeAgentPlugin(),
     createBuiltinCodexAgentPlugin(),
     createBuiltinClaudeCodeAgentPlugin(),

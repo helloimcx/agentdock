@@ -7,6 +7,7 @@ import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   DESKTOP_CODEX_ACP_PACKAGE,
   DESKTOP_CLAUDECODE_ACP_PACKAGE,
+  DESKTOP_PI_CODING_AGENT_PACKAGE,
   LOCALCORE_ACP_AGENT_TYPE,
 } from '../../../../shared/desktop.js';
 
@@ -19,6 +20,7 @@ export interface AgentRuntimeDetectionOptions {
 }
 
 const DISPLAY_NAMES: Record<string, string> = {
+  pi: 'Pi',
   opencode: 'OpenCode',
   codex: 'Codex',
   claudecode: 'Claude Code',
@@ -30,6 +32,7 @@ const DISPLAY_NAMES: Record<string, string> = {
 };
 
 const COMMAND_CANDIDATES: Record<string, string[]> = {
+  pi: ['pi'],
   opencode: ['opencode'],
   codex: ['codex-acp', 'codex'],
   claudecode: ['claude-agent-acp'],
@@ -40,6 +43,7 @@ const COMMAND_CANDIDATES: Record<string, string[]> = {
 };
 
 const VERSION_ARGUMENTS: Record<string, string[]> = {
+  pi: ['--version'],
   opencode: ['--version'],
   codex: ['--version'],
   claudecode: ['--version'],
@@ -80,10 +84,12 @@ export function detectInstalledAgentRuntimes(
         : missingRuntime(agentType, detectedAt, `Configured command not found: ${configured}`);
     }
 
-    if (agentType === 'codex' || agentType === 'claudecode') {
-      const bundled = agentType === 'codex'
-        ? resolveBundledAcpPackage(options.requireFrom, DESKTOP_CODEX_ACP_PACKAGE, ['bin/codex-acp.js'])
-        : resolveBundledAcpPackage(options.requireFrom, DESKTOP_CLAUDECODE_ACP_PACKAGE, [
+    if (agentType === 'pi' || agentType === 'codex' || agentType === 'claudecode') {
+      const bundled = agentType === 'pi'
+        ? resolveBundledAcpPackage(options.requireFrom, DESKTOP_PI_CODING_AGENT_PACKAGE, ['dist/cli.js'])
+        : agentType === 'codex'
+          ? resolveBundledAcpPackage(options.requireFrom, DESKTOP_CODEX_ACP_PACKAGE, ['bin/codex-acp.js'])
+          : resolveBundledAcpPackage(options.requireFrom, DESKTOP_CLAUDECODE_ACP_PACKAGE, [
             'dist/cli.js',
             'bin/claude-agent-acp.js',
             'cli.js',
@@ -267,7 +273,7 @@ function parseVersionOutput(output: string) {
 function resolveBundledAcpPackage(requireFrom: string | undefined, packageName: string, candidates: string[]) {
   try {
     const require = createRequire(requireFrom || join(process.cwd(), 'package.json'));
-    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const packageJsonPath = resolveBundledPackageJsonPath(require, packageName);
     const packageDir = dirname(packageJsonPath);
     const packageJson = require(packageJsonPath) as { bin?: string | Record<string, string> };
     const binField = packageJson.bin;
@@ -286,4 +292,29 @@ function resolveBundledAcpPackage(requireFrom: string | undefined, packageName: 
   } catch {
     return null;
   }
+}
+
+function resolveBundledPackageJsonPath(require: NodeJS.Require, packageName: string) {
+  try {
+    return require.resolve(`${packageName}/package.json`);
+  } catch (error: any) {
+    if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
+      throw error;
+    }
+  }
+  for (const basePath of require.resolve.paths(packageName) || []) {
+    const packageJsonPath = join(basePath, ...packageName.split('/'), 'package.json');
+    if (existsSync(packageJsonPath)) {
+      return packageJsonPath;
+    }
+  }
+  let current = dirname(require.resolve(packageName));
+  while (current && current !== dirname(current)) {
+    const packageJsonPath = join(current, 'package.json');
+    if (existsSync(packageJsonPath)) {
+      return packageJsonPath;
+    }
+    current = dirname(current);
+  }
+  throw new Error(`Bundled package "${packageName}" package.json could not be resolved.`);
 }
