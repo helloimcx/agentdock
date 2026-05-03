@@ -19,12 +19,12 @@ import type {
   LocalCoreChannelGatewayStatus,
   LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
-} from '../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime, EventBus } from '../../../../packages/plugin-sdk/src/index.js';
-import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
-import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import type { WorkspaceRouter } from '../router/workspace-router.js';
-import { prepareChannelFile, type PreparedChannelFile } from '../channel/channel-file-utils.js';
+} from '../../../../../packages/contracts/src/index.js';
+import type { ChannelRuntime, EventBus } from '../../../../../packages/plugin-sdk/src/index.js';
+import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
+import { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
+import type { WorkspaceRouter } from '../../router/workspace-router.js';
+import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 
 // ==================== Types ====================
 

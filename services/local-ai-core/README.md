@@ -25,7 +25,7 @@ src/
 - `src/runtime/server.ts`: Local AI Core HTTP/SSE 服务
 - `src/runtime/standalone.ts`: standalone 启动入口
 - `src/router/workspace-router.ts`: workspace 级路由主入口
-- `src/gateway/local-core-lark-gateway.ts`: Feishu/Lark 原生网关
+- `src/channel/lark/local-core-lark-gateway.ts`: Feishu/Lark 原生通道网关
 - `src/acp/local-core-acp-backend.ts`: ACP 子进程桥接与流式事件处理
 - `src/acp/local-core-acp-store.ts`: SQLite 持久化层
 - `src/scheduler/scheduler-service.ts`: 定时任务调度主入口

@@ -9,8 +9,8 @@ import { ScheduledConversationExecutor } from '../services/local-ai-core/src/sch
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalScheduleAdapter } from '../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
-import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/gateway/local-core-weixin-gateway.js';
-import { LocalCoreLarkGateway } from '../services/local-ai-core/src/gateway/local-core-lark-gateway.js';
+import { LocalCoreWeixinGateway } from '../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
+import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 

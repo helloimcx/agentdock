@@ -541,7 +541,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> {
-    const runtime = this.weixinChannelRuntime as import('../gateway/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
+    const runtime = this.weixinChannelRuntime as import('../channel/weixin/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
     return runtime.getQrCode(workspaceId);
   }
 
@@ -550,7 +550,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     userName?: string;
     userId?: string;
   }> {
-    const runtime = this.weixinChannelRuntime as import('../gateway/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
+    const runtime = this.weixinChannelRuntime as import('../channel/weixin/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
     return runtime.checkQrCodeStatus(workspaceId, ticket);
   }
 

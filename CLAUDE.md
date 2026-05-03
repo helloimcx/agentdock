@@ -59,7 +59,7 @@ Both share types from `shared/` — the single source of truth for interfaces cr
 The core backend runtime with these subsystems:
 - **ACP** (`src/acp/`): Agent Client Protocol integration — session coordination, transport, turn management, permissions, response processing
 - **CLI** (`src/cli/`): Command-line entry point
-- **Gateway** (`src/gateway/`): Lark/Feishu and WeChat channel gateways
+- **Channel** (`src/channel/`): shared channel contracts plus isolated Lark/Feishu and WeChat gateway implementations
 - **Kernel** (`src/kernel/`): Bootstrap, event bus, lifecycle, plugin registry, capability registry
 - **Plugins** (`src/plugins/builtin/`): Built-in plugins with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`, `knowledge.ai-vector`)
 - **Router** (`src/router/`): Workspace routing and route configuration
@@ -133,7 +133,7 @@ These files are intentionally large:
 - `src/pages/Threads/ThreadChat.tsx` (~50KB) — main thread chat UI with extensive hook decomposition
 - `src/pages/Desktop/Workspace.tsx` (~37KB) — desktop workspace management
 - `src/pages/Web/Chat.tsx` (~34KB) — web chat interface
-- `services/local-ai-core/src/gateway/local-core-weixin-gateway.ts` (~52KB) — WeChat gateway
-- `services/local-ai-core/src/gateway/local-core-lark-gateway.ts` (~41KB) — Lark gateway
+- `services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.ts` (~52KB) — WeChat gateway
+- `services/local-ai-core/src/channel/lark/local-core-lark-gateway.ts` (~41KB) — Lark gateway
 - `services/local-ai-core/src/runtime/server.ts` (~29KB) — core HTTP server
 - `services/local-ai-core/src/acp/local-core-acp-store.ts` (~30KB) — ACP session store

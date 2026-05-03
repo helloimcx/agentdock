@@ -1,6 +1,6 @@
 import type { DesktopConnectConfig } from '../../../../../packages/contracts/src/index.js';
 import type { ChannelPlugin, ChannelRuntimeRegistration, PluginContext } from '../../../../../packages/plugin-sdk/src/index.js';
-import { LocalCoreLarkGateway } from '../../gateway/local-core-lark-gateway.js';
+import { LocalCoreLarkGateway } from '../../channel/lark/local-core-lark-gateway.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 
