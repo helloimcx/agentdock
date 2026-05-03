@@ -401,6 +401,63 @@ export interface ChannelRoute {
   metadata?: Record<string, unknown>;
 }
 
+export type ChannelOutboundMessagePart =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'file';
+      path: string;
+      fileName?: string;
+      mimeType?: string;
+      metadata?: Record<string, unknown>;
+    };
+
+export interface ChannelOutboundMessageInput {
+  route: ChannelRoute;
+  parts: ChannelOutboundMessagePart[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChannelOutboundAttachmentResult {
+  kind: 'file' | 'image' | 'video' | (string & {});
+  attachmentId?: string;
+  fileName?: string;
+  fileSize?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChannelOutboundMessageResult {
+  platform: string;
+  workspaceId: string;
+  channelId: string;
+  participantId?: string;
+  messageIds: string[];
+  attachments?: ChannelOutboundAttachmentResult[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChannelFileSendInput {
+  path: string;
+  channelId: string;
+  participantId?: string;
+  fileName?: string;
+}
+
+export interface ChannelFileSendResult {
+  platform: string;
+  workspaceId: string;
+  channelId: string;
+  messageId: string;
+  fileKey?: string;
+  fileName: string;
+  fileSize: number;
+  attachmentId?: string;
+  messageIds?: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export type ScheduledJobTriggerType = 'cron' | 'once' | (string & {});
 
 export type ScheduledJobExecutionMode = 'same-thread' | 'side-thread' | (string & {});

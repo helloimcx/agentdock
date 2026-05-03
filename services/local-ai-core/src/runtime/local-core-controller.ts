@@ -11,6 +11,10 @@ import type {
   LocalCoreCapabilities,
   LocalCorePluginDiagnostics,
   LocalCoreChannelAuthorizedUser,
+  ChannelFileSendInput,
+  ChannelFileSendResult,
+  ChannelOutboundMessageInput,
+  ChannelOutboundMessageResult,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
   LocalCoreChannelPairingRequest,
@@ -491,6 +495,49 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> {
     return this.resolveChannelRuntime(platform).listAuthorizedUsers(workspaceId);
+  }
+
+  async sendChannelFile(platform: string, workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult> {
+    const runtime = this.resolveChannelRuntime(platform);
+    if (runtime.sendOutboundMessage) {
+      const result = await runtime.sendOutboundMessage(workspaceId, {
+        route: {
+          type: 'channel.chat',
+          channelId: input.channelId,
+          participantId: input.participantId,
+        },
+        parts: [{
+          type: 'file',
+          path: input.path,
+          fileName: input.fileName,
+        }],
+      });
+      const attachment = result.attachments?.[0];
+      return {
+        platform: result.platform,
+        workspaceId: result.workspaceId,
+        channelId: result.channelId,
+        messageId: result.messageIds[0] || '',
+        messageIds: result.messageIds,
+        fileKey: String(attachment?.metadata?.fileKey || attachment?.attachmentId || ''),
+        attachmentId: attachment?.attachmentId,
+        fileName: attachment?.fileName || input.fileName || '',
+        fileSize: attachment?.fileSize || 0,
+        metadata: result.metadata,
+      };
+    }
+    if (!runtime.sendFile) {
+      throw new Error(`Channel platform does not support sending files: ${platform}`);
+    }
+    return runtime.sendFile(workspaceId, input);
+  }
+
+  async sendChannelMessage(platform: string, workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
+    const runtime = this.resolveChannelRuntime(platform);
+    if (!runtime.sendOutboundMessage) {
+      throw new Error(`Channel platform does not support outbound messages: ${platform}`);
+    }
+    return runtime.sendOutboundMessage(workspaceId, input);
   }
 
   async getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> {

@@ -1,7 +1,14 @@
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { extname } from 'node:path';
 import type {
+  ChannelFileSendInput,
+  ChannelFileSendResult,
   ChannelInboundContentPart,
+  ChannelOutboundMessageInput,
+  ChannelOutboundMessageResult,
+  ChannelOutboundMessagePart,
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
@@ -18,6 +25,7 @@ import type { ChannelRuntime, EventBus } from '../../../../packages/plugin-sdk/s
 import { normalizeDesktopPlatformType, normalizePermissionResponse, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import { prepareChannelFile, type PreparedChannelFile } from '../channel/channel-file-utils.js';
 
 type LarkModule = typeof import('@larksuiteoapi/node-sdk');
 
@@ -94,6 +102,7 @@ type LocalCoreLarkGatewayOptions = {
 };
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
+const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 
 export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
   // Lark returns 200340 when card action events are not enabled in the app's
@@ -175,6 +184,118 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
 
   async sendScheduledMessage(workspaceId: string, route: ChannelRoute, text: string) {
     return this.sendScheduledCard(workspaceId, route.channelId, text);
+  }
+
+  async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
+    const state = this.runtime.get(workspaceId);
+    if (!state?.client || !state.connected) {
+      throw new Error(`Lark workspace is not connected: ${workspaceId}`);
+    }
+    const channelId = String(input.route?.channelId || '').trim();
+    if (!channelId) {
+      throw new Error('Missing Lark target channel id');
+    }
+    const messageIds: string[] = [];
+    const attachments: NonNullable<ChannelOutboundMessageResult['attachments']> = [];
+    for (const part of input.parts || []) {
+      if (part.type === 'text') {
+        const text = String(part.text || '').trim();
+        if (text) {
+          messageIds.push(await this.sendTextAsCard(state, channelId, text));
+        }
+        continue;
+      }
+      if (part.type === 'file') {
+        const sent = await this.sendFilePart(state, channelId, part);
+        messageIds.push(sent.messageId);
+        attachments.push({
+          kind: 'file',
+          attachmentId: sent.fileKey,
+          fileName: sent.file.fileName,
+          fileSize: sent.file.fileSize,
+          metadata: {
+            fileKey: sent.fileKey,
+          },
+        });
+      }
+    }
+    return {
+      platform: 'lark',
+      workspaceId,
+      channelId,
+      participantId: input.route.participantId,
+      messageIds: messageIds.filter(Boolean),
+      attachments,
+    };
+  }
+
+  async sendFile(workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult> {
+    const result = await this.sendOutboundMessage(workspaceId, {
+      route: {
+        type: 'channel.chat',
+        channelId: input.channelId,
+        participantId: input.participantId,
+      },
+      parts: [{
+        type: 'file',
+        path: input.path,
+        fileName: input.fileName,
+      }],
+    });
+    const attachment = result.attachments?.[0];
+    return {
+      platform: 'lark',
+      workspaceId,
+      channelId: result.channelId,
+      messageId: result.messageIds[0] || '',
+      fileKey: String(attachment?.metadata?.fileKey || attachment?.attachmentId || ''),
+      fileName: attachment?.fileName || input.fileName || '',
+      fileSize: attachment?.fileSize || 0,
+    };
+  }
+
+  private async sendFilePart(
+    state: LarkRuntimeState,
+    channelId: string,
+    part: Extract<ChannelOutboundMessagePart, { type: 'file' }>,
+  ): Promise<{ messageId: string; fileKey: string; file: PreparedChannelFile }> {
+    const file = await prepareChannelFile({
+      path: part.path,
+      fileName: part.fileName,
+      maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
+      platformLabel: 'Lark',
+    });
+    const upload = await state.client.im.file.create({
+      data: {
+        file_type: this.resolveLarkUploadFileType(file.fileName),
+        file_name: file.fileName,
+        file: createReadStream(file.path),
+      },
+    });
+    const fileKey = String(upload?.file_key || upload?.data?.file_key || '').trim();
+    if (!fileKey) {
+      throw new Error('Lark file upload did not return a file key');
+    }
+    const response = await state.client.im.message.create({
+      params: {
+        receive_id_type: this.resolveReceiveIdType(channelId),
+      },
+      data: {
+        receive_id: channelId,
+        msg_type: 'file',
+        content: JSON.stringify({ file_key: fileKey }),
+      },
+    });
+    const messageId = String(response?.data?.message_id || '').trim();
+    if (!messageId) {
+      throw new Error('Lark file message did not return a message id');
+    }
+    this.options.log?.(`localcore-lark sent file ${file.fileName} (${file.fileSize} bytes) to ${channelId}`);
+    return {
+      messageId,
+      fileKey,
+      file,
+    };
   }
 
   muteThreadBridge(threadId: string) {
@@ -1007,10 +1128,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     sessionKey?: string,
     threadId?: string,
   ) {
-    const receiveIdType = chatId.startsWith('oc_') ? 'chat_id' : chatId.startsWith('ou_') ? 'open_id' : 'user_id';
     const response = await state.client.im.message.create({
       params: {
-        receive_id_type: receiveIdType,
+        receive_id_type: this.resolveReceiveIdType(chatId),
       },
       data: {
         receive_id: chatId,
@@ -1019,6 +1139,35 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       },
     });
     return String(response?.data?.message_id || '').trim();
+  }
+
+  private resolveReceiveIdType(receiveId: string) {
+    return receiveId.startsWith('oc_') ? 'chat_id' : receiveId.startsWith('ou_') ? 'open_id' : 'user_id';
+  }
+
+  private resolveLarkUploadFileType(fileName: string): 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream' {
+    switch (extname(fileName).toLowerCase()) {
+      case '.opus':
+        return 'opus';
+      case '.mp4':
+      case '.mov':
+      case '.m4v':
+        return 'mp4';
+      case '.pdf':
+        return 'pdf';
+      case '.doc':
+      case '.docx':
+        return 'doc';
+      case '.xls':
+      case '.xlsx':
+      case '.csv':
+        return 'xls';
+      case '.ppt':
+      case '.pptx':
+        return 'ppt';
+      default:
+        return 'stream';
+    }
   }
 
   private async patchTextCard(

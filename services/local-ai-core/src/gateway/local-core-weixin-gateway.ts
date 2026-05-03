@@ -4,7 +4,12 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
 import type {
+  ChannelFileSendInput,
+  ChannelFileSendResult,
   ChannelInboundContentPart,
+  ChannelOutboundMessageInput,
+  ChannelOutboundMessagePart,
+  ChannelOutboundMessageResult,
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
@@ -19,6 +24,7 @@ import type { ChannelRuntime, EventBus } from '../../../../packages/plugin-sdk/s
 import { normalizeDesktopPlatformType, wrapUserMessageWithSchedulerProtocol } from '../../../../shared/desktop.js';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import { prepareChannelFile, type PreparedChannelFile } from '../channel/channel-file-utils.js';
 
 // ==================== Types ====================
 
@@ -118,6 +124,8 @@ const TEXT_ITEM_TYPE = 1;
 const IMAGE_ITEM_TYPE = 2;
 const VOICE_ITEM_TYPE = 3;
 const FILE_ITEM_TYPE = 4;
+const UPLOAD_MEDIA_TYPE_FILE = 3;
+const WEIXIN_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 
 // ==================== Internal API types ====================
 
@@ -134,6 +142,21 @@ type SendMessageResp = {
   ret?: number;
   errcode?: number;
   errmsg?: string;
+};
+
+type GetUploadUrlResp = {
+  ret?: number;
+  errcode?: number;
+  errmsg?: string;
+  upload_param?: string;
+};
+
+type UploadedWeixinFile = {
+  fileKey: string;
+  encryptedQueryParam: string;
+  aesKeyHex: string;
+  fileSize: number;
+  cipherSize: number;
 };
 
 type QrCodeStatusResp = {
@@ -611,6 +634,78 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       this.options.log?.(`localcore-weixin scheduled message failed for ${workspaceId}: ${formatError(error)}`);
       return '';
     }
+  }
+
+  async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
+    const state = this.runtime.get(workspaceId);
+    if (!state?.connected) {
+      throw new Error(`WeChat workspace is not connected: ${workspaceId}`);
+    }
+    const channelId = String(input.route?.channelId || '').trim();
+    if (!channelId) {
+      throw new Error('Missing WeChat target channel id');
+    }
+    const binding = await this.getBinding(workspaceId);
+    const contextToken = this.resolveContextTokenForFileSend(workspaceId, channelId, input.route.participantId);
+    const messageIds: string[] = [];
+    const attachments: NonNullable<ChannelOutboundMessageResult['attachments']> = [];
+    for (const part of input.parts || []) {
+      if (part.type === 'text') {
+        const text = String(part.text || '').trim();
+        if (text) {
+          await this.sendTextMessage(state, channelId, text, contextToken);
+          messageIds.push(`wx_text_${randomUUID()}`);
+        }
+        continue;
+      }
+      if (part.type === 'file') {
+        const sent = await this.sendFilePart(binding, channelId, part, contextToken);
+        messageIds.push(sent.messageId);
+        attachments.push({
+          kind: 'file',
+          attachmentId: sent.uploaded.fileKey,
+          fileName: sent.file.fileName,
+          fileSize: sent.file.fileSize,
+          metadata: {
+            fileKey: sent.uploaded.fileKey,
+            encryptedQueryParam: sent.uploaded.encryptedQueryParam,
+          },
+        });
+      }
+    }
+    return {
+      platform: 'weixin',
+      workspaceId,
+      channelId,
+      participantId: input.route.participantId,
+      messageIds,
+      attachments,
+    };
+  }
+
+  async sendFile(workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult> {
+    const result = await this.sendOutboundMessage(workspaceId, {
+      route: {
+        type: 'channel.chat',
+        channelId: input.channelId,
+        participantId: input.participantId,
+      },
+      parts: [{
+        type: 'file',
+        path: input.path,
+        fileName: input.fileName,
+      }],
+    });
+    const attachment = result.attachments?.[0];
+    return {
+      platform: 'weixin',
+      workspaceId,
+      channelId: result.channelId,
+      messageId: result.messageIds[0] || '',
+      fileKey: String(attachment?.metadata?.fileKey || attachment?.attachmentId || ''),
+      fileName: attachment?.fileName || input.fileName || '',
+      fileSize: attachment?.fileSize || 0,
+    };
   }
 
   // ==================== Inbound Message Handling ====================
@@ -1191,8 +1286,164 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     );
   }
 
+  private async sendFileMessage(
+    binding: WeixinWorkspaceBinding,
+    toUserId: string,
+    fileName: string,
+    uploaded: UploadedWeixinFile,
+    contextToken?: string,
+  ): Promise<string> {
+    const clientId = `openclaw-weixin-${crypto.randomUUID()}`;
+    const resp = await this.apiPost<SendMessageResp>(
+      binding,
+      'ilink/bot/sendmessage',
+      {
+        msg: {
+          from_user_id: '',
+          to_user_id: toUserId,
+          client_id: clientId,
+          message_type: 2,
+          message_state: 2,
+          item_list: [{
+            type: FILE_ITEM_TYPE,
+            file_item: {
+              media: {
+                encrypt_query_param: uploaded.encryptedQueryParam,
+                aes_key: Buffer.from(uploaded.aesKeyHex).toString('base64'),
+                encrypt_type: 1,
+              },
+              file_name: fileName,
+              len: String(uploaded.fileSize),
+            },
+          }],
+          ...(contextToken ? { context_token: contextToken } : {}),
+        },
+        base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
+      },
+      API_TIMEOUT_MS,
+    );
+    if (this.isSendMessageError(resp)) {
+      throw new Error(`WeChat send file failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''}`);
+    }
+    return clientId;
+  }
+
+  private async sendFilePart(
+    binding: WeixinWorkspaceBinding,
+    channelId: string,
+    part: Extract<ChannelOutboundMessagePart, { type: 'file' }>,
+    contextToken?: string,
+  ): Promise<{ messageId: string; uploaded: UploadedWeixinFile; file: PreparedChannelFile }> {
+    const file = await prepareChannelFile({
+      path: part.path,
+      fileName: part.fileName,
+      maxBytes: WEIXIN_MAX_UPLOAD_FILE_SIZE,
+      platformLabel: 'WeChat',
+    });
+    const uploaded = await this.uploadFileToCdn(binding, channelId, file.path);
+    const messageId = await this.sendFileMessage(binding, channelId, file.fileName, uploaded, contextToken);
+    this.options.log?.(`localcore-weixin sent file ${file.fileName} (${file.fileSize} bytes) to ${channelId}`);
+    return {
+      messageId,
+      uploaded,
+      file,
+    };
+  }
+
   private isSendMessageError(resp: SendMessageResp): boolean {
     return (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
+  }
+
+  private async uploadFileToCdn(
+    binding: WeixinWorkspaceBinding,
+    toUserId: string,
+    filePath: string,
+  ): Promise<UploadedWeixinFile> {
+    const plaintext = await fs.promises.readFile(filePath);
+    const fileKey = crypto.randomBytes(16).toString('hex');
+    const aesKey = crypto.randomBytes(16);
+    const aesKeyHex = aesKey.toString('hex');
+    const rawMd5 = crypto.createHash('md5').update(plaintext).digest('hex');
+    const cipherSize = this.getAesEcbPaddedSize(plaintext.length);
+    const uploadUrlResp = await this.apiPost<GetUploadUrlResp>(
+      binding,
+      'ilink/bot/getuploadurl',
+      {
+        filekey: fileKey,
+        media_type: UPLOAD_MEDIA_TYPE_FILE,
+        to_user_id: toUserId,
+        rawsize: plaintext.length,
+        rawfilemd5: rawMd5,
+        filesize: cipherSize,
+        no_need_thumb: true,
+        aeskey: aesKeyHex,
+        base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
+      },
+      API_TIMEOUT_MS,
+    );
+    if (this.isSendMessageError(uploadUrlResp) || !uploadUrlResp.upload_param) {
+      throw new Error(`WeChat getuploadurl failed: ret=${uploadUrlResp.ret} errcode=${uploadUrlResp.errcode}${uploadUrlResp.errmsg ? ` errmsg=${uploadUrlResp.errmsg}` : ''}`);
+    }
+    const encryptedQueryParam = await this.uploadEncryptedBufferToCdn(binding, plaintext, uploadUrlResp.upload_param, fileKey, aesKey);
+    return {
+      fileKey,
+      encryptedQueryParam,
+      aesKeyHex,
+      fileSize: plaintext.length,
+      cipherSize,
+    };
+  }
+
+  private async uploadEncryptedBufferToCdn(
+    binding: WeixinWorkspaceBinding,
+    plaintext: Buffer,
+    uploadParam: string,
+    fileKey: string,
+    aesKey: Buffer,
+  ) {
+    const cipher = crypto.createCipheriv('aes-128-ecb', aesKey, null);
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const url = `${binding.cdnBaseUrl.replace(/\/$/, '')}/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(fileKey)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+      body: new Uint8Array(ciphertext),
+    });
+    if (!res.ok) {
+      throw new Error(`WeChat CDN upload failed: HTTP ${res.status}`);
+    }
+    const encryptedQueryParam = res.headers.get('x-encrypted-param') || '';
+    if (!encryptedQueryParam) {
+      throw new Error('WeChat CDN upload response missing x-encrypted-param');
+    }
+    return encryptedQueryParam;
+  }
+
+  private getAesEcbPaddedSize(size: number) {
+    return Math.ceil((size + 1) / 16) * 16;
+  }
+
+  private resolveContextTokenForFileSend(workspaceId: string, channelId: string, participantId?: string) {
+    const preferredParticipantId = String(participantId || '').trim();
+    const direct = preferredParticipantId
+      ? this.options.store.getPlatformThreadBinding(workspaceId, channelId, preferredParticipantId, 'weixin')
+      : undefined;
+    if (direct?.last_platform_message_id) {
+      return direct.last_platform_message_id;
+    }
+    const users = this.options.store.listAuthorizedUsers(workspaceId, 'weixin');
+    const user = users.find((entry) => entry.chatId === channelId || entry.platformUserId === channelId);
+    if (!user) {
+      return '';
+    }
+    return this.options.store.getPlatformThreadBinding(
+      workspaceId,
+      user.chatId,
+      user.platformUserId,
+      'weixin',
+    )?.last_platform_message_id || '';
   }
 
   // ==================== Private: Attachment Download ====================

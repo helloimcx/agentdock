@@ -60,6 +60,18 @@ export const SCHEDULER_PROTOCOL_INSTRUCTION = [
   '[/Scheduler Tools]',
 ].join('\n');
 
+export const CHANNEL_PROTOCOL_INSTRUCTION = [
+  '[Channel Tools]',
+  'If the user asks you to send a local file back through the current channel conversation, use the Bash tool to run the local channel CLI.',
+  'Use this command:',
+  'lac channel send-file --path "<absolute-or-workdir-relative-file-path>" [--target "<channel-chat-or-user-id>"]',
+  'By default, the file is sent to the current platform conversation from LOCAL_AI_CHAT_ID.',
+  'Use --target only when the user explicitly names a different channel chat or user id.',
+  'The CLI accepts absolute paths. Check that the file exists before sending when practical.',
+  'Only use the channel CLI when the user explicitly asks to send a file through the channel.',
+  '[/Channel Tools]',
+].join('\n');
+
 const PERMISSION_RESPONSE_MAP: Record<string, 'allow' | 'deny' | 'allow all'> = {
   allow: 'allow',
   deny: 'deny',
@@ -183,6 +195,8 @@ export function normalizeDesktopPlatformType(platformType?: string | null) {
 export function wrapUserMessageWithSchedulerProtocol(content: string, extraBlocks: string[] = []) {
   return [
     SCHEDULER_PROTOCOL_INSTRUCTION,
+    '',
+    CHANNEL_PROTOCOL_INSTRUCTION,
     ...extraBlocks.flatMap((block) => (block ? ['', block] : [])),
     '',
     '[User Message]',

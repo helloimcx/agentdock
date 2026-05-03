@@ -28,11 +28,20 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
   try {
     const { positionals, flags } = parseArgs(argv);
     const [domain = '', action = '', maybeId = ''] = positionals;
+    const json = getBooleanFlag(flags, 'json', false);
+    if (domain === 'channel') {
+      switch (action) {
+        case 'send-file':
+          return await handleChannelSendFile(flags, env, io, json);
+        default:
+          printUsage(io.stderr);
+          return 2;
+      }
+    }
     if (domain !== 'scheduler') {
       printUsage(io.stderr);
       return 2;
     }
-    const json = getBooleanFlag(flags, 'json', false);
     switch (action) {
       case 'add':
         return await handleAdd(flags, env, io, json);
@@ -55,6 +64,54 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
     io.stderr.write(`${formatError(error)}\n`);
     return 1;
   }
+}
+
+async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = resolveContext(flags, env);
+  const filePath = getRequiredFlag(flags, 'path');
+  const platform = getFlag(flags, 'platform') || context.platform;
+  if (!platform) {
+    throw new Error('channel send-file requires a platform. Set LOCAL_AI_PLATFORM or pass --platform.');
+  }
+  if (!context.workspaceId) {
+    throw new Error('channel send-file requires a workspace context. Set LOCAL_AI_WORKSPACE_ID or pass --workspace.');
+  }
+  const target = getFlag(flags, 'target') || getFlag(flags, 'chat-id') || context.chatId;
+  if (!target) {
+    throw new Error('channel send-file requires a target. Set LOCAL_AI_CHAT_ID or pass --target.');
+  }
+  const result = await request<{
+    platform: string;
+    workspaceId: string;
+    channelId: string;
+    messageIds: string[];
+    attachments?: Array<{
+      kind: string;
+      attachmentId?: string;
+      fileName?: string;
+      fileSize?: number;
+      metadata?: Record<string, unknown>;
+    }>;
+  }>(
+    context.baseUrl,
+    'POST',
+    `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(context.workspaceId)}/messages`,
+    {
+      route: {
+        type: 'channel.chat',
+        channelId: target,
+        participantId: getFlag(flags, 'participant-id') || context.platformUserId || undefined,
+      },
+      parts: [{
+        type: 'file',
+        path: filePath,
+        fileName: getFlag(flags, 'name') || undefined,
+      }],
+    },
+  );
+  const file = result.attachments?.[0];
+  print(json, io.stdout, result, `Sent file ${file?.fileName || filePath} to ${result.channelId}: ${result.messageIds[0] || ''}`);
+  return 0;
 }
 
 async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
@@ -299,6 +356,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler del <job-id> [--json]',
     '  lac scheduler run <job-id> [--json]',
+    '  lac channel send-file --path "<file>" [--target <chat-or-user-id>] [--workspace <id>] [--platform lark] [--name <filename>] [--json]',
   ].join('\n') + '\n');
 }
 

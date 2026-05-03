@@ -77,6 +77,16 @@ export interface ChannelRuntime {
     route: import('../../contracts/src/index.js').ChannelRoute,
     text: string,
   ): Promise<string> | string;
+  sendOutboundMessage?(
+    workspaceId: string,
+    input: import('../../contracts/src/index.js').ChannelOutboundMessageInput,
+  ): Promise<import('../../contracts/src/index.js').ChannelOutboundMessageResult>
+    | import('../../contracts/src/index.js').ChannelOutboundMessageResult;
+  sendFile?(
+    workspaceId: string,
+    input: import('../../contracts/src/index.js').ChannelFileSendInput,
+  ): Promise<import('../../contracts/src/index.js').ChannelFileSendResult>
+    | import('../../contracts/src/index.js').ChannelFileSendResult;
   muteThreadBridge?(threadId: string): void;
   unmuteThreadBridge?(threadId: string): void;
   close?(): void;

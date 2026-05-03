@@ -14,6 +14,10 @@ import type {
   LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
+  ChannelFileSendInput,
+  ChannelFileSendResult,
+  ChannelOutboundMessageInput,
+  ChannelOutboundMessageResult,
   LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
@@ -141,6 +145,8 @@ export interface LocalAiCoreBindings extends EventEmitter {
   approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser>;
   rejectChannelPairing(platform: string, code: string): Promise<{ rejected: boolean }>;
   listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]>;
+  sendChannelFile(platform: string, workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult>;
+  sendChannelMessage(platform: string, workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult>;
   getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }>;
   checkWeixinQrCodeStatus(workspaceId: string, ticket: string): Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
@@ -417,6 +423,16 @@ export class LocalAiCoreServer {
         }
         if (action === 'disable') {
           json(res, 200, await this.bindings.disableChannelGateway(platform, workspaceOrCollection));
+          return;
+        }
+        if (action === 'files') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.sendChannelFile(platform, workspaceOrCollection, body as unknown as ChannelFileSendInput));
+          return;
+        }
+        if (action === 'messages') {
+          const body = await readJsonBody(req);
+          json(res, 200, await this.bindings.sendChannelMessage(platform, workspaceOrCollection, body as unknown as ChannelOutboundMessageInput));
           return;
         }
         if (platform === 'weixin' && segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {

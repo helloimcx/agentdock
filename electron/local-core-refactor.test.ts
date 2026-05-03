@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -954,6 +954,188 @@ test('lark image messages are downloaded and forwarded as generic channel image 
   assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'image']);
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'image/png');
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, pngBytes.toString('base64'));
+});
+
+test('lark channel can upload and send a local file', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'lark-file-send-'));
+  try {
+    const filePath = join(tempDir, 'report.pdf');
+    writeFileSync(filePath, 'pdf content');
+    const uploads: any[] = [];
+    const messages: any[] = [];
+    const client = {
+      im: {
+        file: {
+          create: async (request: any) => {
+            uploads.push(request);
+            await new Promise<void>((resolve, reject) => {
+              request.data.file.on('data', () => {});
+              request.data.file.on('error', reject);
+              request.data.file.on('end', resolve);
+            });
+            return { file_key: 'file-key-1' };
+          },
+        },
+        message: {
+          create: async (request: any) => {
+            messages.push(request);
+            return { data: { message_id: 'msg-file-1' } };
+          },
+        },
+      },
+    };
+    const gateway = new LocalCoreLarkGateway({
+      store: {} as any,
+      readConfig: async () => null,
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+    });
+    const internals = gateway as any;
+    internals.runtime.set('default', {
+      workspaceId: 'default',
+      enabled: true,
+      status: 'running',
+      connected: true,
+      appId: 'app-1',
+      client,
+    });
+
+    const result = await gateway.sendFile('default', {
+      path: filePath,
+      channelId: 'oc_chat_1',
+    });
+
+    assert.equal(uploads.length, 1);
+    assert.equal(uploads[0]?.data?.file_type, 'pdf');
+    assert.equal(uploads[0]?.data?.file_name, 'report.pdf');
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0]?.params?.receive_id_type, 'chat_id');
+    assert.equal(messages[0]?.data?.receive_id, 'oc_chat_1');
+    assert.equal(messages[0]?.data?.msg_type, 'file');
+    assert.deepEqual(JSON.parse(messages[0]?.data?.content), { file_key: 'file-key-1' });
+    assert.deepEqual(result, {
+      platform: 'lark',
+      workspaceId: 'default',
+      channelId: 'oc_chat_1',
+      messageId: 'msg-file-1',
+      fileKey: 'file-key-1',
+      fileName: 'report.pdf',
+      fileSize: Buffer.byteLength('pdf content'),
+    });
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('weixin channel can encrypt, upload, and send a local file', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'weixin-file-send-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    const filePath = join(tempDir, 'report.txt');
+    writeFileSync(filePath, 'hello weixin');
+    const uploadUrlRequests: any[] = [];
+    const cdnUploads: Array<{ url: string; size: number }> = [];
+    const sentMessages: any[] = [];
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith('/ilink/bot/getuploadurl')) {
+        uploadUrlRequests.push(JSON.parse(String(init?.body || '{}')));
+        return {
+          ok: true,
+          json: async () => ({ ret: 0, upload_param: 'upload-param-1' }),
+        } as Response;
+      }
+      if (target.includes('/upload?')) {
+        const body = init?.body instanceof Uint8Array ? init.body : new Uint8Array();
+        cdnUploads.push({ url: target, size: body.byteLength });
+        return {
+          ok: true,
+          headers: {
+            get: (name: string) => name.toLowerCase() === 'x-encrypted-param' ? 'download-param-1' : null,
+          },
+        } as Response;
+      }
+      if (target.endsWith('/ilink/bot/sendmessage')) {
+        sentMessages.push(JSON.parse(String(init?.body || '{}')));
+        return {
+          ok: true,
+          json: async () => ({ ret: 0 }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    }) as typeof fetch;
+
+    const gateway = new LocalCoreWeixinGateway({
+      store: {
+        getPlatformThreadBinding: () => ({
+          workspace_id: 'default',
+          platform: 'weixin',
+          chat_id: 'user-1',
+          platform_user_id: 'user-1',
+          thread_id: 'thread-1',
+          last_platform_message_id: 'ctx-1',
+        }),
+        listAuthorizedUsers: () => [],
+      } as any,
+      readConfig: async () => ({
+        projects: [{
+          name: 'default',
+          root: '/tmp/project',
+          platforms: [{
+            type: 'weixin',
+            options: {
+              token: 'token-1',
+              account_id: 'account-1',
+              base_url: 'https://weixin.example',
+              cdn_base_url: 'https://cdn.example/c2c',
+            },
+          }],
+        }],
+      }) as any,
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+    });
+    const internals = gateway as any;
+    internals.runtime.set('default', {
+      workspaceId: 'default',
+      enabled: true,
+      status: 'running',
+      connected: true,
+      accountId: 'account-1',
+    });
+
+    const result = await gateway.sendFile('default', {
+      path: filePath,
+      channelId: 'user-1',
+      participantId: 'user-1',
+    });
+
+    assert.equal(uploadUrlRequests.length, 1);
+    assert.equal(uploadUrlRequests[0]?.media_type, 3);
+    assert.equal(uploadUrlRequests[0]?.to_user_id, 'user-1');
+    assert.equal(uploadUrlRequests[0]?.rawsize, Buffer.byteLength('hello weixin'));
+    assert.equal(uploadUrlRequests[0]?.filesize, 16);
+    assert.equal(cdnUploads.length, 1);
+    assert.match(cdnUploads[0]?.url || '', /encrypted_query_param=upload-param-1/);
+    assert.equal(cdnUploads[0]?.size, 16);
+    assert.equal(sentMessages.length, 1);
+    const message = sentMessages[0]?.msg;
+    assert.equal(message?.to_user_id, 'user-1');
+    assert.equal(message?.context_token, 'ctx-1');
+    assert.equal(message?.item_list?.[0]?.type, 4);
+    assert.equal(message?.item_list?.[0]?.file_item?.file_name, 'report.txt');
+    assert.equal(message?.item_list?.[0]?.file_item?.len, String(Buffer.byteLength('hello weixin')));
+    assert.equal(message?.item_list?.[0]?.file_item?.media?.encrypt_query_param, 'download-param-1');
+    assert.equal(result.platform, 'weixin');
+    assert.equal(result.channelId, 'user-1');
+    assert.equal(result.fileName, 'report.txt');
+    assert.equal(result.fileSize, Buffer.byteLength('hello weixin'));
+    assert.match(result.messageId, /^openclaw-weixin-/);
+    assert.ok(result.fileKey);
+  } finally {
+    globalThis.fetch = originalFetch;
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('lark message callbacks acknowledge before long thread runs finish', async () => {
