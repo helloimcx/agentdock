@@ -74,6 +74,9 @@ export function useThreadChatSendingActions({
 }: UseThreadChatSendingActionsInput) {
   const usesManagedThreadApi = true;
   const buildMessageContent = useCallback((content: string) => {
+    if (content.trim().startsWith('/')) {
+      return content;
+    }
     if (selectedKnowledgeBaseIds.length === 0) {
       return wrapUserMessageWithSchedulerProtocol(content);
     }

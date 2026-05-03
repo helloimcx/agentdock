@@ -18,6 +18,13 @@ import { LocalCoreAcpResponseProcessor } from './local-core-acp-response-process
 import type { ThreadMessageInput } from './local-core-acp-content.js';
 import { normalizeThreadMessageInput } from './local-core-acp-content.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
+import {
+  DEFAULT_AGENT_MODE,
+  formatAgentMode,
+  modeHelpText,
+  normalizeAgentMode,
+  parseSlashCommand,
+} from './local-core-slash-commands.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -104,6 +111,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         });
         return approval.approvalId;
       },
+      getThreadAgentMode: (threadId) => this.options.store.getThreadRow(threadId)?.agent_mode || DEFAULT_AGENT_MODE,
       sendRaw: (session, payload) => this.transport.sendRaw(session, payload),
     });
     this.sessionCoordinator = new LocalCoreAcpSessionCoordinator({
@@ -144,8 +152,8 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     return this.options.store.listThreadSummaries(workspaceId);
   }
 
-  async createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE): Promise<ThreadDetail> {
-    return this.options.store.createThread(workspaceId, title, agentType);
+  async createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE, agentMode = DEFAULT_AGENT_MODE): Promise<ThreadDetail> {
+    return this.options.store.createThread(workspaceId, title, agentType, agentMode);
   }
 
   async getThread(threadId: string): Promise<ThreadDetail> {
@@ -189,6 +197,31 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         source: 'user',
       },
     });
+    const slashResponse = await this.handleLocalSlashCommand(threadId, row.workspace_id, content);
+    if (slashResponse) {
+      this.options.store.appendMessage(threadId, 'assistant', slashResponse, 'final');
+      this.options.eventBus.emit({
+        type: 'thread.message.accepted',
+        payload: {
+          threadId,
+          workspaceId: row.workspace_id,
+          role: 'assistant',
+          content: slashResponse,
+          kind: 'final',
+          source: 'system',
+        },
+      });
+      this.emitBridgeEvent({
+        type: 'reply',
+        sessionKey: row.bridge_session_key,
+        content: slashResponse,
+      });
+      this.emitBridgeEvent({
+        type: 'typing_stop',
+        sessionKey: row.bridge_session_key,
+      });
+      return { runId: '' };
+    }
     const runId = `run:${threadId}:${Date.now()}`;
     this.options.runThreadMap.set(runId, threadId);
     this.options.store.updateRun(runId, threadId, 'running');
@@ -259,6 +292,40 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
       replyCtx: session.currentRunId,
     });
     return { runId: session.currentRunId };
+  }
+
+  private async handleLocalSlashCommand(threadId: string, workspaceId: string, content: string) {
+    const command = parseSlashCommand(content);
+    if (!command || command.name !== 'mode') {
+      return '';
+    }
+    const row = this.options.store.getThreadRow(threadId);
+    const currentMode = row?.agent_mode || DEFAULT_AGENT_MODE;
+    const requested = command.args.join(' ').trim();
+    if (!requested) {
+      return modeHelpText(currentMode);
+    }
+    const mode = normalizeAgentMode(requested);
+    if (!mode) {
+      return `未知模式：${requested}\n\n${modeHelpText(currentMode)}`;
+    }
+    this.options.store.updateThreadAgentMode(threadId, mode);
+    try {
+      await this.sessionCoordinator.setThreadMode(threadId, mode);
+    } catch (error) {
+      this.options.log?.(`localcore-acp mode sync failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    this.options.store.createAuditEvent({
+      type: 'permission.changed',
+      workspaceId,
+      actor: 'local',
+      summary: `Thread agent mode changed to ${mode}.`,
+      metadata: { threadId, mode },
+    });
+    if (mode === 'bypassPermissions') {
+      return '已切换到 yolo 模式：后续工具调用会跳过权限申请。使用 `/mode default` 可恢复默认权限。';
+    }
+    return `已切换到 ${formatAgentMode(mode)} 模式。`;
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {

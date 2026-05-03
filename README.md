@@ -23,6 +23,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 - 新增通用 channel outbound 文件回传能力，支持通过当前或指定 Lark/微信会话发送本地文件。
 - LAC 定时任务 ID 改为短 ID 展示与操作，`list/info/edit/del/run` 可直接使用列表中的短 ID。
 - 调整 Local AI Core channel 目录结构，将 Lark、微信实现隔离到独立模块，并保留公共文件处理能力。
+- app、web、Lark/微信 channel 支持线程级 `/mode` 命令，`/mode yolo` 可长期切换为跳过工具权限申请，直到 `/mode default` 恢复。
 
 ### 2026-05-02
 

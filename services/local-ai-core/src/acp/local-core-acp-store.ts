@@ -87,7 +87,8 @@ export class LocalCoreAcpStore {
         history_count INTEGER NOT NULL DEFAULT 0,
         excerpt TEXT NOT NULL DEFAULT '',
         acp_session_id TEXT,
-        acp_supports_load INTEGER NOT NULL DEFAULT 0
+        acp_supports_load INTEGER NOT NULL DEFAULT 0,
+        agent_mode TEXT NOT NULL DEFAULT 'default'
       );
       CREATE INDEX IF NOT EXISTS idx_threads_workspace_updated ON threads (workspace_id, updated_at DESC);
       CREATE TABLE IF NOT EXISTS messages (
@@ -278,6 +279,7 @@ export class LocalCoreAcpStore {
     `);
     this.ensureColumn('messages', 'tool_call_json', 'TEXT');
     this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
+    this.ensureColumn('threads', 'agent_mode', "TEXT NOT NULL DEFAULT 'default'");
   }
 
   close() {
@@ -286,7 +288,7 @@ export class LocalCoreAcpStore {
 
   listThreadSummaries(workspaceId: string): ThreadSummary[] {
     const rows = this.db.prepare(`
-      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt
+      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode
       FROM threads
       WHERE workspace_id = ?
       ORDER BY updated_at DESC
@@ -311,15 +313,15 @@ export class LocalCoreAcpStore {
     return Number(row?.total || 0);
   }
 
-  createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE): ThreadDetail {
+  createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE, agentMode = 'default'): ThreadDetail {
     const sessionId = randomUUID();
     const threadId = encodeThreadId(workspaceId, sessionId);
     const now = new Date().toISOString();
     const bridgeSessionKey = `${LOCALCORE_ACP_AGENT_TYPE}:${workspaceId}:${sessionId}`;
     this.db.prepare(`
-      INSERT INTO threads (id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '')
-    `).run(threadId, workspaceId, sessionId, bridgeSessionKey, title, agentType, now, now);
+      INSERT INTO threads (id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, agent_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?)
+    `).run(threadId, workspaceId, sessionId, bridgeSessionKey, title, agentType, now, now, agentMode || 'default');
     return {
       id: threadId,
       workspaceId,
@@ -1228,10 +1230,18 @@ export class LocalCoreAcpStore {
 
   getThreadRow(threadId: string) {
     return this.db.prepare(`
-      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load
+      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode
       FROM threads
       WHERE id = ?
     `).get(threadId) as LocalThreadRow | undefined;
+  }
+
+  updateThreadAgentMode(threadId: string, mode: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET agent_mode = ?, updated_at = ?
+      WHERE id = ?
+    `).run(mode, new Date().toISOString(), threadId);
   }
 
   updateThreadSession(threadId: string, sessionId: string, supportsLoad: boolean) {

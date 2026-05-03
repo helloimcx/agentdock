@@ -80,6 +80,7 @@ export class LocalCoreAcpSessionCoordinator {
         const created = await this.options.transport.request(session, 'session/new', {
           cwd: config.workDir,
           mcpServers: [],
+          _meta: this.buildSessionMeta(threadId),
         }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
         session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
         if (!session.sessionId) {
@@ -92,6 +93,17 @@ export class LocalCoreAcpSessionCoordinator {
       }
     }
     return session;
+  }
+
+  async setThreadMode(threadId: string, mode: string) {
+    const session = this.sessions.get(threadId);
+    if (!session || session.closed || !session.sessionId) {
+      return;
+    }
+    await this.options.transport.request(session, 'session/set_mode', {
+      sessionId: session.sessionId,
+      modeId: mode,
+    }, 30000);
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
@@ -184,5 +196,20 @@ export class LocalCoreAcpSessionCoordinator {
         : this.options.cliBinDir;
     }
     return env;
+  }
+
+  private buildSessionMeta(threadId: string) {
+    const row = this.options.store.getThreadRow(threadId);
+    const mode = String(row?.agent_mode || '').trim();
+    if (!mode || mode === 'default') {
+      return undefined;
+    }
+    return {
+      claudeCode: {
+        options: {
+          permissionMode: mode,
+        },
+      },
+    };
   }
 }

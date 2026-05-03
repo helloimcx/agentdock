@@ -29,6 +29,11 @@ export function foldToolResultForLark(content: string): string {
   return parts.slice(0, 2).join(' - ');
 }
 
+export function isPendingToolProgressForLark(content: string) {
+  const normalized = foldToolResultForLark(content).toLowerCase();
+  return normalized.startsWith('🔧 ') && normalized.includes(' - pending');
+}
+
 export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridgeEvent, options: { mirrorPermissionStateInMainCard: boolean }) {
   const content = foldToolResultForLark(String(event.content || '').trim());
   if (event.type === 'typing_start') {
@@ -95,6 +100,9 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
       return renderProgressMessage(event.previewHandle || 'thinking-preview', content);
     }
     if (content.startsWith('🔧 ')) {
+      if (isPendingToolProgressForLark(content)) {
+        return { key: 'noop', text: '', buttonRows: [], isFinal: false };
+      }
       return renderProgressMessage(progressKey('tool', event), content);
     }
     return {
@@ -113,6 +121,9 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
       return renderProgressMessage(progressKey('thinking', event), content);
     }
     if (content.startsWith('🔧 ')) {
+      if (isPendingToolProgressForLark(content)) {
+        return { key: 'noop', text: '', buttonRows: [], isFinal: false };
+      }
       return renderProgressMessage(progressKey('tool', event), content);
     }
     if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {

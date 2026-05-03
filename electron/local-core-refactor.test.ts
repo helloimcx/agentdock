@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { LocalCoreAcpResponseProcessor } from '../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
+import { formatAgentMode, modeHelpText, normalizeAgentMode, parseSlashCommand } from '../services/local-ai-core/src/acp/local-core-slash-commands.js';
 import { ScheduledConversationExecutor } from '../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalScheduleAdapter } from '../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
 import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+import { createLarkTurnState, renderLarkBridgeEventMessage } from '../services/local-ai-core/src/channel/lark/runtime-state.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 import {
@@ -974,6 +976,64 @@ test('ACP permission button rows preserve always allow actions', () => {
   assert.equal(session.pendingPermissionByRun.get('run-1')?.options[1]?.optionId, 'approve-always');
 });
 
+test('ACP yolo mode auto-selects permission requests without rendering cards', () => {
+  const emitted: Array<{ type: string }> = [];
+  const appended: string[] = [];
+  const rawPayloads: any[] = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content) => appended.push(content),
+    emitBridge: (event) => emitted.push(event as { type: string }),
+    updateRunStatus: () => {},
+    getThreadAgentMode: () => 'bypassPermissions',
+    sendRaw: (_session, payload) => {
+      rawPayloads.push(payload);
+      return true;
+    },
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    pendingPermissionByRun: new Map(),
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentRequest(session, {
+    method: 'session/request_permission',
+    id: 42,
+    params: {
+      toolCall: {
+        title: 'Terminal',
+        parameters: {
+          command: 'system_profiler SPHardwareDataType',
+        },
+      },
+      options: [
+        { optionId: 'approve-once', name: 'Allow once', kind: 'allow' },
+        { optionId: 'approve-always', name: 'Always allow', kind: 'allow_all' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject' },
+      ],
+    },
+  });
+
+  assert.equal(rawPayloads[0]?.id, 42);
+  assert.equal(rawPayloads[0]?.result?.outcome?.outcome, 'selected');
+  assert.equal(rawPayloads[0]?.result?.outcome?.optionId, 'approve-always');
+  assert.equal(session.pendingPermissionByRun.size, 0);
+  assert.deepEqual(appended, []);
+  assert.deepEqual(emitted, []);
+});
+
 test('ACP bare tool call is flushed before assistant text', () => {
   const appended: string[] = [];
   const emitted: Array<{ content?: string; type: string }> = [];
@@ -1364,7 +1424,7 @@ test('lark bridge sends final reply as a separate card after streamed final upda
   assert.deepEqual(storedMessageIds, ['lark-msg-1', 'lark-msg-2']);
 });
 
-test('lark bridge does not leave typing placeholders or throttle thought updates', async () => {
+test('lark bridge does not leave typing placeholders and coalesces thought updates', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const client = {
@@ -1456,7 +1516,6 @@ test('lark bridge does not leave typing placeholders or throttle thought updates
   assert.deepEqual(createdCards.map((card) => card.text), ['💭 The user']);
   assert.deepEqual(patchedCards.map((card) => card.text), [
     '💭 The user sent a short casual message.',
-    '💭 The user sent a short casual message. I should reply briefly.',
   ]);
   assert.ok(!createdCards.some((card) => /处理中|正在思考/.test(card.text)));
 });
@@ -2350,6 +2409,7 @@ test('lark inbound messages use active runtime binding before config refresh cat
   const users = new Map<string, any>();
   const threadBindings = new Map<string, any>();
   const createdThreads: string[] = [];
+  const updatedModes: Array<{ threadId: string; mode: string }> = [];
   const sentCards: any[] = [];
   const platformKey = 'lark:lark-hot';
   const bindingKey = `${platformKey}:chat-1:user-1`;
@@ -2365,6 +2425,8 @@ test('lark inbound messages use active runtime binding before config refresh cat
       },
       getPlatformThreadBinding: () => threadBindings.get(bindingKey),
       upsertPlatformThreadBinding: (binding: any) => threadBindings.set(bindingKey, binding),
+      getThreadRow: (threadId: string) => ({ id: threadId, agent_mode: threadId === 'thread-1' ? 'bypassPermissions' : 'default' }),
+      updateThreadAgentMode: (threadId: string, mode: string) => updatedModes.push({ threadId, mode }),
       getLatestRunForThread: () => null,
       clearPlatformThreadMessageId: () => {},
     } as any,
@@ -2420,7 +2482,31 @@ test('lark inbound messages use active runtime binding before config refresh cat
 
   assert.equal(users.get(`${platformKey}:user-1`)?.thread_id, 'thread-2');
   assert.deepEqual(createdThreads.map((item) => item.split(':')[0]), ['thread-1', 'thread-2']);
+  assert.deepEqual(updatedModes, [{ threadId: 'thread-2', mode: 'bypassPermissions' }]);
   assert.match(sentCards[0]?.elements?.[0]?.content || '', /已开始新会话/);
+});
+
+test('lark rendering suppresses noisy pending tool progress cards', () => {
+  const turn = createLarkTurnState('session-1');
+  const rendered = renderLarkBridgeEventMessage(turn, {
+    type: 'update_message',
+    sessionKey: 'session-1',
+    replyCtx: 'run-1',
+    previewHandle: 'tool-1',
+    content: '🔧 bash: Tool update - pending',
+  });
+
+  assert.equal(rendered.text, '');
+  assert.equal(rendered.key, 'noop');
+
+  const completed = renderLarkBridgeEventMessage(turn, {
+    type: 'update_message',
+    sessionKey: 'session-1',
+    replyCtx: 'run-1',
+    previewHandle: 'tool-1',
+    content: '🔧 bash: Tool update - completed - verbose output',
+  });
+  assert.equal(completed.text, '🔧 bash: Tool update - completed');
 });
 
 test('ACP skips empty generic running tool updates', () => {
@@ -2561,6 +2647,30 @@ test('response processor derives slash fallback replies and cron system response
   );
   assert.equal(processed.displayContent.trim(), '已为你创建。');
   assert.match(processed.systemResponses[0] || '', /已创建定时任务/);
+});
+
+test('slash mode commands normalize yolo aliases and expose current help', () => {
+  assert.deepEqual(parseSlashCommand('/mode yolo'), { name: 'mode', args: ['yolo'] });
+  assert.equal(normalizeAgentMode('yolo'), 'bypassPermissions');
+  assert.equal(normalizeAgentMode('accept-edits'), 'acceptEdits');
+  assert.equal(formatAgentMode('bypassPermissions'), 'yolo');
+  assert.match(modeHelpText('bypassPermissions'), /当前模式：yolo/);
+});
+
+test('thread agent mode persists with thread state', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-mode-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const thread = store.createThread('workspace-a', 'Mode test', 'claudecode');
+    assert.equal(store.getThreadRow(thread.id)?.agent_mode, 'default');
+    const inheritedThread = store.createThread('workspace-a', 'Inherited mode test', 'claudecode', 'bypassPermissions');
+    assert.equal(store.getThreadRow(inheritedThread.id)?.agent_mode, 'bypassPermissions');
+    store.updateThreadAgentMode(thread.id, 'bypassPermissions');
+    assert.equal(store.getThreadRow(thread.id)?.agent_mode, 'bypassPermissions');
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('scheduled conversation executor uses execution policy hooks around a thread run', async () => {

@@ -28,6 +28,7 @@ import {
 } from './local-core-acp-permission-lifecycle.js';
 import { formatToolCallContent, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import type { AcpSessionState } from '../router/workspace-router-types.js';
+import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
@@ -35,6 +36,7 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall) => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
+  getThreadAgentMode?: (threadId: string) => string;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
 };
 
@@ -129,6 +131,26 @@ export class LocalCoreAcpTurnCoordinator {
     }
     const options = parsePermissionOptions(payload.params?.options);
     const toolTitle = formatToolCallContent(payload.params?.toolCall);
+    if ((this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE) === 'bypassPermissions') {
+      const selected = options.find((option) => option.normalizedAction === 'allow all')
+        || options.find((option) => option.normalizedAction === 'allow')
+        || options.find((option) => option.normalizedAction !== 'deny');
+      this.options.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: payload.id,
+        result: {
+          outcome: selected
+            ? {
+                outcome: 'selected',
+                optionId: selected.optionId,
+              }
+            : {
+                outcome: 'cancelled',
+              },
+        },
+      });
+      return;
+    }
     const isSchedulerAdd = isSchedulerAddCommand(toolTitle);
     if (isSchedulerAdd && session.schedulerJobCreatedByRun.get(currentRunId)) {
       this.options.sendRaw(session, {

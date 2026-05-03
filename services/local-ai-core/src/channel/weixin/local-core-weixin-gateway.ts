@@ -733,6 +733,10 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     if (slashCommand?.name === 'new') {
       const title = slashCommand.args.join(' ').trim() || `${input.displayName || 'WeChat'} ${new Date().toLocaleTimeString()}`;
       const nextThread = await router.createThread(input.workspaceId, title);
+      const inheritedMode = this.options.store.getThreadRow?.(threadId)?.agent_mode || '';
+      if (inheritedMode && inheritedMode !== 'default') {
+        this.options.store.updateThreadAgentMode?.(nextThread.id, inheritedMode);
+      }
       const now = new Date().toISOString();
       this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, platformKey);
       this.options.store.upsertPlatformThreadBinding({
@@ -776,7 +780,9 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       input.contextToken || input.messageId,
       platformKey,
     );
-    const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
+    const wrappedText = slashCommand
+      ? input.text
+      : wrapUserMessageWithSchedulerProtocol(input.text);
     await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
   }

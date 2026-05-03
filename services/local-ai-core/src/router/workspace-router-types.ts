@@ -43,6 +43,7 @@ export type LocalThreadRow = {
   excerpt: string;
   acp_session_id: string | null;
   acp_supports_load: number;
+  agent_mode: string;
 };
 
 export type LocalMessageRow = {

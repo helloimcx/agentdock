@@ -58,6 +58,8 @@ import type {
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+const LARK_FINAL_PATCH_INTERVAL_MS = 900;
+const LARK_PROGRESS_PATCH_INTERVAL_MS = 3000;
 
 export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
   // Lark returns 200340 when card action events are not enabled in the app's
@@ -535,9 +537,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           const existingMessageId = getLarkRenderedMessageId(turn, rendered);
           const shouldThrottle =
             event.type === 'update_message' &&
-            rendered.isFinal &&
             existingMessageId &&
-            Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < 900;
+            Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
+              rendered.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
+            );
           this.options.log?.(
             `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(existingMessageId)} throttle=${shouldThrottle}`,
           );
@@ -685,6 +688,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     if (slashCommand?.name === 'new') {
       const title = slashCommand.args.join(' ').trim() || `${input.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`;
       const nextThread = await router.createThread(input.workspaceId, title);
+      const inheritedMode = this.options.store.getThreadRow?.(threadId)?.agent_mode || '';
+      if (inheritedMode && inheritedMode !== 'default') {
+        this.options.store.updateThreadAgentMode?.(nextThread.id, inheritedMode);
+      }
       const now = new Date().toISOString();
       this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, platformKey);
       this.options.store.upsertPlatformThreadBinding({
@@ -717,7 +724,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       return { paired: true, threadId };
     }
     this.options.store.clearPlatformThreadMessageId(input.workspaceId, input.chatId, input.platformUserId);
-    const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
+    const wrappedText = slashCommand
+      ? input.text
+      : wrapUserMessageWithSchedulerProtocol(input.text);
     await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
   }
@@ -1185,6 +1194,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     sessionKey?: string,
     threadId?: string,
   ) {
+    const startedAt = Date.now();
     const response = await state.client.im.message.create({
       params: {
         receive_id_type: this.resolveReceiveIdType(chatId),
@@ -1195,6 +1205,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
       },
     });
+    this.options.log?.(`localcore-lark card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
     return String(response?.data?.message_id || '').trim();
   }
 
@@ -1235,6 +1246,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     sessionKey?: string,
     threadId?: string,
   ) {
+    const startedAt = Date.now();
     await state.client.im.message.patch({
       path: {
         message_id: messageId,
@@ -1243,6 +1255,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
       },
     });
+    this.options.log?.(`localcore-lark card patch took ${Date.now() - startedAt}ms message=${messageId} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
   }
 
   private generatePairingCode() {
