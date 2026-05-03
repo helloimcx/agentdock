@@ -489,6 +489,9 @@ export default function DesktopWorkspace() {
         app_secret: credentials.appSecret,
         verification_token: credentials.verificationToken || currentPlatform.options?.verification_token || '',
         encrypt_key: credentials.encryptKey || currentPlatform.options?.encrypt_key || '',
+        card_actions: true,
+        subscribed_events: 'im.message.receive_v1 card.action.trigger',
+        subscribed_callbacks: 'card.action.trigger',
       },
     });
     if (currentIndex >= 0) {

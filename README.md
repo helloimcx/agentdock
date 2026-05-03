@@ -17,6 +17,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 - 新增 Lark 机器人扫码新建/绑定入口，基于官方 Device Flow 自动创建应用，扫码确认后自动感知、写回 App ID/App Secret，并立即激活到可发送消息状态。
 - 支持同一个 workspace 绑定多个 Lark/微信 channel 实例，实例级隔离运行时、扫码绑定和消息路由。
+- Lark 扫码创建机器人默认请求 `card.action.trigger` 卡片回传交互回调，并自动启用卡片按钮处理。
 - 优化 channel 工具与权限交互：Lark 工具结果默认隐藏详细输出，权限按钮点击完成后移除可重复点击按钮。
 - 新增通用 channel outbound 文件回传能力，支持通过当前或指定 Lark/微信会话发送本地文件。
 - 调整 Local AI Core channel 目录结构，将 Lark、微信实现隔离到独立模块，并保留公共文件处理能力。
