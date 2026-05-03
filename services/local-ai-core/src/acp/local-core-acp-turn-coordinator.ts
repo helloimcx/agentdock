@@ -1,6 +1,15 @@
 import type { DesktopBridgeEvent, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
 import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.js';
-import { formatToolCallContent, normalizePermissionOptionAction, toPermissionButtonRows } from './workspace-acp-permissions.js';
+import {
+  extractToolUpdateContent,
+  formatPlanProgress,
+  formatToolProgressMessage,
+  isEmptyRunningToolUpdate,
+  isTerminalToolStatus,
+  resolveToolUpdateDisplayTitle,
+} from './local-core-acp-progress.js';
+import { createPermissionPrompt, parsePermissionOptions } from './local-core-acp-permission-lifecycle.js';
+import { formatToolCallContent, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
 
 type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
@@ -98,20 +107,7 @@ export class LocalCoreAcpTurnCoordinator {
       });
       return;
     }
-    const options = Array.isArray(payload.params?.options)
-      ? payload.params.options
-          .map((option: any) => ({
-            optionId: String(option?.optionId || '').trim(),
-            name: String(option?.name || option?.optionId || '').trim(),
-            kind: String(option?.kind || '').trim(),
-            normalizedAction: normalizePermissionOptionAction({
-              optionId: option?.optionId,
-              name: option?.name,
-              kind: option?.kind,
-            }),
-          }))
-          .filter((option: { optionId: string }) => option.optionId)
-      : [];
+    const options = parsePermissionOptions(payload.params?.options);
     const toolTitle = formatToolCallContent(payload.params?.toolCall);
     const isSchedulerAdd = isSchedulerAddCommand(toolTitle);
     if (isSchedulerAdd && session.schedulerJobCreatedByRun.get(currentRunId)) {
@@ -165,15 +161,7 @@ export class LocalCoreAcpTurnCoordinator {
       }
     }
     this.options.updateRunStatus(currentRunId, session.threadId, 'awaiting_input');
-    const permissionPrompt = [
-      '等待工具确认',
-      '',
-      toolTitle,
-      '',
-      '请选择一个选项继续执行。',
-      '',
-      '若按钮没有显示，请直接回复：allow all / allow / deny',
-    ].join('\n');
+    const permissionPrompt = createPermissionPrompt(toolTitle);
     this.options.appendMessage(session.threadId, 'assistant', permissionPrompt, 'progress');
     this.options.emitBridge({
       type: 'buttons',
@@ -282,7 +270,7 @@ export class LocalCoreAcpTurnCoordinator {
       case 'tool_call_update': {
         const title = String(update.title || 'Tool update').trim();
         const status = String(update.status || '').trim();
-        const content = this.extractToolUpdateContent(update.content);
+        const content = extractToolUpdateContent(update.content);
         if (isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
           session.schedulerJobCreatedByRun.set(currentRunId, true);
         }
@@ -290,7 +278,7 @@ export class LocalCoreAcpTurnCoordinator {
         const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
         const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
         const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
-        if (this.isEmptyRunningToolUpdate(title, status, content)) {
+        if (isEmptyRunningToolUpdate({ title, status, content })) {
           if (toolCall) {
             this.deleteToolCall(currentTurn, toolCall.key);
           } else {
@@ -301,14 +289,14 @@ export class LocalCoreAcpTurnCoordinator {
           this.syncLegacyPendingToolCall(currentTurn, this.resolveFallbackToolCall(currentTurn));
           return;
         }
-        const displayTitle = this.resolveToolUpdateDisplayTitle(title, status, priorDetail);
-        if (!this.isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
+        const displayTitle = resolveToolUpdateDisplayTitle({ title, status, priorDetail });
+        if (!isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
           if (toolCall) {
             toolCall.detail = displayTitle;
           }
           currentTurn.pendingToolCallDetail = displayTitle;
         }
-        if (this.isTerminalToolStatus(status)) {
+        if (isTerminalToolStatus(status)) {
           if (toolCall) {
             this.deleteToolCall(currentTurn, toolCall.key);
           } else {
@@ -317,7 +305,7 @@ export class LocalCoreAcpTurnCoordinator {
             currentTurn.pendingToolCallDetail = undefined;
           }
         }
-        this.emitProgress(session, currentRunId, this.formatToolProgressMessage(toolName, displayTitle, status, content), messageId);
+        this.emitProgress(session, currentRunId, formatToolProgressMessage({ toolName, title: displayTitle, status, content }), messageId);
         this.syncLegacyPendingToolCall(currentTurn, this.resolveFallbackToolCall(currentTurn));
         return;
       }
@@ -327,11 +315,10 @@ export class LocalCoreAcpTurnCoordinator {
         if (entries.length === 0) {
           return;
         }
-        const summary = entries
-          .map((entry: any) => String(entry?.content || '').trim())
-          .filter(Boolean)
-          .join(' | ');
-        const content = `💭 ${summary}`;
+        const content = formatPlanProgress(entries);
+        if (!content) {
+          return;
+        }
         this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
         this.options.emitBridge({
           type: 'reply',
@@ -359,43 +346,6 @@ export class LocalCoreAcpTurnCoordinator {
       messageId,
       content,
     });
-  }
-
-  private extractToolUpdateContent(content: unknown) {
-    return Array.isArray(content)
-      ? content
-          .map((entry: any) =>
-            entry?.type === 'content' && entry?.content?.type === 'text'
-              ? String(entry.content.text || '')
-              : '')
-          .filter(Boolean)
-          .join('\n')
-      : '';
-  }
-
-  private formatToolProgressMessage(toolName: string | undefined, title: string, status: string, content: string) {
-    const detail = [title, status, content].filter(Boolean).join(' - ');
-    return toolName ? `🔧 ${toolName}: ${detail || 'Tool update'}` : `🔧 ${detail || 'Tool update'}`;
-  }
-
-  private resolveToolUpdateDisplayTitle(title: string, status: string, priorDetail?: string) {
-    if (priorDetail && (this.isTerminalToolStatus(status) || /^tool update$/i.test(title.trim()))) {
-      return priorDetail;
-    }
-    if (this.isTerminalToolStatus(status) && /^tool update$/i.test(title.trim())) {
-      return '';
-    }
-    return title;
-  }
-
-  private isEmptyRunningToolUpdate(title: string, status: string, content: string) {
-    return !content.trim() &&
-      /^running$/i.test(status) &&
-      (!title.trim() || /^tool update$/i.test(title));
-  }
-
-  private isTerminalToolStatus(status: string) {
-    return /^(completed|failed|error|cancelled|canceled)$/i.test(status.trim());
   }
 
   private extractToolCallKey(update: Record<string, unknown>) {

@@ -13,6 +13,17 @@ import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../se
 import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
+import {
+  extractToolUpdateContent,
+  formatPlanProgress,
+  formatToolProgressMessage,
+  isEmptyRunningToolUpdate,
+  resolveToolUpdateDisplayTitle,
+} from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
+import {
+  createPermissionPrompt,
+  parsePermissionOptions,
+} from '../services/local-ai-core/src/acp/local-core-acp-permission-lifecycle.js';
 import { normalizePermissionAction, normalizePermissionOptionAction } from '../services/local-ai-core/src/acp/workspace-acp-permissions.js';
 import { parseLocalAiCoreRoute } from '../services/local-ai-core/src/runtime/server-routes.js';
 
@@ -302,6 +313,62 @@ test('ACP permission normalization preserves always-allow option semantics', () 
     name: 'Allow once',
     kind: 'allow',
   }), 'allow');
+});
+
+test('ACP permission lifecycle parses actionable options and fallback prompt content', () => {
+  assert.deepEqual(parsePermissionOptions([
+    { optionId: 'approve-once', name: 'Allow once', kind: 'allow' },
+    { optionId: 'approve-always', name: 'Always allow', kind: 'allow' },
+    { optionId: '', name: 'missing id', kind: 'reject' },
+  ]), [
+    {
+      optionId: 'approve-once',
+      name: 'Allow once',
+      kind: 'allow',
+      normalizedAction: 'allow',
+    },
+    {
+      optionId: 'approve-always',
+      name: 'Always allow',
+      kind: 'allow',
+      normalizedAction: 'allow all',
+    },
+  ]);
+  assert.match(createPermissionPrompt('Terminal: npm test'), /Terminal: npm test/);
+  assert.match(createPermissionPrompt('Terminal: npm test'), /allow all \/ allow \/ deny/);
+});
+
+test('ACP progress projection extracts tool output and formats durable progress content', () => {
+  assert.equal(extractToolUpdateContent([
+    { type: 'content', content: { type: 'text', text: 'first line' } },
+    { type: 'content', content: { type: 'image', text: 'ignored' } },
+    { type: 'content', content: { type: 'text', text: 'second line' } },
+  ]), 'first line\nsecond line');
+  assert.equal(formatToolProgressMessage({
+    toolName: 'Terminal',
+    title: 'npm test',
+    status: 'completed',
+    content: 'ok',
+  }), '🔧 Terminal: npm test - completed - ok');
+  assert.equal(resolveToolUpdateDisplayTitle({
+    title: 'Tool update',
+    status: 'completed',
+    priorDetail: 'npm test',
+  }), 'npm test');
+  assert.equal(isEmptyRunningToolUpdate({
+    title: 'Tool update',
+    status: 'running',
+    content: '',
+  }), true);
+});
+
+test('ACP progress projection ignores empty plan entries', () => {
+  assert.equal(formatPlanProgress([
+    { content: '检查消息流' },
+    { content: '  ' },
+    { content: '修复持久化' },
+  ]), '💭 检查消息流 | 修复持久化');
+  assert.equal(formatPlanProgress([{ content: '' }]), '');
 });
 
 test('ACP tool call running and completed updates share one message id', () => {

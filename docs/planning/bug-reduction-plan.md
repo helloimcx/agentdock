@@ -73,7 +73,9 @@ Checklist:
   - [x] Capability, plugin diagnostics, event stream, and workspace probe routes parse through the same focused route descriptor.
   - [x] Platform gateway and pairing routes parse through the same focused route descriptor.
 - [ ] ACP persistence is separated from streaming event processing.
+  - [x] ACP progress message formatting and filtering live in focused pure projection helpers.
 - [ ] Permission lifecycle handling is separated from generic message processing.
+  - [x] ACP permission option parsing and fallback prompt construction live in focused lifecycle helpers.
 - [ ] Common bug fixes touch fewer layers than before.
 - [ ] State transitions can be tested without launching Electron or a full Local AI Core server.
 
