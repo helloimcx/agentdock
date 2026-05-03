@@ -17,8 +17,8 @@ Use this checklist to reduce repeated regressions in Thread Chat, Local AI Core,
 
 Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/local-ai-core/src/router/`
 
-- [ ] Define canonical contracts for `Thread`, `Run`, `Task`, `PermissionRequest`, `MessageBlock`, `Attachment`, `ChannelInboundContent`, and `ChannelOutboundContent`.
-- [ ] Document which fields are persisted, streamed, rendered, and platform-specific.
+- [x] Define canonical contracts for `Thread`, `Run`, `Task`, `PermissionRequest`, `MessageBlock`, `Attachment`, `ChannelInboundContent`, and `ChannelOutboundContent`.
+- [x] Document which fields are persisted, streamed, rendered, and platform-specific.
 - [ ] Remove duplicated ad hoc types for the same concept across renderer, Local AI Core, plugins, and shared packages.
 - [x] Add parser or validation helpers for enum-like values: execution mode, trigger type, platform, content type, permission outcome, task state, and run state.
   - [x] Scheduler execution mode.
@@ -30,7 +30,7 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
   - [x] Run state.
 - [ ] Confirm renderer code does not infer durable permission or run state from message text/actions.
 - [x] Confirm channel adapters convert to and from shared content contracts.
-- [ ] Confirm a developer can answer "where does this state live?" from one contract and one owner document.
+- [x] Confirm a developer can answer "where does this state live?" from one contract and one owner document.
 
 ## Phase 2: Lock Golden Path Tests
 

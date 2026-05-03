@@ -9,6 +9,19 @@ This document defines the intended ownership boundaries for message blocks and c
 - Channel runtimes adapt platform payloads into shared core contracts and adapt shared outbound content back to platform APIs.
 - ACP adapters translate runtime protocol events into Local AI Core message, run, permission, and bridge state. They should not leak raw protocol details into renderer code.
 
+## Core Contract Index
+
+| Concept | Current shared contract | Owner | Persisted fields | Streamed fields | Rendered fields | Platform-specific fields |
+| --- | --- | --- | --- | --- | --- | --- |
+| Thread | `ThreadSummary`, `ThreadDetail` | Local AI Core | id, workspace id, title, timestamps, selected knowledge bases | thread update events | title, excerpt, selected knowledge bases | none |
+| Run | `RunSummary` | Local AI Core | run id, thread id, status, timestamps | run status events | status and interrupt affordance | none |
+| Task | `AgentTask` | Local AI Core | task id, workspace, runtime, thread/run links, status, timeline, logs, artifacts | task status/log events | status, timeline, summary, logs, artifacts | runtime id only |
+| PermissionRequest | `ThreadPendingPermissionRequest`, `ApprovalRequest` | Local AI Core | request id, run/thread links, tool/action, options, outcome | permission prompt and resolution events | pending prompt, choices, resolved state | channel card/message ids stay in adapters |
+| MessageBlock | `ThreadMessage` compatibility plus future block contract | Local AI Core | message id, role, content, kind, sequence, timestamp | stable message/block updates | text, thinking, tool, permission, attachment, and system blocks | none |
+| Attachment | `ChannelInboundContentPart`, `ChannelOutboundAttachmentResult` | Local AI Core | path/uri/data reference, filename, mime, size, metadata | attachment availability events when needed | file/image label and metadata | upload keys and platform message ids stay in adapters |
+| ChannelInboundContent | `ChannelInboundMessageContent` | Channel adapters normalize into Local AI Core | display text and normalized parts | inbound message event | normalized text/image/file parts | source platform payload remains adapter-local |
+| ChannelOutboundContent | `ChannelOutboundMessageInput`, `ChannelOutboundMessageResult` | Local AI Core routes to channel adapters | route, parts, result ids, attachments | outbound delivery status when needed | send result and attachment metadata | platform upload ids remain result metadata |
+
 ## Message Block Contract Direction
 
 Current public thread messages use `ThreadMessage.content` plus `ThreadMessage.kind`. That is enough for simple text, but repeated regressions show that richer streaming state needs explicit block semantics.
