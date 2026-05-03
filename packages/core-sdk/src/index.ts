@@ -25,6 +25,8 @@ import type {
   LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreChannelQrCode,
+  LocalCoreLarkQrCodeStatus,
   LocalCoreEvent,
   LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
@@ -232,20 +234,24 @@ export async function listChannelGateways(platform: string) {
   return coreRequest<{ gateways: LocalCoreChannelGatewayStatus[] }>('GET', `/platforms/${encodeURIComponent(platform)}`);
 }
 
-export async function getChannelGatewayStatus(platform: string, workspaceId: string) {
-  return coreRequest<LocalCoreChannelGatewayStatus>('GET', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}`);
+function instanceSuffix(instanceId?: string) {
+  return instanceId ? `?instance_id=${encodeURIComponent(instanceId)}` : '';
 }
 
-export async function testChannelConnection(platform: string, workspaceId: string) {
-  return coreRequest<LocalCoreChannelConnectionResult>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/test`);
+export async function getChannelGatewayStatus(platform: string, workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelGatewayStatus>('GET', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}${instanceSuffix(instanceId)}`);
 }
 
-export async function enableChannelGateway(platform: string, workspaceId: string) {
-  return coreRequest<LocalCoreChannelGatewayStatus>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/enable`);
+export async function testChannelConnection(platform: string, workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelConnectionResult>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/test${instanceSuffix(instanceId)}`);
 }
 
-export async function disableChannelGateway(platform: string, workspaceId: string) {
-  return coreRequest<LocalCoreChannelGatewayStatus>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/disable`);
+export async function enableChannelGateway(platform: string, workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelGatewayStatus>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/enable${instanceSuffix(instanceId)}`);
+}
+
+export async function disableChannelGateway(platform: string, workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelGatewayStatus>('POST', `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/disable${instanceSuffix(instanceId)}`);
 }
 
 export async function listChannelPendingPairings(platform: string, workspaceId?: string) {
@@ -270,20 +276,20 @@ export async function listLarkGateways() {
   return listChannelGateways('lark') as Promise<{ gateways: LocalCoreLarkGatewayStatus[] }>;
 }
 
-export async function getLarkGatewayStatus(workspaceId: string) {
-  return getChannelGatewayStatus('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
+export async function getLarkGatewayStatus(workspaceId: string, instanceId?: string) {
+  return getChannelGatewayStatus('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
 }
 
-export async function testLarkConnection(workspaceId: string) {
-  return testChannelConnection('lark', workspaceId) as Promise<LocalCoreLarkConnectionResult>;
+export async function testLarkConnection(workspaceId: string, instanceId?: string) {
+  return testChannelConnection('lark', workspaceId, instanceId) as Promise<LocalCoreLarkConnectionResult>;
 }
 
-export async function enableLarkGateway(workspaceId: string) {
-  return enableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
+export async function enableLarkGateway(workspaceId: string, instanceId?: string) {
+  return enableChannelGateway('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
 }
 
-export async function disableLarkGateway(workspaceId: string) {
-  return disableChannelGateway('lark', workspaceId) as Promise<LocalCoreLarkGatewayStatus>;
+export async function disableLarkGateway(workspaceId: string, instanceId?: string) {
+  return disableChannelGateway('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
 }
 
 export async function listLarkPendingPairings(workspaceId?: string) {
@@ -302,14 +308,27 @@ export async function listLarkAuthorizedUsers(workspaceId?: string) {
   return listChannelAuthorizedUsers('lark', workspaceId) as Promise<{ users: LocalCoreAuthorizedUser[] }>;
 }
 
-export async function getWeixinQrCode(workspaceId: string) {
-  return coreRequest<{ ticket: string; expiresIn: number; qrCodeUrl: string }>('POST', `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode`);
+export async function getLarkQrCode(workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelQrCode>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/qrcode${instanceSuffix(instanceId)}`);
 }
 
-export async function checkWeixinQrCodeStatus(workspaceId: string, ticket: string) {
+export async function checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string) {
+  const suffix = `?ticket=${encodeURIComponent(ticket)}${instanceId ? `&instance_id=${encodeURIComponent(instanceId)}` : ''}`;
+  return coreRequest<LocalCoreLarkQrCodeStatus>(
+    'GET',
+    `/platforms/lark/${encodeURIComponent(workspaceId)}/qrcode/status${suffix}`,
+  );
+}
+
+export async function getWeixinQrCode(workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelQrCode>('POST', `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode${instanceSuffix(instanceId)}`);
+}
+
+export async function checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string) {
+  const suffix = `?ticket=${encodeURIComponent(ticket)}${instanceId ? `&instance_id=${encodeURIComponent(instanceId)}` : ''}`;
   return coreRequest<{ status: 'wait' | 'signed' | 'confirmed' | 'expired'; userName?: string; userId?: string }>(
     'GET',
-    `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode/status?ticket=${encodeURIComponent(ticket)}`,
+    `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode/status${suffix}`,
   );
 }
 

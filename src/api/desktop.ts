@@ -13,6 +13,8 @@ import type {
   LocalCoreChannelGatewayStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreChannelQrCode,
+  LocalCoreLarkQrCodeStatus,
   LocalCoreChannelPairingRequest,
   LocalCoreEvent,
   LocalCorePairingRequest,
@@ -61,6 +63,8 @@ import {
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   getWeixinQrCode as getCoreWeixinQrCode,
   checkWeixinQrCodeStatus as checkCoreWeixinQrCodeStatus,
+  getLarkQrCode as getCoreLarkQrCode,
+  checkLarkQrCodeStatus as checkCoreLarkQrCodeStatus,
 } from '../../packages/core-sdk/src';
 import { getRuntimeProvider, setRuntimeProvider, type RuntimeProvider } from '@/app/runtime';
 
@@ -82,25 +86,27 @@ type DesktopProvider = {
   getCapabilitySnapshot: () => Promise<LocalCoreCapabilitySnapshot>;
   getPluginDiagnostics: () => Promise<LocalCorePluginDiagnostics>;
   listChannelGateways: (platform: string) => Promise<LocalCoreChannelGatewayStatus[]>;
-  getChannelGatewayStatus: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
-  testChannelConnection: (platform: string, workspaceId: string) => Promise<LocalCoreChannelConnectionResult>;
-  enableChannelGateway: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
-  disableChannelGateway: (platform: string, workspaceId: string) => Promise<LocalCoreChannelGatewayStatus>;
+  getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelGatewayStatus>;
+  testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelConnectionResult>;
+  enableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelGatewayStatus>;
+  disableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelGatewayStatus>;
   listChannelPendingPairings: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelPairingRequest[]>;
   approveChannelPairing: (platform: string, code: string) => Promise<LocalCoreChannelAuthorizedUser>;
   rejectChannelPairing: (platform: string, code: string) => Promise<{ rejected: boolean }>;
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelAuthorizedUser[]>;
-  getWeixinQrCode: (workspaceId: string) => Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }>;
-  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string) => Promise<{
+  getWeixinQrCode: (workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
+  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
     userName?: string;
     userId?: string;
   }>;
+  getLarkQrCode: (workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
+  checkLarkQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => Promise<LocalCoreLarkQrCodeStatus>;
   listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
-  getLarkGatewayStatus: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
-  testLarkConnection: (workspaceId: string) => Promise<LocalCoreLarkConnectionResult>;
-  enableLarkGateway: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
-  disableLarkGateway: (workspaceId: string) => Promise<LocalCoreLarkGatewayStatus>;
+  getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => Promise<LocalCoreLarkGatewayStatus>;
+  testLarkConnection: (workspaceId: string, instanceId?: string) => Promise<LocalCoreLarkConnectionResult>;
+  enableLarkGateway: (workspaceId: string, instanceId?: string) => Promise<LocalCoreLarkGatewayStatus>;
+  disableLarkGateway: (workspaceId: string, instanceId?: string) => Promise<LocalCoreLarkGatewayStatus>;
   listLarkPendingPairings: (workspaceId?: string) => Promise<LocalCorePairingRequest[]>;
   approveLarkPairing: (code: string) => Promise<LocalCoreAuthorizedUser>;
   rejectLarkPairing: (code: string) => Promise<{ rejected: boolean }>;
@@ -138,26 +144,30 @@ const electronProvider: DesktopProvider = {
   saveSettings: (input: DesktopSettingsInput) => requireDesktopBridge().saveSettings(input),
   getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
   getPluginDiagnostics: () => getCorePluginDiagnostics(),
-  listChannelGateways: (platform: string) => requireDesktopBridge().listChannelGateways(platform),
-  getChannelGatewayStatus: (platform: string, workspaceId: string) => requireDesktopBridge().getChannelGatewayStatus(platform, workspaceId),
-  testChannelConnection: (platform: string, workspaceId: string) => requireDesktopBridge().testChannelConnection(platform, workspaceId),
-  enableChannelGateway: (platform: string, workspaceId: string) => requireDesktopBridge().enableChannelGateway(platform, workspaceId),
-  disableChannelGateway: (platform: string, workspaceId: string) => requireDesktopBridge().disableChannelGateway(platform, workspaceId),
-  listChannelPendingPairings: (platform: string, workspaceId?: string) => requireDesktopBridge().listChannelPendingPairings(platform, workspaceId),
-  approveChannelPairing: (platform: string, code: string) => requireDesktopBridge().approveChannelPairing(platform, code),
-  rejectChannelPairing: (platform: string, code: string) => requireDesktopBridge().rejectChannelPairing(platform, code),
-  listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => requireDesktopBridge().listChannelAuthorizedUsers(platform, workspaceId),
-  getWeixinQrCode: (workspaceId: string) => getCoreWeixinQrCode(workspaceId),
-  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket),
-  listLarkGateways: () => requireDesktopBridge().listLarkGateways(),
-  getLarkGatewayStatus: (workspaceId: string) => requireDesktopBridge().getLarkGatewayStatus(workspaceId),
-  testLarkConnection: (workspaceId: string) => requireDesktopBridge().testLarkConnection(workspaceId),
-  enableLarkGateway: (workspaceId: string) => requireDesktopBridge().enableLarkGateway(workspaceId),
-  disableLarkGateway: (workspaceId: string) => requireDesktopBridge().disableLarkGateway(workspaceId),
-  listLarkPendingPairings: (workspaceId?: string) => requireDesktopBridge().listLarkPendingPairings(workspaceId),
-  approveLarkPairing: (code: string) => requireDesktopBridge().approveLarkPairing(code),
-  rejectLarkPairing: (code: string) => requireDesktopBridge().rejectLarkPairing(code),
-  listLarkAuthorizedUsers: (workspaceId?: string) => requireDesktopBridge().listLarkAuthorizedUsers(workspaceId),
+  listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
+  getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
+  testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
+  enableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => enableCoreChannelGateway(platform, workspaceId, instanceId),
+  disableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => disableCoreChannelGateway(platform, workspaceId, instanceId),
+  listChannelPendingPairings: (platform: string, workspaceId?: string) =>
+    listCoreChannelPendingPairings(platform, workspaceId).then((result) => result.pairings),
+  approveChannelPairing: (platform: string, code: string) => approveCoreChannelPairing(platform, code),
+  rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
+  listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
+    listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
+  getWeixinQrCode: (workspaceId: string, instanceId?: string) => getCoreWeixinQrCode(workspaceId, instanceId),
+  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket, instanceId),
+  getLarkQrCode: (workspaceId: string, instanceId?: string) => getCoreLarkQrCode(workspaceId, instanceId),
+  checkLarkQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreLarkQrCodeStatus(workspaceId, ticket, instanceId),
+  listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
+  getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => getCoreLarkGatewayStatus(workspaceId, instanceId),
+  testLarkConnection: (workspaceId: string, instanceId?: string) => testCoreLarkConnection(workspaceId, instanceId),
+  enableLarkGateway: (workspaceId: string, instanceId?: string) => enableCoreLarkGateway(workspaceId, instanceId),
+  disableLarkGateway: (workspaceId: string, instanceId?: string) => disableCoreLarkGateway(workspaceId, instanceId),
+  listLarkPendingPairings: (workspaceId?: string) => listCoreLarkPendingPairings(workspaceId).then((result) => result.pairings),
+  approveLarkPairing: (code: string) => approveCoreLarkPairing(code),
+  rejectLarkPairing: (code: string) => rejectCoreLarkPairing(code),
+  listLarkAuthorizedUsers: (workspaceId?: string) => listCoreLarkAuthorizedUsers(workspaceId).then((result) => result.users),
   probeWorkspaceStreaming: (workspaceId: string) => requireDesktopBridge().probeWorkspaceStreaming(workspaceId),
   onRuntimeEvent: (listener) => requireDesktopBridge().onRuntimeEvent(listener),
   onRuntimeDetectionEvent: (listener) => subscribeEvents((event) => {
@@ -189,23 +199,25 @@ const localCoreProvider: DesktopProvider = {
   getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
   getPluginDiagnostics: () => getCorePluginDiagnostics(),
   listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
-  getChannelGatewayStatus: (platform: string, workspaceId: string) => getCoreChannelGatewayStatus(platform, workspaceId),
-  testChannelConnection: (platform: string, workspaceId: string) => testCoreChannelConnection(platform, workspaceId),
-  enableChannelGateway: (platform: string, workspaceId: string) => enableCoreChannelGateway(platform, workspaceId),
-  disableChannelGateway: (platform: string, workspaceId: string) => disableCoreChannelGateway(platform, workspaceId),
+  getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
+  testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
+  enableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => enableCoreChannelGateway(platform, workspaceId, instanceId),
+  disableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => disableCoreChannelGateway(platform, workspaceId, instanceId),
   listChannelPendingPairings: (platform: string, workspaceId?: string) =>
     listCoreChannelPendingPairings(platform, workspaceId).then((result) => result.pairings),
   approveChannelPairing: (platform: string, code: string) => approveCoreChannelPairing(platform, code),
   rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
     listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
-  getWeixinQrCode: (workspaceId: string) => getCoreWeixinQrCode(workspaceId),
-  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket),
+  getWeixinQrCode: (workspaceId: string, instanceId?: string) => getCoreWeixinQrCode(workspaceId, instanceId),
+  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket, instanceId),
+  getLarkQrCode: (workspaceId: string, instanceId?: string) => getCoreLarkQrCode(workspaceId, instanceId),
+  checkLarkQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreLarkQrCodeStatus(workspaceId, ticket, instanceId),
   listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
-  getLarkGatewayStatus: (workspaceId: string) => getCoreLarkGatewayStatus(workspaceId),
-  testLarkConnection: (workspaceId: string) => testCoreLarkConnection(workspaceId),
-  enableLarkGateway: (workspaceId: string) => enableCoreLarkGateway(workspaceId),
-  disableLarkGateway: (workspaceId: string) => disableCoreLarkGateway(workspaceId),
+  getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => getCoreLarkGatewayStatus(workspaceId),
+  testLarkConnection: (workspaceId: string, instanceId?: string) => testCoreLarkConnection(workspaceId, instanceId),
+  enableLarkGateway: (workspaceId: string, instanceId?: string) => enableCoreLarkGateway(workspaceId, instanceId),
+  disableLarkGateway: (workspaceId: string, instanceId?: string) => disableCoreLarkGateway(workspaceId, instanceId),
   listLarkPendingPairings: (workspaceId?: string) => listCoreLarkPendingPairings(workspaceId).then((result) => result.pairings),
   approveLarkPairing: (code: string) => approveCoreLarkPairing(code),
   rejectLarkPairing: (code: string) => rejectCoreLarkPairing(code),
@@ -283,14 +295,14 @@ export const saveDesktopSettings = (input: DesktopSettingsInput): Promise<Deskto
 export const getRuntimeCapabilitySnapshot = (): Promise<LocalCoreCapabilitySnapshot> => requireProvider().getCapabilitySnapshot();
 export const getRuntimePluginDiagnostics = (): Promise<LocalCorePluginDiagnostics> => requireProvider().getPluginDiagnostics();
 export const listChannelGateways = (platform: string): Promise<LocalCoreChannelGatewayStatus[]> => requireProvider().listChannelGateways(platform);
-export const getChannelGatewayStatus = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
-  requireProvider().getChannelGatewayStatus(platform, workspaceId);
-export const testChannelConnection = (platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult> =>
-  requireProvider().testChannelConnection(platform, workspaceId);
-export const enableChannelGateway = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
-  requireProvider().enableChannelGateway(platform, workspaceId);
-export const disableChannelGateway = (platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> =>
-  requireProvider().disableChannelGateway(platform, workspaceId);
+export const getChannelGatewayStatus = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> =>
+  requireProvider().getChannelGatewayStatus(platform, workspaceId, instanceId);
+export const testChannelConnection = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelConnectionResult> =>
+  requireProvider().testChannelConnection(platform, workspaceId, instanceId);
+export const enableChannelGateway = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> =>
+  requireProvider().enableChannelGateway(platform, workspaceId, instanceId);
+export const disableChannelGateway = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> =>
+  requireProvider().disableChannelGateway(platform, workspaceId, instanceId);
 export const listChannelPendingPairings = (platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]> =>
   requireProvider().listChannelPendingPairings(platform, workspaceId);
 export const approveChannelPairing = (platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser> =>
@@ -299,18 +311,22 @@ export const rejectChannelPairing = (platform: string, code: string): Promise<{ 
   requireProvider().rejectChannelPairing(platform, code);
 export const listChannelAuthorizedUsers = (platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> =>
   requireProvider().listChannelAuthorizedUsers(platform, workspaceId);
-export const getWeixinQrCode = (workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> =>
-  requireProvider().getWeixinQrCode(workspaceId);
-export const checkWeixinQrCodeStatus = (workspaceId: string, ticket: string): Promise<{
+export const getWeixinQrCode = (workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> =>
+  requireProvider().getWeixinQrCode(workspaceId, instanceId);
+export const checkWeixinQrCodeStatus = (workspaceId: string, ticket: string, instanceId?: string): Promise<{
   status: 'wait' | 'signed' | 'confirmed' | 'expired';
   userName?: string;
   userId?: string;
-}> => requireProvider().checkWeixinQrCodeStatus(workspaceId, ticket);
+}> => requireProvider().checkWeixinQrCodeStatus(workspaceId, ticket, instanceId);
+export const getLarkQrCode = (workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> =>
+  requireProvider().getLarkQrCode(workspaceId, instanceId);
+export const checkLarkQrCodeStatus = (workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> =>
+  requireProvider().checkLarkQrCodeStatus(workspaceId, ticket, instanceId);
 export const listLarkGateways = (): Promise<LocalCoreLarkGatewayStatus[]> => requireProvider().listLarkGateways();
-export const getLarkGatewayStatus = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().getLarkGatewayStatus(workspaceId);
-export const testLarkConnection = (workspaceId: string): Promise<LocalCoreLarkConnectionResult> => requireProvider().testLarkConnection(workspaceId);
-export const enableLarkGateway = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().enableLarkGateway(workspaceId);
-export const disableLarkGateway = (workspaceId: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().disableLarkGateway(workspaceId);
+export const getLarkGatewayStatus = (workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().getLarkGatewayStatus(workspaceId, instanceId);
+export const testLarkConnection = (workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult> => requireProvider().testLarkConnection(workspaceId, instanceId);
+export const enableLarkGateway = (workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().enableLarkGateway(workspaceId, instanceId);
+export const disableLarkGateway = (workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> => requireProvider().disableLarkGateway(workspaceId, instanceId);
 export const listLarkPendingPairings = (workspaceId?: string): Promise<LocalCorePairingRequest[]> => requireProvider().listLarkPendingPairings(workspaceId);
 export const approveLarkPairing = (code: string): Promise<LocalCoreAuthorizedUser> => requireProvider().approveLarkPairing(code);
 export const rejectLarkPairing = (code: string): Promise<{ rejected: boolean }> => requireProvider().rejectLarkPairing(code);

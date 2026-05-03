@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, StatusPill } from '@/components/ui';
 import {
+  checkLarkQrCodeStatus,
   checkWeixinQrCodeStatus,
+  enableLarkGateway,
+  getLarkQrCode,
   getWeixinQrCode,
   readConfigFile,
   saveStructuredConfigFile,
+  testLarkConnection,
 } from '@/api/desktop';
 import {
   DEFAULT_DESKTOP_AGENT_TYPE,
@@ -48,8 +52,14 @@ type ProjectDialogDraft = {
 type WeixinQrState = {
   ticket: string;
   expiresIn: number;
+  interval?: number;
   qrCodeUrl: string;
   status?: 'wait' | 'signed' | 'confirmed' | 'expired';
+  createdAt?: number;
+};
+
+type LarkQrState = WeixinQrState & {
+  botName?: string;
 };
 
 const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: string }> = [
@@ -124,8 +134,14 @@ function applyProviderPreset(provider: DesktopProviderConfig, presetId: string):
 function createPlatformDraft(type = 'weixin'): DesktopPlatformConfig {
   return {
     type,
-    options: {},
+    options: {
+      instance_id: `${type}-${crypto.randomUUID?.() || Date.now().toString(36)}`,
+    },
   };
+}
+
+function getPlatformInstanceId(platform?: DesktopPlatformConfig | null) {
+  return String(platform?.options?.instance_id || '').trim() || 'default';
 }
 
 function normalizePlatformDraft(platform: DesktopPlatformConfig): DesktopPlatformConfig {
@@ -136,6 +152,7 @@ function normalizePlatformDraft(platform: DesktopPlatformConfig): DesktopPlatfor
       type,
       options: {
         ...options,
+        instance_id: String(options.instance_id || '').trim(),
       },
     };
   }
@@ -144,6 +161,7 @@ function normalizePlatformDraft(platform: DesktopPlatformConfig): DesktopPlatfor
       type,
       options: {
         ...options,
+        instance_id: String(options.instance_id || '').trim(),
         app_id: String(options.app_id || '').trim(),
         app_secret: String(options.app_secret || '').trim(),
         card_actions: options.card_actions === true,
@@ -186,9 +204,15 @@ export default function DesktopWorkspace() {
   const [platformDialog, setPlatformDialog] = useState<PlatformDialogState | null>(null);
   const [weixinQr, setWeixinQr] = useState<WeixinQrState | null>(null);
   const [weixinQrLoading, setWeixinQrLoading] = useState(false);
+  const [larkQr, setLarkQr] = useState<LarkQrState | null>(null);
+  const [larkQrLoading, setLarkQrLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
+  const configDraftRef = useRef<DesktopConnectConfig | null>(null);
+  const platformDialogRef = useRef<PlatformDialogState | null>(null);
+  const selectedIndexRef = useRef(selectedIndex);
+  const selectedProjectNameRef = useRef('');
 
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
@@ -216,6 +240,19 @@ export default function DesktopWorkspace() {
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex] || null;
   const configDirty = JSON.stringify(configDraft || {}) !== JSON.stringify(persistedConfig || {});
+
+  useEffect(() => {
+    configDraftRef.current = configDraft;
+  }, [configDraft]);
+
+  useEffect(() => {
+    platformDialogRef.current = platformDialog;
+  }, [platformDialog]);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+    selectedProjectNameRef.current = selectedProject?.name || '';
+  }, [selectedIndex, selectedProject?.name]);
 
   useEffect(() => {
     if (!configDraft || !requestedProject) return;
@@ -309,6 +346,7 @@ export default function DesktopWorkspace() {
 
   const openPlatformDialog = (index: number | null) => {
     setWeixinQr(null);
+    setLarkQr(null);
     if (index === null) {
       setPlatformDialog({ index, draft: createPlatformDraft() });
       return;
@@ -337,34 +375,38 @@ export default function DesktopWorkspace() {
     });
     setPlatformDialog(null);
     setWeixinQr(null);
+    setLarkQr(null);
+  };
+
+  const persistPlatformDialogDraft = async () => {
+    if (!platformDialog || !configDraft) return platformDialog?.draft;
+    const nextConfig = clone(configDraft);
+    const nextProjects = ensureProjects(nextConfig);
+    const project = nextProjects[selectedIndex];
+    if (!project) return platformDialog.draft;
+    const platforms = [...(project.platforms || [])];
+    const nextPlatform = normalizePlatformDraft(platformDialog.draft);
+    if (platformDialog.index === null) {
+      platforms.push(nextPlatform);
+    } else {
+      platforms[platformDialog.index] = nextPlatform;
+    }
+    nextProjects[selectedIndex] = normalizeProject({ ...project, platforms });
+    const saved = await saveStructuredConfigFile(nextConfig);
+    const savedConfig = clone(saved.parsed || nextConfig);
+    setPersistedConfig(savedConfig);
+    setConfigDraft(clone(savedConfig));
+    setPlatformDialog((current) => current ? { index: current.index ?? platforms.length - 1, draft: nextPlatform } : current);
+    return nextPlatform;
   };
 
   const handleGenerateWeixinQr = async () => {
     if (!selectedProject?.name || !configDraft) return;
     setWeixinQrLoading(true);
     try {
-      if (platformDialog) {
-        const nextConfig = clone(configDraft);
-        const nextProjects = ensureProjects(nextConfig);
-        const project = nextProjects[selectedIndex];
-        if (project) {
-          const platforms = [...(project.platforms || [])];
-          const nextPlatform = normalizePlatformDraft(platformDialog.draft);
-          if (platformDialog.index === null) {
-            platforms.push(nextPlatform);
-          } else {
-            platforms[platformDialog.index] = nextPlatform;
-          }
-          nextProjects[selectedIndex] = normalizeProject({ ...project, platforms });
-          const saved = await saveStructuredConfigFile(nextConfig);
-          const savedConfig = clone(saved.parsed || nextConfig);
-          setPersistedConfig(savedConfig);
-          setConfigDraft(clone(savedConfig));
-          setPlatformDialog((current) => current ? { index: current.index ?? platforms.length - 1, draft: nextPlatform } : current);
-        }
-      }
-      const result = await getWeixinQrCode(selectedProject.name);
-      setWeixinQr({ ...result, status: 'wait' });
+      await persistPlatformDialogDraft();
+      const result = await getWeixinQrCode(selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
+      setWeixinQr({ ...result, status: 'wait', createdAt: Date.now() });
       setNotice(null);
     } catch (err) {
       setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -373,11 +415,26 @@ export default function DesktopWorkspace() {
     }
   };
 
+  const handleGenerateLarkQr = async () => {
+    if (!selectedProject?.name || !configDraft) return;
+    setLarkQrLoading(true);
+    try {
+      await persistPlatformDialogDraft();
+      const result = await getLarkQrCode(selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
+      setLarkQr({ ...result, status: 'wait', createdAt: Date.now() });
+      setNotice(null);
+    } catch (err) {
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setLarkQrLoading(false);
+    }
+  };
+
   const handleCheckWeixinQr = async () => {
     if (!selectedProject?.name || !weixinQr?.ticket) return;
     setWeixinQrLoading(true);
     try {
-      const result = await checkWeixinQrCodeStatus(selectedProject.name, weixinQr.ticket);
+      const result = await checkWeixinQrCodeStatus(selectedProject.name, weixinQr.ticket, getPlatformInstanceId(platformDialog?.draft));
       setWeixinQr((current) => current ? { ...current, status: result.status } : current);
       if (result.status === 'confirmed') {
         setNotice({ tone: 'success', message: 'WeChat QR code confirmed.' });
@@ -388,6 +445,143 @@ export default function DesktopWorkspace() {
       setWeixinQrLoading(false);
     }
   };
+
+  const activateLarkGatewayAfterBind = useCallback(async (workspaceId: string, instanceId: string) => {
+    const status = await enableLarkGateway(workspaceId, instanceId);
+    if (status.status !== 'running' || status.connected !== true) {
+      throw new Error(status.lastError || 'Lark bot credentials were saved, but the gateway is not connected yet.');
+    }
+    const connection = await testLarkConnection(workspaceId, instanceId);
+    if (!connection.success) {
+      throw new Error(connection.error || 'Lark bot credentials were saved, but the connection test failed.');
+    }
+  }, []);
+
+  const saveLarkCredentialsFromQr = useCallback(async (credentials: {
+    appId: string;
+    appSecret: string;
+    verificationToken?: string;
+    encryptKey?: string;
+    botName?: string;
+  }) => {
+    const workspaceId = selectedProjectNameRef.current;
+    const targetInstanceId = getPlatformInstanceId(platformDialogRef.current?.draft);
+    const currentConfig = configDraftRef.current;
+    if (!currentConfig) return;
+    const nextConfig = clone(currentConfig);
+    const nextProjects = ensureProjects(nextConfig);
+    const projectIndex = selectedIndexRef.current;
+    const project = nextProjects[projectIndex];
+    if (!project) return;
+    const platforms = [...(project.platforms || [])];
+    const currentDialog = platformDialogRef.current;
+    const currentIndex = currentDialog?.index ?? platforms.findIndex((platform) =>
+      normalizePlatformDraft(platform).type === 'lark' && getPlatformInstanceId(platform) === targetInstanceId
+    );
+    const currentPlatform = currentIndex >= 0 ? platforms[currentIndex] : currentDialog?.draft || createPlatformDraft('lark');
+    const nextPlatform = normalizePlatformDraft({
+      ...currentPlatform,
+      type: 'lark',
+      options: {
+        ...(currentPlatform.options || {}),
+        instance_id: targetInstanceId,
+        app_id: credentials.appId,
+        app_secret: credentials.appSecret,
+        verification_token: credentials.verificationToken || currentPlatform.options?.verification_token || '',
+        encrypt_key: credentials.encryptKey || currentPlatform.options?.encrypt_key || '',
+      },
+    });
+    if (currentIndex >= 0) {
+      platforms[currentIndex] = nextPlatform;
+    } else {
+      platforms.push(nextPlatform);
+    }
+    nextProjects[projectIndex] = normalizeProject({ ...project, platforms });
+    const saved = await saveStructuredConfigFile(nextConfig);
+    const savedConfig = clone(saved.parsed || nextConfig);
+    setPersistedConfig(savedConfig);
+    setConfigDraft(clone(savedConfig));
+    setPlatformDialog((current) => current ? { ...current, index: current.index ?? (currentIndex >= 0 ? currentIndex : platforms.length - 1), draft: nextPlatform } : current);
+    await activateLarkGatewayAfterBind(workspaceId, targetInstanceId);
+    setNotice({ tone: 'success', message: 'Lark bot bound, saved, and ready to send messages.' });
+    await loadAll(workspaceId);
+  }, [activateLarkGatewayAfterBind, loadAll]);
+
+  const handleCheckLarkQr = async () => {
+    if (!selectedProject?.name || !larkQr?.ticket || !configDraft) return;
+    setLarkQrLoading(true);
+    try {
+      const result = await checkLarkQrCodeStatus(selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialog?.draft));
+      setLarkQr((current) => current ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
+      if (result.status === 'confirmed' && result.credentials) {
+        await saveLarkCredentialsFromQr(result.credentials);
+      } else if (result.status === 'expired') {
+        setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
+      }
+    } catch (err) {
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setLarkQrLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedProject?.name || !larkQr?.ticket || platformDialog?.draft.type !== 'lark') return;
+    if (larkQr.status && !['wait', 'signed'].includes(larkQr.status)) return;
+
+    let cancelled = false;
+    let timer: number | undefined;
+    const createdAt = larkQr.createdAt || Date.now();
+    const expiresAt = createdAt + Math.max(larkQr.expiresIn || 0, 1) * 1000;
+    const pollDelay = Math.max(3, Math.min(Number(larkQr.interval || 5) || 5, 15)) * 1000;
+
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delay);
+    };
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() >= expiresAt) {
+        setLarkQr((current) => current?.ticket === larkQr.ticket ? { ...current, status: 'expired' } : current);
+        setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
+        return;
+      }
+      try {
+        const result = await checkLarkQrCodeStatus(selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialogRef.current?.draft));
+        if (cancelled) return;
+        setLarkQr((current) => current?.ticket === larkQr.ticket ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
+        if (result.status === 'confirmed' && result.credentials) {
+          await saveLarkCredentialsFromQr(result.credentials);
+          return;
+        }
+        if (result.status === 'expired') {
+          setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
+          return;
+        }
+        schedule(pollDelay);
+      } catch (err) {
+        if (cancelled) return;
+        setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    };
+
+    schedule(Math.min(2000, pollDelay));
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [
+    larkQr?.createdAt,
+    larkQr?.expiresIn,
+    larkQr?.interval,
+    larkQr?.status,
+    larkQr?.ticket,
+    platformDialog?.draft.type,
+    saveLarkCredentialsFromQr,
+    selectedProject?.name,
+  ]);
 
   const handleSaveConfig = async () => {
     if (!configDraft) return;
@@ -751,6 +945,7 @@ export default function DesktopWorkspace() {
         onClose={() => {
           setPlatformDialog(null);
           setWeixinQr(null);
+          setLarkQr(null);
         }}
         title={platformDialog?.index === null ? 'Add platform' : 'Configure platform'}
       >
@@ -763,6 +958,7 @@ export default function DesktopWorkspace() {
                 const type = event.target.value === CUSTOM_SELECT_VALUE ? platformDialog.draft.type : event.target.value;
                 updatePlatformDialogDraft(() => createPlatformDraft(type));
                 setWeixinQr(null);
+                setLarkQr(null);
               }}
             >
               {PLATFORM_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -774,6 +970,24 @@ export default function DesktopWorkspace() {
 
             {platformDialog.draft.type === 'lark' ? (
               <div className="grid grid-cols-1 gap-3">
+                {larkQr?.qrCodeUrl ? (
+                  <div className="flex flex-col items-center gap-3 rounded-lg border border-black/10 p-4 dark:border-white/[0.08]">
+                    <div className="rounded-lg border border-black/10 bg-white p-3">
+                      <QRCodeSVG value={larkQr.qrCodeUrl} size={176} includeMargin />
+                    </div>
+                    <StatusPill tone={larkQr.status === 'confirmed' ? 'success' : larkQr.status === 'expired' ? 'danger' : 'warning'}>
+                      {larkQr.botName || larkQr.status || 'wait'}
+                    </StatusPill>
+                  </div>
+                ) : null}
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleGenerateLarkQr()} loading={larkQrLoading}>
+                    <QrCode size={14} /> Generate QR
+                  </Button>
+                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleCheckLarkQr()} loading={larkQrLoading} disabled={!larkQr?.ticket}>
+                    Check status
+                  </Button>
+                </div>
                 <Input
                   label="App ID"
                   value={String(platformDialog.draft.options?.app_id || '')}

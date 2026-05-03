@@ -22,7 +22,9 @@ import type {
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelPairingRequest,
+  LocalCoreChannelQrCode,
   LocalCorePairingRequest,
+  LocalCoreLarkQrCodeStatus,
   LocalCoreEvent,
   ScheduledJob,
   ScheduledJobCreateInput,
@@ -137,27 +139,29 @@ export interface LocalAiCoreBindings extends EventEmitter {
   getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
-  getChannelGatewayStatus(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
-  testChannelConnection(platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult>;
-  enableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
-  disableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus>;
+  getChannelGatewayStatus(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
+  testChannelConnection(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelConnectionResult>;
+  enableChannelGateway(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
+  disableChannelGateway(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
   listChannelPendingPairings(platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]>;
   approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser>;
   rejectChannelPairing(platform: string, code: string): Promise<{ rejected: boolean }>;
   listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]>;
   sendChannelFile(platform: string, workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult>;
   sendChannelMessage(platform: string, workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult>;
-  getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }>;
-  checkWeixinQrCodeStatus(workspaceId: string, ticket: string): Promise<{
+  getWeixinQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
+  checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
     userName?: string;
     userId?: string;
   }>;
+  getLarkQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
+  checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus>;
   listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]>;
-  getLarkGatewayStatus(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
-  testLarkConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult>;
-  enableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
-  disableLarkGateway(workspaceId: string): Promise<LocalCoreLarkGatewayStatus>;
+  getLarkGatewayStatus(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus>;
+  testLarkConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult>;
+  enableLarkGateway(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus>;
+  disableLarkGateway(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus>;
   listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]>;
   approveLarkPairing(code: string): Promise<LocalCoreAuthorizedUser>;
   rejectLarkPairing(code: string): Promise<{ rejected: boolean }>;
@@ -363,6 +367,7 @@ export class LocalAiCoreServer {
         const suffix = path.slice('/api/local/v1/platforms/'.length);
         const segments = suffix.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
         const [platform = '', workspaceOrCollection = '', action = ''] = segments;
+        const instanceId = String(url.searchParams.get('instance_id') || url.searchParams.get('instanceId') || '').trim() || undefined;
         if (!platform) {
           json(res, 404, null, false, 'Platform not found');
           return;
@@ -382,16 +387,18 @@ export class LocalAiCoreServer {
           return;
         }
         if (segments.length === 2) {
-          json(res, 200, await this.bindings.getChannelGatewayStatus(platform, workspaceOrCollection));
+          json(res, 200, await this.bindings.getChannelGatewayStatus(platform, workspaceOrCollection, instanceId));
           return;
         }
-        if (platform === 'weixin' && segments.length === 4 && action === 'qrcode' && segments[3] === 'status') {
+        if ((platform === 'weixin' || platform === 'lark') && segments.length === 4 && action === 'qrcode' && segments[3] === 'status') {
           const ticket = String(url.searchParams.get('ticket') || '');
           if (!ticket) {
             json(res, 400, null, false, 'Missing ticket parameter');
             return;
           }
-          json(res, 200, await this.bindings.checkWeixinQrCodeStatus(workspaceOrCollection, ticket));
+          json(res, 200, platform === 'lark'
+            ? await this.bindings.checkLarkQrCodeStatus(workspaceOrCollection, ticket, instanceId)
+            : await this.bindings.checkWeixinQrCodeStatus(workspaceOrCollection, ticket, instanceId));
           return;
         }
       }
@@ -399,6 +406,7 @@ export class LocalAiCoreServer {
         const suffix = path.slice('/api/local/v1/platforms/'.length);
         const segments = suffix.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
         const [platform = '', workspaceOrCollection = '', action = ''] = segments;
+        const instanceId = String(url.searchParams.get('instance_id') || url.searchParams.get('instanceId') || '').trim() || undefined;
         if (!platform) {
           json(res, 404, null, false, 'Platform not found');
           return;
@@ -414,15 +422,15 @@ export class LocalAiCoreServer {
           return;
         }
         if (action === 'test') {
-          json(res, 200, await this.bindings.testChannelConnection(platform, workspaceOrCollection));
+          json(res, 200, await this.bindings.testChannelConnection(platform, workspaceOrCollection, instanceId));
           return;
         }
         if (action === 'enable') {
-          json(res, 200, await this.bindings.enableChannelGateway(platform, workspaceOrCollection));
+          json(res, 200, await this.bindings.enableChannelGateway(platform, workspaceOrCollection, instanceId));
           return;
         }
         if (action === 'disable') {
-          json(res, 200, await this.bindings.disableChannelGateway(platform, workspaceOrCollection));
+          json(res, 200, await this.bindings.disableChannelGateway(platform, workspaceOrCollection, instanceId));
           return;
         }
         if (action === 'files') {
@@ -435,8 +443,10 @@ export class LocalAiCoreServer {
           json(res, 200, await this.bindings.sendChannelMessage(platform, workspaceOrCollection, body as unknown as ChannelOutboundMessageInput));
           return;
         }
-        if (platform === 'weixin' && segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {
-          json(res, 200, await this.bindings.getWeixinQrCode(workspaceOrCollection));
+        if ((platform === 'weixin' || platform === 'lark') && segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {
+          json(res, 200, platform === 'lark'
+            ? await this.bindings.getLarkQrCode(workspaceOrCollection, instanceId)
+            : await this.bindings.getWeixinQrCode(workspaceOrCollection, instanceId));
           return;
         }
       }

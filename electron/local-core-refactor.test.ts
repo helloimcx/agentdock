@@ -1795,6 +1795,8 @@ test('weixin channel can request a QR code without platform options', async () =
       ticket: 'ticket-1',
       expiresIn: 180,
       qrCodeUrl: 'https://liteapp.weixin.qq.com/q/test?qrcode=ticket-1&bot_type=3',
+      instanceId: 'default',
+      displayName: 'WeChat 1',
     });
     assert.equal(requests[0]?.url, 'https://ilinkai.weixin.qq.com/ilink/bot/get_bot_qrcode?bot_type=3');
     assert.equal(requests[0]?.headers.has('Authorization'), false);
@@ -1864,6 +1866,183 @@ test('weixin QR confirmation persists credentials and starts authenticated polli
     globalThis.fetch = originalFetch;
     rmSync(stateDir, { recursive: true, force: true });
   }
+});
+
+test('lark channel can request an official app registration QR code without extra setup', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method?: string; body: string; headers: Headers }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      method: init?.method,
+      body: String(init?.body || ''),
+      headers: new Headers(init?.headers),
+    });
+    return new Response(JSON.stringify({
+      device_code: 'device-code-1',
+      user_code: 'ABCD-EFGH',
+      expires_in: 300,
+      interval: 5,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const gateway = new LocalCoreLarkGateway({
+      store: {} as any,
+      readConfig: async () => ({
+        projects: [
+          {
+            name: 'default',
+            agent: { type: 'localcore-acp', providers: [] },
+            platforms: [{ type: 'lark', options: {} }],
+          },
+        ],
+      } as any),
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+    });
+
+    const result = await gateway.getQrCode('default');
+
+    assert.deepEqual(result, {
+      ticket: 'device-code-1',
+      expiresIn: 300,
+      interval: 5,
+      qrCodeUrl: 'https://open.feishu.cn/page/cli?user_code=ABCD-EFGH',
+      instanceId: 'default',
+      displayName: 'Lark 1',
+    });
+    assert.equal(requests[0]?.url, 'https://accounts.feishu.cn/oauth/v1/app/registration');
+    assert.equal(requests[0]?.method, 'POST');
+    assert.equal(requests[0]?.headers.get('Content-Type'), 'application/x-www-form-urlencoded');
+    assert.equal(new URLSearchParams(requests[0]?.body).get('action'), 'begin');
+    assert.equal(new URLSearchParams(requests[0]?.body).get('archetype'), 'PersonalAgent');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('lark app registration QR confirmation returns app credentials', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: string }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    requests.push({ url, body: String(init?.body || '') });
+    return new Response(JSON.stringify({
+      client_id: 'cli_lark_1',
+      client_secret: 'secret-1',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const gateway = new LocalCoreLarkGateway({
+      store: {} as any,
+      readConfig: async () => ({
+        projects: [
+          {
+            name: 'default',
+            agent: { type: 'localcore-acp', providers: [] },
+            platforms: [{ type: 'lark', options: {} }],
+          },
+        ],
+      } as any),
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+    });
+
+    const result = await gateway.checkQrCodeStatus('default', 'lark-ticket-1');
+
+    assert.equal(requests[0]?.url, 'https://accounts.feishu.cn/oauth/v1/app/registration');
+    assert.equal(new URLSearchParams(requests[0]?.body).get('action'), 'poll');
+    assert.equal(new URLSearchParams(requests[0]?.body).get('device_code'), 'lark-ticket-1');
+    assert.deepEqual(result, {
+      status: 'confirmed',
+      credentials: {
+        appId: 'cli_lark_1',
+        appSecret: 'secret-1',
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('lark channel keeps multiple bot instances in one workspace isolated', async () => {
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      listPendingPairings: () => [],
+      listAuthorizedUsers: () => [],
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [
+            { type: 'lark', options: { instance_id: 'bot-a', app_id: 'cli_a', app_secret: 'secret-a' } },
+            { type: 'lark', options: { instance_id: 'bot-b', app_id: 'cli_b', app_secret: 'secret-b' } },
+          ],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  (gateway as any).larkModulePromise = Promise.resolve({
+    AppType: { SelfBuild: 'self-build' },
+    Domain: { Feishu: 'feishu' },
+    LoggerLevel: { info: 'info' },
+    Client: class {},
+    EventDispatcher: class { register() {} },
+    WSClient: class { async start() {} },
+  });
+
+  await gateway.refreshBindings();
+  const statuses = gateway.listStatuses();
+
+  assert.deepEqual(statuses.map((status) => [status.workspaceId, status.instanceId, status.appId, status.status]), [
+    ['default', 'bot-a', 'cli_a', 'running'],
+    ['default', 'bot-b', 'cli_b', 'running'],
+  ]);
+});
+
+test('weixin channel keeps multiple bot instances in one workspace isolated', async () => {
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      expirePendingPairings: () => {},
+      listPendingPairings: () => [],
+      listAuthorizedUsers: () => [],
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [
+            { type: 'weixin', options: { instance_id: 'wx-a', account_id: 'account-a' } },
+            { type: 'weixin', options: { instance_id: 'wx-b', account_id: 'account-b' } },
+          ],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  await gateway.refreshBindings();
+  const statuses = gateway.listStatuses();
+
+  assert.deepEqual(statuses.map((status) => [status.workspaceId, status.instanceId, status.appId, status.status]), [
+    ['default', 'wx-a', 'account-a', 'stopped'],
+    ['default', 'wx-b', 'account-b', 'stopped'],
+  ]);
 });
 
 test('weixin inbound message handling is idempotent by message identity', async () => {

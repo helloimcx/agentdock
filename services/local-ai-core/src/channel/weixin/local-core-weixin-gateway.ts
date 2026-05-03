@@ -30,6 +30,9 @@ import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-uti
 
 type WeixinWorkspaceBinding = {
   workspaceId: string;
+  instanceId: string;
+  displayName: string;
+  platformKey: string;
   token: string;
   accountId: string;
   baseUrl: string;
@@ -55,6 +58,9 @@ type WeixinCredentials = {
 
 type WeixinRuntimeState = {
   workspaceId: string;
+  instanceId: string;
+  displayName: string;
+  platformKey: string;
   enabled: boolean;
   status: LocalCoreChannelGatewayStatus['status'];
   connected: boolean;
@@ -66,6 +72,8 @@ type WeixinRuntimeState = {
 
 type WeixinInboundMessage = {
   workspaceId: string;
+  instanceId?: string;
+  platformKey?: string;
   platformUserId: string;
   chatId: string;
   displayName: string;
@@ -126,6 +134,20 @@ const VOICE_ITEM_TYPE = 3;
 const FILE_ITEM_TYPE = 4;
 const UPLOAD_MEDIA_TYPE_FILE = 3;
 const WEIXIN_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+
+function normalizeChannelInstanceId(value: unknown, fallback: string) {
+  const raw = String(value || '').trim();
+  const normalized = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 80);
+  return normalized || fallback;
+}
+
+function channelPlatformKey(platform: string, instanceId: string) {
+  return instanceId === 'default' ? platform : `${platform}:${instanceId}`;
+}
+
+function runtimeKey(workspaceId: string, instanceId: string) {
+  return `${workspaceId}::${instanceId}`;
+}
 
 // ==================== Internal API types ====================
 
@@ -310,7 +332,7 @@ function stripToolResultForWeixin(content: string): string {
 
 export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRuntime {
   private readonly runtime = new Map<string, WeixinRuntimeState>();
-  private readonly threadRouting = new Map<string, { workspaceId: string; platformUserId: string; chatId: string; threadId: string }>();
+  private readonly threadRouting = new Map<string, { workspaceId: string; instanceId: string; platformKey: string; platformUserId: string; chatId: string; threadId: string }>();
   private readonly outboundEventChains = new Map<string, Promise<void>>();
   private readonly outboundTurns = new Map<string, WeixinTurnState>();
   private readonly processedInboundMessages = new Map<string, number>();
@@ -327,20 +349,24 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   async refreshBindings() {
     const config = await this.options.readConfig();
     const bindings = this.collectBindings(config);
-    const nextWorkspaceIds = new Set(bindings.map((b) => b.workspaceId));
-    for (const workspaceId of [...this.runtime.keys()]) {
-      if (!nextWorkspaceIds.has(workspaceId)) {
-        await this.stopWorkspace(workspaceId);
+    const nextKeys = new Set(bindings.map((b) => runtimeKey(b.workspaceId, b.instanceId)));
+    for (const key of [...this.runtime.keys()]) {
+      if (!nextKeys.has(key)) {
+        await this.stopWorkspaceKey(key);
       }
     }
     for (const binding of bindings) {
-      const current = this.runtime.get(binding.workspaceId);
+      const key = runtimeKey(binding.workspaceId, binding.instanceId);
+      const current = this.runtime.get(key);
       if (!binding.enabled) {
         if (current) {
-          await this.stopWorkspace(binding.workspaceId);
+          await this.stopWorkspaceKey(key);
         } else {
-          this.runtime.set(binding.workspaceId, {
+          this.runtime.set(key, {
             workspaceId: binding.workspaceId,
+            instanceId: binding.instanceId,
+            displayName: binding.displayName,
+            platformKey: binding.platformKey,
             enabled: false,
             status: 'disabled',
             connected: false,
@@ -357,37 +383,41 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     this.notifyRuntimeStateChanged();
   }
 
-  async testConnection(workspaceId: string): Promise<LocalCoreChannelConnectionResult> {
-    const binding = await this.getBinding(workspaceId);
+  async testConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelConnectionResult> {
+    const binding = await this.getBinding(workspaceId, instanceId);
     try {
       const bufPath = this.getBufPath(binding);
       fs.accessSync(bufPath);
-      return { success: true, platform: 'weixin', workspaceId, appId: binding.accountId };
+      return { success: true, platform: 'weixin', workspaceId, instanceId: binding.instanceId, appId: binding.accountId };
     } catch {
-      return { success: false, platform: 'weixin', workspaceId, error: 'No sync buf found for account. Ensure the plugin has been connected at least once.' };
+      return { success: false, platform: 'weixin', workspaceId, instanceId: binding.instanceId, error: 'No sync buf found for account. Ensure the plugin has been connected at least once.' };
     }
   }
 
-  async enable(workspaceId: string) {
-    const binding = await this.getBinding(workspaceId);
+  async enable(workspaceId: string, instanceId?: string) {
+    const binding = await this.getBinding(workspaceId, instanceId);
     await this.startWorkspace(binding);
-    return this.getStatus(workspaceId);
+    return this.getStatus(workspaceId, binding.instanceId);
   }
 
-  async disable(workspaceId: string) {
-    await this.stopWorkspace(workspaceId);
-    return this.getStatus(workspaceId);
+  async disable(workspaceId: string, instanceId?: string) {
+    await this.stopWorkspace(workspaceId, instanceId);
+    return this.getStatus(workspaceId, instanceId);
   }
 
-  getStatus(workspaceId: string): LocalCoreChannelGatewayStatus {
+  getStatus(workspaceId: string, instanceId?: string): LocalCoreChannelGatewayStatus {
     this.options.store.expirePendingPairings();
-    const binding = this.runtime.get(workspaceId);
+    const resolved = this.resolveRuntimeState(workspaceId, instanceId);
+    const binding = resolved.state;
+    const platformKey = binding?.platformKey || channelPlatformKey('weixin', resolved.instanceId);
     const pairings = this.options.store.listPendingPairings(workspaceId)
-      .filter((row) => row.platform === 'weixin' && row.expires_at >= new Date().toISOString());
-    const users = this.options.store.listAuthorizedUsers(workspaceId, 'weixin');
+      .filter((row) => row.platform === platformKey && row.expires_at >= new Date().toISOString());
+    const users = this.options.store.listAuthorizedUsers(workspaceId, platformKey);
     return {
       workspaceId,
       platform: 'weixin',
+      instanceId: resolved.instanceId,
+      displayName: binding?.displayName,
       enabled: Boolean(binding?.enabled),
       connected: Boolean(binding?.connected),
       status: binding?.status || 'disabled',
@@ -400,18 +430,22 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   }
 
   listStatuses(): LocalCoreChannelGatewayStatus[] {
-    return [...this.runtime.keys()].sort().map((workspaceId) => this.getStatus(workspaceId));
+    return [...this.runtime.values()]
+      .sort((a, b) => `${a.workspaceId}:${a.instanceId}`.localeCompare(`${b.workspaceId}:${b.instanceId}`))
+      .map((state) => this.getStatus(state.workspaceId, state.instanceId));
   }
 
   listPendingPairings(workspaceId?: string): LocalCorePairingRequest[] {
     this.options.store.expirePendingPairings();
     return this.options.store
-      .listPairingRequests(workspaceId, 'weixin')
+      .listPairingRequests(workspaceId)
+      .filter((item) => item.platform === 'weixin' || item.platform.startsWith('weixin:'))
       .filter((item) => item.status === 'pending' && item.expiresAt >= new Date().toISOString());
   }
 
   listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
-    return this.options.store.listAuthorizedUsers(workspaceId, 'weixin');
+    return this.options.store.listAuthorizedUsers(workspaceId)
+      .filter((item) => item.platform === 'weixin' || item.platform.startsWith('weixin:'));
   }
 
   async start() {
@@ -423,13 +457,13 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   }
 
   close() {
-    return Promise.all([...this.runtime.keys()].map((id) => this.stopWorkspace(id))).then(() => undefined);
+    return Promise.all([...this.runtime.keys()].map((id) => this.stopWorkspaceKey(id))).then(() => undefined);
   }
 
   // ==================== QR Code Login ====================
 
-  async getQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> {
-    const binding = await this.getBinding(workspaceId);
+  async getQrCode(workspaceId: string, instanceId?: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string; instanceId: string; displayName: string }> {
+    const binding = await this.getBinding(workspaceId, instanceId);
     const data = await this.apiGet<{ qrcode?: string; qrcode_img_content?: string; expired?: number; errcode?: number; errmsg?: string }>(
       binding,
       `ilink/bot/get_bot_qrcode?bot_type=3`,
@@ -441,15 +475,15 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       throw new Error('No QR code returned from iLink');
     }
     const qrCodeUrl = data.qrcode_img_content || `${binding.baseUrl.replace(/\/$/, '')}/ilink/bot/qr_code/${data.qrcode}`;
-    return { ticket: data.qrcode, expiresIn: data.expired || 180, qrCodeUrl };
+    return { ticket: data.qrcode, expiresIn: data.expired || 180, qrCodeUrl, instanceId: binding.instanceId, displayName: binding.displayName };
   }
 
-  async checkQrCodeStatus(workspaceId: string, ticket: string): Promise<{
+  async checkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
     userName?: string;
     userId?: string;
   }> {
-    const binding = await this.getBinding(workspaceId);
+    const binding = await this.getBinding(workspaceId, instanceId);
     const data = await this.apiGet<QrCodeStatusResp>(binding, `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(ticket)}`);
     if (data.errcode && data.errcode !== 0) {
       throw new Error(`Failed to check QR code status: ${data.errmsg || data.errcode}`);
@@ -466,7 +500,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
         userId: data.ilink_user_id || data.user_id,
         savedAt: new Date().toISOString(),
       });
-      await this.startWorkspace(await this.getBinding(workspaceId));
+      await this.startWorkspace(await this.getBinding(workspaceId, binding.instanceId));
     }
     if (!['wait', 'signed', 'confirmed', 'expired'].includes(status)) {
       return { status: 'wait' };
@@ -484,19 +518,19 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     this.options.store.expirePendingPairings();
     const pairing = this.options.store.getPairingRequest(code);
     if (!pairing) throw new Error(`Pairing code not found: ${code}`);
-    if (pairing.platform !== 'weixin') throw new Error(`Pairing code ${code} is not a WeChat pairing`);
+    if (pairing.platform !== 'weixin' && !pairing.platform.startsWith('weixin:')) throw new Error(`Pairing code ${code} is not a WeChat pairing`);
     if (pairing.status !== 'pending') throw new Error(`Pairing code ${code} is already ${pairing.status}`);
     if (pairing.expires_at < new Date().toISOString()) {
       this.options.store.updatePairingStatus(code, 'expired');
       throw new Error(`Pairing code ${code} has expired`);
     }
-    const existing = this.options.store.getAuthorizedUser(pairing.workspace_id, pairing.platform_user_id, 'weixin');
+    const existing = this.options.store.getAuthorizedUser(pairing.workspace_id, pairing.platform_user_id, pairing.platform);
     const userId = existing?.id || `wx-user-${randomUUID()}`;
     const authorizedAt = new Date().toISOString();
     this.options.store.createAuthorizedUser({
       id: userId,
       workspace_id: pairing.workspace_id,
-      platform: 'weixin',
+      platform: pairing.platform,
       platform_user_id: pairing.platform_user_id,
       chat_id: pairing.chat_id,
       display_name: pairing.display_name,
@@ -505,7 +539,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     });
     this.options.store.updatePairingStatus(code, 'approved');
     this.notifyRuntimeStateChanged();
-    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id, 'weixin').find((e) => e.id === userId);
+    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id, pairing.platform).find((e) => e.id === userId);
     if (!user) throw new Error('Authorized user lookup failed after approval');
     return user;
   }
@@ -513,7 +547,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   rejectPairing(code: string) {
     const pairing = this.options.store.getPairingRequest(code);
     if (!pairing) throw new Error(`Pairing code not found: ${code}`);
-    if (pairing.platform !== 'weixin') throw new Error(`Pairing code ${code} is not a WeChat pairing`);
+    if (pairing.platform !== 'weixin' && !pairing.platform.startsWith('weixin:')) throw new Error(`Pairing code ${code} is not a WeChat pairing`);
     this.options.store.updatePairingStatus(code, 'rejected');
     this.notifyRuntimeStateChanged();
     return { rejected: true };
@@ -543,12 +577,14 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       this.options.log?.(`localcore-weixin bridge route miss for sessionKey=${sessionKey} type=${event.type}`);
       return;
     }
-    const state = this.runtime.get(route.workspaceId);
+    const routeInstanceId = route.instanceId || 'default';
+    const routePlatformKey = route.platformKey || channelPlatformKey('weixin', routeInstanceId);
+    const state = this.runtime.get(runtimeKey(route.workspaceId, routeInstanceId)) || this.runtime.get(route.workspaceId);
     if (!state?.connected) {
       this.options.log?.(`localcore-weixin bridge event ignored because workspace is not connected: ${route.workspaceId}`);
       return;
     }
-    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, 'weixin');
+    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
     if (!initialBinding) {
       this.options.log?.(`localcore-weixin bridge binding miss for workspace=${route.workspaceId}`);
       return;
@@ -569,7 +605,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     const current = previous
       .catch(() => undefined)
       .then(async () => {
-        const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, 'weixin');
+        const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
         if (!binding) return;
         if (this.mutedThreadBridgeCounts.has(binding.thread_id)) return;
 
@@ -621,7 +657,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   }
 
   async sendScheduledMessage(workspaceId: string, route: ChannelRoute, text: string): Promise<string> {
-    const state = this.runtime.get(workspaceId);
+    const state = this.resolveRuntimeState(workspaceId, route.instanceId).state;
     if (!state?.connected) {
       this.options.log?.(`localcore-weixin scheduled message skipped: workspace not connected: ${workspaceId}`);
       return '';
@@ -637,7 +673,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   }
 
   async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
-    const state = this.runtime.get(workspaceId);
+    const state = this.resolveRuntimeState(workspaceId, input.route?.instanceId).state;
     if (!state?.connected) {
       throw new Error(`WeChat workspace is not connected: ${workspaceId}`);
     }
@@ -645,8 +681,9 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     if (!channelId) {
       throw new Error('Missing WeChat target channel id');
     }
-    const binding = await this.getBinding(workspaceId);
-    const contextToken = this.resolveContextTokenForFileSend(workspaceId, channelId, input.route.participantId);
+    const binding = await this.getBinding(workspaceId, input.route?.instanceId);
+    const platformKey = state.platformKey;
+    const contextToken = this.resolveContextTokenForFileSend(workspaceId, channelId, input.route.participantId, platformKey);
     const messageIds: string[] = [];
     const attachments: NonNullable<ChannelOutboundMessageResult['attachments']> = [];
     for (const part of input.parts || []) {
@@ -711,6 +748,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   // ==================== Inbound Message Handling ====================
 
   async handleInboundMessage(input: WeixinInboundMessage) {
+    const instanceId = input.instanceId || 'default';
+    const platformKey = input.platformKey || channelPlatformKey('weixin', instanceId);
     if (this.isDuplicateInboundMessage(input)) {
       this.options.log?.(`localcore-weixin skipped duplicate inbound message workspace=${input.workspaceId} chat=${input.chatId} id=${input.contextToken || input.messageId}`);
       return { paired: true, duplicate: true };
@@ -730,23 +769,23 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     });
 
     this.options.store.expirePendingPairings();
-    const binding = await this.getBinding(input.workspaceId);
+    const binding = await this.getBinding(input.workspaceId, instanceId);
 
-    let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, 'weixin');
+    let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
     if (!authorized) {
       if (binding.allowFrom === '*') {
         const authorizedAt = new Date().toISOString();
         this.options.store.createAuthorizedUser({
           id: `wx-user-${randomUUID()}`,
           workspace_id: input.workspaceId,
-          platform: 'weixin',
+          platform: platformKey,
           platform_user_id: input.platformUserId,
           chat_id: input.chatId,
           display_name: input.displayName,
           thread_id: null,
           authorized_at: authorizedAt,
         });
-        authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, 'weixin');
+        authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
         this.options.log?.(`localcore-weixin auto-approved user for ${input.workspaceId}: ${input.platformUserId}`);
         this.notifyRuntimeStateChanged();
       }
@@ -754,7 +793,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
     if (!authorized) {
       const existingPending = this.options.store.listPendingPairings(input.workspaceId).find((item) =>
-        item.platform === 'weixin' && item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
+        item.platform === platformKey && item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
       );
       let pairingCode = existingPending?.code || '';
       if (!existingPending) {
@@ -763,7 +802,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
         this.options.store.createPairingRequest({
           code: pairingCode,
           workspace_id: input.workspaceId,
-          platform: 'weixin',
+          platform: platformKey,
           platform_user_id: input.platformUserId,
           chat_id: input.chatId,
           display_name: input.displayName,
@@ -773,7 +812,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
         });
         this.notifyRuntimeStateChanged();
       }
-      const state = this.runtime.get(input.workspaceId);
+      const state = this.runtime.get(runtimeKey(input.workspaceId, instanceId));
       if (state?.connected) {
         await this.sendTextMessage(state, input.chatId,
           `**已收到消息**\n\n当前账号还未授权接入这个工作区。\n请在桌面端完成审批后再次发送消息。\n\n配对码：\`${pairingCode}\``,
@@ -783,16 +822,16 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     }
 
     const router = this.options.getWorkspaceRouter();
-    const threadBinding = this.options.store.getPlatformThreadBinding(input.workspaceId, input.chatId, input.platformUserId, 'weixin');
+    const threadBinding = this.options.store.getPlatformThreadBinding(input.workspaceId, input.chatId, input.platformUserId, platformKey);
     let threadId = threadBinding?.thread_id || authorized.thread_id || '';
     if (!threadId) {
       const thread = await router.createThread(input.workspaceId, input.displayName || `WeChat ${input.chatId}`);
       threadId = thread.id;
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, threadId, 'weixin');
+      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, threadId, platformKey);
       const now = new Date().toISOString();
       this.options.store.upsertPlatformThreadBinding({
         workspace_id: input.workspaceId,
-        platform: 'weixin',
+        platform: platformKey,
         chat_id: input.chatId,
         platform_user_id: input.platformUserId,
         thread_id: threadId,
@@ -806,7 +845,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     const normalizedText = String(input.text || '').trim().toLowerCase();
     const permissionThreadId = (
       normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
-    ) ? this.findAwaitingPermissionThreadId(input.workspaceId, input.chatId, input.platformUserId) : '';
+    ) ? this.findAwaitingPermissionThreadId(input.workspaceId, input.chatId, input.platformUserId, input.platformKey) : '';
     if (permissionThreadId && permissionThreadId !== threadId) {
       threadId = permissionThreadId;
     }
@@ -814,6 +853,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
     this.threadRouting.set(effectiveSessionKey, {
       workspaceId: input.workspaceId,
+      instanceId,
+      platformKey,
       platformUserId: input.platformUserId,
       chatId: input.chatId,
       threadId,
@@ -825,10 +866,10 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       const title = slashCommand.args.join(' ').trim() || `${input.displayName || 'WeChat'} ${new Date().toLocaleTimeString()}`;
       const nextThread = await router.createThread(input.workspaceId, title);
       const now = new Date().toISOString();
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, 'weixin');
+      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, platformKey);
       this.options.store.upsertPlatformThreadBinding({
         workspace_id: input.workspaceId,
-        platform: 'weixin',
+        platform: platformKey,
         chat_id: input.chatId,
         platform_user_id: input.platformUserId,
         thread_id: nextThread.id,
@@ -838,11 +879,13 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       });
       this.threadRouting.set(router.getThreadSessionKey(nextThread.id), {
         workspaceId: input.workspaceId,
+        instanceId,
+        platformKey,
         platformUserId: input.platformUserId,
         chatId: input.chatId,
         threadId: nextThread.id,
       });
-      const st = this.runtime.get(input.workspaceId);
+      const st = this.runtime.get(runtimeKey(input.workspaceId, instanceId));
       if (st?.connected) {
         await this.sendTextMessage(st, input.chatId, '**已开始新会话**', input.contextToken);
       }
@@ -863,7 +906,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       input.chatId,
       input.platformUserId,
       input.contextToken || input.messageId,
-      'weixin',
+      platformKey,
     );
     const wrappedText = wrapUserMessageWithSchedulerProtocol(input.text);
     await router.sendThreadMessage(threadId, this.createThreadMessageInput(wrappedText, input.contentParts));
@@ -872,10 +915,23 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
   // ==================== Private: Bindings ====================
 
-  private async getBinding(workspaceId: string): Promise<WeixinWorkspaceBinding> {
+  private resolveRuntimeState(workspaceId: string, instanceId?: string) {
+    if (instanceId) {
+      const state = this.runtime.get(runtimeKey(workspaceId, instanceId)) || (instanceId === 'default' ? this.runtime.get(workspaceId) : undefined);
+      return { instanceId, state };
+    }
+    const states = [...this.runtime.values()].filter((entry) => entry.workspaceId === workspaceId);
+    const state = states.find((entry) => entry.instanceId === 'default') || states[0];
+    return { instanceId: state?.instanceId || 'default', state: state || this.runtime.get(workspaceId) };
+  }
+
+  private async getBinding(workspaceId: string, instanceId?: string): Promise<WeixinWorkspaceBinding> {
     const config = await this.options.readConfig();
-    const binding = this.collectBindings(config).find((e) => e.workspaceId === workspaceId);
-    if (!binding) throw new Error(`No WeChat binding configured for workspace "${workspaceId}"`);
+    const bindings = this.collectBindings(config).filter((e) => e.workspaceId === workspaceId);
+    const binding = instanceId
+      ? bindings.find((entry) => entry.instanceId === instanceId)
+      : bindings.find((entry) => entry.instanceId === 'default') || bindings[0];
+    if (!binding) throw new Error(`No WeChat binding configured for workspace "${workspaceId}"${instanceId ? ` instance "${instanceId}"` : ''}`);
     return binding;
   }
 
@@ -891,14 +947,18 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
             : {},
         }))
         .filter((p) => p.platformType === 'weixin')
-        .map((p) => {
+        .map((p, index) => {
+          const instanceId = normalizeChannelInstanceId(p.options.instance_id || p.options.id, index === 0 ? 'default' : `weixin-${index + 1}`);
           const stateDir = String(p.options.state_dir || this.getDefaultStateDir()).trim();
-          const credentials = this.loadCredentials(project.name, stateDir);
+          const credentials = this.loadCredentials(project.name, stateDir, instanceId);
           const configuredToken = String(p.options.token || '').trim();
           const configuredBaseUrl = String(p.options.base_url || '').trim();
           const accountId = String(p.options.account_id || credentials?.botId || 'qr-login').trim();
           return {
             workspaceId: project.name,
+            instanceId,
+            displayName: String(p.options.name || p.options.display_name || `WeChat ${index + 1}`).trim(),
+            platformKey: channelPlatformKey('weixin', instanceId),
             token: configuredToken || credentials?.token || '',
             accountId,
             baseUrl: configuredBaseUrl || credentials?.baseUrl || DEFAULT_BASE_URL,
@@ -924,15 +984,19 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   // ==================== Private: Workspace Lifecycle ====================
 
   private async startWorkspace(binding: WeixinWorkspaceBinding) {
-    await this.stopWorkspace(binding.workspaceId);
+    const key = runtimeKey(binding.workspaceId, binding.instanceId);
+    await this.stopWorkspaceKey(key);
     const status: WeixinRuntimeState = {
       workspaceId: binding.workspaceId,
+      instanceId: binding.instanceId,
+      displayName: binding.displayName,
+      platformKey: binding.platformKey,
       enabled: true,
       status: 'starting',
       connected: false,
       accountId: binding.accountId,
     };
-    this.runtime.set(binding.workspaceId, status);
+    this.runtime.set(key, status);
     this.notifyRuntimeStateChanged();
 
     try {
@@ -969,14 +1033,22 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     this.notifyRuntimeStateChanged();
   }
 
-  private async stopWorkspace(workspaceId: string) {
-    const state = this.runtime.get(workspaceId);
+  private async stopWorkspace(workspaceId: string, instanceId?: string) {
+    const resolved = this.resolveRuntimeState(workspaceId, instanceId);
+    await this.stopWorkspaceKey(runtimeKey(workspaceId, resolved.instanceId));
+  }
+
+  private async stopWorkspaceKey(key: string) {
+    const state = this.runtime.get(key);
     if (!state) return;
     try {
       state.abortController?.abort();
     } catch {}
-    this.runtime.set(workspaceId, {
-      workspaceId,
+    this.runtime.set(key, {
+      workspaceId: state.workspaceId,
+      instanceId: state.instanceId,
+      displayName: state.displayName,
+      platformKey: state.platformKey,
       enabled: false,
       status: 'stopped',
       connected: false,
@@ -991,13 +1063,14 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     return path.join(binding.stateDir, `${binding.accountId}.buf`);
   }
 
-  private getCredentialsPath(workspaceId: string, stateDir: string): string {
-    return path.join(stateDir, `${safeFilePart(workspaceId)}.credentials.json`);
+  private getCredentialsPath(workspaceId: string, stateDir: string, instanceId = 'default'): string {
+    const suffix = instanceId === 'default' ? '' : `.${safeFilePart(instanceId)}`;
+    return path.join(stateDir, `${safeFilePart(workspaceId)}${suffix}.credentials.json`);
   }
 
-  private loadCredentials(workspaceId: string, stateDir: string): WeixinCredentials | null {
+  private loadCredentials(workspaceId: string, stateDir: string, instanceId = 'default'): WeixinCredentials | null {
     try {
-      const raw = fs.readFileSync(this.getCredentialsPath(workspaceId, stateDir), 'utf-8');
+      const raw = fs.readFileSync(this.getCredentialsPath(workspaceId, stateDir, instanceId), 'utf-8');
       const parsed = JSON.parse(raw) as Partial<WeixinCredentials>;
       const token = String(parsed.token || '').trim();
       if (!token) return null;
@@ -1016,7 +1089,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   private saveCredentials(binding: WeixinWorkspaceBinding, credentials: WeixinCredentials): void {
     fs.mkdirSync(binding.stateDir, { recursive: true });
     fs.writeFileSync(
-      this.getCredentialsPath(binding.workspaceId, binding.stateDir),
+      this.getCredentialsPath(binding.workspaceId, binding.stateDir, binding.instanceId),
       JSON.stringify(credentials, null, 2),
       'utf-8',
     );
@@ -1059,7 +1132,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
           const errorText = resp.errmsg ? ` errmsg=${resp.errmsg}` : '';
           this.options.log?.(`localcore-weixin getUpdates failed for ${binding.workspaceId}: ret=${resp.ret} errcode=${resp.errcode}${errorText} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`);
           if (resp.errcode === -14 || resp.ret === -14) {
-            const state = this.runtime.get(binding.workspaceId);
+            const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
             if (state) {
               state.status = 'error';
               state.connected = false;
@@ -1128,6 +1201,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
           await this.handleInboundMessage({
             workspaceId: binding.workspaceId,
+            instanceId: binding.instanceId,
+            platformKey: binding.platformKey,
             platformUserId: conversationId,
             chatId: conversationId,
             displayName: conversationId.slice(-6),
@@ -1425,15 +1500,15 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     return Math.ceil((size + 1) / 16) * 16;
   }
 
-  private resolveContextTokenForFileSend(workspaceId: string, channelId: string, participantId?: string) {
+  private resolveContextTokenForFileSend(workspaceId: string, channelId: string, participantId?: string, platformKey = 'weixin') {
     const preferredParticipantId = String(participantId || '').trim();
     const direct = preferredParticipantId
-      ? this.options.store.getPlatformThreadBinding(workspaceId, channelId, preferredParticipantId, 'weixin')
+      ? this.options.store.getPlatformThreadBinding(workspaceId, channelId, preferredParticipantId, platformKey)
       : undefined;
     if (direct?.last_platform_message_id) {
       return direct.last_platform_message_id;
     }
-    const users = this.options.store.listAuthorizedUsers(workspaceId, 'weixin');
+    const users = this.options.store.listAuthorizedUsers(workspaceId, platformKey);
     const user = users.find((entry) => entry.chatId === channelId || entry.platformUserId === channelId);
     if (!user) {
       return '';
@@ -1442,7 +1517,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       workspaceId,
       user.chatId,
       user.platformUserId,
-      'weixin',
+      platformKey,
     )?.last_platform_message_id || '';
   }
 
@@ -1669,9 +1744,9 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     return false;
   }
 
-  private findAwaitingPermissionThreadId(workspaceId: string, chatId: string, platformUserId: string): string {
+  private findAwaitingPermissionThreadId(workspaceId: string, chatId: string, platformUserId: string, platformKey = 'weixin'): string {
     for (const [sessionKey, route] of this.threadRouting.entries()) {
-      if (route.workspaceId !== workspaceId || route.chatId !== chatId || route.platformUserId !== platformUserId) continue;
+      if (route.workspaceId !== workspaceId || route.platformKey !== platformKey || route.chatId !== chatId || route.platformUserId !== platformUserId) continue;
       const turn = this.outboundTurns.get(sessionKey);
       if (turn?.awaitingPermission && route.threadId) return route.threadId;
     }

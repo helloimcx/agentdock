@@ -55,13 +55,13 @@ export interface ChannelRuntime {
   readonly routeType: string;
   listStatuses(): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus[]>
     | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus[];
-  getStatus(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
+  getStatus(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
     | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
-  testConnection(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelConnectionResult>
+  testConnection(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelConnectionResult>
     | import('../../contracts/src/index.js').LocalCoreChannelConnectionResult;
-  enable(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
+  enable(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
     | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
-  disable(workspaceId: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
+  disable(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
     | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
   listPendingPairings(workspaceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelPairingRequest[]>
     | import('../../contracts/src/index.js').LocalCoreChannelPairingRequest[];

@@ -396,6 +396,7 @@ export interface AgentTaskListResponse {
 export interface ChannelRoute {
   type: string;
   channelId: string;
+  instanceId?: string;
   participantId?: string;
   threadId?: string;
   metadata?: Record<string, unknown>;
@@ -818,6 +819,8 @@ export interface LocalCoreCapabilities {
 export interface LocalCoreChannelGatewayStatus {
   workspaceId: string;
   platform: string;
+  instanceId?: string;
+  displayName?: string;
   enabled: boolean;
   connected: boolean;
   status: 'disabled' | 'stopped' | 'starting' | 'running' | 'error';
@@ -837,6 +840,7 @@ export interface LocalCoreChannelAuthorizedUser {
   id: string;
   workspaceId: string;
   platform: string;
+  instanceId?: string;
   participantId: string;
   channelId: string;
   displayName: string;
@@ -854,6 +858,7 @@ export interface LocalCoreChannelPairingRequest {
   code: string;
   workspaceId: string;
   platform: string;
+  instanceId?: string;
   participantId: string;
   channelId: string;
   displayName: string;
@@ -872,6 +877,7 @@ export interface LocalCoreChannelConnectionResult {
   success: boolean;
   platform: string;
   workspaceId: string;
+  instanceId?: string;
   appId?: string;
   error?: string;
 }
@@ -881,6 +887,33 @@ export interface LocalCoreLarkConnectionResult extends LocalCoreChannelConnectio
   success: boolean;
   workspaceId: string;
   appId: string;
+}
+
+export interface LocalCoreChannelQrCode {
+  ticket: string;
+  expiresIn: number;
+  interval?: number;
+  qrCodeUrl: string;
+  instanceId?: string;
+  displayName?: string;
+}
+
+export interface LocalCoreLarkQrCodeCredentials {
+  appId: string;
+  appSecret: string;
+  verificationToken?: string;
+  encryptKey?: string;
+  botName?: string;
+}
+
+export interface LocalCoreChannelQrCodeStatus {
+  status: 'wait' | 'signed' | 'confirmed' | 'expired';
+  userName?: string;
+  userId?: string;
+}
+
+export interface LocalCoreLarkQrCodeStatus extends LocalCoreChannelQrCodeStatus {
+  credentials?: LocalCoreLarkQrCodeCredentials;
 }
 
 export interface WorkspaceStreamingProbeEvent {

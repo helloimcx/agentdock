@@ -18,8 +18,10 @@ import type {
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
   LocalCoreChannelPairingRequest,
+  LocalCoreChannelQrCode,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreLarkQrCodeStatus,
   LocalCorePairingRequest,
   ScheduledJob,
   ScheduledJobCreateInput,
@@ -465,20 +467,20 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     return this.resolveChannelRuntime(platform).listStatuses();
   }
 
-  async getChannelGatewayStatus(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
-    return this.resolveChannelRuntime(platform).getStatus(workspaceId);
+  async getChannelGatewayStatus(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> {
+    return this.resolveChannelRuntime(platform).getStatus(workspaceId, instanceId);
   }
 
-  async testChannelConnection(platform: string, workspaceId: string): Promise<LocalCoreChannelConnectionResult> {
-    return this.resolveChannelRuntime(platform).testConnection(workspaceId);
+  async testChannelConnection(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelConnectionResult> {
+    return this.resolveChannelRuntime(platform).testConnection(workspaceId, instanceId);
   }
 
-  async enableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
-    return this.resolveChannelRuntime(platform).enable(workspaceId);
+  async enableChannelGateway(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> {
+    return this.resolveChannelRuntime(platform).enable(workspaceId, instanceId);
   }
 
-  async disableChannelGateway(platform: string, workspaceId: string): Promise<LocalCoreChannelGatewayStatus> {
-    return this.resolveChannelRuntime(platform).disable(workspaceId);
+  async disableChannelGateway(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> {
+    return this.resolveChannelRuntime(platform).disable(workspaceId, instanceId);
   }
 
   async listChannelPendingPairings(platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]> {
@@ -540,18 +542,28 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     return runtime.sendOutboundMessage(workspaceId, input);
   }
 
-  async getWeixinQrCode(workspaceId: string): Promise<{ ticket: string; expiresIn: number; qrCodeUrl: string }> {
+  async getWeixinQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
     const runtime = this.weixinChannelRuntime as import('../channel/weixin/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
-    return runtime.getQrCode(workspaceId);
+    return runtime.getQrCode(workspaceId, instanceId);
   }
 
-  async checkWeixinQrCodeStatus(workspaceId: string, ticket: string): Promise<{
+  async checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
     userName?: string;
     userId?: string;
   }> {
     const runtime = this.weixinChannelRuntime as import('../channel/weixin/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
-    return runtime.checkQrCodeStatus(workspaceId, ticket);
+    return runtime.checkQrCodeStatus(workspaceId, ticket, instanceId);
+  }
+
+  async getLarkQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
+    const runtime = this.channelRuntime as import('../channel/lark/local-core-lark-gateway.js').LocalCoreLarkGateway;
+    return runtime.getQrCode(workspaceId, instanceId);
+  }
+
+  async checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> {
+    const runtime = this.channelRuntime as import('../channel/lark/local-core-lark-gateway.js').LocalCoreLarkGateway;
+    return runtime.checkQrCodeStatus(workspaceId, ticket, instanceId);
   }
 
   async listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]> {

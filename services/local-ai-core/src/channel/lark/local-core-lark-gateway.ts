@@ -17,8 +17,10 @@ import type {
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
   LocalCoreChannelPairingRequest,
+  LocalCoreChannelQrCode,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreLarkQrCodeStatus,
   LocalCorePairingRequest,
 } from '../../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime, EventBus } from '../../../../../packages/plugin-sdk/src/index.js';
@@ -31,18 +33,25 @@ type LarkModule = typeof import('@larksuiteoapi/node-sdk');
 
 type LarkWorkspaceBinding = {
   workspaceId: string;
+  instanceId: string;
+  displayName: string;
+  platformKey: string;
   appId: string;
   appSecret: string;
   encryptKey: string;
   verificationToken: string;
   autoApprove: boolean;
   cardActionsEnabled: boolean;
+  brand: 'feishu' | 'lark';
   enabled: boolean;
   project: DesktopProjectConfig;
 };
 
 type LarkRuntimeState = {
   workspaceId: string;
+  instanceId: string;
+  displayName: string;
+  platformKey: string;
   enabled: boolean;
   status: LocalCoreLarkGatewayStatus['status'];
   connected: boolean;
@@ -57,6 +66,8 @@ type LarkRuntimeState = {
 
 type LarkInboundMessage = {
   workspaceId: string;
+  instanceId?: string;
+  platformKey?: string;
   platformUserId: string;
   chatId: string;
   displayName: string;
@@ -112,6 +123,22 @@ type LocalCoreLarkGatewayOptions = {
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+const DEFAULT_LARK_QR_EXPIRES_IN = 180;
+const LARK_APP_REGISTRATION_PATH = '/oauth/v1/app/registration';
+
+function normalizeChannelInstanceId(value: unknown, fallback: string) {
+  const raw = String(value || '').trim();
+  const normalized = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 80);
+  return normalized || fallback;
+}
+
+function channelPlatformKey(platform: string, instanceId: string) {
+  return instanceId === 'default' ? platform : `${platform}:${instanceId}`;
+}
+
+function runtimeKey(workspaceId: string, instanceId: string) {
+  return `${workspaceId}::${instanceId}`;
+}
 
 export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
   // Lark returns 200340 when card action events are not enabled in the app's
@@ -120,7 +147,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   // Keep permission state in a dedicated card to avoid mixing order in the main reply card.
   private readonly mirrorPermissionStateInMainCard = false;
   private readonly runtime = new Map<string, LarkRuntimeState>();
-  private readonly threadRouting = new Map<string, { workspaceId: string; platformUserId: string; chatId: string; threadId: string }>();
+  private readonly threadRouting = new Map<string, { workspaceId: string; instanceId: string; platformKey: string; platformUserId: string; chatId: string; threadId: string }>();
   private readonly outboundEventChains = new Map<string, Promise<void>>();
   private readonly outboundTurns = new Map<string, LarkTurnState>();
   private readonly mutedThreadBridgeCounts = new Map<string, number>();
@@ -135,20 +162,24 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   async refreshBindings() {
     const config = await this.options.readConfig();
     const bindings = this.collectBindings(config);
-    const nextWorkspaceIds = new Set(bindings.map((binding) => binding.workspaceId));
-    for (const workspaceId of [...this.runtime.keys()]) {
-      if (!nextWorkspaceIds.has(workspaceId)) {
-        await this.stopWorkspace(workspaceId);
+    const nextKeys = new Set(bindings.map((binding) => runtimeKey(binding.workspaceId, binding.instanceId)));
+    for (const key of [...this.runtime.keys()]) {
+      if (!nextKeys.has(key)) {
+        await this.stopWorkspaceKey(key);
       }
     }
     for (const binding of bindings) {
-      const current = this.runtime.get(binding.workspaceId);
+      const key = runtimeKey(binding.workspaceId, binding.instanceId);
+      const current = this.runtime.get(key);
       if (!binding.enabled) {
         if (current) {
-          await this.stopWorkspace(binding.workspaceId);
+          await this.stopWorkspaceKey(key);
         } else {
-          this.runtime.set(binding.workspaceId, {
+          this.runtime.set(key, {
             workspaceId: binding.workspaceId,
+            instanceId: binding.instanceId,
+            displayName: binding.displayName,
+            platformKey: binding.platformKey,
             enabled: false,
             status: 'disabled',
             connected: false,
@@ -166,25 +197,74 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     this.notifyRuntimeStateChanged();
   }
 
-  async testConnection(workspaceId: string): Promise<LocalCoreLarkConnectionResult> {
-    const binding = await this.getBinding(workspaceId);
+  async testConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult> {
+    const binding = await this.getBinding(workspaceId, instanceId);
     const result = await this.createSdkClientResult(binding);
     return {
       ...result,
       platform: 'lark',
       workspaceId,
+      instanceId: binding.instanceId,
     };
   }
 
-  async enable(workspaceId: string) {
-    const binding = await this.getBinding(workspaceId);
+  async enable(workspaceId: string, instanceId?: string) {
+    const binding = await this.getBinding(workspaceId, instanceId);
     await this.startWorkspace(binding);
-    return this.getStatus(workspaceId);
+    return this.getStatus(workspaceId, binding.instanceId);
   }
 
-  async disable(workspaceId: string) {
-    await this.stopWorkspace(workspaceId);
-    return this.getStatus(workspaceId);
+  async disable(workspaceId: string, instanceId?: string) {
+    await this.stopWorkspace(workspaceId, instanceId);
+    return this.getStatus(workspaceId, instanceId);
+  }
+
+  async getQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
+    const binding = await this.getBinding(workspaceId, instanceId);
+    const data = await this.requestAppRegistration(binding);
+    const ticket = String(data.device_code || '').trim();
+    const userCode = String(data.user_code || '').trim();
+    if (!ticket || !userCode) {
+      throw new Error('Lark app registration did not return a device code and user code.');
+    }
+    return {
+      ticket,
+      expiresIn: Number(data.expires_in || DEFAULT_LARK_QR_EXPIRES_IN) || DEFAULT_LARK_QR_EXPIRES_IN,
+      interval: Number(data.interval || 5) || 5,
+      qrCodeUrl: `${this.getLarkOpenBase(binding)}/page/cli?user_code=${encodeURIComponent(userCode)}`,
+      instanceId: binding.instanceId,
+      displayName: binding.displayName,
+    };
+  }
+
+  async checkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> {
+    const binding = await this.getBinding(workspaceId, instanceId);
+    const data = await this.pollAppRegistration(binding, ticket);
+    const error = String(data.error || '').trim();
+    if (error === 'authorization_pending' || error === 'slow_down') {
+      return { status: 'wait' };
+    }
+    if (error === 'expired_token' || error === 'invalid_grant') {
+      return { status: 'expired' };
+    }
+    if (error === 'access_denied') {
+      throw new Error('Lark app registration was rejected.');
+    }
+    if (error) {
+      throw new Error(`Lark app registration failed: ${String(data.error_description || error)}`);
+    }
+    const appId = String(data.client_id || '').trim();
+    const appSecret = String(data.client_secret || '').trim();
+    if (!appId || !appSecret) {
+      return { status: 'wait' };
+    }
+    return {
+      status: 'confirmed',
+      credentials: {
+        appId,
+        appSecret,
+      },
+    };
   }
 
   async sendScheduledCard(workspaceId: string, chatId: string, text: string) {
@@ -196,7 +276,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
-    const state = this.runtime.get(workspaceId);
+    const state = this.resolveRuntimeState(workspaceId, input.route?.instanceId as string | undefined).state;
     if (!state?.client || !state.connected) {
       throw new Error(`Lark workspace is not connected: ${workspaceId}`);
     }
@@ -321,15 +401,19 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     this.mutedThreadBridgeCounts.set(threadId, current - 1);
   }
 
-  getStatus(workspaceId: string): LocalCoreLarkGatewayStatus {
+  getStatus(workspaceId: string, instanceId?: string): LocalCoreLarkGatewayStatus {
     this.options.store.expirePendingPairings();
-    const binding = this.runtime.get(workspaceId);
+    const resolved = this.resolveRuntimeState(workspaceId, instanceId);
+    const binding = resolved.state;
+    const platformKey = binding?.platformKey || channelPlatformKey('lark', resolved.instanceId);
     const pairings = this.options.store.listPendingPairings(workspaceId)
-      .filter((row) => row.platform === 'lark' && row.expires_at >= new Date().toISOString());
-    const users = this.options.store.listAuthorizedUsers(workspaceId, 'lark');
+      .filter((row) => row.platform === platformKey && row.expires_at >= new Date().toISOString());
+    const users = this.options.store.listAuthorizedUsers(workspaceId, platformKey);
     return {
       workspaceId,
       platform: 'lark',
+      instanceId: resolved.instanceId,
+      displayName: binding?.displayName,
       enabled: Boolean(binding?.enabled),
       connected: Boolean(binding?.connected),
       status: binding?.status || 'disabled',
@@ -342,18 +426,22 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   listStatuses(): LocalCoreLarkGatewayStatus[] {
-    return [...this.runtime.keys()].sort().map((workspaceId) => this.getStatus(workspaceId));
+    return [...this.runtime.values()]
+      .sort((a, b) => `${a.workspaceId}:${a.instanceId}`.localeCompare(`${b.workspaceId}:${b.instanceId}`))
+      .map((state) => this.getStatus(state.workspaceId, state.instanceId));
   }
 
   listPendingPairings(workspaceId?: string): LocalCorePairingRequest[] {
     this.options.store.expirePendingPairings();
     return this.options.store
-      .listPairingRequests(workspaceId, 'lark')
+      .listPairingRequests(workspaceId)
+      .filter((item) => item.platform === 'lark' || item.platform.startsWith('lark:'))
       .filter((item) => item.status === 'pending' && item.expiresAt >= new Date().toISOString());
   }
 
   listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
-    return this.options.store.listAuthorizedUsers(workspaceId, 'lark');
+    return this.options.store.listAuthorizedUsers(workspaceId)
+      .filter((item) => item.platform === 'lark' || item.platform.startsWith('lark:'));
   }
 
   async start() {
@@ -370,7 +458,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     if (!pairing) {
       throw new Error(`Pairing code not found: ${code}`);
     }
-    if (pairing.platform !== 'lark') {
+    if (pairing.platform !== 'lark' && !pairing.platform.startsWith('lark:')) {
       throw new Error(`Pairing code ${code} is not a Lark pairing`);
     }
     if (pairing.status !== 'pending') {
@@ -380,12 +468,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       this.options.store.updatePairingStatus(code, 'expired');
       throw new Error(`Pairing code ${code} has expired`);
     }
-    const existing = this.options.store.getAuthorizedUser(pairing.workspace_id, pairing.platform_user_id);
+    const existing = this.options.store.getAuthorizedUser(pairing.workspace_id, pairing.platform_user_id, pairing.platform);
     const userId = existing?.id || `lark-user-${randomUUID()}`;
     const authorizedAt = new Date().toISOString();
     this.options.store.createAuthorizedUser({
       id: userId,
       workspace_id: pairing.workspace_id,
+      platform: pairing.platform,
       platform_user_id: pairing.platform_user_id,
       chat_id: pairing.chat_id,
       display_name: pairing.display_name,
@@ -394,7 +483,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     });
     this.options.store.updatePairingStatus(code, 'approved');
     this.notifyRuntimeStateChanged();
-    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id, 'lark').find((entry) => entry.id === userId);
+    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id, pairing.platform).find((entry) => entry.id === userId);
     if (!user) {
       throw new Error('Authorized user lookup failed after approval');
     }
@@ -422,12 +511,14 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       this.options.log?.(`localcore-lark bridge route miss for sessionKey=${sessionKey} type=${event.type}`);
       return;
     }
-    const state = this.runtime.get(route.workspaceId);
+    const routeInstanceId = route.instanceId || 'default';
+    const routePlatformKey = route.platformKey || channelPlatformKey('lark', routeInstanceId);
+    const state = this.runtime.get(runtimeKey(route.workspaceId, routeInstanceId)) || this.runtime.get(route.workspaceId);
     if (!state?.client || !state.connected) {
       this.options.log?.(`localcore-lark bridge event ignored because workspace is not connected: ${route.workspaceId}`);
       return;
     }
-    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId);
+    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
     if (!initialBinding) {
       this.options.log?.(`localcore-lark bridge binding miss for workspace=${route.workspaceId} chat=${route.chatId} user=${route.platformUserId}`);
       return;
@@ -448,7 +539,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const current = previous
       .catch(() => undefined)
       .then(async () => {
-        const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId);
+        const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
         if (!binding) {
           this.options.log?.(`localcore-lark bridge binding disappeared for sessionKey=${sessionKey}`);
           return;
@@ -537,7 +628,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             if (createdId) {
               this.setRenderedMessageId(turn, rendered, createdId);
               if (rendered.isFinal) {
-                this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId);
+                this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
               }
               this.options.log?.(`localcore-lark sent new card message ${createdId} for sessionKey=${sessionKey}`);
             }
@@ -561,6 +652,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   async handleInboundMessage(input: LarkInboundMessage) {
+    const instanceId = input.instanceId || 'default';
+    const platformKey = input.platformKey || channelPlatformKey('lark', instanceId);
     this.options.eventBus.emit({
       type: 'platform.message.received',
       payload: {
@@ -574,28 +667,29 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       },
     });
     this.options.store.expirePendingPairings();
-    const binding = await this.getBinding(input.workspaceId);
-    let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId);
+    const binding = await this.getBinding(input.workspaceId, instanceId);
+    let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
     if (!authorized) {
       if (binding.autoApprove) {
         const authorizedAt = new Date().toISOString();
         this.options.store.createAuthorizedUser({
           id: `lark-user-${randomUUID()}`,
           workspace_id: input.workspaceId,
+          platform: platformKey,
           platform_user_id: input.platformUserId,
           chat_id: input.chatId,
           display_name: input.displayName,
           thread_id: null,
           authorized_at: authorizedAt,
         });
-        authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId);
+        authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
         this.options.log?.(`localcore-lark auto-approved user for ${input.workspaceId}: ${input.platformUserId}`);
         this.notifyRuntimeStateChanged();
       }
     }
     if (!authorized) {
       const existingPending = this.options.store.listPendingPairings(input.workspaceId).find((item) =>
-        item.platform === 'lark' && item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
+        item.platform === platformKey && item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
       );
       let pairingCode = existingPending?.code || '';
       if (!existingPending) {
@@ -604,6 +698,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         this.options.store.createPairingRequest({
           code: pairingCode,
           workspace_id: input.workspaceId,
+          platform: platformKey,
           platform_user_id: input.platformUserId,
           chat_id: input.chatId,
           display_name: input.displayName,
@@ -613,19 +708,20 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         });
         this.notifyRuntimeStateChanged();
       }
-      await this.sendImmediateCard(input.workspaceId, input.chatId, this.renderPendingPairingCard(pairingCode));
+      await this.sendImmediateCard(input.workspaceId, input.chatId, this.renderPendingPairingCard(pairingCode), instanceId);
       return { paired: false };
     }
     const router = this.options.getWorkspaceRouter();
-    const threadBinding = this.options.store.getPlatformThreadBinding(input.workspaceId, input.chatId, input.platformUserId);
+    const threadBinding = this.options.store.getPlatformThreadBinding(input.workspaceId, input.chatId, input.platformUserId, platformKey);
     let threadId = threadBinding?.thread_id || authorized.thread_id || '';
     if (!threadId) {
       const thread = await router.createThread(input.workspaceId, input.displayName || `Lark ${input.chatId}`);
       threadId = thread.id;
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, threadId);
+      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, threadId, platformKey);
       const now = new Date().toISOString();
       this.options.store.upsertPlatformThreadBinding({
         workspace_id: input.workspaceId,
+        platform: platformKey,
         chat_id: input.chatId,
         platform_user_id: input.platformUserId,
         thread_id: threadId,
@@ -647,20 +743,23 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const effectiveSessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
     this.threadRouting.set(effectiveSessionKey, {
       workspaceId: input.workspaceId,
+      instanceId,
+      platformKey,
       platformUserId: input.platformUserId,
       chatId: input.chatId,
       threadId,
     });
     const acknowledgement = this.createTurnState(effectiveSessionKey, input.messageId);
-    await this.addAcknowledgementReaction(input.workspaceId, input.messageId, acknowledgement);
+    await this.addAcknowledgementReaction(input.workspaceId, input.messageId, acknowledgement, instanceId);
     const slashCommand = this.parseSlashCommand(input.text);
     if (slashCommand?.name === 'new') {
       const title = slashCommand.args.join(' ').trim() || `${input.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`;
       const nextThread = await router.createThread(input.workspaceId, title);
       const now = new Date().toISOString();
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id);
+      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, platformKey);
       this.options.store.upsertPlatformThreadBinding({
         workspace_id: input.workspaceId,
+        platform: platformKey,
         chat_id: input.chatId,
         platform_user_id: input.platformUserId,
         thread_id: nextThread.id,
@@ -670,11 +769,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       });
       this.threadRouting.set(this.options.getWorkspaceRouter().getThreadSessionKey(nextThread.id), {
         workspaceId: input.workspaceId,
+        instanceId,
+        platformKey,
         platformUserId: input.platformUserId,
         chatId: input.chatId,
         threadId: nextThread.id,
       });
-      await this.sendImmediateCard(input.workspaceId, input.chatId, '**已开始新会话**');
+      await this.sendImmediateCard(input.workspaceId, input.chatId, '**已开始新会话**', instanceId);
       return { paired: true, threadId: nextThread.id };
     }
     const latestRun = this.options.store.getLatestRunForThread(threadId);
@@ -692,14 +793,27 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   close() {
-    return Promise.all([...this.runtime.keys()].map((workspaceId) => this.stopWorkspace(workspaceId))).then(() => undefined);
+    return Promise.all([...this.runtime.keys()].map((key) => this.stopWorkspaceKey(key))).then(() => undefined);
   }
 
-  private async getBinding(workspaceId: string) {
+  private resolveRuntimeState(workspaceId: string, instanceId?: string) {
+    if (instanceId) {
+      const state = this.runtime.get(runtimeKey(workspaceId, instanceId)) || (instanceId === 'default' ? this.runtime.get(workspaceId) : undefined);
+      return { instanceId, state };
+    }
+    const states = [...this.runtime.values()].filter((entry) => entry.workspaceId === workspaceId);
+    const state = states.find((entry) => entry.instanceId === 'default') || states[0];
+    return { instanceId: state?.instanceId || 'default', state: state || this.runtime.get(workspaceId) };
+  }
+
+  private async getBinding(workspaceId: string, instanceId?: string) {
     const config = await this.options.readConfig();
-    const binding = this.collectBindings(config).find((entry) => entry.workspaceId === workspaceId);
+    const bindings = this.collectBindings(config).filter((entry) => entry.workspaceId === workspaceId);
+    const binding = instanceId
+      ? bindings.find((entry) => entry.instanceId === instanceId)
+      : bindings.find((entry) => entry.instanceId === 'default') || bindings[0];
     if (!binding) {
-      throw new Error(`No Lark binding configured for workspace "${workspaceId}"`);
+      throw new Error(`No Lark binding configured for workspace "${workspaceId}"${instanceId ? ` instance "${instanceId}"` : ''}`);
     }
     return binding;
   }
@@ -718,6 +832,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         success: true,
         platform: 'lark',
         workspaceId: binding.workspaceId,
+        instanceId: binding.instanceId,
         appId: binding.appId,
       };
     } catch (error) {
@@ -725,6 +840,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         success: false,
         platform: 'lark',
         workspaceId: binding.workspaceId,
+        instanceId: binding.instanceId,
         appId: binding.appId,
         error: error instanceof Error ? error.message : String(error),
       };
@@ -732,16 +848,20 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private async startWorkspace(binding: LarkWorkspaceBinding) {
-    await this.stopWorkspace(binding.workspaceId);
+    const key = runtimeKey(binding.workspaceId, binding.instanceId);
+    await this.stopWorkspaceKey(key);
     const status: LarkRuntimeState = {
       workspaceId: binding.workspaceId,
+      instanceId: binding.instanceId,
+      displayName: binding.displayName,
+      platformKey: binding.platformKey,
       enabled: true,
       status: 'starting',
       connected: false,
       appId: binding.appId,
       cardActionsEnabled: binding.cardActionsEnabled,
     };
-    this.runtime.set(binding.workspaceId, status);
+    this.runtime.set(key, status);
     this.notifyRuntimeStateChanged();
     try {
       this.options.log?.(`localcore-lark starting workspace=${binding.workspaceId} app=${this.maskLarkAppId(binding.appId)} cardActions=${binding.cardActionsEnabled}`);
@@ -759,8 +879,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       });
       status.eventDispatcher.register({
         'im.message.receive_v1': async (data: Record<string, unknown>) => {
-          this.options.log?.(`localcore-lark received im.message.receive_v1 for ${binding.workspaceId}: ${this.summarizeLarkEvent(data)}`);
-          void this.handleMessageEvent(binding.workspaceId, data).catch((error) => {
+          this.options.log?.(`localcore-lark received im.message.receive_v1 for ${binding.workspaceId}/${binding.instanceId}: ${this.summarizeLarkEvent(data)}`);
+          void this.handleMessageEvent(binding.workspaceId, binding.instanceId, binding.platformKey, data).catch((error) => {
             this.options.log?.(`localcore-lark inbound message failed for ${binding.workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
           });
           return {};
@@ -797,21 +917,29 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     this.notifyRuntimeStateChanged();
   }
 
-  private async stopWorkspace(workspaceId: string) {
-    const state = this.runtime.get(workspaceId);
+  private async stopWorkspace(workspaceId: string, instanceId?: string) {
+    const resolved = this.resolveRuntimeState(workspaceId, instanceId);
+    await this.stopWorkspaceKey(runtimeKey(workspaceId, resolved.instanceId));
+  }
+
+  private async stopWorkspaceKey(key: string) {
+    const state = this.runtime.get(key);
     if (!state) {
       return;
     }
-    this.options.log?.(`localcore-lark stopping workspace=${workspaceId} status=${state.status}`);
+    this.options.log?.(`localcore-lark stopping workspace=${state.workspaceId}/${state.instanceId} status=${state.status}`);
     try {
       await state.wsClient?.stop?.();
-      this.options.log?.(`localcore-lark stopped workspace=${workspaceId}`);
+      this.options.log?.(`localcore-lark stopped workspace=${state.workspaceId}/${state.instanceId}`);
     } catch (error) {
-      this.options.log?.(`localcore-lark stop failed for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.options.log?.(`localcore-lark stop failed for ${state.workspaceId}/${state.instanceId}: ${error instanceof Error ? error.message : String(error)}`);
       // Best effort: current SDK versions may not implement stop().
     }
-    this.runtime.set(workspaceId, {
-      workspaceId,
+    this.runtime.set(key, {
+      workspaceId: state.workspaceId,
+      instanceId: state.instanceId,
+      displayName: state.displayName,
+      platformKey: state.platformKey,
       enabled: false,
       status: 'stopped',
       connected: false,
@@ -830,7 +958,11 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     });
   }
 
-  private async handleMessageEvent(workspaceId: string, data: Record<string, unknown>) {
+  private async handleMessageEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, platformKeyOrData?: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
+    const legacyCall = typeof instanceIdOrData === 'object';
+    const instanceId = legacyCall ? 'default' : instanceIdOrData;
+    const platformKey = legacyCall ? 'lark' : String(platformKeyOrData || channelPlatformKey('lark', instanceId));
+    const data = (legacyCall ? instanceIdOrData : maybeData) || {};
     const payload = ((data as any)?.event && typeof (data as any).event === 'object')
       ? (data as any).event
       : data;
@@ -857,7 +989,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       const imageKey = String(parsedContent.image_key || parsedContent.file_key || '').trim();
       if (imageKey) {
         try {
-          contentParts.push(await this.downloadMessageImage(workspaceId, String(message.message_id || ''), imageKey));
+          contentParts.push(await this.downloadMessageImage(workspaceId, String(message.message_id || ''), imageKey, instanceId));
         } catch (error) {
           const errorText = `[Image download failed: ${error instanceof Error ? error.message : String(error)}]`;
           contentParts.push({ type: 'text', text: errorText });
@@ -883,6 +1015,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
     await this.handleInboundMessage({
       workspaceId,
+      instanceId,
+      platformKey,
       platformUserId,
       chatId,
       displayName: String(
@@ -917,8 +1051,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     };
   }
 
-  private async downloadMessageImage(workspaceId: string, messageId: string, imageKey: string): Promise<ChannelInboundContentPart> {
-    const state = this.runtime.get(workspaceId);
+  private async downloadMessageImage(workspaceId: string, messageId: string, imageKey: string, instanceId?: string): Promise<ChannelInboundContentPart> {
+    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
     if (!state?.client) {
       throw new Error('Lark client is not connected');
     }
@@ -1052,6 +1186,51 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
 
+  private getLarkAccountsBase(binding: LarkWorkspaceBinding) {
+    return binding.brand === 'lark' ? 'https://accounts.larksuite.com' : 'https://accounts.feishu.cn';
+  }
+
+  private getLarkOpenBase(binding: LarkWorkspaceBinding) {
+    return binding.brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
+  }
+
+  private async requestAppRegistration(binding: LarkWorkspaceBinding): Promise<Record<string, unknown>> {
+    return this.callAppRegistration(binding, {
+      action: 'begin',
+      archetype: 'PersonalAgent',
+      auth_method: 'client_secret',
+      request_user_info: 'open_id tenant_brand',
+    });
+  }
+
+  private async pollAppRegistration(binding: LarkWorkspaceBinding, deviceCode: string): Promise<Record<string, unknown>> {
+    return this.callAppRegistration(binding, {
+      action: 'poll',
+      device_code: deviceCode,
+    });
+  }
+
+  private async callAppRegistration(binding: LarkWorkspaceBinding, formValues: Record<string, string>): Promise<Record<string, unknown>> {
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(formValues)) {
+      form.set(key, value);
+    }
+    const response = await fetch(`${this.getLarkAccountsBase(binding)}${LARK_APP_REGISTRATION_PATH}`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    });
+    const text = await response.text();
+    const parsed = text ? JSON.parse(text) as Record<string, unknown> : {};
+    if (!response.ok) {
+      throw new Error(`Lark app registration failed (${response.status}): ${String(parsed.error_description || parsed.error || text || response.statusText)}`);
+    }
+    return parsed;
+  }
+
   private collectBindings(config: DesktopConnectConfig | null | undefined): LarkWorkspaceBinding[] {
     const projects = Array.isArray(config?.projects) ? config!.projects! : [];
     return projects.flatMap((project) => {
@@ -1064,8 +1243,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             : {},
         }))
         .filter((platform) => platform.platformType === 'lark')
-        .map((platform) => ({
+        .map((platform, index) => {
+          const instanceId = normalizeChannelInstanceId(platform.options.instance_id || platform.options.id, index === 0 ? 'default' : `lark-${index + 1}`);
+          return {
           workspaceId: project.name,
+          instanceId,
+          displayName: String(platform.options.name || platform.options.display_name || `Lark ${index + 1}`).trim(),
+          platformKey: channelPlatformKey('lark', instanceId),
           appId: String(platform.options.app_id || '').trim(),
           appSecret: String(platform.options.app_secret || '').trim(),
           encryptKey: String(platform.options.encrypt_key || '').trim(),
@@ -1076,9 +1260,11 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             || platform.options.card_actions === true
             || platform.options.enable_card_actions === true
             || this.defaultCardActionsEnabled,
+          brand: String(platform.options.brand || platform.options.lark_brand || '').trim().toLowerCase() === 'lark' ? 'lark' : 'feishu',
           enabled: Boolean(String(platform.options.app_id || '').trim() && String(platform.options.app_secret || '').trim()),
           project,
-        }));
+        };
+        });
     });
   }
 
@@ -1648,8 +1834,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     });
   }
 
-  private async sendImmediateCard(workspaceId: string, chatId: string, text: string) {
-    const state = this.runtime.get(workspaceId);
+  private async sendImmediateCard(workspaceId: string, chatId: string, text: string, instanceId?: string) {
+    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
     if (!state?.client || !state.connected) {
       this.options.log?.(`localcore-lark immediate card skipped because workspace is not connected: ${workspaceId}`);
       return '';
@@ -1662,8 +1848,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
   }
 
-  private async addAcknowledgementReaction(workspaceId: string, messageId: string, turn: LarkTurnState) {
-    const state = this.runtime.get(workspaceId);
+  private async addAcknowledgementReaction(workspaceId: string, messageId: string, turn: LarkTurnState, instanceId?: string) {
+    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
     if (!state?.client || !state.connected || !messageId) {
       return;
     }
