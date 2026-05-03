@@ -21,6 +21,12 @@ import {
   shouldReplacePreviewWithReply,
   type ChatMessage,
 } from './thread-chat-model';
+import {
+  isHiddenProgressMessage,
+  parsePermissionCardContent,
+  parseToolResultCard,
+  shouldCollapseToolResultByDefault,
+} from './thread-chat-message-blocks';
 
 type TestMessage = PermissionPromptMessage & {
   id: string;
@@ -346,4 +352,33 @@ test('advancePreviewContent moves monotonically toward the target content', () =
   assert.equal(advancePreviewContent('', 'Hello'), 'H');
   assert.equal(advancePreviewContent('Hel', 'Hello'), 'Hello');
   assert.equal(advancePreviewContent('Mismatch', 'Hello'), 'H');
+});
+
+test('tool result card parsing preserves tool name and decoded output', () => {
+  const card = parseToolResultCard('🔧 Read: package.json - completed - {"output":"ok"}');
+
+  assert.ok(card);
+  assert.equal(card.title, 'Read');
+  assert.equal(card.status, 'completed');
+  assert.equal(card.output, 'ok');
+  assert.equal(card.label, '工具结果');
+  assert.equal(card.subtitle, 'package.json');
+  assert.equal(shouldCollapseToolResultByDefault(card), true);
+});
+
+test('running empty tool update stays hidden instead of rendering an empty card', () => {
+  assert.equal(parseToolResultCard('🔧 Tool update - running - '), null);
+  assert.equal(isHiddenProgressMessage('🔧 Tool update - running - '), true);
+});
+
+test('permission card content hides fallback transport instructions', () => {
+  const parsed = parsePermissionCardContent([
+    '等待工具确认',
+    '需要读取文件',
+    '请选择一个选项继续执行',
+    '若按钮没有显示，请回复 allow',
+  ].join('\n'));
+
+  assert.equal(parsed.title, '等待工具确认');
+  assert.deepEqual(parsed.bodyLines, ['需要读取文件']);
 });

@@ -63,7 +63,7 @@ Priority files:
 Checklist:
 
 - [ ] Page components orchestrate UI and data flow only.
-- [ ] Message-block rendering decisions live in focused presentation components.
+- [x] Message-block rendering decisions live in focused presentation components.
 - [x] State transitions are extracted into pure functions with tests.
 - [ ] Runtime server route registration is split from request handlers.
 - [ ] ACP persistence is separated from streaming event processing.

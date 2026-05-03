@@ -16,6 +16,7 @@
     "shared/**/*.ts",
     "packages/**/*.ts",
     "services/**/*.ts",
+    "src/pages/Threads/thread-chat-message-blocks.ts",
     "src/pages/Threads/thread-chat-permission.ts",
     "src/pages/Threads/thread-chat-permission.test.ts"
   ]
