@@ -23,6 +23,7 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelPairingRequest,
   LocalCoreChannelQrCode,
+  LocalCoreChannelQrCodeStatus,
   LocalCorePairingRequest,
   LocalCoreLarkQrCodeStatus,
   LocalCoreEvent,
@@ -149,6 +150,8 @@ export interface LocalAiCoreBindings extends EventEmitter {
   listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]>;
   sendChannelFile(platform: string, workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult>;
   sendChannelMessage(platform: string, workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult>;
+  getChannelQrCode(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
+  checkChannelQrCodeStatus(platform: string, workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreChannelQrCodeStatus>;
   getWeixinQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
   checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
@@ -390,15 +393,13 @@ export class LocalAiCoreServer {
           json(res, 200, await this.bindings.getChannelGatewayStatus(platform, workspaceOrCollection, instanceId));
           return;
         }
-        if ((platform === 'weixin' || platform === 'lark') && segments.length === 4 && action === 'qrcode' && segments[3] === 'status') {
+        if (segments.length === 4 && action === 'qrcode' && segments[3] === 'status') {
           const ticket = String(url.searchParams.get('ticket') || '');
           if (!ticket) {
             json(res, 400, null, false, 'Missing ticket parameter');
             return;
           }
-          json(res, 200, platform === 'lark'
-            ? await this.bindings.checkLarkQrCodeStatus(workspaceOrCollection, ticket, instanceId)
-            : await this.bindings.checkWeixinQrCodeStatus(workspaceOrCollection, ticket, instanceId));
+          json(res, 200, await this.bindings.checkChannelQrCodeStatus(platform, workspaceOrCollection, ticket, instanceId));
           return;
         }
       }
@@ -443,10 +444,8 @@ export class LocalAiCoreServer {
           json(res, 200, await this.bindings.sendChannelMessage(platform, workspaceOrCollection, body as unknown as ChannelOutboundMessageInput));
           return;
         }
-        if ((platform === 'weixin' || platform === 'lark') && segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {
-          json(res, 200, platform === 'lark'
-            ? await this.bindings.getLarkQrCode(workspaceOrCollection, instanceId)
-            : await this.bindings.getWeixinQrCode(workspaceOrCollection, instanceId));
+        if (segments.length === 3 && workspaceOrCollection !== 'pairings' && action === 'qrcode') {
+          json(res, 200, await this.bindings.getChannelQrCode(platform, workspaceOrCollection, instanceId));
           return;
         }
       }

@@ -1,8 +1,9 @@
 import type { DesktopConnectConfig } from '../../../../../packages/contracts/src/index.js';
-import type { ChannelPlugin, ChannelRuntimeRegistration, PluginContext } from '../../../../../packages/plugin-sdk/src/index.js';
+import type { ChannelPlugin } from '../../../../../packages/plugin-sdk/src/index.js';
 import { LocalCoreLarkGateway } from '../../channel/lark/local-core-lark-gateway.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
+import { createBuiltinChannelPlugin } from '../../channel/shared/plugin.js';
 
 export function createBuiltinLarkChannelPlugin(options: {
   store: LocalCoreAcpStore;
@@ -10,10 +11,7 @@ export function createBuiltinLarkChannelPlugin(options: {
   getWorkspaceRouter: () => WorkspaceRouter;
   log?: (message: string) => void;
 }): ChannelPlugin {
-  let runtime: ChannelRuntimeRegistration | null = null;
-  let unsubscribeBridgeEvents: (() => void) | null = null;
-
-  return {
+  return createBuiltinChannelPlugin({
     manifest: {
       id: 'builtin.channel-lark',
       kind: 'channel',
@@ -28,40 +26,20 @@ export function createBuiltinLarkChannelPlugin(options: {
         ],
       },
     },
-    capabilities: {
-      channels: [
-        {
-          id: 'channel.lark',
-          platform: 'lark',
-          routeType: 'channel.chat',
-          displayName: 'LocalCore Lark',
-        },
-      ],
-    },
-    createRuntime(ctx: PluginContext) {
-      if (!runtime) {
-        runtime = {
-          channel: new LocalCoreLarkGateway({
-            store: options.store,
-            readConfig: options.readConfig,
-            getWorkspaceRouter: options.getWorkspaceRouter,
-            eventBus: ctx.bus,
-            log: options.log,
-          }),
-        };
-        unsubscribeBridgeEvents = ctx.bus.on('platform.bridge.updated', (event) => {
-          void runtime?.channel.onBridgeEvent?.(event);
-        });
-      }
-      return runtime;
-    },
-    async start() {
-      await runtime?.channel.refreshBindings?.();
-    },
-    async stop() {
-      unsubscribeBridgeEvents?.();
-      unsubscribeBridgeEvents = null;
-      runtime?.channel.close?.();
-    },
-  };
+    channels: [
+      {
+        id: 'channel.lark',
+        platform: 'lark',
+        routeType: 'channel.chat',
+        displayName: 'LocalCore Lark',
+      },
+    ],
+    createChannel: (ctx) => new LocalCoreLarkGateway({
+      store: options.store,
+      readConfig: options.readConfig,
+      getWorkspaceRouter: options.getWorkspaceRouter,
+      eventBus: ctx.bus,
+      log: options.log,
+    }),
+  });
 }

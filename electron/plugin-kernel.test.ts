@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ import { LocalCoreEventBus } from '../services/local-ai-core/src/kernel/event-bu
 import { LocalCoreLifecycleManager } from '../services/local-ai-core/src/kernel/lifecycle-manager.js';
 import { LocalCorePluginRegistry } from '../services/local-ai-core/src/kernel/plugin-registry.js';
 import { LocalCoreController } from '../services/local-ai-core/src/runtime/local-core-controller.js';
+import { LocalAiCoreServer } from '../services/local-ai-core/src/runtime/server.js';
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
   return {
@@ -369,6 +371,29 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   let stopped = false;
   let channelRefreshes = 0;
   let weixinRefreshes = 0;
+  const channelRuntime = {
+    platform: 'test-channel',
+    routeType: 'channel.test',
+    refreshBindings: async () => {
+      channelRefreshes++;
+    },
+    getQrCode: async (workspaceId: string, instanceId?: string) => ({
+      ticket: `ticket:${workspaceId}`,
+      expiresIn: 60,
+      qrCodeUrl: 'https://example.test/qr',
+      instanceId,
+    }),
+    checkQrCodeStatus: async (_workspaceId: string, ticket: string) => ({
+      status: ticket === 'signed-ticket' ? 'signed' : 'wait',
+    }),
+  } as any;
+  const weixinChannelRuntime = {
+    platform: 'weixin',
+    routeType: 'channel.chat',
+    refreshBindings: async () => {
+      weixinRefreshes++;
+    },
+  } as any;
   const controller = new LocalCoreController('/tmp/local-core-controller-injected', {
     kernel: {
       context: {
@@ -424,20 +449,9 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
     } as any,
     store: {} as any,
     agentRuntimes: [],
-    channelRuntime: {
-      platform: 'test-channel',
-      routeType: 'channel.test',
-      refreshBindings: async () => {
-        channelRefreshes++;
-      },
-    } as any,
-    weixinChannelRuntime: {
-      platform: 'weixin',
-      routeType: 'channel.chat',
-      refreshBindings: async () => {
-        weixinRefreshes++;
-      },
-    } as any,
+    channelRuntimes: [channelRuntime, weixinChannelRuntime],
+    channelRuntime,
+    weixinChannelRuntime,
     knowledgeProvider: {} as any,
     knowledgeAttachments: {} as any,
     workspaceRouter: {} as any,
@@ -453,6 +467,15 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   await controller.init();
   assert.equal(started, true);
   assert.deepEqual(await controller.getCapabilities(), capabilitySnapshot);
+  assert.deepEqual(await controller.getChannelQrCode('test-channel', 'workspace-1', 'instance-1'), {
+    ticket: 'ticket:workspace-1',
+    expiresIn: 60,
+    qrCodeUrl: 'https://example.test/qr',
+    instanceId: 'instance-1',
+  });
+  assert.deepEqual(await controller.checkChannelQrCodeStatus('test-channel', 'workspace-1', 'signed-ticket'), {
+    status: 'signed',
+  });
   await controller.saveStructuredConfigFile({ projects: [] } as any);
   assert.equal(channelRefreshes, 1);
   assert.equal(weixinRefreshes, 1);
@@ -547,6 +570,43 @@ test('channel plugin lifecycle start and stop are driven by the kernel lifecycle
   await lifecycle.stopAll();
 
   assert.deepEqual(calls, ['init', 'start', 'stop']);
+});
+
+test('server QR routes dispatch through generic channel bindings', async () => {
+  const calls: string[] = [];
+  const bindings = Object.assign(new EventEmitter(), {
+    getChannelQrCode: async (platform: string, workspaceId: string, instanceId?: string) => {
+      calls.push(`get:${platform}:${workspaceId}:${instanceId || ''}`);
+      return {
+        ticket: 'ticket-1',
+        expiresIn: 60,
+        qrCodeUrl: 'https://example.test/qr',
+        instanceId,
+      };
+    },
+    checkChannelQrCodeStatus: async (platform: string, workspaceId: string, ticket: string, instanceId?: string) => {
+      calls.push(`check:${platform}:${workspaceId}:${ticket}:${instanceId || ''}`);
+      return { status: 'signed' };
+    },
+  }) as any;
+  const server = new LocalAiCoreServer(bindings, { port: 0 });
+  await server.start();
+  try {
+    const address = (server as any).server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}/api/local/v1`;
+    const qrResponse = await fetch(`${baseUrl}/platforms/slack/workspace-1/qrcode?instance_id=bot-1`, { method: 'POST' });
+    const qrBody = await qrResponse.json() as any;
+    assert.equal(qrBody.data.ticket, 'ticket-1');
+    const statusResponse = await fetch(`${baseUrl}/platforms/slack/workspace-1/qrcode/status?ticket=ticket-1&instance_id=bot-1`);
+    const statusBody = await statusResponse.json() as any;
+    assert.equal(statusBody.data.status, 'signed');
+    assert.deepEqual(calls, [
+      'get:slack:workspace-1:bot-1',
+      'check:slack:workspace-1:ticket-1:bot-1',
+    ]);
+  } finally {
+    await server.stop();
+  }
 });
 
 test('channel and scheduler capabilities use registry targets instead of Lark-specific routing', () => {

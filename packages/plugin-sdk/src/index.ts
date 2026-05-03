@@ -70,6 +70,17 @@ export interface ChannelRuntime {
   rejectPairing(code: string): Promise<{ rejected: boolean }> | { rejected: boolean };
   listAuthorizedUsers(workspaceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser[]>
     | import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser[];
+  getQrCode?(
+    workspaceId: string,
+    instanceId?: string,
+  ): Promise<import('../../contracts/src/index.js').LocalCoreChannelQrCode>
+    | import('../../contracts/src/index.js').LocalCoreChannelQrCode;
+  checkQrCodeStatus?(
+    workspaceId: string,
+    ticket: string,
+    instanceId?: string,
+  ): Promise<import('../../contracts/src/index.js').LocalCoreChannelQrCodeStatus>
+    | import('../../contracts/src/index.js').LocalCoreChannelQrCodeStatus;
   onBridgeEvent?(event: import('../../../shared/desktop.js').DesktopBridgeEvent): Promise<void> | void;
   refreshBindings?(): Promise<void> | void;
   sendScheduledMessage?(

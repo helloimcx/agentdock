@@ -19,6 +19,7 @@ import type {
   LocalCoreChannelGatewayStatus,
   LocalCoreChannelPairingRequest,
   LocalCoreChannelQrCode,
+  LocalCoreChannelQrCodeStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreLarkQrCodeStatus,
@@ -76,8 +77,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly state: LocalCoreRuntimeState;
   private readonly workspaceRouter: WorkspaceRouter;
   private readonly knowledgeProvider: KnowledgeRuntime;
-  private readonly channelRuntime: ChannelRuntime;
-  private readonly weixinChannelRuntime: ChannelRuntime;
+  private readonly channelRuntimes: Map<string, ChannelRuntime>;
   private readonly scheduler: SchedulerService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
@@ -100,8 +100,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.kernel = this.runtime.kernel;
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
-    this.channelRuntime = this.runtime.channelRuntime;
-    this.weixinChannelRuntime = this.runtime.weixinChannelRuntime;
+    const runtimeChannels = this.runtime.channelRuntimes || [this.runtime.channelRuntime, this.runtime.weixinChannelRuntime];
+    this.channelRuntimes = new Map(
+      runtimeChannels.filter(Boolean).map((runtime) => [runtime.platform, runtime]),
+    );
     this.scheduler = this.runtime.scheduler;
     this.runtimeDetection = new RuntimeDetectionService({
       userDataPath,
@@ -179,8 +181,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async restartService() {
-    await this.channelRuntime.refreshBindings?.();
-    await this.weixinChannelRuntime.refreshBindings?.();
+    await this.refreshChannelBindings();
     await this.emitRuntime();
     return { status: 'running' as const };
   }
@@ -195,24 +196,21 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
     const next = await this.state.saveRawConfigFile(raw);
-    await this.channelRuntime.refreshBindings?.();
-    await this.weixinChannelRuntime.refreshBindings?.();
+    await this.refreshChannelBindings();
     await this.emitRuntime();
     return next;
   }
 
   async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
     const next = await this.state.saveStructuredConfigFile(config);
-    await this.channelRuntime.refreshBindings?.();
-    await this.weixinChannelRuntime.refreshBindings?.();
+    await this.refreshChannelBindings();
     await this.emitRuntime();
     return next;
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
     const settings = await this.state.saveSettings(input);
-    await this.channelRuntime.refreshBindings?.();
-    await this.weixinChannelRuntime.refreshBindings?.();
+    await this.refreshChannelBindings();
     await this.emitRuntime();
     return settings;
   }
@@ -458,11 +456,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]> {
     if (!platform) {
-      const [larkStatuses, weixinStatuses] = await Promise.all([
-        this.channelRuntime.listStatuses(),
-        this.weixinChannelRuntime.listStatuses(),
-      ]);
-      return [...larkStatuses, ...weixinStatuses];
+      const statuses = await Promise.all(
+        [...this.channelRuntimes.values()].map((runtime) => runtime.listStatuses()),
+      );
+      return statuses.flat();
     }
     return this.resolveChannelRuntime(platform).listStatuses();
   }
@@ -543,8 +540,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async getWeixinQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
-    const runtime = this.weixinChannelRuntime as import('../channel/weixin/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
-    return runtime.getQrCode(workspaceId, instanceId);
+    return this.getChannelQrCode('weixin', workspaceId, instanceId);
   }
 
   async checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
@@ -552,17 +548,35 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     userName?: string;
     userId?: string;
   }> {
-    const runtime = this.weixinChannelRuntime as import('../channel/weixin/local-core-weixin-gateway.js').LocalCoreWeixinGateway;
-    return runtime.checkQrCodeStatus(workspaceId, ticket, instanceId);
+    return this.checkChannelQrCodeStatus('weixin', workspaceId, ticket, instanceId);
   }
 
   async getLarkQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
-    const runtime = this.channelRuntime as import('../channel/lark/local-core-lark-gateway.js').LocalCoreLarkGateway;
-    return runtime.getQrCode(workspaceId, instanceId);
+    return this.getChannelQrCode('lark', workspaceId, instanceId);
   }
 
   async checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> {
-    const runtime = this.channelRuntime as import('../channel/lark/local-core-lark-gateway.js').LocalCoreLarkGateway;
+    return this.checkChannelQrCodeStatus('lark', workspaceId, ticket, instanceId) as Promise<LocalCoreLarkQrCodeStatus>;
+  }
+
+  async getChannelQrCode(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
+    const runtime = this.resolveChannelRuntime(platform);
+    if (!runtime.getQrCode) {
+      throw new Error(`Channel platform does not support QR setup: ${platform}`);
+    }
+    return runtime.getQrCode(workspaceId, instanceId);
+  }
+
+  async checkChannelQrCodeStatus(
+    platform: string,
+    workspaceId: string,
+    ticket: string,
+    instanceId?: string,
+  ): Promise<LocalCoreChannelQrCodeStatus> {
+    const runtime = this.resolveChannelRuntime(platform);
+    if (!runtime.checkQrCodeStatus) {
+      throw new Error(`Channel platform does not support QR setup: ${platform}`);
+    }
     return runtime.checkQrCodeStatus(workspaceId, ticket, instanceId);
   }
 
@@ -644,12 +658,16 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     }
   }
 
+  private async refreshChannelBindings() {
+    await Promise.all(
+      [...this.channelRuntimes.values()].map((runtime) => runtime.refreshBindings?.()),
+    );
+  }
+
   private resolveChannelRuntime(platform: string): ChannelRuntime {
-    if (platform === this.channelRuntime.platform) {
-      return this.channelRuntime;
-    }
-    if (platform === this.weixinChannelRuntime.platform) {
-      return this.weixinChannelRuntime;
+    const runtime = this.channelRuntimes.get(platform);
+    if (runtime) {
+      return runtime;
     }
     throw new Error(`Unsupported channel platform: ${platform}`);
   }

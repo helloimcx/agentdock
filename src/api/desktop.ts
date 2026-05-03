@@ -14,6 +14,7 @@ import type {
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelQrCode,
+  LocalCoreChannelQrCodeStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCoreChannelPairingRequest,
   LocalCoreEvent,
@@ -28,6 +29,7 @@ import {
   disableChannelGateway as disableCoreChannelGateway,
   enableChannelGateway as enableCoreChannelGateway,
   getChannelGatewayStatus as getCoreChannelGatewayStatus,
+  getChannelQrCode as getCoreChannelQrCode,
   getThread as getCoreThread,
   getCoreLogs,
   getCoreRuntime,
@@ -35,6 +37,7 @@ import {
   refreshRuntimeDetections as refreshCoreRuntimeDetections,
   getCapabilitySnapshot as getCoreCapabilitySnapshot,
   getPluginDiagnostics as getCorePluginDiagnostics,
+  checkChannelQrCodeStatus as checkCoreChannelQrCodeStatus,
   getLarkGatewayStatus as getCoreLarkGatewayStatus,
   listChannelAuthorizedUsers as listCoreChannelAuthorizedUsers,
   listChannelGateways as listCoreChannelGateways,
@@ -94,6 +97,8 @@ type DesktopProvider = {
   approveChannelPairing: (platform: string, code: string) => Promise<LocalCoreChannelAuthorizedUser>;
   rejectChannelPairing: (platform: string, code: string) => Promise<{ rejected: boolean }>;
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelAuthorizedUser[]>;
+  getChannelQrCode: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
+  checkChannelQrCodeStatus: (platform: string, workspaceId: string, ticket: string, instanceId?: string) => Promise<LocalCoreChannelQrCodeStatus>;
   getWeixinQrCode: (workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
   checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => Promise<{
     status: 'wait' | 'signed' | 'confirmed' | 'expired';
@@ -155,6 +160,9 @@ const electronProvider: DesktopProvider = {
   rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
     listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
+  getChannelQrCode: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelQrCode(platform, workspaceId, instanceId),
+  checkChannelQrCodeStatus: (platform: string, workspaceId: string, ticket: string, instanceId?: string) =>
+    checkCoreChannelQrCodeStatus(platform, workspaceId, ticket, instanceId),
   getWeixinQrCode: (workspaceId: string, instanceId?: string) => getCoreWeixinQrCode(workspaceId, instanceId),
   checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket, instanceId),
   getLarkQrCode: (workspaceId: string, instanceId?: string) => getCoreLarkQrCode(workspaceId, instanceId),
@@ -209,6 +217,9 @@ const localCoreProvider: DesktopProvider = {
   rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
   listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
     listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
+  getChannelQrCode: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelQrCode(platform, workspaceId, instanceId),
+  checkChannelQrCodeStatus: (platform: string, workspaceId: string, ticket: string, instanceId?: string) =>
+    checkCoreChannelQrCodeStatus(platform, workspaceId, ticket, instanceId),
   getWeixinQrCode: (workspaceId: string, instanceId?: string) => getCoreWeixinQrCode(workspaceId, instanceId),
   checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket, instanceId),
   getLarkQrCode: (workspaceId: string, instanceId?: string) => getCoreLarkQrCode(workspaceId, instanceId),
@@ -311,6 +322,15 @@ export const rejectChannelPairing = (platform: string, code: string): Promise<{ 
   requireProvider().rejectChannelPairing(platform, code);
 export const listChannelAuthorizedUsers = (platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]> =>
   requireProvider().listChannelAuthorizedUsers(platform, workspaceId);
+export const getChannelQrCode = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> =>
+  requireProvider().getChannelQrCode(platform, workspaceId, instanceId);
+export const checkChannelQrCodeStatus = (
+  platform: string,
+  workspaceId: string,
+  ticket: string,
+  instanceId?: string,
+): Promise<LocalCoreChannelQrCodeStatus> =>
+  requireProvider().checkChannelQrCodeStatus(platform, workspaceId, ticket, instanceId);
 export const getWeixinQrCode = (workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> =>
   requireProvider().getWeixinQrCode(workspaceId, instanceId);
 export const checkWeixinQrCodeStatus = (workspaceId: string, ticket: string, instanceId?: string): Promise<{

@@ -60,6 +60,7 @@ export interface LocalCoreRuntimeBootstrap {
   state: LocalCoreRuntimeState;
   store: LocalCoreAcpStore;
   agentRuntimes: AgentRuntime[];
+  channelRuntimes: ChannelRuntime[];
   channelRuntime: ChannelRuntime;
   weixinChannelRuntime: ChannelRuntime;
   knowledgeProvider: KnowledgeRuntime;
@@ -289,6 +290,10 @@ export function bootstrapLocalCoreRuntime(options: {
     .map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
   const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
   weixinChannelRuntime = resolveChannelRuntime(weixinChannelPlugin, kernel.context).channel;
+  const channelRuntimes = [
+    channelRuntime,
+    weixinChannelRuntime,
+  ];
   const knowledgeRuntime = kernel.plugins.isEnabled(knowledgePlugin.manifest.id)
     ? resolveKnowledgeRuntime(knowledgePlugin, kernel.context)
     : resolveKnowledgeRuntime(createBuiltinNoopKnowledgePlugin(), kernel.context);
@@ -350,6 +355,7 @@ export function bootstrapLocalCoreRuntime(options: {
     state,
     store,
     agentRuntimes,
+    channelRuntimes,
     channelRuntime,
     weixinChannelRuntime,
     knowledgeProvider,

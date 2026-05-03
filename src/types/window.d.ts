@@ -11,8 +11,11 @@ import type {
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
+  LocalCoreChannelQrCode,
+  LocalCoreChannelQrCodeStatus,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
+  LocalCoreLarkQrCodeStatus,
   LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   WorkspaceStreamingProbeResult,
@@ -42,6 +45,12 @@ declare global {
       approveChannelPairing: (platform: string, code: string) => Promise<LocalCoreChannelAuthorizedUser>;
       rejectChannelPairing: (platform: string, code: string) => Promise<{ rejected: boolean }>;
       listChannelAuthorizedUsers: (platform: string, workspaceId?: string) => Promise<LocalCoreChannelAuthorizedUser[]>;
+      getChannelQrCode: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
+      checkChannelQrCodeStatus: (platform: string, workspaceId: string, ticket: string, instanceId?: string) => Promise<LocalCoreChannelQrCodeStatus>;
+      getWeixinQrCode: (workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
+      checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => Promise<LocalCoreChannelQrCodeStatus>;
+      getLarkQrCode: (workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelQrCode>;
+      checkLarkQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => Promise<LocalCoreLarkQrCodeStatus>;
       listLarkGateways: () => Promise<LocalCoreLarkGatewayStatus[]>;
       getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => Promise<LocalCoreLarkGatewayStatus>;
       testLarkConnection: (workspaceId: string, instanceId?: string) => Promise<LocalCoreLarkConnectionResult>;

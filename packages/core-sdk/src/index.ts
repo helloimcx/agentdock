@@ -26,6 +26,7 @@ import type {
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelQrCode,
+  LocalCoreChannelQrCodeStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCoreEvent,
   LocalCoreChannelPairingRequest,
@@ -272,6 +273,21 @@ export async function listChannelAuthorizedUsers(platform: string, workspaceId?:
   return coreRequest<{ users: LocalCoreChannelAuthorizedUser[] }>('GET', `/platforms/${encodeURIComponent(platform)}/users${suffix}`);
 }
 
+export async function getChannelQrCode(platform: string, workspaceId: string, instanceId?: string) {
+  return coreRequest<LocalCoreChannelQrCode>(
+    'POST',
+    `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/qrcode${instanceSuffix(instanceId)}`,
+  );
+}
+
+export async function checkChannelQrCodeStatus(platform: string, workspaceId: string, ticket: string, instanceId?: string) {
+  const suffix = `?ticket=${encodeURIComponent(ticket)}${instanceId ? `&instance_id=${encodeURIComponent(instanceId)}` : ''}`;
+  return coreRequest<LocalCoreChannelQrCodeStatus>(
+    'GET',
+    `/platforms/${encodeURIComponent(platform)}/${encodeURIComponent(workspaceId)}/qrcode/status${suffix}`,
+  );
+}
+
 export async function listLarkGateways() {
   return listChannelGateways('lark') as Promise<{ gateways: LocalCoreLarkGatewayStatus[] }>;
 }
@@ -309,27 +325,23 @@ export async function listLarkAuthorizedUsers(workspaceId?: string) {
 }
 
 export async function getLarkQrCode(workspaceId: string, instanceId?: string) {
-  return coreRequest<LocalCoreChannelQrCode>('POST', `/platforms/lark/${encodeURIComponent(workspaceId)}/qrcode${instanceSuffix(instanceId)}`);
+  return getChannelQrCode('lark', workspaceId, instanceId);
 }
 
 export async function checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string) {
-  const suffix = `?ticket=${encodeURIComponent(ticket)}${instanceId ? `&instance_id=${encodeURIComponent(instanceId)}` : ''}`;
-  return coreRequest<LocalCoreLarkQrCodeStatus>(
-    'GET',
-    `/platforms/lark/${encodeURIComponent(workspaceId)}/qrcode/status${suffix}`,
-  );
+  return checkChannelQrCodeStatus('lark', workspaceId, ticket, instanceId) as Promise<LocalCoreLarkQrCodeStatus>;
 }
 
 export async function getWeixinQrCode(workspaceId: string, instanceId?: string) {
-  return coreRequest<LocalCoreChannelQrCode>('POST', `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode${instanceSuffix(instanceId)}`);
+  return getChannelQrCode('weixin', workspaceId, instanceId);
 }
 
 export async function checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string) {
-  const suffix = `?ticket=${encodeURIComponent(ticket)}${instanceId ? `&instance_id=${encodeURIComponent(instanceId)}` : ''}`;
-  return coreRequest<{ status: 'wait' | 'signed' | 'confirmed' | 'expired'; userName?: string; userId?: string }>(
-    'GET',
-    `/platforms/weixin/${encodeURIComponent(workspaceId)}/qrcode/status${suffix}`,
-  );
+  return checkChannelQrCodeStatus('weixin', workspaceId, ticket, instanceId) as Promise<{
+    status: 'wait' | 'signed' | 'confirmed' | 'expired';
+    userName?: string;
+    userId?: string;
+  }>;
 }
 
 export async function listWorkspaces() {
