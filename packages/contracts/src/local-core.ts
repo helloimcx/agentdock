@@ -488,6 +488,34 @@ export type ScheduledJobTriggerType = 'cron' | 'once' | (string & {});
 
 export type ScheduledJobExecutionMode = 'same-thread' | 'side-thread' | (string & {});
 
+function normalizeContractEnumValue(value: unknown) {
+  return String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+}
+
+export function normalizeScheduledJobExecutionMode(value: unknown, fallback: ScheduledJobExecutionMode = 'same-thread'): ScheduledJobExecutionMode {
+  const normalized = normalizeContractEnumValue(value || fallback);
+  if (normalized === 'same-thread' || normalized === 'side-thread') {
+    return normalized;
+  }
+  throw new Error('Scheduled job execution mode must be same-thread or side-thread.');
+}
+
+export function normalizeScheduledJobTriggerType(value: unknown, fallback: ScheduledJobTriggerType = 'cron'): ScheduledJobTriggerType {
+  const normalized = normalizeContractEnumValue(value || fallback);
+  if (normalized === 'cron' || normalized === 'once' || normalized === 'one-time') {
+    return normalized === 'one-time' ? 'once' : normalized;
+  }
+  throw new Error('Scheduled job trigger type must be cron or once.');
+}
+
+export function normalizeChannelPlatform(value: unknown) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) {
+    throw new Error('Channel platform is required.');
+  }
+  return normalized;
+}
+
 export type ScheduledJobDeliveryTarget = ChannelRoute;
 
 export type ScheduledJobRoute = ScheduledJobDeliveryTarget;

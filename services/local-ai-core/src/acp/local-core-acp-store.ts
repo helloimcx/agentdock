@@ -36,6 +36,11 @@ import type {
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
+import {
+  normalizeChannelPlatform,
+  normalizeScheduledJobExecutionMode,
+  normalizeScheduledJobTriggerType,
+} from '../../../../packages/contracts/src/index.js';
 import { createScheduledJobId } from '../scheduler/job-id.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
 import type {
@@ -1019,11 +1024,11 @@ export class LocalCoreAcpStore {
     `).run(
       id,
       input.workspaceId,
-      input.platform,
+      normalizeChannelPlatform(input.platform),
       input.route.type,
       JSON.stringify(input.route),
-      input.executionMode || 'same-thread',
-      input.triggerType,
+      normalizeScheduledJobExecutionMode(input.executionMode),
+      normalizeScheduledJobTriggerType(input.triggerType),
       input.cronExpr || null,
       input.runAt || null,
       input.promptTemplate,
@@ -1043,8 +1048,8 @@ export class LocalCoreAcpStore {
     const next = {
       ...existing,
       ...(input.route ? { route: input.route } : {}),
-      ...(input.executionMode ? { executionMode: input.executionMode } : {}),
-      ...(input.triggerType ? { triggerType: input.triggerType } : {}),
+      ...(input.executionMode ? { executionMode: normalizeScheduledJobExecutionMode(input.executionMode) } : {}),
+      ...(input.triggerType ? { triggerType: normalizeScheduledJobTriggerType(input.triggerType) } : {}),
       ...(Object.prototype.hasOwnProperty.call(input, 'cronExpr') ? { cronExpr: input.cronExpr || undefined } : {}),
       ...(Object.prototype.hasOwnProperty.call(input, 'runAt') ? { runAt: input.runAt || undefined } : {}),
       ...(typeof input.promptTemplate === 'string' ? { promptTemplate: input.promptTemplate } : {}),
@@ -1420,10 +1425,10 @@ export class LocalCoreAcpStore {
     return {
       id: row.id,
       workspaceId: row.workspace_id,
-      platform: row.platform,
+      platform: normalizeChannelPlatform(row.platform),
       route,
-      executionMode: row.execution_mode || 'same-thread',
-      triggerType: row.trigger_type,
+      executionMode: normalizeScheduledJobExecutionMode(row.execution_mode),
+      triggerType: normalizeScheduledJobTriggerType(row.trigger_type),
       cronExpr: row.cron_expr || undefined,
       runAt: row.run_at || undefined,
       promptTemplate: row.prompt_template,

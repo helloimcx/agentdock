@@ -8,6 +8,7 @@ Use this checklist to reduce repeated regressions in Thread Chat, Local AI Core,
 - [ ] Thinking, tool progress, tool results, and final answers cannot overwrite each other.
 - [x] Lark-first work is checked for shared channel impact before implementation.
 - [ ] Form values, API enums, persisted values, and shared contracts use one parsing path.
+  - [x] Scheduler execution mode, trigger type, and channel platform values normalize through shared contract helpers.
 - [ ] Release fixes are separated from broad feature or refactor work when possible.
 - [ ] Production build behavior is verified, not assumed from dev mode.
 
@@ -19,6 +20,13 @@ Owner area: `shared/`, `packages/contracts/`, `packages/core-sdk/`, `services/lo
 - [ ] Document which fields are persisted, streamed, rendered, and platform-specific.
 - [ ] Remove duplicated ad hoc types for the same concept across renderer, Local AI Core, plugins, and shared packages.
 - [ ] Add parser or validation helpers for enum-like values: execution mode, trigger type, platform, content type, permission outcome, task state, and run state.
+  - [x] Scheduler execution mode.
+  - [x] Scheduler trigger type.
+  - [x] Channel platform id.
+  - [ ] Content type.
+  - [x] Permission outcome.
+  - [ ] Task state.
+  - [ ] Run state.
 - [ ] Confirm renderer code does not infer durable permission or run state from message text/actions.
 - [x] Confirm channel adapters convert to and from shared content contracts.
 - [ ] Confirm a developer can answer "where does this state live?" from one contract and one owner document.
@@ -133,3 +141,5 @@ Before tagging a release:
 - [x] Extract shared Lark/Weixin channel thread message input construction.
 - [x] Preserve Weixin downloaded file attachments as structured inbound content parts.
 - [x] Add Lark inbound file download and structured file content coverage.
+- [x] Add shared normalization helpers for scheduler execution mode, trigger type, and channel platform id.
+- [x] Reuse shared permission response normalization for ACP permission actions.

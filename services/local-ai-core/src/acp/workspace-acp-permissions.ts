@@ -1,19 +1,10 @@
 import type { RunningPermissionRequest } from '../router/workspace-router-types.js';
+import { normalizePermissionResponse } from '../../../../shared/desktop.js';
 
 type DesktopBridgeButtonNormalizer = (input: { text: string; data: string }) => { text: string; data: string } | null;
 
 export function normalizePermissionAction(kind?: string | null) {
-  const normalized = String(kind || '').trim().toLowerCase();
-  if (isAllowAllPermissionToken(normalized)) {
-    return 'allow all';
-  }
-  if (isAllowPermissionToken(normalized)) {
-    return 'allow';
-  }
-  if (isDenyPermissionToken(normalized)) {
-    return 'deny';
-  }
-  return '';
+  return normalizePermissionResponse(kind) || '';
 }
 
 export function normalizePermissionOptionAction(option?: {
@@ -26,55 +17,16 @@ export function normalizePermissionOptionAction(option?: {
     option?.name,
     option?.optionId,
   ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
-  if (fields.some(isDenyPermissionToken)) {
+  if (fields.some((field) => normalizePermissionAction(field) === 'deny')) {
     return 'deny';
   }
-  if (fields.some(isAllowAllPermissionToken)) {
+  if (fields.some((field) => normalizePermissionAction(field) === 'allow all')) {
     return 'allow all';
   }
-  if (fields.some(isAllowPermissionToken)) {
+  if (fields.some((field) => normalizePermissionAction(field) === 'allow')) {
     return 'allow';
   }
   return '';
-}
-
-function isAllowAllPermissionToken(normalized: string) {
-  if (
-    normalized === 'allow_always' ||
-    normalized === 'allow_all' ||
-    normalized === 'allowall' ||
-    normalized === 'always' ||
-    normalized === 'always_allow' ||
-    normalized === 'alwaysallow' ||
-    normalized.includes('allow_all') ||
-    normalized.includes('allow-always') ||
-    normalized.includes('allow_always') ||
-    normalized.includes('allow always') ||
-    normalized.includes('always allow') ||
-    normalized.includes('allow all') ||
-    normalized.includes('始终允许') ||
-    normalized.includes('永久允许')
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function isAllowPermissionToken(normalized: string) {
-  if (normalized.startsWith('allow')) {
-    return true;
-  }
-  return false;
-}
-
-function isDenyPermissionToken(normalized: string) {
-  if (normalized.startsWith('reject')) {
-    return true;
-  }
-  if (normalized.startsWith('deny')) {
-    return true;
-  }
-  return false;
 }
 
 export function formatToolCallContent(toolCall: Record<string, unknown> | null | undefined) {

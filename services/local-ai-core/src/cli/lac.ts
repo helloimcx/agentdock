@@ -1,5 +1,6 @@
 import process from 'node:process';
 import type { ScheduledJob, ScheduledJobRun, ScheduledJobUpdateInput } from '../../../../packages/contracts/src/index.js';
+import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 
 type JsonEnvelope<T> = {
@@ -70,7 +71,8 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
 async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
   const context = resolveContext(flags, env);
   const filePath = getRequiredFlag(flags, 'path');
-  const platform = getFlag(flags, 'platform') || context.platform;
+  const rawPlatform = getFlag(flags, 'platform') || context.platform;
+  const platform = rawPlatform ? normalizeChannelPlatform(rawPlatform) : '';
   if (!platform) {
     throw new Error('channel send-file requires a platform. Set LOCAL_AI_PLATFORM or pass --platform.');
   }
@@ -208,7 +210,7 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
     input.enabled = enabled;
   }
   if (executionMode) {
-    input.executionMode = parseExecutionMode(executionMode);
+    input.executionMode = normalizeScheduledJobExecutionMode(executionMode);
   }
   if (Object.keys(input).length === 0) {
     throw new Error('scheduler edit requires at least one editable field.');
@@ -334,14 +336,7 @@ function normalizeMaybeBooleanFlag(value: string) {
 }
 
 function getExecutionMode(flags: Map<string, string[]>) {
-  return parseExecutionMode(getFlag(flags, 'execution-mode') || 'same-thread');
-}
-
-function parseExecutionMode(value: string) {
-  if (value === 'same-thread' || value === 'side-thread') {
-    return value;
-  }
-  throw new Error('Flag --execution-mode must be same-thread or side-thread');
+  return normalizeScheduledJobExecutionMode(getFlag(flags, 'execution-mode'));
 }
 
 function print(asJson: boolean, output: Pick<NodeJS.WriteStream, 'write'>, payload: unknown, text: string) {

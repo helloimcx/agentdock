@@ -264,7 +264,30 @@ export function normalizePermissionResponse(input?: string | null) {
   if (!input) {
     return null;
   }
-  return PERMISSION_RESPONSE_MAP[String(input).trim().toLowerCase()] || null;
+  const normalized = String(input).trim().toLowerCase();
+  const mapped = PERMISSION_RESPONSE_MAP[normalized];
+  if (mapped) {
+    return mapped;
+  }
+  if (
+    normalized.includes('allow_all') ||
+    normalized.includes('allow-always') ||
+    normalized.includes('allow_always') ||
+    normalized.includes('allow always') ||
+    normalized.includes('always allow') ||
+    normalized.includes('allow all') ||
+    normalized.includes('始终允许') ||
+    normalized.includes('永久允许')
+  ) {
+    return 'allow all';
+  }
+  if (normalized.startsWith('reject') || normalized.startsWith('deny')) {
+    return 'deny';
+  }
+  if (normalized.startsWith('allow')) {
+    return 'allow';
+  }
+  return null;
 }
 
 export function isPermissionButtonOption(option?: Pick<DesktopBridgeButtonOption, 'data'> | null) {

@@ -84,6 +84,43 @@ test('scheduler uses short ids for new jobs and resolves legacy full ids by shor
   }
 });
 
+test('scheduled jobs normalize enum-like input before persistence', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-enum-store-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const created = store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: ' Lark ',
+      route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+      executionMode: 'side_thread',
+      triggerType: 'CRON',
+      cronExpr: '30 18 * * *',
+      promptTemplate: 'ping',
+      description: 'daily ping',
+      enabled: true,
+    });
+
+    assert.equal(created.platform, 'lark');
+    assert.equal(created.executionMode, 'side-thread');
+    assert.equal(created.triggerType, 'cron');
+
+    const updated = store.updateScheduledJob(created.id, {
+      executionMode: 'same_thread',
+      triggerType: 'one time',
+      runAt: '2026-05-04T10:00:00.000Z',
+      cronExpr: '',
+    });
+
+    assert.equal(updated.executionMode, 'same-thread');
+    assert.equal(updated.triggerType, 'once');
+    assert.equal(updated.runAt, '2026-05-04T10:00:00.000Z');
+    assert.equal(updated.cronExpr, undefined);
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('agent tasks persist, update status, and can be found by run id', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agent-task-store-'));
   try {
