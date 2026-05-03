@@ -14,6 +14,36 @@ import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark
 import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 import { normalizePermissionAction, normalizePermissionOptionAction } from '../services/local-ai-core/src/acp/workspace-acp-permissions.js';
+import { parseLocalAiCoreRoute } from '../services/local-ai-core/src/runtime/server-routes.js';
+
+test('local core route parser separates runtime refresh and runtime detail routes', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/runtimes'), { name: 'runtimes.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/runtimes/refresh'), { name: 'runtimes.refresh' });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/runtimes/codex'), {
+    name: 'runtimes.detail',
+    runtimeId: 'codex',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/runtimes/codex/refresh'), {
+    name: 'runtimes.refresh-one',
+    runtimeId: 'codex',
+  });
+});
+
+test('local core route parser keeps scheduler job get, runs, and run distinct', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/scheduler/jobs/job-abc'), {
+    name: 'scheduler.job.get',
+    jobId: 'job-abc',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/scheduler/jobs/job-abc/runs'), {
+    name: 'scheduler.job.runs',
+    jobId: 'job-abc',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/scheduler/jobs/job-abc/run'), {
+    name: 'scheduler.job.run',
+    jobId: 'job-abc',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/scheduler/jobs/job-abc/run'), null);
+});
 
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];

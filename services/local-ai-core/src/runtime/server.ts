@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EventEmitter } from 'node:events';
+import { parseLocalAiCoreRoute, type LocalAiCoreRoute } from './server-routes.js';
 import type {
   ConfigFileState,
   DesktopBridgeEvent,
@@ -292,78 +293,9 @@ export class LocalAiCoreServer {
     const path = url.pathname;
 
     try {
-      if (req.method === 'GET' && path === '/api/local/v1/health') {
-        json(res, 200, { name: 'local-ai-core', version: '0.1.0' });
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/runtime') {
-        json(res, 200, await this.bindings.getRuntimeStatus());
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/service/start') {
-        json(res, 200, await this.bindings.startService());
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/service/stop') {
-        json(res, 200, await this.bindings.stopService());
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/service/restart') {
-        json(res, 200, await this.bindings.restartService());
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/runtime/logs') {
-        const limit = Number(url.searchParams.get('limit') || '200');
-        json(res, 200, this.bindings.getLogs(limit));
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/runtime/agent-runtimes') {
-        json(res, 200, await this.runtimeDetectionResponse());
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/runtimes') {
-        json(res, 200, await this.runtimeDetectionResponse());
-        return;
-      }
-      if (req.method === 'GET' && path.startsWith('/api/local/v1/runtimes/')) {
-        const runtimeId = decodeURIComponent(path.slice('/api/local/v1/runtimes/'.length));
-        const runtimes = await this.bindings.listInstalledAgentRuntimes();
-        const runtime = runtimes.find((entry) => entry.runtimeId === runtimeId || entry.agentType === runtimeId);
-        if (!runtime) {
-          json(res, 404, null, false, 'Runtime not found');
-          return;
-        }
-        json(res, 200, runtime);
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtimes/refresh') {
-        const runtimes = await this.bindings.refreshInstalledAgentRuntimes();
-        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning() });
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/runtimes/') && path.endsWith('/refresh')) {
-        const runtimeId = decodeURIComponent(path.slice('/api/local/v1/runtimes/'.length, -'/refresh'.length));
-        const runtimes = await this.bindings.refreshInstalledAgentRuntimes(runtimeId);
-        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning(runtimeId) });
-        return;
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/runtime/config') {
-        json(res, 200, await this.bindings.readConfigFile());
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/config/raw') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.saveRawConfigFile(String(body.raw || '')));
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/config/structured') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.saveStructuredConfigFile((body.config || {}) as DesktopConnectConfig));
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/runtime/settings') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.saveSettings(body as DesktopSettingsInput));
+      const route = parseLocalAiCoreRoute(req.method, path);
+      if (route) {
+        await this.handleParsedRoute(route, req, res, url);
         return;
       }
       if (req.method === 'GET' && path.startsWith('/api/local/v1/platforms/')) {
@@ -448,47 +380,6 @@ export class LocalAiCoreServer {
           json(res, 200, await this.bindings.getChannelQrCode(platform, workspaceOrCollection, instanceId));
           return;
         }
-      }
-      if (req.method === 'GET' && path === '/api/local/v1/scheduler/jobs') {
-        const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { jobs: await this.bindings.listScheduledJobs(workspaceId || undefined) });
-        return;
-      }
-      if (req.method === 'POST' && path === '/api/local/v1/scheduler/jobs') {
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createScheduledJob(body as unknown as ScheduledJobCreateInput));
-        return;
-      }
-      if (
-        req.method === 'GET'
-        && path.startsWith('/api/local/v1/scheduler/jobs/')
-        && !path.endsWith('/runs')
-        && !path.endsWith('/run')
-      ) {
-        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length));
-        json(res, 200, await this.bindings.getScheduledJob(jobId));
-        return;
-      }
-      if (req.method === 'GET' && path.startsWith('/api/local/v1/scheduler/jobs/') && path.endsWith('/runs')) {
-        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length, -'/runs'.length));
-        json(res, 200, { runs: await this.bindings.listScheduledJobRuns(jobId) });
-        return;
-      }
-      if (req.method === 'POST' && path.startsWith('/api/local/v1/scheduler/jobs/') && path.endsWith('/run')) {
-        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length, -'/run'.length));
-        json(res, 200, await this.bindings.runScheduledJob(jobId));
-        return;
-      }
-      if (req.method === 'PATCH' && path.startsWith('/api/local/v1/scheduler/jobs/')) {
-        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length));
-        const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateScheduledJob(jobId, body as unknown as ScheduledJobUpdateInput));
-        return;
-      }
-      if (req.method === 'DELETE' && path.startsWith('/api/local/v1/scheduler/jobs/')) {
-        const jobId = decodeURIComponent(path.slice('/api/local/v1/scheduler/jobs/'.length));
-        json(res, 200, await this.bindings.deleteScheduledJob(jobId));
-        return;
       }
       if (req.method === 'GET' && path === '/api/local/v1/workspaces') {
         json(res, 200, { workspaces: await this.bindings.listWorkspaces() });
@@ -777,6 +668,100 @@ export class LocalAiCoreServer {
       json(res, 404, null, false, `Unknown route: ${path}`);
     } catch (error) {
       json(res, 500, null, false, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async handleParsedRoute(route: LocalAiCoreRoute, req: IncomingMessage, res: ServerResponse, url: URL) {
+    switch (route.name) {
+      case 'health':
+        json(res, 200, { name: 'local-ai-core', version: '0.1.0' });
+        return;
+      case 'runtime.status':
+        json(res, 200, await this.bindings.getRuntimeStatus());
+        return;
+      case 'runtime.service.start':
+        json(res, 200, await this.bindings.startService());
+        return;
+      case 'runtime.service.stop':
+        json(res, 200, await this.bindings.stopService());
+        return;
+      case 'runtime.service.restart':
+        json(res, 200, await this.bindings.restartService());
+        return;
+      case 'runtime.logs': {
+        const limit = Number(url.searchParams.get('limit') || '200');
+        json(res, 200, this.bindings.getLogs(limit));
+        return;
+      }
+      case 'runtime.agent-runtimes':
+      case 'runtimes.list':
+        json(res, 200, await this.runtimeDetectionResponse());
+        return;
+      case 'runtimes.detail': {
+        const runtimes = await this.bindings.listInstalledAgentRuntimes();
+        const runtime = runtimes.find((entry) => entry.runtimeId === route.runtimeId || entry.agentType === route.runtimeId);
+        if (!runtime) {
+          json(res, 404, null, false, 'Runtime not found');
+          return;
+        }
+        json(res, 200, runtime);
+        return;
+      }
+      case 'runtimes.refresh': {
+        const runtimes = await this.bindings.refreshInstalledAgentRuntimes();
+        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning() });
+        return;
+      }
+      case 'runtimes.refresh-one': {
+        const runtimes = await this.bindings.refreshInstalledAgentRuntimes(route.runtimeId);
+        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning(route.runtimeId) });
+        return;
+      }
+      case 'runtime.config.read':
+        json(res, 200, await this.bindings.readConfigFile());
+        return;
+      case 'runtime.config.save-raw': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.saveRawConfigFile(String(body.raw || '')));
+        return;
+      }
+      case 'runtime.config.save-structured': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.saveStructuredConfigFile((body.config || {}) as DesktopConnectConfig));
+        return;
+      }
+      case 'runtime.settings.save': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.saveSettings(body as DesktopSettingsInput));
+        return;
+      }
+      case 'scheduler.jobs.list': {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { jobs: await this.bindings.listScheduledJobs(workspaceId || undefined) });
+        return;
+      }
+      case 'scheduler.jobs.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createScheduledJob(body as unknown as ScheduledJobCreateInput));
+        return;
+      }
+      case 'scheduler.job.get':
+        json(res, 200, await this.bindings.getScheduledJob(route.jobId));
+        return;
+      case 'scheduler.job.runs':
+        json(res, 200, { runs: await this.bindings.listScheduledJobRuns(route.jobId) });
+        return;
+      case 'scheduler.job.run':
+        json(res, 200, await this.bindings.runScheduledJob(route.jobId));
+        return;
+      case 'scheduler.job.update': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateScheduledJob(route.jobId, body as unknown as ScheduledJobUpdateInput));
+        return;
+      }
+      case 'scheduler.job.delete':
+        json(res, 200, await this.bindings.deleteScheduledJob(route.jobId));
+        return;
     }
   }
 

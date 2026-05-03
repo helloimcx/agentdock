@@ -66,6 +66,7 @@ Checklist:
 - [x] Message-block rendering decisions live in focused presentation components.
 - [x] State transitions are extracted into pure functions with tests.
 - [ ] Runtime server route registration is split from request handlers.
+  - [x] Runtime and scheduler job routes parse through a focused route descriptor before handler dispatch.
 - [ ] ACP persistence is separated from streaming event processing.
 - [ ] Permission lifecycle handling is separated from generic message processing.
 - [ ] Common bug fixes touch fewer layers than before.
