@@ -1911,7 +1911,7 @@ test('lark channel can request an official app registration QR code without extr
       ticket: 'device-code-1',
       expiresIn: 300,
       interval: 5,
-      qrCodeUrl: 'https://open.feishu.cn/page/cli?user_code=ABCD-EFGH',
+      qrCodeUrl: 'https://open.feishu.cn/page/openclaw?user_code=ABCD-EFGH&from=openclaw',
       instanceId: 'default',
       displayName: 'Lark 1',
     });
@@ -1920,9 +1920,7 @@ test('lark channel can request an official app registration QR code without extr
     assert.equal(requests[0]?.headers.get('Content-Type'), 'application/x-www-form-urlencoded');
     assert.equal(new URLSearchParams(requests[0]?.body).get('action'), 'begin');
     assert.equal(new URLSearchParams(requests[0]?.body).get('archetype'), 'PersonalAgent');
-    assert.equal(new URLSearchParams(requests[0]?.body).get('request_events'), 'im.message.receive_v1 card.action.trigger');
-    assert.equal(new URLSearchParams(requests[0]?.body).get('request_callbacks'), 'card.action.trigger');
-    assert.equal(new URLSearchParams(requests[0]?.body).get('request_scopes'), 'im:message im:message:send_as_bot im:resource');
+    assert.equal(new URLSearchParams(requests[0]?.body).get('request_callbacks'), null);
   } finally {
     globalThis.fetch = originalFetch;
   }

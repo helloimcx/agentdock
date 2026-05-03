@@ -125,9 +125,7 @@ const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 const DEFAULT_LARK_QR_EXPIRES_IN = 180;
 const LARK_APP_REGISTRATION_PATH = '/oauth/v1/app/registration';
-const LARK_DEFAULT_APP_REGISTRATION_EVENTS = ['im.message.receive_v1', 'card.action.trigger'];
-const LARK_DEFAULT_APP_REGISTRATION_CALLBACKS = ['card.action.trigger'];
-const LARK_DEFAULT_APP_REGISTRATION_SCOPES = ['im:message', 'im:message:send_as_bot', 'im:resource'];
+const LARK_APP_REGISTRATION_SETUP_PATH = '/page/openclaw';
 
 function normalizeChannelInstanceId(value: unknown, fallback: string) {
   const raw = String(value || '').trim();
@@ -234,7 +232,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       ticket,
       expiresIn: Number(data.expires_in || DEFAULT_LARK_QR_EXPIRES_IN) || DEFAULT_LARK_QR_EXPIRES_IN,
       interval: Number(data.interval || 5) || 5,
-      qrCodeUrl: `${this.getLarkOpenBase(binding)}/page/cli?user_code=${encodeURIComponent(userCode)}`,
+      qrCodeUrl: `${this.getLarkOpenBase(binding)}${LARK_APP_REGISTRATION_SETUP_PATH}?user_code=${encodeURIComponent(userCode)}&from=openclaw`,
       instanceId: binding.instanceId,
       displayName: binding.displayName,
     };
@@ -1203,9 +1201,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       archetype: 'PersonalAgent',
       auth_method: 'client_secret',
       request_user_info: 'open_id tenant_brand',
-      request_events: LARK_DEFAULT_APP_REGISTRATION_EVENTS.join(' '),
-      request_callbacks: LARK_DEFAULT_APP_REGISTRATION_CALLBACKS.join(' '),
-      request_scopes: LARK_DEFAULT_APP_REGISTRATION_SCOPES.join(' '),
     });
   }
 
