@@ -5,6 +5,11 @@ import {
   normalizeScheduledJobTriggerType,
   normalizeChannelPlatform,
   normalizePermissionResponse,
+  normalizeAgentTaskStatus,
+  normalizeRunStatus,
+  normalizeScheduledJobRunStatus,
+  normalizeChannelContentPartType,
+  normalizeApprovalRequestStatus,
 } from '../packages/contracts/src/index.js';
 
 test('scheduled job execution mode normalization accepts canonical aliases', () => {
@@ -50,4 +55,47 @@ test('permission response normalization accepts button and text aliases', () => 
   assert.equal(normalizePermissionResponse('allow_once'), 'allow');
   assert.equal(normalizePermissionResponse('reject'), 'deny');
   assert.equal(normalizePermissionResponse('始终允许'), 'allow all');
+});
+
+test('agent task status normalization accepts canonical aliases', () => {
+  assert.equal(normalizeAgentTaskStatus(undefined), 'created');
+  assert.equal(normalizeAgentTaskStatus('waiting for user'), 'waiting_for_user');
+  assert.equal(normalizeAgentTaskStatus('canceled'), 'cancelled');
+});
+
+test('agent task status normalization rejects unsupported values', () => {
+  assert.throws(
+    () => normalizeAgentTaskStatus('paused'),
+    /Agent task status must be/,
+  );
+});
+
+test('run status normalization accepts canonical aliases', () => {
+  assert.equal(normalizeRunStatus(undefined), 'queued');
+  assert.equal(normalizeRunStatus('awaiting input'), 'awaiting_input');
+  assert.equal(normalizeRunStatus('canceled'), 'interrupted');
+});
+
+test('scheduled job run status normalization accepts canonical aliases', () => {
+  assert.equal(normalizeScheduledJobRunStatus(undefined), 'queued');
+  assert.equal(normalizeScheduledJobRunStatus('complete'), 'succeeded');
+  assert.equal(normalizeScheduledJobRunStatus('cancelled'), 'skipped');
+});
+
+test('channel content part type normalization accepts canonical aliases', () => {
+  assert.equal(normalizeChannelContentPartType(' TEXT '), 'text');
+  assert.equal(normalizeChannelContentPartType('permission-card'), 'permission_card');
+});
+
+test('channel content part type normalization rejects unsupported values', () => {
+  assert.throws(
+    () => normalizeChannelContentPartType('audio'),
+    /Channel content part type must be/,
+  );
+});
+
+test('approval request status normalization accepts canonical aliases', () => {
+  assert.equal(normalizeApprovalRequestStatus(undefined), 'pending');
+  assert.equal(normalizeApprovalRequestStatus('approve'), 'approved');
+  assert.equal(normalizeApprovalRequestStatus('canceled'), 'cancelled');
 });

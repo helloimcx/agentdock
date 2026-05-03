@@ -109,6 +109,30 @@ export interface CommandRiskClassification {
 }
 
 export type ApprovalRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
+
+export function normalizeApprovalRequestStatus(value: unknown, fallback: ApprovalRequestStatus = 'pending'): ApprovalRequestStatus {
+  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
+  if (
+    normalized === 'pending' ||
+    normalized === 'approved' ||
+    normalized === 'rejected' ||
+    normalized === 'cancelled' ||
+    normalized === 'expired'
+  ) {
+    return normalized;
+  }
+  if (normalized === 'approve') {
+    return 'approved';
+  }
+  if (normalized === 'reject') {
+    return 'rejected';
+  }
+  if (normalized === 'canceled') {
+    return 'cancelled';
+  }
+  throw new Error('Approval request status must be pending, approved, rejected, cancelled, or expired.');
+}
+
 export type ApprovalRequestKind = 'command' | 'file_change' | 'network' | 'secret' | 'git' | 'runtime_install' | 'plugin_permission' | 'other';
 
 export interface ApprovalRequest {
@@ -297,6 +321,25 @@ export type AgentTaskStatus =
   | 'failed'
   | 'cancelled';
 
+export function normalizeAgentTaskStatus(value: unknown, fallback: AgentTaskStatus = 'created'): AgentTaskStatus {
+  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
+  if (
+    normalized === 'created' ||
+    normalized === 'queued' ||
+    normalized === 'running' ||
+    normalized === 'waiting_for_user' ||
+    normalized === 'completed' ||
+    normalized === 'failed' ||
+    normalized === 'cancelled'
+  ) {
+    return normalized;
+  }
+  if (normalized === 'canceled') {
+    return 'cancelled';
+  }
+  throw new Error('Agent task status must be created, queued, running, waiting_for_user, completed, failed, or cancelled.');
+}
+
 export type AgentTaskTimelineItemType =
   | 'status_change'
   | 'message'
@@ -446,6 +489,21 @@ export interface ChannelOutboundMessageInput {
   metadata?: Record<string, unknown>;
 }
 
+export type ChannelContentPartType = ChannelInboundContentPart['type'] | ChannelOutboundMessagePart['type'];
+
+export function normalizeChannelContentPartType(value: unknown): ChannelContentPartType {
+  const normalized = normalizeContractEnumValue(value).replace(/-/g, '_');
+  if (
+    normalized === 'text' ||
+    normalized === 'image' ||
+    normalized === 'file' ||
+    normalized === 'permission_card'
+  ) {
+    return normalized;
+  }
+  throw new Error('Channel content part type must be text, image, file, or permission_card.');
+}
+
 export interface ChannelOutboundAttachmentResult {
   kind: 'file' | 'image' | 'video' | (string & {});
   attachmentId?: string;
@@ -516,6 +574,24 @@ export function normalizeChannelPlatform(value: unknown) {
   return normalized;
 }
 
+export function normalizeRunStatus(value: unknown, fallback: RunSummary['status'] = 'queued'): RunSummary['status'] {
+  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
+  if (
+    normalized === 'queued' ||
+    normalized === 'running' ||
+    normalized === 'awaiting_input' ||
+    normalized === 'completed' ||
+    normalized === 'failed' ||
+    normalized === 'interrupted'
+  ) {
+    return normalized;
+  }
+  if (normalized === 'cancelled' || normalized === 'canceled') {
+    return 'interrupted';
+  }
+  throw new Error('Run status must be queued, running, awaiting_input, completed, failed, or interrupted.');
+}
+
 export type ScheduledJobDeliveryTarget = ChannelRoute;
 
 export type ScheduledJobRoute = ScheduledJobDeliveryTarget;
@@ -560,6 +636,26 @@ export interface ScheduledJobRun {
   threadId?: string;
   runId?: string;
   platformMessageId?: string;
+}
+
+export function normalizeScheduledJobRunStatus(value: unknown, fallback: ScheduledJobRun['status'] = 'queued'): ScheduledJobRun['status'] {
+  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
+  if (
+    normalized === 'queued' ||
+    normalized === 'running' ||
+    normalized === 'succeeded' ||
+    normalized === 'failed' ||
+    normalized === 'skipped'
+  ) {
+    return normalized;
+  }
+  if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
+    return 'succeeded';
+  }
+  if (normalized === 'cancelled' || normalized === 'canceled') {
+    return 'skipped';
+  }
+  throw new Error('Scheduled job run status must be queued, running, succeeded, failed, or skipped.');
 }
 
 export interface ScheduledJobCreateInput {

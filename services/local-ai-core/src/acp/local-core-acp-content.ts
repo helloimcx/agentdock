@@ -1,4 +1,5 @@
 import type { ChannelInboundContentPart, ChannelInboundMessageContent } from '../../../../packages/contracts/src/index.js';
+import { normalizeChannelContentPartType } from '../../../../packages/contracts/src/index.js';
 
 export type ThreadMessageInput = string | ChannelInboundMessageContent;
 
@@ -34,7 +35,12 @@ function isSupportedContentPart(part: ChannelInboundContentPart | unknown): part
   if (!part || typeof part !== 'object') {
     return false;
   }
-  const type = String((part as { type?: unknown }).type || '');
+  let type: ReturnType<typeof normalizeChannelContentPartType>;
+  try {
+    type = normalizeChannelContentPartType((part as { type?: unknown }).type);
+  } catch {
+    return false;
+  }
   if (type === 'text') {
     return Boolean(String((part as { text?: unknown }).text || ''));
   }

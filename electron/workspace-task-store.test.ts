@@ -152,3 +152,50 @@ test('agent tasks persist, update status, and can be found by run id', () => {
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
+
+test('agent task and run statuses normalize before persistence', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'task-run-status-store-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const task = store.createAgentTask({
+      workspaceId: 'workspace-a',
+      deviceId: 'device-a',
+      runtimeId: 'runtime-a',
+      title: 'Normalize states',
+      status: 'waiting for user' as any,
+    });
+
+    assert.equal(task.status, 'waiting_for_user');
+    assert.equal(store.listAgentTasks({ status: 'waiting for user' as any }).tasks.length, 1);
+
+    const updated = store.updateAgentTask(task.taskId, { status: 'canceled' as any });
+    assert.equal(updated.status, 'cancelled');
+    assert.equal(updated.timeline.at(-1)?.status, 'cancelled');
+
+    const thread = store.createThread('workspace-a', 'Thread');
+    store.updateRun('run-1', thread.id, 'awaiting input' as any);
+    assert.equal(store.getRun('run-1')?.status, 'awaiting_input');
+    store.updateRun('run-1', thread.id, 'canceled' as any);
+    assert.equal(store.getRun('run-1')?.status, 'interrupted');
+
+    const job = store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-1' },
+      executionMode: 'same-thread',
+      triggerType: 'cron',
+      cronExpr: '0 9 * * *',
+      promptTemplate: 'ping',
+      description: 'daily ping',
+      enabled: true,
+    });
+    const run = store.createScheduledJobRun(job.id, 'complete' as any);
+    assert.equal(run.status, 'succeeded');
+    const skipped = store.updateScheduledJobRun(run.id, { status: 'cancelled' as any });
+    assert.equal(skipped.status, 'skipped');
+    assert.equal(store.getScheduledJob(job.id)?.lastStatus, 'skipped');
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});

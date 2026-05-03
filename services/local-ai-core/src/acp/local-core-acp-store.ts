@@ -37,8 +37,12 @@ import type {
   WorkspaceRegistryUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 import {
+  normalizeAgentTaskStatus,
+  normalizeApprovalRequestStatus,
   normalizeChannelPlatform,
+  normalizeRunStatus,
   normalizeScheduledJobExecutionMode,
+  normalizeScheduledJobRunStatus,
   normalizeScheduledJobTriggerType,
 } from '../../../../packages/contracts/src/index.js';
 import { createScheduledJobId } from '../scheduler/job-id.js';
@@ -438,33 +442,36 @@ export class LocalCoreAcpStore {
 
   updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {
     const now = new Date().toISOString();
+    const normalizedStatus = normalizeRunStatus(status);
     const existing = this.db.prepare('SELECT id FROM runs WHERE id = ?').get(runId) as { id: string } | undefined;
     if (existing) {
-      this.db.prepare('UPDATE runs SET status = ?, updated_at = ? WHERE id = ?').run(status, now, runId);
+      this.db.prepare('UPDATE runs SET status = ?, updated_at = ? WHERE id = ?').run(normalizedStatus, now, runId);
       return;
     }
     this.db.prepare(`
       INSERT INTO runs (id, thread_id, status, started_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
-    `).run(runId, threadId, status, now, now);
+    `).run(runId, threadId, normalizedStatus, now, now);
   }
 
   getLatestRunForThread(threadId: string) {
-    return this.db.prepare(`
+    const row = this.db.prepare(`
       SELECT id, thread_id, status, started_at, updated_at
       FROM runs
       WHERE thread_id = ?
       ORDER BY updated_at DESC
       LIMIT 1
     `).get(threadId) as LocalRunRow | undefined;
+    return row ? { ...row, status: normalizeRunStatus(row.status) } : undefined;
   }
 
   getRun(runId: string) {
-    return this.db.prepare(`
+    const row = this.db.prepare(`
       SELECT id, thread_id, status, started_at, updated_at
       FROM runs
       WHERE id = ?
     `).get(runId) as LocalRunRow | undefined;
+    return row ? { ...row, status: normalizeRunStatus(row.status) } : undefined;
   }
 
   listWorkspaceRegistry(): WorkspaceRegistryEntry[] {
@@ -689,7 +696,7 @@ export class LocalCoreAcpStore {
       params.push(query.taskId);
     }
     if (query.status) {
-      const statuses = Array.isArray(query.status) ? query.status : [query.status];
+      const statuses = (Array.isArray(query.status) ? query.status : [query.status]).map((status) => normalizeApprovalRequestStatus(status));
       predicates.push(`status IN (${statuses.map(() => '?').join(', ')})`);
       params.push(...statuses);
     }
@@ -817,7 +824,7 @@ export class LocalCoreAcpStore {
   createAgentTask(input: AgentTaskCreateInput & { deviceId: string; runId?: string; status?: AgentTaskStatus }): AgentTask {
     const id = `task:${randomUUID()}`;
     const now = new Date().toISOString();
-    const status = input.status || 'created';
+    const status = normalizeAgentTaskStatus(input.status);
     const timeline = [{
       id: `timeline:${randomUUID()}`,
       type: 'status_change' as const,
@@ -871,7 +878,7 @@ export class LocalCoreAcpStore {
       params.push(query.runtimeId);
     }
     if (query.status) {
-      const statuses = Array.isArray(query.status) ? query.status : [query.status];
+      const statuses = (Array.isArray(query.status) ? query.status : [query.status]).map((status) => normalizeAgentTaskStatus(status));
       predicates.push(`status IN (${statuses.map(() => '?').join(', ')})`);
       params.push(...statuses);
     }
@@ -903,17 +910,17 @@ export class LocalCoreAcpStore {
       throw new Error(`Task not found: ${taskId}`);
     }
     const now = new Date().toISOString();
-    const nextStatus = input.status || existing.status;
+    const nextStatus = input.status ? normalizeAgentTaskStatus(input.status) : existing.status;
     const timeline = [...existing.timeline];
     const logs = [...existing.logs];
     const artifacts = [...existing.artifacts];
     const approvalIds = [...existing.approvalIds];
-    if (input.status && input.status !== existing.status) {
+    if (input.status && nextStatus !== existing.status) {
       timeline.push({
         id: `timeline:${randomUUID()}`,
         type: 'status_change',
-        title: `Task ${input.status}`,
-        status: input.status,
+        title: `Task ${nextStatus}`,
+        status: nextStatus,
         timestamp: now,
       });
     }
@@ -965,14 +972,14 @@ export class LocalCoreAcpStore {
       taskId,
     );
     const task = this.getAgentTask(taskId)!;
-    if (input.status && input.status !== existing.status) {
+    if (input.status && nextStatus !== existing.status) {
       this.createAuditEvent({
         type: 'task.updated',
         workspaceId: task.workspaceId,
         taskId: task.taskId,
         actor: 'local',
-        summary: `Task status changed to ${input.status}.`,
-        metadata: { previousStatus: existing.status, status: input.status, runId: task.runId },
+        summary: `Task status changed to ${nextStatus}.`,
+        metadata: { previousStatus: existing.status, status: nextStatus, runId: task.runId },
       });
     }
     return task;
@@ -1099,13 +1106,14 @@ export class LocalCoreAcpStore {
   createScheduledJobRun(jobId: string, status: ScheduledJobRun['status'], input: Partial<ScheduledJobRun> = {}): ScheduledJobRun {
     const id = `jobrun:${randomUUID()}`;
     const triggeredAt = input.triggeredAt || new Date().toISOString();
+    const normalizedStatus = normalizeScheduledJobRunStatus(status);
     this.db.prepare(`
       INSERT INTO scheduled_job_runs (id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       jobId,
-      status,
+      normalizedStatus,
       triggeredAt,
       input.startedAt || null,
       input.finishedAt || null,
@@ -1116,7 +1124,7 @@ export class LocalCoreAcpStore {
     );
     this.updateScheduledJobStatus(jobId, {
       lastRunAt: triggeredAt,
-      lastStatus: status,
+      lastStatus: normalizedStatus,
       lastError: input.error || '',
     });
     return this.getScheduledJobRun(id)!;
@@ -1139,6 +1147,7 @@ export class LocalCoreAcpStore {
     const next = {
       ...existing,
       ...input,
+      ...(input.status ? { status: normalizeScheduledJobRunStatus(input.status) } : {}),
     };
     this.db.prepare(`
       UPDATE scheduled_job_runs
@@ -1438,7 +1447,7 @@ export class LocalCoreAcpStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       lastRunAt: row.last_run_at || undefined,
-      lastStatus: row.last_status || undefined,
+      lastStatus: row.last_status ? normalizeScheduledJobRunStatus(row.last_status) : undefined,
       lastError: row.last_error || undefined,
     };
   }
@@ -1447,7 +1456,7 @@ export class LocalCoreAcpStore {
     return {
       id: row.id,
       jobId: row.job_id,
-      status: row.status,
+      status: normalizeScheduledJobRunStatus(row.status),
       triggeredAt: row.triggered_at,
       startedAt: row.started_at || undefined,
       finishedAt: row.finished_at || undefined,
@@ -1502,7 +1511,7 @@ export class LocalCoreAcpStore {
       runId: row.run_id || undefined,
       title: row.title,
       prompt: row.prompt || undefined,
-      status: row.status as AgentTaskStatus,
+      status: normalizeAgentTaskStatus(row.status),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       queuedAt: row.queued_at || undefined,
@@ -1541,7 +1550,7 @@ export class LocalCoreAcpStore {
       runId: row.run_id || undefined,
       deviceId: row.device_id,
       kind: row.kind as ApprovalRequest['kind'],
-      status: row.status as ApprovalRequest['status'],
+      status: normalizeApprovalRequestStatus(row.status),
       riskLevel: row.risk_level as ApprovalRequest['riskLevel'],
       title: row.title,
       description: row.description,
