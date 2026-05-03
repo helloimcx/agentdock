@@ -29,3 +29,5 @@ test-results/
 
 # Local WeChat runtime state and credentials.
 weixin-monitor/
+
+.agentdock-core/

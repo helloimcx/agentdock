@@ -1,5 +1,6 @@
 import type { ScheduledJob, ScheduledJobRoute } from '../../../../packages/contracts/src/index.js';
 import { detectCronCommands, stripCronCommands, type CronCommand } from '../scheduler/cron-command-detector.js';
+import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 
 type SchedulerHandlers = {
   createJob: (input: {
@@ -105,7 +106,7 @@ export class LocalCoreAcpResponseProcessor {
             scheduleDescription: command.scheduleDescription,
             message: command.message,
           });
-          return `已创建定时任务：${job.description || command.name}，计划 ${command.scheduleDescription}（${command.schedule}），ID: ${job.id}`;
+          return `已创建定时任务：${job.description || command.name}，计划 ${command.scheduleDescription}（${command.schedule}），ID: ${toPublicScheduledJobId(job.id)}`;
         }
         case 'list': {
           const jobs = await this.options.scheduler.listJobsForThread(threadId);
@@ -114,7 +115,7 @@ export class LocalCoreAcpResponseProcessor {
           }
           return [
             '当前对话定时任务：',
-            ...jobs.map((job) => `- ${job.description || job.id} | ${job.triggerType === 'cron' ? job.cronExpr : job.runAt} | ${job.enabled ? 'enabled' : 'disabled'} | ${job.id}`),
+            ...jobs.map((job) => `- ${job.description || toPublicScheduledJobId(job.id)} | ${job.triggerType === 'cron' ? job.cronExpr : job.runAt} | ${job.enabled ? 'enabled' : 'disabled'} | ${toPublicScheduledJobId(job.id)}`),
           ].join('\n');
         }
         case 'delete': {

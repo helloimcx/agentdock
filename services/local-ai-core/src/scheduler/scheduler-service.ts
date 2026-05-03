@@ -3,6 +3,7 @@ import type { ScheduledJob, ScheduledJobRun } from '../../../../packages/contrac
 import type { EventBus } from '../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { SchedulerExecutorRuntime, SchedulerTriggerRuntime } from './adapters.js';
+import { toPublicScheduledJobId } from './job-id.js';
 import { SchedulerRunLifecycle } from './scheduler-run-lifecycle.js';
 
 type SchedulerServiceOptions = {
@@ -47,7 +48,8 @@ export class SchedulerService extends EventEmitter {
   }
 
   getJob(jobId: string) {
-    return this.options.store.getScheduledJob(jobId);
+    const resolvedJobId = this.resolveJobId(jobId);
+    return resolvedJobId ? this.options.store.getScheduledJob(resolvedJobId) : undefined;
   }
 
   createJob(input: Parameters<LocalCoreAcpStore['createScheduledJob']>[0]) {
@@ -58,26 +60,51 @@ export class SchedulerService extends EventEmitter {
   }
 
   updateJob(jobId: string, input: Parameters<LocalCoreAcpStore['updateScheduledJob']>[1]) {
-    const job = this.options.store.updateScheduledJob(jobId, input);
+    const job = this.options.store.updateScheduledJob(this.resolveRequiredJobId(jobId), input);
     this.emit('job', job);
     this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: job });
     return job;
   }
 
   deleteJob(jobId: string) {
-    return this.options.store.deleteScheduledJob(jobId);
+    return this.options.store.deleteScheduledJob(this.resolveRequiredJobId(jobId));
   }
 
   listJobRuns(jobId: string) {
-    return this.options.store.listScheduledJobRuns(jobId);
+    return this.options.store.listScheduledJobRuns(this.resolveRequiredJobId(jobId));
   }
 
   async runJobNow(jobId: string) {
-    const job = this.options.store.getScheduledJob(jobId);
+    const resolvedJobId = this.resolveRequiredJobId(jobId);
+    const job = this.options.store.getScheduledJob(resolvedJobId);
     if (!job) {
       throw new Error(`Scheduled job not found: ${jobId}`);
     }
     return this.executeJob(job, new Date().toISOString(), true);
+  }
+
+  private resolveJobId(jobId: string) {
+    if (this.options.store.getScheduledJob(jobId)) {
+      return jobId;
+    }
+    const matches = this.options.store
+      .listScheduledJobs()
+      .filter((job) => toPublicScheduledJobId(job.id) === jobId);
+    if (matches.length === 0) {
+      return '';
+    }
+    if (matches.length > 1) {
+      throw new Error(`Scheduled job id is ambiguous: ${jobId}`);
+    }
+    return matches[0]!.id;
+  }
+
+  private resolveRequiredJobId(jobId: string) {
+    const resolvedJobId = this.resolveJobId(jobId);
+    if (!resolvedJobId) {
+      throw new Error(`Scheduled job not found: ${jobId}`);
+    }
+    return resolvedJobId;
   }
 
   private async tick() {

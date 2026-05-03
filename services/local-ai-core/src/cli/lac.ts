@@ -1,5 +1,6 @@
 import process from 'node:process';
 import type { ScheduledJob, ScheduledJobRun, ScheduledJobUpdateInput } from '../../../../packages/contracts/src/index.js';
+import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -149,8 +150,8 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
     description,
     enabled: true,
   });
-  print(json, io.stdout, job, [
-    `Created scheduler job ${job.id}`,
+  print(json, io.stdout, presentJob(job), [
+    `Created scheduler job ${toPublicScheduledJobId(job.id)}`,
     `Schedule: ${job.cronExpr || ''}`,
     `Execution mode: ${job.executionMode}`,
     `Description: ${job.description}`,
@@ -169,7 +170,7 @@ async function handleList(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, 
   const jobs = threadId
     ? response.jobs.filter((job) => job.route.threadId === threadId)
     : response.jobs;
-  print(json, io.stdout, { jobs }, jobs.length === 0 ? 'No scheduler jobs.' : jobs.map(formatJobLine).join('\n'));
+  print(json, io.stdout, { jobs: jobs.map(presentJob) }, jobs.length === 0 ? 'No scheduler jobs.' : jobs.map(formatJobLine).join('\n'));
   return 0;
 }
 
@@ -180,7 +181,7 @@ async function handleInfo(jobId: string, flags: Map<string, string[]>, env: Node
   const context = resolveContext(flags, env);
   const job = await request<ScheduledJob>(context.baseUrl, 'GET', `/scheduler/jobs/${encodeURIComponent(jobId)}`);
   const runs = await request<{ runs: ScheduledJobRun[] }>(context.baseUrl, 'GET', `/scheduler/jobs/${encodeURIComponent(jobId)}/runs`);
-  print(json, io.stdout, { job, runs: runs.runs }, formatJobDetails(job, runs.runs[0]));
+  print(json, io.stdout, { job: presentJob(job), runs: runs.runs }, formatJobDetails(job, runs.runs[0]));
   return 0;
 }
 
@@ -214,7 +215,7 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
   }
   const context = resolveContext(flags, env);
   const job = await request<ScheduledJob>(context.baseUrl, 'PATCH', `/scheduler/jobs/${encodeURIComponent(jobId)}`, input);
-  print(json, io.stdout, job, `Updated scheduler job ${job.id}`);
+  print(json, io.stdout, presentJob(job), `Updated scheduler job ${toPublicScheduledJobId(job.id)}`);
   return 0;
 }
 
@@ -362,12 +363,12 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
 
 function formatJobLine(job: ScheduledJob) {
   const schedule = job.triggerType === 'cron' ? job.cronExpr || '' : job.runAt || '';
-  return `${job.id} | ${job.enabled ? 'enabled' : 'disabled'} | ${job.executionMode} | ${schedule} | ${job.description}`;
+  return `${toPublicScheduledJobId(job.id)} | ${job.enabled ? 'enabled' : 'disabled'} | ${job.executionMode} | ${schedule} | ${job.description}`;
 }
 
 function formatJobDetails(job: ScheduledJob, latestRun?: ScheduledJobRun) {
   return [
-    `Job: ${job.id}`,
+    `Job: ${toPublicScheduledJobId(job.id)}`,
     `Workspace: ${job.workspaceId}`,
     `Platform: ${job.platform}`,
     `Thread: ${job.route.threadId || ''}`,
@@ -378,6 +379,13 @@ function formatJobDetails(job: ScheduledJob, latestRun?: ScheduledJobRun) {
     `Message: ${job.promptTemplate}`,
     latestRun ? `Latest run: ${latestRun.status} @ ${latestRun.triggeredAt}` : 'Latest run: none',
   ].join('\n');
+}
+
+function presentJob(job: ScheduledJob): ScheduledJob {
+  return {
+    ...job,
+    id: toPublicScheduledJobId(job.id),
+  };
 }
 
 function formatError(error: unknown) {

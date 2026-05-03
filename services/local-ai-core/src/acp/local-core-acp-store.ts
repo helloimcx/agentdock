@@ -36,6 +36,7 @@ import type {
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
+import { createScheduledJobId } from '../scheduler/job-id.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
 import type {
   LocalMessageRow,
@@ -1002,7 +1003,13 @@ export class LocalCoreAcpStore {
   }
 
   createScheduledJob(input: ScheduledJobCreateInput): ScheduledJob {
-    const id = `job:${randomUUID()}`;
+    let id = createScheduledJobId();
+    for (let attempt = 0; attempt < 5 && this.getScheduledJob(id); attempt += 1) {
+      id = createScheduledJobId();
+    }
+    if (this.getScheduledJob(id)) {
+      throw new Error('Unable to allocate a unique scheduled job id.');
+    }
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO scheduled_jobs (
@@ -1067,7 +1074,10 @@ export class LocalCoreAcpStore {
   }
 
   deleteScheduledJob(jobId: string) {
-    this.db.prepare('DELETE FROM scheduled_jobs WHERE id = ?').run(jobId);
+    const result = this.db.prepare('DELETE FROM scheduled_jobs WHERE id = ?').run(jobId);
+    if (result.changes === 0) {
+      throw new Error(`Scheduled job not found: ${jobId}`);
+    }
     return { deleted: true };
   }
 

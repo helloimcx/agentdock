@@ -38,7 +38,7 @@ test('lac scheduler add posts a persistent Lark job from env context', async () 
       res.end(JSON.stringify({
         ok: true,
         data: {
-          id: 'job-1',
+          id: 'job:826aff79-570b-4308-822e-18318e2c96ba',
           workspaceId: '知识库',
           platform: 'lark',
           route: {
@@ -99,7 +99,7 @@ test('lac scheduler add posts a persistent Lark job from env context', async () 
     description: 'two-minute ping',
     enabled: true,
   });
-  assert.match(read().stdout, /Created scheduler job job-1/);
+  assert.match(read().stdout, /Created scheduler job 826aff79/);
 });
 
 test('lac scheduler add posts a local job without IM context', async () => {
@@ -181,7 +181,7 @@ test('lac scheduler list shows workspace jobs by default', async () => {
         data: {
           jobs: [
             {
-              id: 'job-1',
+              id: 'job:826aff79-570b-4308-822e-18318e2c96ba',
               workspaceId: '知识库',
               platform: 'lark',
               route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' },
@@ -234,8 +234,59 @@ test('lac scheduler list shows workspace jobs by default', async () => {
   server.close();
 
   assert.equal(exitCode, 0);
-  assert.match(read().stdout, /job-1/);
+  assert.match(read().stdout, /826aff79/);
+  assert.doesNotMatch(read().stdout, /job:826aff79/);
   assert.match(read().stdout, /job-2/);
+});
+
+test('lac scheduler info prints the short job id', async () => {
+  const server = createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/local/v1/scheduler/jobs/826aff79') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          id: 'job:826aff79-570b-4308-822e-18318e2c96ba',
+          workspaceId: '知识库',
+          platform: 'lark',
+          route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' },
+          executionMode: 'side-thread',
+          triggerType: 'cron',
+          cronExpr: '30 18 * * *',
+          promptTemplate: 'ping',
+          description: 'daily ping',
+          enabled: true,
+          concurrencyPolicy: 'skip_if_running',
+          createdAt: '2026-04-22T06:00:00.000Z',
+          updatedAt: '2026-04-22T06:00:00.000Z',
+        },
+      }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/api/local/v1/scheduler/jobs/826aff79/runs') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ ok: true, data: { runs: [] } }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'info', '826aff79'],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert.match(read().stdout, /Job: 826aff79/);
+  assert.doesNotMatch(read().stdout, /job:826aff79/);
 });
 
 test('lac scheduler list --thread filters by current thread context', async () => {

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { SchedulerService } from '../services/local-ai-core/src/scheduler/scheduler-service.js';
 
 test('workspace registry entries persist in LocalCoreAcpStore', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-registry-'));
@@ -26,6 +27,58 @@ test('workspace registry entries persist in LocalCoreAcpStore', () => {
     assert.equal(workspace?.defaultRuntimeId, 'opencode');
     assert.equal(workspace?.health.status, 'healthy');
     nextStore.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('scheduler uses short ids for new jobs and resolves legacy full ids by short id', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-id-store-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const scheduler = new SchedulerService({
+      store,
+      triggers: [],
+      executors: [],
+      eventBus: { emit: () => {}, on: () => () => {} },
+    });
+    const created = scheduler.createJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-1' },
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '30 18 * * *',
+      promptTemplate: 'ping',
+      description: 'daily ping',
+      enabled: true,
+    });
+
+    assert.match(created.id, /^[0-9a-f]{8}$/);
+
+    const legacy = store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-1' },
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '0 9 * * *',
+      promptTemplate: 'legacy',
+      description: 'legacy job',
+      enabled: true,
+    });
+    (store as any).db.prepare('UPDATE scheduled_jobs SET id = ? WHERE id = ?').run(
+      'job:826aff79-570b-4308-822e-18318e2c96ba',
+      legacy.id,
+    );
+
+    assert.equal(scheduler.getJob('826aff79')?.id, 'job:826aff79-570b-4308-822e-18318e2c96ba');
+    scheduler.updateJob('826aff79', { description: 'updated legacy job' });
+    assert.equal(scheduler.getJob('826aff79')?.description, 'updated legacy job');
+    scheduler.deleteJob('826aff79');
+    assert.equal(scheduler.getJob('826aff79'), undefined);
+    assert.throws(() => scheduler.deleteJob('826aff79'), /Scheduled job not found: 826aff79/);
+    store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
