@@ -289,6 +289,147 @@ test('lac scheduler info prints the short job id', async () => {
   assert.doesNotMatch(read().stdout, /job:826aff79/);
 });
 
+test('lac scheduler edit patches a short job id and normalizes execution mode', async () => {
+  let capturedBody: string | null = null;
+  const server = createServer(async (req, res) => {
+    if (req.method === 'PATCH' && req.url === '/api/local/v1/scheduler/jobs/826aff79') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      capturedBody = Buffer.concat(chunks).toString('utf8');
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          id: 'job:826aff79-570b-4308-822e-18318e2c96ba',
+          workspaceId: '知识库',
+          platform: 'lark',
+          route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' },
+          executionMode: 'side-thread',
+          triggerType: 'cron',
+          cronExpr: '0 10 * * *',
+          promptTemplate: 'updated ping',
+          description: 'daily updated ping',
+          enabled: false,
+          concurrencyPolicy: 'skip_if_running',
+          createdAt: '2026-04-22T06:00:00.000Z',
+          updatedAt: '2026-04-22T07:00:00.000Z',
+        },
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    [
+      'scheduler',
+      'edit',
+      '826aff79',
+      '--cron',
+      '0 10 * * *',
+      '--message',
+      'updated ping',
+      '--desc',
+      'daily updated ping',
+      '--enabled',
+      'false',
+      '--execution-mode',
+      'side_thread',
+    ],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert(capturedBody);
+  assert.deepEqual(JSON.parse(capturedBody), {
+    cronExpr: '0 10 * * *',
+    promptTemplate: 'updated ping',
+    description: 'daily updated ping',
+    enabled: false,
+    executionMode: 'side-thread',
+  });
+  assert.match(read().stdout, /Updated scheduler job 826aff79/);
+  assert.doesNotMatch(read().stdout, /job:826aff79/);
+});
+
+test('lac scheduler del deletes a short job id', async () => {
+  const server = createServer((req, res) => {
+    if (req.method === 'DELETE' && req.url === '/api/local/v1/scheduler/jobs/826aff79') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ ok: true, data: { deleted: true } }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'del', '826aff79'],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert.match(read().stdout, /Deleted scheduler job 826aff79/);
+  assert.doesNotMatch(read().stdout, /job:826aff79/);
+});
+
+test('lac scheduler run triggers a short job id', async () => {
+  const server = createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/api/local/v1/scheduler/jobs/826aff79/run') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          id: 'run-1',
+          jobId: 'job:826aff79-570b-4308-822e-18318e2c96ba',
+          status: 'queued',
+          triggeredAt: '2026-04-22T07:00:00.000Z',
+          startedAt: '2026-04-22T07:00:00.000Z',
+          completedAt: '',
+          output: '',
+          error: '',
+        },
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'run', '826aff79'],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert.match(read().stdout, /Triggered scheduler job 826aff79: queued/);
+  assert.doesNotMatch(read().stdout, /job:826aff79/);
+});
+
 test('lac scheduler list --thread filters by current thread context', async () => {
   const server = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/api/local/v1/scheduler/jobs?workspace_id=%E7%9F%A5%E8%AF%86%E5%BA%93') {

@@ -44,9 +44,9 @@ Owner area: `electron/*.test.ts`, feature-local tests, and focused renderer stat
   - [x] Weixin downloaded image and file attachments become structured inbound content parts.
   - [x] Lark file messages become structured inbound file content parts.
 - [ ] File return supports current workspace paths and allowed absolute paths through one outbound content path.
-- [ ] Scheduler commands resolve short job ids, thread scope, execution mode, and side-thread behavior consistently.
-- [ ] Production build contains renderer assets.
-- [ ] Packaged app can open without blank page.
+- [x] Scheduler commands resolve short job ids, thread scope, execution mode, and side-thread behavior consistently.
+- [x] Production build contains renderer assets.
+- [x] Packaged app can open without blank page.
 - [ ] Every repeated historical bug has a regression test or a written reason why it is not automated yet.
 - [ ] `pnpm test` remains the fast local gate.
 - [ ] `pnpm e2e:smoke` remains the release candidate gate.
