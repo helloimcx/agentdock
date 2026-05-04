@@ -55,6 +55,7 @@ export class LocalCoreAcpTransport {
       closed: false,
       closeReason: null,
       promptPromise: null,
+      launchPermissionMode: '',
     };
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => this.handleStdout(session, chunk));

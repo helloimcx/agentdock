@@ -5,6 +5,7 @@ import type { ScheduledExecutionTarget } from './adapters.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
+const SCHEDULED_RUN_PERMISSION_MODE = 'bypassPermissions';
 
 type ScheduledConversationExecutorOptions = {
   store: LocalCoreAcpStore;
@@ -18,7 +19,9 @@ export class ScheduledConversationExecutor {
     const target = await policy.resolveTarget(job);
     await policy.beforeExecute?.(target, job);
     try {
-      const sendResult = await this.options.workspaceRouter.sendThreadMessage(target.threadId, prompt);
+      const sendResult = await this.options.workspaceRouter.sendThreadMessage(target.threadId, prompt, {
+        permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
+      });
       await this.waitForRun(sendResult.runId, timeoutMs);
       const thread = await this.options.workspaceRouter.getThread(target.threadId);
       const replyText = [...thread.messages]

@@ -14,6 +14,10 @@ type LocalCoreAcpSessionCoordinatorOptions = {
   log?: (message: string) => void;
 };
 
+type EnsureSessionOptions = {
+  permissionMode?: string;
+};
+
 export class LocalCoreAcpSessionCoordinator {
   private readonly sessions = new Map<string, AcpSessionState>();
 
@@ -39,9 +43,20 @@ export class LocalCoreAcpSessionCoordinator {
     this.sessions.delete(threadId);
   }
 
-  async ensureSession(threadId: string, bridgeSessionKey: string, config: LocalCoreProjectConfig) {
+  async ensureSession(
+    threadId: string,
+    bridgeSessionKey: string,
+    config: LocalCoreProjectConfig,
+    options: EnsureSessionOptions = {},
+  ) {
     const existing = this.sessions.get(threadId);
-    if (existing && !existing.closed && existing.sessionId) {
+    const permissionMode = this.resolveLaunchPermissionMode(threadId, options.permissionMode);
+    if (
+      existing
+      && !existing.closed
+      && existing.sessionId
+      && existing.launchPermissionMode === permissionMode
+    ) {
       return existing;
     }
     if (existing) {
@@ -57,6 +72,7 @@ export class LocalCoreAcpSessionCoordinator {
       config,
       runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || '')),
     });
+    session.launchPermissionMode = permissionMode;
     this.sessions.set(threadId, session);
     await this.options.transport.initializeSession(session);
     const row = this.options.store.getThreadRow(threadId);
@@ -80,7 +96,7 @@ export class LocalCoreAcpSessionCoordinator {
         const created = await this.options.transport.request(session, 'session/new', {
           cwd: config.workDir,
           mcpServers: [],
-          _meta: this.buildSessionMeta(threadId),
+          _meta: this.buildSessionMeta(threadId, permissionMode),
         }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
         session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
         if (!session.sessionId) {
@@ -198,10 +214,15 @@ export class LocalCoreAcpSessionCoordinator {
     return env;
   }
 
-  private buildSessionMeta(threadId: string) {
+  private resolveLaunchPermissionMode(threadId: string, permissionModeOverride = '') {
     const row = this.options.store.getThreadRow(threadId);
-    const mode = String(row?.agent_mode || '').trim();
-    if (!mode || mode === 'default') {
+    const mode = String(permissionModeOverride || row?.agent_mode || '').trim();
+    return !mode || mode === 'default' ? '' : mode;
+  }
+
+  private buildSessionMeta(threadId: string, permissionModeOverride = '') {
+    const mode = this.resolveLaunchPermissionMode(threadId, permissionModeOverride);
+    if (!mode) {
       return undefined;
     }
     return {

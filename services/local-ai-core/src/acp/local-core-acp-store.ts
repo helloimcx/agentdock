@@ -1043,6 +1043,9 @@ export class LocalCoreAcpStore {
   }
 
   createScheduledJob(input: ScheduledJobCreateInput): ScheduledJob {
+    if (!input.platform || !input.route) {
+      throw new Error('Scheduled job creation requires a resolved platform and route.');
+    }
     let id = createScheduledJobId();
     for (let attempt = 0; attempt < 5 && this.getScheduledJob(id); attempt += 1) {
       id = createScheduledJobId();

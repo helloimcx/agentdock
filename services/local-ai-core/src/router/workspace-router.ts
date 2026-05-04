@@ -34,7 +34,7 @@ import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { decodeThreadId } from '../thread/workspace-thread-id.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
-import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions } from './workspace-router-types.js';
+import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions, WorkspaceThreadMessageOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 
 export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
@@ -272,10 +272,14 @@ export class WorkspaceRouter {
     return { deleted: true };
   }
 
-  async sendThreadMessage(threadId: string, content: string | ChannelInboundMessageContent): Promise<{ runId: string }> {
+  async sendThreadMessage(
+    threadId: string,
+    content: string | ChannelInboundMessageContent,
+    options?: WorkspaceThreadMessageOptions,
+  ): Promise<{ runId: string }> {
     const { workspaceId } = decodeThreadId(threadId);
     const route = await this.getWorkspaceRoute(workspaceId);
-    return this.localCoreAcp.sendThreadMessage(threadId, content, route.config);
+    return this.localCoreAcp.sendThreadMessage(threadId, content, route.config, options);
   }
 
   async sendThreadAction(threadId: string, content: string) {

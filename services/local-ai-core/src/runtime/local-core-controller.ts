@@ -300,7 +300,44 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob> {
-    return this.scheduler.createJob(input);
+    return this.scheduler.createJob(this.resolveScheduledJobCreateInput(input));
+  }
+
+  private resolveScheduledJobCreateInput(input: ScheduledJobCreateInput): ScheduledJobCreateInput & {
+    platform: NonNullable<ScheduledJobCreateInput['platform']>;
+    route: NonNullable<ScheduledJobCreateInput['route']>;
+  } {
+    if (input.platform && input.route) {
+      return input as ScheduledJobCreateInput & {
+        platform: NonNullable<ScheduledJobCreateInput['platform']>;
+        route: NonNullable<ScheduledJobCreateInput['route']>;
+      };
+    }
+    const threadId = String(input.threadId || input.route?.threadId || '').trim();
+    if (threadId) {
+      const binding = this.runtime.store.getPlatformThreadBindingByThreadId(threadId);
+      if (binding && binding.workspace_id === input.workspaceId) {
+        return {
+          ...input,
+          platform: binding.platform,
+          route: {
+            type: 'channel.chat',
+            channelId: binding.chat_id,
+            participantId: binding.platform_user_id,
+            threadId,
+          },
+        };
+      }
+    }
+    return {
+      ...input,
+      platform: 'local',
+      route: {
+        type: 'local.thread',
+        channelId: input.workspaceId,
+        ...(threadId ? { threadId } : {}),
+      },
+    };
   }
 
   async updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob> {

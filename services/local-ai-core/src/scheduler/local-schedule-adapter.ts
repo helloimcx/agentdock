@@ -9,6 +9,7 @@ type LocalScheduleAdapterOptions = {
 };
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
+const SCHEDULED_RUN_PERMISSION_MODE = 'bypassPermissions';
 
 export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
   readonly deliveryTargets = ['local'];
@@ -23,7 +24,9 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
     const { job } = context;
     const workspaceRouter = this.options.getWorkspaceRouter();
     const threadId = await this.resolveThread(job);
-    const sendResult = await workspaceRouter.sendThreadMessage(threadId, job.promptTemplate);
+    const sendResult = await workspaceRouter.sendThreadMessage(threadId, job.promptTemplate, {
+      permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
+    });
     await this.waitForRun(sendResult.runId);
     const thread = await workspaceRouter.getThread(threadId);
     const replyText = [...thread.messages]

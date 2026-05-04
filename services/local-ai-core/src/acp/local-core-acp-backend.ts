@@ -9,7 +9,6 @@ import type { EventBus } from '../../../../packages/plugin-sdk/src/index.js';
 import type {
   AcpSessionState,
   LocalCoreProjectConfig,
-  WorkspaceThreadBackend,
 } from '../router/workspace-router-types.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
@@ -27,6 +26,10 @@ import {
 } from './local-core-slash-commands.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
+
+type SendThreadMessageOptions = {
+  permissionMode?: string;
+};
 
 type LocalCoreAcpBackendOptions = {
   store: LocalCoreAcpStore;
@@ -51,7 +54,7 @@ type LocalCoreAcpBackendOptions = {
   log?: (message: string) => void;
 };
 
-export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
+export class LocalCoreAcpBackend {
   private readonly transport: LocalCoreAcpTransport;
   private readonly turnCoordinator: LocalCoreAcpTurnCoordinator;
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
@@ -175,7 +178,12 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     return { deleted: true };
   }
 
-  async sendThreadMessage(threadId: string, input: ThreadMessageInput, config?: LocalCoreProjectConfig): Promise<{ runId: string }> {
+  async sendThreadMessage(
+    threadId: string,
+    input: ThreadMessageInput,
+    config?: LocalCoreProjectConfig,
+    options: SendThreadMessageOptions = {},
+  ): Promise<{ runId: string }> {
     if (!config) {
       throw new Error('localcore-acp message send requires a workspace config.');
     }
@@ -245,7 +253,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
         sessionKey: row.bridge_session_key,
       },
     });
-    void this.runPrompt(threadId, runId, row.bridge_session_key, config, message).catch((error) => {
+    void this.runPrompt(threadId, runId, row.bridge_session_key, config, message, options).catch((error) => {
       this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
     });
     return { runId };
@@ -338,6 +346,7 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     bridgeSessionKey: string,
     config: LocalCoreProjectConfig,
     input: ThreadMessageInput,
+    options: SendThreadMessageOptions = {},
   ) {
     const row = this.options.store.getThreadRow(threadId);
     if (!row) {
@@ -352,7 +361,9 @@ export class LocalCoreAcpBackend implements WorkspaceThreadBackend {
     const content = message.displayText;
     let session: AcpSessionState | null = null;
     try {
-      session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config);
+      session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
+        permissionMode: options.permissionMode,
+      });
       session.currentRunId = runId;
       session.currentTurn = {
         runId,

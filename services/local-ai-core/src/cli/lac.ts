@@ -128,25 +128,9 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
   if (!context.workspaceId) {
     throw new Error('scheduler add requires a workspace context. Set LOCAL_AI_WORKSPACE_ID or pass --workspace.');
   }
-  const isLarkRoute = context.platform === 'lark'
-    && ['channel.chat', 'lark_chat'].includes(context.routeType)
-    && context.chatId
-    && context.platformUserId;
   const job = await request<ScheduledJob>(context.baseUrl, 'POST', '/scheduler/jobs', {
     workspaceId: context.workspaceId,
-    platform: isLarkRoute ? 'lark' : 'local',
-    route: isLarkRoute
-      ? {
-          type: 'channel.chat',
-          channelId: context.chatId,
-          participantId: context.platformUserId,
-          ...(context.threadId ? { threadId: context.threadId } : {}),
-        }
-      : {
-          type: 'local.thread',
-          channelId: context.workspaceId,
-          ...(context.threadId ? { threadId: context.threadId } : {}),
-        },
+    ...(context.threadId ? { threadId: context.threadId } : {}),
     executionMode,
     triggerType: 'cron',
     cronExpr,

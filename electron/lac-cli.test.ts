@@ -25,7 +25,7 @@ function createIo() {
   };
 }
 
-test('lac scheduler add posts a persistent Lark job from env context', async () => {
+test('lac scheduler add posts thread context and lets local core resolve platform binding', async () => {
   let capturedBody: string | null = null;
   const server = createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/local/v1/scheduler/jobs') {
@@ -85,13 +85,7 @@ test('lac scheduler add posts a persistent Lark job from env context', async () 
   assert(capturedBody);
   assert.deepEqual(JSON.parse(capturedBody), {
     workspaceId: '知识库',
-    platform: 'lark',
-    route: {
-      type: 'channel.chat',
-      channelId: 'chat-1',
-      participantId: 'user-1',
-      threadId: 'thread-1',
-    },
+    threadId: 'thread-1',
     executionMode: 'same-thread',
     triggerType: 'cron',
     cronExpr: '*/2 * * * *',
@@ -156,11 +150,6 @@ test('lac scheduler add posts a local job without IM context', async () => {
   assert(capturedBody);
   assert.deepEqual(JSON.parse(capturedBody), {
     workspaceId: '知识库',
-    platform: 'local',
-    route: {
-      type: 'local.thread',
-      channelId: '知识库',
-    },
     executionMode: 'same-thread',
     triggerType: 'cron',
     cronExpr: '*/5 * * * *',

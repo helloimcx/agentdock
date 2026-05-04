@@ -279,6 +279,7 @@ export type AcpSessionState = {
   closed: boolean;
   closeReason: string | null;
   promptPromise: Promise<{ stopReason?: string }> | null;
+  launchPermissionMode: string;
 };
 
 export type OpencodeInlineProviderConfig = {
@@ -320,7 +321,15 @@ export type WorkspaceThreadBackend = {
   getThread(threadId: string): Promise<ThreadDetail>;
   renameThread(threadId: string, title: string): Promise<ThreadDetail>;
   deleteThread(threadId: string): Promise<{ deleted: boolean }>;
-  sendThreadMessage(threadId: string, content: string | ChannelInboundMessageContent): Promise<{ runId: string }>;
+  sendThreadMessage(
+    threadId: string,
+    content: string | ChannelInboundMessageContent,
+    options?: WorkspaceThreadMessageOptions,
+  ): Promise<{ runId: string }>;
   sendThreadAction(threadId: string, content: string): Promise<{ runId: string }>;
   interruptRun(runId: string): Promise<{ interrupted: boolean }>;
+};
+
+export type WorkspaceThreadMessageOptions = {
+  permissionMode?: string;
 };

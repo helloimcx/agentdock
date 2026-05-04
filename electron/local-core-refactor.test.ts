@@ -2926,8 +2926,8 @@ test('scheduled conversation executor uses execution policy hooks around a threa
       getRun: () => ({ status: 'completed' }),
     } as any,
     workspaceRouter: {
-      sendThreadMessage: async (threadId: string, prompt: string) => {
-        calls.push(`send:${threadId}:${prompt}`);
+      sendThreadMessage: async (threadId: string, prompt: string, options?: { permissionMode?: string }) => {
+        calls.push(`send:${threadId}:${prompt}:${options?.permissionMode || ''}`);
         return { runId: 'run-1' };
       },
       getThread: async (threadId: string) => ({
@@ -2962,7 +2962,7 @@ test('scheduled conversation executor uses execution policy hooks around a threa
 
   assert.deepEqual(calls, [
     'before:thread-1',
-    'send:thread-1:ping',
+    'send:thread-1:ping:bypassPermissions',
     'after:thread-1',
   ]);
   assert.equal(result.replyText, 'done');
@@ -2998,8 +2998,8 @@ test('local scheduler adapter runs a workspace thread without channel delivery',
         calls.push(`create:${workspaceId}:${title}`);
         return { id: 'thread-local-1', title };
       },
-      sendThreadMessage: async (threadId: string, prompt: string) => {
-        calls.push(`send:${threadId}:${prompt}`);
+      sendThreadMessage: async (threadId: string, prompt: string, options?: { permissionMode?: string }) => {
+        calls.push(`send:${threadId}:${prompt}:${options?.permissionMode || ''}`);
         return { runId: 'run-local-1' };
       },
       getThread: async (threadId: string) => ({
@@ -3016,7 +3016,7 @@ test('local scheduler adapter runs a workspace thread without channel delivery',
   assert.deepEqual(calls, [
     'list:知识库',
     'create:知识库:[Scheduled] local ping',
-    'send:thread-local-1:ping local',
+    'send:thread-local-1:ping local:bypassPermissions',
   ]);
   assert.equal(result.threadId, 'thread-local-1');
   assert.equal(result.runId, 'run-local-1');

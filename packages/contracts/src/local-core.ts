@@ -662,8 +662,9 @@ export function normalizeScheduledJobRunStatus(value: unknown, fallback: Schedul
 
 export interface ScheduledJobCreateInput {
   workspaceId: string;
-  platform: 'local' | 'lark' | (string & {});
-  route: ScheduledJobRoute;
+  platform?: 'local' | 'lark' | (string & {});
+  route?: ScheduledJobRoute;
+  threadId?: string;
   executionMode?: ScheduledJobExecutionMode;
   triggerType: ScheduledJobTriggerType;
   cronExpr?: string;

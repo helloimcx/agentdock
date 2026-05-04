@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
 import { LocalCoreAcpSessionCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
 import { SchedulerService } from '../services/local-ai-core/src/scheduler/scheduler-service.js';
+import { bootstrapLocalCoreRuntime } from '../services/local-ai-core/src/kernel/bootstrap.js';
+import { LocalCoreController } from '../services/local-ai-core/src/runtime/local-core-controller.js';
 
 test('workspace registry entries persist in LocalCoreAcpStore', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-registry-'));
@@ -28,6 +30,52 @@ test('workspace registry entries persist in LocalCoreAcpStore', () => {
     assert.equal(workspace?.defaultRuntimeId, 'opencode');
     assert.equal(workspace?.health.status, 'healthy');
     nextStore.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('scheduler create resolves a Lark route from the current thread binding', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-binding-route-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+      log: () => {},
+    });
+    const controller = new LocalCoreController(userDataPath, runtime);
+    const thread = runtime.store.createThread('workspace-a', 'Lark thread');
+    const now = new Date().toISOString();
+    runtime.store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const job = await controller.createScheduledJob({
+      workspaceId: 'workspace-a',
+      threadId: thread.id,
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '30 18 * * *',
+      promptTemplate: 'ping',
+      description: 'bound lark task',
+      enabled: true,
+    });
+
+    assert.equal(job.platform, 'lark');
+    assert.deepEqual(job.route, {
+      type: 'channel.chat',
+      channelId: 'chat-1',
+      participantId: 'user-1',
+      threadId: thread.id,
+    });
+    await controller.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
@@ -86,6 +134,76 @@ test('ACP runtime env includes the current workspace path for file returns', asy
     assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_ID, 'workspace-a');
     assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_PATH, '/tmp/workspace-a');
     store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP scheduled session can override permission mode without changing thread mode', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-permission-mode-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Thread');
+    const capturedSessionNewParams: any[] = [];
+    let closeCount = 0;
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+            launchPermissionMode: '',
+          };
+        },
+        initializeSession: async () => {},
+        request: async (_session: any, method: string, params: any) => {
+          if (method === 'session/new') {
+            capturedSessionNewParams.push(params);
+            return { sessionId: 'session-1' };
+          }
+          return {};
+        },
+        closeSession: () => {
+          closeCount += 1;
+        },
+        closeSessionWithError: () => {},
+        sendRaw: () => true,
+      } as any,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+    });
+
+    await coordinator.ensureSession(thread.id, 'session:thread-1', {
+      workspaceId: 'workspace-a',
+      agentType: 'claudecode',
+      command: 'claude',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    }, { permissionMode: 'bypassPermissions' });
+
+    assert.equal(capturedSessionNewParams[0]?._meta?.claudeCode?.options?.permissionMode, 'bypassPermissions');
+    assert.equal(store.getThreadRow(thread.id)?.agent_mode, 'default');
+
+    await coordinator.ensureSession(thread.id, 'session:thread-1', {
+      workspaceId: 'workspace-a',
+      agentType: 'claudecode',
+      command: 'claude',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    });
+
+    assert.equal(closeCount, 1);
+    assert.equal(capturedSessionNewParams[1]?._meta, undefined);
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }

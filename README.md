@@ -13,6 +13,11 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## New
 
+### 2026-05-04
+
+- LAC 定时任务创建改由 Local Core 根据当前线程绑定解析 Lark/微信路由，agent 仍可直接使用 `lac scheduler add`，避免飞书创建的任务误落到 local route。
+- LAC 定时任务运行默认使用 yolo 权限，自动执行工具调用，避免后台任务卡在权限确认上。
+
 ### 2026-05-03
 
 - Lark 回传拆分为独立卡片：思考过程按阶段汇总发送，工具调用只发送一次，最终回答使用本轮独立卡片，避免覆盖旧消息。
