@@ -31,6 +31,18 @@ export function foldToolResultForLark(content: string): string {
   return parts.slice(0, 2).join(' - ');
 }
 
+export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: string): string {
+  const toolCall = event.toolCall;
+  if (toolCall) {
+    const name = String(toolCall.name || '').trim() || summarizeToolContentForLark(content);
+    const input = formatToolInputForLark(toolCall.input);
+    return [name.startsWith('🔧 ') ? name : `🔧 ${name}`, input ? `参数：${input}` : '']
+      .filter(Boolean)
+      .join('\n\n');
+  }
+  return summarizeToolContentForLark(content);
+}
+
 export function isPendingToolProgressForLark(content: string) {
   const normalized = foldToolResultForLark(content).toLowerCase();
   return normalized.startsWith('🔧 ') && normalized.includes(' - pending');
@@ -115,7 +127,7 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
       if (isPendingToolProgressForLark(content)) {
         return { key: 'noop', text: '', buttonRows: [], isFinal: false };
       }
-      return renderProgressMessage(progressKey('tool', event), content);
+      return renderToolMessage(progressKey('tool', event), summarizeToolCallForLark(event, content));
     }
     return {
       key: 'final',
@@ -130,13 +142,13 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
   }
   if (event.type === 'reply') {
     if (content.startsWith('💭 ')) {
-      return renderProgressMessage(progressKey('thinking', event), content);
+      return { key: 'noop', text: '', buttonRows: [], isFinal: false };
     }
     if (content.startsWith('🔧 ')) {
       if (isPendingToolProgressForLark(content)) {
         return { key: 'noop', text: '', buttonRows: [], isFinal: false };
       }
-      return renderProgressMessage(progressKey('tool', event), content);
+      return renderToolMessage(progressKey('tool', event), summarizeToolCallForLark(event, content));
     }
     if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {
       return renderProgressMessage(progressKey('status', event), content);
@@ -160,7 +172,16 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
   };
 }
 
-export function takePendingLarkThoughtRender(turn: LarkTurnState): LarkOutboundRender | null {
+export function renderLarkBridgeEventMessages(turn: LarkTurnState, event: DesktopBridgeEvent): LarkOutboundRender[] {
+  const rendered = renderLarkBridgeEventMessage(turn, event);
+  if (isThoughtBridgeEvent(event)) {
+    return [rendered];
+  }
+  const pendingThought = takePendingLarkThoughtRender(turn);
+  return pendingThought ? [pendingThought, rendered] : [rendered];
+}
+
+function takePendingLarkThoughtRender(turn: LarkTurnState): LarkOutboundRender | null {
   const text = String(turn.pendingThoughtText || '').trim();
   if (!text) {
     return null;
@@ -197,6 +218,13 @@ function renderProgressMessage(key: string, text: string): LarkOutboundRender {
   };
 }
 
+function renderToolMessage(key: string, text: string): LarkOutboundRender {
+  return {
+    ...renderProgressMessage(key, text),
+    updatePolicy: 'create-only',
+  };
+}
+
 function progressKey(prefix: string, event: DesktopBridgeEvent) {
   const stableId = String(event.messageId || event.previewHandle || '').trim();
   if (stableId) {
@@ -204,6 +232,47 @@ function progressKey(prefix: string, event: DesktopBridgeEvent) {
   }
   const content = String(event.content || '').trim().replace(/\s+/g, ' ');
   return `${prefix}:${content.slice(0, 120)}`;
+}
+
+function isThoughtBridgeEvent(event: DesktopBridgeEvent) {
+  if (event.type !== 'preview_start' && event.type !== 'update_message' && event.type !== 'reply') {
+    return false;
+  }
+  return String(event.content || '').trim().startsWith('💭 ');
+}
+
+function summarizeToolContentForLark(content: string) {
+  const normalized = String(content || '').trim();
+  if (!normalized.startsWith('🔧 ')) {
+    return normalized;
+  }
+  const withoutOutput = normalized.split(' - ')[0]?.trim() || normalized;
+  return withoutOutput
+    .replace(/\s+-\s*(running|pending|completed|failed|error|cancelled|canceled)\s*$/i, '')
+    .replace(/:\s*(running|pending|completed|failed|error|cancelled|canceled)\s*$/i, '')
+    .trim();
+}
+
+function formatToolInputForLark(input: unknown) {
+  if (input == null) {
+    return '';
+  }
+  if (typeof input === 'string') {
+    return inlineCode(input);
+  }
+  try {
+    return inlineCode(JSON.stringify(input));
+  } catch {
+    return inlineCode(String(input));
+  }
+}
+
+function inlineCode(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return '';
+  }
+  return `\`${normalized.replace(/`/g, '\\`')}\``;
 }
 
 function pushUniqueLarkTurnLine(target: string[], value: string) {

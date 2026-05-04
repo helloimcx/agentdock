@@ -88,6 +88,7 @@ export type LarkOutboundRender = {
   buttonRows: LarkButtonRow;
   isFinal: boolean;
   finalSource?: 'stream' | 'reply';
+  updatePolicy?: 'create-only';
 };
 
 export type LocalCoreLarkGatewayOptions = {

@@ -1506,7 +1506,7 @@ test('lark bridge patches partial final card after tool progress', async () => {
 
   assert.deepEqual(createdCards.map((card) => card.text), [
     '好的，文件存在，现在发送给你：已',
-    '🔧 bash: completed - Sent file CLAUDE.md to chat-1: msg-file-1',
+    '🔧 bash',
   ]);
   assert.deepEqual(patchedCards, [
     {
@@ -1844,7 +1844,7 @@ test('lark allow all card action preserves the final reply after tool execution'
   assert.match(createdCards[0]?.card?.elements?.[0]?.content || '', /桌面文件列表/);
 });
 
-test('lark channel folds tool result output in progress cards', async () => {
+test('lark channel sends tool name and parameters once without streaming output', async () => {
   const createdCards: any[] = [];
   const patchedCards: any[] = [];
   const client = {
@@ -1896,11 +1896,35 @@ test('lark channel folds tool result output in progress cards', async () => {
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     messageId: 'tool-1',
-    content: '🔧 Terminal: ls - completed - secret terminal output',
+    content: '🔧 Terminal',
+    toolCall: {
+      id: 'tool-1',
+      name: 'Terminal',
+      status: 'running',
+      input: { command: 'ls ~/Desktop' },
+      output: '',
+    },
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    messageId: 'tool-1',
+    content: '🔧 Terminal: ls ~/Desktop - completed - secret terminal output',
+    toolCall: {
+      id: 'tool-1',
+      name: 'Terminal',
+      status: 'completed',
+      input: { command: 'ls ~/Desktop' },
+      output: 'secret terminal output',
+    },
   } as any);
 
-  const text = createdCards[0]?.elements?.[0]?.content || patchedCards[0]?.elements?.[0]?.content || '';
-  assert.match(text, /Terminal: ls - completed/);
+  const text = createdCards[0]?.elements?.[0]?.content || '';
+  assert.match(text, /🔧 Terminal/);
+  assert.match(text, /参数：`\{"command":"ls ~\/Desktop"\}`/);
+  assert.equal(patchedCards.length, 0);
+  assert.doesNotMatch(text, /completed/);
   assert.doesNotMatch(text, /secret terminal output/);
 });
 
@@ -2597,7 +2621,7 @@ test('lark rendering suppresses noisy pending tool progress cards', () => {
     previewHandle: 'tool-1',
     content: '🔧 bash: Tool update - completed - verbose output',
   });
-  assert.equal(completed.text, '🔧 bash: Tool update - completed');
+  assert.equal(completed.text, '🔧 bash: Tool update');
 });
 
 test('ACP skips empty generic running tool updates', () => {

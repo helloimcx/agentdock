@@ -43,14 +43,12 @@ import {
   consumeLarkBridgeEvent,
   createLarkTurnState,
   getLarkRenderedMessageId,
-  renderLarkBridgeEventMessage,
+  renderLarkBridgeEventMessages,
   setLarkRenderedMessageId,
-  takePendingLarkThoughtRender,
 } from './runtime-state.js';
 import type {
   LarkInboundMessage,
   LarkModule,
-  LarkOutboundRender,
   LarkRuntimeState,
   LarkThreadRoute,
   LarkTurnState,
@@ -531,15 +529,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             return;
           }
           this.consumeBridgeEvent(turn, event);
-          const rendered = renderLarkBridgeEventMessage(turn, event);
-          const renderedMessages: LarkOutboundRender[] = [];
-          if (!this.isThoughtBridgeEvent(event)) {
-            const pendingThought = takePendingLarkThoughtRender(turn);
-            if (pendingThought) {
-              renderedMessages.push(pendingThought);
-            }
-          }
-          renderedMessages.push(rendered);
+          const renderedMessages = renderLarkBridgeEventMessages(turn, event);
           for (const renderedMessage of renderedMessages) {
             if (!renderedMessage.text && renderedMessage.buttonRows.length === 0) {
               this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${event.type}`);
@@ -548,7 +538,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             const existingMessageId = getLarkRenderedMessageId(turn, renderedMessage);
             const shouldThrottle =
               event.type === 'update_message' &&
-              renderedMessage === rendered &&
               existingMessageId &&
               Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
                 renderedMessage.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
@@ -557,6 +546,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
               `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(existingMessageId)} throttle=${shouldThrottle}`,
             );
             if (shouldThrottle) {
+              continue;
+            }
+            if (existingMessageId && renderedMessage.updatePolicy === 'create-only') {
               continue;
             }
             if (!existingMessageId) {
@@ -1334,13 +1326,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     consumeLarkBridgeEvent(turn, event, {
       mirrorPermissionStateInMainCard: this.mirrorPermissionStateInMainCard,
     });
-  }
-
-  private isThoughtBridgeEvent(event: DesktopBridgeEvent) {
-    if (event.type !== 'preview_start' && event.type !== 'update_message' && event.type !== 'reply') {
-      return false;
-    }
-    return String(event.content || '').trim().startsWith('💭 ');
   }
 
   private async handleCardActionEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
