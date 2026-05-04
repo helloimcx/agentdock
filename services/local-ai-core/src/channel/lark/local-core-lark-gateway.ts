@@ -1308,18 +1308,12 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   private getOrCreateTurnState(sessionKey: string, messageId?: string) {
     const existing = this.outboundTurns.get(sessionKey);
     if (existing) {
-      if (messageId && !existing.messageId) {
-        existing.messageId = messageId;
-        existing.finalMessageId = messageId;
+      if (messageId && !existing.sourceMessageId) {
+        existing.sourceMessageId = messageId;
       }
       return existing;
     }
-    const turn = this.createTurnState(sessionKey);
-    if (messageId) {
-      turn.messageId = messageId;
-      turn.finalMessageId = messageId;
-    }
-    return turn;
+    return this.createTurnState(sessionKey, messageId);
   }
 
   private consumeBridgeEvent(turn: LarkTurnState, event: DesktopBridgeEvent) {

@@ -13,6 +13,7 @@ export function createLarkTurnState(sessionKey: string, sourceMessageId?: string
     thinkingSteps: [],
     pendingThoughtKey: undefined,
     pendingThoughtText: undefined,
+    thoughtSegmentSequence: 0,
     toolCalls: [],
     statusLines: [],
     buttonRows: [],
@@ -62,6 +63,7 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
     turn.thinkingSteps = [];
     turn.pendingThoughtKey = undefined;
     turn.pendingThoughtText = undefined;
+    turn.thoughtSegmentSequence = 0;
     turn.toolCalls = [];
     turn.buttonRows = [];
     turn.statusLines = [];
@@ -129,13 +131,7 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
       }
       return renderToolMessage(progressKey('tool', event), summarizeToolCallForLark(event, content));
     }
-    return {
-      key: 'final',
-      text: content,
-      buttonRows: turn.buttonRows,
-      isFinal: true,
-      finalSource: 'stream',
-    };
+    return { key: 'noop', text: '', buttonRows: [], isFinal: false };
   }
   if (event.type === 'status') {
     return renderProgressMessage(progressKey('status', event), content.startsWith('⏳ ') ? content : `⏳ ${content}`);
@@ -186,7 +182,9 @@ function takePendingLarkThoughtRender(turn: LarkTurnState): LarkOutboundRender |
   if (!text) {
     return null;
   }
-  const rendered = renderProgressMessage(turn.pendingThoughtKey || 'thinking-preview', text);
+  turn.thoughtSegmentSequence += 1;
+  const baseKey = turn.pendingThoughtKey || 'thinking-preview';
+  const rendered = renderProgressMessage(`thinking:${baseKey}:${turn.thoughtSegmentSequence}`, text);
   turn.pendingThoughtKey = undefined;
   turn.pendingThoughtText = undefined;
   return rendered;
@@ -194,7 +192,7 @@ function takePendingLarkThoughtRender(turn: LarkTurnState): LarkOutboundRender |
 
 export function getLarkRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender) {
   if (rendered.isFinal) {
-    return turn.finalMessageId || turn.messageId || turn.replyMessageId;
+    return turn.finalMessageId || turn.replyMessageId;
   }
   return turn.progressMessageIds[rendered.key];
 }

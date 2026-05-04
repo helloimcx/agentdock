@@ -1344,7 +1344,7 @@ test('lark bridge sends completed thought once before final answer', async () =>
   assert.deepEqual(storedMessageIds, ['lark-msg-2']);
 });
 
-test('lark bridge patches streamed final card with final reply', async () => {
+test('lark bridge sends final reply as its own card instead of streaming draft', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
@@ -1417,14 +1417,12 @@ test('lark bridge patches streamed final card with final reply', async () => {
     content: '真正最终回答',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['流式中的最终回答草稿']);
-  assert.deepEqual(patchedCards, [
-    { messageId: 'lark-msg-1', text: '真正最终回答' },
-  ]);
+  assert.deepEqual(createdCards.map((card) => card.text), ['真正最终回答']);
+  assert.deepEqual(patchedCards, []);
   assert.deepEqual(storedMessageIds, ['lark-msg-1']);
 });
 
-test('lark bridge patches partial final card after tool progress', async () => {
+test('lark bridge sends tool and final as separate cards without patching tool progress', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
@@ -1505,16 +1503,133 @@ test('lark bridge patches partial final card after tool progress', async () => {
   } as any);
 
   assert.deepEqual(createdCards.map((card) => card.text), [
-    '好的，文件存在，现在发送给你：已',
     '🔧 bash',
+    '好的，文件存在，现在发送给你：已发送！`CLAUDE.md` 文件已经发出去了，请查收',
   ]);
-  assert.deepEqual(patchedCards, [
-    {
-      messageId: 'lark-msg-1',
-      text: '好的，文件存在，现在发送给你：已发送！`CLAUDE.md` 文件已经发出去了，请查收',
+  assert.deepEqual(patchedCards, []);
+  assert.deepEqual(storedMessageIds, ['lark-msg-2']);
+});
+
+test('lark bridge flushes interleaved thought segments before tools and final', async () => {
+  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const patchedCards: Array<{ messageId: string; text: string }> = [];
+  const storedMessageIds: string[] = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          const messageId = `lark-msg-${createdCards.length + 1}`;
+          const card = JSON.parse(String(request.data.content || '{}'));
+          createdCards.push({
+            messageId,
+            text: String(card.elements?.[0]?.content || ''),
+          });
+          return { data: { message_id: messageId } };
+        },
+        patch: async (request: any) => {
+          const card = JSON.parse(String(request.data.content || '{}'));
+          patchedCards.push({
+            messageId: String(request.path.message_id || ''),
+            text: String(card.elements?.[0]?.content || ''),
+          });
+        },
+      },
     },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: 'old-message',
+      }),
+      updatePlatformThreadMessageId: (_workspaceId: string, _chatId: string, _platformUserId: string, messageId: string) => {
+        storedMessageIds.push(messageId);
+      },
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'preview_start',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 先理解',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 先理解用户需求',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    messageId: 'run-1-tool-1',
+    content: '🔧 Terminal: config - running',
+    toolCall: {
+      id: 'call-1',
+      name: 'Terminal',
+      input: { command: 'uname -a', description: 'Get system info' },
+    },
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    messageId: 'run-1-tool-1',
+    content: '🔧 Terminal: config - completed - Linux',
+    toolCall: {
+      id: 'call-1',
+      name: 'Terminal',
+      input: { command: 'uname -a', description: 'Get system info' },
+    },
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    previewHandle: 'thought-preview-1',
+    content: '💭 看到了 Linux',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: '最终回答',
+  } as any);
+
+  assert.deepEqual(createdCards.map((card) => card.text), [
+    '💭 先理解用户需求',
+    '🔧 Terminal\n\n参数：`{"command":"uname -a","description":"Get system info"}`',
+    '💭 看到了 Linux',
+    '最终回答',
   ]);
-  assert.deepEqual(storedMessageIds, ['lark-msg-1']);
+  assert.deepEqual(patchedCards, []);
+  assert.deepEqual(storedMessageIds, ['lark-msg-4']);
 });
 
 test('lark bridge does not stream thought updates before completion', async () => {
@@ -1815,6 +1930,7 @@ test('lark allow all card action preserves the final reply after tool execution'
     previewText: '',
     finalText: '',
     thinkingSteps: [],
+    thoughtSegmentSequence: 0,
     toolCalls: [],
     statusLines: [],
     buttonRows: [[{ text: '始终允许', data: 'allow all' }]],

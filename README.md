@@ -15,6 +15,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ### 2026-05-03
 
+- Lark 回传拆分为独立卡片：思考过程按阶段汇总发送，工具调用只发送一次，最终回答使用本轮独立卡片，避免覆盖旧消息。
 - 新增内置 Pi Agent runtime，可通过 `agent.type = "pi"` 使用 bundled Pi coding agent 与 ACP adapter，无需额外安装 Claude Code、Codex 或 opencode。
 - 新增 Lark 机器人扫码新建/绑定入口，基于官方 Device Flow 自动创建应用，扫码确认后自动感知、写回 App ID/App Secret，并立即激活到可发送消息状态。
 - 支持同一个 workspace 绑定多个 Lark/微信 channel 实例，实例级隔离运行时、扫码绑定和消息路由。
