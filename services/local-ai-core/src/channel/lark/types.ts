@@ -73,6 +73,8 @@ export type LarkTurnState = {
   previewText: string;
   finalText: string;
   thinkingSteps: string[];
+  pendingThoughtKey?: string;
+  pendingThoughtText?: string;
   toolCalls: string[];
   statusLines: string[];
   buttonRows: LarkButtonRow;

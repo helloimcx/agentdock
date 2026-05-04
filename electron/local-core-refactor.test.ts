@@ -1256,7 +1256,7 @@ test('ACP store preserves structured tool call progress metadata', () => {
   }
 });
 
-test('lark bridge keeps thought preview and final answer in separate messages', async () => {
+test('lark bridge sends completed thought once before final answer', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
@@ -1338,15 +1338,13 @@ test('lark bridge keeps thought preview and final answer in separate messages', 
   } as any);
 
   assert.equal(createdCards.length, 2);
-  assert.equal(createdCards[0]?.text, '💭 先理解问题');
+  assert.equal(createdCards[0]?.text, '💭 先理解问题，再检查代码');
   assert.equal(createdCards[1]?.text, '最终回答');
-  assert.equal(patchedCards.length, 1);
-  assert.equal(patchedCards[0]?.messageId, 'lark-msg-1');
-  assert.equal(patchedCards[0]?.text, '💭 先理解问题，再检查代码');
+  assert.equal(patchedCards.length, 0);
   assert.deepEqual(storedMessageIds, ['lark-msg-2']);
 });
 
-test('lark bridge sends final reply as a separate card after streamed final updates', async () => {
+test('lark bridge patches streamed final card with final reply', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
@@ -1419,12 +1417,107 @@ test('lark bridge sends final reply as a separate card after streamed final upda
     content: '真正最终回答',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['流式中的最终回答草稿', '真正最终回答']);
-  assert.equal(patchedCards.length, 0);
-  assert.deepEqual(storedMessageIds, ['lark-msg-1', 'lark-msg-2']);
+  assert.deepEqual(createdCards.map((card) => card.text), ['流式中的最终回答草稿']);
+  assert.deepEqual(patchedCards, [
+    { messageId: 'lark-msg-1', text: '真正最终回答' },
+  ]);
+  assert.deepEqual(storedMessageIds, ['lark-msg-1']);
 });
 
-test('lark bridge does not leave typing placeholders and coalesces thought updates', async () => {
+test('lark bridge patches partial final card after tool progress', async () => {
+  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const patchedCards: Array<{ messageId: string; text: string }> = [];
+  const storedMessageIds: string[] = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          const messageId = `lark-msg-${createdCards.length + 1}`;
+          const card = JSON.parse(String(request.data.content || '{}'));
+          createdCards.push({
+            messageId,
+            text: String(card.elements?.[0]?.content || ''),
+          });
+          return { data: { message_id: messageId } };
+        },
+        patch: async (request: any) => {
+          const card = JSON.parse(String(request.data.content || '{}'));
+          patchedCards.push({
+            messageId: String(request.path.message_id || ''),
+            text: String(card.elements?.[0]?.content || ''),
+          });
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      updatePlatformThreadMessageId: (_workspaceId: string, _chatId: string, _platformUserId: string, messageId: string) => {
+        storedMessageIds.push(messageId);
+      },
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: '好的，文件存在，现在发送给你：已',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    messageId: 'tool-1',
+    content: '🔧 bash: completed - Sent file CLAUDE.md to chat-1: msg-file-1',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: '好的，文件存在，现在发送给你：已发送！`CLAUDE.md` 文件已经发出去了，请查收',
+  } as any);
+
+  assert.deepEqual(createdCards.map((card) => card.text), [
+    '好的，文件存在，现在发送给你：已',
+    '🔧 bash: completed - Sent file CLAUDE.md to chat-1: msg-file-1',
+  ]);
+  assert.deepEqual(patchedCards, [
+    {
+      messageId: 'lark-msg-1',
+      text: '好的，文件存在，现在发送给你：已发送！`CLAUDE.md` 文件已经发出去了，请查收',
+    },
+  ]);
+  assert.deepEqual(storedMessageIds, ['lark-msg-1']);
+});
+
+test('lark bridge does not stream thought updates before completion', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const client = {
@@ -1513,10 +1606,8 @@ test('lark bridge does not leave typing placeholders and coalesces thought updat
     replyCtx: 'run-1',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['💭 The user']);
-  assert.deepEqual(patchedCards.map((card) => card.text), [
-    '💭 The user sent a short casual message.',
-  ]);
+  assert.deepEqual(createdCards.map((card) => card.text), ['💭 The user sent a short casual message. I should reply briefly.']);
+  assert.deepEqual(patchedCards.map((card) => card.text), []);
   assert.ok(!createdCards.some((card) => /处理中|正在思考/.test(card.text)));
 });
 

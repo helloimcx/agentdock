@@ -45,10 +45,12 @@ import {
   getLarkRenderedMessageId,
   renderLarkBridgeEventMessage,
   setLarkRenderedMessageId,
+  takePendingLarkThoughtRender,
 } from './runtime-state.js';
 import type {
   LarkInboundMessage,
   LarkModule,
+  LarkOutboundRender,
   LarkRuntimeState,
   LarkThreadRoute,
   LarkTurnState,
@@ -530,38 +532,49 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           }
           this.consumeBridgeEvent(turn, event);
           const rendered = renderLarkBridgeEventMessage(turn, event);
-          if (!rendered.text && rendered.buttonRows.length === 0) {
-            this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${event.type}`);
-            return;
-          }
-          const existingMessageId = getLarkRenderedMessageId(turn, rendered);
-          const shouldThrottle =
-            event.type === 'update_message' &&
-            existingMessageId &&
-            Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
-              rendered.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
-            );
-          this.options.log?.(
-            `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(existingMessageId)} throttle=${shouldThrottle}`,
-          );
-          if (shouldThrottle) {
-            return;
-          }
-          if (!existingMessageId) {
-            const createdId = await this.sendTextAsCard(state, route.chatId, rendered.text, rendered.buttonRows, sessionKey, binding.thread_id);
-            if (createdId) {
-              setLarkRenderedMessageId(turn, rendered, createdId);
-              if (rendered.isFinal) {
-                this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
-              }
-              this.options.log?.(`localcore-lark sent new card message ${createdId} for sessionKey=${sessionKey}`);
+          const renderedMessages: LarkOutboundRender[] = [];
+          if (!this.isThoughtBridgeEvent(event)) {
+            const pendingThought = takePendingLarkThoughtRender(turn);
+            if (pendingThought) {
+              renderedMessages.push(pendingThought);
             }
-            return;
           }
-          await this.patchTextCard(state, existingMessageId, rendered.text, rendered.buttonRows, sessionKey, binding.thread_id);
-          turn.lastPatchedAt = Date.now();
-          turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
-          this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
+          renderedMessages.push(rendered);
+          for (const renderedMessage of renderedMessages) {
+            if (!renderedMessage.text && renderedMessage.buttonRows.length === 0) {
+              this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${event.type}`);
+              continue;
+            }
+            const existingMessageId = getLarkRenderedMessageId(turn, renderedMessage);
+            const shouldThrottle =
+              event.type === 'update_message' &&
+              renderedMessage === rendered &&
+              existingMessageId &&
+              Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
+                renderedMessage.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
+              );
+            this.options.log?.(
+              `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(existingMessageId)} throttle=${shouldThrottle}`,
+            );
+            if (shouldThrottle) {
+              continue;
+            }
+            if (!existingMessageId) {
+              const createdId = await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, binding.thread_id);
+              if (createdId) {
+                setLarkRenderedMessageId(turn, renderedMessage, createdId);
+                if (renderedMessage.isFinal) {
+                  this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
+                }
+                this.options.log?.(`localcore-lark sent new card message ${createdId} for sessionKey=${sessionKey}`);
+              }
+              continue;
+            }
+            await this.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, binding.thread_id);
+            turn.lastPatchedAt = Date.now();
+            turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
+            this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
+          }
         } catch (error) {
           this.options.log?.(`localcore-lark bridge send failed for sessionKey=${sessionKey}: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -1321,6 +1334,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     consumeLarkBridgeEvent(turn, event, {
       mirrorPermissionStateInMainCard: this.mirrorPermissionStateInMainCard,
     });
+  }
+
+  private isThoughtBridgeEvent(event: DesktopBridgeEvent) {
+    if (event.type !== 'preview_start' && event.type !== 'update_message' && event.type !== 'reply') {
+      return false;
+    }
+    return String(event.content || '').trim().startsWith('💭 ');
   }
 
   private async handleCardActionEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
