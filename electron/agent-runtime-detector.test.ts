@@ -169,6 +169,28 @@ test('agent runtime detector reports version when version command succeeds', () 
   }
 });
 
+test('agent runtime detector reports Claude Code when claude command is available', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-claude-version-'));
+  try {
+    const claude = join(dir, 'claude');
+    writeFileSync(claude, '#!/bin/sh\necho "2.1.114 (Claude Code)"\n', 'utf8');
+    chmodSync(claude, 0o755);
+
+    const claudeRuntime = detectInstalledAgentRuntimes({
+      env: { PATH: dir },
+      requireFrom: join(dir, 'package.json'),
+    }).find((runtime) => runtime.agentType === 'claudecode');
+
+    assert.equal(claudeRuntime?.status, 'installed');
+    assert.equal(claudeRuntime?.source, 'path');
+    assert.equal(claudeRuntime?.command, claude);
+    assert.equal(claudeRuntime?.version, '2.1.114');
+    assert.equal(claudeRuntime?.issues.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('agent runtime detector keeps runtime installed when version command fails', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-version-fail-'));
   try {

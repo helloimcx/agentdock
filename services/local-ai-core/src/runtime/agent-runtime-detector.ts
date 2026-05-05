@@ -35,7 +35,7 @@ const COMMAND_CANDIDATES: Record<string, string[]> = {
   pi: ['pi'],
   opencode: ['opencode'],
   codex: ['codex-acp', 'codex'],
-  claudecode: ['claude-agent-acp'],
+  claudecode: ['claude-agent-acp', 'claude'],
   cursor: ['cursor-agent', 'cursor'],
   gemini: ['gemini'],
   qoder: ['qoder'],
