@@ -26,3 +26,6 @@
 - [x] app，web，channels支持常用斜杠命令，特别是/mode，用来调整工具权限
 - [x] 新增pi mono内置agent实现，不用安装claude等coding agent也能用
 - [ ] 支持/agent命令来切换agent
+- [ ] 原生支持联网搜索
+- [ ] 飞书 channel 支持群聊
+- [ ] 支持隐藏中间过程
