@@ -74,6 +74,7 @@ export type WeixinTurnState = {
   previewText: string;
   finalText: string;
   thinkingSteps: string[];
+  pendingThoughtText?: string;
   statusLines: string[];
   buttonRows: Array<Array<{ text: string; data: string }>>;
   lastSentAt: number;

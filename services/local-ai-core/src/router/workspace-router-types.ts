@@ -242,6 +242,7 @@ export type RunningTurn = {
   thoughtMessageId: string;
   assistantText: string;
   thoughtText: string;
+  thoughtSequence?: number;
   typingStarted: boolean;
   previewStarted: boolean;
   thoughtPreviewStarted: boolean;
@@ -260,7 +261,16 @@ export type RunningTurn = {
   }>;
   pendingToolCallOrder?: string[];
   toolCallSequence?: number;
+  toolObservations?: RunningToolObservation[];
   permission?: RunningPermissionRequest | null;
+};
+
+export type RunningToolObservation = {
+  name?: string;
+  title?: string;
+  status?: string;
+  input?: unknown;
+  outputText?: string;
 };
 
 export type AcpSessionState = {

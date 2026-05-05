@@ -18,6 +18,7 @@ import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  closeThoughtSegment,
   deletePendingToolCall,
   extractToolCallKey,
   extractToolUpdateContent,
@@ -25,10 +26,12 @@ import {
   formatToolProgressMessage,
   getToolCallsInOrder,
   isEmptyRunningToolUpdate,
+  recordToolObservation,
   registerPendingToolCall,
   resolveFallbackToolCall,
   resolveToolCallForUpdate,
   resolveToolUpdateDisplayTitle,
+  stripObservedToolTranscriptsFromAssistantText,
   syncLegacyPendingToolCall,
 } from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
 import {
@@ -501,6 +504,7 @@ test('ACP progress projection extracts tool output and formats durable progress 
 
 test('ACP progress projection applies assistant and thought chunks with bridge metadata', () => {
   const currentTurn = {
+    runId: 'run-1',
     previewHandle: 'preview-1',
     thoughtPreviewHandle: 'thought-preview-1',
     thoughtMessageId: 'run-1-thought',
@@ -536,10 +540,12 @@ test('ACP progress projection applies assistant and thought chunks with bridge m
     content: '先理解，再修改',
     bridgeKind: 'thought',
   });
+  assert.equal(currentTurn.thoughtText, '先理解，再修改');
 });
 
 test('ACP thought chunks merge provider snapshots without duplicating text', () => {
   const currentTurn = {
+    runId: 'run-1',
     thoughtPreviewHandle: 'thought-preview-1',
     thoughtMessageId: 'run-1-thought',
     thoughtText: '',
@@ -561,6 +567,37 @@ test('ACP thought chunks merge provider snapshots without duplicating text', () 
     bridgeKind: 'thought',
   });
   assert.equal(currentTurn.thoughtText, 'The user wants to see their desktop files. Let me show them.');
+});
+
+test('ACP thought segment close starts a new streaming preview for web and app', () => {
+  const currentTurn = {
+    runId: 'run-1',
+    thoughtPreviewHandle: 'thought-preview-1',
+    thoughtMessageId: 'run-1-thought-1',
+    thoughtText: '',
+    thoughtSequence: 1,
+    thoughtPreviewStarted: false,
+  } as any;
+
+  assert.deepEqual(applyThoughtChunk(currentTurn, 'first thought'), {
+    bridgeType: 'preview_start',
+    previewHandle: 'thought-preview-1',
+    messageId: 'run-1-thought-1',
+    content: 'first thought',
+    bridgeKind: 'thought',
+  });
+  closeThoughtSegment(currentTurn);
+  assert.equal(currentTurn.thoughtText, '');
+  assert.equal(currentTurn.thoughtPreviewStarted, false);
+  assert.equal(currentTurn.thoughtMessageId, 'run-1-thought-2');
+  assert.equal(currentTurn.thoughtPreviewHandle, 'run-1-thought-preview-2');
+  assert.deepEqual(applyThoughtChunk(currentTurn, 'second thought'), {
+    bridgeType: 'preview_start',
+    previewHandle: 'run-1-thought-preview-2',
+    messageId: 'run-1-thought-2',
+    content: 'second thought',
+    bridgeKind: 'thought',
+  });
 });
 
 test('ACP progress projection registers pending tool calls in order', () => {
@@ -1213,6 +1250,72 @@ test('ACP raw local command output assistant chunks stay out of final assistant 
   assert.equal(session.currentTurn.assistantText, 'final answer');
 });
 
+test('ACP final text strips observed provider tool transcript prefix', () => {
+  const currentTurn = {
+    runId: 'run-1',
+    replyCtx: 'run-1',
+    previewHandle: 'preview-1',
+    assistantText: '',
+    thoughtText: '',
+    typingStarted: true,
+    previewStarted: false,
+    thoughtPreviewStarted: false,
+    permission: null,
+    toolObservations: [],
+  } as any;
+  recordToolObservation(currentTurn, {
+    name: 'webReader',
+    title: 'webReader',
+    input: {
+      url: 'https://github.com/Thysrael/Horizon',
+      return_format: 'markdown',
+      retain_images: false,
+    },
+    status: 'completed',
+    outputText: JSON.stringify([{
+      title: 'GitHub - Thysrael/Horizon: Your own AI-powered news radar',
+      description: 'Your own AI-powered news radar. Generates daily briefings in English & Chinese.',
+      url: 'https://github.com/Thysrael/Horizon',
+    }]),
+  });
+  const polluted = [
+    '**🌐 Z.ai Built-in Tool: webReader**',
+    '',
+    '**Input:**',
+    '```json',
+    '{"url":"https://github.com/Thysrael/Horizon","return_format":"markdown","retain_images":false}',
+    '```',
+    '',
+    '*Executing on server...*',
+    '                                            **Output:**',
+    '**webReader_result_summary:** [{"text": {"title": "GitHub - Thysrael/Horizon: Your own AI-powered news radar", "description": "Your own AI-powered news radar. Generates daily briefings in English & Chinese.", "url": "https...',
+    '                                                已放入 `00-Inbox/Horizon.md`。这个项目和咱们的 AI 早报 skill 功能高度重叠，架构可以作为参考。',
+  ].join('\n');
+
+  assert.equal(
+    stripObservedToolTranscriptsFromAssistantText(polluted, currentTurn.toolObservations),
+    '已放入 `00-Inbox/Horizon.md`。这个项目和咱们的 AI 早报 skill 功能高度重叠，架构可以作为参考。',
+  );
+  assert.equal(stripObservedToolTranscriptsFromAssistantText(polluted, []), polluted.trim());
+});
+
+test('ACP final text keeps normal answers that mention observed tool evidence', () => {
+  const observations = [{
+    name: 'webReader',
+    input: { url: 'https://github.com/Thysrael/Horizon' },
+    outputText: JSON.stringify([{
+      title: 'GitHub - Thysrael/Horizon: Your own AI-powered news radar',
+      url: 'https://github.com/Thysrael/Horizon',
+    }]),
+  }];
+  const answer = [
+    '我看了 https://github.com/Thysrael/Horizon，它是一个 AI 新闻雷达项目。',
+    '结论：可以作为早报 skill 的参考，但不需要直接照搬。',
+  ].join('\n');
+
+  assert.equal(stripObservedToolTranscriptsFromAssistantText(answer, observations), answer);
+});
+
 test('ACP plan updates are persisted and emitted as thinking progress', () => {
   const appended: Array<{ content: string; kind: string }> = [];
   const emitted: Array<{ content?: string; type: string }> = [];
@@ -1264,10 +1367,10 @@ test('ACP plan updates are persisted and emitted as thinking progress', () => {
   assert.equal(emitted[0]?.content, appended[0]?.content);
 });
 
-test('ACP thought chunks are streamed as thinking preview updates', () => {
+test('ACP thought chunks stream for web/app and start a fresh segment at tool boundaries', () => {
   const appended: Array<{ content: string; kind: string }> = [];
   const upserted: Array<{ id: string; content: string; kind: string }> = [];
-  const emitted: Array<{ content?: string; type: string; previewHandle?: string }> = [];
+  const emitted: Array<{ content?: string; type: string; previewHandle?: string; bridgeKind?: string }> = [];
   const coordinator = new LocalCoreAcpTurnCoordinator({
     appendMessage: (_threadId, _role, content, kind) => appended.push({ content, kind }),
     upsertMessage: (_threadId, id, _role, content, kind) => upserted.push({ id, content, kind }),
@@ -1284,9 +1387,10 @@ test('ACP thought chunks are streamed as thinking preview updates', () => {
       replyCtx: 'run-1',
       previewHandle: 'preview-1',
       thoughtPreviewHandle: 'thought-preview-1',
-      thoughtMessageId: 'run-1-thought',
+      thoughtMessageId: 'run-1-thought-1',
       assistantText: '',
       thoughtText: '',
+      thoughtSequence: 1,
       typingStarted: true,
       previewStarted: false,
       thoughtPreviewStarted: false,
@@ -1305,6 +1409,17 @@ test('ACP thought chunks are streamed as thinking preview updates', () => {
       },
     },
   });
+  assert.deepEqual(appended, []);
+  assert.deepEqual(upserted, [
+    {
+      id: 'run-1-thought-1',
+      content: '先理解问题',
+      kind: 'progress',
+    },
+  ]);
+  assert.deepEqual(emitted.map((event) => event.type), ['preview_start']);
+  assert.equal(emitted[0]?.content, '先理解问题');
+
   coordinator.handleAgentNotification(session, {
     method: 'session/update',
     params: {
@@ -1314,26 +1429,25 @@ test('ACP thought chunks are streamed as thinking preview updates', () => {
       },
     },
   });
+  assert.deepEqual(appended, []);
+  assert.deepEqual(upserted.map((entry) => entry.content), ['先理解问题', '先理解问题，再检查代码']);
+  assert.deepEqual(emitted.map((event) => event.type), ['preview_start', 'update_message']);
+  assert.equal(emitted[1]?.content, '先理解问题，再检查代码');
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        title: 'webReader',
+      },
+    },
+  });
 
   assert.deepEqual(appended, []);
-  assert.deepEqual(upserted, [
-    {
-      id: 'run-1-thought',
-      content: '先理解问题',
-      kind: 'progress',
-    },
-    {
-      id: 'run-1-thought',
-      content: '先理解问题，再检查代码',
-      kind: 'progress',
-    },
-  ]);
-  assert.deepEqual(emitted.map((event) => event.type), ['preview_start', 'update_message']);
-  assert.equal(emitted[0]?.previewHandle, 'thought-preview-1');
-  assert.equal((emitted[0] as any)?.bridgeKind, 'thought');
-  assert.equal(emitted[0]?.content, '先理解问题');
-  assert.equal(emitted[1]?.content, '先理解问题，再检查代码');
-  assert.equal(session.currentTurn.thoughtText, '先理解问题，再检查代码');
+  assert.equal(session.currentTurn.thoughtText, '');
+  assert.equal(session.currentTurn.thoughtMessageId, 'run-1-thought-2');
+  assert.equal(session.currentTurn.thoughtPreviewHandle, 'run-1-thought-preview-2');
 });
 
 test('ACP store preserves structured progress metadata', () => {

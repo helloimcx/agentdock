@@ -3,6 +3,7 @@ import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.j
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  closeThoughtSegment,
   deletePendingToolCall,
   extractToolCallInput,
   extractToolUpdateContent,
@@ -11,6 +12,7 @@ import {
   getToolCallsInOrder,
   isEmptyRunningToolUpdate,
   isTerminalToolStatus,
+  recordToolObservation,
   registerPendingToolCall,
   resolveFallbackToolCall,
   resolveToolCallForUpdate,
@@ -42,6 +44,11 @@ type LocalCoreAcpTurnCoordinatorOptions = {
 
 export class LocalCoreAcpTurnCoordinator {
   constructor(private readonly options: LocalCoreAcpTurnCoordinatorOptions) {}
+
+  closePendingThoughtSegment(session: AcpSessionState) {
+    const currentTurn = session.currentTurn;
+    if (currentTurn) closeThoughtSegment(currentTurn);
+  }
 
   flushPendingToolCall(session: AcpSessionState) {
     const currentTurn = session.currentTurn;
@@ -131,6 +138,7 @@ export class LocalCoreAcpTurnCoordinator {
     }
     const options = parsePermissionOptions(payload.params?.options);
     const toolTitle = formatToolCallContent(payload.params?.toolCall);
+    this.closePendingThoughtSegment(session);
     if ((this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE) === 'bypassPermissions') {
       const selected = options.find((option) => option.normalizedAction === 'allow all')
         || options.find((option) => option.normalizedAction === 'allow')
@@ -225,6 +233,7 @@ export class LocalCoreAcpTurnCoordinator {
     }
     switch (String(update.sessionUpdate || '')) {
       case 'agent_message_chunk': {
+        this.closePendingThoughtSegment(session);
         this.flushPendingToolCall(session);
         if (update.content?.type !== 'text') {
           return;
@@ -258,7 +267,6 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       case 'agent_thought_chunk': {
-        this.flushPendingToolCall(session);
         if (update.content?.type !== 'text') {
           return;
         }
@@ -280,11 +288,18 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       case 'tool_call': {
+        this.closePendingThoughtSegment(session);
         const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
+        recordToolObservation(currentTurn, {
+          name: toolCall.title,
+          title: toolCall.title,
+          input: toolCall.input,
+        });
         syncLegacyPendingToolCall(currentTurn, toolCall);
         return;
       }
       case 'tool_call_update': {
+        this.closePendingThoughtSegment(session);
         const title = String(update.title || 'Tool update').trim();
         const status = String(update.status || '').trim();
         const content = extractToolUpdateContent(update.content);
@@ -334,6 +349,13 @@ export class LocalCoreAcpTurnCoordinator {
           detail: displayTitle,
           content,
         });
+        recordToolObservation(currentTurn, {
+          name: toolName || displayTitle || title,
+          title: displayTitle || title,
+          status,
+          input: updateInput === undefined ? toolCall?.input : updateInput,
+          outputText: content,
+        });
         this.emitProgress(
           session,
           currentRunId,
@@ -345,6 +367,7 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       case 'plan': {
+        this.closePendingThoughtSegment(session);
         this.flushPendingToolCall(session);
         const entries = Array.isArray(update.entries) ? update.entries : [];
         if (entries.length === 0) {

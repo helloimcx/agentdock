@@ -1215,6 +1215,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       previewText: '',
       finalText: '',
       thinkingSteps: [],
+      pendingThoughtText: undefined,
       statusLines: [],
       buttonRows: [],
       lastSentAt: 0,
@@ -1236,6 +1237,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       turn.previewText = '';
       turn.finalText = '';
       turn.thinkingSteps = [];
+      turn.pendingThoughtText = undefined;
       turn.statusLines = [];
       turn.buttonRows = [];
       return;
@@ -1246,11 +1248,14 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     }
     if (event.type === 'preview_start' || event.type === 'update_message') {
       if (bridgeKind === 'thought') {
-        this.pushUnique(turn.thinkingSteps, content);
+        turn.pendingThoughtText = content;
         return;
       }
       turn.previewText = content;
       return;
+    }
+    if (bridgeKind !== 'thought') {
+      this.flushPendingThought(turn);
     }
     if (event.type === 'status') {
       if (content) {
@@ -1304,6 +1309,13 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       sections.push('\n回复：`allow` / `allow all` / `deny`');
     }
     return sections.join('\n\n').trim();
+  }
+
+  private flushPendingThought(turn: WeixinTurnState) {
+    const text = String(turn.pendingThoughtText || '').trim();
+    if (!text) return;
+    this.pushUnique(turn.thinkingSteps, text);
+    turn.pendingThoughtText = undefined;
   }
 
   private isTerminalBridgeMessage(event: DesktopBridgeEvent, rendered: string): boolean {

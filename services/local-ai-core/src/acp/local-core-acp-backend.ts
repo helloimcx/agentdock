@@ -24,6 +24,7 @@ import {
   normalizeAgentMode,
   parseSlashCommand,
 } from './local-core-slash-commands.js';
+import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -370,9 +371,10 @@ export class LocalCoreAcpBackend {
         replyCtx: runId,
         previewHandle: randomUUID(),
         thoughtPreviewHandle: randomUUID(),
-        thoughtMessageId: `${runId}-thought`,
+        thoughtMessageId: `${runId}-thought-1`,
         assistantText: '',
         thoughtText: '',
+        thoughtSequence: 1,
         typingStarted: true,
         previewStarted: false,
         thoughtPreviewStarted: false,
@@ -383,6 +385,7 @@ export class LocalCoreAcpBackend {
         pendingToolCalls: {},
         pendingToolCallOrder: [],
         toolCallSequence: 0,
+        toolObservations: [],
         permission: null,
       };
       const promptPromise = this.transport.request(session, 'session/prompt', {
@@ -396,9 +399,14 @@ export class LocalCoreAcpBackend {
       if (!currentTurn || currentTurn.runId !== runId) {
         return;
       }
+      this.turnCoordinator.closePendingThoughtSegment(session);
       this.turnCoordinator.flushPendingToolCall(session);
       if (currentTurn.assistantText) {
-        const processed = await this.responseProcessor.processAssistantResponse(threadId, currentTurn.assistantText);
+        const assistantText = stripObservedToolTranscriptsFromAssistantText(
+          currentTurn.assistantText,
+          currentTurn.toolObservations,
+        );
+        const processed = await this.responseProcessor.processAssistantResponse(threadId, assistantText);
         if (processed.displayContent) {
           this.options.store.appendMessage(threadId, 'assistant', processed.displayContent, 'final');
           this.options.eventBus.emit({
