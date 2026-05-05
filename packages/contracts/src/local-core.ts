@@ -257,6 +257,7 @@ export interface ThreadMessage {
   content: string;
   timestamp: string;
   kind?: 'final' | 'progress' | 'system';
+  bridgeKind?: DesktopBridgeEvent['bridgeKind'];
   toolCall?: DesktopBridgeToolCall;
 }
 

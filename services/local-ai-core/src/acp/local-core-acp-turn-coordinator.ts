@@ -32,8 +32,8 @@ import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
-  appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall) => void;
-  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall) => void;
+  appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind']) => void;
+  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind']) => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   getThreadAgentMode?: (threadId: string) => string;
@@ -229,6 +229,7 @@ export class LocalCoreAcpTurnCoordinator {
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
           previewHandle: projection.previewHandle,
+          bridgeKind: projection.bridgeKind,
           content: projection.content,
         });
         return;
@@ -243,13 +244,14 @@ export class LocalCoreAcpTurnCoordinator {
           return;
         }
         if (this.options.upsertMessage) {
-          this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress');
+          this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress', undefined, projection.bridgeKind);
         }
         this.options.emitBridge({
           type: projection.bridgeType,
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
           previewHandle: projection.previewHandle,
+          bridgeKind: projection.bridgeKind,
           content: projection.content,
         });
         return;
@@ -329,11 +331,12 @@ export class LocalCoreAcpTurnCoordinator {
         if (!content) {
           return;
         }
-        this.options.appendMessage(session.threadId, 'assistant', content, 'progress');
+        this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'plan');
         this.options.emitBridge({
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
+          bridgeKind: 'plan',
           content,
         });
         return;
@@ -351,15 +354,16 @@ export class LocalCoreAcpTurnCoordinator {
     toolCall?: DesktopBridgeToolCall,
   ) {
     if (messageId && this.options.upsertMessage) {
-      this.options.upsertMessage(session.threadId, messageId, 'assistant', content, 'progress', toolCall);
+      this.options.upsertMessage(session.threadId, messageId, 'assistant', content, 'progress', toolCall, toolCall ? 'tool' : undefined);
     } else {
-      this.options.appendMessage(session.threadId, 'assistant', content, 'progress', toolCall);
+      this.options.appendMessage(session.threadId, 'assistant', content, 'progress', toolCall, toolCall ? 'tool' : undefined);
     }
     this.options.emitBridge({
       type: 'reply',
       sessionKey: session.bridgeSessionKey,
       replyCtx: currentRunId,
       messageId,
+      bridgeKind: toolCall ? 'tool' : undefined,
       content,
       toolCall,
     });

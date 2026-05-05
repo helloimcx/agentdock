@@ -355,6 +355,14 @@ export interface DesktopBridgeToolCall {
   detail?: string;
 }
 
+export type DesktopBridgeEventKind =
+  | 'assistant'
+  | 'thought'
+  | 'plan'
+  | 'tool'
+  | 'status'
+  | 'permission';
+
 export interface DesktopBridgeEvent {
   type:
     | 'register_ack'
@@ -370,6 +378,7 @@ export interface DesktopBridgeEvent {
   sessionKey?: string;
   replyCtx?: string;
   previewHandle?: string;
+  bridgeKind?: DesktopBridgeEventKind;
   content?: string;
   messageId?: string;
   toolCall?: DesktopBridgeToolCall;

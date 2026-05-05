@@ -51,6 +51,7 @@ export function isPendingToolProgressForLark(content: string) {
 
 export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridgeEvent, options: { mirrorPermissionStateInMainCard: boolean }) {
   const content = foldToolResultForLark(String(event.content || '').trim());
+  const bridgeKind = resolveBridgeEventKind(event);
   if (event.type === 'typing_start') {
     turn.messageId = undefined;
     turn.finalMessageId = undefined;
@@ -75,10 +76,10 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
     return;
   }
   if (event.type === 'preview_start' || event.type === 'update_message') {
-    if (content.startsWith('💭 ')) {
+    if (bridgeKind === 'thought') {
       turn.pendingThoughtKey = event.previewHandle || 'thinking-preview';
       turn.pendingThoughtText = content;
-      pushUniqueLarkTurnLine(turn.thinkingSteps, content.slice(3).trim());
+      pushUniqueLarkTurnLine(turn.thinkingSteps, content);
       return;
     }
     turn.previewText = content;
@@ -101,17 +102,17 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
   if (!content) {
     return;
   }
-  if (content.startsWith('💭 ')) {
+  if (bridgeKind === 'thought' || bridgeKind === 'plan') {
     turn.pendingThoughtKey = progressKey('thinking', event);
     turn.pendingThoughtText = content;
-    pushUniqueLarkTurnLine(turn.thinkingSteps, content.slice(3).trim());
+    pushUniqueLarkTurnLine(turn.thinkingSteps, content);
     return;
   }
-  if (content.startsWith('🔧 ')) {
+  if (bridgeKind === 'tool') {
     pushUniqueLarkTurnLine(turn.toolCalls, content.slice(3).trim());
     return;
   }
-  if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {
+  if (bridgeKind === 'status') {
     pushUniqueLarkTurnLine(turn.statusLines, content.slice(3).trim());
     return;
   }
@@ -121,11 +122,12 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
 
 export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: DesktopBridgeEvent): LarkOutboundRender {
   const content = foldToolResultForLark(String(event.content || '').trim());
+  const bridgeKind = resolveBridgeEventKind(event);
   if (event.type === 'preview_start' || event.type === 'update_message') {
-    if (content.startsWith('💭 ')) {
+    if (bridgeKind === 'thought') {
       return { key: 'noop', text: '', buttonRows: [], isFinal: false };
     }
-    if (content.startsWith('🔧 ')) {
+    if (bridgeKind === 'tool') {
       if (isPendingToolProgressForLark(content)) {
         return { key: 'noop', text: '', buttonRows: [], isFinal: false };
       }
@@ -137,10 +139,10 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
     return renderProgressMessage(progressKey('status', event), content.startsWith('⏳ ') ? content : `⏳ ${content}`);
   }
   if (event.type === 'reply') {
-    if (content.startsWith('💭 ')) {
-      return { key: 'noop', text: '', buttonRows: [], isFinal: false };
+    if (bridgeKind === 'thought' || bridgeKind === 'plan') {
+      return renderProgressMessage(progressKey(bridgeKind, event), renderProcessText(bridgeKind, content));
     }
-    if (content.startsWith('🔧 ')) {
+    if (bridgeKind === 'tool') {
       if (isPendingToolProgressForLark(content)) {
         return { key: 'noop', text: '', buttonRows: [], isFinal: false };
       }
@@ -184,7 +186,7 @@ function takePendingLarkThoughtRender(turn: LarkTurnState): LarkOutboundRender |
   }
   turn.thoughtSegmentSequence += 1;
   const baseKey = turn.pendingThoughtKey || 'thinking-preview';
-  const rendered = renderProgressMessage(`thinking:${baseKey}:${turn.thoughtSegmentSequence}`, text);
+  const rendered = renderProgressMessage(`thinking:${baseKey}:${turn.thoughtSegmentSequence}`, renderProcessText('thought', text));
   turn.pendingThoughtKey = undefined;
   turn.pendingThoughtText = undefined;
   return rendered;
@@ -233,10 +235,23 @@ function progressKey(prefix: string, event: DesktopBridgeEvent) {
 }
 
 function isThoughtBridgeEvent(event: DesktopBridgeEvent) {
-  if (event.type !== 'preview_start' && event.type !== 'update_message' && event.type !== 'reply') {
-    return false;
+  const kind = resolveBridgeEventKind(event);
+  return kind === 'thought' || kind === 'plan';
+}
+
+function resolveBridgeEventKind(event: DesktopBridgeEvent) {
+  if (event.bridgeKind) {
+    return event.bridgeKind;
   }
-  return String(event.content || '').trim().startsWith('💭 ');
+  const content = String(event.content || '').trim();
+  if (content.startsWith('🔧 ')) return 'tool';
+  if (content.startsWith('⏳ ') || content.startsWith('📤 ')) return 'status';
+  return event.type === 'status' ? 'status' : 'assistant';
+}
+
+function renderProcessText(kind: 'thought' | 'plan', content: string) {
+  const text = content.trim();
+  return kind === 'plan' ? `计划\n${text}` : `思考过程\n${text}`;
 }
 
 function summarizeToolContentForLark(content: string) {

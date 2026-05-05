@@ -52,6 +52,7 @@ export type LocalMessageRow = {
   role: 'user' | 'assistant' | 'system';
   content: string;
   tool_call_json: string | null;
+  bridge_kind: string | null;
   timestamp: string;
   kind: 'final' | 'progress' | 'system';
   seq: number;

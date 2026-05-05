@@ -7,10 +7,15 @@ export type MessagePreviewProjection = {
   bridgeType: 'preview_start' | 'update_message';
   previewHandle: string;
   content: string;
+  bridgeKind: 'assistant';
 };
 
-export type ThoughtProgressProjection = MessagePreviewProjection & {
+export type ThoughtProgressProjection = {
+  bridgeType: 'preview_start' | 'update_message';
+  previewHandle: string;
+  content: string;
   messageId: string;
+  bridgeKind: 'thought';
 };
 
 export type PendingToolCallRegistration = {
@@ -33,12 +38,14 @@ export function applyAssistantMessageChunk(currentTurn: RunningTurn, text: strin
       bridgeType: 'preview_start',
       previewHandle: currentTurn.previewHandle,
       content: currentTurn.assistantText,
+      bridgeKind: 'assistant',
     };
   }
   return {
     bridgeType: 'update_message',
     previewHandle: currentTurn.previewHandle,
     content: currentTurn.assistantText,
+    bridgeKind: 'assistant',
   };
 }
 
@@ -47,7 +54,7 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
     return null;
   }
   currentTurn.thoughtText = mergeStreamingText(currentTurn.thoughtText, text);
-  const content = `💭 ${currentTurn.thoughtText.trim()}`;
+  const content = currentTurn.thoughtText.trim();
   if (!currentTurn.thoughtPreviewStarted) {
     currentTurn.thoughtPreviewStarted = true;
     return {
@@ -55,6 +62,7 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
       previewHandle: currentTurn.thoughtPreviewHandle,
       messageId: currentTurn.thoughtMessageId,
       content,
+      bridgeKind: 'thought',
     };
   }
   return {
@@ -62,6 +70,7 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
     previewHandle: currentTurn.thoughtPreviewHandle,
     messageId: currentTurn.thoughtMessageId,
     content,
+    bridgeKind: 'thought',
   };
 }
 
@@ -215,7 +224,7 @@ export function formatPlanProgress(entries: unknown[]) {
     .map((entry: any) => String(entry?.content || '').trim())
     .filter(Boolean)
     .join(' | ');
-  return summary ? `💭 ${summary}` : '';
+  return summary;
 }
 
 export function extractToolCallKey(update: Record<string, unknown>) {

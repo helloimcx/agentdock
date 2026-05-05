@@ -514,23 +514,27 @@ test('ACP progress projection applies assistant and thought chunks with bridge m
     bridgeType: 'preview_start',
     previewHandle: 'preview-1',
     content: 'hello',
+    bridgeKind: 'assistant',
   });
   assert.deepEqual(applyAssistantMessageChunk(currentTurn, ' world'), {
     bridgeType: 'update_message',
     previewHandle: 'preview-1',
     content: 'hello world',
+    bridgeKind: 'assistant',
   });
   assert.deepEqual(applyThoughtChunk(currentTurn, '先理解'), {
     bridgeType: 'preview_start',
     previewHandle: 'thought-preview-1',
     messageId: 'run-1-thought',
-    content: '💭 先理解',
+    content: '先理解',
+    bridgeKind: 'thought',
   });
   assert.deepEqual(applyThoughtChunk(currentTurn, '，再修改'), {
     bridgeType: 'update_message',
     previewHandle: 'thought-preview-1',
     messageId: 'run-1-thought',
-    content: '💭 先理解，再修改',
+    content: '先理解，再修改',
+    bridgeKind: 'thought',
   });
 });
 
@@ -546,13 +550,15 @@ test('ACP thought chunks merge provider snapshots without duplicating text', () 
     bridgeType: 'preview_start',
     previewHandle: 'thought-preview-1',
     messageId: 'run-1-thought',
-    content: '💭 The user wants to see their desktop files.',
+    content: 'The user wants to see their desktop files.',
+    bridgeKind: 'thought',
   });
   assert.deepEqual(applyThoughtChunk(currentTurn, 'The user wants to see their desktop files. Let me show them.'), {
     bridgeType: 'update_message',
     previewHandle: 'thought-preview-1',
     messageId: 'run-1-thought',
-    content: '💭 The user wants to see their desktop files. Let me show them.',
+    content: 'The user wants to see their desktop files. Let me show them.',
+    bridgeKind: 'thought',
   });
   assert.equal(currentTurn.thoughtText, 'The user wants to see their desktop files. Let me show them.');
 });
@@ -605,7 +611,7 @@ test('ACP progress projection ignores empty plan entries', () => {
     { content: '检查消息流' },
     { content: '  ' },
     { content: '修复持久化' },
-  ]), '💭 检查消息流 | 修复持久化');
+  ]), '检查消息流 | 修复持久化');
   assert.equal(formatPlanProgress([{ content: '' }]), '');
 });
 
@@ -1125,12 +1131,13 @@ test('ACP plan updates are persisted and emitted as thinking progress', () => {
 
   assert.deepEqual(appended, [
     {
-      content: '💭 检查消息流 | 修复持久化',
+      content: '检查消息流 | 修复持久化',
       kind: 'progress',
     },
   ]);
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0]?.type, 'reply');
+  assert.equal((emitted[0] as any)?.bridgeKind, 'plan');
   assert.equal(emitted[0]?.content, appended[0]?.content);
 });
 
@@ -1189,19 +1196,20 @@ test('ACP thought chunks are streamed as thinking preview updates', () => {
   assert.deepEqual(upserted, [
     {
       id: 'run-1-thought',
-      content: '💭 先理解问题',
+      content: '先理解问题',
       kind: 'progress',
     },
     {
       id: 'run-1-thought',
-      content: '💭 先理解问题，再检查代码',
+      content: '先理解问题，再检查代码',
       kind: 'progress',
     },
   ]);
   assert.deepEqual(emitted.map((event) => event.type), ['preview_start', 'update_message']);
   assert.equal(emitted[0]?.previewHandle, 'thought-preview-1');
-  assert.equal(emitted[0]?.content, '💭 先理解问题');
-  assert.equal(emitted[1]?.content, '💭 先理解问题，再检查代码');
+  assert.equal((emitted[0] as any)?.bridgeKind, 'thought');
+  assert.equal(emitted[0]?.content, '先理解问题');
+  assert.equal(emitted[1]?.content, '先理解问题，再检查代码');
   assert.equal(session.currentTurn.thoughtText, '先理解问题，再检查代码');
 });
 
@@ -1210,15 +1218,16 @@ test('ACP store upserts thought progress as one durable message', () => {
   const store = new LocalCoreAcpStore(userDataPath);
   try {
     const thread = store.createThread('project-1', 'Thread');
-    store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '💭 先理解问题', 'progress');
-    store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '💭 先理解问题，再检查代码', 'progress');
+    store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '先理解问题', 'progress', undefined, 'thought');
+    store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '先理解问题，再检查代码', 'progress', undefined, 'thought');
 
     const detail = store.getThread(thread.id, []);
 
     assert.equal(detail.messages.length, 1);
     assert.equal(detail.messages[0]?.id, 'run-1-thought');
     assert.equal(detail.messages[0]?.kind, 'progress');
-    assert.equal(detail.messages[0]?.content, '💭 先理解问题，再检查代码');
+    assert.equal(detail.messages[0]?.bridgeKind, 'thought');
+    assert.equal(detail.messages[0]?.content, '先理解问题，再检查代码');
     assert.equal(detail.historyCount, 1);
   } finally {
     store.close();
@@ -1321,14 +1330,16 @@ test('lark bridge sends completed thought once before final answer', async () =>
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 先理解问题',
+    bridgeKind: 'thought',
+    content: '先理解问题',
   } as any);
   await gateway.onBridgeEvent({
     type: 'update_message',
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 先理解问题，再检查代码',
+    bridgeKind: 'thought',
+    content: '先理解问题，再检查代码',
   } as any);
   await gateway.onBridgeEvent({
     type: 'reply',
@@ -1338,7 +1349,7 @@ test('lark bridge sends completed thought once before final answer', async () =>
   } as any);
 
   assert.equal(createdCards.length, 2);
-  assert.equal(createdCards[0]?.text, '💭 先理解问题，再检查代码');
+  assert.equal(createdCards[0]?.text, '思考过程\n先理解问题，再检查代码');
   assert.equal(createdCards[1]?.text, '最终回答');
   assert.equal(patchedCards.length, 0);
   assert.deepEqual(storedMessageIds, ['lark-msg-2']);
@@ -1575,14 +1586,16 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 先理解',
+    bridgeKind: 'thought',
+    content: '先理解',
   } as any);
   await gateway.onBridgeEvent({
     type: 'update_message',
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 先理解用户需求',
+    bridgeKind: 'thought',
+    content: '先理解用户需求',
   } as any);
   await gateway.onBridgeEvent({
     type: 'reply',
@@ -1613,7 +1626,8 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 看到了 Linux',
+    bridgeKind: 'thought',
+    content: '看到了 Linux',
   } as any);
   await gateway.onBridgeEvent({
     type: 'reply',
@@ -1623,9 +1637,9 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
   } as any);
 
   assert.deepEqual(createdCards.map((card) => card.text), [
-    '💭 先理解用户需求',
+    '思考过程\n先理解用户需求',
     '🔧 Terminal\n\n参数：`{"command":"uname -a","description":"Get system info"}`',
-    '💭 看到了 Linux',
+    '思考过程\n看到了 Linux',
     '最终回答',
   ]);
   assert.deepEqual(patchedCards, []);
@@ -1699,21 +1713,24 @@ test('lark bridge does not stream thought updates before completion', async () =
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 The user',
+    bridgeKind: 'thought',
+    content: 'The user',
   } as any);
   await gateway.onBridgeEvent({
     type: 'update_message',
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 The user sent a short casual message.',
+    bridgeKind: 'thought',
+    content: 'The user sent a short casual message.',
   } as any);
   await gateway.onBridgeEvent({
     type: 'update_message',
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     previewHandle: 'thought-preview-1',
-    content: '💭 The user sent a short casual message. I should reply briefly.',
+    bridgeKind: 'thought',
+    content: 'The user sent a short casual message. I should reply briefly.',
   } as any);
   await gateway.onBridgeEvent({
     type: 'typing_stop',
@@ -1721,7 +1738,7 @@ test('lark bridge does not stream thought updates before completion', async () =
     replyCtx: 'run-1',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['💭 The user sent a short casual message. I should reply briefly.']);
+  assert.deepEqual(createdCards.map((card) => card.text), ['思考过程\nThe user sent a short casual message. I should reply briefly.']);
   assert.deepEqual(patchedCards.map((card) => card.text), []);
   assert.ok(!createdCards.some((card) => /处理中|正在思考/.test(card.text)));
 });

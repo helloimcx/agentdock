@@ -16,6 +16,7 @@ import {
   canStreamingPromoteTaskState,
   findStreamingPreviewMessage,
   isAwaitingInputMessage,
+  isInternalProgressBridgeKind,
   isInternalProgressMessage,
   isPermissionActionRow,
   normalizeBridgeActionRows,
@@ -120,6 +121,7 @@ export function useThreadChatBridgeEvents({
               content: acpStreamingPreview ? existing?.content || '' : event.content || '',
               streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
               kind: 'progress',
+              bridgeKind: event.bridgeKind,
               order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
               timestamp: existing?.timestamp || new Date().toISOString(),
               turnKey: event.replyCtx,
@@ -146,6 +148,7 @@ export function useThreadChatBridgeEvents({
             content: acpStreamingPreview ? existing?.content || '' : event.content || '',
             streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
             kind: 'progress',
+            bridgeKind: event.bridgeKind,
             order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
             timestamp: existing?.timestamp || new Date().toISOString(),
             turnKey: event.replyCtx,
@@ -174,6 +177,7 @@ export function useThreadChatBridgeEvents({
                         ...message,
                         content: acpStreamingPreview ? message.content : event.content || '',
                         streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+                        bridgeKind: event.bridgeKind,
                         preview: true,
                         previewPlainText: acpStreamingPreview,
                       }
@@ -188,6 +192,7 @@ export function useThreadChatBridgeEvents({
                   content: acpStreamingPreview ? '' : event.content || '',
                   streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
                   kind: 'progress',
+                  bridgeKind: event.bridgeKind,
                   order: reserveAssistantMessageOrder(event.sessionKey),
                   timestamp: new Date().toISOString(),
                   turnKey: event.replyCtx,
@@ -215,6 +220,7 @@ export function useThreadChatBridgeEvents({
                       ...message,
                       content: acpStreamingPreview ? message.content : event.content || '',
                       streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+                      bridgeKind: event.bridgeKind,
                       preview: true,
                       previewPlainText: acpStreamingPreview,
                     }
@@ -229,6 +235,7 @@ export function useThreadChatBridgeEvents({
                 content: acpStreamingPreview ? '' : event.content || '',
                 streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
                 kind: 'progress',
+                bridgeKind: event.bridgeKind,
                 order: reserveAssistantMessageOrder(event.sessionKey),
                 timestamp: new Date().toISOString(),
                 turnKey: event.replyCtx,
@@ -279,7 +286,7 @@ export function useThreadChatBridgeEvents({
         setPendingPermissionRequest(null);
         setBridgeError('');
         const replyMessageId = event.messageId || nextProgressMessageId(event.replyCtx);
-        if (!isInternalProgressMessage(event.content) && event.replyCtx) {
+        if (!isInternalProgressBridgeKind(event.bridgeKind) && !isInternalProgressMessage(event.content) && event.replyCtx) {
           delete progressSequenceByTurnRef.current[event.replyCtx];
         }
         setBridgeError('');
@@ -293,6 +300,7 @@ export function useThreadChatBridgeEvents({
                     ...message,
                     content: event.content || '',
                     toolCall: event.toolCall,
+                    bridgeKind: event.bridgeKind,
                     kind: 'progress',
                     timestamp,
                     turnKey: event.replyCtx,
@@ -309,6 +317,7 @@ export function useThreadChatBridgeEvents({
               role: 'assistant',
               content: event.content || '',
               toolCall: event.toolCall,
+              bridgeKind: event.bridgeKind,
               kind: 'progress',
               order: reserveAssistantMessageOrder(event.sessionKey),
               timestamp,

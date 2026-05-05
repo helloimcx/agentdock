@@ -1229,6 +1229,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
   private consumeBridgeEvent(turn: WeixinTurnState, event: DesktopBridgeEvent) {
     const content = stripToolResultForWeixin(String(event.content || '').trim());
+    const bridgeKind = this.resolveBridgeEventKind(event);
     if (event.type === 'typing_start') {
       turn.processing = true;
       turn.previewText = '';
@@ -1243,6 +1244,10 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       return;
     }
     if (event.type === 'preview_start' || event.type === 'update_message') {
+      if (bridgeKind === 'thought') {
+        this.pushUnique(turn.thinkingSteps, content);
+        return;
+      }
       turn.previewText = content;
       return;
     }
@@ -1268,8 +1273,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       return;
     }
     if (!content) return;
-    if (content.startsWith('💭 ')) {
-      this.pushUnique(turn.thinkingSteps, content.slice(3).trim());
+    if (bridgeKind === 'thought' || bridgeKind === 'plan') {
+      this.pushUnique(turn.thinkingSteps, content);
       return;
     }
     turn.finalText = content;
@@ -1279,7 +1284,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   private renderTurnText(turn: WeixinTurnState): string {
     const sections: string[] = [];
     if (turn.thinkingSteps.length > 0) {
-      sections.push(`**思考过程**\n${turn.thinkingSteps.map((step) => `• ${step.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
+      sections.push(`**中间过程**\n${turn.thinkingSteps.map((step) => `• ${step.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
     }
     if (turn.finalText) {
       sections.push(turn.finalText);
@@ -1300,11 +1305,21 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     if (event.type === 'buttons') return true;
     if (event.type !== 'reply') return false;
     const eventContent = String(event.content || '').trim();
-    if (eventContent.startsWith('🔧 ') || eventContent.startsWith('💭 ')) return false;
+    const bridgeKind = this.resolveBridgeEventKind(event);
+    if (bridgeKind === 'tool' || bridgeKind === 'thought' || bridgeKind === 'plan' || bridgeKind === 'status') return false;
     const normalized = rendered.trim();
     if (!normalized) return false;
-    if (normalized.startsWith('🔧 ') || normalized.startsWith('💭 ')) return false;
     return true;
+  }
+
+  private resolveBridgeEventKind(event: DesktopBridgeEvent) {
+    if (event.bridgeKind) {
+      return event.bridgeKind;
+    }
+    const content = String(event.content || '').trim();
+    if (content.startsWith('🔧 ')) return 'tool';
+    if (content.startsWith('⏳ ') || content.startsWith('📤 ')) return 'status';
+    return event.type === 'status' ? 'status' : 'assistant';
   }
 
   // ==================== Private: Helpers ====================

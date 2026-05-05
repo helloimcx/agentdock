@@ -1,6 +1,7 @@
 import type { Session } from '../../api/sessions';
 import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
 import type {
+  DesktopBridgeEventKind,
   DesktopBridgeButtonOption,
   DesktopBridgeToolCall,
   DesktopRuntimeStatus,
@@ -20,6 +21,7 @@ export interface ChatMessage {
   toolCall?: DesktopBridgeToolCall;
   streamTargetContent?: string;
   kind?: 'final' | 'progress';
+  bridgeKind?: DesktopBridgeEventKind;
   order: number;
   timestamp?: string;
   turnKey?: string;
@@ -74,11 +76,18 @@ export function isInternalProgressMessage(content?: string) {
     return false;
   }
   return (
-    content.startsWith('💭 ') ||
     content.startsWith('🔧 ') ||
     content.startsWith('📤 ') ||
     content.startsWith('⏳ ')
   );
+}
+
+export function isInternalProgressBridgeKind(bridgeKind?: DesktopBridgeEventKind) {
+  return bridgeKind === 'thought' ||
+    bridgeKind === 'plan' ||
+    bridgeKind === 'tool' ||
+    bridgeKind === 'status' ||
+    bridgeKind === 'permission';
 }
 
 export function isAwaitingInputMessage(content?: string) {
@@ -111,7 +120,7 @@ export function shouldReplacePreviewWithReply(message: ChatMessage, replyContent
     return false;
   }
   const content = message.streamTargetContent ?? message.content;
-  return Boolean(replyContent && content === replyContent && !isInternalProgressMessage(content));
+  return Boolean(replyContent && content === replyContent && !isInternalProgressBridgeKind(message.bridgeKind) && !isInternalProgressMessage(content));
 }
 
 export function advancePreviewContent(content: string, target: string) {
@@ -158,7 +167,9 @@ export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: stri
   if (candidates.length === 0) {
     return messages;
   }
-  const finalMessage = [...candidates].reverse().find((message) => !isInternalProgressMessage(message.content));
+  const finalMessage = [...candidates].reverse().find((message) =>
+    !isInternalProgressBridgeKind(message.bridgeKind) && !isInternalProgressMessage(message.content)
+  );
   const finalId = finalMessage?.id;
   return messages.map((message) => {
     if (message.turnKey !== turnKey || message.preview) {
@@ -203,6 +214,7 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
     role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
     content: message.role === 'user' ? extractVisibleMessageContent(message.content) : message.content,
     toolCall: message.toolCall,
+    bridgeKind: message.bridgeKind,
     kind:
       message.kind === 'progress'
         ? 'progress'

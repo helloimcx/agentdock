@@ -47,7 +47,7 @@ import {
 } from '../../../../packages/contracts/src/index.js';
 import { createScheduledJobId } from '../scheduler/job-id.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../shared/desktop.js';
-import type { DesktopBridgeToolCall } from '../../../../shared/desktop.js';
+import type { DesktopBridgeEventKind, DesktopBridgeToolCall } from '../../../../shared/desktop.js';
 import type {
   LocalMessageRow,
   LocalPlatformPairingRow,
@@ -97,6 +97,7 @@ export class LocalCoreAcpStore {
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         tool_call_json TEXT,
+        bridge_kind TEXT,
         timestamp TEXT NOT NULL,
         kind TEXT NOT NULL,
         seq INTEGER NOT NULL,
@@ -278,6 +279,7 @@ export class LocalCoreAcpStore {
       CREATE INDEX IF NOT EXISTS idx_audit_events_type_created ON audit_events (type, created_at DESC);
     `);
     this.ensureColumn('messages', 'tool_call_json', 'TEXT');
+    this.ensureColumn('messages', 'bridge_kind', 'TEXT');
     this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
     this.ensureColumn('threads', 'agent_mode', "TEXT NOT NULL DEFAULT 'default'");
   }
@@ -345,7 +347,7 @@ export class LocalCoreAcpStore {
       throw new Error(`Thread not found: ${threadId}`);
     }
     const messages = this.db.prepare(`
-      SELECT id, thread_id, role, content, tool_call_json, timestamp, kind, seq
+      SELECT id, thread_id, role, content, tool_call_json, bridge_kind, timestamp, kind, seq
       FROM messages
       WHERE thread_id = ?
       ORDER BY seq ASC
@@ -366,6 +368,7 @@ export class LocalCoreAcpStore {
         role: message.role,
         content: message.content,
         toolCall: parseJson<DesktopBridgeToolCall | null>(message.tool_call_json || 'null', null) || undefined,
+        bridgeKind: normalizeBridgeKind(message.bridge_kind),
         timestamp: message.timestamp,
         kind: message.kind,
       })),
@@ -389,6 +392,7 @@ export class LocalCoreAcpStore {
     content: string,
     kind: LocalMessageRow['kind'],
     toolCall?: DesktopBridgeToolCall,
+    bridgeKind?: DesktopBridgeEventKind,
   ) {
     const timestamp = new Date().toISOString();
     const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
@@ -398,14 +402,15 @@ export class LocalCoreAcpStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.db.prepare(`
-        INSERT INTO messages (id, thread_id, role, content, tool_call_json, timestamp, kind, seq)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, timestamp, kind, seq)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         threadId,
         role,
         content,
         toolCall ? JSON.stringify(toolCall) : null,
+        bridgeKind || null,
         timestamp,
         kind,
         nextSeq,
@@ -430,6 +435,7 @@ export class LocalCoreAcpStore {
     content: string,
     kind: LocalMessageRow['kind'],
     toolCall?: DesktopBridgeToolCall,
+    bridgeKind?: DesktopBridgeEventKind,
   ) {
     const timestamp = new Date().toISOString();
     const excerpt = normalizeMessageContent(content);
@@ -439,16 +445,16 @@ export class LocalCoreAcpStore {
       if (existing) {
         this.db.prepare(`
           UPDATE messages
-          SET content = ?, tool_call_json = ?, timestamp = ?, kind = ?
+          SET content = ?, tool_call_json = ?, bridge_kind = ?, timestamp = ?, kind = ?
           WHERE id = ? AND thread_id = ?
-        `).run(content, toolCall ? JSON.stringify(toolCall) : null, timestamp, kind, id, threadId);
+        `).run(content, toolCall ? JSON.stringify(toolCall) : null, bridgeKind || null, timestamp, kind, id, threadId);
       } else {
         const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
         const nextSeq = Number(nextSequenceRow?.next_seq || 0);
         this.db.prepare(`
-          INSERT INTO messages (id, thread_id, role, content, tool_call_json, timestamp, kind, seq)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, threadId, role, content, toolCall ? JSON.stringify(toolCall) : null, timestamp, kind, nextSeq);
+          INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, timestamp, kind, seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, threadId, role, content, toolCall ? JSON.stringify(toolCall) : null, bridgeKind || null, timestamp, kind, nextSeq);
         this.db.prepare(`
           UPDATE threads
           SET history_count = history_count + 1
@@ -1637,6 +1643,20 @@ function parseJson<T>(value: string, fallback: T): T {
     return JSON.parse(value) as T;
   } catch {
     return fallback;
+  }
+}
+
+function normalizeBridgeKind(value: string | null | undefined): DesktopBridgeEventKind | undefined {
+  switch (value) {
+    case 'assistant':
+    case 'thought':
+    case 'plan':
+    case 'tool':
+    case 'status':
+    case 'permission':
+      return value;
+    default:
+      return undefined;
   }
 }
 
