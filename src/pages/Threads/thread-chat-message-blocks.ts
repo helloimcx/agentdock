@@ -33,104 +33,6 @@ export function isInteractivePermissionMessage(message: ChatMessage, pendingPerm
   }, pendingPermissionRequest);
 }
 
-export function parseToolResultCard(content: string): ToolResultCard | null {
-  const statusFirstMatch = content.match(/^\s*🔧\s*(.+?)\s*:\s*(running|completed|failed|error|cancelled|canceled)(?:\s*-\s*([\s\S]+?))?\s*$/i);
-  if (statusFirstMatch) {
-    const [, toolName, status, payload = ''] = statusFirstMatch;
-    return {
-      title: toolName.trim() || 'Tool call',
-      status: status.trim(),
-      output: parseToolResultPayload(payload),
-      label: /^running$/i.test(status) ? '工具调用' : '工具结果',
-    };
-  }
-
-  const namedStatusMatch = content.match(/^\s*🔧\s*(.+?)\s*:\s*([\s\S]*?)\s*-\s*(running|completed|failed|error|cancelled|canceled)(?:\s*-\s*([\s\S]+?))?\s*$/i);
-  if (namedStatusMatch) {
-    const [, toolName, detail, status, payload = ''] = namedStatusMatch;
-    const trimmedDetail = detail.trim();
-    return {
-      title: toolName.trim() || 'Tool call',
-      status: status.trim(),
-      output: parseToolResultPayload(payload),
-      label: /^running$/i.test(status) ? '工具调用' : '工具结果',
-      subtitle: trimmedDetail || undefined,
-    };
-  }
-
-  const namedUpdateMatch = content.match(/^\s*🔧\s*(.+?)\s*:\s*(Tool update)\s*-\s*([^-]+?)\s*-\s*([\s\S]+?)\s*$/i);
-  if (namedUpdateMatch) {
-    const [, toolName, updateTitle, status, payload] = namedUpdateMatch;
-    const trimmedPayload = payload.trim();
-    try {
-      const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
-      const value = typeof parsed.output === 'string'
-        ? parsed.output
-        : parsed.output ?? parsed.error ?? parsed;
-      return {
-        title: toolName.trim() || updateTitle,
-        status: status.trim(),
-        output: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-        label: '工具结果',
-      };
-    } catch {
-      return {
-        title: toolName.trim() || updateTitle,
-        status: status.trim(),
-        output: trimmedPayload,
-        label: '工具结果',
-      };
-    }
-  }
-
-  const updateMatch = content.match(/^\s*(?:🔧\s*)?(Tool update)\s*-\s*([^-]+?)\s*-\s*([\s\S]+?)\s*$/i);
-  if (updateMatch) {
-    const [, title, status, payload] = updateMatch;
-    const trimmedPayload = payload.trim();
-    if (isEmptyRunningToolUpdateContent(title, status.trim(), trimmedPayload)) {
-      return null;
-    }
-    try {
-      const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
-      const value = typeof parsed.output === 'string'
-        ? parsed.output
-        : parsed.output ?? parsed.error ?? parsed;
-      return {
-        title,
-        status: status.trim(),
-        output: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
-        label: '工具结果',
-      };
-    } catch {
-      return {
-        title,
-        status: status.trim(),
-        output: trimmedPayload,
-        label: '工具结果',
-      };
-    }
-  }
-
-  const callMatch = content.match(/^\s*🔧\s*(.+?)\s*$/);
-  if (callMatch) {
-    const rawTitle = callMatch[1].trim();
-    if (/^Tool update\s*-\s*running(?:\s*-\s*)?$/i.test(rawTitle)) {
-      return null;
-    }
-    const [name, ...rest] = rawTitle.split(':');
-    const output = rest.join(':').trim();
-    const statusMatch = output.match(/^(.*?)\s*-\s*(running|completed|failed|error|cancelled|canceled)\s*$/i);
-    return {
-      title: name.trim() || 'Tool call',
-      status: statusMatch?.[2]?.trim() || 'running',
-      output: statusMatch?.[1]?.trim() || output,
-      label: statusMatch && !/^running$/i.test(statusMatch[2]) ? '工具结果' : '工具调用',
-    };
-  }
-
-  return null;
-}
-
 export function toolCallToResultCard(toolCall?: DesktopBridgeToolCall): ToolResultCard | null {
   if (!toolCall) {
     return null;
@@ -163,29 +65,14 @@ function summarizeToolCallInput(input: unknown) {
   return entries.length > 0 ? entries.join(', ') : undefined;
 }
 
-function parseToolResultPayload(payload: string) {
-  const trimmedPayload = payload.trim();
-  if (!trimmedPayload) {
-    return '';
-  }
-  try {
-    const parsed = JSON.parse(trimmedPayload) as { output?: unknown; error?: unknown };
-    const value = typeof parsed.output === 'string'
-      ? parsed.output
-      : parsed.output ?? parsed.error ?? parsed;
-    return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-  } catch {
-    return trimmedPayload;
-  }
-}
-
 export function isEmptyRunningToolUpdateContent(title: string, status: string, payload: string) {
   return /^Tool update$/i.test(title.trim()) && /^running$/i.test(status.trim()) && !payload.trim();
 }
 
-export function isHiddenProgressMessage(content: string) {
-  const normalized = content.trim();
-  return /^🔧\s*Tool update\s*-\s*running(?:\s*-\s*)?$/i.test(normalized);
+export function isHiddenProgressMessage(message: Pick<ChatMessage, 'bridgeKind' | 'toolCall'>) {
+  return message.bridgeKind === 'tool' &&
+    message.toolCall?.status.trim().toLowerCase() === 'running' &&
+    !message.toolCall.output.trim();
 }
 
 export function shouldCollapseToolResultByDefault(card: ToolResultCard) {

@@ -2,6 +2,7 @@ import type { Session } from '../../api/sessions';
 import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
 import type {
   DesktopBridgeEventKind,
+  DesktopBridgeStatus,
   DesktopBridgeButtonOption,
   DesktopBridgeToolCall,
   DesktopRuntimeStatus,
@@ -22,6 +23,7 @@ export interface ChatMessage {
   streamTargetContent?: string;
   kind?: 'final' | 'progress';
   bridgeKind?: DesktopBridgeEventKind;
+  bridgeStatus?: DesktopBridgeStatus;
   order: number;
   timestamp?: string;
   turnKey?: string;
@@ -71,17 +73,6 @@ export interface ChatThreadSummary {
   bridgeSessionKey?: string;
 }
 
-export function isInternalProgressMessage(content?: string) {
-  if (!content) {
-    return false;
-  }
-  return (
-    content.startsWith('🔧 ') ||
-    content.startsWith('📤 ') ||
-    content.startsWith('⏳ ')
-  );
-}
-
 export function isInternalProgressBridgeKind(bridgeKind?: DesktopBridgeEventKind) {
   return bridgeKind === 'thought' ||
     bridgeKind === 'plan' ||
@@ -90,19 +81,8 @@ export function isInternalProgressBridgeKind(bridgeKind?: DesktopBridgeEventKind
     bridgeKind === 'permission';
 }
 
-export function isAwaitingInputMessage(content?: string) {
-  if (!content) {
-    return false;
-  }
-  const normalized = content.replace(/\s+/g, ' ').trim();
-  return (
-    /^Agent 提问(?:\s*\(\d+\/\d+\))?/i.test(normalized) ||
-    normalized.includes('请回复选项编号') ||
-    normalized.includes('直接输入你的回答') ||
-    normalized.includes('等待你的回复') ||
-    normalized.includes('请直接回复') ||
-    normalized.includes('请输入你的回答')
-  );
+export function isAwaitingInputBridgeStatus(bridgeStatus?: ChatMessage['bridgeStatus']) {
+  return bridgeStatus === 'awaiting_input';
 }
 
 export function findStreamingPreviewMessage(messages: ChatMessage[], previewHandle?: string, replyCtx?: string) {
@@ -120,7 +100,7 @@ export function shouldReplacePreviewWithReply(message: ChatMessage, replyContent
     return false;
   }
   const content = message.streamTargetContent ?? message.content;
-  return Boolean(replyContent && content === replyContent && !isInternalProgressBridgeKind(message.bridgeKind) && !isInternalProgressMessage(content));
+  return Boolean(replyContent && content === replyContent && !isInternalProgressBridgeKind(message.bridgeKind));
 }
 
 export function advancePreviewContent(content: string, target: string) {
@@ -168,7 +148,7 @@ export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: stri
     return messages;
   }
   const finalMessage = [...candidates].reverse().find((message) =>
-    !isInternalProgressBridgeKind(message.bridgeKind) && !isInternalProgressMessage(message.content)
+    !isInternalProgressBridgeKind(message.bridgeKind)
   );
   const finalId = finalMessage?.id;
   return messages.map((message) => {
@@ -215,6 +195,7 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
     content: message.role === 'user' ? extractVisibleMessageContent(message.content) : message.content,
     toolCall: message.toolCall,
     bridgeKind: message.bridgeKind,
+    bridgeStatus: message.bridgeStatus,
     kind:
       message.kind === 'progress'
         ? 'progress'

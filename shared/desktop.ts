@@ -363,6 +363,9 @@ export type DesktopBridgeEventKind =
   | 'status'
   | 'permission';
 
+export type DesktopBridgeStatus =
+  | 'awaiting_input';
+
 export interface DesktopBridgeEvent {
   type:
     | 'register_ack'
@@ -379,6 +382,7 @@ export interface DesktopBridgeEvent {
   replyCtx?: string;
   previewHandle?: string;
   bridgeKind?: DesktopBridgeEventKind;
+  bridgeStatus?: DesktopBridgeStatus;
   content?: string;
   messageId?: string;
   toolCall?: DesktopBridgeToolCall;

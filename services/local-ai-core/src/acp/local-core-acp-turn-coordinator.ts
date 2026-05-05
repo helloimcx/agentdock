@@ -32,8 +32,8 @@ import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
-  appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind']) => void;
-  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind']) => void;
+  appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
+  upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   getThreadAgentMode?: (threadId: string) => string;
@@ -194,11 +194,13 @@ export class LocalCoreAcpTurnCoordinator {
     });
     this.options.updateRunStatus(currentRunId, session.threadId, 'awaiting_input');
     const permissionPrompt = createPermissionPrompt(toolTitle);
-    this.options.appendMessage(session.threadId, 'assistant', permissionPrompt, 'progress');
+    this.options.appendMessage(session.threadId, 'assistant', permissionPrompt, 'progress', undefined, 'permission', 'awaiting_input');
     this.options.emitBridge({
       type: 'buttons',
       sessionKey: session.bridgeSessionKey,
       replyCtx: currentRunId,
+      bridgeKind: 'permission',
+      bridgeStatus: 'awaiting_input',
       content: permissionPrompt,
       buttonRows,
     });

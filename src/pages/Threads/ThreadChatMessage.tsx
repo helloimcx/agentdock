@@ -16,7 +16,6 @@ import { cn } from '@/lib/utils';
 import { formatMessageTimestamp, type ChatMessage } from './thread-chat-model';
 import {
   parsePermissionCardContent,
-  parseToolResultCard,
   shouldCollapseToolResultByDefault,
   toolCallToResultCard,
   type PermissionCard,
@@ -167,7 +166,7 @@ export function ThreadChatMessage({
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isProgress = !isUser && !isSystem && message.kind === 'progress';
-  const toolResultCard = !isUser ? toolCallToResultCard(message.toolCall) || parseToolResultCard(message.content) : null;
+  const toolResultCard = !isUser ? toolCallToResultCard(message.toolCall) : null;
   const isToolResult = Boolean(toolResultCard);
   return (
     <div className={cn('flex gap-2 sm:gap-3', isUser ? 'justify-end' : 'justify-start')}>

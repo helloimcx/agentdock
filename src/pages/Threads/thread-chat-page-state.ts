@@ -85,7 +85,7 @@ export function shouldRenderThreadChatMessage(
   message: ChatMessage,
   composerPermissionCard: PermissionCard | null,
 ): boolean {
-  if (message.kind === 'progress' && isHiddenProgressMessage(message.content)) {
+  if (message.kind === 'progress' && isHiddenProgressMessage(message)) {
     return false;
   }
   return !isInteractivePermissionMessage(message, composerPermissionCard);

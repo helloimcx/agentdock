@@ -15,9 +15,8 @@ import {
 import {
   canStreamingPromoteTaskState,
   findStreamingPreviewMessage,
-  isAwaitingInputMessage,
+  isAwaitingInputBridgeStatus,
   isInternalProgressBridgeKind,
-  isInternalProgressMessage,
   isPermissionActionRow,
   normalizeBridgeActionRows,
   sessionProjectFromKey,
@@ -43,7 +42,7 @@ function shouldRefreshThreadListForBridgeEvent(event: DesktopBridgeEvent) {
   if (event.type === 'typing_stop' || event.type === 'buttons' || event.type === 'card') {
     return true;
   }
-  return event.type === 'reply' && !isInternalProgressMessage(event.content);
+  return event.type === 'reply' && !isInternalProgressBridgeKind(event.bridgeKind);
 }
 
 type UseThreadChatBridgeEventsInput = {
@@ -103,7 +102,7 @@ export function useThreadChatBridgeEvents({
 
     switch (event.type) {
       case 'preview_start':
-        if (isAwaitingInputMessage(event.content)) {
+        if (isAwaitingInputBridgeStatus(event.bridgeStatus)) {
           clearReplyTimeout();
           setTyping(false);
           pendingTurnRef.current = null;
@@ -122,6 +121,7 @@ export function useThreadChatBridgeEvents({
               streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
               kind: 'progress',
               bridgeKind: event.bridgeKind,
+              bridgeStatus: event.bridgeStatus,
               order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
               timestamp: existing?.timestamp || new Date().toISOString(),
               turnKey: event.replyCtx,
@@ -149,6 +149,7 @@ export function useThreadChatBridgeEvents({
             streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
             kind: 'progress',
             bridgeKind: event.bridgeKind,
+            bridgeStatus: event.bridgeStatus,
             order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
             timestamp: existing?.timestamp || new Date().toISOString(),
             turnKey: event.replyCtx,
@@ -159,7 +160,7 @@ export function useThreadChatBridgeEvents({
         });
         break;
       case 'update_message':
-        if (isAwaitingInputMessage(event.content)) {
+        if (isAwaitingInputBridgeStatus(event.bridgeStatus)) {
           clearReplyTimeout();
           setTyping(false);
           pendingTurnRef.current = null;
@@ -178,6 +179,7 @@ export function useThreadChatBridgeEvents({
                         content: acpStreamingPreview ? message.content : event.content || '',
                         streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
                         bridgeKind: event.bridgeKind,
+                        bridgeStatus: event.bridgeStatus,
                         preview: true,
                         previewPlainText: acpStreamingPreview,
                       }
@@ -193,6 +195,7 @@ export function useThreadChatBridgeEvents({
                   streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
                   kind: 'progress',
                   bridgeKind: event.bridgeKind,
+                  bridgeStatus: event.bridgeStatus,
                   order: reserveAssistantMessageOrder(event.sessionKey),
                   timestamp: new Date().toISOString(),
                   turnKey: event.replyCtx,
@@ -221,6 +224,7 @@ export function useThreadChatBridgeEvents({
                       content: acpStreamingPreview ? message.content : event.content || '',
                       streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
                       bridgeKind: event.bridgeKind,
+                      bridgeStatus: event.bridgeStatus,
                       preview: true,
                       previewPlainText: acpStreamingPreview,
                     }
@@ -236,6 +240,7 @@ export function useThreadChatBridgeEvents({
                 streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
                 kind: 'progress',
                 bridgeKind: event.bridgeKind,
+                bridgeStatus: event.bridgeStatus,
                 order: reserveAssistantMessageOrder(event.sessionKey),
                 timestamp: new Date().toISOString(),
                 turnKey: event.replyCtx,
@@ -272,7 +277,7 @@ export function useThreadChatBridgeEvents({
         finalizeTurnMessages(event.replyCtx);
         break;
       case 'reply': {
-        const awaitingInput = isAwaitingInputMessage(event.content);
+        const awaitingInput = isAwaitingInputBridgeStatus(event.bridgeStatus);
         clearActionStatuses();
         setTyping(awaitingInput ? false : true);
         if (awaitingInput) {
@@ -286,7 +291,7 @@ export function useThreadChatBridgeEvents({
         setPendingPermissionRequest(null);
         setBridgeError('');
         const replyMessageId = event.messageId || nextProgressMessageId(event.replyCtx);
-        if (!isInternalProgressBridgeKind(event.bridgeKind) && !isInternalProgressMessage(event.content) && event.replyCtx) {
+        if (!isInternalProgressBridgeKind(event.bridgeKind) && event.replyCtx) {
           delete progressSequenceByTurnRef.current[event.replyCtx];
         }
         setBridgeError('');
@@ -301,6 +306,7 @@ export function useThreadChatBridgeEvents({
                     content: event.content || '',
                     toolCall: event.toolCall,
                     bridgeKind: event.bridgeKind,
+                    bridgeStatus: event.bridgeStatus,
                     kind: 'progress',
                     timestamp,
                     turnKey: event.replyCtx,
@@ -318,6 +324,7 @@ export function useThreadChatBridgeEvents({
               content: event.content || '',
               toolCall: event.toolCall,
               bridgeKind: event.bridgeKind,
+              bridgeStatus: event.bridgeStatus,
               kind: 'progress',
               order: reserveAssistantMessageOrder(event.sessionKey),
               timestamp,
@@ -356,6 +363,8 @@ export function useThreadChatBridgeEvents({
                     actionPending: false,
                     actionMode: isPermissionPrompt ? 'permission' : 'generic',
                     actionInteractive: interactivePermission,
+                    bridgeKind: event.bridgeKind,
+                    bridgeStatus: event.bridgeStatus,
                     actionStatus: nextStatus,
                   }
                 : message,
@@ -368,6 +377,8 @@ export function useThreadChatBridgeEvents({
               role: 'assistant',
               content: event.content || 'Permission required before continuing.',
               kind: 'progress',
+              bridgeKind: event.bridgeKind,
+              bridgeStatus: event.bridgeStatus,
               order: reserveAssistantMessageOrder(event.sessionKey),
               timestamp: new Date().toISOString(),
               turnKey: event.replyCtx,

@@ -186,14 +186,15 @@ function truncateTextByUtf8Bytes(text: string, maxBytes: number): string {
   return `${result.trim()}${suffix}`;
 }
 
-function stripToolResultForWeixin(content: string): string {
-  const normalized = String(content || '').trim();
-  if (!normalized.startsWith('🔧 ')) return normalized;
-
-  const parts = normalized.split(' - ');
-  if (parts[0] === '🔧 Tool update' && parts[1] === 'completed') return '';
-  if (parts.length <= 2) return normalized;
-  return parts.slice(0, 2).join(' - ');
+function renderBridgeContentForWeixin(event: DesktopBridgeEvent): string {
+  const toolCall = event.toolCall;
+  if (!toolCall) {
+    return String(event.content || '').trim();
+  }
+  const name = String(toolCall.name || '').trim() || 'Tool update';
+  const status = String(toolCall.status || '').trim();
+  if (name === 'Tool update' && status === 'completed') return '';
+  return [name, status].filter(Boolean).join(' - ');
 }
 
 // ==================== Gateway Class ====================
@@ -1228,7 +1229,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   }
 
   private consumeBridgeEvent(turn: WeixinTurnState, event: DesktopBridgeEvent) {
-    const content = stripToolResultForWeixin(String(event.content || '').trim());
+    const content = renderBridgeContentForWeixin(event);
     const bridgeKind = this.resolveBridgeEventKind(event);
     if (event.type === 'typing_start') {
       turn.processing = true;
@@ -1277,6 +1278,10 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       this.pushUnique(turn.thinkingSteps, content);
       return;
     }
+    if (bridgeKind === 'tool' || bridgeKind === 'status') {
+      this.pushUnique(turn.statusLines, content);
+      return;
+    }
     turn.finalText = content;
     turn.previewText = content;
   }
@@ -1290,7 +1295,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       sections.push(turn.finalText);
     } else if (turn.previewText) {
       sections.push(turn.previewText);
-    } else if (turn.processing && turn.statusLines.length > 0) {
+    } else if (turn.statusLines.length > 0) {
       sections.push(`**处理中**\n${turn.statusLines.slice(-3).map((l) => `• ${l.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
     } else if (turn.processing) {
       sections.push('**处理中**\n正在思考...');
@@ -1304,7 +1309,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   private isTerminalBridgeMessage(event: DesktopBridgeEvent, rendered: string): boolean {
     if (event.type === 'buttons') return true;
     if (event.type !== 'reply') return false;
-    const eventContent = String(event.content || '').trim();
     const bridgeKind = this.resolveBridgeEventKind(event);
     if (bridgeKind === 'tool' || bridgeKind === 'thought' || bridgeKind === 'plan' || bridgeKind === 'status') return false;
     const normalized = rendered.trim();
@@ -1316,9 +1320,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     if (event.bridgeKind) {
       return event.bridgeKind;
     }
-    const content = String(event.content || '').trim();
-    if (content.startsWith('🔧 ')) return 'tool';
-    if (content.startsWith('⏳ ') || content.startsWith('📤 ')) return 'status';
     return event.type === 'status' ? 'status' : 'assistant';
   }
 

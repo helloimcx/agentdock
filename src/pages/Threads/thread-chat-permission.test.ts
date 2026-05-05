@@ -26,7 +26,6 @@ import {
 import {
   isHiddenProgressMessage,
   parsePermissionCardContent,
-  parseToolResultCard,
   shouldCollapseToolResultByDefault,
   toolCallToResultCard,
 } from './thread-chat-message-blocks';
@@ -320,8 +319,14 @@ test('finalizeTurnMessageKinds marks only the last non-progress turn message as 
     {
       id: 'tool',
       role: 'assistant',
-      content: '🔧 Read file',
+      content: 'Read file',
       kind: 'final',
+      bridgeKind: 'tool',
+      toolCall: {
+        name: 'Read',
+        status: 'running',
+        output: '',
+      },
       order: 2,
       turnKey: 'run-1',
     },
@@ -358,16 +363,30 @@ test('thinking, tool progress, tool result, and final answer remain separate blo
     {
       id: 'tool-progress',
       role: 'assistant',
-      content: '🔧 Read: package.json - running',
+      content: 'Read package.json',
       kind: 'final',
+      bridgeKind: 'tool',
+      toolCall: {
+        name: 'Read',
+        status: 'running',
+        detail: 'package.json',
+        output: '',
+      },
       order: 2,
       turnKey: 'run-1',
     },
     {
       id: 'tool-result',
       role: 'assistant',
-      content: '🔧 Read: package.json - completed - {"output":"ok"}',
+      content: 'Read package.json',
       kind: 'final',
+      bridgeKind: 'tool',
+      toolCall: {
+        name: 'Read',
+        status: 'completed',
+        detail: 'package.json',
+        output: 'ok',
+      },
       order: 3,
       turnKey: 'run-1',
     },
@@ -440,28 +459,6 @@ test('advancePreviewContent moves monotonically toward the target content', () =
   assert.equal(advancePreviewContent('Mismatch', 'Hello'), 'H');
 });
 
-test('tool result card parsing preserves tool name and decoded output', () => {
-  const card = parseToolResultCard('🔧 Read: package.json - completed - {"output":"ok"}');
-
-  assert.ok(card);
-  assert.equal(card.title, 'Read');
-  assert.equal(card.status, 'completed');
-  assert.equal(card.output, 'ok');
-  assert.equal(card.label, '工具结果');
-  assert.equal(card.subtitle, 'package.json');
-  assert.equal(shouldCollapseToolResultByDefault(card), true);
-});
-
-test('tool result card parsing accepts status-first tool updates', () => {
-  const card = parseToolResultCard('🔧 bash: completed - total 32\n-rw-r--r-- file.md');
-
-  assert.ok(card);
-  assert.equal(card.title, 'bash');
-  assert.equal(card.status, 'completed');
-  assert.equal(card.output, 'total 32\n-rw-r--r-- file.md');
-  assert.equal(card.label, '工具结果');
-});
-
 test('tool result card prefers structured tool call fields', () => {
   const card = toolCallToResultCard({
     name: 'bash',
@@ -479,8 +476,22 @@ test('tool result card prefers structured tool call fields', () => {
 });
 
 test('running empty tool update stays hidden instead of rendering an empty card', () => {
-  assert.equal(parseToolResultCard('🔧 Tool update - running - '), null);
-  assert.equal(isHiddenProgressMessage('🔧 Tool update - running - '), true);
+  assert.equal(isHiddenProgressMessage({
+    bridgeKind: 'tool',
+    toolCall: {
+      name: 'Tool update',
+      status: 'running',
+      output: '',
+    },
+  }), true);
+  assert.equal(isHiddenProgressMessage({
+    bridgeKind: 'tool',
+    toolCall: {
+      name: 'Tool update',
+      status: 'completed',
+      output: '',
+    },
+  }), false);
 });
 
 test('permission card content hides fallback transport instructions', () => {
@@ -560,8 +571,14 @@ test('thread chat page state hides composer permission duplicates and empty prog
   assert.equal(shouldRenderThreadChatMessage({
     id: 'empty-tool',
     role: 'assistant',
-    content: '🔧 Tool update - running - ',
+    content: 'Tool update',
     kind: 'progress',
+    bridgeKind: 'tool',
+    toolCall: {
+      name: 'Tool update',
+      status: 'running',
+      output: '',
+    },
     order: 2,
   }, pendingCard), false);
   assert.equal(shouldRenderThreadChatMessage({

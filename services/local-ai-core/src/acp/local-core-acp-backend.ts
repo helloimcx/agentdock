@@ -69,11 +69,11 @@ export class LocalCoreAcpBackend {
     });
     this.turnCoordinator = new LocalCoreAcpTurnCoordinator({
       emitBridge: (event) => this.emitBridgeEvent(event),
-      appendMessage: (threadId, role, content, kind, toolCall, bridgeKind) => {
-        this.options.store.appendMessage(threadId, role, content, kind, toolCall, bridgeKind);
+      appendMessage: (threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
+        this.options.store.appendMessage(threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus);
       },
-      upsertMessage: (threadId, id, role, content, kind, toolCall, bridgeKind) => {
-        this.options.store.upsertMessage(threadId, id, role, content, kind, toolCall, bridgeKind);
+      upsertMessage: (threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
+        this.options.store.upsertMessage(threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus);
       },
       updateRunStatus: (runId, threadId, status) => {
         this.options.store.updateRun(runId, threadId, status);

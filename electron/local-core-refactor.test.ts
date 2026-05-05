@@ -930,11 +930,12 @@ test('ACP permission tool parameters are preserved in completed tool cards', () 
   assert.match(upserted[0]?.content || '', /completed - Desktop file list/);
 });
 
-test('ACP permission button rows preserve always allow actions', () => {
-  const emitted: Array<{ type: string; buttonRows?: Array<Array<{ text: string; data: string }>> }> = [];
+test('ACP permission button rows preserve always allow actions with structured status', () => {
+  const appended: Array<{ content: string; kind: string; bridgeKind?: string; bridgeStatus?: string }> = [];
+  const emitted: Array<{ type: string; bridgeKind?: string; bridgeStatus?: string; buttonRows?: Array<Array<{ text: string; data: string }>> }> = [];
   const coordinator = new LocalCoreAcpTurnCoordinator({
-    appendMessage: () => {},
-    emitBridge: (event) => emitted.push(event as { type: string; buttonRows?: Array<Array<{ text: string; data: string }>> }),
+    appendMessage: (_threadId, _role, content, kind, _toolCall, bridgeKind, bridgeStatus) => appended.push({ content, kind, bridgeKind, bridgeStatus }),
+    emitBridge: (event) => emitted.push(event as { type: string; bridgeKind?: string; bridgeStatus?: string; buttonRows?: Array<Array<{ text: string; data: string }>> }),
     updateRunStatus: () => {},
     sendRaw: () => true,
   });
@@ -974,6 +975,10 @@ test('ACP permission button rows preserve always allow actions', () => {
     },
   });
 
+  assert.equal(appended[0]?.bridgeKind, 'permission');
+  assert.equal(appended[0]?.bridgeStatus, 'awaiting_input');
+  assert.equal(emitted[0]?.bridgeKind, 'permission');
+  assert.equal(emitted[0]?.bridgeStatus, 'awaiting_input');
   assert.deepEqual(emitted[0]?.buttonRows, [[
     { text: 'allow', data: 'allow' },
     { text: 'allow all', data: 'allow all' },
@@ -1213,22 +1218,25 @@ test('ACP thought chunks are streamed as thinking preview updates', () => {
   assert.equal(session.currentTurn.thoughtText, '先理解问题，再检查代码');
 });
 
-test('ACP store upserts thought progress as one durable message', () => {
+test('ACP store preserves structured progress metadata', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-thought-store-'));
   const store = new LocalCoreAcpStore(userDataPath);
   try {
     const thread = store.createThread('project-1', 'Thread');
     store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '先理解问题', 'progress', undefined, 'thought');
     store.upsertMessage(thread.id, 'run-1-thought', 'assistant', '先理解问题，再检查代码', 'progress', undefined, 'thought');
+    store.appendMessage(thread.id, 'assistant', '等待确认', 'progress', undefined, 'permission', 'awaiting_input');
 
     const detail = store.getThread(thread.id, []);
 
-    assert.equal(detail.messages.length, 1);
+    assert.equal(detail.messages.length, 2);
     assert.equal(detail.messages[0]?.id, 'run-1-thought');
     assert.equal(detail.messages[0]?.kind, 'progress');
     assert.equal(detail.messages[0]?.bridgeKind, 'thought');
     assert.equal(detail.messages[0]?.content, '先理解问题，再检查代码');
-    assert.equal(detail.historyCount, 1);
+    assert.equal(detail.messages[1]?.bridgeKind, 'permission');
+    assert.equal(detail.messages[1]?.bridgeStatus, 'awaiting_input');
+    assert.equal(detail.historyCount, 2);
   } finally {
     store.close();
     rmSync(userDataPath, { recursive: true, force: true });
@@ -1504,7 +1512,14 @@ test('lark bridge sends tool and final as separate cards without patching tool p
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     messageId: 'tool-1',
-    content: '🔧 bash: completed - Sent file CLAUDE.md to chat-1: msg-file-1',
+    bridgeKind: 'tool',
+    content: 'bash completed',
+    toolCall: {
+      id: 'tool-1',
+      name: 'bash',
+      status: 'completed',
+      output: 'Sent file CLAUDE.md to chat-1: msg-file-1',
+    },
   } as any);
   await gateway.onBridgeEvent({
     type: 'reply',
@@ -1602,11 +1617,14 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     messageId: 'run-1-tool-1',
-    content: '🔧 Terminal: config - running',
+    bridgeKind: 'tool',
+    content: 'Terminal running',
     toolCall: {
       id: 'call-1',
       name: 'Terminal',
+      status: 'running',
       input: { command: 'uname -a', description: 'Get system info' },
+      output: '',
     },
   } as any);
   await gateway.onBridgeEvent({
@@ -1614,11 +1632,14 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     messageId: 'run-1-tool-1',
-    content: '🔧 Terminal: config - completed - Linux',
+    bridgeKind: 'tool',
+    content: 'Terminal completed',
     toolCall: {
       id: 'call-1',
       name: 'Terminal',
+      status: 'completed',
       input: { command: 'uname -a', description: 'Get system info' },
+      output: 'Linux',
     },
   } as any);
   await gateway.onBridgeEvent({
@@ -2029,7 +2050,8 @@ test('lark channel sends tool name and parameters once without streaming output'
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     messageId: 'tool-1',
-    content: '🔧 Terminal',
+    bridgeKind: 'tool',
+    content: 'Terminal running',
     toolCall: {
       id: 'tool-1',
       name: 'Terminal',
@@ -2043,7 +2065,8 @@ test('lark channel sends tool name and parameters once without streaming output'
     sessionKey: 'session:thread-1',
     replyCtx: 'run-1',
     messageId: 'tool-1',
-    content: '🔧 Terminal: ls ~/Desktop - completed - secret terminal output',
+    bridgeKind: 'tool',
+    content: 'Terminal completed',
     toolCall: {
       id: 'tool-1',
       name: 'Terminal',
@@ -2741,7 +2764,14 @@ test('lark rendering suppresses noisy pending tool progress cards', () => {
     sessionKey: 'session-1',
     replyCtx: 'run-1',
     previewHandle: 'tool-1',
-    content: '🔧 bash: Tool update - pending',
+    bridgeKind: 'tool',
+    content: 'bash pending',
+    toolCall: {
+      id: 'tool-1',
+      name: 'bash',
+      status: 'pending',
+      output: '',
+    },
   });
 
   assert.equal(rendered.text, '');
@@ -2752,7 +2782,14 @@ test('lark rendering suppresses noisy pending tool progress cards', () => {
     sessionKey: 'session-1',
     replyCtx: 'run-1',
     previewHandle: 'tool-1',
-    content: '🔧 bash: Tool update - completed - verbose output',
+    bridgeKind: 'tool',
+    content: 'bash completed',
+    toolCall: {
+      id: 'tool-1',
+      name: 'bash: Tool update',
+      status: 'completed',
+      output: 'verbose output',
+    },
   });
   assert.equal(completed.text, '🔧 bash: Tool update');
 });
@@ -3871,7 +3908,17 @@ test('weixin bridge sends tool progress in real time before final reply', async 
   });
 
   try {
-    await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: '🔧 list desktop' } as any);
+    await gateway.onBridgeEvent({
+      type: 'reply',
+      sessionKey: 'session:thread-1',
+      bridgeKind: 'tool',
+      content: 'list desktop',
+      toolCall: {
+        name: 'list desktop',
+        status: 'running',
+        output: '',
+      },
+    } as any);
     await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
 
     assert.equal(sentBodies.length, 2);
@@ -3879,7 +3926,7 @@ test('weixin bridge sends tool progress in real time before final reply', async 
     assert.equal(sentBodies[1]?.msg?.message_state, 2);
     assert.equal(sentBodies[0]?.msg?.context_token, 'ctx-1');
     assert.equal(sentBodies[1]?.msg?.context_token, 'ctx-1');
-    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 list desktop');
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '**处理中**\n• list desktop - running');
     assert.equal(sentBodies[1]?.msg?.item_list?.[0]?.text_item?.text, 'final reply');
   } finally {
     globalThis.fetch = originalFetch;
@@ -3940,7 +3987,13 @@ test('weixin bridge skips completed tool result updates but keeps final reply', 
     await gateway.onBridgeEvent({
       type: 'reply',
       sessionKey: 'session:thread-1',
-      content: '🔧 Tool update - completed - /Users/mochuxian/Desktop has many files and this result should not be sent',
+      bridgeKind: 'tool',
+      content: 'Tool update completed',
+      toolCall: {
+        name: 'Tool update',
+        status: 'completed',
+        output: '/Users/mochuxian/Desktop has many files and this result should not be sent',
+      },
     } as any);
     await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
 
@@ -4006,11 +4059,17 @@ test('weixin bridge keeps failed tool update status without execution details', 
     await gateway.onBridgeEvent({
       type: 'reply',
       sessionKey: 'session:thread-1',
-      content: '🔧 Tool update - failed - stack trace and command output should not be sent',
+      bridgeKind: 'tool',
+      content: 'Tool update failed',
+      toolCall: {
+        name: 'Tool update',
+        status: 'failed',
+        output: 'stack trace and command output should not be sent',
+      },
     } as any);
 
     assert.equal(sentBodies.length, 1);
-    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 Tool update - failed');
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '**处理中**\n• Tool update - failed');
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -4071,14 +4130,15 @@ test('weixin bridge folds progress after nine context sends and preserves final 
       await gateway.onBridgeEvent({
         type: 'reply',
         sessionKey: 'session:thread-1',
+        bridgeKind: 'status',
         content: `🔧 tool ${index}`,
       } as any);
     }
     await gateway.onBridgeEvent({ type: 'reply', sessionKey: 'session:thread-1', content: 'final reply' } as any);
 
     assert.equal(sentBodies.length, 10);
-    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '🔧 tool 1');
-    assert.equal(sentBodies[8]?.msg?.item_list?.[0]?.text_item?.text, '🔧 tool 9');
+    assert.equal(sentBodies[0]?.msg?.item_list?.[0]?.text_item?.text, '**处理中**\n• 🔧 tool 1');
+    assert.match(sentBodies[8]?.msg?.item_list?.[0]?.text_item?.text, /🔧 tool 9/);
     assert.doesNotMatch(
       sentBodies.map((body) => body?.msg?.item_list?.[0]?.text_item?.text || '').join('\n'),
       /🔧 tool 10|🔧 tool 11|🔧 tool 12/,

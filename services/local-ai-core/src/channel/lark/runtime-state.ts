@@ -24,12 +24,7 @@ export function createLarkTurnState(sessionKey: string, sourceMessageId?: string
 }
 
 export function foldToolResultForLark(content: string): string {
-  const normalized = String(content || '').trim();
-  if (!normalized.startsWith('🔧 ')) return normalized;
-
-  const parts = normalized.split(' - ');
-  if (parts.length <= 2) return normalized;
-  return parts.slice(0, 2).join(' - ');
+  return String(content || '').trim();
 }
 
 export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: string): string {
@@ -37,16 +32,15 @@ export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: str
   if (toolCall) {
     const name = String(toolCall.name || '').trim() || summarizeToolContentForLark(content);
     const input = formatToolInputForLark(toolCall.input);
-    return [name.startsWith('🔧 ') ? name : `🔧 ${name}`, input ? `参数：${input}` : '']
+    return [`🔧 ${name}`, input ? `参数：${input}` : '']
       .filter(Boolean)
       .join('\n\n');
   }
   return summarizeToolContentForLark(content);
 }
 
-export function isPendingToolProgressForLark(content: string) {
-  const normalized = foldToolResultForLark(content).toLowerCase();
-  return normalized.startsWith('🔧 ') && normalized.includes(' - pending');
+export function isPendingToolProgressForLark(event: DesktopBridgeEvent) {
+  return event.toolCall?.status.trim().toLowerCase() === 'pending';
 }
 
 export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridgeEvent, options: { mirrorPermissionStateInMainCard: boolean }) {
@@ -128,7 +122,7 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
       return { key: 'noop', text: '', buttonRows: [], isFinal: false };
     }
     if (bridgeKind === 'tool') {
-      if (isPendingToolProgressForLark(content)) {
+      if (isPendingToolProgressForLark(event)) {
         return { key: 'noop', text: '', buttonRows: [], isFinal: false };
       }
       return renderToolMessage(progressKey('tool', event), summarizeToolCallForLark(event, content));
@@ -136,19 +130,19 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
     return { key: 'noop', text: '', buttonRows: [], isFinal: false };
   }
   if (event.type === 'status') {
-    return renderProgressMessage(progressKey('status', event), content.startsWith('⏳ ') ? content : `⏳ ${content}`);
+    return renderProgressMessage(progressKey('status', event), `⏳ ${content}`);
   }
   if (event.type === 'reply') {
     if (bridgeKind === 'thought' || bridgeKind === 'plan') {
       return renderProgressMessage(progressKey(bridgeKind, event), renderProcessText(bridgeKind, content));
     }
     if (bridgeKind === 'tool') {
-      if (isPendingToolProgressForLark(content)) {
+      if (isPendingToolProgressForLark(event)) {
         return { key: 'noop', text: '', buttonRows: [], isFinal: false };
       }
       return renderToolMessage(progressKey('tool', event), summarizeToolCallForLark(event, content));
     }
-    if (content.startsWith('⏳ ') || content.startsWith('📤 ')) {
+    if (bridgeKind === 'status') {
       return renderProgressMessage(progressKey('status', event), content);
     }
     return {
@@ -243,9 +237,6 @@ function resolveBridgeEventKind(event: DesktopBridgeEvent) {
   if (event.bridgeKind) {
     return event.bridgeKind;
   }
-  const content = String(event.content || '').trim();
-  if (content.startsWith('🔧 ')) return 'tool';
-  if (content.startsWith('⏳ ') || content.startsWith('📤 ')) return 'status';
   return event.type === 'status' ? 'status' : 'assistant';
 }
 
@@ -255,15 +246,7 @@ function renderProcessText(kind: 'thought' | 'plan', content: string) {
 }
 
 function summarizeToolContentForLark(content: string) {
-  const normalized = String(content || '').trim();
-  if (!normalized.startsWith('🔧 ')) {
-    return normalized;
-  }
-  const withoutOutput = normalized.split(' - ')[0]?.trim() || normalized;
-  return withoutOutput
-    .replace(/\s+-\s*(running|pending|completed|failed|error|cancelled|canceled)\s*$/i, '')
-    .replace(/:\s*(running|pending|completed|failed|error|cancelled|canceled)\s*$/i, '')
-    .trim();
+  return String(content || '').trim();
 }
 
 function formatToolInputForLark(input: unknown) {
