@@ -278,6 +278,7 @@ export type AcpSessionState = {
   loadReplayMode: boolean;
   pendingPermissionByRun: Map<string, RunningPermissionRequest>;
   schedulerJobCreatedByRun: Map<string, boolean>;
+  pendingRawAssistantProgressChunks?: string[];
   closed: boolean;
   closeReason: string | null;
   promptPromise: Promise<{ stopReason?: string }> | null;

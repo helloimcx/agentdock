@@ -222,14 +222,18 @@ export class LocalCoreAcpSessionCoordinator {
 
   private buildSessionMeta(threadId: string, permissionModeOverride = '') {
     const mode = this.resolveLaunchPermissionMode(threadId, permissionModeOverride);
-    if (!mode) {
-      return undefined;
-    }
     return {
       claudeCode: {
-        options: {
-          permissionMode: mode,
-        },
+        emitRawSDKMessages: [
+          { type: 'system', subtype: 'local_command_output' },
+        ],
+        ...(mode
+          ? {
+              options: {
+                permissionMode: mode,
+              },
+            }
+          : {}),
       },
     };
   }

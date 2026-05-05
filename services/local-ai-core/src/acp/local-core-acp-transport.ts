@@ -52,6 +52,7 @@ export class LocalCoreAcpTransport {
       loadReplayMode: false,
       pendingPermissionByRun: new Map(),
       schedulerJobCreatedByRun: new Map(),
+      pendingRawAssistantProgressChunks: [],
       closed: false,
       closeReason: null,
       promptPromise: null,

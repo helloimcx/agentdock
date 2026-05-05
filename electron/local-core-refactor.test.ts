@@ -1095,6 +1095,124 @@ test('ACP bare tool call is flushed before assistant text', () => {
   assert.equal(session.currentTurn.assistantText, 'done');
 });
 
+test('ACP tool-scoped assistant chunks stay out of final assistant buffer', () => {
+  const appended: Array<{ content: string; bridgeKind?: string }> = [];
+  const emitted: Array<{ content?: string; type: string; bridgeKind?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content, _kind, _toolCall, bridgeKind) => appended.push({ content, bridgeKind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; bridgeKind?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        _meta: {
+          claudeCode: {
+            parentToolUseId: 'tool-1',
+          },
+        },
+        content: {
+          type: 'text',
+          text: 'tool scoped transcript',
+        },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'final answer' },
+      },
+    },
+  });
+
+  assert.deepEqual(appended, [{ content: 'tool scoped transcript', bridgeKind: 'tool' }]);
+  assert.equal(emitted[0]?.bridgeKind, 'tool');
+  assert.equal(emitted[0]?.content, 'tool scoped transcript');
+  assert.equal(session.currentTurn.assistantText, 'final answer');
+});
+
+test('ACP raw local command output assistant chunks stay out of final assistant buffer', () => {
+  const appended: Array<{ content: string; bridgeKind?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content, _kind, _toolCall, bridgeKind) => appended.push({ content, bridgeKind }),
+    emitBridge: () => {},
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+    pendingRawAssistantProgressChunks: [],
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: '_claude/sdkMessage',
+    params: {
+      message: {
+        type: 'system',
+        subtype: 'local_command_output',
+        content: 'raw command output',
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'raw command output' },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'final answer' },
+      },
+    },
+  });
+
+  assert.deepEqual(appended, [{ content: 'raw command output', bridgeKind: 'tool' }]);
+  assert.equal(session.currentTurn.assistantText, 'final answer');
+});
+
 test('ACP plan updates are persisted and emitted as thinking progress', () => {
   const appended: Array<{ content: string; kind: string }> = [];
   const emitted: Array<{ content?: string; type: string }> = [];
@@ -1439,6 +1557,80 @@ test('lark bridge sends final reply as its own card instead of streaming draft',
   assert.deepEqual(createdCards.map((card) => card.text), ['真正最终回答']);
   assert.deepEqual(patchedCards, []);
   assert.deepEqual(storedMessageIds, ['lark-msg-1']);
+});
+
+test('lark bridge creates final replies without patching prior final cards', async () => {
+  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const patchedCards: Array<{ messageId: string; text: string }> = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          const messageId = `lark-msg-${createdCards.length + 1}`;
+          const card = JSON.parse(String(request.data.content || '{}'));
+          createdCards.push({
+            messageId,
+            text: String(card.elements?.[0]?.content || ''),
+          });
+          return { data: { message_id: messageId } };
+        },
+        patch: async (request: any) => {
+          const card = JSON.parse(String(request.data.content || '{}'));
+          patchedCards.push({
+            messageId: String(request.path.message_id || ''),
+            text: String(card.elements?.[0]?.content || ''),
+          });
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      updatePlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: 'first final',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-2',
+    content: 'second final',
+  } as any);
+
+  assert.deepEqual(createdCards.map((card) => card.text), ['first final', 'second final']);
+  assert.deepEqual(patchedCards, []);
 });
 
 test('lark bridge sends tool and final as separate cards without patching tool progress', async () => {

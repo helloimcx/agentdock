@@ -203,7 +203,13 @@ test('ACP scheduled session can override permission mode without changing thread
     });
 
     assert.equal(closeCount, 1);
-    assert.equal(capturedSessionNewParams[1]?._meta, undefined);
+    assert.deepEqual(capturedSessionNewParams[1]?._meta, {
+      claudeCode: {
+        emitRawSDKMessages: [
+          { type: 'system', subtype: 'local_command_output' },
+        ],
+      },
+    });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }

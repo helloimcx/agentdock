@@ -207,7 +207,14 @@ export class LocalCoreAcpTurnCoordinator {
   }
 
   handleAgentNotification(session: AcpSessionState, payload: any) {
-    if (session.loadReplayMode || payload.method !== 'session/update') {
+    if (session.loadReplayMode) {
+      return;
+    }
+    if (payload.method === '_claude/sdkMessage') {
+      this.handleClaudeSdkMessage(session, payload.params?.message);
+      return;
+    }
+    if (payload.method !== 'session/update') {
       return;
     }
     const update = payload.params?.update;
@@ -220,6 +227,20 @@ export class LocalCoreAcpTurnCoordinator {
       case 'agent_message_chunk': {
         this.flushPendingToolCall(session);
         if (update.content?.type !== 'text') {
+          return;
+        }
+        if (isToolScopedAssistantUpdate(update) || consumeRawAssistantProgressChunk(session, String(update.content.text || ''))) {
+          const content = String(update.content.text || '').trim();
+          if (content) {
+            this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'tool');
+            this.options.emitBridge({
+              type: 'reply',
+              sessionKey: session.bridgeSessionKey,
+              replyCtx: currentRunId,
+              bridgeKind: 'tool',
+              content,
+            });
+          }
           return;
         }
         const projection = applyAssistantMessageChunk(currentTurn, String(update.content.text || ''));
@@ -348,6 +369,20 @@ export class LocalCoreAcpTurnCoordinator {
     }
   }
 
+  private handleClaudeSdkMessage(session: AcpSessionState, message: any) {
+    if (!session.currentTurn || message?.type !== 'system' || message?.subtype !== 'local_command_output') {
+      return;
+    }
+    const content = typeof message.content === 'string' ? message.content : '';
+    if (!content) {
+      return;
+    }
+    session.pendingRawAssistantProgressChunks = [
+      ...(session.pendingRawAssistantProgressChunks || []),
+      content,
+    ];
+  }
+
   private emitProgress(
     session: AcpSessionState,
     currentRunId: string,
@@ -371,6 +406,30 @@ export class LocalCoreAcpTurnCoordinator {
     });
   }
 
+}
+
+function isToolScopedAssistantUpdate(update: Record<string, unknown>) {
+  const meta = update._meta;
+  if (!meta || typeof meta !== 'object') {
+    return false;
+  }
+  const claudeCode = (meta as { claudeCode?: unknown }).claudeCode;
+  if (!claudeCode || typeof claudeCode !== 'object') {
+    return false;
+  }
+  const parentToolUseId = (claudeCode as { parentToolUseId?: unknown }).parentToolUseId;
+  return typeof parentToolUseId === 'string' && parentToolUseId.trim().length > 0;
+}
+
+function consumeRawAssistantProgressChunk(session: AcpSessionState, text: string) {
+  const pending = session.pendingRawAssistantProgressChunks || [];
+  const index = pending.findIndex((candidate) => candidate === text);
+  if (index < 0) {
+    return false;
+  }
+  pending.splice(index, 1);
+  session.pendingRawAssistantProgressChunks = pending;
+  return true;
 }
 
 function createToolCallPayload(input: {

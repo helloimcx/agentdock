@@ -188,7 +188,7 @@ function takePendingLarkThoughtRender(turn: LarkTurnState): LarkOutboundRender |
 
 export function getLarkRenderedMessageId(turn: LarkTurnState, rendered: LarkOutboundRender) {
   if (rendered.isFinal) {
-    return turn.finalMessageId || turn.replyMessageId;
+    return undefined;
   }
   return turn.progressMessageIds[rendered.key];
 }
