@@ -1357,7 +1357,7 @@ test('lark bridge sends completed thought once before final answer', async () =>
   } as any);
 
   assert.equal(createdCards.length, 2);
-  assert.equal(createdCards[0]?.text, '思考过程\n先理解问题，再检查代码');
+  assert.equal(createdCards[0]?.text, '先理解问题，再检查代码');
   assert.equal(createdCards[1]?.text, '最终回答');
   assert.equal(patchedCards.length, 0);
   assert.deepEqual(storedMessageIds, ['lark-msg-2']);
@@ -1658,9 +1658,9 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
   } as any);
 
   assert.deepEqual(createdCards.map((card) => card.text), [
-    '思考过程\n先理解用户需求',
+    '先理解用户需求',
     '🔧 Terminal\n\n参数：`{"command":"uname -a","description":"Get system info"}`',
-    '思考过程\n看到了 Linux',
+    '看到了 Linux',
     '最终回答',
   ]);
   assert.deepEqual(patchedCards, []);
@@ -1759,7 +1759,7 @@ test('lark bridge does not stream thought updates before completion', async () =
     replyCtx: 'run-1',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['思考过程\nThe user sent a short casual message. I should reply briefly.']);
+  assert.deepEqual(createdCards.map((card) => card.text), ['The user sent a short casual message. I should reply briefly.']);
   assert.deepEqual(patchedCards.map((card) => card.text), []);
   assert.ok(!createdCards.some((card) => /处理中|正在思考/.test(card.text)));
 });

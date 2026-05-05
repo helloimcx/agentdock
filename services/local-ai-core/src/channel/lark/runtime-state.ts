@@ -242,7 +242,7 @@ function resolveBridgeEventKind(event: DesktopBridgeEvent) {
 
 function renderProcessText(kind: 'thought' | 'plan', content: string) {
   const text = content.trim();
-  return kind === 'plan' ? `计划\n${text}` : `思考过程\n${text}`;
+  return kind === 'plan' ? `计划\n${text}` : text;
 }
 
 function summarizeToolContentForLark(content: string) {
