@@ -255,8 +255,10 @@ export class LocalCoreAcpBackend {
         sessionKey: row.bridge_session_key,
       },
     });
-    void this.runPrompt(threadId, runId, row.bridge_session_key, config, message, options).catch((error) => {
-      this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+    setImmediate(() => {
+      void this.runPrompt(threadId, runId, row.bridge_session_key, config, message, options).catch((error) => {
+        this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      });
     });
     return { runId };
   }

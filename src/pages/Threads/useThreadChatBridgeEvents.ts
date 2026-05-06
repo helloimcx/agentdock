@@ -20,6 +20,7 @@ import {
   isPermissionActionRow,
   normalizeBridgeActionRows,
   sessionProjectFromKey,
+  shouldAcceptLiveBridgeEvent,
   shouldReplacePreviewWithReply,
   type ChatMessage,
 } from './thread-chat-model';
@@ -54,12 +55,13 @@ type UseThreadChatBridgeEventsInput = {
   settlePreviewMessages: (turnKey?: string) => void;
 } & Pick<ThreadChatSharedHookContext, 'clearReplyTimeout' | 'updateTaskState'> &
   Pick<ThreadChatSharedHookContext, 'refreshThreadsForWorkspace' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
-  Pick<ThreadChatActiveThreadIdentity, 'activeBridgeSessionKey' | 'activeAgentType'> &
+  Pick<ThreadChatActiveThreadIdentity, 'activeBridgeSessionKey' | 'activeAgentType' | 'activeRunId'> &
   Pick<ThreadChatConversationRefs, 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
 
 export function useThreadChatBridgeEvents({
   activeAgentType,
   activeBridgeSessionKey,
+  activeRunId,
   armReplyTimeout,
   clearActionStatuses,
   clearReplyTimeout,
@@ -91,6 +93,13 @@ export function useThreadChatBridgeEvents({
     }
 
     if (!event.sessionKey || event.sessionKey !== activeBridgeSessionKey) {
+      return;
+    }
+    if (!shouldAcceptLiveBridgeEvent({
+      event,
+      activeRunId,
+      pendingTurn: pendingTurnRef.current,
+    })) {
       return;
     }
 
@@ -429,6 +438,7 @@ export function useThreadChatBridgeEvents({
     acpStreamingPreview,
     activeAgentType,
     activeBridgeSessionKey,
+    activeRunId,
     armReplyTimeout,
     clearActionStatuses,
     clearReplyTimeout,

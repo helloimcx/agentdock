@@ -19,6 +19,7 @@ import {
   findStreamingPreviewMessage,
   settlePreviewMessages,
   sortChatMessages,
+  shouldAcceptLiveBridgeEvent,
   shouldReplacePreviewWithReply,
   type ChatMessage,
 } from './thread-chat-model';
@@ -300,6 +301,57 @@ test('shouldReplacePreviewWithReply keeps thought previews when final answer arr
   assert.equal(shouldReplacePreviewWithReply(answerPreview, 'Hi! How can I help you today?', 'run-1'), true);
   assert.equal(shouldReplacePreviewWithReply(answerPreview, 'Hi! Final answer.', 'run-1'), true);
   assert.equal(shouldReplacePreviewWithReply(answerPreview, 'tool result', 'run-1', 'tool'), false);
+});
+
+test('shouldAcceptLiveBridgeEvent rejects stale events from the superseded run while a new turn is pending', () => {
+  const pendingTurn = {
+    sessionKey: 'session-1',
+    userOrder: 3,
+    supersededRunId: 'run-old',
+  };
+
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1', replyCtx: 'run-old' },
+    activeRunId: 'run-old',
+    pendingTurn,
+  }), false);
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1', replyCtx: 'run-new' },
+    activeRunId: 'run-old',
+    pendingTurn,
+  }), false);
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1', replyCtx: 'run-new' },
+    activeRunId: '',
+    pendingTurn,
+  }), true);
+});
+
+test('shouldAcceptLiveBridgeEvent pins live events to the current run once known', () => {
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1', replyCtx: 'run-current' },
+    activeRunId: 'run-current',
+    pendingTurn: null,
+  }), true);
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1', replyCtx: 'run-stale' },
+    activeRunId: 'run-current',
+    pendingTurn: null,
+  }), false);
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1', replyCtx: 'run-current' },
+    activeRunId: 'run-current',
+    pendingTurn: {
+      sessionKey: 'session-1',
+      userOrder: 1,
+      runId: 'run-current',
+    },
+  }), true);
+  assert.equal(shouldAcceptLiveBridgeEvent({
+    event: { sessionKey: 'session-1' },
+    activeRunId: 'run-current',
+    pendingTurn: null,
+  }), true);
 });
 
 test('finalizeTurnMessageKinds marks only the last non-progress turn message as final', () => {

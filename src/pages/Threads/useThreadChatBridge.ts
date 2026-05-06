@@ -28,7 +28,12 @@ type UseThreadChatBridgeInput = {
   setTyping: Dispatch<SetStateAction<boolean>>;
   updateTaskState: (next: ChatTaskState) => void;
   armReplyTimeout: (mode?: 'reply' | 'permission_continue') => void;
-  pendingTurnRef: MutableRefObject<{ sessionKey: string; userOrder: number } | null>;
+  pendingTurnRef: MutableRefObject<{
+    sessionKey: string;
+    userOrder: number;
+    runId?: string;
+    supersededRunId?: string;
+  } | null>;
   progressSequenceByTurnRef: MutableRefObject<Record<string, number>>;
   sendAction: (threadId: string, action: string) => Promise<{ runId: string }>;
   taskStateRef: MutableRefObject<ChatTaskState>;
@@ -38,6 +43,7 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
   useThreadChatBridgeEvents({
     activeAgentType: input.activeAgentType,
     activeBridgeSessionKey: input.activeBridgeSessionKey,
+    activeRunId: input.activeRunId,
     armReplyTimeout: input.armReplyTimeout,
     clearActionStatuses: input.clearActionStatuses,
     clearReplyTimeout: input.clearReplyTimeout,

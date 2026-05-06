@@ -17,7 +17,14 @@ export type ThreadChatRefreshThreadsForWorkspace = (
   workspaceId: string,
 ) => Promise<Array<{ id: string; bridgeSessionKey?: string }>>;
 
-export type ThreadChatPendingTurnRef = MutableRefObject<{ sessionKey: string; userOrder: number } | null>;
+export type ThreadChatPendingTurn = {
+  sessionKey: string;
+  userOrder: number;
+  runId?: string;
+  supersededRunId?: string;
+};
+
+export type ThreadChatPendingTurnRef = MutableRefObject<ThreadChatPendingTurn | null>;
 
 export type ThreadChatConversationRefs = {
   holdBlankComposerRef: MutableRefObject<boolean>;

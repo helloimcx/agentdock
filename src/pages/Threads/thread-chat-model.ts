@@ -1,6 +1,7 @@
 import type { Session } from '../../api/sessions';
 import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
 import type {
+  DesktopBridgeEvent,
   DesktopBridgeEventKind,
   DesktopBridgeStatus,
   DesktopBridgeButtonOption,
@@ -115,6 +116,35 @@ export function shouldReplacePreviewWithReply(
     !message.bridgeKind ||
     message.bridgeKind === 'assistant'
   ));
+}
+
+export function shouldAcceptLiveBridgeEvent(input: {
+  event: Pick<DesktopBridgeEvent, 'replyCtx' | 'sessionKey'>;
+  activeRunId?: string;
+  pendingTurn?: {
+    sessionKey: string;
+    userOrder?: number;
+    runId?: string;
+    supersededRunId?: string;
+  } | null;
+}) {
+  const replyCtx = String(input.event.replyCtx || '').trim();
+  if (!replyCtx) {
+    return true;
+  }
+  const activeRunId = String(input.activeRunId || '').trim();
+  const pendingTurn = input.pendingTurn;
+  if (pendingTurn && pendingTurn.sessionKey === input.event.sessionKey) {
+    const pendingRunId = String(pendingTurn.runId || '').trim();
+    if (pendingRunId) {
+      return replyCtx === pendingRunId;
+    }
+    const supersededRunId = String(pendingTurn.supersededRunId || '').trim();
+    if (supersededRunId && replyCtx === supersededRunId) {
+      return false;
+    }
+  }
+  return !activeRunId || replyCtx === activeRunId;
 }
 
 export function settlePreviewMessages(messages: ChatMessage[], turnKey?: string) {

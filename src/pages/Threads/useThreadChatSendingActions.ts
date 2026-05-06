@@ -139,7 +139,12 @@ export function useThreadChatSendingActions({
         sessionKey: ensured.sessionKey,
         selectedKnowledgeBaseIds,
       });
-      pendingTurnRef.current = { sessionKey: ensured.sessionKey, userOrder };
+      pendingTurnRef.current = {
+        sessionKey: ensured.sessionKey,
+        userOrder,
+        runId: isAwaitingReply ? activeRunId : undefined,
+        supersededRunId: isAwaitingReply ? undefined : activeRunId,
+      };
       setPendingPermissionRequest(null);
       setMessages((current) => [
         ...current,
@@ -157,6 +162,16 @@ export function useThreadChatSendingActions({
           ? await sendThreadAction(ensured.id, payloadContent)
           : await sendThreadMessage(ensured.id, payloadContent);
         setActiveRunId(result.runId);
+        if (
+          pendingTurnRef.current &&
+          pendingTurnRef.current.sessionKey === ensured.sessionKey &&
+          pendingTurnRef.current.userOrder === userOrder
+        ) {
+          pendingTurnRef.current = {
+            ...pendingTurnRef.current,
+            runId: result.runId,
+          };
+        }
       } else {
         throw new Error('Managed desktop thread transport is unavailable.');
       }
@@ -172,6 +187,7 @@ export function useThreadChatSendingActions({
       setSending(false);
     }
   }, [
+    activeRunId,
     armReplyTimeout,
     buildMessageContent,
     clearReplyTimeout,
