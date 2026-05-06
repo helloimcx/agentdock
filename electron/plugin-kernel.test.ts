@@ -295,6 +295,7 @@ type = "hermes"
     assert.equal(route?.agentType, 'hermes');
     assert.equal(route?.config.command, 'hermes');
     assert.deepEqual(route?.config.args, ['acp']);
+    assert.equal(route?.config.env?.HERMES_YOLO_MODE, '1');
     assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), [
       {
         id: 'hermes-workspace',

@@ -13,6 +13,9 @@ export const hermesAgentDefinition: AgentRuntimeDefinition = {
     return {
       command: 'hermes',
       args: ['acp'],
+      env: {
+        HERMES_YOLO_MODE: '1',
+      },
     };
   },
 };
