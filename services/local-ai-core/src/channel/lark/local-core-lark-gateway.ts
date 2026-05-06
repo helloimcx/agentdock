@@ -431,7 +431,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const sessionKey = event.sessionKey;
     const route = this.threadRouting.get(sessionKey);
     if (!route) {
-      this.options.log?.(`localcore-lark bridge route miss for sessionKey=${sessionKey} type=${event.type}`);
       return;
     }
     const routeInstanceId = route.instanceId || 'default';
@@ -542,9 +541,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
               Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
                 renderedMessage.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
               );
-            this.options.log?.(
-              `localcore-lark bridge event type=${event.type} sessionKey=${sessionKey} hasMessageId=${Boolean(existingMessageId)} throttle=${shouldThrottle}`,
-            );
             if (shouldThrottle) {
               continue;
             }

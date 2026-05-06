@@ -15,7 +15,6 @@ import {
   taskStateReasonForBridgeButtons,
 } from './thread-chat-task-state';
 import {
-  advancePreviewContent,
   finalizeTurnMessageKinds,
   findStreamingPreviewMessage,
   settlePreviewMessages,
@@ -227,8 +226,7 @@ test('reply replacement removes only the matching answer preview from a multi-me
     {
       id: 'thought-preview',
       role: 'assistant',
-      content: 'checking',
-      streamTargetContent: 'checking the request',
+      content: 'checking the request',
       kind: 'progress',
       bridgeKind: 'thought',
       order: 1,
@@ -239,8 +237,7 @@ test('reply replacement removes only the matching answer preview from a multi-me
     {
       id: 'answer-preview',
       role: 'assistant',
-      content: 'Hi',
-      streamTargetContent: 'Hi! How can I help you today?',
+      content: 'Hi! How can I help you today?',
       kind: 'progress',
       order: 2,
       turnKey: 'run-1',
@@ -280,8 +277,7 @@ test('shouldReplacePreviewWithReply keeps thought previews when final answer arr
   const thoughtPreview: ChatMessage = {
     id: 'thought-preview',
     role: 'assistant',
-    content: 'checking',
-    streamTargetContent: 'checking the request',
+    content: 'checking the request',
     kind: 'progress',
     bridgeKind: 'thought',
     order: 0,
@@ -292,8 +288,7 @@ test('shouldReplacePreviewWithReply keeps thought previews when final answer arr
   const answerPreview: ChatMessage = {
     id: 'answer-preview',
     role: 'assistant',
-    content: 'Hi',
-    streamTargetContent: 'Hi! How can I help you today?',
+    content: 'Hi! How can I help you today?',
     kind: 'progress',
     order: 1,
     turnKey: 'run-1',
@@ -426,8 +421,7 @@ test('settlePreviewMessages settles only previews for the requested turn', () =>
     {
       id: 'preview-1',
       role: 'assistant',
-      content: 'Hel',
-      streamTargetContent: 'Hello',
+      content: 'Hello',
       kind: 'progress',
       order: 1,
       turnKey: 'run-1',
@@ -437,8 +431,7 @@ test('settlePreviewMessages settles only previews for the requested turn', () =>
     {
       id: 'preview-2',
       role: 'assistant',
-      content: 'Wor',
-      streamTargetContent: 'World',
+      content: 'World',
       kind: 'progress',
       order: 2,
       turnKey: 'run-2',
@@ -451,14 +444,8 @@ test('settlePreviewMessages settles only previews for the requested turn', () =>
 
   assert.equal(settled[0]?.content, 'Hello');
   assert.equal(settled[0]?.preview, false);
-  assert.equal(settled[1]?.content, 'Wor');
+  assert.equal(settled[1]?.content, 'World');
   assert.equal(settled[1]?.preview, true);
-});
-
-test('advancePreviewContent moves monotonically toward the target content', () => {
-  assert.equal(advancePreviewContent('', 'Hello'), 'H');
-  assert.equal(advancePreviewContent('Hel', 'Hello'), 'Hello');
-  assert.equal(advancePreviewContent('Mismatch', 'Hello'), 'H');
 });
 
 test('tool result card prefers structured tool call fields', () => {

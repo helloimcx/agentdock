@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type { ThreadDetail } from '../../../packages/contracts/src';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
-  advancePreviewContent,
   finalizeTurnMessageKinds,
   formatTaskHint,
   isTaskInputLocked,
@@ -175,42 +174,6 @@ export function useThreadChatConversationState({
     setThreadGroups,
     setPendingPermissionRequest,
   ]);
-
-  useEffect(() => {
-    const hasPendingPreview = messages.some((message) =>
-      message.preview &&
-      message.previewPlainText &&
-      typeof message.streamTargetContent === 'string' &&
-      message.streamTargetContent !== message.content,
-    );
-    if (!hasPendingPreview) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      setMessages((current) => {
-        let changed = false;
-        const next = current.map((message) => {
-          if (
-            !message.preview ||
-            !message.previewPlainText ||
-            typeof message.streamTargetContent !== 'string' ||
-            message.streamTargetContent === message.content
-          ) {
-            return message;
-          }
-          changed = true;
-          return {
-            ...message,
-            content: advancePreviewContent(message.content, message.streamTargetContent),
-          };
-        });
-        return changed ? next : current;
-      });
-    }, 32);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [messages]);
 
   return {
     applyLocalCoreThreadDetail,

@@ -443,7 +443,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     const sessionKey = event.sessionKey;
     const route = this.threadRouting.get(sessionKey);
     if (!route) {
-      this.options.log?.(`localcore-weixin bridge route miss for sessionKey=${sessionKey} type=${event.type}`);
       return;
     }
     const routeInstanceId = route.instanceId || 'default';

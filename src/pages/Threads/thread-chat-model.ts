@@ -20,7 +20,6 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   toolCall?: DesktopBridgeToolCall;
-  streamTargetContent?: string;
   kind?: 'final' | 'progress';
   bridgeKind?: DesktopBridgeEventKind;
   bridgeStatus?: DesktopBridgeStatus;
@@ -111,27 +110,11 @@ export function shouldReplacePreviewWithReply(
   ) {
     return false;
   }
-  const content = message.streamTargetContent ?? message.content;
   return Boolean(replyContent && (
-    content === replyContent ||
+    message.content === replyContent ||
     !message.bridgeKind ||
     message.bridgeKind === 'assistant'
   ));
-}
-
-export function advancePreviewContent(content: string, target: string) {
-  if (!target) {
-    return '';
-  }
-  if (!content || !target.startsWith(content)) {
-    return target.slice(0, Math.min(target.length, Math.max(1, Math.ceil(target.length / 24))));
-  }
-  if (content === target) {
-    return target;
-  }
-  const remaining = target.length - content.length;
-  const step = remaining > 160 ? 14 : remaining > 80 ? 8 : remaining > 24 ? 4 : 2;
-  return target.slice(0, Math.min(target.length, content.length + step));
 }
 
 export function settlePreviewMessages(messages: ChatMessage[], turnKey?: string) {
@@ -146,8 +129,6 @@ export function settlePreviewMessages(messages: ChatMessage[], turnKey?: string)
     changed = true;
     return {
       ...message,
-      content: message.streamTargetContent ?? message.content,
-      streamTargetContent: undefined,
       preview: false,
       previewPlainText: false,
     };

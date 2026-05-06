@@ -1869,6 +1869,32 @@ test('ACP store preserves structured tool call progress metadata', () => {
   }
 });
 
+test('channel gateways ignore unowned bridge events without route miss log noise', async () => {
+  const logs: string[] = [];
+  const commonOptions = {
+    store: {} as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+    log: (line: string) => logs.push(line),
+  };
+  const larkGateway = new LocalCoreLarkGateway(commonOptions as any);
+  const weixinGateway = new LocalCoreWeixinGateway(commonOptions as any);
+
+  await larkGateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'localcore-acp:project-1:thread-1',
+    content: 'stream chunk',
+  } as any);
+  await weixinGateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'localcore-acp:project-1:thread-1',
+    content: 'stream chunk',
+  } as any);
+
+  assert.deepEqual(logs, []);
+});
+
 test('lark bridge sends completed thought once before final answer', async () => {
   const createdCards: Array<{ messageId: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];

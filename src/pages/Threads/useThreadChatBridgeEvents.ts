@@ -85,12 +85,6 @@ export function useThreadChatBridgeEvents({
   }, [taskStateRef, updateTaskState]);
 
   const handleBridgeEvent = useCallback((event: DesktopBridgeEvent) => {
-    console.info('[desktop-chat] bridge_event', {
-      type: event.type,
-      sessionKey: event.sessionKey,
-      replyCtx: event.replyCtx,
-      taskState: taskStateRef.current,
-    });
     const eventWorkspaceId = sessionProjectFromKey(event.sessionKey);
     if (eventWorkspaceId && shouldRefreshThreadListForBridgeEvent(event)) {
       void refreshThreadsForWorkspace(eventWorkspaceId);
@@ -117,8 +111,7 @@ export function useThreadChatBridgeEvents({
             next.push({
               id: previewId,
               role: 'assistant',
-              content: acpStreamingPreview ? existing?.content || '' : event.content || '',
-              streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+              content: event.content || '',
               kind: 'progress',
               bridgeKind: event.bridgeKind,
               bridgeStatus: event.bridgeStatus,
@@ -145,8 +138,7 @@ export function useThreadChatBridgeEvents({
           next.push({
             id: previewId,
             role: 'assistant',
-            content: acpStreamingPreview ? existing?.content || '' : event.content || '',
-            streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+            content: event.content || '',
             kind: 'progress',
             bridgeKind: event.bridgeKind,
             bridgeStatus: event.bridgeStatus,
@@ -176,8 +168,7 @@ export function useThreadChatBridgeEvents({
                   message.id === existing.id
                     ? {
                         ...message,
-                        content: acpStreamingPreview ? message.content : event.content || '',
-                        streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+                        content: event.content || '',
                         bridgeKind: event.bridgeKind,
                         bridgeStatus: event.bridgeStatus,
                         preview: true,
@@ -191,8 +182,7 @@ export function useThreadChatBridgeEvents({
                 {
                   id: event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`,
                   role: 'assistant',
-                  content: acpStreamingPreview ? '' : event.content || '',
-                  streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+                  content: event.content || '',
                   kind: 'progress',
                   bridgeKind: event.bridgeKind,
                   bridgeStatus: event.bridgeStatus,
@@ -221,8 +211,7 @@ export function useThreadChatBridgeEvents({
                 message.id === existing.id
                   ? {
                       ...message,
-                      content: acpStreamingPreview ? message.content : event.content || '',
-                      streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+                      content: event.content || '',
                       bridgeKind: event.bridgeKind,
                       bridgeStatus: event.bridgeStatus,
                       preview: true,
@@ -236,8 +225,7 @@ export function useThreadChatBridgeEvents({
               {
                 id: event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`,
                 role: 'assistant',
-                content: acpStreamingPreview ? '' : event.content || '',
-                streamTargetContent: acpStreamingPreview ? event.content || '' : undefined,
+                content: event.content || '',
                 kind: 'progress',
                 bridgeKind: event.bridgeKind,
                 bridgeStatus: event.bridgeStatus,
