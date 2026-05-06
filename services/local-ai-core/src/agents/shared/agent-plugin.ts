@@ -2,6 +2,7 @@ import type { ConfigFileState, DesktopProjectConfig } from '../../../../../packa
 import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext } from '../../../../../packages/plugin-sdk/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 import { toLocalCoreProjectConfig } from '../../router/workspace-route-config.js';
+import type { AgentRuntimeDefinition } from './definition.js';
 
 function createRuntime(agentType: string, match: (normalizedAgentType: string) => boolean, displayName?: string): AgentRuntime {
   return {
@@ -31,31 +32,35 @@ function createRuntime(agentType: string, match: (normalizedAgentType: string) =
 }
 
 export function createBuiltinAgentPlugin(options: {
-  pluginId: string;
-  agentType: string;
+  pluginId?: string;
+  agentType?: string;
+  definition?: AgentRuntimeDefinition;
   match: (normalizedAgentType: string) => boolean;
   displayName?: string;
 }): AgentPlugin {
+  const agentType = options.definition?.agentType || options.agentType || '';
+  const displayName = options.definition?.displayName || options.displayName || agentType;
+  const pluginId = options.pluginId || `builtin.agent-${agentType}`;
   let runtime: AgentRuntime | null = null;
   return {
     manifest: {
-      id: options.pluginId,
+      id: pluginId,
       kind: 'agent',
       version: '0.1.0',
-      provides: [`agent:${options.agentType}`],
+      provides: [`agent:${agentType}`],
     },
     capabilities: {
       agents: [
         {
-          id: `agent.${options.agentType}`,
-          agentType: options.agentType,
-          displayName: options.displayName || options.agentType,
+          id: `agent.${agentType}`,
+          agentType,
+          displayName,
         },
       ],
     },
     createRuntime(_ctx: PluginContext) {
       if (!runtime) {
-        runtime = createRuntime(options.agentType, options.match, options.displayName);
+        runtime = createRuntime(agentType, options.match, displayName);
       }
       return { runtime };
     },

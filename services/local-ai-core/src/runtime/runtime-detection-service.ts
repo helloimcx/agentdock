@@ -3,6 +3,7 @@ import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   LOCALCORE_ACP_AGENT_TYPE,
 } from '../../../../shared/desktop.js';
+import { resolveAgentRuntimeDefinition } from '../agents/index.js';
 import { detectInstalledAgentRuntimes, type AgentRuntimeDetectionOptions } from './agent-runtime-detector.js';
 import { RuntimeDetectionStore } from './runtime-detection-store.js';
 
@@ -149,17 +150,5 @@ function changedRuntimes(previous: InstalledAgentRuntime[], next: InstalledAgent
 }
 
 function displayName(agentType: string) {
-  const names: Record<string, string> = {
-    pi: 'Pi',
-    opencode: 'OpenCode',
-    codex: 'Codex',
-    claudecode: 'Claude Code',
-    cursor: 'Cursor',
-    gemini: 'Gemini',
-    qoder: 'Qoder',
-    iflow: 'iFlow',
-    hermes: 'Hermes',
-    [LOCALCORE_ACP_AGENT_TYPE]: 'LocalCore ACP',
-  };
-  return names[agentType] || agentType;
+  return resolveAgentRuntimeDefinition(agentType)?.displayName || agentType;
 }

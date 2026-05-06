@@ -1,28 +1,76 @@
 import type { RuntimePlugin } from '../../../../packages/plugin-sdk/src/index.js';
 import type { AgentAcpBehavior } from './shared/acp-behavior.js';
 import { standardAcpBehavior } from './shared/acp-behavior.js';
-import { codexAcpBehavior } from './codex/index.js';
-import { claudeCodeAcpBehavior } from './claudecode/index.js';
-import { hermesAcpBehavior } from './hermes/index.js';
-import { localCoreAcpBehavior } from './localcore-acp/index.js';
-import { opencodeAcpBehavior } from './opencode/index.js';
-import { piAcpBehavior } from './pi/index.js';
+import type { AgentRuntimeDefinition } from './shared/definition.js';
+import { agentDefinitionMatches, normalizeAgentType } from './shared/definition.js';
+import { codexAgentDefinition } from './codex/index.js';
+import { claudeCodeAgentDefinition } from './claudecode/index.js';
+import { hermesAgentDefinition } from './hermes/index.js';
+import { localCoreAcpAgentDefinition } from './localcore-acp/index.js';
+import { opencodeAgentDefinition } from './opencode/index.js';
+import { piAgentDefinition } from './pi/index.js';
 
-const AGENT_ACP_BEHAVIORS: Record<string, AgentAcpBehavior> = {
-  codex: codexAcpBehavior,
-  claudecode: claudeCodeAcpBehavior,
-  hermes: hermesAcpBehavior,
-  'localcore-acp': localCoreAcpBehavior,
-  opencode: opencodeAcpBehavior,
-  pi: piAcpBehavior,
-};
+const STATIC_AGENT_DEFINITIONS: AgentRuntimeDefinition[] = [
+  {
+    agentType: 'cursor',
+    displayName: 'Cursor',
+    behavior: standardAcpBehavior,
+    detection: { commandCandidates: ['cursor-agent', 'cursor'], versionArgs: ['--version'] },
+  },
+  {
+    agentType: 'gemini',
+    displayName: 'Gemini',
+    behavior: standardAcpBehavior,
+    detection: { commandCandidates: ['gemini'], versionArgs: ['--version'] },
+  },
+  {
+    agentType: 'qoder',
+    displayName: 'Qoder',
+    behavior: standardAcpBehavior,
+    detection: { commandCandidates: ['qoder'], versionArgs: ['--version'] },
+  },
+  {
+    agentType: 'iflow',
+    displayName: 'iFlow',
+    behavior: standardAcpBehavior,
+    detection: { commandCandidates: ['iflow'], versionArgs: ['--version'] },
+  },
+];
 
-export function resolveAgentAcpBehavior(agentType?: string | null): AgentAcpBehavior {
-  const normalized = String(agentType || '').trim().toLowerCase();
-  return AGENT_ACP_BEHAVIORS[normalized] || standardAcpBehavior;
+const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
+  piAgentDefinition,
+  opencodeAgentDefinition,
+  codexAgentDefinition,
+  claudeCodeAgentDefinition,
+  hermesAgentDefinition,
+  localCoreAcpAgentDefinition,
+  ...STATIC_AGENT_DEFINITIONS,
+];
+
+const AGENT_RUNTIME_DEFINITIONS_BY_TYPE = new Map(
+  AGENT_RUNTIME_DEFINITIONS.map((definition) => [definition.agentType, definition]),
+);
+
+export function getAgentRuntimeDefinitions() {
+  return [...AGENT_RUNTIME_DEFINITIONS];
 }
 
-export function createBuiltinStaticAgentCapabilityPlugin(agentType: string): RuntimePlugin {
+export function getStaticAgentRuntimeDefinitions() {
+  return [...STATIC_AGENT_DEFINITIONS];
+}
+
+export function resolveAgentRuntimeDefinition(agentType?: string | null): AgentRuntimeDefinition | null {
+  const normalized = normalizeAgentType(agentType);
+  return AGENT_RUNTIME_DEFINITIONS_BY_TYPE.get(normalized)
+    || AGENT_RUNTIME_DEFINITIONS.find((definition) => agentDefinitionMatches(definition, normalized))
+    || null;
+}
+
+export function resolveAgentAcpBehavior(agentType?: string | null): AgentAcpBehavior {
+  return resolveAgentRuntimeDefinition(agentType)?.behavior || standardAcpBehavior;
+}
+
+export function createBuiltinStaticAgentCapabilityPlugin(agentType: string, displayName = agentType): RuntimePlugin {
   return {
     manifest: {
       id: `builtin.agent-${agentType}`,
@@ -35,7 +83,7 @@ export function createBuiltinStaticAgentCapabilityPlugin(agentType: string): Run
         {
           id: `agent.${agentType}`,
           agentType,
-          displayName: agentType,
+          displayName,
         },
       ],
     },
@@ -49,3 +97,4 @@ export { createBuiltinLocalCoreAcpAgentPlugin } from './localcore-acp/index.js';
 export { createBuiltinOpencodeAgentPlugin } from './opencode/index.js';
 export { createBuiltinPiAgentPlugin } from './pi/index.js';
 export type { AgentAcpBehavior } from './shared/acp-behavior.js';
+export type { AgentRuntimeDefinition } from './shared/definition.js';

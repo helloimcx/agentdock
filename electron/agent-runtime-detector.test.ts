@@ -4,6 +4,16 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { detectInstalledAgentRuntimes } from '../services/local-ai-core/src/runtime/agent-runtime-detector.js';
+import { resolveAgentRuntimeDefinition } from '../services/local-ai-core/src/agents/index.js';
+
+test('agent runtime definitions own runtime detection metadata', () => {
+  assert.deepEqual(resolveAgentRuntimeDefinition('hermes')?.detection?.commandCandidates, ['hermes']);
+  assert.deepEqual(resolveAgentRuntimeDefinition('codex')?.detection?.bundledRuntimes?.[0], {
+    packageName: '@zed-industries/codex-acp',
+    candidates: ['bin/codex-acp.js'],
+  });
+  assert.equal(resolveAgentRuntimeDefinition('localcore-acp')?.detection?.builtin, true);
+});
 
 test('agent runtime detector only marks commands present on PATH as installed', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-detector-'));

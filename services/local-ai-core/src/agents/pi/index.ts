@@ -1,13 +1,13 @@
 import { createBuiltinAgentPlugin } from '../shared/agent-plugin.js';
 import { piAcpBehavior } from './behavior.js';
+import { piAgentDefinition } from './definition.js';
 
 export { piAcpBehavior };
+export { piAgentDefinition };
 
 export function createBuiltinPiAgentPlugin() {
   return createBuiltinAgentPlugin({
-    pluginId: 'builtin.agent-pi',
-    agentType: 'pi',
+    definition: piAgentDefinition,
     match: (normalizedAgentType) => normalizedAgentType === 'pi',
-    displayName: 'Pi',
   });
 }

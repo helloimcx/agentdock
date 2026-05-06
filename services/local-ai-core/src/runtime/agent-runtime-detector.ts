@@ -5,11 +5,9 @@ import { execFileSync } from 'node:child_process';
 import type { DesktopConnectConfig, InstalledAgentRuntime } from '../../../../packages/contracts/src/index.js';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
-  DESKTOP_CODEX_ACP_PACKAGE,
-  DESKTOP_CLAUDECODE_ACP_PACKAGE,
-  DESKTOP_PI_CODING_AGENT_PACKAGE,
   LOCALCORE_ACP_AGENT_TYPE,
 } from '../../../../shared/desktop.js';
+import { resolveAgentRuntimeDefinition } from '../agents/index.js';
 
 export interface AgentRuntimeDetectionOptions {
   env?: NodeJS.ProcessEnv;
@@ -19,43 +17,6 @@ export interface AgentRuntimeDetectionOptions {
   versionTimeoutMs?: number;
 }
 
-const DISPLAY_NAMES: Record<string, string> = {
-  pi: 'Pi',
-  opencode: 'OpenCode',
-  codex: 'Codex',
-  claudecode: 'Claude Code',
-  cursor: 'Cursor',
-  gemini: 'Gemini',
-  qoder: 'Qoder',
-  iflow: 'iFlow',
-  hermes: 'Hermes',
-  [LOCALCORE_ACP_AGENT_TYPE]: 'LocalCore ACP',
-};
-
-const COMMAND_CANDIDATES: Record<string, string[]> = {
-  pi: ['pi'],
-  opencode: ['opencode'],
-  codex: ['codex-acp', 'codex'],
-  claudecode: ['claude-agent-acp', 'claude'],
-  cursor: ['cursor-agent', 'cursor'],
-  gemini: ['gemini'],
-  qoder: ['qoder'],
-  iflow: ['iflow'],
-  hermes: ['hermes'],
-};
-
-const VERSION_ARGUMENTS: Record<string, string[]> = {
-  pi: ['--version'],
-  opencode: ['--version'],
-  codex: ['--version'],
-  claudecode: ['--version'],
-  cursor: ['--version'],
-  gemini: ['--version'],
-  qoder: ['--version'],
-  iflow: ['--version'],
-  hermes: ['--version'],
-};
-
 export function detectInstalledAgentRuntimes(
   options: AgentRuntimeDetectionOptions = {},
 ): InstalledAgentRuntime[] {
@@ -64,7 +25,9 @@ export function detectInstalledAgentRuntimes(
   const detectedAt = (options.now || new Date()).toISOString();
   const versionTimeoutMs = options.versionTimeoutMs ?? 2500;
   return DESKTOP_AGENT_TYPE_OPTIONS.map((agentType) => {
-    if (agentType === LOCALCORE_ACP_AGENT_TYPE) {
+    const definition = resolveAgentRuntimeDefinition(agentType);
+    const detection = definition?.detection;
+    if (detection?.builtin || agentType === LOCALCORE_ACP_AGENT_TYPE) {
       return {
         agentType,
         runtimeId: agentType,
@@ -87,22 +50,18 @@ export function detectInstalledAgentRuntimes(
         : missingRuntime(agentType, detectedAt, `Configured command not found: ${configured}`);
     }
 
-    if (agentType === 'pi' || agentType === 'codex' || agentType === 'claudecode') {
-      const bundled = agentType === 'pi'
-        ? resolveBundledAcpPackage(options.requireFrom, DESKTOP_PI_CODING_AGENT_PACKAGE, ['dist/cli.js'])
-        : agentType === 'codex'
-          ? resolveBundledAcpPackage(options.requireFrom, DESKTOP_CODEX_ACP_PACKAGE, ['bin/codex-acp.js'])
-          : resolveBundledAcpPackage(options.requireFrom, DESKTOP_CLAUDECODE_ACP_PACKAGE, [
-            'dist/cli.js',
-            'bin/claude-agent-acp.js',
-            'cli.js',
-          ]);
+    for (const bundledRuntime of detection?.bundledRuntimes || []) {
+      const bundled = resolveBundledAcpPackage(
+        options.requireFrom,
+        bundledRuntime.packageName,
+        bundledRuntime.candidates,
+      );
       if (bundled) {
         return installedRuntime(agentType, bundled, 'bundled', detectedAt, env, versionTimeoutMs);
       }
     }
 
-    for (const command of COMMAND_CANDIDATES[agentType] || [agentType]) {
+    for (const command of detection?.commandCandidates || [agentType]) {
       const resolved = resolveCommand(command, env);
       if (resolved) {
         return installedRuntime(agentType, resolved, 'path', detectedAt, env, versionTimeoutMs);
@@ -178,7 +137,7 @@ function missingRuntime(agentType: string, detectedAt: string, error?: string): 
 }
 
 function displayName(agentType: string) {
-  return DISPLAY_NAMES[agentType] || agentType;
+  return resolveAgentRuntimeDefinition(agentType)?.displayName || agentType;
 }
 
 function collectConfiguredAgentCommands(config?: DesktopConnectConfig | null) {
@@ -239,7 +198,7 @@ function detectRuntimeVersion(
   env: NodeJS.ProcessEnv,
   timeoutMs: number,
 ): Pick<InstalledAgentRuntime, 'version'> & { issue?: InstalledAgentRuntime['issues'][number] } {
-  const args = VERSION_ARGUMENTS[agentType];
+  const args = resolveAgentRuntimeDefinition(agentType)?.detection?.versionArgs;
   if (!args || agentType === LOCALCORE_ACP_AGENT_TYPE) {
     return {};
   }

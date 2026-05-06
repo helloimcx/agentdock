@@ -35,6 +35,7 @@ import {
   createBuiltinOpencodeAgentPlugin,
   createBuiltinPiAgentPlugin,
   createBuiltinStaticAgentCapabilityPlugin,
+  getStaticAgentRuntimeDefinitions,
 } from '../agents/index.js';
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
 import { createBuiltinWeixinChannelPlugin } from '../plugins/builtin/channel-weixin-plugin.js';
@@ -92,8 +93,8 @@ export function bootstrapLocalCoreKernel(options?: {
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
   const builtIns = [
-    ...['cursor', 'gemini', 'qoder', 'iflow'].map((agentType) =>
-      createBuiltinStaticAgentCapabilityPlugin(agentType)
+    ...getStaticAgentRuntimeDefinitions().map((definition) =>
+      createBuiltinStaticAgentCapabilityPlugin(definition.agentType, definition.displayName)
     ),
     createBuiltinLocalCoreAcpAgentPlugin(),
     createBuiltinCronSchedulerPlugin(),

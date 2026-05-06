@@ -1,13 +1,13 @@
 import { createBuiltinAgentPlugin } from '../shared/agent-plugin.js';
 import { hermesAcpBehavior } from './behavior.js';
+import { hermesAgentDefinition } from './definition.js';
 
 export { hermesAcpBehavior };
+export { hermesAgentDefinition };
 
 export function createBuiltinHermesAgentPlugin() {
   return createBuiltinAgentPlugin({
-    pluginId: 'builtin.agent-hermes',
-    agentType: 'hermes',
+    definition: hermesAgentDefinition,
     match: (normalizedAgentType) => normalizedAgentType === 'hermes',
-    displayName: 'Hermes',
   });
 }

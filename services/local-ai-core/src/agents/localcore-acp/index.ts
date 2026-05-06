@@ -1,15 +1,15 @@
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 import { createBuiltinAgentPlugin } from '../shared/agent-plugin.js';
 import { localCoreAcpBehavior } from './behavior.js';
+import { localCoreAcpAgentDefinition } from './definition.js';
 
 export { localCoreAcpBehavior };
+export { localCoreAcpAgentDefinition };
 
 export function createBuiltinLocalCoreAcpAgentPlugin() {
   const plugin = createBuiltinAgentPlugin({
-    pluginId: 'builtin.agent-localcore-acp',
-    agentType: LOCALCORE_ACP_AGENT_TYPE,
+    definition: localCoreAcpAgentDefinition,
     match: (normalizedAgentType) => !normalizedAgentType || normalizedAgentType === 'acp' || normalizedAgentType === LOCALCORE_ACP_AGENT_TYPE,
-    displayName: 'LocalCore ACP',
   });
   plugin.capabilities = {
     ...plugin.capabilities,
