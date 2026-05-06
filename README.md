@@ -13,6 +13,10 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## New
 
+### 2026-05-07
+
+- 发布 AgentDock 0.1.33。
+
 ### 2026-05-06
 
 - 新增 Hermes 原生 ACP runtime，可通过 `agent.type = "hermes"` 使用 `hermes acp` 对接本地会话运行时。
