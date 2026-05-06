@@ -316,7 +316,7 @@ export function useThreadChatBridgeEvents({
           }
           return [
             ...current.filter((message) =>
-              !shouldReplacePreviewWithReply(message, event.content, event.replyCtx)
+              !shouldReplacePreviewWithReply(message, event.content, event.replyCtx, event.bridgeKind)
             ),
             {
               id: replyMessageId,

@@ -16,6 +16,7 @@ import type {
   ThreadKnowledgeAttachmentStore,
 } from '../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { AgentAcpProgressRecord } from '../agents/shared/acp-behavior.js';
 
 export type WorkspaceRouterOptions = {
   store: LocalCoreAcpStore;
@@ -240,7 +241,11 @@ export type RunningTurn = {
   previewHandle: string;
   thoughtPreviewHandle: string;
   thoughtMessageId: string;
+  agentType?: string;
   assistantText: string;
+  rawAssistantText?: string;
+  priorAssistantFinalMessages?: string[];
+  priorAssistantProgressMessages?: AgentAcpProgressRecord[];
   thoughtText: string;
   thoughtSequence?: number;
   typingStarted: boolean;
@@ -258,6 +263,7 @@ export type RunningTurn = {
     input?: unknown;
     sequence: number;
     emitted?: boolean;
+    suppressReplay?: boolean;
   }>;
   pendingToolCallOrder?: string[];
   toolCallSequence?: number;

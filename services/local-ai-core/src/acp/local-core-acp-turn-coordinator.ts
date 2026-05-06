@@ -31,6 +31,8 @@ import {
 import { formatToolCallContent, toPermissionButtonRows } from './workspace-acp-permissions.js';
 import type { AcpSessionState } from '../router/workspace-router-types.js';
 import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
+import { resolveAgentAcpBehavior } from '../agents/index.js';
+import type { AgentAcpProgressKind } from '../agents/shared/acp-behavior.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
@@ -55,6 +57,9 @@ export class LocalCoreAcpTurnCoordinator {
     const currentRunId = session.currentRunId;
     if (!currentTurn || !currentRunId) {
       return;
+    }
+    for (const toolCall of getToolCallsInOrder(currentTurn).filter((entry) => entry.suppressReplay)) {
+      deletePendingToolCall(currentTurn, toolCall.key);
     }
     const pending = getToolCallsInOrder(currentTurn)
       .filter((toolCall) => !toolCall.emitted);
@@ -241,6 +246,9 @@ export class LocalCoreAcpTurnCoordinator {
         if (isToolScopedAssistantUpdate(update) || consumeRawAssistantProgressChunk(session, String(update.content.text || ''))) {
           const content = String(update.content.text || '').trim();
           if (content) {
+            if (this.shouldSuppressProgress(currentTurn, 'tool', content)) {
+              return;
+            }
             this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'tool');
             this.options.emitBridge({
               type: 'reply',
@@ -252,7 +260,20 @@ export class LocalCoreAcpTurnCoordinator {
           }
           return;
         }
-        const projection = applyAssistantMessageChunk(currentTurn, String(update.content.text || ''));
+        const chunk = String(update.content.text || '');
+        currentTurn.rawAssistantText = `${currentTurn.rawAssistantText || ''}${chunk}`;
+        const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+        const normalizedText = behavior.normalizeAssistantText({
+          rawText: currentTurn.rawAssistantText,
+          priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
+        });
+        const nextChunk = normalizedText.startsWith(currentTurn.assistantText)
+          ? normalizedText.slice(currentTurn.assistantText.length)
+          : normalizedText;
+        if (!nextChunk) {
+          return;
+        }
+        const projection = applyAssistantMessageChunk(currentTurn, nextChunk);
         if (!projection) {
           return;
         }
@@ -274,6 +295,10 @@ export class LocalCoreAcpTurnCoordinator {
         if (!projection) {
           return;
         }
+        if (this.shouldSuppressProgress(currentTurn, 'thought', projection.content)) {
+          this.resetThoughtSegment(currentTurn);
+          return;
+        }
         if (this.options.upsertMessage) {
           this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress', undefined, projection.bridgeKind);
         }
@@ -290,11 +315,15 @@ export class LocalCoreAcpTurnCoordinator {
       case 'tool_call': {
         this.closePendingThoughtSegment(session);
         const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
-        recordToolObservation(currentTurn, {
-          name: toolCall.title,
-          title: toolCall.title,
-          input: toolCall.input,
-        });
+        if (this.isKnownPriorToolInput(currentTurn, toolCall.title, toolCall.input)) {
+          toolCall.suppressReplay = true;
+        } else {
+          recordToolObservation(currentTurn, {
+            name: toolCall.title,
+            title: toolCall.title,
+            input: toolCall.input,
+          });
+        }
         syncLegacyPendingToolCall(currentTurn, toolCall);
         return;
       }
@@ -349,20 +378,24 @@ export class LocalCoreAcpTurnCoordinator {
           detail: displayTitle,
           content,
         });
-        recordToolObservation(currentTurn, {
-          name: toolName || displayTitle || title,
-          title: displayTitle || title,
-          status,
-          input: updateInput === undefined ? toolCall?.input : updateInput,
-          outputText: content,
-        });
-        this.emitProgress(
-          session,
-          currentRunId,
-          formatToolProgressMessage({ toolName, title: displayTitle, status, content }),
-          messageId,
-          toolCallPayload,
-        );
+        const progressContent = formatToolProgressMessage({ toolName, title: displayTitle, status, content });
+        const suppressProgress = Boolean(toolCall?.suppressReplay) || this.shouldSuppressProgress(currentTurn, 'tool', progressContent);
+        if (!suppressProgress) {
+          recordToolObservation(currentTurn, {
+            name: toolName || displayTitle || title,
+            title: displayTitle || title,
+            status,
+            input: updateInput === undefined ? toolCall?.input : updateInput,
+            outputText: content,
+          });
+          this.emitProgress(
+            session,
+            currentRunId,
+            progressContent,
+            messageId,
+            toolCallPayload,
+          );
+        }
         syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
         return;
       }
@@ -375,6 +408,9 @@ export class LocalCoreAcpTurnCoordinator {
         }
         const content = formatPlanProgress(entries);
         if (!content) {
+          return;
+        }
+        if (this.shouldSuppressProgress(currentTurn, 'plan', content)) {
           return;
         }
         this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'plan');
@@ -429,6 +465,64 @@ export class LocalCoreAcpTurnCoordinator {
     });
   }
 
+  private shouldSuppressProgress(
+    currentTurn: NonNullable<AcpSessionState['currentTurn']>,
+    kind: AgentAcpProgressKind,
+    content: string,
+  ) {
+    const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+    return behavior.shouldSuppressProgress?.({
+      kind,
+      content,
+      priorProgressMessages: currentTurn.priorAssistantProgressMessages || [],
+    }) || false;
+  }
+
+  private resetThoughtSegment(currentTurn: NonNullable<AcpSessionState['currentTurn']>) {
+    const runId = currentTurn.runId || 'thought';
+    const nextSequence = (currentTurn.thoughtSequence || 1) + 1;
+    currentTurn.thoughtSequence = nextSequence;
+    currentTurn.thoughtText = '';
+    currentTurn.thoughtPreviewStarted = false;
+    currentTurn.thoughtMessageId = `${runId}-thought-${nextSequence}`;
+    currentTurn.thoughtPreviewHandle = `${runId}-thought-preview-${nextSequence}`;
+  }
+
+  private isKnownPriorToolInput(
+    currentTurn: NonNullable<AcpSessionState['currentTurn']>,
+    title: string,
+    input: unknown,
+  ) {
+    const compactInput = compactToolInput(input);
+    if (!compactInput) {
+      return false;
+    }
+    const needle = `${title}: ${compactInput}`.trim();
+    return (currentTurn.priorAssistantProgressMessages || []).some((message) =>
+      message.kind === 'tool' && message.content.includes(needle));
+  }
+
+}
+
+function compactToolInput(input: unknown) {
+  if (input === undefined || input === null) {
+    return '';
+  }
+  if (typeof input === 'string') {
+    return input.trim();
+  }
+  if (typeof input !== 'object') {
+    return String(input).trim();
+  }
+  const command = (input as { command?: unknown }).command;
+  if (typeof command === 'string' && command.trim()) {
+    return command.trim();
+  }
+  const path = (input as { path?: unknown }).path;
+  if (typeof path === 'string' && path.trim()) {
+    return path.trim();
+  }
+  return '';
 }
 
 function isToolScopedAssistantUpdate(update: Record<string, unknown>) {

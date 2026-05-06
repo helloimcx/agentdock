@@ -17,7 +17,7 @@
 - [ ] 支持跨设备互联：在一个 app 中能看到不同设备的工作区。
 - [x] Lark 通道图片消息支持：当前 Gateway 直接丢弃非文本消息，需支持 image 消息类型的解析、图片下载、多模态内容传递至 Agent（涉及 Gateway、ACP Store、Turn Coordinator 三层改造）。 codex
 - [x] 增加 Codex ACP Agent 的适配。 codex
-- [ ] 增加对 Hermes Agent 的原生支持。 codex
+- [x] 增加对 Hermes Agent 的原生支持。 codex
 - [ ] app版支持computer use
 - [x] channel支持回传文件
 - [x] 工具调用卡片默认折叠工具结果
@@ -25,7 +25,7 @@
 - [x] lark支持扫码新建和绑定机器人
 - [x] app，web，channels支持常用斜杠命令，特别是/mode，用来调整工具权限
 - [x] 新增pi mono内置agent实现，不用安装claude等coding agent也能用
-- [ ] 支持/agent命令来切换agent
+- [] 支持/agent命令来切换agent
 - [ ] 原生支持联网搜索
 - [ ] 飞书 channel 支持群聊
 - [ ] 支持隐藏中间过程

@@ -1191,6 +1191,370 @@ test('ACP tool-scoped assistant chunks stay out of final assistant buffer', () =
   assert.equal(session.currentTurn.assistantText, 'final answer');
 });
 
+test('Hermes ACP assistant chunks strip restored history replay inside its own behavior', () => {
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      agentType: 'hermes',
+      assistantText: '',
+      rawAssistantText: '',
+      priorAssistantFinalMessages: ['Hi! 😊 How can I help you today?', '我是 Hermes Agent。'],
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  for (const text of ['Hi! 😊 How can I help you today?', '我是 Hermes Agent。', '确认删除前需要你确认。']) {
+    coordinator.handleAgentNotification(session, {
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+        },
+      },
+    });
+  }
+
+  assert.equal(session.currentTurn.assistantText, '确认删除前需要你确认。');
+  assert.deepEqual(emitted.map((event) => event.content), ['确认删除前需要你确认。']);
+});
+
+test('Hermes ACP assistant chunks strip replay even when stored prior final is already polluted', () => {
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const previousCleanFinal = '你确定要删除 **Sisyphus_介绍.txt** 这个文件吗？删除后无法恢复。确认的话我马上执行。';
+  const pollutedStoredFinal = [
+    'Hi! How can I help you today?',
+    '我是 Hermes Agent，你的 AI 助手。',
+    '好的，让我看看你的桌面文件。',
+    previousCleanFinal,
+  ].join('');
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      agentType: 'hermes',
+      assistantText: '',
+      rawAssistantText: '',
+      priorAssistantFinalMessages: [pollutedStoredFinal],
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  for (const text of [
+    'Hi! How can I help you today?',
+    '我是 Hermes Agent，你的 AI 助手。',
+    '好的，让我看看你的桌面文件。',
+    previousCleanFinal,
+    '已删除 **Sisyphus_介绍.txt**，现在 Text 文件夹是空的了。',
+  ]) {
+    coordinator.handleAgentNotification(session, {
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+        },
+      },
+    });
+  }
+
+  assert.equal(session.currentTurn.assistantText, '已删除 **Sisyphus_介绍.txt**，现在 Text 文件夹是空的了。');
+  assert.deepEqual(emitted.map((event) => event.content), ['已删除 **Sisyphus_介绍.txt**，现在 Text 文件夹是空的了。']);
+});
+
+test('Hermes ACP assistant chunks keep a fresh answer when no replay anchor is present', () => {
+  const emitted: Array<{ content?: string; type: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      agentType: 'hermes',
+      assistantText: '',
+      rawAssistantText: '',
+      priorAssistantFinalMessages: ['上一轮已经污染的历史，但是它不会出现在这次新回复里。'],
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: '已删除文件。' },
+      },
+    },
+  });
+
+  assert.equal(session.currentTurn.assistantText, '已删除文件。');
+  assert.deepEqual(emitted.map((event) => event.content), ['已删除文件。']);
+});
+
+test('Hermes ACP progress updates suppress restored tool and thought replay only', () => {
+  const upserted: Array<{ id: string; content: string; bridgeKind?: string }> = [];
+  const emitted: Array<{ content?: string; type: string; bridgeKind?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => assert.fail('tool updates should be upserted'),
+    upsertMessage: (_threadId, id, _role, content, _kind, _toolCall, bridgeKind) => {
+      upserted.push({ id, content, bridgeKind });
+    },
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; bridgeKind?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      thoughtPreviewHandle: 'thought-preview-1',
+      thoughtMessageId: 'run-1-thought-1',
+      agentType: 'hermes',
+      assistantText: '',
+      thoughtText: '',
+      thoughtSequence: 1,
+      typingStarted: true,
+      previewStarted: false,
+      thoughtPreviewStarted: false,
+      priorAssistantProgressMessages: [
+        {
+          kind: 'tool',
+          content: '🔧 terminal: rm ~/Desktop/Text/Sisyphus_介绍.txt: completed - terminal result\n- **exit_code:** 0',
+        },
+        {
+          kind: 'thought',
+          content: 'The user confirmed they want to delete the file. Let me delete it.',
+        },
+      ],
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        id: 'old-tool',
+        title: 'terminal',
+        rawInput: { command: 'rm ~/Desktop/Text/Sisyphus_介绍.txt' },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        id: 'old-tool',
+        title: 'tool update',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'terminal result\n- **exit_code:** 0',
+            },
+          },
+        ],
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_thought_chunk',
+        content: {
+          type: 'text',
+          text: 'The user confirmed they want to delete the file. Let me delete it.',
+        },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        id: 'new-tool',
+        title: 'terminal',
+        rawInput: { command: 'ls -la ~/Desktop/PDF/' },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call_update',
+        id: 'new-tool',
+        title: 'tool update',
+        status: 'completed',
+        content: [
+          {
+            type: 'content',
+            content: {
+              type: 'text',
+              text: 'terminal result\n- **output:** pdf files\n- **exit_code:** 0',
+            },
+          },
+        ],
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_thought_chunk',
+        content: {
+          type: 'text',
+          text: 'Let me present the PDF files to the user.',
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(upserted.map((entry) => entry.content), [
+    '🔧 terminal: completed - terminal result\n- **output:** pdf files\n- **exit_code:** 0',
+    'Let me present the PDF files to the user.',
+  ]);
+  assert.deepEqual(emitted.map((event) => event.content), [
+    '🔧 terminal: completed - terminal result\n- **output:** pdf files\n- **exit_code:** 0',
+    'Let me present the PDF files to the user.',
+  ]);
+});
+
+test('Hermes ACP progress updates suppress restored plan and tool-scoped assistant chunks', () => {
+  const appended: Array<{ content: string; bridgeKind?: string }> = [];
+  const emitted: Array<{ content?: string; bridgeKind?: string }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: (_threadId, _role, content, _kind, _toolCall, bridgeKind) => appended.push({ content, bridgeKind }),
+    emitBridge: (event) => emitted.push(event as { content?: string; bridgeKind?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      agentType: 'hermes',
+      assistantText: '',
+      priorAssistantProgressMessages: [
+        { kind: 'plan', content: '旧计划 | 已完成' },
+        { kind: 'tool', content: 'raw restored command output' },
+      ],
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+    pendingRawAssistantProgressChunks: ['raw restored command output', 'fresh command output'],
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'plan',
+        entries: [{ content: '旧计划' }, { content: '已完成' }],
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'raw restored command output' },
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'plan',
+        entries: [{ content: '新计划' }, { content: '进行中' }],
+      },
+    },
+  });
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'fresh command output' },
+      },
+    },
+  });
+
+  assert.deepEqual(appended, [
+    { content: '新计划 | 进行中', bridgeKind: 'plan' },
+    { content: 'fresh command output', bridgeKind: 'tool' },
+  ]);
+  assert.deepEqual(emitted.map((event) => ({ content: event.content, bridgeKind: event.bridgeKind })), [
+    { content: '新计划 | 进行中', bridgeKind: 'plan' },
+    { content: 'fresh command output', bridgeKind: 'tool' },
+  ]);
+});
+
 test('ACP raw local command output assistant chunks stay out of final assistant buffer', () => {
   const appended: Array<{ content: string; bridgeKind?: string }> = [];
   const coordinator = new LocalCoreAcpTurnCoordinator({

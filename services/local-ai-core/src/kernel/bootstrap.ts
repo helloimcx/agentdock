@@ -35,7 +35,7 @@ import {
   createBuiltinOpencodeAgentPlugin,
   createBuiltinPiAgentPlugin,
   createBuiltinStaticAgentCapabilityPlugin,
-} from '../plugins/builtin/agent-localcore-acp-plugin.js';
+} from '../agents/index.js';
 import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
 import { createBuiltinWeixinChannelPlugin } from '../plugins/builtin/channel-weixin-plugin.js';
 import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';

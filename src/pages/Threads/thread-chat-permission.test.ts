@@ -303,6 +303,8 @@ test('shouldReplacePreviewWithReply keeps thought previews when final answer arr
 
   assert.equal(shouldReplacePreviewWithReply(thoughtPreview, 'Hi! How can I help you today?', 'run-1'), false);
   assert.equal(shouldReplacePreviewWithReply(answerPreview, 'Hi! How can I help you today?', 'run-1'), true);
+  assert.equal(shouldReplacePreviewWithReply(answerPreview, 'Hi! Final answer.', 'run-1'), true);
+  assert.equal(shouldReplacePreviewWithReply(answerPreview, 'tool result', 'run-1', 'tool'), false);
 });
 
 test('finalizeTurnMessageKinds marks only the last non-progress turn message as final', () => {

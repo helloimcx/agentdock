@@ -12,6 +12,7 @@ import { LocalCoreEventBus } from '../services/local-ai-core/src/kernel/event-bu
 import { LocalCoreLifecycleManager } from '../services/local-ai-core/src/kernel/lifecycle-manager.js';
 import { LocalCorePluginRegistry } from '../services/local-ai-core/src/kernel/plugin-registry.js';
 import { LocalCoreController } from '../services/local-ai-core/src/runtime/local-core-controller.js';
+import { createLocalCoreRuntimeState } from '../services/local-ai-core/src/runtime/local-core-runtime-state.js';
 import { LocalAiCoreServer } from '../services/local-ai-core/src/runtime/server.js';
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
@@ -644,6 +645,53 @@ test('runtime logs are persisted to local-core.log', () => {
     const raw = readFileSync(logPath, 'utf-8');
     assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* localcore-weixin send failed for sessionKey=test/m);
     assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* second line/m);
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('runtime getLogs reads from disk after state is recreated', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-disk-logs-'));
+  try {
+    const state = createLocalCoreRuntimeState({ userDataPath });
+    state.pushLog('first persisted line');
+    state.pushLog('second persisted line');
+
+    const recreated = createLocalCoreRuntimeState({ userDataPath });
+
+    assert.deepEqual(recreated.getLogs(2).map((line) => line.replace(/^\S+\s+/, '')), [
+      'first persisted line',
+      'second persisted line',
+    ]);
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('runtime getLogs fills from rotated log when current log has fewer lines', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-rotated-logs-'));
+  try {
+    const state = createLocalCoreRuntimeState({ userDataPath });
+    writeFileSync(`${state.logPath}.1`, 'old-1\nold-2\nold-3\n', 'utf8');
+    writeFileSync(state.logPath, 'new-1\n', 'utf8');
+
+    assert.deepEqual(state.getLogs(3), ['old-2', 'old-3', 'new-1']);
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('runtime getLogs returns only the requested tail lines from disk', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-tail-logs-'));
+  try {
+    const state = createLocalCoreRuntimeState({ userDataPath });
+    writeFileSync(
+      state.logPath,
+      Array.from({ length: 1000 }, (_, index) => `line-${index + 1}`).join('\n') + '\n',
+      'utf8',
+    );
+
+    assert.deepEqual(state.getLogs(4), ['line-997', 'line-998', 'line-999', 'line-1000']);
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }

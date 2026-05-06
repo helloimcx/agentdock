@@ -26,6 +26,7 @@ export type PendingToolCallRegistration = {
   input?: unknown;
   sequence: number;
   emitted: boolean;
+  suppressReplay?: boolean;
 };
 
 export function applyAssistantMessageChunk(currentTurn: RunningTurn, text: string): MessagePreviewProjection | null {

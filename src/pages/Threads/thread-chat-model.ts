@@ -95,12 +95,28 @@ export function findStreamingPreviewMessage(messages: ChatMessage[], previewHand
   return messages.find((message) => message.preview && message.turnKey === replyCtx);
 }
 
-export function shouldReplacePreviewWithReply(message: ChatMessage, replyContent?: string, replyCtx?: string) {
-  if (!message.preview || !replyCtx || message.turnKey !== replyCtx) {
+export function shouldReplacePreviewWithReply(
+  message: ChatMessage,
+  replyContent?: string,
+  replyCtx?: string,
+  replyBridgeKind?: DesktopBridgeEventKind,
+) {
+  if (
+    !message.preview ||
+    message.role !== 'assistant' ||
+    !replyCtx ||
+    message.turnKey !== replyCtx ||
+    isInternalProgressBridgeKind(replyBridgeKind) ||
+    isInternalProgressBridgeKind(message.bridgeKind)
+  ) {
     return false;
   }
   const content = message.streamTargetContent ?? message.content;
-  return Boolean(replyContent && content === replyContent && !isInternalProgressBridgeKind(message.bridgeKind));
+  return Boolean(replyContent && (
+    content === replyContent ||
+    !message.bridgeKind ||
+    message.bridgeKind === 'assistant'
+  ));
 }
 
 export function advancePreviewContent(content: string, target: string) {

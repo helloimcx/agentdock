@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as TOML from '@iarna/toml';
 import type {
@@ -14,6 +14,8 @@ const DEFAULT_CONFIG = `# Managed by Local AI Core
 `;
 const LOG_FILE_NAME = 'local-core.log';
 const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024;
+const LOG_TAIL_CHUNK_BYTES = 64 * 1024;
+const LOG_MAX_RETURN_LINES = 5000;
 
 type RuntimeSettingsFile = {
   configPath: string;
@@ -125,7 +127,13 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   }
 
   getLogs(limit = 200): string[] {
-    return this.logs.slice(-Math.max(limit, 1));
+    const normalizedLimit = normalizeLogLimit(limit);
+    const current = tailLogFile(this.logPath, normalizedLimit);
+    if (current.length >= normalizedLimit) {
+      return current.slice(-normalizedLimit);
+    }
+    const rotated = tailLogFile(`${this.logPath}.1`, normalizedLimit - current.length);
+    return [...rotated, ...current].slice(-normalizedLimit);
   }
 
   pushLog(message: string) {
@@ -292,6 +300,58 @@ function normalizePluginSettings(input: unknown): DesktopSettings['plugins'] {
     };
   }
   return output;
+}
+
+function normalizeLogLimit(limit: number) {
+  if (!Number.isFinite(limit)) {
+    return 200;
+  }
+  return Math.min(Math.max(Math.floor(limit), 1), LOG_MAX_RETURN_LINES);
+}
+
+function tailLogFile(path: string, limit: number): string[] {
+  if (limit <= 0 || !existsSync(path)) {
+    return [];
+  }
+  let fd = -1;
+  try {
+    const size = statSync(path).size;
+    if (size <= 0) {
+      return [];
+    }
+    fd = openSync(path, 'r');
+    const chunks: Buffer[] = [];
+    let position = size;
+    let newlineCount = 0;
+    while (position > 0 && newlineCount <= limit) {
+      const bytesToRead = Math.min(LOG_TAIL_CHUNK_BYTES, position);
+      position -= bytesToRead;
+      const chunk = Buffer.allocUnsafe(bytesToRead);
+      const bytesRead = readSync(fd, chunk, 0, bytesToRead, position);
+      const slice = bytesRead === bytesToRead ? chunk : chunk.subarray(0, bytesRead);
+      chunks.unshift(slice);
+      for (let index = 0; index < slice.length; index += 1) {
+        if (slice[index] === 10) {
+          newlineCount += 1;
+        }
+      }
+    }
+    return Buffer.concat(chunks)
+      .toString('utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0)
+      .slice(-limit);
+  } catch {
+    return [];
+  } finally {
+    if (fd >= 0) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Log reads are best-effort; failed closes cannot be surfaced to callers.
+      }
+    }
+  }
 }
 
 export function createLocalCoreRuntimeState(options: {

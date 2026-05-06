@@ -25,6 +25,7 @@ import {
   parseSlashCommand,
 } from './local-core-slash-commands.js';
 import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
+import { resolveAgentAcpBehavior } from '../agents/index.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -365,6 +366,19 @@ export class LocalCoreAcpBackend {
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
         permissionMode: options.permissionMode,
       });
+      const priorAssistantFinalMessages = this.options.store
+        .getThread(threadId, [])
+        .messages
+        .filter((entry) => entry.role === 'assistant' && entry.kind === 'final')
+        .map((entry) => entry.content);
+      const priorAssistantProgressMessages = this.options.store
+        .getThread(threadId, [])
+        .messages
+        .filter((entry) => entry.role === 'assistant' && entry.kind === 'progress')
+        .map((entry) => ({
+          kind: entry.bridgeKind,
+          content: entry.content,
+        }));
       session.currentRunId = runId;
       session.currentTurn = {
         runId,
@@ -372,7 +386,11 @@ export class LocalCoreAcpBackend {
         previewHandle: randomUUID(),
         thoughtPreviewHandle: randomUUID(),
         thoughtMessageId: `${runId}-thought-1`,
+        agentType: row.agent_type,
         assistantText: '',
+        rawAssistantText: '',
+        priorAssistantFinalMessages,
+        priorAssistantProgressMessages,
         thoughtText: '',
         thoughtSequence: 1,
         typingStarted: true,
@@ -402,8 +420,13 @@ export class LocalCoreAcpBackend {
       this.turnCoordinator.closePendingThoughtSegment(session);
       this.turnCoordinator.flushPendingToolCall(session);
       if (currentTurn.assistantText) {
+        const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+        const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
+          rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
+          priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
+        });
         const assistantText = stripObservedToolTranscriptsFromAssistantText(
-          currentTurn.assistantText,
+          normalizedFinalAssistantText,
           currentTurn.toolObservations,
         );
         const processed = await this.responseProcessor.processAssistantResponse(threadId, assistantText);
