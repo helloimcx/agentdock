@@ -19,14 +19,24 @@ Triggers:
 
 - Pull requests
 - Pushes to `main`
-- Manual `workflow_dispatch`
 
 Jobs:
 
 - `test` runs `pnpm test` on Ubuntu.
-- `package-macos` runs only on manual `workflow_dispatch` after tests pass, builds macOS `dmg` and `zip` artifacts with `--publish never`, and uploads them as GitHub Actions artifacts.
 
-The manual CI artifacts are intended for validation only. They are retained for 14 days and are not formal releases.
+## Manual macOS Packaging
+
+Workflow: `.github/workflows/package-macos.yml`
+
+Triggers:
+
+- Manual `workflow_dispatch`
+
+Jobs:
+
+- `package-macos` runs `pnpm test`, builds macOS `dmg` and `zip` artifacts with `--publish never`, and uploads them as GitHub Actions artifacts.
+
+The manual package artifacts are intended for validation only. They are retained for 14 days and are not formal releases.
 
 ## Release
 

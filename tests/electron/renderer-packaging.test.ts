@@ -64,14 +64,18 @@ test('production renderer build has a loadable entry document and assets', () =>
 
 test('release workflow keeps validation artifacts separate from formal releases', () => {
   const ciWorkflow = readFileSync(join(rootDir, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const packageMacosWorkflow = readFileSync(join(rootDir, '.github', 'workflows', 'package-macos.yml'), 'utf8');
   const releaseWorkflow = readFileSync(join(rootDir, '.github', 'workflows', 'release.yml'), 'utf8');
   const releaseDocs = readFileSync(join(rootDir, 'docs', 'operations', 'release-workflow.md'), 'utf8');
 
   assert.match(ciWorkflow, /pull_request:/, 'CI must run before merge');
   assert.match(ciWorkflow, /branches:\s*\n\s*- main/, 'CI must run on main pushes');
-  assert.match(ciWorkflow, /needs: test/, 'main branch packaging must wait for tests');
-  assert.match(ciWorkflow, /--publish never/, 'main branch artifacts must not publish formal releases');
-  assert.match(ciWorkflow, /retention-days: 14/, 'main branch validation artifacts must have bounded retention');
+  assert.doesNotMatch(ciWorkflow, /macos-latest/, 'main branch CI must not run macOS packaging');
+
+  assert.match(packageMacosWorkflow, /workflow_dispatch:/, 'macOS validation packaging must be manual');
+  assert.match(packageMacosWorkflow, /Run tests[\s\S]*?run: pnpm test/, 'manual macOS packaging must run tests first');
+  assert.match(packageMacosWorkflow, /--publish never/, 'manual macOS artifacts must not publish formal releases');
+  assert.match(packageMacosWorkflow, /retention-days: 14/, 'manual macOS validation artifacts must have bounded retention');
 
   assert.match(releaseWorkflow, /tags:\s*\n\s*- 'v\*'/, 'formal releases must be tied to version tags');
   assert.match(releaseWorkflow, /Run tests[\s\S]*?run: pnpm test/, 'release packaging must run the fast gate');
@@ -79,8 +83,8 @@ test('release workflow keeps validation artifacts separate from formal releases'
   assert.match(releaseWorkflow, /--publish always/, 'release artifacts must publish only from the release workflow');
   assert.match(releaseWorkflow, /tag_version.*package_version/s, 'tag releases must verify the package version');
 
-  assert.match(releaseDocs, /validation only/i, 'release docs must describe main artifacts as validation only');
-  assert.match(releaseDocs, /not formal releases/i, 'release docs must separate main artifacts from formal releases');
+  assert.match(releaseDocs, /manual package artifacts are intended for validation only/i, 'release docs must describe manual artifacts as validation only');
+  assert.match(releaseDocs, /not formal releases/i, 'release docs must separate manual artifacts from formal releases');
 });
 
 test('production smoke gate launches the built app and checks runtime capabilities', () => {
