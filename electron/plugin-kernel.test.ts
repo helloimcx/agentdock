@@ -45,10 +45,10 @@ test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot',
     },
     snapshot: {
       agents: [
-        { id: 'agent.cursor', agentType: 'cursor', displayName: 'cursor' },
-        { id: 'agent.gemini', agentType: 'gemini', displayName: 'gemini' },
-        { id: 'agent.qoder', agentType: 'qoder', displayName: 'qoder' },
-        { id: 'agent.iflow', agentType: 'iflow', displayName: 'iflow' },
+        { id: 'agent.cursor', agentType: 'cursor', displayName: 'Cursor' },
+        { id: 'agent.gemini', agentType: 'gemini', displayName: 'Gemini' },
+        { id: 'agent.qoder', agentType: 'qoder', displayName: 'Qoder' },
+        { id: 'agent.iflow', agentType: 'iflow', displayName: 'iFlow' },
         { id: 'agent.localcore-acp', agentType: 'localcore-acp', displayName: 'LocalCore ACP' },
       ],
       channels: [
