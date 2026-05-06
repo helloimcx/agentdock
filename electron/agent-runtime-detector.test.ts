@@ -28,6 +28,8 @@ test('agent runtime detector only marks commands present on PATH as installed', 
     assert.equal(byType.get('pi')?.status, 'not_installed');
     assert.equal(byType.get('codex')?.installed, false);
     assert.equal(byType.get('codex')?.status, 'not_installed');
+    assert.equal(byType.get('hermes')?.installed, false);
+    assert.equal(byType.get('hermes')?.status, 'not_installed');
     assert.equal(byType.get('localcore-acp')?.installed, true);
     assert.equal(byType.get('localcore-acp')?.status, 'installed');
     assert.equal(byType.get('localcore-acp')?.source, 'builtin');
@@ -186,6 +188,27 @@ test('agent runtime detector reports Claude Code when claude command is availabl
     assert.equal(claudeRuntime?.command, claude);
     assert.equal(claudeRuntime?.version, '2.1.114');
     assert.equal(claudeRuntime?.issues.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('agent runtime detector reports Hermes when hermes command is available', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-hermes-version-'));
+  try {
+    const hermes = join(dir, 'hermes');
+    writeFileSync(hermes, '#!/bin/sh\necho "hermes 0.9.1"\n', 'utf8');
+    chmodSync(hermes, 0o755);
+
+    const hermesRuntime = detectInstalledAgentRuntimes({
+      env: { PATH: dir },
+    }).find((runtime) => runtime.agentType === 'hermes');
+
+    assert.equal(hermesRuntime?.status, 'installed');
+    assert.equal(hermesRuntime?.source, 'path');
+    assert.equal(hermesRuntime?.command, hermes);
+    assert.equal(hermesRuntime?.version, '0.9.1');
+    assert.equal(hermesRuntime?.issues.length, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

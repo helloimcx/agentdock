@@ -28,6 +28,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   gemini: 'Gemini',
   qoder: 'Qoder',
   iflow: 'iFlow',
+  hermes: 'Hermes',
   [LOCALCORE_ACP_AGENT_TYPE]: 'LocalCore ACP',
 };
 
@@ -40,6 +41,7 @@ const COMMAND_CANDIDATES: Record<string, string[]> = {
   gemini: ['gemini'],
   qoder: ['qoder'],
   iflow: ['iflow'],
+  hermes: ['hermes'],
 };
 
 const VERSION_ARGUMENTS: Record<string, string[]> = {
@@ -51,6 +53,7 @@ const VERSION_ARGUMENTS: Record<string, string[]> = {
   gemini: ['--version'],
   qoder: ['--version'],
   iflow: ['--version'],
+  hermes: ['--version'],
 };
 
 export function detectInstalledAgentRuntimes(

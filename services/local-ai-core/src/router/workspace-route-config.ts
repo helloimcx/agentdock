@@ -478,6 +478,8 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
     : null;
   const inferredCommand = agentType === 'opencode'
     ? 'opencode'
+    : agentType === 'hermes'
+      ? 'hermes'
     : bundledPiAcp?.command || bundledCodex?.command || bundledClaudeCode?.command || '';
   const command = String(project.agent?.options?.command || inferredCommand).trim();
   if (!command) {
@@ -485,6 +487,8 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
   }
   const defaultArgs = agentType === 'opencode'
     ? ['acp']
+    : agentType === 'hermes'
+      ? ['acp']
     : agentType === 'pi'
       ? [...(bundledPiAcp?.args || [])]
     : agentType === 'codex'

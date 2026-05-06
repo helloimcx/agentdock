@@ -15,6 +15,7 @@ export const DESKTOP_AGENT_TYPE_OPTIONS = [
   'gemini',
   'qoder',
   'iflow',
+  'hermes',
   'localcore-acp',
 ] as const;
 export const DESKTOP_PLATFORM_TYPE_OPTIONS = [
@@ -42,7 +43,7 @@ export const DESKTOP_PROVIDER_PRESET_OPTIONS = [
   'ollama',
 ] as const;
 export const DESKTOP_PROVIDER_THINKING_OPTIONS = ['', 'enabled', 'disabled'] as const;
-export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['pi', 'opencode', 'codex', 'claudecode', 'acp', 'localcore-acp'] as const;
+export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['pi', 'opencode', 'codex', 'claudecode', 'hermes', 'acp', 'localcore-acp'] as const;
 export const LOCALCORE_ACP_AGENT_TYPE = 'localcore-acp';
 export const SCHEDULER_PROTOCOL_INSTRUCTION = [
   '[Scheduler Tools]',
@@ -342,6 +343,7 @@ export function isAcpAgentType(agentType?: string | null) {
     || normalized === 'opencode'
     || normalized === 'codex'
     || normalized === 'claudecode'
+    || normalized === 'hermes'
     || normalized === LOCALCORE_ACP_AGENT_TYPE;
 }
 

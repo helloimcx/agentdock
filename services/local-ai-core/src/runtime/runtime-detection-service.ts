@@ -158,6 +158,7 @@ function displayName(agentType: string) {
     gemini: 'Gemini',
     qoder: 'Qoder',
     iflow: 'iFlow',
+    hermes: 'Hermes',
     [LOCALCORE_ACP_AGENT_TYPE]: 'LocalCore ACP',
   };
   return names[agentType] || agentType;

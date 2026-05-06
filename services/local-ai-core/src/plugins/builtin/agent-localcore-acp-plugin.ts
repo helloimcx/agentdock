@@ -118,6 +118,15 @@ export function createBuiltinClaudeCodeAgentPlugin() {
   });
 }
 
+export function createBuiltinHermesAgentPlugin() {
+  return createBuiltinAgentPlugin({
+    pluginId: 'builtin.agent-hermes',
+    agentType: 'hermes',
+    match: (normalizedAgentType) => normalizedAgentType === 'hermes',
+    displayName: 'Hermes',
+  });
+}
+
 export function createBuiltinStaticAgentCapabilityPlugin(agentType: string): RuntimePlugin {
   return {
     manifest: {

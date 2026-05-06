@@ -180,6 +180,7 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
       'opencode',
       'codex',
       'claudecode',
+      'hermes',
     ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, ['ai-vector']);
@@ -216,6 +217,7 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       'opencode',
       'codex',
       'claudecode',
+      'hermes',
     ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, []);
@@ -258,6 +260,45 @@ type = "codex"
         id: 'codex-workspace',
         name: 'codex-workspace',
         agentType: 'codex',
+        platforms: [],
+        sessionsCount: 0,
+        heartbeatEnabled: false,
+      },
+    ]);
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('hermes agent runtime routes projects through hermes ACP command', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    await runtime.state.saveRawConfigFile(`
+[[projects]]
+name = "hermes-workspace"
+
+[projects.agent]
+type = "hermes"
+`);
+    const configState = await runtime.state.readConfigFile();
+    const project = configState.parsed?.projects?.find((entry) => entry.name === 'hermes-workspace');
+    const hermesRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'hermes');
+    const route = project ? hermesRuntime?.createRoute(configState, project) : null;
+
+    assert.equal(route?.agentType, 'hermes');
+    assert.equal(route?.config.command, 'hermes');
+    assert.deepEqual(route?.config.args, ['acp']);
+    assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), [
+      {
+        id: 'hermes-workspace',
+        name: 'hermes-workspace',
+        agentType: 'hermes',
         platforms: [],
         sessionsCount: 0,
         heartbeatEnabled: false,
@@ -796,7 +837,7 @@ type = "pi"
 
     assert.deepEqual(
       runtime.agentRuntimes.map((entry) => entry.agentType),
-      ['localcore-acp', 'opencode', 'codex'],
+      ['localcore-acp', 'opencode', 'codex', 'hermes'],
     );
     assert.equal(
       runtime.kernel.getCapabilitySnapshot().snapshot.agents.some((capability) => capability.agentType === 'claudecode'),

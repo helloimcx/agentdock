@@ -30,6 +30,7 @@ import { LocalCorePluginRegistry } from './plugin-registry.js';
 import {
   createBuiltinCodexAgentPlugin,
   createBuiltinClaudeCodeAgentPlugin,
+  createBuiltinHermesAgentPlugin,
   createBuiltinLocalCoreAcpAgentPlugin,
   createBuiltinOpencodeAgentPlugin,
   createBuiltinPiAgentPlugin,
@@ -238,6 +239,7 @@ export function bootstrapLocalCoreRuntime(options: {
     createBuiltinOpencodeAgentPlugin(),
     createBuiltinCodexAgentPlugin(),
     createBuiltinClaudeCodeAgentPlugin(),
+    createBuiltinHermesAgentPlugin(),
   ];
   let workspaceRouter!: WorkspaceRouter;
   let weixinChannelRuntime!: ChannelRuntime;
