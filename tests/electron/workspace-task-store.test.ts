@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpSessionCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import { SchedulerService } from '../services/local-ai-core/src/scheduler/scheduler-service.js';
-import { bootstrapLocalCoreRuntime } from '../services/local-ai-core/src/kernel/bootstrap.js';
-import { LocalCoreController } from '../services/local-ai-core/src/runtime/local-core-controller.js';
+import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
+import { SchedulerService } from '../../services/local-ai-core/src/scheduler/scheduler-service.js';
+import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
+import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
 
 test('workspace registry entries persist in LocalCoreAcpStore', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-registry-'));

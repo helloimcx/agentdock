@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { RuntimeDetectionService } from '../services/local-ai-core/src/runtime/runtime-detection-service.js';
-import type { InstalledAgentRuntime } from '../packages/contracts/src/index.js';
+import { RuntimeDetectionService } from '../../services/local-ai-core/src/runtime/runtime-detection-service.js';
+import type { InstalledAgentRuntime } from '../../packages/contracts/src/index.js';
 
 test('runtime detection service returns unknown results before first detection', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'runtime-detection-service-'));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeThreadMessageInput } from '../services/local-ai-core/src/acp/local-core-acp-content.js';
+import { normalizeThreadMessageInput } from '../../services/local-ai-core/src/acp/local-core-acp-content.js';
 
 test('thread message input keeps inbound file content parts', () => {
   const normalized = normalizeThreadMessageInput({

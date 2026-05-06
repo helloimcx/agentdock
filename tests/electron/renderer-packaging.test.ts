@@ -32,7 +32,9 @@ test('release validation scripts keep local and candidate gates intact', () => {
   assert.match(testScript, /\bpnpm build:renderer\b/, 'pnpm test must build renderer assets');
   assert.match(testScript, /\bpnpm build:electron\b/, 'pnpm test must compile Electron and Local AI Core tests');
   assert.match(testScript, /\bnode --test\b/, 'pnpm test must run the Node test suite');
-  assert.match(testScript, /dist-electron\/electron\/\*\.test\.js/, 'pnpm test must include Electron tests');
+  assert.match(testScript, /dist-electron\/tests\/electron\/\*\.test\.js/, 'pnpm test must include Electron tests');
+  assert.match(testScript, /dist-electron\/tests\/contracts\/\*\.test\.js/, 'pnpm test must include contract tests');
+  assert.match(testScript, /dist-electron\/tests\/integration\/\*\.test\.js/, 'pnpm test must include integration tests');
   assert.match(testScript, /dist-electron\/packages\/knowledge-api\/test\/\*\.test\.js/, 'pnpm test must include package tests');
   assert.match(testScript, /dist-electron\/src\/pages\/Threads\/thread-chat-permission\.test\.js/, 'pnpm test must include renderer state tests');
 

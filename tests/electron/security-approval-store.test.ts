@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore, redactSecrets } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { classifyCommandRisk } from '../services/local-ai-core/src/security/command-risk.js';
+import { LocalCoreAcpStore, redactSecrets } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { classifyCommandRisk } from '../../services/local-ai-core/src/security/command-risk.js';
 
 test('workspace security settings persist and create audit events', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'security-settings-'));

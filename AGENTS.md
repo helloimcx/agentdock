@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`src/` contains the React renderer: page views in `src/pages/`, shared UI in `src/components/`, Zustand state in `src/store/`, API clients in `src/api/`, and i18n resources in `src/i18n/`. Electron-specific code lives in `electron/`, with shared desktop types in `shared/`. Static assets belong in `public/`. Build outputs are generated in `dist/renderer/` and `dist-electron/`; do not edit them directly.
+`src/` contains the React renderer: page views in `src/pages/`, shared UI in `src/components/`, Zustand state in `src/store/`, API clients in `src/api/`, and i18n resources in `src/i18n/`. Electron-specific code lives in `electron/`, with shared desktop types in `shared/`. Cross-layer tests live in `tests/`, split into `tests/electron/`, `tests/contracts/`, and `tests/integration/`. Static assets belong in `public/`. Build outputs are generated in `dist/renderer/` and `dist-electron/`; do not edit them directly.
 
 ## Build, Test, and Development Commands
 Use `pnpm` for all local work.
@@ -10,6 +10,7 @@ Use `pnpm` for all local work.
 - `pnpm build`: builds the renderer, writes the Electron package metadata, and compiles the Electron TypeScript entrypoints.
 - `pnpm build:renderer`: builds only the web renderer into `dist/renderer/`.
 - `pnpm build:electron`: rebuilds only the Electron side into `dist-electron/`.
+- `pnpm test`: builds renderer and Electron outputs, then runs the compiled Node test suite.
 - `pnpm start:prod`: launches the packaged app from the current build output.
 - `pnpm e2e:smoke`: runs the bundled smoke test against a fresh production build.
 
@@ -28,7 +29,7 @@ Plugin contracts and runtime types belong in `packages/plugin-sdk/`; keep cross-
 Before writing any code, describe the intended approach and wait for approval. If requirements are ambiguous, ask clarifying questions before writing any code. If a user request for code is not aligned with best practices, briefly explain the concern and suggest a better approach. When investigating issues, reason from first principles about the data model, event flow, and ownership boundaries; first locate whether the faulty state is in agent session storage, Local AI Core logs, SQLite thread records, bridge events, or live UI state, then decide whether the model or workflow needs improvement before applying localized patches. When fixing a bug, start by writing a test that reproduces it, then fix the bug until the test passes. When adding a new feature, update the `README.md` `New` section with a concise user-visible note. After writing code, list relevant edge cases and suggest test cases to cover them. Every time the user corrects the agent, reflect on what went wrong and provide a plan to avoid repeating the same mistake.
 
 ## Testing Guidelines
-There is no unit-test runner configured in this snapshot. The current verification path is `pnpm e2e:smoke`, which exercises the built Electron app end to end. When adding tests, place them near the feature they cover or under a dedicated test directory, and name them after the target module, for example `ProjectList.test.tsx`.
+There is no frontend unit-test runner configured in this snapshot. The main fast verification path is `pnpm test`, which builds renderer and Electron outputs and runs the Node test suite. Use `pnpm e2e:smoke` for packaged app smoke coverage. Keep single-module renderer tests near the feature they cover, put cross-layer Electron, contract, and integration tests under `tests/electron/`, `tests/contracts/`, or `tests/integration/`, and keep package-private tests under `packages/<name>/test/`.
 
 Use TDD selectively where it prevents repeated regressions. Bug fixes should start with the smallest failing test that reproduces the issue, then pass by fixing the underlying invariant. Cross-layer features should add contract or state-machine coverage first, especially for ACP streaming, permission lifecycle, thread/task state, channel content normalization, scheduler behavior, and shared enum parsing. Pure UI polish, copy changes, and exploratory product work do not require strict TDD; validate them with focused manual checks, screenshots when useful, or smoke/e2e coverage. Release and packaging issues should be guarded with `pnpm build` and `pnpm e2e:smoke`.
 

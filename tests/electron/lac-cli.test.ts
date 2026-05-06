@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { runCli } from '../services/local-ai-core/src/cli/lac.js';
+import { runCli } from '../../services/local-ai-core/src/cli/lac.js';
 
 function createIo() {
   let stdout = '';

@@ -4,16 +4,16 @@ import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { RuntimePlugin } from '../packages/plugin-sdk/src/index.js';
-import { bootstrapLocalCoreKernel } from '../services/local-ai-core/src/kernel/bootstrap.js';
-import { bootstrapLocalCoreRuntime } from '../services/local-ai-core/src/kernel/bootstrap.js';
-import { LocalCoreCapabilityRegistry } from '../services/local-ai-core/src/kernel/capability-registry.js';
-import { LocalCoreEventBus } from '../services/local-ai-core/src/kernel/event-bus.js';
-import { LocalCoreLifecycleManager } from '../services/local-ai-core/src/kernel/lifecycle-manager.js';
-import { LocalCorePluginRegistry } from '../services/local-ai-core/src/kernel/plugin-registry.js';
-import { LocalCoreController } from '../services/local-ai-core/src/runtime/local-core-controller.js';
-import { createLocalCoreRuntimeState } from '../services/local-ai-core/src/runtime/local-core-runtime-state.js';
-import { LocalAiCoreServer } from '../services/local-ai-core/src/runtime/server.js';
+import type { RuntimePlugin } from '../../packages/plugin-sdk/src/index.js';
+import { bootstrapLocalCoreKernel } from '../../services/local-ai-core/src/kernel/bootstrap.js';
+import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
+import { LocalCoreCapabilityRegistry } from '../../services/local-ai-core/src/kernel/capability-registry.js';
+import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
+import { LocalCoreLifecycleManager } from '../../services/local-ai-core/src/kernel/lifecycle-manager.js';
+import { LocalCorePluginRegistry } from '../../services/local-ai-core/src/kernel/plugin-registry.js';
+import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
+import { createLocalCoreRuntimeState } from '../../services/local-ai-core/src/runtime/local-core-runtime-state.js';
+import { LocalAiCoreServer } from '../../services/local-ai-core/src/runtime/server.js';
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
   return {

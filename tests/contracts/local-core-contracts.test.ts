@@ -10,7 +10,7 @@ import {
   normalizeScheduledJobRunStatus,
   normalizeChannelContentPartType,
   normalizeApprovalRequestStatus,
-} from '../packages/contracts/src/index.js';
+} from '../../packages/contracts/src/index.js';
 
 test('scheduled job execution mode normalization accepts canonical aliases', () => {
   assert.equal(normalizeScheduledJobExecutionMode(undefined), 'same-thread');

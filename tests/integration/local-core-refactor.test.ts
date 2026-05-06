@@ -4,17 +4,17 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { LocalCoreAcpResponseProcessor } from '../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
-import { formatAgentMode, modeHelpText, normalizeAgentMode, parseSlashCommand } from '../services/local-ai-core/src/acp/local-core-slash-commands.js';
-import { ScheduledConversationExecutor } from '../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
-import { SchedulerRunLifecycle } from '../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
-import { createLarkExecutionPolicy } from '../services/local-ai-core/src/scheduler/lark-execution-policies.js';
-import { LocalScheduleAdapter } from '../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
-import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
-import { LocalCoreLarkGateway } from '../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
-import { createLarkTurnState, renderLarkBridgeEventMessage } from '../services/local-ai-core/src/channel/lark/runtime-state.js';
-import { LocalCoreAcpTurnCoordinator } from '../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
-import { LocalCoreAcpStore } from '../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpResponseProcessor } from '../../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
+import { formatAgentMode, modeHelpText, normalizeAgentMode, parseSlashCommand } from '../../services/local-ai-core/src/acp/local-core-slash-commands.js';
+import { ScheduledConversationExecutor } from '../../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
+import { SchedulerRunLifecycle } from '../../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
+import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/scheduler/lark-execution-policies.js';
+import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
+import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
+import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
+import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
+import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
@@ -33,7 +33,7 @@ import {
   resolveToolUpdateDisplayTitle,
   stripObservedToolTranscriptsFromAssistantText,
   syncLegacyPendingToolCall,
-} from '../services/local-ai-core/src/acp/local-core-acp-progress.js';
+} from '../../services/local-ai-core/src/acp/local-core-acp-progress.js';
 import {
   applyPendingPermissionRequest,
   createPermissionApprovalInput,
@@ -41,9 +41,9 @@ import {
   createRunningPermissionRequest,
   isSchedulerAddCommand,
   parsePermissionOptions,
-} from '../services/local-ai-core/src/acp/local-core-acp-permission-lifecycle.js';
-import { normalizePermissionAction, normalizePermissionOptionAction } from '../services/local-ai-core/src/acp/workspace-acp-permissions.js';
-import { parseLocalAiCoreRoute } from '../services/local-ai-core/src/runtime/server-routes.js';
+} from '../../services/local-ai-core/src/acp/local-core-acp-permission-lifecycle.js';
+import { normalizePermissionAction, normalizePermissionOptionAction } from '../../services/local-ai-core/src/acp/workspace-acp-permissions.js';
+import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/runtimes'), { name: 'runtimes.list' });

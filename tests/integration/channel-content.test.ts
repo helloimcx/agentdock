@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { createChannelThreadMessageInput } from '../services/local-ai-core/src/channel/shared/content.js';
-import { resolveChannelFilePath } from '../services/local-ai-core/src/channel/shared/file-utils.js';
+import { createChannelThreadMessageInput } from '../../services/local-ai-core/src/channel/shared/content.js';
+import { resolveChannelFilePath } from '../../services/local-ai-core/src/channel/shared/file-utils.js';
 
 test('channel thread message input stays plain text when there are no attachments', () => {
   const input = createChannelThreadMessageInput('Alice: hello', [

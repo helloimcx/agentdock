@@ -13,6 +13,7 @@
   },
   "include": [
     "electron/**/*.ts",
+    "tests/**/*.ts",
     "shared/**/*.ts",
     "packages/**/*.ts",
     "services/**/*.ts",
