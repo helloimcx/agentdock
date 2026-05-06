@@ -141,7 +141,6 @@ export class LocalCoreAcpBackend {
             type: binding.platform === 'lark' ? 'channel.chat' : binding.platform,
             channelId: binding.chat_id,
             participantId: binding.platform_user_id,
-            threadId,
           },
         };
       },

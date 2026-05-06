@@ -48,6 +48,7 @@ import { createBuiltinWeixinSchedulerPlugin } from '../plugins/builtin/scheduler
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
+import { scheduledJobMatchesPlatformBinding, withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
 
 export interface LocalCoreKernel {
   context: PluginContext;
@@ -340,16 +341,22 @@ export function bootstrapLocalCoreRuntime(options: {
       scheduler.createJob({
         workspaceId,
         platform,
-        route,
+        route: withoutThreadRoute(route),
         triggerType: 'cron',
         cronExpr: schedule,
         promptTemplate: message,
         description: `${name} · ${scheduleDescription}`,
         enabled: true,
       }),
-    listJobsForThread: async (threadId) => scheduler
-      .listJobs()
-      .filter((job) => job.route.threadId === threadId),
+    listJobsForThread: async (threadId) => {
+      const binding = store.getPlatformThreadBindingByThreadId(threadId);
+      return scheduler
+        .listJobs()
+        .filter((job) =>
+          job.route.threadId === threadId ||
+          (binding ? scheduledJobMatchesPlatformBinding(job, binding) : false)
+        );
+    },
     deleteJob: async (jobId) => {
       scheduler.deleteJob(jobId);
     },

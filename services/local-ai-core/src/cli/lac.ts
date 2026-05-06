@@ -2,6 +2,7 @@ import process from 'node:process';
 import type { ScheduledJob, ScheduledJobRun, ScheduledJobUpdateInput } from '../../../../packages/contracts/src/index.js';
 import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
+import { scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -156,7 +157,7 @@ async function handleList(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, 
   const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
   const response = await request<{ jobs: ScheduledJob[] }>(context.baseUrl, 'GET', `/scheduler/jobs${suffix}`);
   const jobs = threadId
-    ? response.jobs.filter((job) => job.route.threadId === threadId)
+    ? response.jobs.filter((job) => job.route.threadId === threadId || scheduledJobMatchesCliContext(job, context))
     : response.jobs;
   print(json, io.stdout, { jobs: jobs.map(presentJob) }, jobs.length === 0 ? 'No scheduler jobs.' : jobs.map(formatJobLine).join('\n'));
   return 0;

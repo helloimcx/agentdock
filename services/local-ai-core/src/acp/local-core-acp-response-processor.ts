@@ -1,6 +1,7 @@
 import type { ScheduledJob, ScheduledJobRoute } from '../../../../packages/contracts/src/index.js';
 import { detectCronCommands, stripCronCommands, type CronCommand } from '../scheduler/cron-command-detector.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
+import { withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
 
 type SchedulerHandlers = {
   createJob: (input: {
@@ -97,10 +98,7 @@ export class LocalCoreAcpResponseProcessor {
           const job = await this.options.scheduler.createJob({
             workspaceId: binding.workspaceId,
             platform: binding.platform,
-            route: {
-              ...binding.route,
-              threadId,
-            },
+            route: withoutThreadRoute(binding.route),
             name: command.name,
             schedule: command.schedule,
             scheduleDescription: command.scheduleDescription,

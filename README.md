@@ -17,6 +17,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 - 新增 Hermes 原生 ACP runtime，可通过 `agent.type = "hermes"` 使用 `hermes acp` 对接本地会话运行时。
 - Hermes runtime 默认以 YOLO 权限模式启动，先绕开 Hermes ACP 审批回调兼容问题，避免危险命令审批被提前拒绝。
+- LAC 定时任务不再固化线程路由，改为按项目和 channel 投递目标动态解析当前线程，避免切换线程后 same-thread 任务失败。
 ### 2026-05-04
 
 - LAC 定时任务创建改由 Local Core 根据当前线程绑定解析 Lark/微信路由，agent 仍可直接使用 `lac scheduler add`，避免飞书创建的任务误落到 local route。

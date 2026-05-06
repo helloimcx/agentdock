@@ -42,8 +42,7 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
 
   private async resolveThread(job: ScheduledJob) {
     const workspaceRouter = this.options.getWorkspaceRouter();
-    if (job.route.threadId) {
-      await workspaceRouter.getThread(job.route.threadId);
+    if (job.route.threadId && await this.threadExists(job.route.threadId)) {
       return job.route.threadId;
     }
     const title = `[Scheduled] ${job.description || job.id}`;
@@ -54,6 +53,15 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
     }
     const created = await workspaceRouter.createThread(job.workspaceId, title);
     return created.id;
+  }
+
+  private async threadExists(threadId: string) {
+    try {
+      await this.options.getWorkspaceRouter().getThread(threadId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async waitForRun(runId: string, timeoutMs = 15 * 60 * 1000) {

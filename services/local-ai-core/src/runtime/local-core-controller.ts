@@ -70,6 +70,7 @@ import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeB
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { SchedulerService } from '../scheduler/scheduler-service.js';
+import { withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
 import type { LocalAiCoreBindings } from './server.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 
@@ -308,7 +309,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     route: NonNullable<ScheduledJobCreateInput['route']>;
   } {
     if (input.platform && input.route) {
-      return input as ScheduledJobCreateInput & {
+      return {
+        ...input,
+        route: withoutThreadRoute(input.route),
+      } as ScheduledJobCreateInput & {
         platform: NonNullable<ScheduledJobCreateInput['platform']>;
         route: NonNullable<ScheduledJobCreateInput['route']>;
       };
@@ -324,7 +328,6 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
             type: 'channel.chat',
             channelId: binding.chat_id,
             participantId: binding.platform_user_id,
-            threadId,
           },
         };
       }
@@ -335,13 +338,15 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       route: {
         type: 'local.thread',
         channelId: input.workspaceId,
-        ...(threadId ? { threadId } : {}),
       },
     };
   }
 
   async updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob> {
-    return this.scheduler.updateJob(jobId, input);
+    return this.scheduler.updateJob(jobId, {
+      ...input,
+      ...(input.route ? { route: withoutThreadRoute(input.route) } : {}),
+    });
   }
 
   async deleteScheduledJob(jobId: string) {
