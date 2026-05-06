@@ -16,10 +16,23 @@ export type AgentAcpProgressInput = {
   priorProgressMessages: AgentAcpProgressRecord[];
 };
 
+export type AgentAcpPermissionOption = {
+  optionId: string;
+  name: string;
+  kind: string;
+  normalizedAction: string;
+};
+
+export type AgentAcpPermissionInput = {
+  options: AgentAcpPermissionOption[];
+  params?: unknown;
+};
+
 export type AgentAcpBehavior = {
   normalizeAssistantText(input: AgentAcpBehaviorInput): string;
   normalizeFinalAssistantText(input: AgentAcpBehaviorInput): string;
   shouldSuppressProgress?(input: AgentAcpProgressInput): boolean;
+  normalizePermissionOptions?(input: AgentAcpPermissionInput): AgentAcpPermissionOption[];
 };
 
 export const standardAcpBehavior: AgentAcpBehavior = {

@@ -1024,6 +1024,62 @@ test('ACP permission button rows preserve always allow actions with structured s
   assert.equal(session.pendingPermissionByRun.get('run-1')?.options[1]?.optionId, 'approve-always');
 });
 
+test('Hermes ACP permission options respect allow_permanent false', () => {
+  const emitted: Array<{ type: string; buttonRows?: Array<Array<{ text: string; data: string }>> }> = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    emitBridge: (event) => emitted.push(event as { type: string; buttonRows?: Array<Array<{ text: string; data: string }>> }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'preview-1',
+      assistantText: '',
+      typingStarted: true,
+      previewStarted: false,
+      permission: null,
+      agentType: 'hermes',
+    },
+    pendingPermissionByRun: new Map(),
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentRequest(session, {
+    method: 'session/request_permission',
+    id: 42,
+    params: {
+      allow_permanent: false,
+      toolCall: {
+        title: 'Terminal',
+        parameters: {
+          command: 'system_profiler SPHardwareDataType',
+        },
+      },
+      options: [
+        { optionId: 'approve-once', name: 'Allow once', kind: 'allow' },
+        { optionId: 'approve-always', name: 'Always allow', kind: 'allow' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject' },
+      ],
+    },
+  });
+
+  assert.deepEqual(emitted[0]?.buttonRows, [[
+    { text: 'allow', data: 'allow' },
+    { text: 'deny', data: 'deny' },
+  ]]);
+  assert.deepEqual(
+    session.pendingPermissionByRun.get('run-1')?.options.map((option: any) => option.optionId),
+    ['approve-once', 'reject'],
+  );
+});
+
 test('ACP yolo mode auto-selects permission requests without rendering cards', () => {
   const emitted: Array<{ type: string }> = [];
   const appended: string[] = [];

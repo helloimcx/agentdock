@@ -141,7 +141,13 @@ export class LocalCoreAcpTurnCoordinator {
       });
       return;
     }
-    const options = parsePermissionOptions(payload.params?.options);
+    const currentTurn = session.currentTurn;
+    const behavior = resolveAgentAcpBehavior(currentTurn?.agentType);
+    const parsedOptions = parsePermissionOptions(payload.params?.options);
+    const options = behavior.normalizePermissionOptions?.({
+      options: parsedOptions,
+      params: payload.params,
+    }) || parsedOptions;
     const toolTitle = formatToolCallContent(payload.params?.toolCall);
     this.closePendingThoughtSegment(session);
     if ((this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE) === 'bypassPermissions') {
