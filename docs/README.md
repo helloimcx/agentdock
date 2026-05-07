@@ -12,6 +12,7 @@ This directory is organized by documentation purpose.
 - [Overview](architecture/overview.md): current Local AI Core-first architecture.
 - [ACP Protocol Fields And Examples](architecture/acp-protocol.md): AgentDock-supported ACP JSON-RPC fields, bridge events, and example flows.
 - [Message And Channel Contracts](architecture/message-and-channel-contracts.md): ownership and invariants for streamed message blocks and shared channel content.
+- [Scheduled Delivery Architecture](architecture/scheduled-delivery.md): scheduler ownership, route resolution, ACP execution, and channel delivery invariants.
 - [State Ownership](architecture/state-ownership.md): where runtime, workspace, task, device, and approval state belongs.
 - [Runtime Installation Boundary](architecture/runtime-installation-boundary.md): reserved shape for future installation support without implementing installers.
 

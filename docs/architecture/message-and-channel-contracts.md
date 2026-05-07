@@ -21,6 +21,7 @@ This document defines the intended ownership boundaries for message blocks and c
 | Attachment | `ChannelInboundContentPart`, `ChannelOutboundAttachmentResult` | Local AI Core | path/uri/data reference, filename, mime, size, metadata | attachment availability events when needed | file/image label and metadata | upload keys and platform message ids stay in adapters |
 | ChannelInboundContent | `ChannelInboundMessageContent` | Channel adapters normalize into Local AI Core | display text and normalized parts | inbound message event | normalized text/image/file parts | source platform payload remains adapter-local |
 | ChannelOutboundContent | `ChannelOutboundMessageInput`, `ChannelOutboundMessageResult` | Local AI Core routes to channel adapters | route, parts, result ids, attachments | outbound delivery status when needed | send result and attachment metadata | platform upload ids remain result metadata |
+| ScheduledDeliveryTarget | `ScheduledJob.platform`, `ScheduledJob.route` | Local AI Core scheduler application service | platform base or instance-qualified id, route type, channel id, participant id, instance id | scheduled run status events | job list/detail and run status | platform message ids stay in channel adapters |
 
 ## Message Block Contract Direction
 
@@ -73,7 +74,22 @@ Invariants:
 - Channel-specific code handles authentication, download, upload, and platform message ids only.
 - Core workflows should consume shared channel parts, not Lark or Weixin event payloads.
 - Sending files through a channel uses one outbound path, whether triggered by scheduler, CLI, ACP instruction, or UI.
+- Scheduled delivery uses the same outbound route contract as direct channel sends; scheduled jobs should not bypass channel runtimes to call platform APIs directly.
 - Platform adapters may degrade gracefully, but unsupported part types should fail with a clear error or fallback text.
+
+## Scheduled Channel Delivery
+
+Scheduled jobs are created and delivered through Local AI Core, not through renderer or Electron route state. A scheduled job's platform may be instance-qualified, for example `lark:<instanceId>` or `weixin:<instanceId>`. Scheduler adapter selection should compare the platform base, while delivery should keep the instance id in `ScheduledJobRoute.instanceId`.
+
+Invariants:
+
+- `ScheduledJobApplicationService` owns create-time route resolution.
+- `scheduled-job-route.ts` owns platform parsing and route derivation from `platform_thread_bindings`.
+- A job created from a bound channel thread should persist the binding's platform, chat id, platform user id, and instance id.
+- A scheduled ACP run should receive channel context through runtime environment variables, but final platform delivery remains a channel outbound operation.
+- `same-thread` and `side-thread` affect where the ACP conversation executes; they do not change the persisted platform delivery target.
+
+See [Scheduled Delivery Architecture](scheduled-delivery.md) for the end-to-end scheduler flow.
 
 ## Test Expectations
 
@@ -83,5 +99,6 @@ Add regression or contract tests when changing:
 - Thinking, tool, and final answer streaming updates.
 - Inbound text/image/file normalization.
 - Outbound file or future image delivery.
+- Scheduled delivery route resolution, especially instance-qualified Lark/Weixin platforms.
 - Slash command parsing or scheduler execution mode parsing.
 - Shared enum parsing for form values and persisted rows.

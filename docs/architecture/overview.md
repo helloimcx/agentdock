@@ -5,7 +5,7 @@
 AgentDock now runs as a Local AI Core-first desktop app:
 
 - Electron is only the desktop shell
-- Local AI Core owns runtime, threads, streaming, knowledge, and native Lark ingress
+- Local AI Core owns runtime, threads, streaming, knowledge, scheduler state, and native channel ingress
 - The renderer talks to Local AI Core APIs directly or through the Electron shell
 
 There is no `cc-connect` runtime, management API, or bridge compatibility path in the active architecture.
@@ -21,7 +21,10 @@ flowchart LR
   E --> C
   C --> ACP[ACP Agent Backends]
   C --> KB[Knowledge Provider]
-  C --> LARK[Native Feishu/Lark Gateway]
+  C --> SCHED[Scheduler]
+  C --> CH[Native Channel Gateways]
+  SCHED --> ACP
+  SCHED --> CH
 ```
 
 ## Main Layers
@@ -43,7 +46,16 @@ flowchart LR
 
 - lives in `services/local-ai-core/`
 - exposes `/api/local/v1/*`
-- owns thread routing, SQLite persistence, ACP streaming, and Lark ingress
+- owns thread routing, SQLite persistence, ACP streaming, scheduler execution, and channel ingress/delivery
+
+Local AI Core keeps scheduler responsibilities split by lifecycle:
+
+- `ScheduledJobApplicationService` resolves scheduled job create/update input and derives channel routes from thread bindings.
+- `SchedulerService` owns due polling, run concurrency, and adapter selection.
+- `ScheduledConversationExecutor` turns a scheduled job into an ACP conversation and injects the channel runtime environment for the run.
+- Platform scheduler adapters own final delivery through channel runtimes; Lark/Weixin adapters match platform base ids while preserving instance ids for delivery.
+
+See [Scheduled Delivery Architecture](scheduled-delivery.md) for the full route and delivery model.
 
 ### Shared Packages
 
