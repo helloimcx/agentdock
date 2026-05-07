@@ -6,6 +6,7 @@ import { Card, Button, Badge, PageHeader, Select } from '@/components/ui';
 import { getLogs } from '@/api/status';
 
 const levelColors: Record<string, string> = {
+  sys: 'text-gray-300',
   debug: 'text-gray-400',
   info: 'text-blue-400',
   warn: 'text-amber-400',
@@ -13,6 +14,7 @@ const levelColors: Record<string, string> = {
 };
 
 const levelBadge: Record<string, 'default' | 'info' | 'warning' | 'danger'> = {
+  sys: 'default',
   debug: 'default',
   info: 'info',
   warn: 'warning',
@@ -22,7 +24,7 @@ const levelBadge: Record<string, 'default' | 'info' | 'warning' | 'danger'> = {
 export default function SystemLogs() {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<any[]>([]);
-  const [level, setLevel] = useState('info');
+  const [level, setLevel] = useState('sys');
   const [limit, setLimit] = useState('100');
   const [loading, setLoading] = useState(true);
 
@@ -61,6 +63,7 @@ export default function SystemLogs() {
             onChange={(e) => setLevel(e.target.value)}
             className="w-auto"
           >
+            <option value="sys">Sys</option>
             <option value="debug">Debug</option>
             <option value="info">Info</option>
             <option value="warn">Warn</option>

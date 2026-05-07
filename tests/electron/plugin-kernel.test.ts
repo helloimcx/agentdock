@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RuntimePlugin } from '../../packages/plugin-sdk/src/index.js';
@@ -14,6 +14,59 @@ import { LocalCorePluginRegistry } from '../../services/local-ai-core/src/kernel
 import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
 import { createLocalCoreRuntimeState } from '../../services/local-ai-core/src/runtime/local-core-runtime-state.js';
 import { LocalAiCoreServer } from '../../services/local-ai-core/src/runtime/server.js';
+
+function withLogEnv<T>(logDir: string, fn: () => T, options: {
+  maxBytes?: number;
+  maxFiles?: number;
+} = {}): T {
+  const previousLogDir = process.env.AGENTDOCK_LOG_DIR;
+  const previousMaxBytes = process.env.AGENTDOCK_LOG_MAX_BYTES;
+  const previousMaxFiles = process.env.AGENTDOCK_LOG_MAX_FILES;
+  process.env.AGENTDOCK_LOG_DIR = logDir;
+  if (options.maxBytes !== undefined) {
+    process.env.AGENTDOCK_LOG_MAX_BYTES = String(options.maxBytes);
+  } else {
+    delete process.env.AGENTDOCK_LOG_MAX_BYTES;
+  }
+  if (options.maxFiles !== undefined) {
+    process.env.AGENTDOCK_LOG_MAX_FILES = String(options.maxFiles);
+  } else {
+    delete process.env.AGENTDOCK_LOG_MAX_FILES;
+  }
+  const restore = () => {
+    if (previousLogDir === undefined) {
+      delete process.env.AGENTDOCK_LOG_DIR;
+    } else {
+      process.env.AGENTDOCK_LOG_DIR = previousLogDir;
+    }
+    if (previousMaxBytes === undefined) {
+      delete process.env.AGENTDOCK_LOG_MAX_BYTES;
+    } else {
+      process.env.AGENTDOCK_LOG_MAX_BYTES = previousMaxBytes;
+    }
+    if (previousMaxFiles === undefined) {
+      delete process.env.AGENTDOCK_LOG_MAX_FILES;
+    } else {
+      process.env.AGENTDOCK_LOG_MAX_FILES = previousMaxFiles;
+    }
+  };
+  try {
+    const result = fn();
+    const maybePromise = result as unknown as Promise<unknown> | null;
+    if (maybePromise && typeof maybePromise.finally === 'function') {
+      return maybePromise.finally(restore) as T;
+    }
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
+function parseLogLine(line: string) {
+  return JSON.parse(line) as { ts: string; level: string; scope: string; message: string };
+}
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
   return {
@@ -581,6 +634,7 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
         plugins: {},
       }),
       getLogs: () => [],
+      getLogEntries: () => [],
       readConfigFile: async () => ({
         path: '',
         exists: false,
@@ -631,22 +685,43 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   assert.equal(stopped, true);
 });
 
-test('runtime logs are persisted to local-core.log', () => {
+test('runtime logs are persisted to unified sys and level logs', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-logs-'));
+  const logDir = join(userDataPath, 'logs');
   try {
-    const runtime = bootstrapLocalCoreRuntime({
-      userDataPath,
-      enableKnowledge: false,
-      log: () => {},
+    withLogEnv(logDir, () => {
+      const runtime = bootstrapLocalCoreRuntime({
+        userDataPath,
+        enableKnowledge: false,
+        log: () => {},
+      });
+
+      runtime.state.pushLog('localcore-weixin send failed for sessionKey=test');
+      runtime.state.pushLog('second line');
+
+      const sysRaw = readFileSync(join(logDir, 'sys.log'), 'utf-8');
+      const errorRaw = readFileSync(join(logDir, 'error.log'), 'utf-8');
+      const infoRaw = readFileSync(join(logDir, 'info.log'), 'utf-8');
+      const sysLines = sysRaw.trim().split(/\r?\n/).map(parseLogLine);
+      assert.equal(runtime.state.logPath, join(logDir, 'sys.log'));
+      for (const fileName of ['sys.log', 'debug.log', 'info.log', 'warn.log', 'error.log']) {
+        assert.equal(existsSync(join(logDir, fileName)), true);
+      }
+      assert.equal(sysLines.at(-2)?.level, 'error');
+      assert.match(sysLines.at(-2)?.ts || '', /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
+      assert.equal(sysLines.at(-2)?.message, 'localcore-weixin send failed for sessionKey=test');
+      assert.equal(sysLines.at(-1)?.level, 'info');
+      assert.equal(sysLines.at(-1)?.message, 'second line');
+      assert.match(errorRaw, /localcore-weixin send failed for sessionKey=test/);
+      assert.match(infoRaw, /second line/);
+      assert.deepEqual(runtime.state.getLogEntries('error', 10).map((entry) => entry.message), [
+        'localcore-weixin send failed for sessionKey=test',
+      ]);
+      assert.deepEqual(runtime.state.getLogEntries('sys', 2).map((entry) => entry.message), [
+        'localcore-weixin send failed for sessionKey=test',
+        'second line',
+      ]);
     });
-
-    runtime.state.pushLog('localcore-weixin send failed for sessionKey=test');
-    runtime.state.pushLog('second line');
-
-    const logPath = join(userDataPath, 'runtime', 'local-core.log');
-    const raw = readFileSync(logPath, 'utf-8');
-    assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* localcore-weixin send failed for sessionKey=test/m);
-    assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* second line/m);
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
@@ -654,17 +729,20 @@ test('runtime logs are persisted to local-core.log', () => {
 
 test('runtime getLogs reads from disk after state is recreated', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-disk-logs-'));
+  const logDir = join(userDataPath, 'logs');
   try {
-    const state = createLocalCoreRuntimeState({ userDataPath });
-    state.pushLog('first persisted line');
-    state.pushLog('second persisted line');
+    withLogEnv(logDir, () => {
+      const state = createLocalCoreRuntimeState({ userDataPath });
+      state.pushLog('first persisted line');
+      state.pushLog('second persisted line');
 
-    const recreated = createLocalCoreRuntimeState({ userDataPath });
+      const recreated = createLocalCoreRuntimeState({ userDataPath });
 
-    assert.deepEqual(recreated.getLogs(2).map((line) => line.replace(/^\S+\s+/, '')), [
-      'first persisted line',
-      'second persisted line',
-    ]);
+      assert.deepEqual(recreated.getLogs(2).map((line) => parseLogLine(line).message), [
+        'first persisted line',
+        'second persisted line',
+      ]);
+    });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
@@ -672,12 +750,20 @@ test('runtime getLogs reads from disk after state is recreated', () => {
 
 test('runtime getLogs fills from rotated log when current log has fewer lines', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-rotated-logs-'));
+  const logDir = join(userDataPath, 'logs');
   try {
-    const state = createLocalCoreRuntimeState({ userDataPath });
-    writeFileSync(`${state.logPath}.1`, 'old-1\nold-2\nold-3\n', 'utf8');
-    writeFileSync(state.logPath, 'new-1\n', 'utf8');
+    withLogEnv(logDir, () => {
+      const state = createLocalCoreRuntimeState({ userDataPath });
+      writeFileSync(`${state.logPath}.1`, [
+        JSON.stringify({ ts: '2026-01-01 00:00:00.000', level: 'info', scope: 'test', message: 'old-1' }),
+        JSON.stringify({ ts: '2026-01-01 00:00:01.000', level: 'info', scope: 'test', message: 'old-2' }),
+        JSON.stringify({ ts: '2026-01-01 00:00:02.000', level: 'info', scope: 'test', message: 'old-3' }),
+        '',
+      ].join('\n'), 'utf8');
+      writeFileSync(state.logPath, `${JSON.stringify({ ts: '2026-01-01 00:00:03.000', level: 'info', scope: 'test', message: 'new-1' })}\n`, 'utf8');
 
-    assert.deepEqual(state.getLogs(3), ['old-2', 'old-3', 'new-1']);
+      assert.deepEqual(state.getLogs(3).map((line) => parseLogLine(line).message), ['old-2', 'old-3', 'new-1']);
+    });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
@@ -685,37 +771,68 @@ test('runtime getLogs fills from rotated log when current log has fewer lines', 
 
 test('runtime getLogs returns only the requested tail lines from disk', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-tail-logs-'));
+  const logDir = join(userDataPath, 'logs');
   try {
-    const state = createLocalCoreRuntimeState({ userDataPath });
-    writeFileSync(
-      state.logPath,
-      Array.from({ length: 1000 }, (_, index) => `line-${index + 1}`).join('\n') + '\n',
-      'utf8',
-    );
+    withLogEnv(logDir, () => {
+      const state = createLocalCoreRuntimeState({ userDataPath });
+      writeFileSync(
+        state.logPath,
+        Array.from({ length: 1000 }, (_, index) =>
+          JSON.stringify({ ts: '2026-01-01 00:00:00.000', level: 'info', scope: 'test', message: `line-${index + 1}` })
+        ).join('\n') + '\n',
+        'utf8',
+      );
 
-    assert.deepEqual(state.getLogs(4), ['line-997', 'line-998', 'line-999', 'line-1000']);
+      assert.deepEqual(state.getLogs(4).map((line) => parseLogLine(line).message), ['line-997', 'line-998', 'line-999', 'line-1000']);
+    });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
 
-test('controller logs are persisted to local-core.log', () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-controller-logs-'));
+test('runtime logs rotate by file size', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-size-rotated-logs-'));
+  const logDir = join(userDataPath, 'logs');
   try {
-    const runtime = bootstrapLocalCoreRuntime({
-      userDataPath,
-      enableKnowledge: false,
+    withLogEnv(logDir, () => {
+      const state = createLocalCoreRuntimeState({ userDataPath });
+      state.pushLog('first failed line with enough text to rotate');
+      state.pushLog('second failed line with enough text to rotate');
+      state.pushLog('third failed line with enough text to rotate');
+
+      const currentSys = readFileSync(join(logDir, 'sys.log'), 'utf8');
+      const rotatedSys = readFileSync(join(logDir, 'sys.log.1'), 'utf8');
+      const currentError = readFileSync(join(logDir, 'error.log'), 'utf8');
+      const rotatedError = readFileSync(join(logDir, 'error.log.1'), 'utf8');
+      assert.match(currentSys, /third failed line/);
+      assert.match(rotatedSys, /second failed line/);
+      assert.match(currentError, /third failed line/);
+      assert.match(rotatedError, /second failed line/);
+    }, { maxBytes: 120, maxFiles: 2 });
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('controller logs are persisted to sys.log', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-controller-logs-'));
+  const logDir = join(userDataPath, 'logs');
+  try {
+    withLogEnv(logDir, () => {
+      const runtime = bootstrapLocalCoreRuntime({
+        userDataPath,
+        enableKnowledge: false,
+      });
+      const controller = new LocalCoreController(userDataPath, runtime);
+      const emittedLogs: string[] = [];
+      controller.on('logs', (line) => emittedLogs.push(line));
+
+      (controller as any).handleLog('localcore-lark inbound message for project-1');
+
+      const raw = readFileSync(join(logDir, 'sys.log'), 'utf-8');
+      assert.deepEqual(emittedLogs, ['localcore-lark inbound message for project-1']);
+      assert.equal(parseLogLine(raw.trim().split(/\r?\n/).at(-1) || '').message, 'localcore-lark inbound message for project-1');
     });
-    const controller = new LocalCoreController(userDataPath, runtime);
-    const emittedLogs: string[] = [];
-    controller.on('logs', (line) => emittedLogs.push(line));
-
-    (controller as any).handleLog('localcore-lark inbound message for project-1');
-
-    const logPath = join(userDataPath, 'runtime', 'local-core.log');
-    const raw = readFileSync(logPath, 'utf-8');
-    assert.deepEqual(emittedLogs, ['localcore-lark inbound message for project-1']);
-    assert.match(raw, /^\d{4}-\d{2}-\d{2}T.* localcore-lark inbound message for project-1/m);
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
@@ -723,13 +840,15 @@ test('controller logs are persisted to local-core.log', () => {
 
 test('controller buffers bootstrap logs until runtime state is assigned', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-bootstrap-logs-'));
+  const logDir = join(userDataPath, 'logs');
   try {
-    const controller = new LocalCoreController(userDataPath);
-    const logPath = join(userDataPath, 'runtime', 'local-core.log');
-    const raw = readFileSync(logPath, 'utf-8');
-    assert.match(raw, /\[plugin:builtin\.agent-codex\] registered/);
-    assert.equal((raw.match(/\[plugin:builtin\.agent-codex\] registered/g) || []).length, 1);
-    void controller.close();
+    withLogEnv(logDir, () => {
+      const controller = new LocalCoreController(userDataPath);
+      const raw = readFileSync(join(logDir, 'sys.log'), 'utf-8');
+      assert.match(raw, /\[plugin:builtin\.agent-codex\] registered/);
+      assert.equal((raw.match(/\[plugin:builtin\.agent-codex\] registered/g) || []).length, 1);
+      void controller.close();
+    });
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }

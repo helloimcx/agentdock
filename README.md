@@ -75,9 +75,11 @@ flowchart LR
 
 ### 2026-05-07
 
+- 发布 AgentDock 0.1.35。
 - 发布 AgentDock 0.1.33。
 - README 新增系统架构简要介绍与 Mermaid 架构图。
 - 新增后台关键模块架构文档索引，并补充 kernel、router、channel gateway、knowledge runtime 与 ACP 流程图。
+- Local AI Core 日志统一写入 `~/.agentdock/logs`，按 `sys/info/warn/error/debug` 分级文件记录并按文件大小轮动。
 
 ### 2026-05-06
 
@@ -149,6 +151,9 @@ xattr -cr /Applications/AgentDock.app
 | `AI_WORKSTATION_SMOKE_SCENARIO` | 冒烟测试场景 |
 | `AI_WORKSTATION_FORCE_RUNTIME_STATUS_ERROR` | 强制触发运行时状态错误，用于测试 |
 | `AI_WORKSTATION_DEV_SERVER_URL` | Electron 开发模式连接的前端地址 |
+| `AGENTDOCK_LOG_DIR` | 日志目录，默认 `~/.agentdock/logs` |
+| `AGENTDOCK_LOG_MAX_BYTES` | 单个日志文件轮动大小，默认 10MB |
+| `AGENTDOCK_LOG_MAX_FILES` | 单个日志保留的轮动文件数，默认 5 |
 
 ## 项目结构
 

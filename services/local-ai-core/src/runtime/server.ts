@@ -69,6 +69,7 @@ import type {
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
+import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
   getRuntimeStatus(): Promise<DesktopRuntimeStatus>;
@@ -76,6 +77,7 @@ export interface LocalAiCoreBindings extends EventEmitter {
   stopService(): Promise<DesktopServiceState>;
   restartService(): Promise<DesktopServiceState>;
   getLogs(limit?: number): string[];
+  getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
   readConfigFile(): Promise<ConfigFileState>;
   saveRawConfigFile(raw: string): Promise<ConfigFileState>;
   saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
@@ -324,6 +326,20 @@ export class LocalAiCoreServer {
       case 'runtime.logs': {
         const limit = Number(url.searchParams.get('limit') || '200');
         json(res, 200, this.bindings.getLogs(limit));
+        return;
+      }
+      case 'logs.list': {
+        const level = url.searchParams.get('level') || 'sys';
+        const limit = Number(url.searchParams.get('limit') || '200');
+        json(res, 200, {
+          entries: this.bindings.getLogEntries(level, limit).map((entry) => ({
+            time: entry.ts,
+            level: entry.level,
+            scope: entry.scope,
+            message: entry.message,
+            meta: entry.meta,
+          })),
+        });
         return;
       }
       case 'runtime.agent-runtimes':

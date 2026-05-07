@@ -46,6 +46,7 @@ import { normalizePermissionAction, normalizePermissionOptionAction } from '../.
 import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/logs'), { name: 'logs.list' });
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/runtimes'), { name: 'runtimes.list' });
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/runtimes/refresh'), { name: 'runtimes.refresh' });
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/runtimes/codex'), {

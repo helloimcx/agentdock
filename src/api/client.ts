@@ -14,7 +14,7 @@ class ApiClient {
       this.baseUrl = DEFAULT_API_BASE;
       return;
     }
-    this.baseUrl = trimmed.endsWith('/api/v1')
+    this.baseUrl = trimmed.endsWith('/api/v1') || trimmed.endsWith('/api/local/v1')
       ? trimmed
       : `${trimmed.replace(/\/+$/, '')}/api/v1`;
   }

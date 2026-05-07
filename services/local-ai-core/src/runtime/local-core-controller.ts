@@ -190,6 +190,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     return this.state.getLogs(limit);
   }
 
+  getLogEntries(level = 'sys', limit = 200) {
+    return this.state.getLogEntries(level, limit);
+  }
+
   async readConfigFile(): Promise<ConfigFileState> {
     return this.state.readConfigFile();
   }

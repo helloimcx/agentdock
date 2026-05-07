@@ -5,6 +5,7 @@ export type LocalAiCoreRoute =
   | { name: 'runtime.service.stop' }
   | { name: 'runtime.service.restart' }
   | { name: 'runtime.logs' }
+  | { name: 'logs.list' }
   | { name: 'runtime.agent-runtimes' }
   | { name: 'runtime.config.read' }
   | { name: 'runtime.config.save-raw' }
@@ -106,6 +107,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
   if (normalizedMethod === 'GET' && relativePath === '/runtime/logs') {
     return { name: 'runtime.logs' };
+  }
+  if (normalizedMethod === 'GET' && relativePath === '/logs') {
+    return { name: 'logs.list' };
   }
   if (normalizedMethod === 'GET' && relativePath === '/runtime/agent-runtimes') {
     return { name: 'runtime.agent-runtimes' };

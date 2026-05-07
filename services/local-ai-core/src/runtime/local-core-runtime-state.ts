@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as TOML from '@iarna/toml';
 import type {
@@ -8,14 +8,11 @@ import type {
   DesktopSettingsInput,
   KnowledgeConfig,
 } from '../../../../packages/contracts/src/index.js';
+import { AgentDockRotatingLogger, inferLogLevel, type AgentDockLogEntry, type AgentDockLogFile } from '../kernel/rotating-logger.js';
 
 const DEFAULT_CONFIG = `# Managed by Local AI Core
 # Add [[projects]] entries from the workspace page before starting a conversation.
 `;
-const LOG_FILE_NAME = 'local-core.log';
-const LOG_FILE_MAX_BYTES = 2 * 1024 * 1024;
-const LOG_TAIL_CHUNK_BYTES = 64 * 1024;
-const LOG_MAX_RETURN_LINES = 5000;
 
 type RuntimeSettingsFile = {
   configPath: string;
@@ -42,6 +39,7 @@ export interface LocalCoreRuntimeState {
   getKnowledgeConfig(): KnowledgeConfig;
   updateKnowledgeConfig(input: Partial<KnowledgeConfig>): Promise<KnowledgeConfig>;
   getLogs(limit?: number): string[];
+  getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
   pushLog(message: string): void;
   readConfigFile(): Promise<ConfigFileState>;
   saveRawConfigFile(raw: string): Promise<ConfigFileState>;
@@ -55,6 +53,7 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   readonly logPath: string;
   private settings: DesktopSettings;
   private readonly logs: string[] = [];
+  private readonly logger: AgentDockRotatingLogger;
 
   constructor(
     readonly userDataPath: string,
@@ -62,7 +61,8 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   ) {
     this.runtimeDir = join(userDataPath, 'runtime');
     this.settingsPath = join(this.runtimeDir, 'local-core-settings.json');
-    this.logPath = join(this.runtimeDir, LOG_FILE_NAME);
+    this.logger = new AgentDockRotatingLogger({ scope: 'local-ai-core' });
+    this.logPath = this.logger.sysLogPath;
     mkdirSync(this.runtimeDir, { recursive: true });
     this.cliBinDir = this.ensureCliWrapper();
     this.settings = this.loadSettings();
@@ -127,13 +127,14 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   }
 
   getLogs(limit = 200): string[] {
-    const normalizedLimit = normalizeLogLimit(limit);
-    const current = tailLogFile(this.logPath, normalizedLimit);
-    if (current.length >= normalizedLimit) {
-      return current.slice(-normalizedLimit);
-    }
-    const rotated = tailLogFile(`${this.logPath}.1`, normalizedLimit - current.length);
-    return [...rotated, ...current].slice(-normalizedLimit);
+    return this.logger.tailSysLog(limit);
+  }
+
+  getLogEntries(level = 'sys', limit = 200): AgentDockLogEntry[] {
+    const normalizedLevel = normalizeLogFile(level);
+    return this.logger.tail(normalizedLevel, limit)
+      .map(parseLogEntry)
+      .filter((entry): entry is AgentDockLogEntry => Boolean(entry));
   }
 
   pushLog(message: string) {
@@ -141,27 +142,10 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       return;
     }
     this.logs.push(message);
-    this.appendLogFile(message);
+    this.logger.write(inferLogLevel(message), message);
     this.onLog?.(message);
     if (this.logs.length > 400) {
       this.logs.splice(0, this.logs.length - 400);
-    }
-  }
-
-  private appendLogFile(message: string) {
-    try {
-      if (existsSync(this.logPath) && statSync(this.logPath).size > LOG_FILE_MAX_BYTES) {
-        const rotatedPath = `${this.logPath}.1`;
-        try {
-          renameSync(this.logPath, rotatedPath);
-        } catch {
-          // Keep runtime logging best-effort; stdout/UI logs still work.
-        }
-      }
-      const line = `${new Date().toISOString()} ${message.replace(/\r?\n/g, '\\n')}\n`;
-      appendFileSync(this.logPath, line, 'utf-8');
-    } catch {
-      // File logging must never break Local AI Core runtime behavior.
     }
   }
 
@@ -282,6 +266,35 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   }
 }
 
+function normalizeLogFile(level: string): AgentDockLogFile {
+  if (level === 'debug' || level === 'info' || level === 'warn' || level === 'error') {
+    return level;
+  }
+  return 'sys';
+}
+
+function parseLogEntry(line: string): AgentDockLogEntry | null {
+  try {
+    const parsed = JSON.parse(line) as Partial<AgentDockLogEntry>;
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    const level = normalizeLogFile(String(parsed.level || 'info'));
+    if (level === 'sys') {
+      return null;
+    }
+    return {
+      ts: String(parsed.ts || ''),
+      level,
+      scope: String(parsed.scope || ''),
+      message: String(parsed.message || ''),
+      ...(parsed.meta && typeof parsed.meta === 'object' ? { meta: parsed.meta as Record<string, unknown> } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function normalizePluginSettings(input: unknown): DesktopSettings['plugins'] {
   if (!input || typeof input !== 'object') {
     return {};
@@ -300,58 +313,6 @@ function normalizePluginSettings(input: unknown): DesktopSettings['plugins'] {
     };
   }
   return output;
-}
-
-function normalizeLogLimit(limit: number) {
-  if (!Number.isFinite(limit)) {
-    return 200;
-  }
-  return Math.min(Math.max(Math.floor(limit), 1), LOG_MAX_RETURN_LINES);
-}
-
-function tailLogFile(path: string, limit: number): string[] {
-  if (limit <= 0 || !existsSync(path)) {
-    return [];
-  }
-  let fd = -1;
-  try {
-    const size = statSync(path).size;
-    if (size <= 0) {
-      return [];
-    }
-    fd = openSync(path, 'r');
-    const chunks: Buffer[] = [];
-    let position = size;
-    let newlineCount = 0;
-    while (position > 0 && newlineCount <= limit) {
-      const bytesToRead = Math.min(LOG_TAIL_CHUNK_BYTES, position);
-      position -= bytesToRead;
-      const chunk = Buffer.allocUnsafe(bytesToRead);
-      const bytesRead = readSync(fd, chunk, 0, bytesToRead, position);
-      const slice = bytesRead === bytesToRead ? chunk : chunk.subarray(0, bytesRead);
-      chunks.unshift(slice);
-      for (let index = 0; index < slice.length; index += 1) {
-        if (slice[index] === 10) {
-          newlineCount += 1;
-        }
-      }
-    }
-    return Buffer.concat(chunks)
-      .toString('utf8')
-      .split(/\r?\n/)
-      .filter((line) => line.length > 0)
-      .slice(-limit);
-  } catch {
-    return [];
-  } finally {
-    if (fd >= 0) {
-      try {
-        closeSync(fd);
-      } catch {
-        // Log reads are best-effort; failed closes cannot be surfaced to callers.
-      }
-    }
-  }
 }
 
 export function createLocalCoreRuntimeState(options: {
