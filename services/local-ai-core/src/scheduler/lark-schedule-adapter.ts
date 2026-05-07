@@ -21,7 +21,7 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
   constructor(private readonly options: LarkScheduleAdapterOptions) {
     this.executor = new ScheduledConversationExecutor({
       store: options.store,
-      workspaceRouter: options.getWorkspaceRouter(),
+      getWorkspaceRouter: options.getWorkspaceRouter,
     });
   }
 

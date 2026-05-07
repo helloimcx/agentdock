@@ -217,6 +217,78 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
   }
 });
 
+test('Lark scheduled execution resolves workspace router at execution time', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-lark-lazy-router-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Lark thread');
+    const now = new Date().toISOString();
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark:lark-1',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+    const job = store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'lark:lark-1',
+      route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+      executionMode: 'same-thread',
+      triggerType: 'cron',
+      cronExpr: '30 18 * * *',
+      promptTemplate: 'ping',
+      description: 'bound lark task',
+      enabled: true,
+    });
+    let sentThreadId = '';
+    let workspaceRouter: any;
+    const adapter = new LarkScheduleAdapter({
+      store,
+      getWorkspaceRouter: () => workspaceRouter,
+      getChannelRuntime: () => ({
+        muteThreadBridge: () => {},
+        unmuteThreadBridge: () => {},
+        sendScheduledMessage: async () => 'platform-message-1',
+      }) as any,
+    });
+    workspaceRouter = {
+      getThread: async (threadId: string) => ({
+        id: threadId,
+        workspaceId: 'workspace-a',
+        title: 'Thread',
+        live: false,
+        updatedAt: now,
+        createdAt: now,
+        historyCount: 1,
+        excerpt: '',
+        bridgeSessionKey: '',
+        agentType: 'localcore-acp',
+        selectedKnowledgeBaseIds: [],
+        pendingPermissionRequest: null,
+        messages: [{ id: 'message-1', role: 'assistant', kind: 'final', content: 'pong', timestamp: now }],
+      }),
+      sendThreadMessage: async (threadId: string) => {
+        sentThreadId = threadId;
+        store.updateRun('run-1', threadId, 'completed');
+        return { runId: 'run-1' };
+      },
+    };
+
+    const result = await adapter.execute({ job, triggeredAt: now });
+
+    assert.equal(sentThreadId, thread.id);
+    assert.equal(result.threadId, thread.id);
+    assert.equal(result.platformMessageId, 'platform-message-1');
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('Lark scheduled execution supports instance-qualified platform keys', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-lark-instance-'));
   try {

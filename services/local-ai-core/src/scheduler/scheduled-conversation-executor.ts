@@ -10,7 +10,7 @@ const SCHEDULED_RUN_PERMISSION_MODE = 'bypassPermissions';
 
 type ScheduledConversationExecutorOptions = {
   store: LocalCoreAcpStore;
-  workspaceRouter: WorkspaceRouter;
+  getWorkspaceRouter: () => WorkspaceRouter;
 };
 
 export class ScheduledConversationExecutor {
@@ -20,12 +20,13 @@ export class ScheduledConversationExecutor {
     const target = await policy.resolveTarget(job);
     await policy.beforeExecute?.(target, job);
     try {
-      const sendResult = await this.options.workspaceRouter.sendThreadMessage(target.threadId, prompt, {
+      const workspaceRouter = this.options.getWorkspaceRouter();
+      const sendResult = await workspaceRouter.sendThreadMessage(target.threadId, prompt, {
         permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
         runtimeEnv: this.buildScheduledRuntimeEnv(target),
       });
       await this.waitForRun(sendResult.runId, timeoutMs);
-      const thread = await this.options.workspaceRouter.getThread(target.threadId);
+      const thread = await workspaceRouter.getThread(target.threadId);
       const replyText = [...thread.messages]
         .reverse()
         .find((message) => message.role === 'assistant' && message.kind === 'final')

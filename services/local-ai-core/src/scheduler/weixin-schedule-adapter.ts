@@ -21,7 +21,7 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
   constructor(private readonly options: WeixinScheduleAdapterOptions) {
     this.executor = new ScheduledConversationExecutor({
       store: options.store,
-      workspaceRouter: options.getWorkspaceRouter(),
+      getWorkspaceRouter: options.getWorkspaceRouter,
     });
   }
 

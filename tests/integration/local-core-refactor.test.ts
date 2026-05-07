@@ -3733,7 +3733,7 @@ test('scheduled conversation executor uses execution policy hooks around a threa
     store: {
       getRun: () => ({ status: 'completed' }),
     } as any,
-    workspaceRouter: {
+    getWorkspaceRouter: () => ({
       sendThreadMessage: async (threadId: string, prompt: string, options?: { permissionMode?: string }) => {
         runtimeEnv = (options as any)?.runtimeEnv;
         calls.push(`send:${threadId}:${prompt}:${options?.permissionMode || ''}`);
@@ -3745,7 +3745,7 @@ test('scheduled conversation executor uses execution policy hooks around a threa
           { role: 'assistant', kind: 'final', content: 'done' },
         ],
       }),
-    } as any,
+    }) as any,
   });
 
   const result = await executor.execute(

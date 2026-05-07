@@ -75,6 +75,8 @@ flowchart LR
 
 ### 2026-05-07
 
+- 发布 AgentDock 0.1.36。
+- 修复 Lark/微信定时任务在 Local AI Core 启动期提前捕获未初始化 workspace router，导致任务触发后无法发送到会话的问题。
 - 发布 AgentDock 0.1.35。
 - 发布 AgentDock 0.1.33。
 - README 新增系统架构简要介绍与 Mermaid 架构图。
