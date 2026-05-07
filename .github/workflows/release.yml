@@ -13,9 +13,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  authorize-release:
+    name: Authorize release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify release actor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_ACTOR}" != "helloimcx" ]]; then
+            echo "Only helloimcx can publish releases. Current actor: ${GITHUB_ACTOR}" >&2
+            exit 1
+          fi
+
   publish-npm:
     name: Publish npm package
     runs-on: ubuntu-latest
+    needs: authorize-release
     permissions:
       contents: read
       id-token: write
@@ -50,7 +66,6 @@ jobs:
     name: Deploy Ubuntu server
     runs-on: ubuntu-latest
     needs: publish-npm
-    environment: production
     permissions:
       contents: read
     steps:
@@ -119,6 +134,7 @@ jobs:
   release-macos:
     name: Release macOS
     runs-on: macos-latest
+    needs: authorize-release
     permissions:
       contents: write
     steps:
@@ -156,6 +172,7 @@ jobs:
   release-windows:
     name: Release Windows
     runs-on: windows-latest
+    needs: authorize-release
     permissions:
       contents: write
     steps:
