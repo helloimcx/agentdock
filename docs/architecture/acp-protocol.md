@@ -2,6 +2,29 @@
 
 This document describes the ACP fields AgentDock currently sends, receives, stores, and forwards. It is implementation-facing documentation for the Local AI Core ACP backend, not a full upstream ACP specification.
 
+## Module Flow
+
+ACP is the runtime bridge between Local AI Core threads and agent child processes. `WorkspaceRouter` owns entry into the backend, `LocalCoreAcpBackend` wires the store and coordinators, and `LocalCoreAcpTransport` owns the stdio JSON-RPC stream.
+
+```mermaid
+flowchart TD
+  Caller["Renderer / Channel / Scheduler"] --> Router["WorkspaceRouter"]
+  Router --> Backend["LocalCoreAcpBackend"]
+  Backend --> Store["LocalCoreAcpStore<br/>threads · runs · messages · permissions"]
+  Backend --> Session["SessionCoordinator<br/>session load/new · interrupt"]
+  Backend --> Turn["TurnCoordinator<br/>progress · tools · permissions"]
+  Backend --> Response["ResponseProcessor<br/>final reply · slash fallback"]
+  Session --> Transport["AcpTransport<br/>stdio JSON-RPC"]
+  Turn --> Transport
+  Transport --> Agent["Agent runtime child process"]
+  Agent --> Transport
+  Transport --> Turn
+  Turn --> Bridge["DesktopBridgeEvent"]
+  Bridge --> EventBus["LocalCoreEventBus"]
+  EventBus --> Renderer["Renderer SSE"]
+  EventBus --> Channels["Channel gateways"]
+```
+
 ## Scope
 
 AgentDock uses ACP over newline-delimited JSON-RPC 2.0 on a child process stdio stream. One JSON object is written per line.
@@ -722,4 +745,3 @@ This sequence lists a Desktop directory and requires permission.
 - Tool progress messages are upserted by stable tool message id when a pending tool id exists.
 - The renderer sorts loaded history by stored message order before timestamp. This keeps history stable when an upsert updates a message timestamp.
 - Permission button responses are not echoed as user chat messages for interactive permission prompts.
-

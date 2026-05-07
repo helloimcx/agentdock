@@ -10,7 +10,11 @@ This directory is organized by documentation purpose.
 ## Architecture
 
 - [Overview](architecture/overview.md): current Local AI Core-first architecture.
+- [Local AI Core Kernel And Plugin Composition](architecture/local-core-kernel.md): kernel bootstrap, plugin registration, capabilities, lifecycle, and runtime composition.
+- [Workspace Router Architecture](architecture/workspace-router.md): workspace route resolution, thread messaging, registry sync, and scheduler bridge flow.
 - [ACP Protocol Fields And Examples](architecture/acp-protocol.md): AgentDock-supported ACP JSON-RPC fields, bridge events, and example flows.
+- [Channel Gateway Architecture](architecture/channel-gateways.md): Lark/Weixin inbound normalization, bridge-event outbound rendering, and shared channel contracts.
+- [Knowledge Runtime Architecture](architecture/knowledge-runtime.md): knowledge provider plugin, Local Core APIs, thread attachments, upload, and search flow.
 - [Message And Channel Contracts](architecture/message-and-channel-contracts.md): ownership and invariants for streamed message blocks and shared channel content.
 - [Scheduled Delivery Architecture](architecture/scheduled-delivery.md): scheduler ownership, route resolution, ACP execution, and channel delivery invariants.
 - [State Ownership](architecture/state-ownership.md): where runtime, workspace, task, device, and approval state belongs.

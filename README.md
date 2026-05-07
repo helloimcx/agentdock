@@ -11,11 +11,73 @@
 
 React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18next · react-markdown
 
+## 系统架构
+
+AgentDock 由 Electron 桌面壳、React 渲染进程和 Local AI Core 组成。Electron 负责应用生命周期、窗口与本地进程编排；React 渲染进程通过 API 客户端与本地 core 通信，承载桌面、Web、线程、项目、知识库和系统配置界面；Local AI Core 提供 runtime、ACP 会话、channel 网关、定时任务、知识库和插件能力。跨进程契约集中在 `shared/` 与 `packages/contracts/`，插件 SDK 与内置插件分别位于 `packages/plugin-sdk/` 和 `services/local-ai-core/src/plugins/`。
+
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#eef6ff"
+    primaryBorderColor: "#2563eb"
+    lineColor: "#64748b"
+    textColor: "#0f172a"
+---
+flowchart LR
+  Web["Web 入口<br/>apps/shell-web"]
+
+  subgraph Desktop["AgentDock Desktop"]
+    direction LR
+    Electron["Electron Shell<br/>窗口 / 应用生命周期"]
+    Renderer["React Renderer<br/>页面 / 状态 / API Client"]
+  end
+
+  subgraph Core["Local AI Core"]
+    direction TB
+    CoreApi["HTTP API / SSE<br/>127.0.0.1:9831"]
+    Kernel["Kernel & Plugin Registry"]
+    Runtime["Workspace Router / ACP / Scheduler / Knowledge"]
+  end
+
+  subgraph Integrations["外部通道与 Agent"]
+    direction TB
+    Channels["Lark / 微信 Channel"]
+    Agents["Codex / Claude Code / Hermes / Pi / opencode"]
+  end
+
+  Contracts["共享契约<br/>shared/ · packages/contracts/"]
+  PluginSdk["Plugin SDK<br/>packages/plugin-sdk/"]
+
+  Web --> CoreApi
+  Electron --> Renderer --> CoreApi
+  Electron -.启动 / 管理.-> CoreApi
+  CoreApi --> Kernel --> Runtime
+  Kernel --> Channels
+  Kernel --> Agents
+
+  Contracts -.-> Renderer
+  Contracts -.-> CoreApi
+  PluginSdk -.-> Kernel
+```
+
+后台关键模块说明：
+
+- [Local AI Core Kernel 与插件装配](docs/architecture/local-core-kernel.md)
+- [Workspace Router 路由层](docs/architecture/workspace-router.md)
+- [ACP 会话运行时](docs/architecture/acp-protocol.md)
+- [Channel Gateway 通道网关](docs/architecture/channel-gateways.md)
+- [Scheduler 定时投递](docs/architecture/scheduled-delivery.md)
+- [Knowledge Runtime 知识库运行时](docs/architecture/knowledge-runtime.md)
+
 ## New
 
 ### 2026-05-07
 
 - 发布 AgentDock 0.1.33。
+- README 新增系统架构简要介绍与 Mermaid 架构图。
+- 新增后台关键模块架构文档索引，并补充 kernel、router、channel gateway、knowledge runtime 与 ACP 流程图。
 
 ### 2026-05-06
 
