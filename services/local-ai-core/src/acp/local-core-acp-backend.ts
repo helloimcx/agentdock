@@ -26,7 +26,7 @@ import {
 } from './local-core-slash-commands.js';
 import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
-import { routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
+import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -139,11 +139,7 @@ export class LocalCoreAcpBackend {
         return {
           workspaceId: binding.workspace_id,
           platform: binding.platform,
-          route: {
-            type: routeTypeForPlatform(binding.platform),
-            channelId: binding.chat_id,
-            participantId: binding.platform_user_id,
-          },
+          route: routeFromPlatformThreadBinding(binding),
         };
       },
       scheduler: options.scheduler,

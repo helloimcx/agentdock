@@ -43,6 +43,15 @@ export function routeTypeForPlatform(platform: string) {
   return base === 'lark' || base === 'weixin' ? 'channel.chat' : base;
 }
 
+export function routeFromPlatformThreadBinding(binding: PlatformThreadBindingLike): ScheduledJobRoute {
+  return {
+    type: routeTypeForPlatform(binding.platform),
+    channelId: binding.chat_id,
+    instanceId: getChannelPlatformInstanceId(binding.platform) || undefined,
+    participantId: binding.platform_user_id,
+  };
+}
+
 export function scheduledJobMatchesPlatformBinding(job: ScheduledJob, binding: PlatformThreadBindingLike) {
   return (
     job.workspaceId === binding.workspace_id &&

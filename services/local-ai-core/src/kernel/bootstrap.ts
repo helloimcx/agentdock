@@ -47,8 +47,8 @@ import { createBuiltinLocalSchedulerPlugin } from '../plugins/builtin/scheduler-
 import { createBuiltinWeixinSchedulerPlugin } from '../plugins/builtin/scheduler-weixin-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
+import { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
-import { scheduledJobMatchesPlatformBinding, withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
 
 export interface LocalCoreKernel {
   context: PluginContext;
@@ -71,6 +71,7 @@ export interface LocalCoreRuntimeBootstrap {
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
   workspaceRouter: WorkspaceRouter;
   scheduler: SchedulerService;
+  scheduledJobs: ScheduledJobApplicationService;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -335,30 +336,17 @@ export function bootstrapLocalCoreRuntime(options: {
     eventBus: kernel.context.bus,
     log: options.log,
   });
+  const scheduledJobs = new ScheduledJobApplicationService({
+    store,
+    scheduler,
+  });
 
   workspaceRouter.setSchedulerBridge({
     createJob: async ({ workspaceId, platform, route, name, schedule, scheduleDescription, message }) =>
-      scheduler.createJob({
-        workspaceId,
-        platform,
-        route: withoutThreadRoute(route),
-        triggerType: 'cron',
-        cronExpr: schedule,
-        promptTemplate: message,
-        description: `${name} · ${scheduleDescription}`,
-        enabled: true,
-      }),
-    listJobsForThread: async (threadId) => {
-      const binding = store.getPlatformThreadBindingByThreadId(threadId);
-      return scheduler
-        .listJobs()
-        .filter((job) =>
-          job.route.threadId === threadId ||
-          (binding ? scheduledJobMatchesPlatformBinding(job, binding) : false)
-        );
-    },
+      scheduledJobs.createCronJob({ workspaceId, platform, route, name, schedule, scheduleDescription, message }),
+    listJobsForThread: async (threadId) => scheduledJobs.listJobsForThread(threadId),
     deleteJob: async (jobId) => {
-      scheduler.deleteJob(jobId);
+      scheduledJobs.deleteJob(jobId);
     },
   });
 
@@ -374,6 +362,7 @@ export function bootstrapLocalCoreRuntime(options: {
     knowledgeAttachments,
     workspaceRouter,
     scheduler,
+    scheduledJobs,
     async start() {
       await kernel.lifecycle.startAll();
       await scheduler.start();

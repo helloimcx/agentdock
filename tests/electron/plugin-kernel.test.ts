@@ -603,6 +603,7 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
     knowledgeAttachments: {} as any,
     workspaceRouter: {} as any,
     scheduler: {} as any,
+    scheduledJobs: {} as any,
     start: async () => {
       started = true;
     },

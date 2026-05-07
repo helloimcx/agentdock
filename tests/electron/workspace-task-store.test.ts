@@ -81,6 +81,52 @@ test('scheduler create resolves a Lark delivery route without binding the job to
   }
 });
 
+test('scheduler create from a bound thread preserves channel instance route', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-instance-route-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+      log: () => {},
+    });
+    const controller = new LocalCoreController(userDataPath, runtime);
+    const thread = runtime.store.createThread('workspace-a', 'Lark instance thread');
+    const now = new Date().toISOString();
+    runtime.store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark:lark-1',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const job = await controller.createScheduledJob({
+      workspaceId: 'workspace-a',
+      threadId: thread.id,
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '30 18 * * *',
+      promptTemplate: 'ping',
+      description: 'bound lark task',
+      enabled: true,
+    });
+
+    assert.equal(job.platform, 'lark:lark-1');
+    assert.deepEqual(job.route, {
+      type: 'channel.chat',
+      channelId: 'chat-1',
+      instanceId: 'lark-1',
+      participantId: 'user-1',
+    });
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('Lark scheduled same-thread execution resolves the latest channel thread and keeps channel delivery', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-lark-latest-thread-'));
   try {

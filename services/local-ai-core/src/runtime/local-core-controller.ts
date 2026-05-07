@@ -69,8 +69,7 @@ import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../
 import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
-import type { SchedulerService } from '../scheduler/scheduler-service.js';
-import { getChannelPlatformInstanceId, routeTypeForPlatform, withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
+import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 
@@ -79,7 +78,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly workspaceRouter: WorkspaceRouter;
   private readonly knowledgeProvider: KnowledgeRuntime;
   private readonly channelRuntimes: Map<string, ChannelRuntime>;
-  private readonly scheduler: SchedulerService;
+  private readonly scheduledJobs: ScheduledJobApplicationService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly runtimeDetection: RuntimeDetectionService;
@@ -105,7 +104,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     this.channelRuntimes = new Map(
       runtimeChannels.filter(Boolean).map((runtime) => [runtime.platform, runtime]),
     );
-    this.scheduler = this.runtime.scheduler;
+    this.scheduledJobs = this.runtime.scheduledJobs;
     this.runtimeDetection = new RuntimeDetectionService({
       userDataPath,
       readConfig: async () => (await this.readConfigFile()).parsed,
@@ -289,11 +288,11 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]> {
-    return this.scheduler.listJobs(workspaceId);
+    return this.scheduledJobs.listJobs(workspaceId);
   }
 
   async getScheduledJob(jobId: string): Promise<ScheduledJob> {
-    const job = this.scheduler.getJob(jobId);
+    const job = this.scheduledJobs.getJob(jobId);
     if (!job) {
       throw new Error(`Scheduled job not found: ${jobId}`);
     }
@@ -301,65 +300,23 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob> {
-    return this.scheduler.createJob(this.resolveScheduledJobCreateInput(input));
-  }
-
-  private resolveScheduledJobCreateInput(input: ScheduledJobCreateInput): ScheduledJobCreateInput & {
-    platform: NonNullable<ScheduledJobCreateInput['platform']>;
-    route: NonNullable<ScheduledJobCreateInput['route']>;
-  } {
-    if (input.platform && input.route) {
-      return {
-        ...input,
-        route: withoutThreadRoute(input.route),
-      } as ScheduledJobCreateInput & {
-        platform: NonNullable<ScheduledJobCreateInput['platform']>;
-        route: NonNullable<ScheduledJobCreateInput['route']>;
-      };
-    }
-    const threadId = String(input.threadId || input.route?.threadId || '').trim();
-    if (threadId) {
-      const binding = this.runtime.store.getPlatformThreadBindingByThreadId(threadId);
-      if (binding && binding.workspace_id === input.workspaceId) {
-        return {
-          ...input,
-          platform: binding.platform,
-          route: {
-            type: routeTypeForPlatform(binding.platform),
-            channelId: binding.chat_id,
-            instanceId: getChannelPlatformInstanceId(binding.platform) || undefined,
-            participantId: binding.platform_user_id,
-          },
-        };
-      }
-    }
-    return {
-      ...input,
-      platform: 'local',
-      route: {
-        type: 'local.thread',
-        channelId: input.workspaceId,
-      },
-    };
+    return this.scheduledJobs.createJob(input);
   }
 
   async updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob> {
-    return this.scheduler.updateJob(jobId, {
-      ...input,
-      ...(input.route ? { route: withoutThreadRoute(input.route) } : {}),
-    });
+    return this.scheduledJobs.updateJob(jobId, input);
   }
 
   async deleteScheduledJob(jobId: string) {
-    return this.scheduler.deleteJob(jobId);
+    return this.scheduledJobs.deleteJob(jobId);
   }
 
   async runScheduledJob(jobId: string): Promise<ScheduledJobRun> {
-    return this.scheduler.runJobNow(jobId);
+    return this.scheduledJobs.runJobNow(jobId);
   }
 
   async listScheduledJobRuns(jobId: string): Promise<ScheduledJobRun[]> {
-    return this.scheduler.listJobRuns(jobId);
+    return this.scheduledJobs.listJobRuns(jobId);
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
