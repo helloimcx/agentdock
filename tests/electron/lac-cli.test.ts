@@ -229,6 +229,62 @@ test('lac channel send-file posts a workspace-relative file through outbound mes
   assert.match(read().stdout, /Sent file out\.pdf to chat-1: msg-file-1/);
 });
 
+test('lac channel send-file normalizes instance-qualified platform env into route instance', async () => {
+  let capturedUrl = '';
+  let capturedBody: string | null = null;
+  const server = createServer(async (req, res) => {
+    if (req.method === 'POST') {
+      capturedUrl = req.url || '';
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      capturedBody = Buffer.concat(chunks).toString('utf8');
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          platform: 'lark',
+          workspaceId: '知识库',
+          channelId: 'chat-1',
+          messageIds: ['msg-file-1'],
+          attachments: [{ kind: 'file', fileName: 'out.pdf', fileSize: 123 }],
+        },
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io } = createIo();
+  const exitCode = await runCli(
+    ['channel', 'send-file', '--path', 'reports/out.pdf'],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+      LOCAL_AI_WORKSPACE_PATH: '/workspace/project',
+      LOCAL_AI_PLATFORM: 'lark:lark-1',
+      LOCAL_AI_CHAT_ID: 'chat-1',
+      LOCAL_AI_PLATFORM_USER_ID: 'user-1',
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert.equal(capturedUrl, '/api/local/v1/platforms/lark/%E7%9F%A5%E8%AF%86%E5%BA%93/messages');
+  assert(capturedBody);
+  assert.deepEqual(JSON.parse(capturedBody).route, {
+    type: 'channel.chat',
+    channelId: 'chat-1',
+    instanceId: 'lark-1',
+    participantId: 'user-1',
+  });
+});
+
 test('lac channel send-file posts allowed absolute paths through the same outbound message path', async () => {
   let capturedBody: string | null = null;
   const server = createServer(async (req, res) => {

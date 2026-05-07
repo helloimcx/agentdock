@@ -26,11 +26,13 @@ import {
 } from './local-core-slash-commands.js';
 import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
+import { routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
 type SendThreadMessageOptions = {
   permissionMode?: string;
+  runtimeEnv?: Record<string, string>;
 };
 
 type LocalCoreAcpBackendOptions = {
@@ -138,7 +140,7 @@ export class LocalCoreAcpBackend {
           workspaceId: binding.workspace_id,
           platform: binding.platform,
           route: {
-            type: binding.platform === 'lark' ? 'channel.chat' : binding.platform,
+            type: routeTypeForPlatform(binding.platform),
             channelId: binding.chat_id,
             participantId: binding.platform_user_id,
           },
@@ -366,6 +368,7 @@ export class LocalCoreAcpBackend {
     try {
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
         permissionMode: options.permissionMode,
+        runtimeEnv: options.runtimeEnv,
       });
       const priorAssistantFinalMessages = this.options.store
         .getThread(threadId, [])

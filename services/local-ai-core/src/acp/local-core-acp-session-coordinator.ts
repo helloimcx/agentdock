@@ -3,6 +3,7 @@ import type { DesktopBridgeEvent } from '../../../../packages/contracts/src/inde
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import type { AcpSessionState, LocalCoreProjectConfig } from '../router/workspace-router-types.js';
+import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
 
 type LocalCoreAcpSessionCoordinatorOptions = {
   store: LocalCoreAcpStore;
@@ -16,6 +17,7 @@ type LocalCoreAcpSessionCoordinatorOptions = {
 
 type EnsureSessionOptions = {
   permissionMode?: string;
+  runtimeEnv?: Record<string, string>;
 };
 
 export class LocalCoreAcpSessionCoordinator {
@@ -51,11 +53,13 @@ export class LocalCoreAcpSessionCoordinator {
   ) {
     const existing = this.sessions.get(threadId);
     const permissionMode = this.resolveLaunchPermissionMode(threadId, options.permissionMode);
+    const runtimeEnvKey = this.buildRuntimeEnvKey(options.runtimeEnv);
     if (
       existing
       && !existing.closed
       && existing.sessionId
       && existing.launchPermissionMode === permissionMode
+      && existing.launchRuntimeEnvKey === runtimeEnvKey
     ) {
       return existing;
     }
@@ -70,9 +74,10 @@ export class LocalCoreAcpSessionCoordinator {
       threadId,
       bridgeSessionKey,
       config,
-      runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || '')),
+      runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || ''), options.runtimeEnv),
     });
     session.launchPermissionMode = permissionMode;
+    session.launchRuntimeEnvKey = runtimeEnvKey;
     this.sessions.set(threadId, session);
     await this.options.transport.initializeSession(session);
     const row = this.options.store.getThreadRow(threadId);
@@ -185,7 +190,14 @@ export class LocalCoreAcpSessionCoordinator {
     }
   }
 
-  private buildAgentRuntimeEnv(threadId: string, existingPath: string) {
+  private buildRuntimeEnvKey(runtimeEnv: Record<string, string> = {}) {
+    return Object.keys(runtimeEnv)
+      .sort()
+      .map((key) => `${key}=${runtimeEnv[key]}`)
+      .join('\n');
+  }
+
+  private buildAgentRuntimeEnv(threadId: string, existingPath: string, runtimeEnv: Record<string, string> = {}) {
     const row = this.options.store.getThreadRow(threadId);
     if (!row) {
       return {};
@@ -201,8 +213,12 @@ export class LocalCoreAcpSessionCoordinator {
       env.LOCAL_AI_WORKSPACE_PATH = workspace.path;
     }
     if (binding) {
-      env.LOCAL_AI_PLATFORM = binding.platform;
-      env.LOCAL_AI_ROUTE_TYPE = 'lark_chat';
+      env.LOCAL_AI_PLATFORM = getChannelPlatformBase(binding.platform);
+      env.LOCAL_AI_ROUTE_TYPE = routeTypeForPlatform(binding.platform);
+      const instanceId = getChannelPlatformInstanceId(binding.platform);
+      if (instanceId) {
+        env.LOCAL_AI_PLATFORM_INSTANCE_ID = instanceId;
+      }
       env.LOCAL_AI_CHAT_ID = binding.chat_id;
       env.LOCAL_AI_PLATFORM_USER_ID = binding.platform_user_id;
     }
@@ -211,7 +227,10 @@ export class LocalCoreAcpSessionCoordinator {
         ? `${this.options.cliBinDir}${delimiter}${existingPath}`
         : this.options.cliBinDir;
     }
-    return env;
+    return {
+      ...env,
+      ...runtimeEnv,
+    };
   }
 
   private resolveLaunchPermissionMode(threadId: string, permissionModeOverride = '') {

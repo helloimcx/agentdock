@@ -3,6 +3,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
 import type { ScheduledExecutionTarget } from './adapters.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
+import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatform } from './scheduled-job-route.js';
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
 const SCHEDULED_RUN_PERMISSION_MODE = 'bypassPermissions';
@@ -21,6 +22,7 @@ export class ScheduledConversationExecutor {
     try {
       const sendResult = await this.options.workspaceRouter.sendThreadMessage(target.threadId, prompt, {
         permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
+        runtimeEnv: this.buildScheduledRuntimeEnv(target),
       });
       await this.waitForRun(sendResult.runId, timeoutMs);
       const thread = await this.options.workspaceRouter.getThread(target.threadId);
@@ -36,6 +38,27 @@ export class ScheduledConversationExecutor {
     } finally {
       await policy.afterExecute?.(target, job);
     }
+  }
+
+  private buildScheduledRuntimeEnv(target: ScheduledExecutionTarget) {
+    const route = target.route;
+    const basePlatform = getChannelPlatformBase(target.platform);
+    const env: Record<string, string> = {};
+    if (basePlatform && basePlatform !== 'local') {
+      env.LOCAL_AI_PLATFORM = basePlatform;
+      env.LOCAL_AI_ROUTE_TYPE = routeTypeForPlatform(target.platform);
+    }
+    const instanceId = route.instanceId || getChannelPlatformInstanceId(target.platform);
+    if (instanceId) {
+      env.LOCAL_AI_PLATFORM_INSTANCE_ID = instanceId;
+    }
+    if (route.channelId) {
+      env.LOCAL_AI_CHAT_ID = route.channelId;
+    }
+    if (route.participantId) {
+      env.LOCAL_AI_PLATFORM_USER_ID = route.participantId;
+    }
+    return env;
   }
 
   private async waitForRun(runId: string, timeoutMs: number) {

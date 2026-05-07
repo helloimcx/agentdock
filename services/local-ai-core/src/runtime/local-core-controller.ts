@@ -70,7 +70,7 @@ import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeB
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { SchedulerService } from '../scheduler/scheduler-service.js';
-import { withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
+import { getChannelPlatformInstanceId, routeTypeForPlatform, withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
 import type { LocalAiCoreBindings } from './server.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 
@@ -325,8 +325,9 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
           ...input,
           platform: binding.platform,
           route: {
-            type: 'channel.chat',
+            type: routeTypeForPlatform(binding.platform),
             channelId: binding.chat_id,
+            instanceId: getChannelPlatformInstanceId(binding.platform) || undefined,
             participantId: binding.platform_user_id,
           },
         };

@@ -5,7 +5,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 import { createLarkExecutionPolicy } from './lark-execution-policies.js';
-import { withoutThreadRoute } from './scheduled-job-route.js';
+import { platformMatches, routeWithPlatformInstance, withoutThreadRoute } from './scheduled-job-route.js';
 
 type LarkScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -26,7 +26,7 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
   }
 
   supports(job: ScheduledJob) {
-    return job.platform === 'lark' && (job.route.type === 'channel.chat' || job.route.type === 'lark_chat');
+    return platformMatches(job.platform, 'lark') && (job.route.type === 'channel.chat' || job.route.type === 'lark_chat');
   }
 
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
@@ -43,7 +43,11 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
       if (!channelRuntime.sendScheduledMessage) {
         throw new Error('Lark channel runtime does not support scheduled delivery.');
       }
-      platformMessageId = await channelRuntime.sendScheduledMessage(job.workspaceId, withoutThreadRoute(job.route), execution.replyText);
+      platformMessageId = await channelRuntime.sendScheduledMessage(
+        job.workspaceId,
+        routeWithPlatformInstance(withoutThreadRoute(job.route), job.platform),
+        execution.replyText,
+      );
       if (!platformMessageId) {
         throw new Error('Lark gateway did not return a message id for scheduled delivery.');
       }
@@ -61,7 +65,7 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
     const route = job.route;
     const channelId = route.channelId;
     const participantId = route.participantId || '';
-    const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, 'lark');
+    const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, job.platform);
     if (binding?.thread_id && await this.threadExists(binding.thread_id)) {
       return binding.thread_id;
     }
@@ -75,6 +79,7 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
     const now = new Date().toISOString();
     this.options.store.upsertPlatformThreadBinding({
       workspace_id: job.workspaceId,
+      platform: job.platform,
       chat_id: channelId,
       platform_user_id: participantId,
       thread_id: thread.id,
@@ -82,9 +87,9 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
       created_at: now,
       updated_at: now,
     });
-    const authorized = this.options.store.getAuthorizedUser(job.workspaceId, participantId);
+    const authorized = this.options.store.getAuthorizedUser(job.workspaceId, participantId, job.platform);
     if (authorized) {
-      this.options.store.updateAuthorizedUserThread(job.workspaceId, participantId, thread.id);
+      this.options.store.updateAuthorizedUserThread(job.workspaceId, participantId, thread.id, job.platform);
     }
     return thread.id;
   }

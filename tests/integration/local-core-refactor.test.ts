@@ -3712,11 +3712,12 @@ test('thread agent mode persists with thread state', () => {
 
 test('scheduled conversation executor uses execution policy hooks around a thread run', async () => {
   const calls: string[] = [];
+  let runtimeEnv: Record<string, string> | undefined;
   const job = {
     id: 'job-1',
     workspaceId: '知识库',
-    platform: 'lark',
-    route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' },
+    platform: 'lark:lark-1',
+    route: { type: 'channel.chat', channelId: 'chat-1', instanceId: 'lark-1', participantId: 'user-1', threadId: 'thread-1' },
     executionMode: 'same-thread',
     triggerType: 'cron',
     cronExpr: '*/2 * * * *',
@@ -3733,6 +3734,7 @@ test('scheduled conversation executor uses execution policy hooks around a threa
     } as any,
     workspaceRouter: {
       sendThreadMessage: async (threadId: string, prompt: string, options?: { permissionMode?: string }) => {
+        runtimeEnv = (options as any)?.runtimeEnv;
         calls.push(`send:${threadId}:${prompt}:${options?.permissionMode || ''}`);
         return { runId: 'run-1' };
       },
@@ -3753,7 +3755,7 @@ test('scheduled conversation executor uses execution policy hooks around a threa
         kind: 'thread',
         threadId: 'thread-1',
         workspaceId: '知识库',
-        platform: 'lark',
+        platform: 'lark:lark-1',
         route: job.route,
       }),
       beforeExecute: (target) => {
@@ -3771,6 +3773,13 @@ test('scheduled conversation executor uses execution policy hooks around a threa
     'send:thread-1:ping:bypassPermissions',
     'after:thread-1',
   ]);
+  assert.deepEqual(runtimeEnv, {
+    LOCAL_AI_PLATFORM: 'lark',
+    LOCAL_AI_ROUTE_TYPE: 'channel.chat',
+    LOCAL_AI_PLATFORM_INSTANCE_ID: 'lark-1',
+    LOCAL_AI_CHAT_ID: 'chat-1',
+    LOCAL_AI_PLATFORM_USER_ID: 'user-1',
+  });
   assert.equal(result.replyText, 'done');
 });
 

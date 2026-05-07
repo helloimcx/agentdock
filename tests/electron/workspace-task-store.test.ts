@@ -171,6 +171,87 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
   }
 });
 
+test('Lark scheduled execution supports instance-qualified platform keys', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-lark-instance-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Lark instance thread');
+    const now = new Date().toISOString();
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark:lark-1',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+    const job = store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'lark:lark-1',
+      route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+      executionMode: 'same-thread',
+      triggerType: 'cron',
+      cronExpr: '30 18 * * *',
+      promptTemplate: 'ping',
+      description: 'bound lark task',
+      enabled: true,
+    });
+    let deliveredRoute: any;
+    const adapter = new LarkScheduleAdapter({
+      store,
+      getWorkspaceRouter: () => ({
+        getThread: async (threadId: string) => ({
+          id: threadId,
+          workspaceId: 'workspace-a',
+          title: 'Thread',
+          live: false,
+          updatedAt: now,
+          createdAt: now,
+          historyCount: 1,
+          excerpt: '',
+          bridgeSessionKey: '',
+          agentType: 'localcore-acp',
+          selectedKnowledgeBaseIds: [],
+          pendingPermissionRequest: null,
+          messages: [{ id: 'message-1', role: 'assistant', kind: 'final', content: 'pong', timestamp: now }],
+        }),
+        sendThreadMessage: async (threadId: string, _prompt: string, options?: any) => {
+          assert.equal(threadId, thread.id);
+          assert.equal(options?.runtimeEnv?.LOCAL_AI_PLATFORM, 'lark');
+          assert.equal(options?.runtimeEnv?.LOCAL_AI_PLATFORM_INSTANCE_ID, 'lark-1');
+          assert.equal(options?.runtimeEnv?.LOCAL_AI_CHAT_ID, 'chat-1');
+          store.updateRun('run-1', threadId, 'completed');
+          return { runId: 'run-1' };
+        },
+      }) as any,
+      getChannelRuntime: () => ({
+        muteThreadBridge: () => {},
+        unmuteThreadBridge: () => {},
+        sendScheduledMessage: async (_workspaceId: string, route: any) => {
+          deliveredRoute = route;
+          return 'platform-message-1';
+        },
+      }) as any,
+    });
+
+    const result = await adapter.execute({ job, triggeredAt: now });
+
+    assert.equal(result.threadId, thread.id);
+    assert.equal(result.platformMessageId, 'platform-message-1');
+    assert.deepEqual(deliveredRoute, {
+      type: 'channel.chat',
+      channelId: 'chat-1',
+      instanceId: 'lark-1',
+      participantId: 'user-1',
+    });
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('ACP runtime env includes the current workspace path for file returns', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-env-'));
   try {

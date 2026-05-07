@@ -5,7 +5,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 import { createWeixinExecutionPolicy } from './weixin-execution-policies.js';
-import { withoutThreadRoute } from './scheduled-job-route.js';
+import { platformMatches, routeWithPlatformInstance, withoutThreadRoute } from './scheduled-job-route.js';
 
 type WeixinScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -26,7 +26,7 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
   }
 
   supports(job: ScheduledJob) {
-    return job.platform === 'weixin' && (job.route.type === 'channel.chat' || job.route.type === 'weixin_chat');
+    return platformMatches(job.platform, 'weixin') && (job.route.type === 'channel.chat' || job.route.type === 'weixin_chat');
   }
 
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
@@ -43,7 +43,11 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
       if (!channelRuntime.sendScheduledMessage) {
         throw new Error('WeChat channel runtime does not support scheduled delivery.');
       }
-      platformMessageId = await channelRuntime.sendScheduledMessage(job.workspaceId, withoutThreadRoute(job.route), execution.replyText);
+      platformMessageId = await channelRuntime.sendScheduledMessage(
+        job.workspaceId,
+        routeWithPlatformInstance(withoutThreadRoute(job.route), job.platform),
+        execution.replyText,
+      );
       if (!platformMessageId) {
         throw new Error('WeChat gateway did not return a message id for scheduled delivery.');
       }
@@ -61,7 +65,7 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
     const route = job.route;
     const channelId = route.channelId;
     const participantId = route.participantId || '';
-    const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, 'weixin');
+    const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, job.platform);
     if (binding?.thread_id && await this.threadExists(binding.thread_id)) {
       return binding.thread_id;
     }
@@ -83,9 +87,9 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
       created_at: now,
       updated_at: now,
     });
-    const authorized = this.options.store.getAuthorizedUser(job.workspaceId, participantId, 'weixin');
+    const authorized = this.options.store.getAuthorizedUser(job.workspaceId, participantId, job.platform);
     if (authorized) {
-      this.options.store.updateAuthorizedUserThread(job.workspaceId, participantId, thread.id, 'weixin');
+      this.options.store.updateAuthorizedUserThread(job.workspaceId, participantId, thread.id, job.platform);
     }
     return thread.id;
   }

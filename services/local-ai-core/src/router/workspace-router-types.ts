@@ -299,6 +299,7 @@ export type AcpSessionState = {
   closeReason: string | null;
   promptPromise: Promise<{ stopReason?: string }> | null;
   launchPermissionMode: string;
+  launchRuntimeEnvKey?: string;
 };
 
 export type OpencodeInlineProviderConfig = {
@@ -351,4 +352,5 @@ export type WorkspaceThreadBackend = {
 
 export type WorkspaceThreadMessageOptions = {
   permissionMode?: string;
+  runtimeEnv?: Record<string, string>;
 };

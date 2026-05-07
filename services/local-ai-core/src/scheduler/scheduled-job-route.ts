@@ -19,10 +19,34 @@ export function withoutThreadRoute(route: ScheduledJobRoute): ScheduledJobRoute 
   return deliveryRoute;
 }
 
+export function getChannelPlatformBase(platform: string) {
+  return String(platform || '').trim().toLowerCase().split(':', 1)[0] || '';
+}
+
+export function getChannelPlatformInstanceId(platform: string) {
+  const normalized = String(platform || '').trim().toLowerCase();
+  const separator = normalized.indexOf(':');
+  return separator >= 0 ? normalized.slice(separator + 1) : '';
+}
+
+export function platformMatches(candidate: string, expectedBase: string) {
+  return getChannelPlatformBase(candidate) === expectedBase;
+}
+
+export function routeWithPlatformInstance(route: ScheduledJobRoute, platform: string): ScheduledJobRoute {
+  const instanceId = route.instanceId || getChannelPlatformInstanceId(platform);
+  return instanceId ? { ...route, instanceId } : route;
+}
+
+export function routeTypeForPlatform(platform: string) {
+  const base = getChannelPlatformBase(platform);
+  return base === 'lark' || base === 'weixin' ? 'channel.chat' : base;
+}
+
 export function scheduledJobMatchesPlatformBinding(job: ScheduledJob, binding: PlatformThreadBindingLike) {
   return (
     job.workspaceId === binding.workspace_id &&
-    job.platform === binding.platform &&
+    getChannelPlatformBase(job.platform) === getChannelPlatformBase(binding.platform) &&
     job.route.channelId === binding.chat_id &&
     String(job.route.participantId || '') === String(binding.platform_user_id || '')
   );
@@ -34,7 +58,7 @@ export function scheduledJobMatchesCliContext(job: ScheduledJob, context: Schedu
   }
   return (
     job.workspaceId === context.workspaceId &&
-    job.platform === context.platform &&
+    getChannelPlatformBase(job.platform) === getChannelPlatformBase(context.platform) &&
     job.route.channelId === context.chatId &&
     String(job.route.participantId || '') === String(context.platformUserId || '')
   );

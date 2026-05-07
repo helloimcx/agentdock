@@ -2,7 +2,7 @@ import process from 'node:process';
 import type { ScheduledJob, ScheduledJobRun, ScheduledJobUpdateInput } from '../../../../packages/contracts/src/index.js';
 import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
-import { scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
+import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -21,6 +21,7 @@ type CliContext = {
   workspacePath: string;
   threadId: string;
   platform: string;
+  platformInstanceId: string;
   routeType: string;
   chatId: string;
   platformUserId: string;
@@ -105,6 +106,7 @@ async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.P
       route: {
         type: 'channel.chat',
         channelId: target,
+        instanceId: context.platformInstanceId || undefined,
         participantId: getFlag(flags, 'participant-id') || context.platformUserId || undefined,
       },
       parts: [{
@@ -249,7 +251,11 @@ async function request<T>(baseUrl: string, method: string, path: string, body?: 
 }
 
 function resolveContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv): CliContext {
-  const platform = getFlag(flags, 'platform') || String(env.LOCAL_AI_PLATFORM || '');
+  const rawPlatform = getFlag(flags, 'platform') || String(env.LOCAL_AI_PLATFORM || '');
+  const platform = rawPlatform ? getChannelPlatformBase(rawPlatform) : '';
+  const platformInstanceId = getFlag(flags, 'instance-id') ||
+    String(env.LOCAL_AI_PLATFORM_INSTANCE_ID || '') ||
+    getChannelPlatformInstanceId(rawPlatform);
   const chatId = getFlag(flags, 'chat-id') || String(env.LOCAL_AI_CHAT_ID || '');
   const platformUserId = getFlag(flags, 'platform-user-id') || String(env.LOCAL_AI_PLATFORM_USER_ID || '');
   return {
@@ -258,6 +264,7 @@ function resolveContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv): C
     workspacePath: getFlag(flags, 'workspace-path') || String(env.LOCAL_AI_WORKSPACE_PATH || ''),
     threadId: normalizeMaybeBooleanFlag(getFlag(flags, 'thread')) || String(env.LOCAL_AI_THREAD_ID || ''),
     platform,
+    platformInstanceId,
     routeType: String(env.LOCAL_AI_ROUTE_TYPE || '') || (platform === 'lark' && chatId && platformUserId ? 'channel.chat' : ''),
     chatId,
     platformUserId,
