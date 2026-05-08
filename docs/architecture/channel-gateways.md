@@ -55,6 +55,13 @@ flowchart LR
   Send --> Result["ChannelOutboundMessageResult"]
 ```
 
+定时任务有两种 channel 相关路径：
+
+- Lark/微信定时任务执行期使用 `ChannelRuntime.registerScheduledThreadBridge`，把 scheduler 解析出的 delivery route 临时绑定到 ACP `sessionKey`。后续过程消息、工具进度、权限卡片和最终回答都复用 gateway 的 bridge 渲染、节流、patch 和发送逻辑。
+- 文件、图片或显式 channel send 仍走 `ChannelOutboundMessageInput` / `sendOutboundMessage`。scheduler 不应绕过 gateway 直接调用平台 API。
+
+side-thread 定时任务的按钮上下文必须使用本次执行 thread id，而不是原 `platform_thread_bindings` 里的默认 thread id。这样权限按钮和后续操作才会回到定时任务的执行线程。
+
 ## 平台差异
 
 | 差异点 | Lark | 微信 |
@@ -67,6 +74,6 @@ flowchart LR
 ## 变更规则
 
 - 平台 payload 只在 gateway 内解析，core workflow 消费共享 channel contract。
-- 发送文件、图片和文本应走 `ChannelOutboundMessageInput`，不要让 scheduler 或 ACP 工具直接调用平台 API。
+- 发送文件、图片和显式 outbound 文本应走 `ChannelOutboundMessageInput`；定时任务过程回传应走 scheduled bridge session。不要让 scheduler 或 ACP 工具直接调用平台 API。
 - `platform_thread_bindings` 是 channel thread 和 Local Core thread 的桥；新入口必须维护该绑定。
 - 多实例平台必须保留 `route.instanceId`，避免 Lark/微信多 bot 或多账号串投。

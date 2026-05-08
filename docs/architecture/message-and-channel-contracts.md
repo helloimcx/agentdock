@@ -86,8 +86,11 @@ Invariants:
 - `ScheduledJobApplicationService` owns create-time route resolution.
 - `scheduled-job-route.ts` owns platform parsing and route derivation from `platform_thread_bindings`.
 - A job created from a bound channel thread should persist the binding's platform, chat id, platform user id, and instance id.
-- A scheduled ACP run should receive channel context through runtime environment variables, but final platform delivery remains a channel outbound operation.
+- A scheduled ACP run should receive channel context through runtime environment variables.
+- Lark/Weixin scheduled runs use `deliveryMode: 'bridge-stream'`: process updates, tool progress, permission cards, and final replies are delivered through channel gateway bridge events.
+- Local scheduled runs use `deliveryMode: 'thread-only'` and do not send channel messages.
 - `same-thread` and `side-thread` affect where the ACP conversation executes; they do not change the persisted platform delivery target.
+- `scheduled_job_runs` delivery fields are diagnostics and may include `deliveryStatus`, `deliveryError`, `lastBridgeEventAt`, and platform message ids.
 
 See [Scheduled Delivery Architecture](scheduled-delivery.md) for the end-to-end scheduler flow.
 

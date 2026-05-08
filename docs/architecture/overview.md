@@ -53,7 +53,9 @@ Local AI Core keeps scheduler responsibilities split by lifecycle:
 - `ScheduledJobApplicationService` resolves scheduled job create/update input and derives channel routes from thread bindings.
 - `SchedulerService` owns due polling, run concurrency, and adapter selection.
 - `ScheduledConversationExecutor` turns a scheduled job into an ACP conversation and injects the channel runtime environment for the run.
-- Platform scheduler adapters own final delivery through channel runtimes; Lark/Weixin adapters match platform base ids while preserving instance ids for delivery.
+- `channel-execution-policy.ts` resolves same-thread or side-thread targets for channel jobs.
+- `ScheduledBridgeSession` binds the scheduled ACP session to the channel route so Lark/Weixin process updates, tool progress, permission cards, and final replies stream through channel gateways.
+- Platform scheduler adapters select delivery mode. Local uses `thread-only`; Lark/Weixin use `bridge-stream` while preserving instance ids for delivery.
 
 See [Scheduled Delivery Architecture](scheduled-delivery.md) for the full route and delivery model.
 

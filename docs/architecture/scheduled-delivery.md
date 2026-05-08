@@ -13,8 +13,10 @@ Scheduled jobs are Local AI Core state. Renderer, Electron, and channel gateways
 | Scheduler loop | `SchedulerService` | Poll for due jobs, prevent duplicate active runs, select a platform adapter, and trigger execution. |
 | Run lifecycle | `SchedulerRunLifecycle` | Persist `scheduled_job_runs` transitions and update job run metadata. |
 | Conversation execution | `ScheduledConversationExecutor` | Send the scheduled prompt into ACP, wait for completion, and return the final assistant reply. |
-| Platform adapter | `local/lark/weixin` scheduler adapters | Resolve execution policy and deliver final output to the target platform when needed. |
-| Channel gateway | Lark/Weixin channel runtime | Authenticate, upload/download content, and send platform messages. |
+| Execution policy | `channel-execution-policy.ts` | Resolve same-thread or side-thread execution targets and open scheduled bridge sessions for channel jobs. |
+| Bridge session | `scheduled-bridge-session.ts` | Temporarily bind the scheduled ACP session key to a channel route for process and final reply streaming. |
+| Platform adapter | `local/lark/weixin` scheduler adapters | Select delivery mode and policy while keeping platform-specific code thin. |
+| Channel gateway | Lark/Weixin channel runtime | Authenticate, upload/download content, and send bridge progress, permission, and final messages. |
 
 ## Creation Flow
 
@@ -67,12 +69,15 @@ Do not duplicate platform string parsing in controllers, adapters, CLI commands,
 flowchart TD
   Tick[SchedulerService due tick] --> Adapter[Platform scheduler adapter]
   Adapter --> Policy[ExecutionPolicy resolveTarget]
-  Policy --> Executor[ScheduledConversationExecutor]
+  Policy --> Bridge[ScheduledBridgeSession open]
+  Bridge --> Executor[ScheduledConversationExecutor]
   Executor --> ACP[WorkspaceRouter / ACP backend]
-  ACP --> Reply[Final assistant reply]
-  Reply --> Adapter
-  Adapter --> Channel[Channel runtime send]
+  ACP --> Events[ACP bridge events]
+  Events --> Channel[Channel runtime bridge]
   Channel --> Target[Lark or Weixin chat]
+  ACP --> Reply[Final assistant reply]
+  Reply --> Run[scheduled_job_runs result]
+  Run --> Close[ScheduledBridgeSession close]
 ```
 
 `ScheduledConversationExecutor` injects runtime environment for scheduled ACP sessions based on the resolved target:
@@ -85,24 +90,55 @@ flowchart TD
 
 This lets CLI tools and ACP-side helpers know the scheduled run is executing for a channel context even when the ACP conversation itself runs in a side thread.
 
-Lark and Weixin scheduler adapters are responsible for final platform delivery only. They should:
+Delivery modes are explicit:
+
+- `thread-only`: the run executes in a Local AI Core thread and does not send channel messages. This is used by local scheduled jobs.
+- `bridge-stream`: the run opens a scheduled bridge session before ACP execution. ACP progress, tool status, permission cards, and the final reply are delivered through the existing channel gateway bridge. This is used by Lark and Weixin scheduled jobs.
+- `final-message`: reserved for future targets that only support a final one-shot delivery.
+
+Lark and Weixin scheduler adapters are thin wrappers around the shared channel execution policy. They should:
 
 - accept instance-qualified platform ids by matching the base platform;
-- use `routeWithPlatformInstance(withoutThreadRoute(job.route), job.platform)` before sending;
-- use the shared channel outbound path for text/file delivery;
-- keep same-thread and side-thread execution policy separate from platform send logic.
+- use `ScheduledBridgeSession` for process and final reply delivery;
+- keep same-thread and side-thread execution policy separate from gateway send logic;
+- report `deliveryMode: 'bridge-stream'` and delivery status metadata through the scheduler run result.
 
 The local scheduler adapter runs the conversation and records the result, but does not perform channel delivery.
+
+`same-thread` and `side-thread` only choose the ACP execution thread. They do not change the persisted delivery route. Side-thread jobs reuse a platform-specific title such as `[Scheduled:Lark] ...` or `[Scheduled:Weixin] ...`, while still recognizing legacy `[Scheduled] ...` titles so existing jobs do not create duplicate threads.
 
 ## State Boundaries
 
 Persisted scheduler state lives in SQLite:
 
 - `scheduled_jobs`: schedule, prompt, execution mode, platform, and delivery route.
-- `scheduled_job_runs`: per-run lifecycle and error/output metadata.
+- `scheduled_job_runs`: per-run lifecycle plus delivery observability metadata.
 - `platform_thread_bindings`: mapping from Local AI Core thread id to channel platform, chat id, platform user id, and latest platform message id.
 
 The binding table is the bridge between inbound channel conversations and scheduled job delivery. A job created from a bound channel thread should preserve the binding's platform instance and chat/user ids. A job created without a binding should remain local unless the caller provides an explicit platform route.
+
+`scheduled_job_runs` records both execution and delivery signals:
+
+- `status`: scheduler run lifecycle, such as `queued`, `running`, `succeeded`, `failed`, or `skipped`.
+- `threadId` / `runId`: the ACP execution target and Local AI Core run id.
+- `deliveryMode`: `thread-only`, `bridge-stream`, or future delivery modes.
+- `deliveryStatus`: platform delivery state, separate from run execution state.
+- `deliveryError`: platform delivery failure detail when available.
+- `lastBridgeEventAt`: latest bridge activity timestamp reported for the scheduled run.
+- `platformMessageId` / `platformMessageIds`: platform message ids when the gateway exposes them.
+
+These fields are diagnostic. Scheduler correctness should not depend on a platform message id being present because some bridge paths stream by patching or by sending multiple messages.
+
+## Bridge Session Invariants
+
+`ScheduledBridgeSession` is the boundary between scheduler execution and channel delivery. It:
+
+- derives the ACP `sessionKey` from `WorkspaceRouter.getThreadSessionKey(threadId)`;
+- calls `ChannelRuntime.registerScheduledThreadBridge` with the persisted delivery route and resolved execution thread id;
+- closes the temporary route after `ScheduledConversationExecutor` finishes;
+- leaves gateway rendering, throttling, permission cards, message patching, and send budgets inside the channel gateway.
+
+Channel gateways must use the scheduled route's `threadId` for card action context when it differs from the persisted platform binding thread. This keeps side-thread permission buttons and follow-up actions attached to the scheduled execution thread rather than the original chat binding.
 
 ## Change Rules
 
@@ -111,5 +147,7 @@ When changing scheduled delivery behavior:
 - Add or update regression coverage in `tests/electron/workspace-task-store.test.ts`, `tests/electron/lac-cli.test.ts`, or `tests/integration/local-core-refactor.test.ts`.
 - Verify instance-qualified platforms such as `lark:<id>` and `weixin:<id>`.
 - Verify both `same-thread` and `side-thread` execution modes when channel delivery is affected.
+- Verify process streaming as well as final replies for bridge-based channel jobs.
+- Keep delivery observability fields backward-compatible through `LocalCoreAcpStore.ensureColumn` migrations.
 - Keep route creation in `ScheduledJobApplicationService`; do not add new create-time route logic in controller, router bridge, or adapters.
 - Keep platform string parsing in `scheduled-job-route.ts`.

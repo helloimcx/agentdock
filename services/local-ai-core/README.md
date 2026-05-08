@@ -59,13 +59,17 @@ src/
 - `src/scheduler/scheduler-service.ts`
   只负责轮询、due 判断、并发控制、adapter 选择。
 - `src/scheduler/scheduler-run-lifecycle.ts`
-  只负责 `scheduled_job_runs` 的状态迁移和对应 job 状态回写。
+  只负责 `scheduled_job_runs` 的状态迁移、delivery 可观测字段和对应 job 状态回写。
 - `src/scheduler/scheduled-conversation-executor.ts`
   只负责把一次定时任务转换成一次 conversation execution：注入 channel runtime env、发消息、等 run、取最终 reply。
+- `src/scheduler/channel-execution-policy.ts`
+  提供 Lark/Weixin 共用的 same-thread / side-thread execution policy，避免平台策略重复实现。
+- `src/scheduler/scheduled-bridge-session.ts`
+  在定时任务执行期间临时注册 `sessionKey -> channel route`，让 ACP 过程、工具进度、权限卡片和最终回答通过 channel gateway 回传。
 - `src/scheduler/local-schedule-adapter.ts`
-  只负责本地 thread 定时任务执行，不做 channel 投递。
+  只负责本地 thread 定时任务执行，使用 `deliveryMode: 'thread-only'`，不做 channel 投递。
 - `src/scheduler/lark-schedule-adapter.ts` / `src/scheduler/weixin-schedule-adapter.ts`
-  只负责平台执行策略和最终 channel 回投。adapter 选择按 platform base 匹配，实际发送保留 `route.instanceId`，确保多 Lark/Weixin 实例不会串投。
+  只负责选择平台执行策略并声明 `deliveryMode: 'bridge-stream'`。adapter 选择按 platform base 匹配，实际回传由 channel gateway 使用 `route.instanceId` 发送，确保多 Lark/Weixin 实例不会串投。
 
 更完整的 scheduled delivery 设计见 [`docs/architecture/scheduled-delivery.md`](../../docs/architecture/scheduled-delivery.md)。
 
@@ -82,7 +86,7 @@ src/
 - `executionMode: 'same-thread'`
 - `executionMode: 'side-thread'`
 
-`same-thread` 会复用原对话 thread；`side-thread` 会为该 job 复用或创建一个专用的 `[Scheduled] ...` 线程。当前默认值仍是 `same-thread`，以保持现有行为兼容。
+`same-thread` 会复用原对话 thread；`side-thread` 会为该 job 复用或创建一个专用的 `[Scheduled:Lark] ...` / `[Scheduled:Weixin] ...` / `[Scheduled] ...` 线程。平台 side-thread 策略仍识别历史 `[Scheduled] ...` 标题，避免老任务升级后重复创建线程。当前默认值仍是 `same-thread`，以保持现有行为兼容。
 
 后续若要继续演进到 side-run 或更复杂的 execution target，应优先扩展 execution policy，而不是把新逻辑继续塞回 adapter 或 scheduler service。
 
@@ -93,6 +97,8 @@ src/
 - 从 channel thread 创建任务时，route 来自 `platform_thread_bindings`，包含 chat id、platform user id 和 instance id。
 - 明确传入 route 创建任务时，持久化 route 不应绑定旧 ACP thread id；same-thread/side-thread 的执行目标由 execution policy 决定。
 - `ScheduledConversationExecutor` 会为定时 ACP 会话注入 `LOCAL_AI_PLATFORM`、`LOCAL_AI_ROUTE_TYPE`、`LOCAL_AI_PLATFORM_INSTANCE_ID`、`LOCAL_AI_CHAT_ID`、`LOCAL_AI_PLATFORM_USER_ID`，让会话内的 channel-aware 工具能投递到当前任务目标。
+- Lark/Weixin 定时任务使用 `ScheduledBridgeSession` 走 `bridge-stream`：过程消息、工具进度、权限卡片和最终回答都由现有 channel bridge 回传，不应再由 scheduler adapter 单独发送最终消息。
+- `scheduled_job_runs` 同时记录执行状态和 delivery 诊断字段，包括 `deliveryMode`、`deliveryStatus`、`deliveryError`、`lastBridgeEventAt` 和 `platformMessageIds`。这些字段用于排障，不应成为 scheduler 成功判定的唯一依据。
 
 ## 对外接口（概览）
 
