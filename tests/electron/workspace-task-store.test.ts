@@ -168,6 +168,7 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
     });
     let sentThreadId = '';
     let registeredBridge: any;
+    const bridgeEvents: any[] = [];
     let unregisteredBridge = false;
     const adapter = new LarkScheduleAdapter({
       store,
@@ -195,6 +196,9 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
         },
       }) as any,
       getChannelRuntime: () => ({
+        onBridgeEvent: async (event: any) => {
+          bridgeEvents.push(event);
+        },
         registerScheduledThreadBridge: (input: any) => {
           registeredBridge = input;
           return () => {
@@ -218,6 +222,12 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
       route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: oldThread.id },
       threadId: latestThread.id,
       sessionKey: `session:${latestThread.id}`,
+    });
+    assert.deepEqual(bridgeEvents[0], {
+      type: 'status',
+      sessionKey: `session:${latestThread.id}`,
+      bridgeKind: 'status',
+      content: '⏰ bound lark task',
     });
     assert.equal(unregisteredBridge, true);
     store.close();

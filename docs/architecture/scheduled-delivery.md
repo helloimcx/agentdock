@@ -135,6 +135,7 @@ These fields are diagnostic. Scheduler correctness should not depend on a platfo
 
 - derives the ACP `sessionKey` from `WorkspaceRouter.getThreadSessionKey(threadId)`;
 - calls `ChannelRuntime.registerScheduledThreadBridge` with the persisted delivery route and resolved execution thread id;
+- sends an initial status notice before ACP execution, formatted as `⏰ <job description>`, so channel users can see which scheduled task just started before tool progress arrives;
 - closes the temporary route after `ScheduledConversationExecutor` finishes;
 - leaves gateway rendering, throttling, permission cards, message patching, and send budgets inside the channel gateway.
 

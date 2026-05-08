@@ -3940,6 +3940,7 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
     updatedAt: '2026-04-22T06:00:00.000Z',
   } as const;
   let registeredBridge: any;
+  const bridgeEvents: any[] = [];
   let unregisteredBridge = false;
   const policy = createLarkExecutionPolicy(
     job as any,
@@ -3951,6 +3952,9 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
         createThread: async () => ({ id: 'thread-new' }),
       } as any,
       getChannelRuntime: () => ({
+        onBridgeEvent: async (event: any) => {
+          bridgeEvents.push(event);
+        },
         registerScheduledThreadBridge: (input: any) => {
           registeredBridge = input;
           return () => {
@@ -3971,6 +3975,12 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
     route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-origin' },
     threadId: 'thread-scheduled',
     sessionKey: 'session:thread-scheduled',
+  });
+  assert.deepEqual(bridgeEvents[0], {
+    type: 'status',
+    sessionKey: 'session:thread-scheduled',
+    bridgeKind: 'status',
+    content: '⏰ two-minute ping',
   });
   policy.afterExecute?.(target, job as any);
   assert.equal(unregisteredBridge, true);

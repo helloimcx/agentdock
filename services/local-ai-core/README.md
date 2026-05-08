@@ -98,6 +98,7 @@ src/
 - 明确传入 route 创建任务时，持久化 route 不应绑定旧 ACP thread id；same-thread/side-thread 的执行目标由 execution policy 决定。
 - `ScheduledConversationExecutor` 会为定时 ACP 会话注入 `LOCAL_AI_PLATFORM`、`LOCAL_AI_ROUTE_TYPE`、`LOCAL_AI_PLATFORM_INSTANCE_ID`、`LOCAL_AI_CHAT_ID`、`LOCAL_AI_PLATFORM_USER_ID`，让会话内的 channel-aware 工具能投递到当前任务目标。
 - Lark/Weixin 定时任务使用 `ScheduledBridgeSession` 走 `bridge-stream`：过程消息、工具进度、权限卡片和最终回答都由现有 channel bridge 回传，不应再由 scheduler adapter 单独发送最终消息。
+- `ScheduledBridgeSession` 会在 ACP 执行前先发送 `⏰ <任务描述>` 状态消息，让 channel 用户先知道是哪一个定时任务开始执行。
 - `scheduled_job_runs` 同时记录执行状态和 delivery 诊断字段，包括 `deliveryMode`、`deliveryStatus`、`deliveryError`、`lastBridgeEventAt` 和 `platformMessageIds`。这些字段用于排障，不应成为 scheduler 成功判定的唯一依据。
 
 ## 对外接口（概览）

@@ -58,6 +58,7 @@ flowchart LR
 定时任务有两种 channel 相关路径：
 
 - Lark/微信定时任务执行期使用 `ChannelRuntime.registerScheduledThreadBridge`，把 scheduler 解析出的 delivery route 临时绑定到 ACP `sessionKey`。后续过程消息、工具进度、权限卡片和最终回答都复用 gateway 的 bridge 渲染、节流、patch 和发送逻辑。
+- bridge 注册完成后，scheduler 会先通过 `status` bridge event 发送 `⏰ <任务描述>`，再启动 ACP 执行；gateway 应把这条消息当作普通过程状态处理。
 - 文件、图片或显式 channel send 仍走 `ChannelOutboundMessageInput` / `sendOutboundMessage`。scheduler 不应绕过 gateway 直接调用平台 API。
 
 side-thread 定时任务的按钮上下文必须使用本次执行 thread id，而不是原 `platform_thread_bindings` 里的默认 thread id。这样权限按钮和后续操作才会回到定时任务的执行线程。
