@@ -100,6 +100,11 @@ export type LocalScheduledJobRunRow = {
   thread_id: string | null;
   run_id: string | null;
   platform_message_id: string | null;
+  platform_message_ids_json: string | null;
+  delivery_mode: string | null;
+  delivery_status: string | null;
+  delivery_error: string | null;
+  last_bridge_event_at: string | null;
 };
 
 export type LocalWorkspaceRegistryRow = {

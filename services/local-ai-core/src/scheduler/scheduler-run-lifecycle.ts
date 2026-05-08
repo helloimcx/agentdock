@@ -14,6 +14,8 @@ export class SchedulerRunLifecycle {
     const skipped = this.options.store.createScheduledJobRun(job.id, 'skipped', {
       triggeredAt,
       error,
+      deliveryStatus: 'skipped',
+      deliveryError: error,
     });
     this.options.emitRun(skipped);
     this.emitCurrentJob(job.id);
@@ -21,7 +23,10 @@ export class SchedulerRunLifecycle {
   }
 
   markQueued(job: ScheduledJob, triggeredAt: string) {
-    const run = this.options.store.createScheduledJobRun(job.id, 'queued', { triggeredAt });
+    const run = this.options.store.createScheduledJobRun(job.id, 'queued', {
+      triggeredAt,
+      deliveryStatus: 'pending',
+    });
     this.options.emitRun(run);
     return run;
   }
@@ -39,6 +44,11 @@ export class SchedulerRunLifecycle {
     threadId?: string;
     runId?: string;
     platformMessageId?: string;
+    platformMessageIds?: string[];
+    deliveryMode?: ScheduledJobRun['deliveryMode'];
+    deliveryStatus?: ScheduledJobRun['deliveryStatus'];
+    deliveryError?: string;
+    lastBridgeEventAt?: string;
   }, disableOnceJob: boolean) {
     const completed = this.options.store.updateScheduledJobRun(runId, {
       status: 'succeeded',
@@ -46,6 +56,11 @@ export class SchedulerRunLifecycle {
       threadId: result.threadId,
       runId: result.runId,
       platformMessageId: result.platformMessageId,
+      platformMessageIds: result.platformMessageIds,
+      deliveryMode: result.deliveryMode,
+      deliveryStatus: result.deliveryStatus || 'succeeded',
+      deliveryError: result.deliveryError || '',
+      lastBridgeEventAt: result.lastBridgeEventAt,
       error: '',
     });
     if (disableOnceJob) {
@@ -61,6 +76,8 @@ export class SchedulerRunLifecycle {
       status: 'failed',
       finishedAt: new Date().toISOString(),
       error,
+      deliveryStatus: 'failed',
+      deliveryError: error,
     });
     this.options.emitRun(failed);
     this.emitCurrentJob(jobId);

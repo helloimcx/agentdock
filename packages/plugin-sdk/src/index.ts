@@ -188,6 +188,11 @@ export interface SchedulerExecutionResult {
   runId?: string;
   replyText?: string;
   platformMessageId?: string;
+  platformMessageIds?: string[];
+  deliveryMode?: import('../../contracts/src/index.js').ScheduledJobRun['deliveryMode'];
+  deliveryStatus?: import('../../contracts/src/index.js').ScheduledJobRun['deliveryStatus'];
+  deliveryError?: string;
+  lastBridgeEventAt?: string;
 }
 
 export interface SchedulerExecutionTarget {

@@ -3838,6 +3838,8 @@ test('local scheduler adapter runs a workspace thread without channel delivery',
   assert.equal(result.runId, 'run-local-1');
   assert.equal(result.replyText, 'local done');
   assert.equal(result.platformMessageId, undefined);
+  assert.equal(result.deliveryMode, 'thread-only');
+  assert.equal(result.deliveryStatus, 'succeeded');
 });
 
 test('scheduler run lifecycle updates run and job state through explicit transitions', () => {
@@ -3890,6 +3892,10 @@ test('scheduler run lifecycle updates run and job state through explicit transit
     threadId: 'thread-1',
     runId: 'run-1',
     platformMessageId: 'msg-1',
+    platformMessageIds: ['msg-1', 'msg-2'],
+    deliveryMode: 'bridge-stream',
+    deliveryStatus: 'succeeded',
+    lastBridgeEventAt: '2026-04-22T06:00:03.000Z',
   }, true);
 
   assert.deepEqual(emittedRuns, [
@@ -3898,6 +3904,23 @@ test('scheduler run lifecycle updates run and job state through explicit transit
     'run-1:succeeded',
   ]);
   assert.deepEqual(emittedJobs, ['job-1:false']);
+  assert.deepEqual(runs.get(queued.id), {
+    id: 'run-1',
+    jobId: 'job-1',
+    status: 'succeeded',
+    triggeredAt: '2026-04-22T06:00:00.000Z',
+    deliveryStatus: 'succeeded',
+    startedAt: runs.get(queued.id).startedAt,
+    finishedAt: runs.get(queued.id).finishedAt,
+    threadId: 'thread-1',
+    runId: 'run-1',
+    platformMessageId: 'msg-1',
+    platformMessageIds: ['msg-1', 'msg-2'],
+    deliveryMode: 'bridge-stream',
+    deliveryError: '',
+    lastBridgeEventAt: '2026-04-22T06:00:03.000Z',
+    error: '',
+  });
 });
 
 test('lark side-thread execution policy reuses a dedicated scheduled thread', async () => {

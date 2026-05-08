@@ -183,6 +183,11 @@ export class LocalCoreAcpStore {
         thread_id TEXT,
         run_id TEXT,
         platform_message_id TEXT,
+        platform_message_ids_json TEXT,
+        delivery_mode TEXT,
+        delivery_status TEXT,
+        delivery_error TEXT,
+        last_bridge_event_at TEXT,
         FOREIGN KEY (job_id) REFERENCES scheduled_jobs(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_scheduled_job_runs_job_triggered ON scheduled_job_runs (job_id, triggered_at DESC);
@@ -283,6 +288,11 @@ export class LocalCoreAcpStore {
     this.ensureColumn('messages', 'bridge_kind', 'TEXT');
     this.ensureColumn('messages', 'bridge_status', 'TEXT');
     this.ensureColumn('scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
+    this.ensureColumn('scheduled_job_runs', 'platform_message_ids_json', 'TEXT');
+    this.ensureColumn('scheduled_job_runs', 'delivery_mode', 'TEXT');
+    this.ensureColumn('scheduled_job_runs', 'delivery_status', 'TEXT');
+    this.ensureColumn('scheduled_job_runs', 'delivery_error', 'TEXT');
+    this.ensureColumn('scheduled_job_runs', 'last_bridge_event_at', 'TEXT');
     this.ensureColumn('threads', 'agent_mode', "TEXT NOT NULL DEFAULT 'default'");
   }
 
@@ -1138,7 +1148,7 @@ export class LocalCoreAcpStore {
 
   listScheduledJobRuns(jobId: string): ScheduledJobRun[] {
     const rows = this.db.prepare(`
-      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id
+      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at
       FROM scheduled_job_runs
       WHERE job_id = ?
       ORDER BY triggered_at DESC
@@ -1151,8 +1161,8 @@ export class LocalCoreAcpStore {
     const triggeredAt = input.triggeredAt || new Date().toISOString();
     const normalizedStatus = normalizeScheduledJobRunStatus(status);
     this.db.prepare(`
-      INSERT INTO scheduled_job_runs (id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_job_runs (id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       jobId,
@@ -1164,6 +1174,11 @@ export class LocalCoreAcpStore {
       input.threadId || null,
       input.runId || null,
       input.platformMessageId || null,
+      JSON.stringify(input.platformMessageIds || []),
+      input.deliveryMode || null,
+      input.deliveryStatus || null,
+      input.deliveryError || null,
+      input.lastBridgeEventAt || null,
     );
     this.updateScheduledJobStatus(jobId, {
       lastRunAt: triggeredAt,
@@ -1175,7 +1190,7 @@ export class LocalCoreAcpStore {
 
   getScheduledJobRun(runId: string): ScheduledJobRun | undefined {
     const row = this.db.prepare(`
-      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id
+      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at
       FROM scheduled_job_runs
       WHERE id = ?
     `).get(runId) as LocalScheduledJobRunRow | undefined;
@@ -1194,7 +1209,7 @@ export class LocalCoreAcpStore {
     };
     this.db.prepare(`
       UPDATE scheduled_job_runs
-      SET status = ?, triggered_at = ?, started_at = ?, finished_at = ?, error = ?, thread_id = ?, run_id = ?, platform_message_id = ?
+      SET status = ?, triggered_at = ?, started_at = ?, finished_at = ?, error = ?, thread_id = ?, run_id = ?, platform_message_id = ?, platform_message_ids_json = ?, delivery_mode = ?, delivery_status = ?, delivery_error = ?, last_bridge_event_at = ?
       WHERE id = ?
     `).run(
       next.status,
@@ -1205,6 +1220,11 @@ export class LocalCoreAcpStore {
       next.threadId || null,
       next.runId || null,
       next.platformMessageId || null,
+      JSON.stringify(next.platformMessageIds || []),
+      next.deliveryMode || null,
+      next.deliveryStatus || null,
+      next.deliveryError || null,
+      next.lastBridgeEventAt || null,
       runId,
     );
     if (input.status || Object.prototype.hasOwnProperty.call(input, 'error') || input.finishedAt || input.triggeredAt) {
@@ -1515,6 +1535,11 @@ export class LocalCoreAcpStore {
       threadId: row.thread_id || undefined,
       runId: row.run_id || undefined,
       platformMessageId: row.platform_message_id || undefined,
+      platformMessageIds: parseJson(row.platform_message_ids_json || '[]', []),
+      deliveryMode: row.delivery_mode || undefined,
+      deliveryStatus: row.delivery_status || undefined,
+      deliveryError: row.delivery_error || undefined,
+      lastBridgeEventAt: row.last_bridge_event_at || undefined,
     };
   }
 

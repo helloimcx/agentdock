@@ -41,6 +41,9 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
       threadId: execution.threadId,
       runId: execution.runId,
       replyText: execution.replyText,
+      deliveryMode: 'bridge-stream',
+      deliveryStatus: 'succeeded',
+      lastBridgeEventAt: new Date().toISOString(),
     };
   }
 

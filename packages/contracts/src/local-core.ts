@@ -640,6 +640,11 @@ export interface ScheduledJobRun {
   threadId?: string;
   runId?: string;
   platformMessageId?: string;
+  platformMessageIds?: string[];
+  deliveryMode?: 'thread-only' | 'bridge-stream' | 'final-message' | (string & {});
+  deliveryStatus?: 'pending' | 'streaming' | 'succeeded' | 'failed' | 'skipped' | (string & {});
+  deliveryError?: string;
+  lastBridgeEventAt?: string;
 }
 
 export function normalizeScheduledJobRunStatus(value: unknown, fallback: ScheduledJobRun['status'] = 'queued'): ScheduledJobRun['status'] {

@@ -2,19 +2,24 @@ import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
+import type { ScheduledExecutionPolicy } from './execution-policy.js';
+import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 
 type LocalScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
   getWorkspaceRouter: () => WorkspaceRouter;
 };
 
-const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
-const SCHEDULED_RUN_PERMISSION_MODE = 'bypassPermissions';
-
 export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
+  private readonly executor: ScheduledConversationExecutor;
   readonly deliveryTargets = ['local'];
 
-  constructor(private readonly options: LocalScheduleAdapterOptions) {}
+  constructor(private readonly options: LocalScheduleAdapterOptions) {
+    this.executor = new ScheduledConversationExecutor({
+      store: options.store,
+      getWorkspaceRouter: options.getWorkspaceRouter,
+    });
+  }
 
   supports(job: ScheduledJob) {
     return job.platform === 'local' && (job.route.type === 'local.thread' || job.route.type === 'thread');
@@ -22,21 +27,25 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
 
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
     const { job } = context;
-    const workspaceRouter = this.options.getWorkspaceRouter();
-    const threadId = await this.resolveThread(job);
-    const sendResult = await workspaceRouter.sendThreadMessage(threadId, job.promptTemplate, {
-      permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
-    });
-    await this.waitForRun(sendResult.runId);
-    const thread = await workspaceRouter.getThread(threadId);
-    const replyText = [...thread.messages]
-      .reverse()
-      .find((message) => message.role === 'assistant' && message.kind === 'final')
-      ?.content;
+    const execution = await this.executor.execute(job, job.promptTemplate, this.createExecutionPolicy());
     return {
-      threadId,
-      runId: sendResult.runId,
-      replyText,
+      threadId: execution.threadId,
+      runId: execution.runId,
+      replyText: execution.replyText,
+      deliveryMode: 'thread-only',
+      deliveryStatus: 'succeeded',
+    };
+  }
+
+  private createExecutionPolicy(): ScheduledExecutionPolicy {
+    return {
+      resolveTarget: async (job) => ({
+        kind: 'local:thread',
+        threadId: await this.resolveThread(job),
+        workspaceId: job.workspaceId,
+        platform: job.platform,
+        route: job.route,
+      }),
     };
   }
 
@@ -64,18 +73,4 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
     }
   }
 
-  private async waitForRun(runId: string, timeoutMs = 15 * 60 * 1000) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
-      const run = this.options.store.getRun(runId);
-      if (run && TERMINAL_RUN_STATES.has(run.status)) {
-        if (run.status !== 'completed') {
-          throw new Error(`Scheduled run finished with status ${run.status}`);
-        }
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    throw new Error(`Timed out waiting for scheduled run ${runId}`);
-  }
 }

@@ -806,10 +806,21 @@ test('agent task and run statuses normalize before persistence', () => {
       description: 'daily ping',
       enabled: true,
     });
-    const run = store.createScheduledJobRun(job.id, 'complete' as any);
+    const run = store.createScheduledJobRun(job.id, 'complete' as any, {
+      deliveryMode: 'bridge-stream',
+      deliveryStatus: 'streaming',
+      platformMessageIds: ['msg-1', 'msg-2'],
+      lastBridgeEventAt: '2026-04-22T06:00:03.000Z',
+    });
     assert.equal(run.status, 'succeeded');
+    assert.equal(run.deliveryMode, 'bridge-stream');
+    assert.equal(run.deliveryStatus, 'streaming');
+    assert.deepEqual(run.platformMessageIds, ['msg-1', 'msg-2']);
+    assert.equal(run.lastBridgeEventAt, '2026-04-22T06:00:03.000Z');
     const skipped = store.updateScheduledJobRun(run.id, { status: 'cancelled' as any });
     assert.equal(skipped.status, 'skipped');
+    assert.equal(skipped.deliveryMode, 'bridge-stream');
+    assert.deepEqual(skipped.platformMessageIds, ['msg-1', 'msg-2']);
     assert.equal(store.getScheduledJob(job.id)?.lastStatus, 'skipped');
     store.close();
   } finally {
