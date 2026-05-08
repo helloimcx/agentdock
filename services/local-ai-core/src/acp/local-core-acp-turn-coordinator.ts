@@ -150,7 +150,8 @@ export class LocalCoreAcpTurnCoordinator {
     }) || parsedOptions;
     const toolTitle = formatToolCallContent(payload.params?.toolCall);
     this.closePendingThoughtSegment(session);
-    if ((this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE) === 'bypassPermissions') {
+    const effectiveAgentMode = session.launchPermissionMode || this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE;
+    if (effectiveAgentMode === 'bypassPermissions') {
       const selected = options.find((option) => option.normalizedAction === 'allow all')
         || options.find((option) => option.normalizedAction === 'allow')
         || options.find((option) => option.normalizedAction !== 'deny');

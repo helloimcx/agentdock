@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
+import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { SchedulerService } from '../../services/local-ai-core/src/scheduler/scheduler-service.js';
 import { LarkScheduleAdapter } from '../../services/local-ai-core/src/scheduler/lark-schedule-adapter.js';
 import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
@@ -504,6 +505,62 @@ test('ACP scheduled session can override permission mode without changing thread
   }
 });
 
+test('ACP permission requests honor scheduled session permission override', () => {
+  const sentPayloads: any[] = [];
+  let approvalCreated = false;
+  let awaitingInput = false;
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    emitBridge: () => {},
+    appendMessage: () => {},
+    updateRunStatus: () => {
+      awaitingInput = true;
+    },
+    createApprovalRequest: () => {
+      approvalCreated = true;
+      return 'approval-1';
+    },
+    getThreadAgentMode: () => 'default',
+    sendRaw: (_session, payload) => {
+      sentPayloads.push(payload);
+      return true;
+    },
+  });
+
+  coordinator.handleAgentRequest({
+    threadId: 'thread-1',
+    bridgeSessionKey: 'bridge-1',
+    currentRunId: 'run-1',
+    currentTurn: null,
+    pendingPermissionByRun: new Map(),
+    schedulerJobCreatedByRun: new Map(),
+    launchPermissionMode: 'bypassPermissions',
+  } as any, {
+    jsonrpc: '2.0',
+    id: 42,
+    method: 'session/request_permission',
+    params: {
+      toolCall: { title: 'Write AI早报/AI早报-2026-05-08.md' },
+      options: [
+        { optionId: 'deny', name: 'Deny', kind: 'deny' },
+        { optionId: 'allow', name: 'Allow', kind: 'allow' },
+      ],
+    },
+  });
+
+  assert.equal(approvalCreated, false);
+  assert.equal(awaitingInput, false);
+  assert.deepEqual(sentPayloads[0], {
+    jsonrpc: '2.0',
+    id: 42,
+    result: {
+      outcome: {
+        outcome: 'selected',
+        optionId: 'allow',
+      },
+    },
+  });
+});
+
 test('scheduler uses short ids for new jobs and resolves legacy full ids by short id', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-id-store-'));
   try {
@@ -550,6 +607,81 @@ test('scheduler uses short ids for new jobs and resolves legacy full ids by shor
     scheduler.deleteJob('826aff79');
     assert.equal(scheduler.getJob('826aff79'), undefined);
     assert.throws(() => scheduler.deleteJob('826aff79'), /Scheduled job not found: 826aff79/);
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('scheduler dispatches due jobs without waiting for long-running jobs', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-dispatch-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-1' },
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '* * * * *',
+      promptTemplate: 'slow',
+      description: 'slow job',
+      enabled: true,
+    });
+    store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-2' },
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '* * * * *',
+      promptTemplate: 'fast',
+      description: 'fast job',
+      enabled: true,
+    });
+    let releaseSlow!: () => void;
+    const slowDone = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const started: string[] = [];
+    let slowJobId = '';
+    const scheduler = new SchedulerService({
+      store,
+      triggers: [{
+        triggerTypes: ['cron'],
+        supports: () => true,
+        isDue: () => true,
+      }],
+      executors: [{
+        deliveryTargets: ['local'],
+        supports: () => true,
+        execute: async ({ job }) => {
+          const isFirstStartedJob = started.length === 0;
+          started.push(job.id);
+          if (isFirstStartedJob) {
+            slowJobId = job.id;
+            await slowDone;
+          }
+          return {
+            threadId: String(job.route.threadId || job.id),
+            runId: `run:${job.id}`,
+          };
+        },
+      }],
+      eventBus: { emit: () => {}, on: () => () => {} },
+    });
+
+    await (scheduler as any).tick();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(started.length, 2);
+    const fastJobId = started.find((id) => id !== slowJobId)!;
+    assert.equal(store.listScheduledJobRuns(slowJobId)[0]?.status, 'running');
+    assert.equal(store.listScheduledJobRuns(fastJobId)[0]?.status, 'succeeded');
+
+    releaseSlow();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(store.listScheduledJobRuns(slowJobId)[0]?.status, 'succeeded');
     store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });

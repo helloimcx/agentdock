@@ -119,7 +119,7 @@ export class SchedulerService extends EventEmitter {
         if (!this.isDue(job, now)) {
           continue;
         }
-        await this.executeJob(job, now.toISOString(), false);
+        void this.executeJob(job, now.toISOString(), false);
       }
     } finally {
       this.pollInFlight = false;
