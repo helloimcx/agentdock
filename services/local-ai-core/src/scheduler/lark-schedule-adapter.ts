@@ -5,7 +5,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 import { createLarkExecutionPolicy } from './lark-execution-policies.js';
-import { platformMatches, routeWithPlatformInstance, withoutThreadRoute } from './scheduled-job-route.js';
+import { platformMatches } from './scheduled-job-route.js';
 
 type LarkScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -37,26 +37,10 @@ export class LarkScheduleAdapter implements SchedulerExecutorRuntime {
       getChannelRuntime: this.options.getChannelRuntime,
     }, (nextJob) => this.resolveThread(nextJob));
     const execution = await this.executor.execute(job, job.promptTemplate, executionPolicy);
-    let platformMessageId = '';
-    if (execution.replyText) {
-      const channelRuntime = this.options.getChannelRuntime();
-      if (!channelRuntime.sendScheduledMessage) {
-        throw new Error('Lark channel runtime does not support scheduled delivery.');
-      }
-      platformMessageId = await channelRuntime.sendScheduledMessage(
-        job.workspaceId,
-        routeWithPlatformInstance(withoutThreadRoute(job.route), job.platform),
-        execution.replyText,
-      );
-      if (!platformMessageId) {
-        throw new Error('Lark gateway did not return a message id for scheduled delivery.');
-      }
-    }
     return {
       threadId: execution.threadId,
       runId: execution.runId,
       replyText: execution.replyText,
-      platformMessageId: platformMessageId || undefined,
     };
   }
 

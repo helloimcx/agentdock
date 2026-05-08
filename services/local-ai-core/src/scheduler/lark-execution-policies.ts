@@ -22,6 +22,8 @@ export function createLarkExecutionPolicy(
 }
 
 class LarkSameThreadExecutionPolicy implements ScheduledExecutionPolicy {
+  private readonly unregisterBridgeByThread = new Map<string, () => void>();
+
   constructor(
     private readonly options: LarkExecutionPolicyOptions,
     private readonly resolveSameThread: (job: ScheduledJob) => Promise<string>,
@@ -37,16 +39,33 @@ class LarkSameThreadExecutionPolicy implements ScheduledExecutionPolicy {
     };
   }
 
-  beforeExecute(target: { threadId: string }) {
-    this.options.getChannelRuntime().muteThreadBridge?.(target.threadId);
+  async beforeExecute(target: { threadId: string }, job: ScheduledJob) {
+    await this.registerBridge(target.threadId, job);
   }
 
   afterExecute(target: { threadId: string }) {
-    this.options.getChannelRuntime().unmuteThreadBridge?.(target.threadId);
+    this.unregisterBridgeByThread.get(target.threadId)?.();
+    this.unregisterBridgeByThread.delete(target.threadId);
+  }
+
+  private async registerBridge(threadId: string, job: ScheduledJob) {
+    const sessionKey = this.options.workspaceRouter.getThreadSessionKey(threadId);
+    const unregister = await this.options.getChannelRuntime().registerScheduledThreadBridge?.({
+      workspaceId: job.workspaceId,
+      platform: job.platform,
+      route: job.route,
+      threadId,
+      sessionKey,
+    });
+    if (unregister) {
+      this.unregisterBridgeByThread.set(threadId, unregister);
+    }
   }
 }
 
 class LarkSideThreadExecutionPolicy implements ScheduledExecutionPolicy {
+  private readonly unregisterBridgeByThread = new Map<string, () => void>();
+
   constructor(private readonly options: LarkExecutionPolicyOptions) {}
 
   async resolveTarget(job: ScheduledJob) {
@@ -72,11 +91,26 @@ class LarkSideThreadExecutionPolicy implements ScheduledExecutionPolicy {
     };
   }
 
-  beforeExecute(target: { threadId: string }) {
-    this.options.getChannelRuntime().muteThreadBridge?.(target.threadId);
+  async beforeExecute(target: { threadId: string }, job: ScheduledJob) {
+    await this.registerBridge(target.threadId, job);
   }
 
   afterExecute(target: { threadId: string }) {
-    this.options.getChannelRuntime().unmuteThreadBridge?.(target.threadId);
+    this.unregisterBridgeByThread.get(target.threadId)?.();
+    this.unregisterBridgeByThread.delete(target.threadId);
+  }
+
+  private async registerBridge(threadId: string, job: ScheduledJob) {
+    const sessionKey = this.options.workspaceRouter.getThreadSessionKey(threadId);
+    const unregister = await this.options.getChannelRuntime().registerScheduledThreadBridge?.({
+      workspaceId: job.workspaceId,
+      platform: job.platform,
+      route: job.route,
+      threadId,
+      sessionKey,
+    });
+    if (unregister) {
+      this.unregisterBridgeByThread.set(threadId, unregister);
+    }
   }
 }

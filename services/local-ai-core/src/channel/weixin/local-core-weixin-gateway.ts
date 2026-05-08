@@ -475,7 +475,8 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       .then(async () => {
         const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
         if (!binding) return;
-        if (this.mutedThreadBridgeCounts.has(binding.thread_id)) return;
+        const bridgeThreadId = route.threadId || binding.thread_id;
+        if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
 
         const turn = this.getOrCreateTurnState(sessionKey);
         if (event.replyCtx) {
@@ -538,6 +539,37 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       this.options.log?.(`localcore-weixin scheduled message failed for ${workspaceId}: ${formatError(error)}`);
       return '';
     }
+  }
+
+  registerScheduledThreadBridge(input: {
+    workspaceId: string;
+    platform: string;
+    route: ChannelRoute;
+    threadId: string;
+    sessionKey: string;
+  }) {
+    const instanceId = input.route.instanceId || getWeixinInstanceId(input.platform) || 'default';
+    const platformKey = channelPlatformKey('weixin', instanceId);
+    const route: WeixinThreadRoute = {
+      workspaceId: input.workspaceId,
+      instanceId,
+      platformKey,
+      platformUserId: input.route.participantId || '',
+      chatId: input.route.channelId,
+      threadId: input.threadId,
+    };
+    const previousRoute = this.threadRouting.get(input.sessionKey);
+    this.threadRouting.set(input.sessionKey, route);
+    if (!this.outboundTurns.has(input.sessionKey)) {
+      this.createTurnState(input.sessionKey);
+    }
+    return () => {
+      if (previousRoute) {
+        this.threadRouting.set(input.sessionKey, previousRoute);
+      } else {
+        this.threadRouting.delete(input.sessionKey);
+      }
+    };
   }
 
   async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
@@ -1382,4 +1414,9 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       payload: { reason: 'channel-bindings' },
     });
   }
+}
+
+function getWeixinInstanceId(platform: string) {
+  const normalized = String(platform || '').trim();
+  return normalized.startsWith('weixin:') ? normalized.slice('weixin:'.length).trim() : '';
 }

@@ -167,10 +167,12 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
       enabled: true,
     });
     let sentThreadId = '';
-    let deliveredRoute: any;
+    let registeredBridge: any;
+    let unregisteredBridge = false;
     const adapter = new LarkScheduleAdapter({
       store,
       getWorkspaceRouter: () => ({
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
         getThread: async (threadId: string) => ({
           id: threadId,
           workspaceId: 'workspace-a',
@@ -193,11 +195,14 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
         },
       }) as any,
       getChannelRuntime: () => ({
-        muteThreadBridge: () => {},
-        unmuteThreadBridge: () => {},
-        sendScheduledMessage: async (_workspaceId: string, route: any) => {
-          deliveredRoute = route;
-          return 'platform-message-1';
+        registerScheduledThreadBridge: (input: any) => {
+          registeredBridge = input;
+          return () => {
+            unregisteredBridge = true;
+          };
+        },
+        sendScheduledMessage: async () => {
+          throw new Error('scheduled Lark replies should be delivered through bridge events');
         },
       }) as any,
     });
@@ -206,12 +211,15 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
 
     assert.equal(sentThreadId, latestThread.id);
     assert.equal(result.threadId, latestThread.id);
-    assert.equal(result.platformMessageId, 'platform-message-1');
-    assert.deepEqual(deliveredRoute, {
-      type: 'channel.chat',
-      channelId: 'chat-1',
-      participantId: 'user-1',
+    assert.equal('platformMessageId' in result, false);
+    assert.deepEqual(registeredBridge, {
+      workspaceId: 'workspace-a',
+      platform: 'lark',
+      route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: oldThread.id },
+      threadId: latestThread.id,
+      sessionKey: `session:${latestThread.id}`,
     });
+    assert.equal(unregisteredBridge, true);
     store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -251,12 +259,14 @@ test('Lark scheduled execution resolves workspace router at execution time', asy
       store,
       getWorkspaceRouter: () => workspaceRouter,
       getChannelRuntime: () => ({
-        muteThreadBridge: () => {},
-        unmuteThreadBridge: () => {},
-        sendScheduledMessage: async () => 'platform-message-1',
+        registerScheduledThreadBridge: () => () => {},
+        sendScheduledMessage: async () => {
+          throw new Error('scheduled Lark replies should be delivered through bridge events');
+        },
       }) as any,
     });
     workspaceRouter = {
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
       getThread: async (threadId: string) => ({
         id: threadId,
         workspaceId: 'workspace-a',
@@ -283,7 +293,7 @@ test('Lark scheduled execution resolves workspace router at execution time', asy
 
     assert.equal(sentThreadId, thread.id);
     assert.equal(result.threadId, thread.id);
-    assert.equal(result.platformMessageId, 'platform-message-1');
+    assert.equal('platformMessageId' in result, false);
     store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -317,10 +327,11 @@ test('Lark scheduled execution supports instance-qualified platform keys', async
       description: 'bound lark task',
       enabled: true,
     });
-    let deliveredRoute: any;
+    let registeredBridge: any;
     const adapter = new LarkScheduleAdapter({
       store,
       getWorkspaceRouter: () => ({
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
         getThread: async (threadId: string) => ({
           id: threadId,
           workspaceId: 'workspace-a',
@@ -346,11 +357,12 @@ test('Lark scheduled execution supports instance-qualified platform keys', async
         },
       }) as any,
       getChannelRuntime: () => ({
-        muteThreadBridge: () => {},
-        unmuteThreadBridge: () => {},
-        sendScheduledMessage: async (_workspaceId: string, route: any) => {
-          deliveredRoute = route;
-          return 'platform-message-1';
+        registerScheduledThreadBridge: (input: any) => {
+          registeredBridge = input;
+          return () => {};
+        },
+        sendScheduledMessage: async () => {
+          throw new Error('scheduled Lark replies should be delivered through bridge events');
         },
       }) as any,
     });
@@ -358,12 +370,13 @@ test('Lark scheduled execution supports instance-qualified platform keys', async
     const result = await adapter.execute({ job, triggeredAt: now });
 
     assert.equal(result.threadId, thread.id);
-    assert.equal(result.platformMessageId, 'platform-message-1');
-    assert.deepEqual(deliveredRoute, {
-      type: 'channel.chat',
-      channelId: 'chat-1',
-      instanceId: 'lark-1',
-      participantId: 'user-1',
+    assert.equal('platformMessageId' in result, false);
+    assert.deepEqual(registeredBridge, {
+      workspaceId: 'workspace-a',
+      platform: 'lark:lark-1',
+      route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+      threadId: thread.id,
+      sessionKey: `session:${thread.id}`,
     });
     store.close();
   } finally {

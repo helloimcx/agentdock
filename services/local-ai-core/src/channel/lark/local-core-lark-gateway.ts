@@ -197,6 +197,37 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return this.sendScheduledCard(workspaceId, route.channelId, text);
   }
 
+  registerScheduledThreadBridge(input: {
+    workspaceId: string;
+    platform: string;
+    route: ChannelRoute;
+    threadId: string;
+    sessionKey: string;
+  }) {
+    const instanceId = input.route.instanceId || getLarkInstanceId(input.platform) || 'default';
+    const platformKey = channelPlatformKey('lark', instanceId);
+    const route: LarkThreadRoute = {
+      workspaceId: input.workspaceId,
+      instanceId,
+      platformKey,
+      platformUserId: input.route.participantId || '',
+      chatId: input.route.channelId,
+      threadId: input.threadId,
+    };
+    const previousRoute = this.threadRouting.get(input.sessionKey);
+    this.threadRouting.set(input.sessionKey, route);
+    if (!this.outboundTurns.has(input.sessionKey)) {
+      this.createTurnState(input.sessionKey);
+    }
+    return () => {
+      if (previousRoute) {
+        this.threadRouting.set(input.sessionKey, previousRoute);
+      } else {
+        this.threadRouting.delete(input.sessionKey);
+      }
+    };
+  }
+
   async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
     const state = this.resolveRuntimeState(workspaceId, input.route?.instanceId as string | undefined).state;
     if (!state?.client || !state.connected) {
@@ -466,8 +497,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
           this.options.log?.(`localcore-lark bridge binding disappeared for sessionKey=${sessionKey}`);
           return;
         }
-        if (this.mutedThreadBridgeCounts.has(binding.thread_id)) {
-          this.options.log?.(`localcore-lark bridge muted for thread=${binding.thread_id} type=${event.type}`);
+        const bridgeThreadId = route.threadId || binding.thread_id;
+        if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) {
+          this.options.log?.(`localcore-lark bridge muted for thread=${bridgeThreadId} type=${event.type}`);
           return;
         }
         const turn = this.getOrCreateTurnState(sessionKey, binding.last_platform_message_id || undefined);
@@ -486,7 +518,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
                 '**工具确认已处理**\n\n继续生成中...',
                 [],
                 sessionKey,
-                binding.thread_id,
+                bridgeThreadId,
               );
             }
             turn.permissionMessageId = undefined;
@@ -506,7 +538,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
                   permissionCard.text,
                   permissionCard.buttonRows,
                   sessionKey,
-                  binding.thread_id,
+                  bridgeThreadId,
                 );
                 if (createdId) {
                   turn.permissionMessageId = createdId;
@@ -519,7 +551,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
                   permissionCard.text,
                   permissionCard.buttonRows,
                   sessionKey,
-                  binding.thread_id,
+                  bridgeThreadId,
                 );
                 this.options.log?.(`localcore-lark patched permission card ${turn.permissionMessageId} for sessionKey=${sessionKey}`);
               }
@@ -548,7 +580,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
               continue;
             }
             if (!existingMessageId) {
-              const createdId = await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, binding.thread_id);
+              const createdId = await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
               if (createdId) {
                 setLarkRenderedMessageId(turn, renderedMessage, createdId);
                 if (renderedMessage.isFinal) {
@@ -558,7 +590,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
               }
               continue;
             }
-            await this.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, binding.thread_id);
+            await this.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
             turn.lastPatchedAt = Date.now();
             turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
             this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
@@ -1415,4 +1447,9 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
   }
 
+}
+
+function getLarkInstanceId(platform: string) {
+  const normalized = String(platform || '').trim();
+  return normalized.startsWith('lark:') ? normalized.slice('lark:'.length).trim() : '';
 }

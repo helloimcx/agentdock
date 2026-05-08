@@ -88,6 +88,13 @@ export interface ChannelRuntime {
     route: import('../../contracts/src/index.js').ChannelRoute,
     text: string,
   ): Promise<string> | string;
+  registerScheduledThreadBridge?(input: {
+    workspaceId: string;
+    platform: string;
+    route: import('../../contracts/src/index.js').ScheduledJobRoute;
+    threadId: string;
+    sessionKey: string;
+  }): (() => void) | Promise<() => void>;
   sendOutboundMessage?(
     workspaceId: string,
     input: import('../../contracts/src/index.js').ChannelOutboundMessageInput,

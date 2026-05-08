@@ -3916,17 +3916,24 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
     createdAt: '2026-04-22T06:00:00.000Z',
     updatedAt: '2026-04-22T06:00:00.000Z',
   } as const;
+  let registeredBridge: any;
+  let unregisteredBridge = false;
   const policy = createLarkExecutionPolicy(
     job as any,
     {
       store: {} as any,
       workspaceRouter: {
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
         listThreads: async () => [{ id: 'thread-scheduled', title: '[Scheduled] two-minute ping' }],
         createThread: async () => ({ id: 'thread-new' }),
       } as any,
       getChannelRuntime: () => ({
-        muteThreadBridge: () => {},
-        unmuteThreadBridge: () => {},
+        registerScheduledThreadBridge: (input: any) => {
+          registeredBridge = input;
+          return () => {
+            unregisteredBridge = true;
+          };
+        },
       } as any),
     },
     async () => 'thread-origin',
@@ -3934,6 +3941,16 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
 
   const target = await policy.resolveTarget(job as any);
   assert.equal(target.threadId, 'thread-scheduled');
+  await policy.beforeExecute?.(target, job as any);
+  assert.deepEqual(registeredBridge, {
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-origin' },
+    threadId: 'thread-scheduled',
+    sessionKey: 'session:thread-scheduled',
+  });
+  policy.afterExecute?.(target, job as any);
+  assert.equal(unregisteredBridge, true);
 });
 
 test('lark same-thread execution policy keeps the original thread target', async () => {
@@ -3952,14 +3969,19 @@ test('lark same-thread execution policy keeps the original thread target', async
     createdAt: '2026-04-22T06:00:00.000Z',
     updatedAt: '2026-04-22T06:00:00.000Z',
   } as const;
+  let registeredBridge: any;
   const policy = createLarkExecutionPolicy(
     job as any,
     {
       store: {} as any,
-      workspaceRouter: {} as any,
+      workspaceRouter: {
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      } as any,
       getChannelRuntime: () => ({
-        muteThreadBridge: () => {},
-        unmuteThreadBridge: () => {},
+        registerScheduledThreadBridge: (input: any) => {
+          registeredBridge = input;
+          return () => {};
+        },
       } as any),
     },
     async () => 'thread-origin',
@@ -3967,6 +3989,14 @@ test('lark same-thread execution policy keeps the original thread target', async
 
   const target = await policy.resolveTarget(job as any);
   assert.equal(target.threadId, 'thread-origin');
+  await policy.beforeExecute?.(target, job as any);
+  assert.deepEqual(registeredBridge, {
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-origin' },
+    threadId: 'thread-origin',
+    sessionKey: 'session:thread-origin',
+  });
 });
 
 test('weixin channel can request a QR code without platform options', async () => {
