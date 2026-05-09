@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { LocalCoreAcpResponseProcessor } from '../../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
-import { formatAgentMode, modeHelpText, normalizeAgentMode, parseSlashCommand } from '../../services/local-ai-core/src/acp/local-core-slash-commands.js';
+import { agentHelpText, formatAgentMode, modeHelpText, normalizeAgentCommandTarget, normalizeAgentMode, parseSlashCommand } from '../../services/local-ai-core/src/acp/local-core-slash-commands.js';
 import { ScheduledConversationExecutor } from '../../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
 import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/scheduler/lark-execution-policies.js';
@@ -13,6 +13,7 @@ import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler
 import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
 import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
 import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
+import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import {
@@ -3935,6 +3936,18 @@ test('slash mode commands normalize yolo aliases and expose current help', () =>
   assert.match(modeHelpText('bypassPermissions'), /当前模式：yolo/);
 });
 
+test('slash agent commands normalize aliases and expose current help', () => {
+  assert.deepEqual(parseSlashCommand('/agent use Pi'), { name: 'agent', args: ['use', 'Pi'] });
+  assert.equal(normalizeAgentCommandTarget('Pi'), 'pi');
+  assert.equal(normalizeAgentCommandTarget('claude'), 'claudecode');
+  assert.equal(normalizeAgentCommandTarget('claude-code'), 'claudecode');
+  assert.match(agentHelpText({
+    currentAgent: 'pi',
+    defaultAgent: 'codex',
+    availableAgents: ['codex', 'pi', 'hermes'],
+  }), /当前线程 Agent：pi/);
+});
+
 test('thread agent mode persists with thread state', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agentdock-mode-'));
   try {
@@ -3945,6 +3958,87 @@ test('thread agent mode persists with thread state', () => {
     assert.equal(store.getThreadRow(inheritedThread.id)?.agent_mode, 'bypassPermissions');
     store.updateThreadAgentMode(thread.id, 'bypassPermissions');
     assert.equal(store.getThreadRow(thread.id)?.agent_mode, 'bypassPermissions');
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('thread agent type persists and clears stale ACP session state', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-agent-type-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const thread = store.createThread('workspace-a', 'Agent test', 'codex');
+    store.updateThreadSession(thread.id, 'old-session', true);
+    store.updateThreadAgentType(thread.id, 'pi');
+    const row = store.getThreadRow(thread.id);
+    assert.equal(row?.agent_type, 'pi');
+    assert.equal(row?.acp_session_id, null);
+    assert.equal(row?.acp_supports_load, 0);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('slash agent commands switch and reset the current thread agent', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-agent-command-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const thread = store.createThread('workspace-a', 'Agent command', 'codex');
+    const bridgeEvents: any[] = [];
+    const acceptedMessages: any[] = [];
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap: new Map(),
+      emitBridge: (event) => bridgeEvents.push(event),
+      eventBus: {
+        emit: (event: any) => acceptedMessages.push(event),
+        on: () => () => {},
+      } as any,
+      scheduler: {
+        createJob: async () => { throw new Error('not used'); },
+        listJobsForThread: async () => [],
+        deleteJob: async () => {},
+      },
+      getAgentTypes: () => ['codex', 'pi', 'hermes', 'claudecode'],
+    });
+    const config = {
+      workspaceId: 'workspace-a',
+      agentType: 'codex',
+      workDir: dir,
+      command: process.execPath,
+      args: ['-e', ''],
+      env: {},
+      model: '',
+    };
+
+    assert.deepEqual(await backend.sendThreadMessage(thread.id, '/agent use pi', config), { runId: '' });
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'pi');
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /已将当前线程 Agent 切换为 pi/);
+    assert.equal(bridgeEvents.at(-2)?.type, 'reply');
+    assert.match(bridgeEvents.at(-2)?.content || '', /后续消息将使用 pi 处理/);
+
+    await backend.sendThreadMessage(thread.id, '/agent current', config);
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /来源：线程设置/);
+
+    await backend.sendThreadMessage(thread.id, '/agent use claude', config);
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'claudecode');
+
+    await backend.sendThreadMessage(thread.id, '/agent reset', config);
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'codex');
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /回到默认 Agent：codex/);
+
+    await backend.sendThreadMessage(thread.id, '/agent use missing-agent', config);
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'codex');
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /未知 Agent：missing-agent/);
+
+    store.updateRun('run-active', thread.id, 'running');
+    await backend.sendThreadMessage(thread.id, '/agent use hermes', config);
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'hermes');
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /下一轮开始生效/);
+    assert.ok(acceptedMessages.length >= 8);
+    backend.close();
     store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

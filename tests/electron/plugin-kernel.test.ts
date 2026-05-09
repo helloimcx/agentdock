@@ -326,6 +326,35 @@ type = "codex"
   }
 });
 
+test('thread slash agent reset resolves the workspace default agent through the router', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-agent-reset-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    await runtime.state.saveRawConfigFile(`
+[[projects]]
+name = "agent-workspace"
+
+[projects.agent]
+type = "codex"
+`);
+    const thread = await runtime.workspaceRouter.createThread('agent-workspace', 'Agent reset');
+
+    await runtime.workspaceRouter.sendThreadMessage(thread.id, '/agent use pi');
+    assert.equal(runtime.store.getThreadRow(thread.id)?.agent_type, 'pi');
+
+    await runtime.workspaceRouter.sendThreadMessage(thread.id, '/agent reset');
+    assert.equal(runtime.store.getThreadRow(thread.id)?.agent_type, 'codex');
+    assert.match(runtime.store.getThread(thread.id, []).messages.at(-1)?.content || '', /回到默认 Agent：codex/);
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('hermes agent runtime routes projects through hermes ACP command', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {

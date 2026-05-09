@@ -87,6 +87,7 @@ export class WorkspaceRouter {
           return this.schedulerBridge.deleteJob(jobId);
         },
       },
+      getAgentTypes: () => this.options.getCapabilities().snapshot.agents.map((agent) => agent.agentType),
       log: options.log,
     });
   }
@@ -278,13 +279,15 @@ export class WorkspaceRouter {
     options?: WorkspaceThreadMessageOptions,
   ): Promise<{ runId: string }> {
     const { workspaceId } = decodeThreadId(threadId);
-    const route = await this.getWorkspaceRoute(workspaceId);
+    const route = isLocalSlashCommand(content)
+      ? await this.getWorkspaceRoute(workspaceId)
+      : await this.getThreadWorkspaceRoute(threadId, workspaceId);
     return this.localCoreAcp.sendThreadMessage(threadId, content, route.config, options);
   }
 
   async sendThreadAction(threadId: string, content: string) {
     const { workspaceId } = decodeThreadId(threadId);
-    const route = await this.getWorkspaceRoute(workspaceId);
+    const route = await this.getThreadWorkspaceRoute(threadId, workspaceId);
     return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
   }
 
@@ -539,11 +542,22 @@ export class WorkspaceRouter {
     }
   }
 
-  private async getWorkspaceRoute(workspaceId: string): Promise<WorkspaceRoute> {
+  private async getThreadWorkspaceRoute(threadId: string, workspaceId: string): Promise<WorkspaceRoute> {
+    const defaultRoute = await this.getWorkspaceRoute(workspaceId);
+    const row = this.store.getThreadRow(threadId);
+    const threadAgentType = String(row?.agent_type || '').trim().toLowerCase();
+    if (!threadAgentType || threadAgentType === defaultRoute.agentType) {
+      return defaultRoute;
+    }
+    return this.getWorkspaceRoute(workspaceId, threadAgentType);
+  }
+
+  private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
     const configState = await this.options.readConfigState();
     const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
     const matched = projects.find((project) => String(project?.name || '').trim() === workspaceId);
-    const route = matched ? this.resolveProjectRoute(configState, matched) : null;
+    const project = matched && agentTypeOverride ? withAgentTypeOverride(matched, agentTypeOverride) : matched;
+    const route = project ? this.resolveProjectRoute(configState, project) : null;
     if (!matched || !route) {
       throw new Error(`Workspace "${workspaceId}" is not configured as a Local AI Core ACP workspace.`);
     }
@@ -629,6 +643,31 @@ function inferWorkspacePath(project: DesktopProjectConfig) {
     }
   }
   return '';
+}
+
+function withAgentTypeOverride(project: DesktopProjectConfig, agentType: string): DesktopProjectConfig {
+  const options = project.agent?.options && typeof project.agent.options === 'object'
+    ? { ...(project.agent.options as Record<string, unknown>) }
+    : {};
+  delete options.command;
+  delete options.args;
+  return {
+    ...project,
+    agent: {
+      ...(project.agent || {}),
+      type: agentType,
+      options,
+    },
+  };
+}
+
+function isLocalSlashCommand(content: string | ChannelInboundMessageContent) {
+  const text = typeof content === 'string' ? content : String(content.displayText || '');
+  const normalized = text.trim().toLowerCase();
+  return normalized === '/agent'
+    || normalized.startsWith('/agent ')
+    || normalized === '/mode'
+    || normalized.startsWith('/mode ');
 }
 
 function workspaceHealth(path: string) {

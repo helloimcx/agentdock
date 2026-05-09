@@ -209,7 +209,8 @@ export type AuditEventType =
   | 'approval.requested'
   | 'approval.resolved'
   | 'approval.rejected'
-  | 'permission.changed';
+  | 'permission.changed'
+  | 'agent.changed';
 
 export interface AuditEvent {
   auditId: string;

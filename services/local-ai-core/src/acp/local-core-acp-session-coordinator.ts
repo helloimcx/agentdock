@@ -53,12 +53,14 @@ export class LocalCoreAcpSessionCoordinator {
   ) {
     const existing = this.sessions.get(threadId);
     const permissionMode = this.resolveLaunchPermissionMode(threadId, options.permissionMode);
+    const configKey = this.buildLaunchConfigKey(config);
     const runtimeEnvKey = this.buildRuntimeEnvKey(options.runtimeEnv);
     if (
       existing
       && !existing.closed
       && existing.sessionId
       && existing.launchPermissionMode === permissionMode
+      && existing.launchConfigKey === configKey
       && existing.launchRuntimeEnvKey === runtimeEnvKey
     ) {
       return existing;
@@ -77,6 +79,7 @@ export class LocalCoreAcpSessionCoordinator {
       runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || ''), options.runtimeEnv),
     });
     session.launchPermissionMode = permissionMode;
+    session.launchConfigKey = configKey;
     session.launchRuntimeEnvKey = runtimeEnvKey;
     this.sessions.set(threadId, session);
     await this.options.transport.initializeSession(session);
@@ -231,6 +234,17 @@ export class LocalCoreAcpSessionCoordinator {
       ...env,
       ...runtimeEnv,
     };
+  }
+
+  private buildLaunchConfigKey(config: LocalCoreProjectConfig) {
+    return JSON.stringify({
+      agentType: config.agentType,
+      workDir: config.workDir,
+      command: config.command,
+      args: config.args || [],
+      env: config.env || {},
+      model: config.model || '',
+    });
   }
 
   private resolveLaunchPermissionMode(threadId: string, permissionModeOverride = '') {

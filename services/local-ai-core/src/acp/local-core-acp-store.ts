@@ -1279,6 +1279,14 @@ export class LocalCoreAcpStore {
     `).run(mode, new Date().toISOString(), threadId);
   }
 
+  updateThreadAgentType(threadId: string, agentType: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET agent_type = ?, acp_session_id = NULL, acp_supports_load = 0, updated_at = ?
+      WHERE id = ?
+    `).run(agentType, new Date().toISOString(), threadId);
+  }
+
   updateThreadSession(threadId: string, sessionId: string, supportsLoad: boolean) {
     this.db.prepare(`
       UPDATE threads

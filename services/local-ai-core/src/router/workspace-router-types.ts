@@ -306,6 +306,7 @@ export type AcpSessionState = {
   closeReason: string | null;
   promptPromise: Promise<{ stopReason?: string }> | null;
   launchPermissionMode: string;
+  launchConfigKey?: string;
   launchRuntimeEnvKey?: string;
 };
 

@@ -1,5 +1,13 @@
 export const DEFAULT_AGENT_MODE = 'default';
 
+const AGENT_ALIASES: Record<string, string> = {
+  claude: 'claudecode',
+  'claude-code': 'claudecode',
+  claude_code: 'claudecode',
+  claudecode: 'claudecode',
+  cc: 'claudecode',
+};
+
 const MODE_ALIASES: Record<string, string> = {
   auto: 'auto',
   default: 'default',
@@ -60,5 +68,30 @@ export function modeHelpText(currentMode: string) {
     `当前模式：${formatAgentMode(currentMode)}`,
     '可用模式：default, auto, acceptEdits, dontAsk, plan, yolo。',
     '`/mode yolo` 会跳过工具权限申请；使用 `/mode default` 可恢复默认权限。'
+  ].join('\n');
+}
+
+export function normalizeAgentCommandTarget(agent: string) {
+  const key = String(agent || '').trim().toLowerCase();
+  return AGENT_ALIASES[key] || key;
+}
+
+export function formatAgentList(agents: string[]) {
+  return [...new Set(agents.map(normalizeAgentCommandTarget).filter(Boolean))].sort();
+}
+
+export function agentHelpText(input: {
+  currentAgent: string;
+  defaultAgent: string;
+  availableAgents: string[];
+}) {
+  const currentAgent = normalizeAgentCommandTarget(input.currentAgent) || 'unknown';
+  const defaultAgent = normalizeAgentCommandTarget(input.defaultAgent) || 'unknown';
+  const availableAgents = formatAgentList(input.availableAgents);
+  return [
+    `当前线程 Agent：${currentAgent}`,
+    `默认 Agent：${defaultAgent}`,
+    `可用 Agent：${availableAgents.length ? availableAgents.join(', ') : '无'}`,
+    '可用命令：`/agent list`、`/agent current`、`/agent use <agent-id>`、`/agent reset`。',
   ].join('\n');
 }
