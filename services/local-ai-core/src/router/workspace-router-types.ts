@@ -249,6 +249,8 @@ export type RunningTurn = {
   agentType?: string;
   assistantText: string;
   rawAssistantText?: string;
+  assistantSequence?: number;
+  assistantMessageId?: string;
   priorAssistantFinalMessages?: string[];
   priorAssistantProgressMessages?: AgentAcpProgressRecord[];
   thoughtText: string;

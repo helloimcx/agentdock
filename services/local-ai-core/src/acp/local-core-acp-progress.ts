@@ -19,6 +19,12 @@ export type ThoughtProgressProjection = {
   bridgeKind: 'thought';
 };
 
+export type AssistantMessageSegmentProjection = {
+  messageId: string;
+  content: string;
+  bridgeKind: 'assistant';
+};
+
 export type PendingToolCallRegistration = {
   key: string;
   title: string;
@@ -92,6 +98,32 @@ export function closeThoughtSegment(currentTurn: RunningTurn) {
   currentTurn.thoughtPreviewStarted = false;
   currentTurn.thoughtMessageId = `${runId}-thought-${nextSequence}`;
   currentTurn.thoughtPreviewHandle = `${runId}-thought-preview-${nextSequence}`;
+}
+
+export function closeAssistantMessageSegment(currentTurn: RunningTurn): AssistantMessageSegmentProjection | null {
+  const content = currentTurn.assistantText || '';
+  if (!content.trim()) {
+    resetAssistantMessageSegment(currentTurn);
+    return null;
+  }
+  const messageId = currentTurn.assistantMessageId || currentTurn.previewHandle;
+  resetAssistantMessageSegment(currentTurn);
+  return {
+    messageId,
+    content,
+    bridgeKind: 'assistant',
+  };
+}
+
+function resetAssistantMessageSegment(currentTurn: RunningTurn) {
+  const runId = currentTurn.runId || 'assistant';
+  const nextSequence = (currentTurn.assistantSequence || 1) + 1;
+  currentTurn.assistantSequence = nextSequence;
+  currentTurn.assistantText = '';
+  currentTurn.rawAssistantText = '';
+  currentTurn.previewStarted = false;
+  currentTurn.assistantMessageId = `${runId}-assistant-${nextSequence}`;
+  currentTurn.previewHandle = `${runId}-assistant-preview-${nextSequence}`;
 }
 
 function mergeThoughtSegment(current: string, next: string) {

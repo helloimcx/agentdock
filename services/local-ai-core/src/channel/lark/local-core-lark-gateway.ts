@@ -39,7 +39,7 @@ import {
   pollAppRegistration,
   requestAppRegistration,
 } from './registration.js';
-import { buildLarkPostContent } from './post.js';
+import { buildLarkMarkdownCardContent, buildLarkPostContent, shouldUseLarkMarkdownCard } from './post.js';
 import {
   consumeLarkBridgeEvent,
   createLarkTurnState,
@@ -581,6 +581,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
               continue;
             }
             if (!existingMessageId) {
+              const sendAsPlainMessage = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0;
+              const createdKind = sendAsPlainMessage
+                ? (shouldUseLarkMarkdownCard(renderedMessage.text) ? 'markdown card' : 'post')
+                : 'card';
               const createdId = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0
                 ? await this.sendTextAsPost(state, route.chatId, renderedMessage.text)
                 : await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
@@ -589,7 +593,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
                 if (renderedMessage.isFinal) {
                   this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
                 }
-                this.options.log?.(`localcore-lark sent new ${renderedMessage.delivery === 'message' ? 'post' : 'card'} message ${createdId} for sessionKey=${sessionKey}`);
+                this.options.log?.(`localcore-lark sent new ${createdKind} message ${createdId} for sessionKey=${sessionKey}`);
               }
               continue;
             }
@@ -1254,17 +1258,18 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     text: string,
   ) {
     const startedAt = Date.now();
+    const useMarkdownCard = shouldUseLarkMarkdownCard(text);
     const response = await state.client.im.message.create({
       params: {
         receive_id_type: this.resolveReceiveIdType(chatId),
       },
       data: {
         receive_id: chatId,
-        msg_type: 'post',
-        content: JSON.stringify(buildLarkPostContent(text)),
+        msg_type: useMarkdownCard ? 'interactive' : 'post',
+        content: JSON.stringify(useMarkdownCard ? buildLarkMarkdownCardContent(text) : buildLarkPostContent(text)),
       },
     });
-    this.options.log?.(`localcore-lark post create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    this.options.log?.(`localcore-lark ${useMarkdownCard ? 'markdown card' : 'post'} create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
     return String(response?.data?.message_id || '').trim();
   }
 

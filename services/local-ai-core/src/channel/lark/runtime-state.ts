@@ -110,6 +110,10 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
     pushUniqueLarkTurnLine(turn.statusLines, content.slice(3).trim());
     return;
   }
+  if (bridgeKind === 'assistant' && event.messageId) {
+    turn.previewText = content;
+    return;
+  }
   turn.finalText = content;
   turn.previewText = content;
 }
@@ -144,6 +148,9 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
     }
     if (bridgeKind === 'status') {
       return renderProgressMessage(progressKey('status', event), content);
+    }
+    if (bridgeKind === 'assistant' && event.messageId) {
+      return renderAssistantSegmentMessage(progressKey('assistant', event), content);
     }
     return {
       key: 'final',
@@ -214,6 +221,14 @@ function renderProgressMessage(key: string, text: string): LarkOutboundRender {
 }
 
 function renderToolMessage(key: string, text: string): LarkOutboundRender {
+  return {
+    ...renderProgressMessage(key, text),
+    delivery: 'message',
+    updatePolicy: 'create-only',
+  };
+}
+
+function renderAssistantSegmentMessage(key: string, text: string): LarkOutboundRender {
   return {
     ...renderProgressMessage(key, text),
     delivery: 'message',

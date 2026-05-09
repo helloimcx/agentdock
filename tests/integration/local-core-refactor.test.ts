@@ -12,6 +12,7 @@ import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/sche
 import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
 import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+import { buildLarkPostContent } from '../../services/local-ai-core/src/channel/lark/post.js';
 import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
@@ -57,7 +58,7 @@ function extractLarkCreatedMessage(request: any) {
 
 function extractLarkCreatedMessageText(msgType: string, content: any) {
   if (msgType === 'interactive') {
-    return String(content.elements?.[0]?.content || '');
+    return String(content.elements?.[0]?.content || content.body?.elements?.[0]?.content || '');
   }
   if (msgType === 'post') {
     return (content.zh_cn?.content || [])
@@ -81,6 +82,60 @@ function findLarkPostMdText(content: any) {
   }
   return '';
 }
+
+test('lark post content renders markdown table rows as visible text', () => {
+  const content = buildLarkPostContent([
+    '### 各收件内容摘要',
+    '',
+    '| # | 标题 | 状态 | 一句话 |',
+    '|---|------|------|--------|',
+    '| 1 | **find-skills安装方法** | 进行中 | `find-skills` skill 的 npx 安装命令备忘 |',
+    '| 2 | **KroWork - 快手桌面Agent** | 待处理 | 快手把 Agent 工作流固化为本地桌面应用 |',
+    '',
+    '需要我对哪个文件做进一步处理？',
+  ].join('\n'));
+  const text = findLarkPostMdText(content);
+
+  assert.doesNotMatch(text, /\|---\|/);
+  assert.match(text, /1\. 标题: \*\*find-skills安装方法\*\*；状态: 进行中；一句话: `find-skills` skill 的 npx 安装命令备忘/);
+  assert.match(text, /2\. 标题: \*\*KroWork - 快手桌面Agent\*\*；状态: 待处理；一句话: 快手把 Agent 工作流固化为本地桌面应用/);
+  assert.match(text, /需要我对哪个文件做进一步处理？/);
+});
+
+test('lark table replies use schema 2.0 markdown cards', async () => {
+  const requests: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {} as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  await (gateway as any).sendTextAsPost({
+    client: {
+      im: {
+        message: {
+          create: async (request: any) => {
+            requests.push(request);
+            return { data: { message_id: 'lark-msg-1' } };
+          },
+        },
+      },
+    },
+  }, 'chat-1', [
+    '### 各收件内容摘要',
+    '',
+    '| # | 标题 | 状态 | 一句话 |',
+    '|---|------|------|--------|',
+    '| 1 | **find-skills安装方法** | 进行中 | `find-skills` skill 的 npx 安装命令备忘 |',
+  ].join('\n'));
+
+  const request = requests[0];
+  const content = JSON.parse(String(request?.data?.content || '{}'));
+  assert.equal(request?.data?.msg_type, 'interactive');
+  assert.equal(content.schema, '2.0');
+  assert.equal(content.body?.elements?.[0]?.tag, 'markdown');
+  assert.match(content.body?.elements?.[0]?.content || '', /\| 1 \| \*\*find-skills安装方法\*\* \| 进行中 \|/);
+});
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/logs'), { name: 'logs.list' });
@@ -1226,6 +1281,97 @@ test('ACP bare tool call is flushed before assistant text', () => {
   assert.equal(session.currentTurn.assistantText, 'done');
 });
 
+test('ACP closes assistant message segments at event boundaries without folding them into final', () => {
+  const upserted: Array<{ id: string; content: string; bridgeKind?: string }> = [];
+  const emitted: any[] = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    upsertMessage: (_threadId, id, _role, content, _kind, _toolCall, bridgeKind) => {
+      upserted.push({ id, content, bridgeKind });
+    },
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; messageId?: string; bridgeKind?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread-1',
+    bridgeSessionKey: 'session:thread-1',
+    currentRunId: 'run-1',
+    currentTurn: {
+      runId: 'run-1',
+      replyCtx: 'run-1',
+      previewHandle: 'run-1-assistant-preview-1',
+      assistantMessageId: 'run-1-assistant-1',
+      assistantSequence: 1,
+      thoughtPreviewHandle: 'thought-preview-1',
+      thoughtMessageId: 'run-1-thought-1',
+      assistantText: '',
+      rawAssistantText: '',
+      thoughtText: '',
+      typingStarted: true,
+      previewStarted: false,
+      thoughtPreviewStarted: false,
+      pendingToolCalls: {},
+      pendingToolCallOrder: [],
+      toolCallSequence: 0,
+      toolObservations: [],
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: '我先检查一下' },
+      },
+    },
+  });
+  assert.deepEqual(emitted, []);
+  assert.deepEqual(upserted, []);
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'tool_call',
+        title: 'Terminal',
+      },
+    },
+  });
+  assert.deepEqual(upserted, [{
+    id: 'run-1-assistant-1',
+    content: '我先检查一下',
+    bridgeKind: 'assistant',
+  }]);
+  assert.equal(emitted.length, 1);
+  assert.equal((emitted as any[])[0]?.type, 'reply');
+  assert.equal((emitted as any[])[0]?.content, '我先检查一下');
+  assert.equal((emitted as any[])[0]?.messageId, 'run-1-assistant-1');
+  assert.equal((emitted as any[])[0]?.bridgeKind, 'assistant');
+  assert.equal(session.currentTurn.assistantText, '');
+  assert.equal(session.currentTurn.rawAssistantText, '');
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: '最终回答' },
+      },
+    },
+  });
+
+  assert.equal(session.currentTurn.assistantText, '最终回答');
+  assert.equal(session.currentTurn.rawAssistantText, '最终回答');
+  assert.equal((upserted as any[]).filter((entry) => entry.bridgeKind === 'assistant').length, 1);
+  assert.equal(emitted.length, 2);
+  assert.equal((emitted as any[])[1]?.bridgeKind, 'tool');
+});
+
 test('ACP tool-scoped assistant chunks stay out of final assistant buffer', () => {
   const appended: Array<{ content: string; bridgeKind?: string }> = [];
   const emitted: Array<{ content?: string; type: string; bridgeKind?: string }> = [];
@@ -1326,7 +1472,7 @@ test('Hermes ACP assistant chunks strip restored history replay inside its own b
   }
 
   assert.equal(session.currentTurn.assistantText, '确认删除前需要你确认。');
-  assert.deepEqual(emitted.map((event) => event.content), ['确认删除前需要你确认。']);
+  assert.deepEqual(emitted.map((event) => event.content), []);
 });
 
 test('Hermes ACP assistant chunks strip replay even when stored prior final is already polluted', () => {
@@ -1383,7 +1529,7 @@ test('Hermes ACP assistant chunks strip replay even when stored prior final is a
   }
 
   assert.equal(session.currentTurn.assistantText, '已删除 **Sisyphus_介绍.txt**，现在 Text 文件夹是空的了。');
-  assert.deepEqual(emitted.map((event) => event.content), ['已删除 **Sisyphus_介绍.txt**，现在 Text 文件夹是空的了。']);
+  assert.deepEqual(emitted.map((event) => event.content), []);
 });
 
 test('Hermes ACP assistant chunks keep a fresh answer when no replay anchor is present', () => {
@@ -1425,7 +1571,7 @@ test('Hermes ACP assistant chunks keep a fresh answer when no replay anchor is p
   });
 
   assert.equal(session.currentTurn.assistantText, '已删除文件。');
-  assert.deepEqual(emitted.map((event) => event.content), ['已删除文件。']);
+  assert.deepEqual(emitted.map((event) => event.content), []);
 });
 
 test('Hermes ACP progress updates suppress restored tool and thought replay only', () => {
@@ -2160,6 +2306,89 @@ test('lark bridge sends final reply as its own post message instead of streaming
   assert.deepEqual(createdMessages.map((message) => message.text), ['真正最终回答']);
   assert.deepEqual(patchedCards, []);
   assert.deepEqual(storedMessageIds, ['lark-msg-1']);
+});
+
+test('lark bridge sends completed assistant segments as separate non-final messages', async () => {
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string; content: any }> = [];
+  const patchedCards: Array<{ messageId: string; text: string }> = [];
+  const storedMessageIds: string[] = [];
+  const client = {
+    im: {
+      message: {
+        create: async (request: any) => {
+          const messageId = `lark-msg-${createdMessages.length + 1}`;
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
+            messageId,
+            msgType: message.msgType,
+            text: message.text,
+            content: message.content,
+          });
+          return { data: { message_id: messageId } };
+        },
+        patch: async (request: any) => {
+          const card = JSON.parse(String(request.data.content || '{}'));
+          patchedCards.push({
+            messageId: String(request.path.message_id || ''),
+            text: String(card.elements?.[0]?.content || ''),
+          });
+        },
+      },
+    },
+  };
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      updatePlatformThreadMessageId: (_workspaceId: string, _chatId: string, _platformUserId: string, messageId: string) => {
+        storedMessageIds.push(messageId);
+      },
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client,
+  });
+  internals.threadRouting.set('session:thread-1', {
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'chat-1',
+    threadId: 'thread-1',
+  });
+
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    messageId: 'run-1-assistant-1',
+    bridgeKind: 'assistant',
+    content: '我先检查一下',
+  } as any);
+  await gateway.onBridgeEvent({
+    type: 'reply',
+    sessionKey: 'session:thread-1',
+    replyCtx: 'run-1',
+    content: '最终回答',
+  } as any);
+
+  assert.deepEqual(createdMessages.map((message) => message.msgType), ['post', 'post']);
+  assert.deepEqual(createdMessages.map((message) => message.text), ['我先检查一下', '最终回答']);
+  assert.deepEqual(patchedCards, []);
+  assert.deepEqual(storedMessageIds, ['lark-msg-2']);
 });
 
 test('lark bridge creates final replies without patching prior final messages', async () => {

@@ -389,6 +389,8 @@ export class LocalCoreAcpBackend {
         agentType: row.agent_type,
         assistantText: '',
         rawAssistantText: '',
+        assistantSequence: 1,
+        assistantMessageId: `${runId}-assistant-1`,
         priorAssistantFinalMessages,
         priorAssistantProgressMessages,
         thoughtText: '',

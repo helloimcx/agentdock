@@ -3,6 +3,7 @@ import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.j
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  closeAssistantMessageSegment,
   closeThoughtSegment,
   deletePendingToolCall,
   extractToolCallInput,
@@ -50,6 +51,39 @@ export class LocalCoreAcpTurnCoordinator {
   closePendingThoughtSegment(session: AcpSessionState) {
     const currentTurn = session.currentTurn;
     if (currentTurn) closeThoughtSegment(currentTurn);
+  }
+
+  closePendingAssistantSegment(session: AcpSessionState) {
+    const currentTurn = session.currentTurn;
+    const currentRunId = session.currentRunId;
+    if (!currentTurn || !currentRunId) {
+      return;
+    }
+    const projection = closeAssistantMessageSegment(currentTurn);
+    if (!projection) {
+      return;
+    }
+    if (this.options.upsertMessage) {
+      this.options.upsertMessage(
+        session.threadId,
+        projection.messageId,
+        'assistant',
+        projection.content,
+        'progress',
+        undefined,
+        projection.bridgeKind,
+      );
+    } else {
+      this.options.appendMessage(session.threadId, 'assistant', projection.content, 'progress', undefined, projection.bridgeKind);
+    }
+    this.options.emitBridge({
+      type: 'reply',
+      sessionKey: session.bridgeSessionKey,
+      replyCtx: currentRunId,
+      messageId: projection.messageId,
+      bridgeKind: projection.bridgeKind,
+      content: projection.content,
+    });
   }
 
   flushPendingToolCall(session: AcpSessionState) {
@@ -149,6 +183,7 @@ export class LocalCoreAcpTurnCoordinator {
       params: payload.params,
     }) || parsedOptions;
     const toolTitle = formatToolCallContent(payload.params?.toolCall);
+    this.closePendingAssistantSegment(session);
     this.closePendingThoughtSegment(session);
     const effectiveAgentMode = session.launchPermissionMode || this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE;
     if (effectiveAgentMode === 'bypassPermissions') {
@@ -251,6 +286,7 @@ export class LocalCoreAcpTurnCoordinator {
           return;
         }
         if (isToolScopedAssistantUpdate(update) || consumeRawAssistantProgressChunk(session, String(update.content.text || ''))) {
+          this.closePendingAssistantSegment(session);
           const content = String(update.content.text || '').trim();
           if (content) {
             if (this.shouldSuppressProgress(currentTurn, 'tool', content)) {
@@ -284,17 +320,10 @@ export class LocalCoreAcpTurnCoordinator {
         if (!projection) {
           return;
         }
-        this.options.emitBridge({
-          type: projection.bridgeType,
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          previewHandle: projection.previewHandle,
-          bridgeKind: projection.bridgeKind,
-          content: projection.content,
-        });
         return;
       }
       case 'agent_thought_chunk': {
+        this.closePendingAssistantSegment(session);
         if (update.content?.type !== 'text') {
           return;
         }
@@ -320,6 +349,7 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       case 'tool_call': {
+        this.closePendingAssistantSegment(session);
         this.closePendingThoughtSegment(session);
         const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
         if (this.isKnownPriorToolInput(currentTurn, toolCall.title, toolCall.input)) {
@@ -335,6 +365,7 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       case 'tool_call_update': {
+        this.closePendingAssistantSegment(session);
         this.closePendingThoughtSegment(session);
         const title = String(update.title || 'Tool update').trim();
         const status = String(update.status || '').trim();
@@ -407,6 +438,7 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       case 'plan': {
+        this.closePendingAssistantSegment(session);
         this.closePendingThoughtSegment(session);
         this.flushPendingToolCall(session);
         const entries = Array.isArray(update.entries) ? update.entries : [];
