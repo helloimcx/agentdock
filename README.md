@@ -75,6 +75,8 @@ flowchart LR
 
 ### 2026-05-09
 
+- 发布 AgentDock 0.1.40。
+- Lark channel 的 Post 消息改用 `md` 元素承载 Markdown，避免工具参数代码块显示为灰底富文本块。
 - 发布 AgentDock 0.1.39。
 - Lark channel 的普通消息改用富文本 Post 发送，Markdown 与工具参数代码块现在会正常渲染。
 - 发布 AgentDock 0.1.38。

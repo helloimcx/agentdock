@@ -63,10 +63,6 @@ function extractLarkCreatedMessageText(msgType: string, content: any) {
     return (content.zh_cn?.content || [])
       .map((line: any[]) => (Array.isArray(line) ? line : [])
         .map((item) => {
-          if (item?.tag === 'code_block') {
-            const language = String(item.language || '').trim();
-            return `\`\`\`${language}\n${String(item.text || '')}\n\`\`\``;
-          }
           return String(item?.text || item?.href || '');
         })
         .join(''))
@@ -75,15 +71,15 @@ function extractLarkCreatedMessageText(msgType: string, content: any) {
   return String(content.text || '');
 }
 
-function findLarkPostCodeBlock(content: any) {
+function findLarkPostMdText(content: any) {
   for (const line of content.zh_cn?.content || []) {
     for (const item of Array.isArray(line) ? line : []) {
-      if (item?.tag === 'code_block') {
-        return item;
+      if (item?.tag === 'md') {
+        return String(item.text || '');
       }
     }
   }
-  return null;
+  return '';
 }
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
@@ -2471,11 +2467,10 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
     '看到了 Linux',
     '最终回答',
   ]);
-  assert.deepEqual(findLarkPostCodeBlock((createdMessages[1] as any)?.content), {
-    tag: 'code_block',
-    language: 'json',
-    text: '{\n  "command": "uname -a",\n  "description": "Get system info"\n}',
-  });
+  assert.equal(
+    findLarkPostMdText(createdMessages[1]?.content),
+    '🔧 Terminal\n\n```json\n{\n  "command": "uname -a",\n  "description": "Get system info"\n}\n```',
+  );
   assert.deepEqual(patchedCards, []);
   assert.deepEqual(storedMessageIds, ['lark-msg-4']);
 });
@@ -2898,11 +2893,10 @@ test('lark channel sends tool name and parameters once without streaming output'
   assert.match(text, /🔧 Terminal/);
   assert.match(text, /```json\n{\n  "command": "ls ~\/Desktop"\n}\n```/);
   assert.doesNotMatch(text, /参数/);
-  assert.deepEqual(findLarkPostCodeBlock(createdMessages[0]?.content), {
-    tag: 'code_block',
-    language: 'json',
-    text: '{\n  "command": "ls ~/Desktop"\n}',
-  });
+  assert.equal(
+    findLarkPostMdText(createdMessages[0]?.content),
+    '🔧 Terminal\n\n```json\n{\n  "command": "ls ~/Desktop"\n}\n```',
+  );
   assert.equal(patchedCards.length, 0);
   assert.doesNotMatch(text, /completed/);
   assert.doesNotMatch(text, /secret terminal output/);
