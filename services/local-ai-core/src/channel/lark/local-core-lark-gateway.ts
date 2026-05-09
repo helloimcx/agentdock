@@ -39,6 +39,7 @@ import {
   pollAppRegistration,
   requestAppRegistration,
 } from './registration.js';
+import { buildLarkPostContent } from './post.js';
 import {
   consumeLarkBridgeEvent,
   createLarkTurnState,
@@ -243,7 +244,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       if (part.type === 'text') {
         const text = String(part.text || '').trim();
         if (text) {
-          messageIds.push(await this.sendTextAsMessage(state, channelId, text));
+          messageIds.push(await this.sendTextAsPost(state, channelId, text));
         }
         continue;
       }
@@ -581,14 +582,14 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             }
             if (!existingMessageId) {
               const createdId = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0
-                ? await this.sendTextAsMessage(state, route.chatId, renderedMessage.text)
+                ? await this.sendTextAsPost(state, route.chatId, renderedMessage.text)
                 : await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
               if (createdId) {
                 setLarkRenderedMessageId(turn, renderedMessage, createdId);
                 if (renderedMessage.isFinal) {
                   this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
                 }
-                this.options.log?.(`localcore-lark sent new ${renderedMessage.delivery === 'message' ? 'text' : 'card'} message ${createdId} for sessionKey=${sessionKey}`);
+                this.options.log?.(`localcore-lark sent new ${renderedMessage.delivery === 'message' ? 'post' : 'card'} message ${createdId} for sessionKey=${sessionKey}`);
               }
               continue;
             }
@@ -1247,7 +1248,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return String(response?.data?.message_id || '').trim();
   }
 
-  private async sendTextAsMessage(
+  private async sendTextAsPost(
     state: LarkRuntimeState,
     chatId: string,
     text: string,
@@ -1259,11 +1260,11 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       },
       data: {
         receive_id: chatId,
-        msg_type: 'text',
-        content: JSON.stringify({ text }),
+        msg_type: 'post',
+        content: JSON.stringify(buildLarkPostContent(text)),
       },
     });
-    this.options.log?.(`localcore-lark text create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    this.options.log?.(`localcore-lark post create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
     return String(response?.data?.message_id || '').trim();
   }
 
