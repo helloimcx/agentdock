@@ -88,6 +88,7 @@ export type LarkOutboundRender = {
   text: string;
   buttonRows: LarkButtonRow;
   isFinal: boolean;
+  delivery?: 'card' | 'message';
   finalSource?: 'stream' | 'reply';
   updatePolicy?: 'create-only';
 };

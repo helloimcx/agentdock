@@ -243,7 +243,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       if (part.type === 'text') {
         const text = String(part.text || '').trim();
         if (text) {
-          messageIds.push(await this.sendTextAsCard(state, channelId, text));
+          messageIds.push(await this.sendTextAsMessage(state, channelId, text));
         }
         continue;
       }
@@ -580,14 +580,19 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
               continue;
             }
             if (!existingMessageId) {
-              const createdId = await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
+              const createdId = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0
+                ? await this.sendTextAsMessage(state, route.chatId, renderedMessage.text)
+                : await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
               if (createdId) {
                 setLarkRenderedMessageId(turn, renderedMessage, createdId);
                 if (renderedMessage.isFinal) {
                   this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
                 }
-                this.options.log?.(`localcore-lark sent new card message ${createdId} for sessionKey=${sessionKey}`);
+                this.options.log?.(`localcore-lark sent new ${renderedMessage.delivery === 'message' ? 'text' : 'card'} message ${createdId} for sessionKey=${sessionKey}`);
               }
+              continue;
+            }
+            if (renderedMessage.delivery === 'message') {
               continue;
             }
             await this.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
@@ -1239,6 +1244,26 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       },
     });
     this.options.log?.(`localcore-lark card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    return String(response?.data?.message_id || '').trim();
+  }
+
+  private async sendTextAsMessage(
+    state: LarkRuntimeState,
+    chatId: string,
+    text: string,
+  ) {
+    const startedAt = Date.now();
+    const response = await state.client.im.message.create({
+      params: {
+        receive_id_type: this.resolveReceiveIdType(chatId),
+      },
+      data: {
+        receive_id: chatId,
+        msg_type: 'text',
+        content: JSON.stringify({ text }),
+      },
+    });
+    this.options.log?.(`localcore-lark text create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
     return String(response?.data?.message_id || '').trim();
   }
 

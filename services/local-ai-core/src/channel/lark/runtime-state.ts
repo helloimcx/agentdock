@@ -32,7 +32,7 @@ export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: str
   if (toolCall) {
     const name = String(toolCall.name || '').trim() || summarizeToolContentForLark(content);
     const input = formatToolInputForLark(toolCall.input);
-    return [`🔧 ${name}`, input ? `参数：${input}` : '']
+    return [`🔧 ${name}`, input]
       .filter(Boolean)
       .join('\n\n');
   }
@@ -150,6 +150,7 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
       text: content,
       buttonRows: turn.buttonRows,
       isFinal: true,
+      delivery: 'message',
       finalSource: 'reply',
     };
   }
@@ -215,6 +216,7 @@ function renderProgressMessage(key: string, text: string): LarkOutboundRender {
 function renderToolMessage(key: string, text: string): LarkOutboundRender {
   return {
     ...renderProgressMessage(key, text),
+    delivery: 'message',
     updatePolicy: 'create-only',
   };
 }
@@ -254,21 +256,22 @@ function formatToolInputForLark(input: unknown) {
     return '';
   }
   if (typeof input === 'string') {
-    return inlineCode(input);
+    return fencedCode(input);
   }
   try {
-    return inlineCode(JSON.stringify(input));
+    return fencedCode(JSON.stringify(input, null, 2), 'json');
   } catch {
-    return inlineCode(String(input));
+    return fencedCode(String(input));
   }
 }
 
-function inlineCode(value: string) {
+function fencedCode(value: string, language = '') {
   const normalized = value.trim();
   if (!normalized) {
     return '';
   }
-  return `\`${normalized.replace(/`/g, '\\`')}\``;
+  const fence = normalized.includes('```') ? '````' : '```';
+  return `${fence}${language}\n${normalized}\n${fence}`;
 }
 
 function pushUniqueLarkTurnLine(target: string[], value: string) {

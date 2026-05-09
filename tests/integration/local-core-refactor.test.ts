@@ -45,6 +45,18 @@ import {
 import { normalizePermissionAction, normalizePermissionOptionAction } from '../../services/local-ai-core/src/acp/workspace-acp-permissions.js';
 import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
 
+function extractLarkCreatedMessage(request: any) {
+  const msgType = String(request.data?.msg_type || '');
+  const content = JSON.parse(String(request.data?.content || '{}'));
+  return {
+    msgType,
+    content,
+    text: msgType === 'interactive'
+      ? String(content.elements?.[0]?.content || '')
+      : String(content.text || ''),
+  };
+}
+
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/logs'), { name: 'logs.list' });
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/runtimes'), { name: 'runtimes.list' });
@@ -1953,18 +1965,19 @@ test('channel gateways ignore unowned bridge events without route miss log noise
 });
 
 test('lark bridge sends completed thought once before final answer', async () => {
-  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
   const client = {
     im: {
       message: {
         create: async (request: any) => {
-          const messageId = `lark-msg-${createdCards.length + 1}`;
-          const card = JSON.parse(String(request.data.content || '{}'));
-          createdCards.push({
+          const messageId = `lark-msg-${createdMessages.length + 1}`;
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
             messageId,
-            text: String(card.elements?.[0]?.content || ''),
+            msgType: message.msgType,
+            text: message.text,
           });
           return { data: { message_id: messageId } };
         },
@@ -2035,26 +2048,27 @@ test('lark bridge sends completed thought once before final answer', async () =>
     content: '最终回答',
   } as any);
 
-  assert.equal(createdCards.length, 2);
-  assert.equal(createdCards[0]?.text, '先理解问题，再检查代码');
-  assert.equal(createdCards[1]?.text, '最终回答');
+  assert.deepEqual(createdMessages.map((message) => message.msgType), ['interactive', 'text']);
+  assert.equal(createdMessages[0]?.text, '先理解问题，再检查代码');
+  assert.equal(createdMessages[1]?.text, '最终回答');
   assert.equal(patchedCards.length, 0);
   assert.deepEqual(storedMessageIds, ['lark-msg-2']);
 });
 
-test('lark bridge sends final reply as its own card instead of streaming draft', async () => {
-  const createdCards: Array<{ messageId: string; text: string }> = [];
+test('lark bridge sends final reply as its own plain text message instead of streaming draft', async () => {
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
   const client = {
     im: {
       message: {
         create: async (request: any) => {
-          const messageId = `lark-msg-${createdCards.length + 1}`;
-          const card = JSON.parse(String(request.data.content || '{}'));
-          createdCards.push({
+          const messageId = `lark-msg-${createdMessages.length + 1}`;
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
             messageId,
-            text: String(card.elements?.[0]?.content || ''),
+            msgType: message.msgType,
+            text: message.text,
           });
           return { data: { message_id: messageId } };
         },
@@ -2115,23 +2129,25 @@ test('lark bridge sends final reply as its own card instead of streaming draft',
     content: '真正最终回答',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['真正最终回答']);
+  assert.deepEqual(createdMessages.map((message) => message.msgType), ['text']);
+  assert.deepEqual(createdMessages.map((message) => message.text), ['真正最终回答']);
   assert.deepEqual(patchedCards, []);
   assert.deepEqual(storedMessageIds, ['lark-msg-1']);
 });
 
-test('lark bridge creates final replies without patching prior final cards', async () => {
-  const createdCards: Array<{ messageId: string; text: string }> = [];
+test('lark bridge creates final replies without patching prior final messages', async () => {
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const client = {
     im: {
       message: {
         create: async (request: any) => {
-          const messageId = `lark-msg-${createdCards.length + 1}`;
-          const card = JSON.parse(String(request.data.content || '{}'));
-          createdCards.push({
+          const messageId = `lark-msg-${createdMessages.length + 1}`;
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
             messageId,
-            text: String(card.elements?.[0]?.content || ''),
+            msgType: message.msgType,
+            text: message.text,
           });
           return { data: { message_id: messageId } };
         },
@@ -2190,23 +2206,25 @@ test('lark bridge creates final replies without patching prior final cards', asy
     content: 'second final',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), ['first final', 'second final']);
+  assert.deepEqual(createdMessages.map((message) => message.msgType), ['text', 'text']);
+  assert.deepEqual(createdMessages.map((message) => message.text), ['first final', 'second final']);
   assert.deepEqual(patchedCards, []);
 });
 
-test('lark bridge sends tool and final as separate cards without patching tool progress', async () => {
-  const createdCards: Array<{ messageId: string; text: string }> = [];
+test('lark bridge sends tool and final as separate plain text messages without patching tool progress', async () => {
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
   const client = {
     im: {
       message: {
         create: async (request: any) => {
-          const messageId = `lark-msg-${createdCards.length + 1}`;
-          const card = JSON.parse(String(request.data.content || '{}'));
-          createdCards.push({
+          const messageId = `lark-msg-${createdMessages.length + 1}`;
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
             messageId,
-            text: String(card.elements?.[0]?.content || ''),
+            msgType: message.msgType,
+            text: message.text,
           });
           return { data: { message_id: messageId } };
         },
@@ -2281,7 +2299,8 @@ test('lark bridge sends tool and final as separate cards without patching tool p
     content: '好的，文件存在，现在发送给你：已发送！`CLAUDE.md` 文件已经发出去了，请查收',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), [
+  assert.deepEqual(createdMessages.map((message) => message.msgType), ['text', 'text']);
+  assert.deepEqual(createdMessages.map((message) => message.text), [
     '🔧 bash',
     '好的，文件存在，现在发送给你：已发送！`CLAUDE.md` 文件已经发出去了，请查收',
   ]);
@@ -2290,18 +2309,19 @@ test('lark bridge sends tool and final as separate cards without patching tool p
 });
 
 test('lark bridge flushes interleaved thought segments before tools and final', async () => {
-  const createdCards: Array<{ messageId: string; text: string }> = [];
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string }> = [];
   const patchedCards: Array<{ messageId: string; text: string }> = [];
   const storedMessageIds: string[] = [];
   const client = {
     im: {
       message: {
         create: async (request: any) => {
-          const messageId = `lark-msg-${createdCards.length + 1}`;
-          const card = JSON.parse(String(request.data.content || '{}'));
-          createdCards.push({
+          const messageId = `lark-msg-${createdMessages.length + 1}`;
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
             messageId,
-            text: String(card.elements?.[0]?.content || ''),
+            msgType: message.msgType,
+            text: message.text,
           });
           return { data: { message_id: messageId } };
         },
@@ -2410,9 +2430,10 @@ test('lark bridge flushes interleaved thought segments before tools and final', 
     content: '最终回答',
   } as any);
 
-  assert.deepEqual(createdCards.map((card) => card.text), [
+  assert.deepEqual(createdMessages.map((message) => message.msgType), ['interactive', 'text', 'interactive', 'text']);
+  assert.deepEqual(createdMessages.map((message) => message.text), [
     '先理解用户需求',
-    '🔧 Terminal\n\n参数：`{"command":"uname -a","description":"Get system info"}`',
+    '🔧 Terminal\n\n```json\n{\n  "command": "uname -a",\n  "description": "Get system info"\n}\n```',
     '看到了 Linux',
     '最终回答',
   ]);
@@ -2638,7 +2659,7 @@ test('lark permission requests render as clickable card buttons', async () => {
 });
 
 test('lark allow all card action preserves the final reply after tool execution', async () => {
-  const createdCards: Array<{ messageId: string; card: any }> = [];
+  const createdMessages: Array<{ messageId: string; msgType: string; text: string; content: any }> = [];
   const patchedCards: Array<{ messageId: string; card: any }> = [];
   let nextMessageId = 1;
   let gateway!: LocalCoreLarkGateway;
@@ -2647,9 +2668,12 @@ test('lark allow all card action preserves the final reply after tool execution'
       message: {
         create: async (request: any) => {
           const messageId = `card-${nextMessageId++}`;
-          createdCards.push({
+          const message = extractLarkCreatedMessage(request);
+          createdMessages.push({
             messageId,
-            card: JSON.parse(String(request.data.content || '{}')),
+            msgType: message.msgType,
+            text: message.text,
+            content: message.content,
           });
           return { data: { message_id: messageId } };
         },
@@ -2747,18 +2771,19 @@ test('lark allow all card action preserves the final reply after tool execution'
 
   assert.equal(patchedCards[0]?.messageId, 'permission-msg-1');
   assert.match(patchedCards[0]?.card?.elements?.[0]?.content || '', /工具确认已处理/);
-  assert.equal(createdCards.length, 1);
-  assert.match(createdCards[0]?.card?.elements?.[0]?.content || '', /桌面文件列表/);
+  assert.equal(createdMessages.length, 1);
+  assert.equal(createdMessages[0]?.msgType, 'text');
+  assert.match(createdMessages[0]?.text || '', /桌面文件列表/);
 });
 
 test('lark channel sends tool name and parameters once without streaming output', async () => {
-  const createdCards: any[] = [];
+  const createdMessages: Array<{ msgType: string; text: string; content: any }> = [];
   const patchedCards: any[] = [];
   const client = {
     im: {
       message: {
         create: async (request: any) => {
-          createdCards.push(JSON.parse(String(request.data.content || '{}')));
+          createdMessages.push(extractLarkCreatedMessage(request));
           return { data: { message_id: 'tool-msg-1' } };
         },
         patch: async (request: any) => {
@@ -2829,9 +2854,11 @@ test('lark channel sends tool name and parameters once without streaming output'
     },
   } as any);
 
-  const text = createdCards[0]?.elements?.[0]?.content || '';
+  const text = createdMessages[0]?.text || '';
+  assert.equal(createdMessages[0]?.msgType, 'text');
   assert.match(text, /🔧 Terminal/);
-  assert.match(text, /参数：`\{"command":"ls ~\/Desktop"\}`/);
+  assert.match(text, /```json\n{\n  "command": "ls ~\/Desktop"\n}\n```/);
+  assert.doesNotMatch(text, /参数/);
   assert.equal(patchedCards.length, 0);
   assert.doesNotMatch(text, /completed/);
   assert.doesNotMatch(text, /secret terminal output/);
@@ -3545,6 +3572,7 @@ test('lark rendering suppresses noisy pending tool progress cards', () => {
     },
   });
   assert.equal(completed.text, '🔧 bash: Tool update');
+  assert.equal(completed.delivery, 'message');
 });
 
 test('ACP skips empty generic running tool updates', () => {

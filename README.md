@@ -73,6 +73,11 @@ flowchart LR
 
 ## New
 
+### 2026-05-09
+
+- 发布 AgentDock 0.1.38。
+- Lark channel 的工具调用和最终回答改为发送普通消息，工具参数直接放在 Markdown 代码块中，避免卡片 Markdown 渲染问题。
+
 ### 2026-05-08
 
 - 发布 AgentDock 0.1.37。
