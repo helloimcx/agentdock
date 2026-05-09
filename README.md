@@ -75,6 +75,9 @@ flowchart LR
 
 ### 2026-05-09
 
+- 发布 AgentDock 0.1.41。
+- Lark channel 的 Markdown 表格回复改用 schema 2.0 卡片渲染，避免 Post `md` 消息吞掉表格行；超过飞书卡片表格上限时会自动降级为可见列表文本。
+- Lark 文本消息发送新增独立渲染层，统一记录 `msgType`、渲染原因和表格数量，便于排查不同飞书消息格式的显示差异。
 - 发布 AgentDock 0.1.40。
 - Lark channel 的 Post 消息改用 `md` 元素承载 Markdown，避免工具参数代码块显示为灰底富文本块。
 - 发布 AgentDock 0.1.39。

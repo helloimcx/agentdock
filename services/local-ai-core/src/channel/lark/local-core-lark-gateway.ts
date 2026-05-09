@@ -39,7 +39,7 @@ import {
   pollAppRegistration,
   requestAppRegistration,
 } from './registration.js';
-import { buildLarkMarkdownCardContent, buildLarkPostContent, shouldUseLarkMarkdownCard } from './post.js';
+import { renderLarkTextMessage } from './rendering/messages.js';
 import {
   consumeLarkBridgeEvent,
   createLarkTurnState,
@@ -244,7 +244,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       if (part.type === 'text') {
         const text = String(part.text || '').trim();
         if (text) {
-          messageIds.push(await this.sendTextAsPost(state, channelId, text));
+          messageIds.push((await this.sendTextAsMessage(state, channelId, text)).messageId);
         }
         continue;
       }
@@ -582,18 +582,19 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             }
             if (!existingMessageId) {
               const sendAsPlainMessage = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0;
-              const createdKind = sendAsPlainMessage
-                ? (shouldUseLarkMarkdownCard(renderedMessage.text) ? 'markdown card' : 'post')
-                : 'card';
-              const createdId = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0
-                ? await this.sendTextAsPost(state, route.chatId, renderedMessage.text)
-                : await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
+              const sentMessage = sendAsPlainMessage
+                ? await this.sendTextAsMessage(state, route.chatId, renderedMessage.text)
+                : {
+                    messageId: await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId),
+                    renderKind: 'card',
+                  };
+              const createdId = sentMessage.messageId;
               if (createdId) {
                 setLarkRenderedMessageId(turn, renderedMessage, createdId);
                 if (renderedMessage.isFinal) {
                   this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
                 }
-                this.options.log?.(`localcore-lark sent new ${createdKind} message ${createdId} for sessionKey=${sessionKey}`);
+                this.options.log?.(`localcore-lark sent new ${sentMessage.renderKind} message ${createdId} for sessionKey=${sessionKey}`);
               }
               continue;
             }
@@ -1252,25 +1253,29 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return String(response?.data?.message_id || '').trim();
   }
 
-  private async sendTextAsPost(
+  private async sendTextAsMessage(
     state: LarkRuntimeState,
     chatId: string,
     text: string,
   ) {
     const startedAt = Date.now();
-    const useMarkdownCard = shouldUseLarkMarkdownCard(text);
+    const rendered = renderLarkTextMessage(text);
     const response = await state.client.im.message.create({
       params: {
         receive_id_type: this.resolveReceiveIdType(chatId),
       },
       data: {
         receive_id: chatId,
-        msg_type: useMarkdownCard ? 'interactive' : 'post',
-        content: JSON.stringify(useMarkdownCard ? buildLarkMarkdownCardContent(text) : buildLarkPostContent(text)),
+        msg_type: rendered.msgType,
+        content: JSON.stringify(rendered.content),
       },
     });
-    this.options.log?.(`localcore-lark ${useMarkdownCard ? 'markdown card' : 'post'} create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
-    return String(response?.data?.message_id || '').trim();
+    this.options.log?.(`localcore-lark ${rendered.renderKind} create took ${Date.now() - startedAt}ms msgType=${rendered.msgType} reason=${rendered.reason} tableCount=${rendered.tableCount} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    return {
+      messageId: String(response?.data?.message_id || '').trim(),
+      renderKind: rendered.renderKind,
+      msgType: rendered.msgType,
+    };
   }
 
   private resolveReceiveIdType(receiveId: string) {

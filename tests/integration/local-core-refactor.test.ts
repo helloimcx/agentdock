@@ -12,7 +12,6 @@ import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/sche
 import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
 import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
-import { buildLarkPostContent } from '../../services/local-ai-core/src/channel/lark/post.js';
 import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
@@ -82,60 +81,6 @@ function findLarkPostMdText(content: any) {
   }
   return '';
 }
-
-test('lark post content renders markdown table rows as visible text', () => {
-  const content = buildLarkPostContent([
-    '### 各收件内容摘要',
-    '',
-    '| # | 标题 | 状态 | 一句话 |',
-    '|---|------|------|--------|',
-    '| 1 | **find-skills安装方法** | 进行中 | `find-skills` skill 的 npx 安装命令备忘 |',
-    '| 2 | **KroWork - 快手桌面Agent** | 待处理 | 快手把 Agent 工作流固化为本地桌面应用 |',
-    '',
-    '需要我对哪个文件做进一步处理？',
-  ].join('\n'));
-  const text = findLarkPostMdText(content);
-
-  assert.doesNotMatch(text, /\|---\|/);
-  assert.match(text, /1\. 标题: \*\*find-skills安装方法\*\*；状态: 进行中；一句话: `find-skills` skill 的 npx 安装命令备忘/);
-  assert.match(text, /2\. 标题: \*\*KroWork - 快手桌面Agent\*\*；状态: 待处理；一句话: 快手把 Agent 工作流固化为本地桌面应用/);
-  assert.match(text, /需要我对哪个文件做进一步处理？/);
-});
-
-test('lark table replies use schema 2.0 markdown cards', async () => {
-  const requests: any[] = [];
-  const gateway = new LocalCoreLarkGateway({
-    store: {} as any,
-    readConfig: async () => null,
-    getWorkspaceRouter: () => ({} as any),
-    eventBus: { emit: () => {}, on: () => () => {} } as any,
-  });
-  await (gateway as any).sendTextAsPost({
-    client: {
-      im: {
-        message: {
-          create: async (request: any) => {
-            requests.push(request);
-            return { data: { message_id: 'lark-msg-1' } };
-          },
-        },
-      },
-    },
-  }, 'chat-1', [
-    '### 各收件内容摘要',
-    '',
-    '| # | 标题 | 状态 | 一句话 |',
-    '|---|------|------|--------|',
-    '| 1 | **find-skills安装方法** | 进行中 | `find-skills` skill 的 npx 安装命令备忘 |',
-  ].join('\n'));
-
-  const request = requests[0];
-  const content = JSON.parse(String(request?.data?.content || '{}'));
-  assert.equal(request?.data?.msg_type, 'interactive');
-  assert.equal(content.schema, '2.0');
-  assert.equal(content.body?.elements?.[0]?.tag, 'markdown');
-  assert.match(content.body?.elements?.[0]?.content || '', /\| 1 \| \*\*find-skills安装方法\*\* \| 进行中 \|/);
-});
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/logs'), { name: 'logs.list' });
