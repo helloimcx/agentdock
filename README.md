@@ -73,6 +73,11 @@ flowchart LR
 
 ## New
 
+### 2026-05-11
+
+- 发布 AgentDock 0.1.42。
+- 线程级 `/mode` 与 `/agent` 命令处理抽取为独立 command service，ACP backend 只负责消息落库、bridge 回复和运行时调度，后续扩展 `/model`、`/knowledge` 等命令更容易复用。
+
 ### 2026-05-09
 
 - 发布 AgentDock 0.1.41。

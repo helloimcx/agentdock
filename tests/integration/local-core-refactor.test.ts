@@ -16,6 +16,7 @@ import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../service
 import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { ThreadCommandService } from '../../services/local-ai-core/src/thread/thread-command-service.js';
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
@@ -3946,6 +3947,88 @@ test('slash agent commands normalize aliases and expose current help', () => {
     defaultAgent: 'codex',
     availableAgents: ['codex', 'pi', 'hermes'],
   }), /当前线程 Agent：pi/);
+});
+
+test('thread command service handles local slash commands without ACP transport', async () => {
+  const row = {
+    id: 'thread-1',
+    workspace_id: 'workspace-a',
+    session_id: 'session-1',
+    bridge_session_key: 'bridge-1',
+    title: 'Command service',
+    agent_type: 'codex',
+    created_at: '2026-05-11T00:00:00.000Z',
+    updated_at: '2026-05-11T00:00:00.000Z',
+    history_count: 0,
+    excerpt: '',
+    acp_session_id: null,
+    acp_supports_load: 0,
+    agent_mode: 'default',
+  };
+  const audits: any[] = [];
+  const syncedModes: string[] = [];
+  const closedThreads: string[] = [];
+  const service = new ThreadCommandService({
+    getThreadRow: () => row,
+    updateThreadAgentMode: (_threadId, mode) => {
+      row.agent_mode = mode;
+    },
+    updateThreadAgentType: (_threadId, agentType) => {
+      row.agent_type = agentType;
+    },
+    getLatestRunForThread: () => undefined,
+    createAuditEvent: (input) => {
+      audits.push(input);
+    },
+    getAgentTypes: () => ['codex', 'pi', 'hermes', 'claudecode'],
+    setThreadMode: async (_threadId, mode) => {
+      syncedModes.push(mode);
+    },
+    closeThreadSession: (threadId) => {
+      closedThreads.push(threadId);
+    },
+  });
+
+  assert.deepEqual(await service.execute({
+    threadId: row.id,
+    workspaceId: row.workspace_id,
+    content: '/not-local',
+    defaultAgentType: 'codex',
+  }), { handled: false, displayText: '' });
+
+  const modeResult = await service.execute({
+    threadId: row.id,
+    workspaceId: row.workspace_id,
+    content: '/mode yolo',
+    defaultAgentType: 'codex',
+  });
+  assert.equal(modeResult.handled, true);
+  assert.equal(row.agent_mode, 'bypassPermissions');
+  assert.deepEqual(syncedModes, ['bypassPermissions']);
+  assert.equal(audits.at(-1)?.type, 'permission.changed');
+
+  const agentResult = await service.execute({
+    threadId: row.id,
+    workspaceId: row.workspace_id,
+    content: '/agent use pi',
+    defaultAgentType: 'codex',
+  });
+  assert.equal(agentResult.handled, true);
+  assert.equal(row.agent_type, 'pi');
+  assert.match(agentResult.displayText, /已将当前线程 Agent 切换为 pi/);
+  assert.deepEqual(closedThreads, ['thread-1']);
+  assert.equal(audits.at(-1)?.type, 'agent.changed');
+
+  const resetResult = await service.execute({
+    threadId: row.id,
+    workspaceId: row.workspace_id,
+    content: '/agent reset',
+    defaultAgentType: 'codex',
+  });
+  assert.equal(resetResult.handled, true);
+  assert.equal(row.agent_type, 'codex');
+  assert.match(resetResult.displayText, /回到默认 Agent：codex/);
+  assert.deepEqual(closedThreads, ['thread-1', 'thread-1']);
 });
 
 test('thread agent mode persists with thread state', () => {

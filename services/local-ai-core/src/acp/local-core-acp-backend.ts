@@ -17,19 +17,11 @@ import { LocalCoreAcpResponseProcessor } from './local-core-acp-response-process
 import type { ThreadMessageInput } from './local-core-acp-content.js';
 import { normalizeThreadMessageInput } from './local-core-acp-content.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
-import {
-  agentHelpText,
-  DEFAULT_AGENT_MODE,
-  formatAgentList,
-  formatAgentMode,
-  modeHelpText,
-  normalizeAgentCommandTarget,
-  normalizeAgentMode,
-  parseSlashCommand,
-} from './local-core-slash-commands.js';
+import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
-import { resolveAgentAcpBehavior, resolveAgentRuntimeDefinition } from '../agents/index.js';
+import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
+import { ThreadCommandService } from '../thread/thread-command-service.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -67,6 +59,7 @@ export class LocalCoreAcpBackend {
   private readonly turnCoordinator: LocalCoreAcpTurnCoordinator;
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
   private readonly responseProcessor: LocalCoreAcpResponseProcessor;
+  private readonly commandService: ThreadCommandService;
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
     this.transport = new LocalCoreAcpTransport({
@@ -132,6 +125,19 @@ export class LocalCoreAcpBackend {
       cliBinDir: options.cliBinDir,
       localCoreBase: options.localCoreBase,
       emitBridge: (event) => this.emitBridgeEvent(event),
+      log: options.log,
+    });
+    this.commandService = new ThreadCommandService({
+      getThreadRow: (threadId) => this.options.store.getThreadRow(threadId),
+      updateThreadAgentMode: (threadId, mode) => this.options.store.updateThreadAgentMode(threadId, mode),
+      updateThreadAgentType: (threadId, agentType) => this.options.store.updateThreadAgentType(threadId, agentType),
+      getLatestRunForThread: (threadId) => this.options.store.getLatestRunForThread(threadId),
+      createAuditEvent: (input) => {
+        this.options.store.createAuditEvent(input);
+      },
+      getAgentTypes: options.getAgentTypes,
+      setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
+      closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
       log: options.log,
     });
     this.responseProcessor = new LocalCoreAcpResponseProcessor({
@@ -208,16 +214,21 @@ export class LocalCoreAcpBackend {
         source: 'user',
       },
     });
-    const slashResponse = await this.handleLocalSlashCommand(threadId, row.workspace_id, content, config.agentType);
-    if (slashResponse) {
-      this.options.store.appendMessage(threadId, 'assistant', slashResponse, 'final');
+    const commandResult = await this.commandService.execute({
+      threadId,
+      workspaceId: row.workspace_id,
+      content,
+      defaultAgentType: config.agentType,
+    });
+    if (commandResult.handled) {
+      this.options.store.appendMessage(threadId, 'assistant', commandResult.displayText, 'final');
       this.options.eventBus.emit({
         type: 'thread.message.accepted',
         payload: {
           threadId,
           workspaceId: row.workspace_id,
           role: 'assistant',
-          content: slashResponse,
+          content: commandResult.displayText,
           kind: 'final',
           source: 'system',
         },
@@ -225,7 +236,7 @@ export class LocalCoreAcpBackend {
       this.emitBridgeEvent({
         type: 'reply',
         sessionKey: row.bridge_session_key,
-        content: slashResponse,
+        content: commandResult.displayText,
       });
       this.emitBridgeEvent({
         type: 'typing_stop',
@@ -305,123 +316,6 @@ export class LocalCoreAcpBackend {
       replyCtx: session.currentRunId,
     });
     return { runId: session.currentRunId };
-  }
-
-  private async handleLocalSlashCommand(threadId: string, workspaceId: string, content: string, defaultAgentType: string) {
-    const command = parseSlashCommand(content);
-    if (!command) {
-      return '';
-    }
-    if (command.name === 'agent') {
-      return this.handleAgentSlashCommand(threadId, workspaceId, command.args, defaultAgentType);
-    }
-    if (command.name !== 'mode') {
-      return '';
-    }
-    const row = this.options.store.getThreadRow(threadId);
-    const currentMode = row?.agent_mode || DEFAULT_AGENT_MODE;
-    const requested = command.args.join(' ').trim();
-    if (!requested) {
-      return modeHelpText(currentMode);
-    }
-    const mode = normalizeAgentMode(requested);
-    if (!mode) {
-      return `未知模式：${requested}\n\n${modeHelpText(currentMode)}`;
-    }
-    this.options.store.updateThreadAgentMode(threadId, mode);
-    try {
-      await this.sessionCoordinator.setThreadMode(threadId, mode);
-    } catch (error) {
-      this.options.log?.(`localcore-acp mode sync failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    this.options.store.createAuditEvent({
-      type: 'permission.changed',
-      workspaceId,
-      actor: 'local',
-      summary: `Thread agent mode changed to ${mode}.`,
-      metadata: { threadId, mode },
-    });
-    if (mode === 'bypassPermissions') {
-      return '已切换到 yolo 模式：后续工具调用会跳过权限申请。使用 `/mode default` 可恢复默认权限。';
-    }
-    return `已切换到 ${formatAgentMode(mode)} 模式。`;
-  }
-
-  private async handleAgentSlashCommand(threadId: string, workspaceId: string, args: string[], defaultAgentType: string) {
-    const row = this.options.store.getThreadRow(threadId);
-    const currentAgent = normalizeAgentCommandTarget(row?.agent_type || defaultAgentType);
-    const defaultAgent = normalizeAgentCommandTarget(defaultAgentType);
-    const availableAgents = formatAgentList(this.options.getAgentTypes?.() || [defaultAgent, currentAgent]);
-    const [rawAction = '', ...rest] = args;
-    const action = String(rawAction || '').trim().toLowerCase();
-
-    if (!action || action === 'current') {
-      return [
-        `当前线程 Agent：${currentAgent}`,
-        `来源：${currentAgent === defaultAgent ? '默认设置' : '线程设置'}`,
-        `默认 Agent：${defaultAgent}`,
-        '使用 `/agent list` 查看可用 Agent，或 `/agent use <agent-id>` 切换。',
-      ].join('\n');
-    }
-
-    if (action === 'list') {
-      return agentHelpText({ currentAgent, defaultAgent, availableAgents });
-    }
-
-    if (action === 'reset') {
-      if (currentAgent === defaultAgent) {
-        return `当前线程已经使用默认 Agent：${defaultAgent}。`;
-      }
-      const latestRun = this.options.store.getLatestRunForThread(threadId);
-      const activeRun = latestRun && ['queued', 'running', 'awaiting_input'].includes(latestRun.status);
-      this.options.store.updateThreadAgentType(threadId, defaultAgent);
-      if (!activeRun) {
-        this.sessionCoordinator.closeThreadSession(threadId);
-      }
-      this.options.store.createAuditEvent({
-        type: 'agent.changed',
-        workspaceId,
-        actor: 'local',
-        summary: `Thread agent reset to ${defaultAgent}.`,
-        metadata: { threadId, agentType: defaultAgent, previousAgentType: currentAgent },
-      });
-      return `已清除当前线程 Agent 设置。\n当前线程将回到默认 Agent：${defaultAgent}。`;
-    }
-
-    const rawRequested = action === 'use' ? rest.join(' ').trim() : args.join(' ').trim();
-    const requestedAgent = normalizeAgentCommandTarget(rawRequested);
-    if (!requestedAgent) {
-      return agentHelpText({ currentAgent, defaultAgent, availableAgents });
-    }
-    const definition = resolveAgentRuntimeDefinition(requestedAgent);
-    if (!definition) {
-      return `未知 Agent：${rawRequested}\n可用 Agent：${availableAgents.length ? availableAgents.join(', ') : '无'}`;
-    }
-    const canonicalAgent = definition.agentType;
-    if (!availableAgents.includes(canonicalAgent)) {
-      return `Agent "${canonicalAgent}" 当前不可用。\n可用 Agent：${availableAgents.length ? availableAgents.join(', ') : '无'}`;
-    }
-    if (canonicalAgent === currentAgent) {
-      return `当前线程已经使用 Agent：${canonicalAgent}。`;
-    }
-
-    const latestRun = this.options.store.getLatestRunForThread(threadId);
-    const activeRun = latestRun && ['queued', 'running', 'awaiting_input'].includes(latestRun.status);
-    this.options.store.updateThreadAgentType(threadId, canonicalAgent);
-    if (!activeRun) {
-      this.sessionCoordinator.closeThreadSession(threadId);
-    }
-    const runningNote = activeRun
-      ? `\n当前正在运行的任务仍会继续使用 ${currentAgent}，下一轮开始生效。`
-      : '';
-    this.options.store.createAuditEvent({
-      type: 'agent.changed',
-      workspaceId,
-      actor: 'local',
-      summary: `Thread agent changed to ${canonicalAgent}.`,
-      metadata: { threadId, agentType: canonicalAgent, previousAgentType: currentAgent },
-    });
-    return `已将当前线程 Agent 切换为 ${canonicalAgent}。\n后续消息将使用 ${canonicalAgent} 处理。${runningNote}`;
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
