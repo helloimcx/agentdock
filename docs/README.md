@@ -17,6 +17,7 @@ This directory is organized by documentation purpose.
 - [Knowledge Runtime Architecture](architecture/knowledge-runtime.md): knowledge provider plugin, Local Core APIs, thread attachments, upload, and search flow.
 - [Message And Channel Contracts](architecture/message-and-channel-contracts.md): ownership and invariants for streamed message blocks and shared channel content.
 - [Scheduled Delivery Architecture](architecture/scheduled-delivery.md): scheduler ownership, route resolution, ACP execution, and channel delivery invariants.
+- [Automation Monitor Architecture](architecture/automation-monitor.md): monitor provider plugins, polling/subscription triggers, condition evaluation, ACP execution, and channel delivery invariants.
 - [State Ownership](architecture/state-ownership.md): where runtime, workspace, task, device, and approval state belongs.
 - [Runtime Installation Boundary](architecture/runtime-installation-boundary.md): reserved shape for future installation support without implementing installers.
 

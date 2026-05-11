@@ -30,6 +30,7 @@ src/
 - `src/channel/weixin/local-core-weixin-gateway.ts`: Weixin 原生通道网关
 - `src/acp/local-core-acp-backend.ts`: ACP 子进程桥接与流式事件处理
 - `src/acp/store/local-core-acp-store.ts`: SQLite 持久化层 facade
+- `src/automation/automation-monitor-service.ts`: 事件监控、provider 订阅/轮询、条件判断与触发执行入口
 - `src/scheduler/scheduled-job-application-service.ts`: 定时任务创建、路由解析与 controller/bridge 应用层入口
 - `src/scheduler/scheduler-service.ts`: 定时任务调度主入口
 
@@ -72,6 +73,25 @@ src/
   只负责选择平台执行策略并声明 `deliveryMode: 'bridge-stream'`。adapter 选择按 platform base 匹配，实际回传由 channel gateway 使用 `route.instanceId` 发送，确保多 Lark/Weixin 实例不会串投。
 
 更完整的 scheduled delivery 设计见 [`docs/architecture/scheduled-delivery.md`](../../docs/architecture/scheduled-delivery.md)。
+
+## Automation Monitor 分层
+
+Monitor 子系统和 scheduler 共享“自动发起 ACP 任务并通过 channel 回传”的执行链路，但触发来源不同：scheduler 由时间触发，monitor 由 provider 事件触发。
+
+- `src/automation/automation-monitor-service.ts`
+  负责 monitor 创建/更新/删除、provider 订阅、30 秒轮询、条件判断、cooldown、并发控制和事件发布。
+- `src/automation/automation-monitor-repository.ts`
+  负责把 monitor 应用层访问收敛到 Local Core ACP store。
+- `src/automation/condition-evaluator.ts`
+  负责安全的条件判断，支持简单比较和受限的 `&&` / `||` 表达式，不执行任意 JS。
+- `src/automation/automation-conversation-executor.ts`
+  负责把触发事件渲染成 prompt，启动 ACP thread run，并复用 `ScheduledBridgeSession` 通过 channel 回传过程和最终结果。
+- `src/acp/store/automation-monitor-store.ts`
+  负责 `automation_monitors` 与 `automation_monitor_runs` 持久化。
+- `packages/plugin-sdk/src/index.ts`
+  定义 `MonitorPlugin` / `MonitorProviderRuntime` 插件协议。内置股票监控只是一个 provider 插件，其他事件源应通过插件扩展。
+
+更完整的 monitor 设计见 [`docs/architecture/automation-monitor.md`](../../docs/architecture/automation-monitor.md)。
 
 ## Scheduler Execution Policy
 
