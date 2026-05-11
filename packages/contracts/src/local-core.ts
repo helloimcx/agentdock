@@ -701,6 +701,7 @@ export interface AutomationMonitorCondition {
   metric: string;
   operator: AutomationMonitorConditionOperator;
   value: number | string | boolean;
+  expression?: string;
 }
 
 export interface AutomationMonitorEventSnapshot {

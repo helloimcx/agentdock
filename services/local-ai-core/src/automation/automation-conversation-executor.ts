@@ -1,4 +1,4 @@
-import type { AutomationMonitor, AutomationMonitorEventSnapshot, ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { AutomationMonitor, AutomationMonitorEventSnapshot } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
@@ -31,11 +31,17 @@ export class AutomationConversationExecutor {
     const workspaceRouter = this.options.getWorkspaceRouter();
     const threadId = await this.resolveThread(monitor);
     const prompt = renderMonitorPrompt(monitor.promptTemplate, event, monitor);
-    const fakeJob = this.toScheduledJob(monitor);
     const channelRuntime = monitor.platform === 'local' ? undefined : this.options.getChannelRuntime(monitor.platform);
     const bridge = channelRuntime
       ? await ScheduledBridgeSession.open({
-          job: fakeJob,
+          target: {
+            id: monitor.id,
+            workspaceId: monitor.workspaceId,
+            platform: monitor.platform,
+            route: monitor.route,
+            title: monitor.title,
+            promptTemplate: monitor.promptTemplate,
+          },
           threadId,
           workspaceRouter,
           getChannelRuntime: () => channelRuntime,
@@ -139,25 +145,6 @@ export class AutomationConversationExecutor {
     throw new Error(`Timed out waiting for monitor run ${runId}`);
   }
 
-  private toScheduledJob(monitor: AutomationMonitor): ScheduledJob {
-    return {
-      id: monitor.id,
-      workspaceId: monitor.workspaceId,
-      platform: monitor.platform,
-      route: monitor.route,
-      executionMode: monitor.executionMode,
-      triggerType: 'once',
-      promptTemplate: monitor.promptTemplate,
-      description: monitor.title,
-      enabled: monitor.enabled,
-      concurrencyPolicy: 'skip_if_running',
-      createdAt: monitor.createdAt,
-      updatedAt: monitor.updatedAt,
-      lastRunAt: monitor.lastTriggeredAt,
-      lastStatus: monitor.lastStatus,
-      lastError: monitor.lastError,
-    };
-  }
 }
 
 export function renderMonitorPrompt(template: string, event: AutomationMonitorEventSnapshot, monitor: AutomationMonitor) {
@@ -173,4 +160,3 @@ export function renderMonitorPrompt(template: string, event: AutomationMonitorEv
     String(values[key] ?? '')
   );
 }
-

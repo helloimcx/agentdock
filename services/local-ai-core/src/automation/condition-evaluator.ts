@@ -1,6 +1,9 @@
 import type { AutomationMonitorCondition, AutomationMonitorEventSnapshot } from '../../../../packages/contracts/src/index.js';
 
 export function evaluateMonitorCondition(condition: AutomationMonitorCondition, event: AutomationMonitorEventSnapshot) {
+  if (condition.expression) {
+    return evaluateExpression(condition.expression, event);
+  }
   const actual = readMetric(event, condition.metric);
   const expected = condition.value;
   switch (condition.operator) {
@@ -19,6 +22,34 @@ export function evaluateMonitorCondition(condition: AutomationMonitorCondition, 
     default:
       return false;
   }
+}
+
+export function evaluateExpression(expression: string, event: AutomationMonitorEventSnapshot): boolean {
+  const orParts = splitExpression(expression, '||');
+  return orParts.some((orPart) =>
+    splitExpression(orPart, '&&').every((andPart) => evaluateComparison(andPart.trim(), event))
+  );
+}
+
+function evaluateComparison(expression: string, event: AutomationMonitorEventSnapshot) {
+  const match = expression.match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
+  if (!match) {
+    throw new Error(`Unsupported monitor condition expression: ${expression}`);
+  }
+  const rawValue = String(match[3] || '').trim().replace(/^["']|["']$/g, '');
+  const numeric = Number(rawValue);
+  return evaluateMonitorCondition({
+    metric: String(match[1] || '').trim(),
+    operator: match[2] as AutomationMonitorCondition['operator'],
+    value: Number.isFinite(numeric) && rawValue !== '' ? numeric : rawValue,
+  }, event);
+}
+
+function splitExpression(expression: string, operator: '&&' | '||') {
+  return expression
+    .split(operator)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 export function readMetric(event: AutomationMonitorEventSnapshot, metric: string): unknown {
@@ -44,4 +75,3 @@ export function readMetric(event: AutomationMonitorEventSnapshot, metric: string
     return (current as Record<string, unknown>)[part];
   }, payload);
 }
-

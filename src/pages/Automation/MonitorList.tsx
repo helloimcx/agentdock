@@ -18,6 +18,7 @@ import { formatTime } from '@/lib/utils';
 type MonitorFormState = {
   workspaceId: string;
   title: string;
+  sourceType: 'stock.quote';
   symbol: string;
   condition: string;
   promptTemplate: string;
@@ -29,6 +30,7 @@ type MonitorFormState = {
 const DEFAULT_FORM: MonitorFormState = {
   workspaceId: '',
   title: '',
+  sourceType: 'stock.quote',
   symbol: '',
   condition: 'abs_change_percent >= 3',
   promptTemplate: '',
@@ -38,7 +40,16 @@ const DEFAULT_FORM: MonitorFormState = {
 };
 
 function parseCondition(value: string) {
-  const match = value.trim().match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
+  const expression = value.trim();
+  if (expression.includes('&&') || expression.includes('||')) {
+    return {
+      metric: 'expression',
+      operator: '==' as const,
+      value: true,
+      expression,
+    };
+  }
+  const match = expression.match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
   if (!match) return null;
   const rawValue = String(match[3] || '').trim();
   const numeric = Number(rawValue);
@@ -50,6 +61,7 @@ function parseCondition(value: string) {
 }
 
 function conditionToText(monitor: Monitor) {
+  if (monitor.condition.expression) return monitor.condition.expression;
   return `${monitor.condition.metric} ${monitor.condition.operator} ${monitor.condition.value}`;
 }
 
@@ -58,6 +70,7 @@ function toForm(monitor?: Monitor | null): MonitorFormState {
   return {
     workspaceId: monitor.workspaceId,
     title: monitor.title,
+    sourceType: 'stock.quote',
     symbol: String(monitor.sourceConfig.symbol || ''),
     condition: conditionToText(monitor),
     promptTemplate: monitor.promptTemplate,
@@ -73,8 +86,8 @@ function toPayload(form: MonitorFormState): MonitorCreateInput {
   return {
     workspaceId: form.workspaceId,
     title: form.title,
-    sourceType: 'stock.quote',
-    sourceConfig: { symbol: form.symbol.toUpperCase() },
+    sourceType: form.sourceType,
+    sourceConfig: sourceDefinitions[form.sourceType].buildConfig(form),
     condition,
     promptTemplate: form.promptTemplate,
     executionMode: form.executionMode,
@@ -82,6 +95,14 @@ function toPayload(form: MonitorFormState): MonitorCreateInput {
     enabled: form.enabled,
   };
 }
+
+const sourceDefinitions = {
+  'stock.quote': {
+    label: 'Stock quote',
+    buildConfig: (form: MonitorFormState) => ({ symbol: form.symbol.toUpperCase() }),
+    renderSummary: (monitor: Monitor) => String(monitor.sourceConfig.symbol || ''),
+  },
+} as const;
 
 export default function MonitorList() {
   const { t } = useTranslation();
@@ -195,7 +216,7 @@ export default function MonitorList() {
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <span><strong>Workspace:</strong> {monitor.workspaceId}</span>
-                    <span><strong>Symbol:</strong> {String(monitor.sourceConfig.symbol || '')}</span>
+                    <span><strong>Subject:</strong> {sourceDefinitions['stock.quote'].renderSummary(monitor)}</span>
                     <span><strong>Condition:</strong> {conditionToText(monitor)}</span>
                     <span><strong>Execution:</strong> {monitor.executionMode}</span>
                     <span><strong>Cooldown:</strong> {Math.round(monitor.cooldownMs / 60000)}m</span>
@@ -227,7 +248,14 @@ export default function MonitorList() {
             {selectedWorkspaceOptions}
           </Select>
           <Input label={t('monitors.monitorTitle')} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
-          <Input label="Symbol" value={form.symbol} onChange={(event) => setForm({ ...form, symbol: event.target.value })} placeholder="AAPL" />
+          <Select label="Source" value={form.sourceType} onChange={(event) => setForm({ ...form, sourceType: event.target.value as MonitorFormState['sourceType'] })}>
+            {Object.entries(sourceDefinitions).map(([sourceType, definition]) => (
+              <option key={sourceType} value={sourceType}>{definition.label}</option>
+            ))}
+          </Select>
+          {form.sourceType === 'stock.quote' && (
+            <Input label="Symbol" value={form.symbol} onChange={(event) => setForm({ ...form, symbol: event.target.value })} placeholder="AAPL" />
+          )}
           <Input label={t('monitors.condition')} value={form.condition} onChange={(event) => setForm({ ...form, condition: event.target.value })} placeholder="abs_change_percent >= 3" />
           <div className="grid grid-cols-2 gap-3">
             <Input label={t('monitors.cooldown')} value={form.cooldownMinutes} onChange={(event) => setForm({ ...form, cooldownMinutes: event.target.value })} />
@@ -250,4 +278,3 @@ export default function MonitorList() {
     </div>
   );
 }
-

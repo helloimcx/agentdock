@@ -4,8 +4,18 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 
 export type ScheduledDeliveryMode = 'thread-only' | 'bridge-stream' | 'final-message';
 
+export type ConversationAutomationTarget = {
+  id: string;
+  workspaceId: string;
+  platform: string;
+  route: ScheduledJobRoute;
+  title: string;
+  promptTemplate?: string;
+};
+
 export type ScheduledBridgeSessionInput = {
-  job: ScheduledJob;
+  job?: ScheduledJob;
+  target?: ConversationAutomationTarget;
   threadId: string;
   workspaceRouter: WorkspaceRouter;
   getChannelRuntime: () => ChannelRuntime;
@@ -27,19 +37,20 @@ export class ScheduledBridgeSession {
   static async open(input: ScheduledBridgeSessionInput): Promise<ScheduledBridgeSessionHandle> {
     const sessionKey = input.workspaceRouter.getThreadSessionKey(input.threadId);
     const channelRuntime = input.getChannelRuntime();
+    const target = input.target || targetFromScheduledJob(input.job);
     const unregister = await channelRuntime.registerScheduledThreadBridge?.({
-      workspaceId: input.job.workspaceId,
-      platform: input.job.platform,
-      route: input.job.route,
+      workspaceId: target.workspaceId,
+      platform: target.platform,
+      route: target.route,
       threadId: input.threadId,
       sessionKey,
     });
-    await sendScheduledStartNotice(channelRuntime, input.job, sessionKey, input.noticeIcon, input.noticeTitle);
+    await sendScheduledStartNotice(channelRuntime, target, sessionKey, input.noticeIcon, input.noticeTitle);
     return {
       mode: 'bridge-stream',
-      workspaceId: input.job.workspaceId,
-      platform: input.job.platform,
-      route: input.job.route,
+      workspaceId: target.workspaceId,
+      platform: target.platform,
+      route: target.route,
       threadId: input.threadId,
       sessionKey,
       close: async () => {
@@ -49,7 +60,21 @@ export class ScheduledBridgeSession {
   }
 }
 
-async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, job: ScheduledJob, sessionKey: string, noticeIcon?: string, noticeTitle?: string) {
+function targetFromScheduledJob(job?: ScheduledJob): ConversationAutomationTarget {
+  if (!job) {
+    throw new Error('Scheduled bridge session requires a job or automation target.');
+  }
+  return {
+    id: job.id,
+    workspaceId: job.workspaceId,
+    platform: job.platform,
+    route: job.route,
+    title: job.description || job.promptTemplate || job.id,
+    promptTemplate: job.promptTemplate,
+  };
+}
+
+async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, target: ConversationAutomationTarget, sessionKey: string, noticeIcon?: string, noticeTitle?: string) {
   if (!channelRuntime.onBridgeEvent) {
     return;
   }
@@ -58,15 +83,15 @@ async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, job: Sch
       type: 'status',
       sessionKey,
       bridgeKind: 'status',
-      content: `${noticeIcon || '⏰'} ${noticeTitle || scheduledNoticeTitle(job)}`,
+      content: `${noticeIcon || '⏰'} ${noticeTitle || automationNoticeTitle(target)}`,
     });
   } catch {
     // The scheduled run should continue even if the proactive start notice fails.
   }
 }
 
-function scheduledNoticeTitle(job: ScheduledJob) {
-  const title = normalizeNoticeTitle(job.description) || normalizeNoticeTitle(job.promptTemplate) || job.id;
+function automationNoticeTitle(target: ConversationAutomationTarget) {
+  const title = normalizeNoticeTitle(target.title) || normalizeNoticeTitle(target.promptTemplate) || target.id;
   return truncateNoticeTitle(title, 80);
 }
 

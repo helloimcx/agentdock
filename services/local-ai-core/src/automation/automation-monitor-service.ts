@@ -17,6 +17,7 @@ import {
 } from '../scheduler/scheduled-job-route.js';
 import { evaluateMonitorCondition } from './condition-evaluator.js';
 import { AutomationConversationExecutor } from './automation-conversation-executor.js';
+import { AutomationMonitorRepository, type ResolvedAutomationMonitorCreateInput } from './automation-monitor-repository.js';
 
 type AutomationMonitorServiceOptions = {
   store: LocalCoreAcpStore;
@@ -27,22 +28,20 @@ type AutomationMonitorServiceOptions = {
   log?: (message: string) => void;
 };
 
-type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
-  platform: NonNullable<AutomationMonitorCreateInput['platform']>;
-  route: NonNullable<AutomationMonitorCreateInput['route']>;
-};
-
 export class AutomationMonitorService {
   private timer: NodeJS.Timeout | null = null;
   private pollInFlight = false;
   private readonly runningMonitors = new Set<string>();
+  private readonly subscriptionHandles = new Map<string, { stop(): Promise<void> | void }>();
   private readonly providers = new Map<string, MonitorProviderRuntime>();
   private readonly executor: AutomationConversationExecutor;
+  private readonly repository: AutomationMonitorRepository;
 
   constructor(private readonly options: AutomationMonitorServiceOptions) {
     for (const provider of options.providers) {
       this.providers.set(provider.sourceType, provider);
     }
+    this.repository = new AutomationMonitorRepository(options.store);
     this.executor = new AutomationConversationExecutor({
       store: options.store,
       getWorkspaceRouter: options.getWorkspaceRouter,
@@ -51,6 +50,7 @@ export class AutomationMonitorService {
   }
 
   async start() {
+    await this.refreshSubscriptions();
     await this.tick();
     this.timer = setInterval(() => {
       void this.tick();
@@ -62,46 +62,54 @@ export class AutomationMonitorService {
       clearInterval(this.timer);
       this.timer = null;
     }
+    for (const handle of this.subscriptionHandles.values()) {
+      await handle.stop();
+    }
+    this.subscriptionHandles.clear();
   }
 
   listMonitors(workspaceId?: string) {
-    return this.options.store.listAutomationMonitors(workspaceId);
+    return this.repository.list(workspaceId);
   }
 
   getMonitor(monitorId: string) {
     const resolvedMonitorId = this.resolveMonitorId(monitorId);
-    return resolvedMonitorId ? this.options.store.getAutomationMonitor(resolvedMonitorId) : undefined;
+    return resolvedMonitorId ? this.repository.get(resolvedMonitorId) : undefined;
   }
 
   createMonitor(input: AutomationMonitorCreateInput) {
     const resolved = this.resolveCreateInput(input);
     const provider = this.providers.get(resolved.sourceType);
     provider?.validateConfig?.(resolved.sourceConfig || {});
-    const monitor = this.options.store.createAutomationMonitor(resolved);
+    const monitor = this.repository.create(resolved);
     this.emitMonitor(monitor);
+    void this.ensureSubscription(monitor);
     return monitor;
   }
 
   updateMonitor(monitorId: string, input: AutomationMonitorUpdateInput) {
     const resolvedMonitorId = this.resolveRequiredMonitorId(monitorId);
-    const existing = this.options.store.getAutomationMonitor(resolvedMonitorId);
+    const existing = this.repository.get(resolvedMonitorId);
     if (existing && input.sourceConfig) {
       this.providers.get(existing.sourceType)?.validateConfig?.(input.sourceConfig);
     }
-    const monitor = this.options.store.updateAutomationMonitor(resolvedMonitorId, {
+    const monitor = this.repository.update(resolvedMonitorId, {
       ...input,
       ...(input.route ? { route: withoutThreadRoute(input.route) } : {}),
     });
     this.emitMonitor(monitor);
+    void this.ensureSubscription(monitor);
     return monitor;
   }
 
   deleteMonitor(monitorId: string) {
-    return this.options.store.deleteAutomationMonitor(this.resolveRequiredMonitorId(monitorId));
+    const resolvedMonitorId = this.resolveRequiredMonitorId(monitorId);
+    void this.stopSubscription(resolvedMonitorId);
+    return this.repository.delete(resolvedMonitorId);
   }
 
   listRuns(monitorId: string) {
-    return this.options.store.listAutomationMonitorRuns(this.resolveRequiredMonitorId(monitorId));
+    return this.repository.listRuns(this.resolveRequiredMonitorId(monitorId));
   }
 
   async runMonitorNow(monitorId: string, event?: AutomationMonitorEventSnapshot) {
@@ -116,25 +124,12 @@ export class AutomationMonitorService {
   }
 
   listMonitorsForThread(threadId: string): AutomationMonitor[] {
-    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
-    return this.options.store
-      .listAutomationMonitors()
+    const binding = this.repository.getPlatformThreadBindingByThreadId(threadId);
+    return this.repository
+      .list()
       .filter((monitor) =>
         monitor.route.threadId === threadId ||
-        (binding ? scheduledJobMatchesPlatformBinding({
-          id: monitor.id,
-          workspaceId: monitor.workspaceId,
-          platform: monitor.platform,
-          route: monitor.route,
-          executionMode: monitor.executionMode,
-          triggerType: 'once',
-          promptTemplate: monitor.promptTemplate,
-          description: monitor.title,
-          enabled: monitor.enabled,
-          concurrencyPolicy: monitor.concurrencyPolicy,
-          createdAt: monitor.createdAt,
-          updatedAt: monitor.updatedAt,
-        }, binding) : false)
+        (binding ? scheduledJobMatchesPlatformBinding(this.repository.toScheduledLike(monitor), binding) : false)
       );
   }
 
@@ -144,13 +139,17 @@ export class AutomationMonitorService {
     }
     this.pollInFlight = true;
     try {
-      for (const monitor of this.options.store.listAutomationMonitors().filter((candidate) => candidate.enabled)) {
+      for (const monitor of this.repository.list().filter((candidate) => candidate.enabled)) {
+        const provider = this.providers.get(monitor.sourceType);
+        if (provider?.startMonitor) {
+          continue;
+        }
         const event = await this.pollMonitor(monitor, false);
         if (!event) {
           continue;
         }
         if (!evaluateMonitorCondition(monitor.condition, event)) {
-          this.options.store.updateAutomationMonitorState(monitor.id, {
+          this.repository.updateState(monitor.id, {
             lastState: this.stateFromEvent(event, monitor.lastState),
           });
           continue;
@@ -188,20 +187,20 @@ export class AutomationMonitorService {
       return skipped;
     }
     this.runningMonitors.add(monitor.id);
-    const run = this.options.store.createAutomationMonitorRun(monitor.id, 'queued', {
+    const run = this.repository.createRun(monitor.id, 'queued', {
       triggeredAt: event.occurredAt,
       eventSnapshot: event,
       deliveryStatus: 'pending',
     });
     this.emitRun(run);
     try {
-      const running = this.options.store.updateAutomationMonitorRun(run.id, {
+      const running = this.repository.updateRun(run.id, {
         status: 'running',
         startedAt: new Date().toISOString(),
       });
       this.emitRun(running);
       const result = await this.executor.execute(monitor, event);
-      const succeeded = this.options.store.updateAutomationMonitorRun(run.id, {
+      const succeeded = this.repository.updateRun(run.id, {
         status: 'succeeded',
         finishedAt: new Date().toISOString(),
         threadId: result.threadId,
@@ -212,33 +211,33 @@ export class AutomationMonitorService {
         lastBridgeEventAt: result.lastBridgeEventAt,
         error: '',
       });
-      this.options.store.updateAutomationMonitorState(monitor.id, {
+      this.repository.updateState(monitor.id, {
         lastState: this.stateFromEvent(event, monitor.lastState),
         lastTriggeredAt: event.occurredAt,
         lastStatus: 'succeeded',
         lastError: '',
       });
       this.emitRun(succeeded);
-      const nextMonitor = this.options.store.getAutomationMonitor(monitor.id);
+      const nextMonitor = this.repository.get(monitor.id);
       if (nextMonitor) this.emitMonitor(nextMonitor);
       return succeeded;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const failed = this.options.store.updateAutomationMonitorRun(run.id, {
+      const failed = this.repository.updateRun(run.id, {
         status: 'failed',
         finishedAt: new Date().toISOString(),
         error: message,
         deliveryStatus: 'failed',
         deliveryError: message,
       });
-      this.options.store.updateAutomationMonitorState(monitor.id, {
+      this.repository.updateState(monitor.id, {
         lastState: this.stateFromEvent(event, monitor.lastState),
         lastTriggeredAt: event.occurredAt,
         lastStatus: 'failed',
         lastError: message,
       });
       this.emitRun(failed);
-      const nextMonitor = this.options.store.getAutomationMonitor(monitor.id);
+      const nextMonitor = this.repository.get(monitor.id);
       if (nextMonitor) this.emitMonitor(nextMonitor);
       this.options.log?.(`automation monitor failed ${monitor.id}: ${message}`);
       return failed;
@@ -248,7 +247,7 @@ export class AutomationMonitorService {
   }
 
   private markSkipped(monitor: AutomationMonitor, triggeredAt: string, error: string, eventSnapshot?: AutomationMonitorEventSnapshot) {
-    return this.options.store.createAutomationMonitorRun(monitor.id, 'skipped', {
+    return this.repository.createRun(monitor.id, 'skipped', {
       triggeredAt,
       error,
       eventSnapshot,
@@ -284,7 +283,7 @@ export class AutomationMonitorService {
     }
     const threadId = String(input.threadId || input.route?.threadId || '').trim();
     if (threadId) {
-      const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+      const binding = this.repository.getPlatformThreadBindingByThreadId(threadId);
       if (binding && binding.workspace_id === input.workspaceId) {
         return {
           ...input,
@@ -312,11 +311,11 @@ export class AutomationMonitorService {
   }
 
   private resolveMonitorId(monitorId: string) {
-    if (this.options.store.getAutomationMonitor(monitorId)) {
+    if (this.repository.get(monitorId)) {
       return monitorId;
     }
-    const matches = this.options.store
-      .listAutomationMonitors()
+    const matches = this.repository
+      .list()
       .filter((monitor) => publicMonitorId(monitor.id) === monitorId);
     if (matches.length === 0) {
       return '';
@@ -342,10 +341,59 @@ export class AutomationMonitorService {
   private emitRun(run: AutomationMonitorRun) {
     this.options.eventBus.emit({ type: 'automation.monitor.run.updated', payload: run });
   }
+
+  private async refreshSubscriptions() {
+    const activeIds = new Set<string>();
+    for (const monitor of this.repository.list().filter((candidate) => candidate.enabled)) {
+      const provider = this.providers.get(monitor.sourceType);
+      if (!provider?.startMonitor) continue;
+      activeIds.add(monitor.id);
+      await this.ensureSubscription(monitor);
+    }
+    for (const monitorId of [...this.subscriptionHandles.keys()]) {
+      if (!activeIds.has(monitorId)) {
+        await this.stopSubscription(monitorId);
+      }
+    }
+  }
+
+  private async ensureSubscription(monitor: AutomationMonitor) {
+    const provider = this.providers.get(monitor.sourceType);
+    if (!monitor.enabled || !provider?.startMonitor) {
+      await this.stopSubscription(monitor.id);
+      return;
+    }
+    if (this.subscriptionHandles.has(monitor.id)) {
+      return;
+    }
+    const handle = await provider.startMonitor({
+      monitorId: monitor.id,
+      workspaceId: monitor.workspaceId,
+      sourceConfig: monitor.sourceConfig,
+      lastState: monitor.lastState,
+      emit: async (event) => {
+        const latest = this.repository.get(monitor.id);
+        if (!latest || !latest.enabled) return;
+        if (!evaluateMonitorCondition(latest.condition, event)) {
+          this.repository.updateState(latest.id, { lastState: this.stateFromEvent(event, latest.lastState) });
+          return;
+        }
+        if (this.isCoolingDown(latest, event.occurredAt)) return;
+        await this.executeMonitor(latest, event, false);
+      },
+    });
+    this.subscriptionHandles.set(monitor.id, handle);
+  }
+
+  private async stopSubscription(monitorId: string) {
+    const handle = this.subscriptionHandles.get(monitorId);
+    if (!handle) return;
+    this.subscriptionHandles.delete(monitorId);
+    await handle.stop();
+  }
 }
 
 function publicMonitorId(monitorId: string) {
   const normalized = monitorId.startsWith('monitor:') ? monitorId.slice('monitor:'.length) : monitorId;
   return normalized.includes('-') ? normalized.split('-')[0] || normalized : normalized;
 }
-

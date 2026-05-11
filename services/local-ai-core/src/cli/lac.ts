@@ -8,10 +8,11 @@ import type {
   ScheduledJobRun,
   ScheduledJobUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
-import { normalizeAutomationMonitorConditionOperator, normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
+import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
+import { parseDurationMs, parseMonitorCondition } from './monitor-cli-parsers.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -108,7 +109,7 @@ async function handleMonitorAdd(flags: Map<string, string[]>, env: NodeJS.Proces
   const title = getRequiredFlag(flags, 'title');
   const sourceType = getRequiredFlag(flags, 'source');
   const promptTemplate = getRequiredFlag(flags, 'message');
-  const condition = parseCondition(getRequiredFlag(flags, 'condition'));
+  const condition = parseMonitorCondition(getRequiredFlag(flags, 'condition'));
   const sourceConfig = buildSourceConfig(sourceType, flags);
   const monitor = await request<AutomationMonitor>(context.baseUrl, 'POST', '/automation/monitors', {
     workspaceId: context.workspaceId,
@@ -171,7 +172,7 @@ async function handleMonitorEdit(monitorId: string, flags: Map<string, string[]>
   const cooldown = getFlag(flags, 'cooldown');
   if (title) input.title = title;
   if (typeof promptTemplate === 'string' && promptTemplate) input.promptTemplate = promptTemplate;
-  if (condition) input.condition = parseCondition(condition);
+  if (condition) input.condition = parseMonitorCondition(condition);
   if (typeof enabled === 'boolean') input.enabled = enabled;
   if (executionMode) input.executionMode = normalizeScheduledJobExecutionMode(executionMode);
   if (cooldown) input.cooldownMs = parseDurationMs(cooldown);
@@ -485,31 +486,6 @@ function buildSourceConfig(sourceType: string, flags: Map<string, string[]>) {
   return config;
 }
 
-function parseCondition(value: string): AutomationMonitorCondition {
-  const match = String(value || '').trim().match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
-  if (!match) {
-    throw new Error('Monitor condition must look like "change_percent >= 3".');
-  }
-  const rawValue = String(match[3] || '').trim();
-  const numeric = Number(rawValue);
-  return {
-    metric: String(match[1] || '').trim(),
-    operator: normalizeAutomationMonitorConditionOperator(match[2]),
-    value: Number.isFinite(numeric) && rawValue !== '' ? numeric : rawValue,
-  };
-}
-
-function parseDurationMs(value: string) {
-  const match = String(value || '').trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/i);
-  if (!match) {
-    throw new Error('Duration must be a number with optional ms, s, m, or h suffix.');
-  }
-  const amount = Number(match[1]);
-  const unit = String(match[2] || 'ms').toLowerCase();
-  const multiplier = unit === 'h' ? 60 * 60 * 1000 : unit === 'm' ? 60 * 1000 : unit === 's' ? 1000 : 1;
-  return Math.round(amount * multiplier);
-}
-
 function print(asJson: boolean, output: Pick<NodeJS.WriteStream, 'write'>, payload: unknown, text: string) {
   output.write(asJson ? `${JSON.stringify(payload, null, 2)}\n` : `${text}\n`);
 }
@@ -582,6 +558,9 @@ function formatMonitorDetails(monitor: AutomationMonitor, latestRun?: Automation
 }
 
 function formatCondition(condition: AutomationMonitorCondition) {
+  if (condition.expression) {
+    return condition.expression;
+  }
   return `${condition.metric} ${condition.operator} ${condition.value}`;
 }
 
