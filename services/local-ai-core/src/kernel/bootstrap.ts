@@ -13,6 +13,9 @@ import type {
   KnowledgePlugin,
   KnowledgeRuntime,
   KnowledgeRuntimeRegistration,
+  MonitorPlugin,
+  MonitorProviderRuntime,
+  MonitorRuntimeRegistration,
   PluginContext,
   RuntimePlugin,
   SchedulerExecutorRuntime,
@@ -45,10 +48,12 @@ import { createBuiltinCronSchedulerPlugin } from '../plugins/builtin/scheduler-c
 import { createBuiltinLarkSchedulerPlugin } from '../plugins/builtin/scheduler-lark-plugin.js';
 import { createBuiltinLocalSchedulerPlugin } from '../plugins/builtin/scheduler-local-plugin.js';
 import { createBuiltinWeixinSchedulerPlugin } from '../plugins/builtin/scheduler-weixin-plugin.js';
+import { createBuiltinStockMonitorPlugin } from '../plugins/builtin/monitor-stock-plugin.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
 import { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
+import { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 
 export interface LocalCoreKernel {
   context: PluginContext;
@@ -72,6 +77,7 @@ export interface LocalCoreRuntimeBootstrap {
   workspaceRouter: WorkspaceRouter;
   scheduler: SchedulerService;
   scheduledJobs: ScheduledJobApplicationService;
+  automationMonitors?: AutomationMonitorService;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -120,6 +126,7 @@ export function bootstrapLocalCoreKernel(options?: {
     diagnostics,
     getCapabilitySnapshot() {
       const snapshot = capabilities.snapshot();
+      const monitorCapabilities = snapshot.monitors || [];
       return {
         adapters: {
           channels: snapshot.channels.map((capability) => capability.platform),
@@ -137,6 +144,14 @@ export function bootstrapLocalCoreKernel(options?: {
           deliveryTargets: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryTargets || capability.deliveryPlatforms || []))],
           platforms: [...new Set(snapshot.schedulers.flatMap((capability) => capability.deliveryTargets || capability.deliveryPlatforms || []))],
         },
+        ...(monitorCapabilities.length > 0
+          ? {
+              monitors: {
+                enabled: monitorCapabilities.some((capability) => capability.enabled !== false),
+                sourceTypes: [...new Set(monitorCapabilities.flatMap((capability) => capability.sourceTypes))],
+              },
+            }
+          : {}),
         snapshot,
       };
     },
@@ -163,6 +178,7 @@ function logCapabilityContributions(plugin: RuntimePlugin, log?: (message: strin
     ...(plugin.capabilities.channels || []).map((capability) => capability.id),
     ...(plugin.capabilities.knowledge || []).map((capability) => capability.id),
     ...(plugin.capabilities.schedulers || []).map((capability) => capability.id),
+    ...(plugin.capabilities.monitors || []).map((capability) => capability.id),
     ...(plugin.capabilities.ui || []).map((capability) => capability.id),
   ];
   for (const capabilityId of capabilityIds) {
@@ -210,6 +226,17 @@ function resolveSchedulerRuntime(plugin: SchedulerPlugin, context: PluginContext
   const runtime = plugin.createRuntime(context);
   if (runtime instanceof Promise) {
     throw new Error(`Scheduler plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
+  }
+  return runtime;
+}
+
+function resolveMonitorRuntime(plugin: MonitorPlugin, context: PluginContext): MonitorRuntimeRegistration {
+  if (!plugin.createRuntime) {
+    throw new Error(`Monitor plugin ${plugin.manifest.id} does not provide a runtime factory.`);
+  }
+  const runtime = plugin.createRuntime(context);
+  if (runtime instanceof Promise) {
+    throw new Error(`Monitor plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
   }
   return runtime;
 }
@@ -283,6 +310,9 @@ export function bootstrapLocalCoreRuntime(options: {
       log: options.log,
     }),
   ];
+  const monitorPlugins = [
+    createBuiltinStockMonitorPlugin(),
+  ];
   for (const plugin of agentPlugins.filter((plugin) => plugin !== localCoreAgentPlugin)) {
     registerPlugin(kernel, plugin);
   }
@@ -290,6 +320,9 @@ export function bootstrapLocalCoreRuntime(options: {
   registerPlugin(kernel, weixinChannelPlugin);
   registerPlugin(kernel, knowledgePlugin);
   for (const plugin of schedulerPlugins) {
+    registerPlugin(kernel, plugin);
+  }
+  for (const plugin of monitorPlugins) {
     registerPlugin(kernel, plugin);
   }
   const agentRuntimes = agentPlugins
@@ -315,6 +348,10 @@ export function bootstrapLocalCoreRuntime(options: {
   ];
   const schedulerTriggers = schedulerRuntimes.flatMap((runtime) => runtime.triggers || []) as SchedulerTriggerRuntime[];
   const schedulerExecutors = schedulerRuntimes.flatMap((runtime) => runtime.executors || []) as SchedulerExecutorRuntime[];
+  const monitorRuntimes = monitorPlugins
+    .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
+    .map((plugin) => resolveMonitorRuntime(plugin, kernel.context));
+  const monitorProviders = monitorRuntimes.flatMap((runtime) => runtime.providers || []) as MonitorProviderRuntime[];
   const knowledgeProvider = knowledgeRuntime.provider as KnowledgeRuntime;
   const knowledgeAttachments = knowledgeRuntime.attachments as ThreadKnowledgeAttachmentStore;
   workspaceRouter = createWorkspaceRouter({
@@ -340,6 +377,15 @@ export function bootstrapLocalCoreRuntime(options: {
     store,
     scheduler,
   });
+  const automationMonitors = new AutomationMonitorService({
+    store,
+    providers: monitorProviders,
+    getWorkspaceRouter: () => workspaceRouter,
+    getChannelRuntime: (platform) =>
+      channelRuntimes.find((runtime) => runtime.platform === platform || platform.startsWith(`${runtime.platform}:`)),
+    eventBus: kernel.context.bus,
+    log: options.log,
+  });
 
   workspaceRouter.setSchedulerBridge({
     createJob: async ({ workspaceId, platform, route, name, schedule, scheduleDescription, message }) =>
@@ -363,11 +409,14 @@ export function bootstrapLocalCoreRuntime(options: {
     workspaceRouter,
     scheduler,
     scheduledJobs,
+    automationMonitors,
     async start() {
       await kernel.lifecycle.startAll();
       await scheduler.start();
+      await automationMonitors.start();
     },
     async stop() {
+      await automationMonitors.stop();
       await scheduler.stop();
       await kernel.lifecycle.stopAll();
       workspaceRouter.close();

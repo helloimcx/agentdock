@@ -107,6 +107,46 @@ export type LocalScheduledJobRunRow = {
   last_bridge_event_at: string | null;
 };
 
+export type LocalAutomationMonitorRow = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  source_type: string;
+  source_config_json: string;
+  condition_json: string;
+  prompt_template: string;
+  platform: string;
+  route_type: string;
+  route_config: string;
+  execution_mode: 'same-thread' | 'side-thread';
+  enabled: number;
+  cooldown_ms: number;
+  concurrency_policy: 'skip_if_running';
+  last_state_json: string | null;
+  created_at: string;
+  updated_at: string;
+  last_triggered_at: string | null;
+  last_status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | null;
+  last_error: string | null;
+};
+
+export type LocalAutomationMonitorRunRow = {
+  id: string;
+  monitor_id: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+  triggered_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  event_snapshot_json: string | null;
+  thread_id: string | null;
+  run_id: string | null;
+  delivery_mode: string | null;
+  delivery_status: string | null;
+  delivery_error: string | null;
+  last_bridge_event_at: string | null;
+};
+
 export type LocalWorkspaceRegistryRow = {
   id: string;
   display_name: string;

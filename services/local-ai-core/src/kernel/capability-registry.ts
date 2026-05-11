@@ -5,6 +5,7 @@ import type {
   CapabilitySnapshot,
   ChannelCapability,
   KnowledgeCapability,
+  MonitorCapability,
   SchedulerCapability,
   UiCapability,
 } from '../../../../packages/plugin-sdk/src/index.js';
@@ -14,6 +15,7 @@ export class LocalCoreCapabilityRegistry implements CapabilityRegistry {
   private readonly channels = new Map<string, ChannelCapability>();
   private readonly knowledge = new Map<string, KnowledgeCapability>();
   private readonly schedulers = new Map<string, SchedulerCapability>();
+  private readonly monitors = new Map<string, MonitorCapability>();
   private readonly ui = new Map<string, UiCapability>();
 
   registerAgent(capability: AgentCapability) {
@@ -32,6 +34,10 @@ export class LocalCoreCapabilityRegistry implements CapabilityRegistry {
     this.schedulers.set(capability.id, capability);
   }
 
+  registerMonitor(capability: MonitorCapability) {
+    this.monitors.set(capability.id, capability);
+  }
+
   registerUi(capability: UiCapability) {
     this.ui.set(capability.id, capability);
   }
@@ -48,6 +54,9 @@ export class LocalCoreCapabilityRegistry implements CapabilityRegistry {
     }
     for (const capability of contributions.schedulers || []) {
       this.registerScheduler(capability);
+    }
+    for (const capability of contributions.monitors || []) {
+      this.registerMonitor(capability);
     }
     for (const capability of contributions.ui || []) {
       this.registerUi(capability);
@@ -70,16 +79,22 @@ export class LocalCoreCapabilityRegistry implements CapabilityRegistry {
     return [...this.schedulers.values()];
   }
 
+  listMonitors() {
+    return [...this.monitors.values()];
+  }
+
   listUi() {
     return [...this.ui.values()];
   }
 
   snapshot(): CapabilitySnapshot {
+    const monitors = this.listMonitors();
     return {
       agents: this.listAgents(),
       channels: this.listChannels(),
       knowledge: this.listKnowledge(),
       schedulers: this.listSchedulers(),
+      ...(monitors.length > 0 ? { monitors } : {}),
       ui: this.listUi(),
     };
   }

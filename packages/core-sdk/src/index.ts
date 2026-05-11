@@ -29,6 +29,10 @@ import type {
   LocalCoreChannelQrCodeStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCoreEvent,
+  AutomationMonitor,
+  AutomationMonitorCreateInput,
+  AutomationMonitorRun,
+  AutomationMonitorUpdateInput,
   LocalCoreChannelPairingRequest,
   LocalCorePairingRequest,
   ScheduledJob,
@@ -130,6 +134,8 @@ function ensureEventSource() {
     'run.updated',
     'scheduler.job.updated',
     'scheduler.run.updated',
+    'automation.monitor.updated',
+    'automation.monitor.run.updated',
     'presence.updated',
     'stream.updated',
   ].forEach((eventName) => {
@@ -462,6 +468,35 @@ export async function runScheduledJob(jobId: string) {
 
 export async function listScheduledJobRuns(jobId: string) {
   return coreRequest<{ runs: ScheduledJobRun[] }>('GET', `/scheduler/jobs/${encodeURIComponent(jobId)}/runs`);
+}
+
+export async function listAutomationMonitors(workspaceId?: string) {
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  return coreRequest<{ monitors: AutomationMonitor[] }>('GET', `/automation/monitors${suffix}`);
+}
+
+export async function getAutomationMonitor(monitorId: string) {
+  return coreRequest<AutomationMonitor>('GET', `/automation/monitors/${encodeURIComponent(monitorId)}`);
+}
+
+export async function createAutomationMonitor(input: AutomationMonitorCreateInput) {
+  return coreRequest<AutomationMonitor>('POST', '/automation/monitors', input);
+}
+
+export async function updateAutomationMonitor(monitorId: string, input: AutomationMonitorUpdateInput) {
+  return coreRequest<AutomationMonitor>('PATCH', `/automation/monitors/${encodeURIComponent(monitorId)}`, input);
+}
+
+export async function deleteAutomationMonitor(monitorId: string) {
+  return coreRequest<{ deleted: boolean }>('DELETE', `/automation/monitors/${encodeURIComponent(monitorId)}`);
+}
+
+export async function runAutomationMonitor(monitorId: string) {
+  return coreRequest<AutomationMonitorRun>('POST', `/automation/monitors/${encodeURIComponent(monitorId)}/run`);
+}
+
+export async function listAutomationMonitorRuns(monitorId: string) {
+  return coreRequest<{ runs: AutomationMonitorRun[] }>('GET', `/automation/monitors/${encodeURIComponent(monitorId)}/runs`);
 }
 
 export async function listThreads(workspaceId: string) {

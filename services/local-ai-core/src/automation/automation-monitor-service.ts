@@ -1,0 +1,351 @@
+import type {
+  AutomationMonitor,
+  AutomationMonitorCreateInput,
+  AutomationMonitorEventSnapshot,
+  AutomationMonitorRun,
+  AutomationMonitorUpdateInput,
+  ScheduledJobRoute,
+} from '../../../../packages/contracts/src/index.js';
+import type { ChannelRuntime, EventBus, MonitorProviderRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { WorkspaceRouter } from '../router/workspace-router.js';
+import {
+  routeFromPlatformThreadBinding,
+  routeWithPlatformInstance,
+  scheduledJobMatchesPlatformBinding,
+  withoutThreadRoute,
+} from '../scheduler/scheduled-job-route.js';
+import { evaluateMonitorCondition } from './condition-evaluator.js';
+import { AutomationConversationExecutor } from './automation-conversation-executor.js';
+
+type AutomationMonitorServiceOptions = {
+  store: LocalCoreAcpStore;
+  providers: MonitorProviderRuntime[];
+  getWorkspaceRouter: () => WorkspaceRouter;
+  getChannelRuntime: (platform: string) => ChannelRuntime | undefined;
+  eventBus: EventBus;
+  log?: (message: string) => void;
+};
+
+type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
+  platform: NonNullable<AutomationMonitorCreateInput['platform']>;
+  route: NonNullable<AutomationMonitorCreateInput['route']>;
+};
+
+export class AutomationMonitorService {
+  private timer: NodeJS.Timeout | null = null;
+  private pollInFlight = false;
+  private readonly runningMonitors = new Set<string>();
+  private readonly providers = new Map<string, MonitorProviderRuntime>();
+  private readonly executor: AutomationConversationExecutor;
+
+  constructor(private readonly options: AutomationMonitorServiceOptions) {
+    for (const provider of options.providers) {
+      this.providers.set(provider.sourceType, provider);
+    }
+    this.executor = new AutomationConversationExecutor({
+      store: options.store,
+      getWorkspaceRouter: options.getWorkspaceRouter,
+      getChannelRuntime: options.getChannelRuntime,
+    });
+  }
+
+  async start() {
+    await this.tick();
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, 30_000);
+  }
+
+  async stop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  listMonitors(workspaceId?: string) {
+    return this.options.store.listAutomationMonitors(workspaceId);
+  }
+
+  getMonitor(monitorId: string) {
+    const resolvedMonitorId = this.resolveMonitorId(monitorId);
+    return resolvedMonitorId ? this.options.store.getAutomationMonitor(resolvedMonitorId) : undefined;
+  }
+
+  createMonitor(input: AutomationMonitorCreateInput) {
+    const resolved = this.resolveCreateInput(input);
+    const provider = this.providers.get(resolved.sourceType);
+    provider?.validateConfig?.(resolved.sourceConfig || {});
+    const monitor = this.options.store.createAutomationMonitor(resolved);
+    this.emitMonitor(monitor);
+    return monitor;
+  }
+
+  updateMonitor(monitorId: string, input: AutomationMonitorUpdateInput) {
+    const resolvedMonitorId = this.resolveRequiredMonitorId(monitorId);
+    const existing = this.options.store.getAutomationMonitor(resolvedMonitorId);
+    if (existing && input.sourceConfig) {
+      this.providers.get(existing.sourceType)?.validateConfig?.(input.sourceConfig);
+    }
+    const monitor = this.options.store.updateAutomationMonitor(resolvedMonitorId, {
+      ...input,
+      ...(input.route ? { route: withoutThreadRoute(input.route) } : {}),
+    });
+    this.emitMonitor(monitor);
+    return monitor;
+  }
+
+  deleteMonitor(monitorId: string) {
+    return this.options.store.deleteAutomationMonitor(this.resolveRequiredMonitorId(monitorId));
+  }
+
+  listRuns(monitorId: string) {
+    return this.options.store.listAutomationMonitorRuns(this.resolveRequiredMonitorId(monitorId));
+  }
+
+  async runMonitorNow(monitorId: string, event?: AutomationMonitorEventSnapshot) {
+    const monitor = this.getRequiredMonitor(monitorId);
+    const snapshot = event || await this.pollMonitor(monitor, true);
+    if (!snapshot) {
+      const skipped = this.markSkipped(monitor, new Date().toISOString(), 'No event snapshot is available for this monitor.');
+      this.emitRun(skipped);
+      return skipped;
+    }
+    return this.executeMonitor(monitor, snapshot, true);
+  }
+
+  listMonitorsForThread(threadId: string): AutomationMonitor[] {
+    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+    return this.options.store
+      .listAutomationMonitors()
+      .filter((monitor) =>
+        monitor.route.threadId === threadId ||
+        (binding ? scheduledJobMatchesPlatformBinding({
+          id: monitor.id,
+          workspaceId: monitor.workspaceId,
+          platform: monitor.platform,
+          route: monitor.route,
+          executionMode: monitor.executionMode,
+          triggerType: 'once',
+          promptTemplate: monitor.promptTemplate,
+          description: monitor.title,
+          enabled: monitor.enabled,
+          concurrencyPolicy: monitor.concurrencyPolicy,
+          createdAt: monitor.createdAt,
+          updatedAt: monitor.updatedAt,
+        }, binding) : false)
+      );
+  }
+
+  private async tick() {
+    if (this.pollInFlight) {
+      return;
+    }
+    this.pollInFlight = true;
+    try {
+      for (const monitor of this.options.store.listAutomationMonitors().filter((candidate) => candidate.enabled)) {
+        const event = await this.pollMonitor(monitor, false);
+        if (!event) {
+          continue;
+        }
+        if (!evaluateMonitorCondition(monitor.condition, event)) {
+          this.options.store.updateAutomationMonitorState(monitor.id, {
+            lastState: this.stateFromEvent(event, monitor.lastState),
+          });
+          continue;
+        }
+        if (this.isCoolingDown(monitor, event.occurredAt)) {
+          continue;
+        }
+        void this.executeMonitor(monitor, event, false);
+      }
+    } finally {
+      this.pollInFlight = false;
+    }
+  }
+
+  private async pollMonitor(monitor: AutomationMonitor, manual: boolean) {
+    const provider = this.providers.get(monitor.sourceType);
+    if (!provider?.poll) {
+      if (manual) {
+        throw new Error(`No polling provider is available for monitor source "${monitor.sourceType}"`);
+      }
+      return null;
+    }
+    return provider.poll({
+      monitorId: monitor.id,
+      workspaceId: monitor.workspaceId,
+      sourceConfig: monitor.sourceConfig,
+      lastState: monitor.lastState,
+    });
+  }
+
+  private async executeMonitor(monitor: AutomationMonitor, event: AutomationMonitorEventSnapshot, manual: boolean) {
+    if (this.runningMonitors.has(monitor.id)) {
+      const skipped = this.markSkipped(monitor, event.occurredAt, 'Skipped because the previous monitor run is still active.', event);
+      this.emitRun(skipped);
+      return skipped;
+    }
+    this.runningMonitors.add(monitor.id);
+    const run = this.options.store.createAutomationMonitorRun(monitor.id, 'queued', {
+      triggeredAt: event.occurredAt,
+      eventSnapshot: event,
+      deliveryStatus: 'pending',
+    });
+    this.emitRun(run);
+    try {
+      const running = this.options.store.updateAutomationMonitorRun(run.id, {
+        status: 'running',
+        startedAt: new Date().toISOString(),
+      });
+      this.emitRun(running);
+      const result = await this.executor.execute(monitor, event);
+      const succeeded = this.options.store.updateAutomationMonitorRun(run.id, {
+        status: 'succeeded',
+        finishedAt: new Date().toISOString(),
+        threadId: result.threadId,
+        runId: result.runId,
+        deliveryMode: result.deliveryMode,
+        deliveryStatus: result.deliveryStatus || 'succeeded',
+        deliveryError: result.deliveryError || '',
+        lastBridgeEventAt: result.lastBridgeEventAt,
+        error: '',
+      });
+      this.options.store.updateAutomationMonitorState(monitor.id, {
+        lastState: this.stateFromEvent(event, monitor.lastState),
+        lastTriggeredAt: event.occurredAt,
+        lastStatus: 'succeeded',
+        lastError: '',
+      });
+      this.emitRun(succeeded);
+      const nextMonitor = this.options.store.getAutomationMonitor(monitor.id);
+      if (nextMonitor) this.emitMonitor(nextMonitor);
+      return succeeded;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failed = this.options.store.updateAutomationMonitorRun(run.id, {
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        error: message,
+        deliveryStatus: 'failed',
+        deliveryError: message,
+      });
+      this.options.store.updateAutomationMonitorState(monitor.id, {
+        lastState: this.stateFromEvent(event, monitor.lastState),
+        lastTriggeredAt: event.occurredAt,
+        lastStatus: 'failed',
+        lastError: message,
+      });
+      this.emitRun(failed);
+      const nextMonitor = this.options.store.getAutomationMonitor(monitor.id);
+      if (nextMonitor) this.emitMonitor(nextMonitor);
+      this.options.log?.(`automation monitor failed ${monitor.id}: ${message}`);
+      return failed;
+    } finally {
+      this.runningMonitors.delete(monitor.id);
+    }
+  }
+
+  private markSkipped(monitor: AutomationMonitor, triggeredAt: string, error: string, eventSnapshot?: AutomationMonitorEventSnapshot) {
+    return this.options.store.createAutomationMonitorRun(monitor.id, 'skipped', {
+      triggeredAt,
+      error,
+      eventSnapshot,
+      deliveryStatus: 'skipped',
+      deliveryError: error,
+    });
+  }
+
+  private stateFromEvent(event: AutomationMonitorEventSnapshot, previous?: Record<string, unknown>) {
+    return {
+      ...(previous || {}),
+      lastEventId: event.id,
+      lastEventAt: event.occurredAt,
+      latestPrice: event.payload.latestPrice ?? previous?.latestPrice,
+      previousPrice: event.payload.previousPrice ?? previous?.previousPrice,
+      payload: event.payload,
+    };
+  }
+
+  private isCoolingDown(monitor: AutomationMonitor, occurredAt: string) {
+    if (!monitor.lastTriggeredAt || monitor.cooldownMs <= 0) {
+      return false;
+    }
+    return Date.parse(occurredAt) - Date.parse(monitor.lastTriggeredAt) < monitor.cooldownMs;
+  }
+
+  private resolveCreateInput(input: AutomationMonitorCreateInput): ResolvedAutomationMonitorCreateInput {
+    if (input.platform && input.route) {
+      return {
+        ...input,
+        route: routeWithPlatformInstance(withoutThreadRoute(input.route), input.platform),
+      } as ResolvedAutomationMonitorCreateInput;
+    }
+    const threadId = String(input.threadId || input.route?.threadId || '').trim();
+    if (threadId) {
+      const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+      if (binding && binding.workspace_id === input.workspaceId) {
+        return {
+          ...input,
+          platform: binding.platform,
+          route: routeFromPlatformThreadBinding(binding),
+        };
+      }
+    }
+    return {
+      ...input,
+      platform: 'local',
+      route: {
+        type: 'local.thread',
+        channelId: input.workspaceId,
+      } satisfies ScheduledJobRoute,
+    };
+  }
+
+  private getRequiredMonitor(monitorId: string) {
+    const monitor = this.getMonitor(monitorId);
+    if (!monitor) {
+      throw new Error(`Automation monitor not found: ${monitorId}`);
+    }
+    return monitor;
+  }
+
+  private resolveMonitorId(monitorId: string) {
+    if (this.options.store.getAutomationMonitor(monitorId)) {
+      return monitorId;
+    }
+    const matches = this.options.store
+      .listAutomationMonitors()
+      .filter((monitor) => publicMonitorId(monitor.id) === monitorId);
+    if (matches.length === 0) {
+      return '';
+    }
+    if (matches.length > 1) {
+      throw new Error(`Automation monitor id is ambiguous: ${monitorId}`);
+    }
+    return matches[0]!.id;
+  }
+
+  private resolveRequiredMonitorId(monitorId: string) {
+    const resolved = this.resolveMonitorId(monitorId);
+    if (!resolved) {
+      throw new Error(`Automation monitor not found: ${monitorId}`);
+    }
+    return resolved;
+  }
+
+  private emitMonitor(monitor: AutomationMonitor) {
+    this.options.eventBus.emit({ type: 'automation.monitor.updated', payload: monitor });
+  }
+
+  private emitRun(run: AutomationMonitorRun) {
+    this.options.eventBus.emit({ type: 'automation.monitor.run.updated', payload: run });
+  }
+}
+
+function publicMonitorId(monitorId: string) {
+  const normalized = monitorId.startsWith('monitor:') ? monitorId.slice('monitor:'.length) : monitorId;
+  return normalized.includes('-') ? normalized.split('-')[0] || normalized : normalized;
+}
+

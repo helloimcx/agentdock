@@ -24,6 +24,10 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCorePairingRequest,
+  AutomationMonitor,
+  AutomationMonitorCreateInput,
+  AutomationMonitorRun,
+  AutomationMonitorUpdateInput,
   ScheduledJob,
   ScheduledJobCreateInput,
   ScheduledJobRun,
@@ -70,6 +74,7 @@ import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeB
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
+import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 
@@ -79,6 +84,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly knowledgeProvider: KnowledgeRuntime;
   private readonly channelRuntimes: Map<string, ChannelRuntime>;
   private readonly scheduledJobs: ScheduledJobApplicationService;
+  private readonly automationMonitors: AutomationMonitorService;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly runtimeDetection: RuntimeDetectionService;
@@ -105,6 +111,15 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       runtimeChannels.filter(Boolean).map((runtime) => [runtime.platform, runtime]),
     );
     this.scheduledJobs = this.runtime.scheduledJobs;
+    this.automationMonitors = this.runtime.automationMonitors || {
+      listMonitors: () => [],
+      getMonitor: () => undefined,
+      createMonitor: () => { throw new Error('Automation monitor service is not available.'); },
+      updateMonitor: () => { throw new Error('Automation monitor service is not available.'); },
+      deleteMonitor: () => ({ deleted: false }),
+      runMonitorNow: async () => { throw new Error('Automation monitor service is not available.'); },
+      listRuns: () => [],
+    } as unknown as AutomationMonitorService;
     this.runtimeDetection = new RuntimeDetectionService({
       userDataPath,
       readConfig: async () => (await this.readConfigFile()).parsed,
@@ -121,6 +136,12 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       }),
       this.kernel.context.bus.on('scheduler.run.updated', (run) => {
         this.emit('scheduler-run', run);
+      }),
+      this.kernel.context.bus.on('automation.monitor.updated', (monitor) => {
+        this.emit('automation-monitor', monitor);
+      }),
+      this.kernel.context.bus.on('automation.monitor.run.updated', (run) => {
+        this.emit('automation-monitor-run', run);
       }),
       this.kernel.context.bus.on('runtime.state.changed', () => {
         void this.emitRuntime();
@@ -321,6 +342,38 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async listScheduledJobRuns(jobId: string): Promise<ScheduledJobRun[]> {
     return this.scheduledJobs.listJobRuns(jobId);
+  }
+
+  async listAutomationMonitors(workspaceId?: string): Promise<AutomationMonitor[]> {
+    return this.automationMonitors.listMonitors(workspaceId);
+  }
+
+  async getAutomationMonitor(monitorId: string): Promise<AutomationMonitor> {
+    const monitor = this.automationMonitors.getMonitor(monitorId);
+    if (!monitor) {
+      throw new Error(`Automation monitor not found: ${monitorId}`);
+    }
+    return monitor;
+  }
+
+  async createAutomationMonitor(input: AutomationMonitorCreateInput): Promise<AutomationMonitor> {
+    return this.automationMonitors.createMonitor(input);
+  }
+
+  async updateAutomationMonitor(monitorId: string, input: AutomationMonitorUpdateInput): Promise<AutomationMonitor> {
+    return this.automationMonitors.updateMonitor(monitorId, input);
+  }
+
+  async deleteAutomationMonitor(monitorId: string) {
+    return this.automationMonitors.deleteMonitor(monitorId);
+  }
+
+  async runAutomationMonitor(monitorId: string): Promise<AutomationMonitorRun> {
+    return this.automationMonitors.runMonitorNow(monitorId);
+  }
+
+  async listAutomationMonitorRuns(monitorId: string): Promise<AutomationMonitorRun[]> {
+    return this.automationMonitors.listRuns(monitorId);
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {

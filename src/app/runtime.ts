@@ -57,6 +57,10 @@ function hasEnabledScheduler(snapshot: LocalCoreCapabilitySnapshot | null) {
   return Boolean(snapshot?.schedulers.some((capability) => capability.enabled !== false));
 }
 
+function hasEnabledMonitor(snapshot: LocalCoreCapabilitySnapshot | null) {
+  return Boolean(snapshot?.monitors?.some((capability) => capability.enabled !== false));
+}
+
 function hasAgent(snapshot: LocalCoreCapabilitySnapshot | null, agentType: string) {
   return Boolean(snapshot?.agents.some((capability) => capability.agentType === agentType));
 }
@@ -75,6 +79,7 @@ export function getRuntimeFeatureSupport(snapshot = getRuntimeCapabilitySnapshot
     desktopWorkspace: managedRuntime ? hasAnyAgent(snapshot) : true,
     knowledgeModule: managedRuntime ? hasEnabledKnowledge(snapshot) : true,
     schedulerModule: managedRuntime ? hasEnabledScheduler(snapshot) : true,
+    monitorModule: managedRuntime ? hasEnabledMonitor(snapshot) : true,
   };
 }
 

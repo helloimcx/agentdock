@@ -28,6 +28,10 @@ import type {
   LocalCorePairingRequest,
   LocalCoreLarkQrCodeStatus,
   LocalCoreEvent,
+  AutomationMonitor,
+  AutomationMonitorCreateInput,
+  AutomationMonitorRun,
+  AutomationMonitorUpdateInput,
   ScheduledJob,
   ScheduledJobCreateInput,
   ScheduledJobRun,
@@ -107,6 +111,13 @@ export interface LocalAiCoreBindings extends EventEmitter {
   deleteScheduledJob(jobId: string): Promise<{ deleted: boolean }>;
   runScheduledJob(jobId: string): Promise<ScheduledJobRun>;
   listScheduledJobRuns(jobId: string): Promise<ScheduledJobRun[]>;
+  listAutomationMonitors(workspaceId?: string): Promise<AutomationMonitor[]>;
+  getAutomationMonitor(monitorId: string): Promise<AutomationMonitor>;
+  createAutomationMonitor(input: AutomationMonitorCreateInput): Promise<AutomationMonitor>;
+  updateAutomationMonitor(monitorId: string, input: AutomationMonitorUpdateInput): Promise<AutomationMonitor>;
+  deleteAutomationMonitor(monitorId: string): Promise<{ deleted: boolean }>;
+  runAutomationMonitor(monitorId: string): Promise<AutomationMonitorRun>;
+  listAutomationMonitorRuns(monitorId: string): Promise<AutomationMonitorRun[]>;
   listThreads(workspaceId: string): Promise<ThreadSummary[]>;
   createThread(workspaceId: string, title?: string): Promise<ThreadDetail>;
   getThread(threadId: string): Promise<ThreadDetail>;
@@ -247,6 +258,12 @@ export class LocalAiCoreServer {
     });
     this.bindings.on('scheduler-run', (run: ScheduledJobRun) => {
       this.broadcast({ type: 'scheduler.run.updated', run });
+    });
+    this.bindings.on('automation-monitor', (monitor: AutomationMonitor) => {
+      this.broadcast({ type: 'automation.monitor.updated', monitor });
+    });
+    this.bindings.on('automation-monitor-run', (run: AutomationMonitorRun) => {
+      this.broadcast({ type: 'automation.monitor.run.updated', run });
     });
     this.bindings.on('runtime-detection', (event: LocalCoreEvent) => {
       this.broadcast(event);
@@ -410,6 +427,33 @@ export class LocalAiCoreServer {
       }
       case 'scheduler.job.delete':
         json(res, 200, await this.bindings.deleteScheduledJob(route.jobId));
+        return;
+      case 'automation.monitors.list': {
+        const workspaceId = String(url.searchParams.get('workspace_id') || '');
+        json(res, 200, { monitors: await this.bindings.listAutomationMonitors(workspaceId || undefined) });
+        return;
+      }
+      case 'automation.monitors.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createAutomationMonitor(body as unknown as AutomationMonitorCreateInput));
+        return;
+      }
+      case 'automation.monitor.get':
+        json(res, 200, await this.bindings.getAutomationMonitor(route.monitorId));
+        return;
+      case 'automation.monitor.runs':
+        json(res, 200, { runs: await this.bindings.listAutomationMonitorRuns(route.monitorId) });
+        return;
+      case 'automation.monitor.run':
+        json(res, 200, await this.bindings.runAutomationMonitor(route.monitorId));
+        return;
+      case 'automation.monitor.update': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateAutomationMonitor(route.monitorId, body as unknown as AutomationMonitorUpdateInput));
+        return;
+      }
+      case 'automation.monitor.delete':
+        json(res, 200, await this.bindings.deleteAutomationMonitor(route.monitorId));
         return;
       case 'threads.list': {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');

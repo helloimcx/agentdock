@@ -1,8 +1,17 @@
 import process from 'node:process';
-import type { ScheduledJob, ScheduledJobRun, ScheduledJobUpdateInput } from '../../../../packages/contracts/src/index.js';
-import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
+import type {
+  AutomationMonitor,
+  AutomationMonitorCondition,
+  AutomationMonitorRun,
+  AutomationMonitorUpdateInput,
+  ScheduledJob,
+  ScheduledJobRun,
+  ScheduledJobUpdateInput,
+} from '../../../../packages/contracts/src/index.js';
+import { normalizeAutomationMonitorConditionOperator, normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
+import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -43,6 +52,26 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
           return 2;
       }
     }
+    if (domain === 'monitor') {
+      switch (action) {
+        case 'add':
+          return await handleMonitorAdd(flags, env, io, json);
+        case 'list':
+          return await handleMonitorList(flags, env, io, json);
+        case 'info':
+          return await handleMonitorInfo(maybeId, flags, env, io, json);
+        case 'edit':
+          return await handleMonitorEdit(maybeId, flags, env, io, json);
+        case 'del':
+        case 'delete':
+          return await handleMonitorDelete(maybeId, flags, env, io, json);
+        case 'run':
+          return await handleMonitorRun(maybeId, flags, env, io, json);
+        default:
+          printUsage(io.stderr);
+          return 2;
+      }
+    }
     if (domain !== 'scheduler') {
       printUsage(io.stderr);
       return 2;
@@ -69,6 +98,110 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
     io.stderr.write(`${formatError(error)}\n`);
     return 1;
   }
+}
+
+async function handleMonitorAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = resolveContext(flags, env);
+  if (!context.workspaceId) {
+    throw new Error('monitor add requires a workspace context. Set LOCAL_AI_WORKSPACE_ID or pass --workspace.');
+  }
+  const title = getRequiredFlag(flags, 'title');
+  const sourceType = getRequiredFlag(flags, 'source');
+  const promptTemplate = getRequiredFlag(flags, 'message');
+  const condition = parseCondition(getRequiredFlag(flags, 'condition'));
+  const sourceConfig = buildSourceConfig(sourceType, flags);
+  const monitor = await request<AutomationMonitor>(context.baseUrl, 'POST', '/automation/monitors', {
+    workspaceId: context.workspaceId,
+    ...(context.threadId ? { threadId: context.threadId } : {}),
+    title,
+    sourceType,
+    sourceConfig,
+    condition,
+    promptTemplate,
+    executionMode: getMonitorExecutionMode(flags),
+    cooldownMs: parseDurationMs(getFlag(flags, 'cooldown') || '15m'),
+    enabled: true,
+  });
+  print(json, io.stdout, presentMonitor(monitor), [
+    `Created monitor ${toPublicAutomationMonitorId(monitor.id)}`,
+    `Title: ${monitor.title}`,
+    `Source: ${monitor.sourceType}`,
+    `Condition: ${formatCondition(monitor.condition)}`,
+    `Execution mode: ${monitor.executionMode}`,
+  ].join('\n'));
+  return 0;
+}
+
+async function handleMonitorList(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = resolveContext(flags, env);
+  const workspaceId = getFlag(flags, 'workspace') || context.workspaceId;
+  const threadId = flags.has('thread')
+    ? normalizeMaybeBooleanFlag(getFlag(flags, 'thread')) || context.threadId
+    : '';
+  const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+  const response = await request<{ monitors: AutomationMonitor[] }>(context.baseUrl, 'GET', `/automation/monitors${suffix}`);
+  const monitors = threadId
+    ? response.monitors.filter((monitor) => monitor.route.threadId === threadId || monitorMatchesCliContext(monitor, context))
+    : response.monitors;
+  print(json, io.stdout, { monitors: monitors.map(presentMonitor) }, monitors.length === 0 ? 'No monitors.' : monitors.map(formatMonitorLine).join('\n'));
+  return 0;
+}
+
+async function handleMonitorInfo(monitorId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!monitorId) {
+    throw new Error('monitor info requires a monitor id.');
+  }
+  const context = resolveContext(flags, env);
+  const monitor = await request<AutomationMonitor>(context.baseUrl, 'GET', `/automation/monitors/${encodeURIComponent(monitorId)}`);
+  const runs = await request<{ runs: AutomationMonitorRun[] }>(context.baseUrl, 'GET', `/automation/monitors/${encodeURIComponent(monitorId)}/runs`);
+  print(json, io.stdout, { monitor: presentMonitor(monitor), runs: runs.runs }, formatMonitorDetails(monitor, runs.runs[0]));
+  return 0;
+}
+
+async function handleMonitorEdit(monitorId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!monitorId) {
+    throw new Error('monitor edit requires a monitor id.');
+  }
+  const input: AutomationMonitorUpdateInput = {};
+  const title = getFlag(flags, 'title');
+  const promptTemplate = getFlag(flags, 'message');
+  const condition = getFlag(flags, 'condition');
+  const enabled = getOptionalBooleanFlag(flags, 'enabled');
+  const executionMode = getFlag(flags, 'execution-mode');
+  const cooldown = getFlag(flags, 'cooldown');
+  if (title) input.title = title;
+  if (typeof promptTemplate === 'string' && promptTemplate) input.promptTemplate = promptTemplate;
+  if (condition) input.condition = parseCondition(condition);
+  if (typeof enabled === 'boolean') input.enabled = enabled;
+  if (executionMode) input.executionMode = normalizeScheduledJobExecutionMode(executionMode);
+  if (cooldown) input.cooldownMs = parseDurationMs(cooldown);
+  if (Object.keys(input).length === 0) {
+    throw new Error('monitor edit requires at least one editable field.');
+  }
+  const context = resolveContext(flags, env);
+  const monitor = await request<AutomationMonitor>(context.baseUrl, 'PATCH', `/automation/monitors/${encodeURIComponent(monitorId)}`, input);
+  print(json, io.stdout, presentMonitor(monitor), `Updated monitor ${toPublicAutomationMonitorId(monitor.id)}`);
+  return 0;
+}
+
+async function handleMonitorDelete(monitorId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!monitorId) {
+    throw new Error('monitor del requires a monitor id.');
+  }
+  const context = resolveContext(flags, env);
+  const result = await request<{ deleted: boolean }>(context.baseUrl, 'DELETE', `/automation/monitors/${encodeURIComponent(monitorId)}`);
+  print(json, io.stdout, result, `Deleted monitor ${monitorId}`);
+  return 0;
+}
+
+async function handleMonitorRun(monitorId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!monitorId) {
+    throw new Error('monitor run requires a monitor id.');
+  }
+  const context = resolveContext(flags, env);
+  const run = await request<AutomationMonitorRun>(context.baseUrl, 'POST', `/automation/monitors/${encodeURIComponent(monitorId)}/run`);
+  print(json, io.stdout, run, `Triggered monitor ${monitorId}: ${run.status}`);
+  return 0;
 }
 
 async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
@@ -334,6 +467,49 @@ function getExecutionMode(flags: Map<string, string[]>) {
   return normalizeScheduledJobExecutionMode(getFlag(flags, 'execution-mode'));
 }
 
+function getMonitorExecutionMode(flags: Map<string, string[]>) {
+  return normalizeScheduledJobExecutionMode(getFlag(flags, 'execution-mode') || 'side-thread');
+}
+
+function buildSourceConfig(sourceType: string, flags: Map<string, string[]>) {
+  const config: Record<string, unknown> = {};
+  if (sourceType === 'stock.quote') {
+    config.symbol = getRequiredFlag(flags, 'symbol').toUpperCase();
+    const price = getFlag(flags, 'price');
+    if (price) config.price = Number(price);
+  }
+  const rawConfig = getFlag(flags, 'source-config');
+  if (rawConfig) {
+    return { ...config, ...JSON.parse(rawConfig) as Record<string, unknown> };
+  }
+  return config;
+}
+
+function parseCondition(value: string): AutomationMonitorCondition {
+  const match = String(value || '').trim().match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
+  if (!match) {
+    throw new Error('Monitor condition must look like "change_percent >= 3".');
+  }
+  const rawValue = String(match[3] || '').trim();
+  const numeric = Number(rawValue);
+  return {
+    metric: String(match[1] || '').trim(),
+    operator: normalizeAutomationMonitorConditionOperator(match[2]),
+    value: Number.isFinite(numeric) && rawValue !== '' ? numeric : rawValue,
+  };
+}
+
+function parseDurationMs(value: string) {
+  const match = String(value || '').trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/i);
+  if (!match) {
+    throw new Error('Duration must be a number with optional ms, s, m, or h suffix.');
+  }
+  const amount = Number(match[1]);
+  const unit = String(match[2] || 'ms').toLowerCase();
+  const multiplier = unit === 'h' ? 60 * 60 * 1000 : unit === 'm' ? 60 * 1000 : unit === 's' ? 1000 : 1;
+  return Math.round(amount * multiplier);
+}
+
 function print(asJson: boolean, output: Pick<NodeJS.WriteStream, 'write'>, payload: unknown, text: string) {
   output.write(asJson ? `${JSON.stringify(payload, null, 2)}\n` : `${text}\n`);
 }
@@ -347,6 +523,12 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler del <job-id> [--json]',
     '  lac scheduler run <job-id> [--json]',
+    '  lac monitor add --title "<title>" --source stock.quote --symbol <symbol> --condition "change_percent >= 3" --message "<text>" [--cooldown 15m] [--execution-mode same-thread|side-thread] [--json]',
+    '  lac monitor list [--workspace <id>] [--thread [<id>]] [--json]',
+    '  lac monitor info <monitor-id> [--json]',
+    '  lac monitor edit <monitor-id> [--title "<title>"] [--condition "<expr>"] [--message "<text>"] [--enabled true|false] [--cooldown 15m] [--execution-mode same-thread|side-thread] [--json]',
+    '  lac monitor del <monitor-id> [--json]',
+    '  lac monitor run <monitor-id> [--json]',
     '  lac channel send-file --path "<file>" [--target <chat-or-user-id>] [--workspace <id>] [--workspace-path <path>] [--platform lark] [--name <filename>] [--json]',
   ].join('\n') + '\n');
 }
@@ -376,6 +558,55 @@ function presentJob(job: ScheduledJob): ScheduledJob {
     ...job,
     id: toPublicScheduledJobId(job.id),
   };
+}
+
+function formatMonitorLine(monitor: AutomationMonitor) {
+  return `${toPublicAutomationMonitorId(monitor.id)} | ${monitor.enabled ? 'enabled' : 'disabled'} | ${monitor.executionMode} | ${monitor.sourceType} | ${formatCondition(monitor.condition)} | ${monitor.title}`;
+}
+
+function formatMonitorDetails(monitor: AutomationMonitor, latestRun?: AutomationMonitorRun) {
+  return [
+    `Monitor: ${toPublicAutomationMonitorId(monitor.id)}`,
+    `Title: ${monitor.title}`,
+    `Workspace: ${monitor.workspaceId}`,
+    `Platform: ${monitor.platform}`,
+    `Thread: ${monitor.route.threadId || ''}`,
+    `Execution mode: ${monitor.executionMode}`,
+    `Source: ${monitor.sourceType}`,
+    `Condition: ${formatCondition(monitor.condition)}`,
+    `Cooldown: ${monitor.cooldownMs}ms`,
+    `Enabled: ${monitor.enabled ? 'true' : 'false'}`,
+    `Message: ${monitor.promptTemplate}`,
+    latestRun ? `Latest run: ${latestRun.status} @ ${latestRun.triggeredAt}` : 'Latest run: none',
+  ].join('\n');
+}
+
+function formatCondition(condition: AutomationMonitorCondition) {
+  return `${condition.metric} ${condition.operator} ${condition.value}`;
+}
+
+function presentMonitor(monitor: AutomationMonitor): AutomationMonitor {
+  return {
+    ...monitor,
+    id: toPublicAutomationMonitorId(monitor.id),
+  };
+}
+
+function monitorMatchesCliContext(monitor: AutomationMonitor, context: CliContext) {
+  return scheduledJobMatchesCliContext({
+    id: monitor.id,
+    workspaceId: monitor.workspaceId,
+    platform: monitor.platform,
+    route: monitor.route,
+    executionMode: monitor.executionMode,
+    triggerType: 'once',
+    promptTemplate: monitor.promptTemplate,
+    description: monitor.title,
+    enabled: monitor.enabled,
+    concurrencyPolicy: monitor.concurrencyPolicy,
+    createdAt: monitor.createdAt,
+    updatedAt: monitor.updatedAt,
+  }, context);
 }
 
 function formatError(error: unknown) {

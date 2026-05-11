@@ -9,6 +9,7 @@
     "projects": "项目",
     "sessions": "会话",
     "cron": "定时任务",
+    "monitors": "监控任务",
     "bridge": "桥接",
     "system": "系统"
   },
@@ -116,6 +117,19 @@
     "workDir": "工作目录",
     "sessionKey": "会话键",
     "project": "项目"
+  },
+  "monitors": {
+    "title": "监控任务",
+    "prompt": "提示词",
+    "condition": "触发条件",
+    "cooldown": "冷却时间（分钟）",
+    "enabled": "已启用",
+    "lastRun": "上次触发",
+    "add": "添加监控",
+    "edit": "编辑监控",
+    "run": "立即执行",
+    "noMonitors": "暂无监控任务",
+    "monitorTitle": "标题"
   },
   "heartbeat": {
     "title": "心跳",

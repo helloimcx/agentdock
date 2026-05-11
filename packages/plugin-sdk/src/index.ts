@@ -1,4 +1,4 @@
-export type PluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'ui' | 'composite';
+export type PluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'monitor' | 'ui' | 'composite';
 
 export type PluginHealthStatus = 'healthy' | 'degraded' | 'failed';
 
@@ -178,6 +178,40 @@ export interface SchedulerCapability {
   displayName?: string;
 }
 
+export interface MonitorCapability {
+  id: string;
+  sourceTypes: string[];
+  modes?: Array<'poll' | 'subscribe'>;
+  enabled?: boolean;
+  displayName?: string;
+}
+
+export type MonitorEvent = import('../../contracts/src/index.js').AutomationMonitorEventSnapshot;
+
+export interface MonitorProviderHandle {
+  stop(): Promise<void> | void;
+  getState?(): Record<string, unknown>;
+}
+
+export interface MonitorProviderRuntime {
+  readonly sourceType: string;
+  readonly modes: Array<'poll' | 'subscribe'>;
+  validateConfig?(config: Record<string, unknown>): void;
+  poll?(input: {
+    monitorId: string;
+    workspaceId: string;
+    sourceConfig: Record<string, unknown>;
+    lastState?: Record<string, unknown>;
+  }): Promise<MonitorEvent | null> | MonitorEvent | null;
+  startMonitor?(input: {
+    monitorId: string;
+    workspaceId: string;
+    sourceConfig: Record<string, unknown>;
+    lastState?: Record<string, unknown>;
+    emit: (event: MonitorEvent) => void | Promise<void>;
+  }): Promise<MonitorProviderHandle> | MonitorProviderHandle;
+}
+
 export interface SchedulerExecutionContext {
   job: import('../../contracts/src/index.js').ScheduledJob;
   triggeredAt: string;
@@ -262,6 +296,7 @@ export interface CapabilitySnapshot {
   channels: ChannelCapability[];
   knowledge: KnowledgeCapability[];
   schedulers: SchedulerCapability[];
+  monitors?: MonitorCapability[];
   ui: UiCapability[];
 }
 
@@ -270,6 +305,7 @@ export interface CapabilityContributionMap {
   channels?: ChannelCapability[];
   knowledge?: KnowledgeCapability[];
   schedulers?: SchedulerCapability[];
+  monitors?: MonitorCapability[];
   ui?: UiCapability[];
 }
 
@@ -278,12 +314,14 @@ export interface CapabilityRegistry {
   registerChannel(capability: ChannelCapability): void;
   registerKnowledge(capability: KnowledgeCapability): void;
   registerScheduler(capability: SchedulerCapability): void;
+  registerMonitor?(capability: MonitorCapability): void;
   registerUi(capability: UiCapability): void;
   registerContributions(contributions: CapabilityContributionMap): void;
   listAgents(): AgentCapability[];
   listChannels(): ChannelCapability[];
   listKnowledge(): KnowledgeCapability[];
   listSchedulers(): SchedulerCapability[];
+  listMonitors?(): MonitorCapability[];
   listUi(): UiCapability[];
   snapshot(): CapabilitySnapshot;
 }
@@ -334,6 +372,8 @@ export interface DomainEventPayloadMap {
   };
   'scheduler.job.updated': import('../../contracts/src/index.js').ScheduledJob;
   'scheduler.run.updated': import('../../contracts/src/index.js').ScheduledJobRun;
+  'automation.monitor.updated': import('../../contracts/src/index.js').AutomationMonitor;
+  'automation.monitor.run.updated': import('../../contracts/src/index.js').AutomationMonitorRun;
   'runtime.state.changed': {
     reason: 'config' | 'settings' | 'channel-bindings' | 'bootstrap' | 'unknown';
   };
@@ -429,4 +469,15 @@ export interface SchedulerPlugin extends RuntimePlugin {
     kind: 'scheduler' | 'composite';
   };
   createRuntime?(ctx: PluginContext): Promise<SchedulerRuntimeRegistration> | SchedulerRuntimeRegistration;
+}
+
+export interface MonitorRuntimeRegistration {
+  providers?: MonitorProviderRuntime[];
+}
+
+export interface MonitorPlugin extends RuntimePlugin {
+  manifest: PluginManifest & {
+    kind: 'monitor' | 'composite';
+  };
+  createRuntime?(ctx: PluginContext): Promise<MonitorRuntimeRegistration> | MonitorRuntimeRegistration;
 }

@@ -9,6 +9,7 @@
     "projects": "Projects",
     "sessions": "Sessions",
     "cron": "Cron",
+    "monitors": "Monitors",
     "bridge": "Bridge",
     "system": "System"
   },
@@ -116,6 +117,19 @@
     "workDir": "Working directory",
     "sessionKey": "Session key",
     "project": "Project"
+  },
+  "monitors": {
+    "title": "Monitors",
+    "prompt": "Prompt",
+    "condition": "Condition",
+    "cooldown": "Cooldown (minutes)",
+    "enabled": "Enabled",
+    "lastRun": "Last trigger",
+    "add": "Add monitor",
+    "edit": "Edit monitor",
+    "run": "Run now",
+    "noMonitors": "No monitors",
+    "monitorTitle": "Title"
   },
   "heartbeat": {
     "title": "Heartbeat",

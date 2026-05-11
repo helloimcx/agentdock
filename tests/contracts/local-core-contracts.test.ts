@@ -8,6 +8,8 @@ import {
   normalizeAgentTaskStatus,
   normalizeRunStatus,
   normalizeScheduledJobRunStatus,
+  normalizeAutomationMonitorConditionOperator,
+  normalizeAutomationMonitorStatus,
   normalizeChannelContentPartType,
   normalizeApprovalRequestStatus,
 } from '../../packages/contracts/src/index.js';
@@ -80,6 +82,20 @@ test('scheduled job run status normalization accepts canonical aliases', () => {
   assert.equal(normalizeScheduledJobRunStatus(undefined), 'queued');
   assert.equal(normalizeScheduledJobRunStatus('complete'), 'succeeded');
   assert.equal(normalizeScheduledJobRunStatus('cancelled'), 'skipped');
+});
+
+test('automation monitor status normalization accepts canonical aliases', () => {
+  assert.equal(normalizeAutomationMonitorStatus(undefined), 'queued');
+  assert.equal(normalizeAutomationMonitorStatus('completed'), 'succeeded');
+  assert.equal(normalizeAutomationMonitorStatus('SKIPPED'), 'skipped');
+});
+
+test('automation monitor condition operator normalization rejects unsupported values', () => {
+  assert.equal(normalizeAutomationMonitorConditionOperator('>='), '>=');
+  assert.throws(
+    () => normalizeAutomationMonitorConditionOperator('contains'),
+    /condition operator must be/,
+  );
 });
 
 test('channel content part type normalization accepts canonical aliases', () => {

@@ -353,6 +353,164 @@ test('lac channel send-file posts allowed absolute paths through the same outbou
   assert.match(read().stdout, /Sent file absolute\.pdf to chat-1: msg-file-2/);
 });
 
+test('lac monitor add posts thread context and stock source config', async () => {
+  let capturedBody: string | null = null;
+  const server = createServer(async (req, res) => {
+    if (req.method === 'POST' && req.url === '/api/local/v1/automation/monitors') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      capturedBody = Buffer.concat(chunks).toString('utf8');
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          id: 'monitor:826aff79-570b-4308-822e-18318e2c96ba',
+          workspaceId: '知识库',
+          title: 'AAPL swing',
+          sourceType: 'stock.quote',
+          sourceConfig: { symbol: 'AAPL', price: 188.5 },
+          condition: { metric: 'abs_change_percent', operator: '>=', value: 3 },
+          promptTemplate: 'analyze AAPL',
+          platform: 'lark',
+          route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+          executionMode: 'side-thread',
+          enabled: true,
+          cooldownMs: 900000,
+          concurrencyPolicy: 'skip_if_running',
+          createdAt: '2026-04-22T06:00:00.000Z',
+          updatedAt: '2026-04-22T06:00:00.000Z',
+        },
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    [
+      'monitor',
+      'add',
+      '--title',
+      'AAPL swing',
+      '--source',
+      'stock.quote',
+      '--symbol',
+      'aapl',
+      '--price',
+      '188.5',
+      '--condition',
+      'abs_change_percent >= 3',
+      '--message',
+      'analyze AAPL',
+    ],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+      LOCAL_AI_THREAD_ID: 'thread-1',
+      LOCAL_AI_PLATFORM: 'lark',
+      LOCAL_AI_CHAT_ID: 'chat-1',
+      LOCAL_AI_PLATFORM_USER_ID: 'user-1',
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert(capturedBody);
+  assert.deepEqual(JSON.parse(capturedBody), {
+    workspaceId: '知识库',
+    threadId: 'thread-1',
+    title: 'AAPL swing',
+    sourceType: 'stock.quote',
+    sourceConfig: { symbol: 'AAPL', price: 188.5 },
+    condition: { metric: 'abs_change_percent', operator: '>=', value: 3 },
+    promptTemplate: 'analyze AAPL',
+    executionMode: 'side-thread',
+    cooldownMs: 900000,
+    enabled: true,
+  });
+  assert.match(read().stdout, /Created monitor 826aff79/);
+});
+
+test('lac monitor list filters by current thread context', async () => {
+  const server = createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/local/v1/automation/monitors?workspace_id=%E7%9F%A5%E8%AF%86%E5%BA%93') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({
+        ok: true,
+        data: {
+          monitors: [
+            {
+              id: 'monitor-1',
+              workspaceId: '知识库',
+              title: 'current',
+              sourceType: 'stock.quote',
+              sourceConfig: { symbol: 'AAPL' },
+              condition: { metric: 'abs_change_percent', operator: '>=', value: 3 },
+              promptTemplate: 'ping',
+              platform: 'lark',
+              route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+              executionMode: 'side-thread',
+              enabled: true,
+              cooldownMs: 900000,
+              concurrencyPolicy: 'skip_if_running',
+              createdAt: '2026-04-22T06:00:00.000Z',
+              updatedAt: '2026-04-22T06:00:00.000Z',
+            },
+            {
+              id: 'monitor-2',
+              workspaceId: '知识库',
+              title: 'other',
+              sourceType: 'stock.quote',
+              sourceConfig: { symbol: 'MSFT' },
+              condition: { metric: 'abs_change_percent', operator: '>=', value: 3 },
+              promptTemplate: 'pong',
+              platform: 'lark',
+              route: { type: 'channel.chat', channelId: 'chat-2', participantId: 'user-2' },
+              executionMode: 'side-thread',
+              enabled: true,
+              cooldownMs: 900000,
+              concurrencyPolicy: 'skip_if_running',
+              createdAt: '2026-04-22T06:00:00.000Z',
+              updatedAt: '2026-04-22T06:00:00.000Z',
+            },
+          ],
+        },
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ ok: false, error: 'not found' }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['monitor', 'list', '--thread'],
+    {
+      LOCAL_AI_CORE_BASE: `http://127.0.0.1:${address.port}/api/local/v1`,
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+      LOCAL_AI_THREAD_ID: 'thread-1',
+      LOCAL_AI_PLATFORM: 'lark',
+      LOCAL_AI_CHAT_ID: 'chat-1',
+      LOCAL_AI_PLATFORM_USER_ID: 'user-1',
+    },
+    io,
+  );
+  server.close();
+
+  assert.equal(exitCode, 0);
+  assert.match(read().stdout, /monitor-1/);
+  assert.doesNotMatch(read().stdout, /monitor-2/);
+});
+
 test('lac scheduler list shows workspace jobs by default', async () => {
   const server = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/api/local/v1/scheduler/jobs?workspace_id=%E7%9F%A5%E8%AF%86%E5%BA%93') {

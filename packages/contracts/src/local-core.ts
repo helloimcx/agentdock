@@ -693,6 +693,122 @@ export interface ScheduledJobUpdateInput {
   enabled?: boolean;
 }
 
+export type AutomationMonitorStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+
+export type AutomationMonitorConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=';
+
+export interface AutomationMonitorCondition {
+  metric: string;
+  operator: AutomationMonitorConditionOperator;
+  value: number | string | boolean;
+}
+
+export interface AutomationMonitorEventSnapshot {
+  id: string;
+  sourceType: string;
+  occurredAt: string;
+  subject: string;
+  summary?: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AutomationMonitor {
+  id: string;
+  workspaceId: string;
+  title: string;
+  sourceType: string;
+  sourceConfig: Record<string, unknown>;
+  condition: AutomationMonitorCondition;
+  promptTemplate: string;
+  platform: 'local' | 'lark' | (string & {});
+  route: ScheduledJobRoute;
+  executionMode: ScheduledJobExecutionMode;
+  enabled: boolean;
+  cooldownMs: number;
+  concurrencyPolicy: 'skip_if_running';
+  lastState?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  lastTriggeredAt?: string;
+  lastStatus?: AutomationMonitorStatus;
+  lastError?: string;
+}
+
+export interface AutomationMonitorRun {
+  id: string;
+  monitorId: string;
+  status: AutomationMonitorStatus;
+  triggeredAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+  eventSnapshot?: AutomationMonitorEventSnapshot;
+  threadId?: string;
+  runId?: string;
+  deliveryMode?: ScheduledJobRun['deliveryMode'];
+  deliveryStatus?: ScheduledJobRun['deliveryStatus'];
+  deliveryError?: string;
+  lastBridgeEventAt?: string;
+}
+
+export interface AutomationMonitorCreateInput {
+  workspaceId: string;
+  title: string;
+  sourceType: string;
+  sourceConfig?: Record<string, unknown>;
+  condition: AutomationMonitorCondition;
+  promptTemplate: string;
+  platform?: 'local' | 'lark' | (string & {});
+  route?: ScheduledJobRoute;
+  threadId?: string;
+  executionMode?: ScheduledJobExecutionMode;
+  enabled?: boolean;
+  cooldownMs?: number;
+}
+
+export interface AutomationMonitorUpdateInput {
+  title?: string;
+  sourceConfig?: Record<string, unknown>;
+  condition?: AutomationMonitorCondition;
+  promptTemplate?: string;
+  route?: ScheduledJobRoute;
+  executionMode?: ScheduledJobExecutionMode;
+  enabled?: boolean;
+  cooldownMs?: number;
+}
+
+export function normalizeAutomationMonitorStatus(value: unknown, fallback: AutomationMonitorStatus = 'queued'): AutomationMonitorStatus {
+  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
+  if (
+    normalized === 'queued' ||
+    normalized === 'running' ||
+    normalized === 'succeeded' ||
+    normalized === 'failed' ||
+    normalized === 'skipped'
+  ) {
+    return normalized;
+  }
+  if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
+    return 'succeeded';
+  }
+  throw new Error('Automation monitor status must be queued, running, succeeded, failed, or skipped.');
+}
+
+export function normalizeAutomationMonitorConditionOperator(value: unknown): AutomationMonitorConditionOperator {
+  const normalized = String(value || '').trim();
+  if (
+    normalized === '>' ||
+    normalized === '>=' ||
+    normalized === '<' ||
+    normalized === '<=' ||
+    normalized === '==' ||
+    normalized === '!='
+  ) {
+    return normalized;
+  }
+  throw new Error('Automation monitor condition operator must be >, >=, <, <=, ==, or !=.');
+}
+
 export interface KnowledgeSource {
   id: string;
   name: string;
@@ -828,6 +944,14 @@ export interface LocalCoreSchedulerCapability {
   displayName?: string;
 }
 
+export interface LocalCoreMonitorCapability {
+  id: string;
+  sourceTypes: string[];
+  modes?: Array<'poll' | 'subscribe'>;
+  enabled?: boolean;
+  displayName?: string;
+}
+
 export interface LocalCoreUiRouteContribution {
   id: string;
   path: string;
@@ -869,6 +993,7 @@ export interface LocalCoreCapabilitySnapshot {
   channels: LocalCoreChannelCapability[];
   knowledge: LocalCoreKnowledgeCapability[];
   schedulers: LocalCoreSchedulerCapability[];
+  monitors?: LocalCoreMonitorCapability[];
   ui: LocalCoreUiCapability[];
 }
 
@@ -916,7 +1041,7 @@ export interface RuntimeDetectionEventBase {
   detectedAt: string;
 }
 
-export type LocalCorePluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'ui' | 'composite';
+export type LocalCorePluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'monitor' | 'ui' | 'composite';
 export type LocalCorePluginHealthStatus = 'healthy' | 'degraded' | 'failed';
 export type LocalCorePluginConfigFieldType = 'string' | 'number' | 'boolean' | 'json';
 
@@ -972,6 +1097,10 @@ export interface LocalCoreCapabilities {
     triggerTypes: string[];
     deliveryTargets: string[];
     platforms: string[];
+  };
+  monitors?: {
+    enabled: boolean;
+    sourceTypes: string[];
   };
   snapshot: LocalCoreCapabilitySnapshot;
 }
@@ -1124,5 +1253,7 @@ export type LocalCoreEvent =
   | { type: 'run.updated'; run: RunSummary; stream?: DesktopBridgeEvent }
   | { type: 'scheduler.job.updated'; job: ScheduledJob }
   | { type: 'scheduler.run.updated'; run: ScheduledJobRun }
+  | { type: 'automation.monitor.updated'; monitor: AutomationMonitor }
+  | { type: 'automation.monitor.run.updated'; run: AutomationMonitorRun }
   | { type: 'presence.updated'; threadId?: string; live: boolean; stream?: DesktopBridgeEvent }
   | { type: 'stream.updated'; stream: DesktopBridgeEvent };

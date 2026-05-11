@@ -9,6 +9,8 @@ export type ScheduledBridgeSessionInput = {
   threadId: string;
   workspaceRouter: WorkspaceRouter;
   getChannelRuntime: () => ChannelRuntime;
+  noticeIcon?: string;
+  noticeTitle?: string;
 };
 
 export type ScheduledBridgeSessionHandle = {
@@ -32,7 +34,7 @@ export class ScheduledBridgeSession {
       threadId: input.threadId,
       sessionKey,
     });
-    await sendScheduledStartNotice(channelRuntime, input.job, sessionKey);
+    await sendScheduledStartNotice(channelRuntime, input.job, sessionKey, input.noticeIcon, input.noticeTitle);
     return {
       mode: 'bridge-stream',
       workspaceId: input.job.workspaceId,
@@ -47,7 +49,7 @@ export class ScheduledBridgeSession {
   }
 }
 
-async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, job: ScheduledJob, sessionKey: string) {
+async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, job: ScheduledJob, sessionKey: string, noticeIcon?: string, noticeTitle?: string) {
   if (!channelRuntime.onBridgeEvent) {
     return;
   }
@@ -56,7 +58,7 @@ async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, job: Sch
       type: 'status',
       sessionKey,
       bridgeKind: 'status',
-      content: `⏰ ${scheduledNoticeTitle(job)}`,
+      content: `${noticeIcon || '⏰'} ${noticeTitle || scheduledNoticeTitle(job)}`,
     });
   } catch {
     // The scheduled run should continue even if the proactive start notice fails.

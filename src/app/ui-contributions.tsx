@@ -2,6 +2,7 @@ import { lazy, type ReactNode } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import {
   Clock,
+  Bell,
   FolderKanban,
   LayoutDashboard,
   Library,
@@ -23,6 +24,7 @@ const ProjectDetail = lazy(() => import('@/pages/Projects/ProjectDetail'));
 const SessionList = lazy(() => import('@/pages/Sessions/SessionList'));
 const SessionChat = lazy(() => import('@/pages/Sessions/SessionChat'));
 const CronList = lazy(() => import('@/pages/Cron/CronList'));
+const MonitorList = lazy(() => import('@/pages/Automation/MonitorList'));
 const SystemConfig = lazy(() => import('@/pages/System/Config'));
 const SystemLogs = lazy(() => import('@/pages/System/Logs'));
 const KnowledgeHome = lazy(() => import('@/pages/Knowledge/KnowledgeHome'));
@@ -184,6 +186,13 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       element: ({ features }) => guarded(features.schedulerModule, <CronList />),
     },
     {
+      id: 'monitors',
+      path: 'monitors',
+      titleKey: 'nav.monitors',
+      order: 71,
+      element: ({ features }) => guarded(features.monitorModule, <MonitorList />),
+    },
+    {
       id: 'system',
       path: 'system',
       titleKey: 'nav.system',
@@ -257,6 +266,14 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       icon: Clock,
       order: 70,
       visible: ({ features }) => features.schedulerModule,
+    },
+    {
+      id: 'monitors',
+      path: '/monitors',
+      labelKey: 'nav.monitors',
+      icon: Bell,
+      order: 71,
+      visible: ({ features }) => features.monitorModule,
     },
     { id: 'system', path: '/system', labelKey: 'nav.system', icon: Settings, order: 80 },
   ];

@@ -65,6 +65,25 @@ export const SCHEDULER_PROTOCOL_INSTRUCTION = [
   '[/Scheduler Tools]',
 ].join('\n');
 
+export const MONITOR_PROTOCOL_INSTRUCTION = [
+  '[Monitor Tools]',
+  'If the user asks to create, view, edit, delete, or manually run an event monitor for this conversation, use the Bash tool to run the local monitor CLI.',
+  'Use these commands:',
+  'lac monitor add --title "<short title>" --source stock.quote --symbol "<ticker>" --condition "<metric operator value>" --message "<exact analysis prompt>" [--cooldown 15m] [--execution-mode same-thread|side-thread]',
+  'lac monitor list',
+  'lac monitor list --thread',
+  'lac monitor info <short-monitor-id>',
+  'lac monitor edit <short-monitor-id> [--title "<title>"] [--condition "<expr>"] [--message "<exact prompt>"] [--enabled true|false] [--cooldown 15m] [--execution-mode same-thread|side-thread]',
+  'lac monitor del <short-monitor-id>',
+  'lac monitor run <short-monitor-id>',
+  'Supported stock metrics include latestPrice, change_percent, changePercent, and abs_change_percent. Example condition: "abs_change_percent >= 3".',
+  'Environment variables LOCAL_AI_WORKSPACE_ID, LOCAL_AI_THREAD_ID, LOCAL_AI_PLATFORM, LOCAL_AI_CHAT_ID, and LOCAL_AI_PLATFORM_USER_ID are already set when available.',
+  'Prefer relying on those variables instead of inventing your own route.',
+  'Use --execution-mode side-thread by default so monitor analysis does not interrupt the current conversation.',
+  'Only use the monitor CLI when the user explicitly asks for event monitoring automation.',
+  '[/Monitor Tools]',
+].join('\n');
+
 export const CHANNEL_PROTOCOL_INSTRUCTION = [
   '[Channel Tools]',
   'If the user asks you to send a local file back through the current channel conversation, use the Bash tool to run the local channel CLI.',
@@ -210,6 +229,8 @@ export function normalizeDesktopPlatformType(platformType?: string | null) {
 export function wrapUserMessageWithSchedulerProtocol(content: string, extraBlocks: string[] = []) {
   return [
     SCHEDULER_PROTOCOL_INSTRUCTION,
+    '',
+    MONITOR_PROTOCOL_INSTRUCTION,
     '',
     CHANNEL_PROTOCOL_INSTRUCTION,
     ...extraBlocks.flatMap((block) => (block ? ['', block] : [])),

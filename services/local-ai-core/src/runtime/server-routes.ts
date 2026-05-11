@@ -22,6 +22,13 @@ export type LocalAiCoreRoute =
   | { name: 'scheduler.job.run'; jobId: string }
   | { name: 'scheduler.job.update'; jobId: string }
   | { name: 'scheduler.job.delete'; jobId: string }
+  | { name: 'automation.monitors.list' }
+  | { name: 'automation.monitors.create' }
+  | { name: 'automation.monitor.get'; monitorId: string }
+  | { name: 'automation.monitor.runs'; monitorId: string }
+  | { name: 'automation.monitor.run'; monitorId: string }
+  | { name: 'automation.monitor.update'; monitorId: string }
+  | { name: 'automation.monitor.delete'; monitorId: string }
   | { name: 'threads.list' }
   | { name: 'threads.create' }
   | { name: 'thread.get'; threadId: string }
@@ -134,6 +141,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (segments[0] === 'scheduler' && segments[1] === 'jobs') {
     return parseSchedulerJobsRoute(normalizedMethod, segments);
   }
+  if (segments[0] === 'automation' && segments[1] === 'monitors') {
+    return parseAutomationMonitorsRoute(normalizedMethod, segments);
+  }
   if (segments[0] === 'threads') {
     return parseThreadsRoute(normalizedMethod, segments);
   }
@@ -177,6 +187,35 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
     return parsePlatformsRoute(normalizedMethod, segments);
   }
 
+  return null;
+}
+
+function parseAutomationMonitorsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 2) {
+    return { name: 'automation.monitors.list' };
+  }
+  if (method === 'POST' && segments.length === 2) {
+    return { name: 'automation.monitors.create' };
+  }
+  const monitorId = segments.length >= 3 ? decodeURIComponent(segments[2] || '') : '';
+  if (!monitorId) {
+    return null;
+  }
+  if (method === 'GET' && segments.length === 3) {
+    return { name: 'automation.monitor.get', monitorId };
+  }
+  if (method === 'GET' && segments.length === 4 && segments[3] === 'runs') {
+    return { name: 'automation.monitor.runs', monitorId };
+  }
+  if (method === 'POST' && segments.length === 4 && segments[3] === 'run') {
+    return { name: 'automation.monitor.run', monitorId };
+  }
+  if (method === 'PATCH' && segments.length === 3) {
+    return { name: 'automation.monitor.update', monitorId };
+  }
+  if (method === 'DELETE' && segments.length === 3) {
+    return { name: 'automation.monitor.delete', monitorId };
+  }
   return null;
 }
 
