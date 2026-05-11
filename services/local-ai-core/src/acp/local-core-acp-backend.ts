@@ -22,6 +22,7 @@ import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadCommandService } from '../thread/thread-command-service.js';
+import { SessionCommandService } from '../thread/session-command-service.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -60,6 +61,7 @@ export class LocalCoreAcpBackend {
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
   private readonly responseProcessor: LocalCoreAcpResponseProcessor;
   private readonly commandService: ThreadCommandService;
+  private readonly sessionCommandService: SessionCommandService;
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
     this.transport = new LocalCoreAcpTransport({
@@ -140,6 +142,13 @@ export class LocalCoreAcpBackend {
       closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
       log: options.log,
     });
+    this.sessionCommandService = new SessionCommandService({
+      listThreads: (workspaceId) => this.listThreads(workspaceId),
+      getThread: (targetThreadId) => this.getThread(targetThreadId),
+      createThread: (workspaceId, title) => this.createThread(workspaceId, title),
+      renameThread: (targetThreadId, title) => this.renameThread(targetThreadId, title),
+      deleteThread: (targetThreadId) => this.deleteThread(targetThreadId),
+    });
     this.responseProcessor = new LocalCoreAcpResponseProcessor({
       getScheduledDeliveryBinding: (threadId) => {
         const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
@@ -214,6 +223,48 @@ export class LocalCoreAcpBackend {
         source: 'user',
       },
     });
+    const sessionCommandResult = await this.sessionCommandService.execute(content, {
+      currentThreadId: threadId,
+      workspaceId: row.workspace_id,
+      defaultTitle: `New thread ${new Date().toLocaleTimeString()}`,
+    });
+    if (sessionCommandResult.handled) {
+      const activeThreadEffect = (sessionCommandResult.effects || [])
+        .find((effect) => effect.type === 'activate_thread');
+      this.options.store.appendMessage(threadId, 'assistant', sessionCommandResult.displayText, 'final');
+      this.options.eventBus.emit({
+        type: 'thread.message.accepted',
+        payload: {
+          threadId,
+          workspaceId: row.workspace_id,
+          role: 'assistant',
+          content: sessionCommandResult.displayText,
+          kind: 'final',
+          source: 'system',
+        },
+      });
+      if (activeThreadEffect) {
+        this.options.eventBus.emit({
+          type: 'thread.session.activated',
+          payload: {
+            workspaceId: row.workspace_id,
+            threadId: activeThreadEffect.threadId,
+            previousThreadId: threadId,
+            reason: activeThreadEffect.reason,
+          },
+        });
+      }
+      this.emitBridgeEvent({
+        type: 'reply',
+        sessionKey: row.bridge_session_key,
+        content: sessionCommandResult.displayText,
+      });
+      this.emitBridgeEvent({
+        type: 'typing_stop',
+        sessionKey: row.bridge_session_key,
+      });
+      return { runId: '' };
+    }
     const commandResult = await this.commandService.execute({
       threadId,
       workspaceId: row.workspace_id,

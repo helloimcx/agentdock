@@ -23,10 +23,13 @@ import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/inde
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
+import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
 import {
+  buildSessionCommandCard,
   buildInteractiveCard,
   extractCardActionMessageId,
   extractCardActionValue,
+  extractSessionCommandActionValue,
   formatPermissionResponseLabel,
   renderPendingPairingCard,
   renderPermissionCard,
@@ -56,6 +59,7 @@ import type {
   LarkWorkspaceBinding,
   LocalCoreLarkGatewayOptions,
 } from './types.js';
+import { SessionCommandService, type SessionCommandAction, type SessionCommandResult } from '../../thread/session-command-service.js';
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
@@ -73,12 +77,37 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   private readonly outboundEventChains = new Map<string, Promise<void>>();
   private readonly outboundTurns = new Map<string, LarkTurnState>();
   private readonly mutedThreadBridgeCounts = new Map<string, number>();
+  private readonly sessionCommandRuntime: ChannelSessionCommandRuntime<LarkThreadRoute>;
   private larkModulePromise: Promise<LarkModule> | null = null;
   readonly platform = 'lark';
   readonly routeType = 'channel.chat';
 
   constructor(private readonly options: LocalCoreLarkGatewayOptions) {
     super();
+    const sessionCommandService = new SessionCommandService({
+      listThreads: (workspaceId) => this.options.getWorkspaceRouter().listThreads(workspaceId),
+      getThread: (threadId) => this.options.getWorkspaceRouter().getThread(threadId),
+      createThread: (workspaceId, title) => this.options.getWorkspaceRouter().createThread(workspaceId, title),
+      renameThread: (threadId, title) => this.options.getWorkspaceRouter().renameThread(threadId, title),
+      deleteThread: (threadId) => this.options.getWorkspaceRouter().deleteThread(threadId),
+    });
+    this.sessionCommandRuntime = new ChannelSessionCommandRuntime({
+      service: sessionCommandService,
+      store: this.options.store,
+      getThreadSessionKey: (threadId) => this.options.getWorkspaceRouter().getThreadSessionKey(threadId),
+      setThreadRoute: (sessionKey, route) => {
+        this.threadRouting.set(sessionKey, route);
+      },
+      createRoute: (input, threadId) => ({
+        workspaceId: input.workspaceId,
+        instanceId: input.instanceId,
+        platformKey: input.platformKey,
+        platformUserId: input.platformUserId,
+        chatId: input.chatId,
+        threadId,
+      }),
+      sendResult: (input, result) => this.sendSessionCommandResult(input, result),
+    });
   }
 
   async refreshBindings() {
@@ -227,6 +256,40 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         this.threadRouting.delete(input.sessionKey);
       }
     };
+  }
+
+  private async executeSessionCommand(input: {
+    workspaceId: string;
+    currentThreadId: string;
+    text: string;
+    defaultTitle: string;
+    chatId: string;
+    platformUserId: string;
+    platformKey: string;
+    instanceId: string;
+  }) {
+    return this.sessionCommandRuntime.execute(input);
+  }
+
+  private async sendSessionCommandResult(input: {
+    workspaceId: string;
+    currentThreadId: string;
+    chatId: string;
+    instanceId: string;
+  }, result: SessionCommandResult) {
+    const state = this.resolveRuntimeState(input.workspaceId, input.instanceId).state;
+    if (state?.client && state.connected && result.card?.actions?.length && state.cardActionsEnabled) {
+      await this.sendSessionCommandCard(
+        state,
+        input.chatId,
+        result.displayText,
+        result.card.actions,
+        this.options.getWorkspaceRouter().getThreadSessionKey(input.currentThreadId),
+        input.currentThreadId,
+      );
+      return;
+    }
+    await this.sendImmediateCard(input.workspaceId, input.chatId, result.displayText, input.instanceId);
   }
 
   async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
@@ -729,35 +792,18 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const acknowledgement = this.createTurnState(effectiveSessionKey, input.messageId);
     await this.addAcknowledgementReaction(input.workspaceId, input.messageId, acknowledgement, instanceId);
     const slashCommand = this.parseSlashCommand(input.text);
-    if (slashCommand?.name === 'new') {
-      const title = slashCommand.args.join(' ').trim() || `${input.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`;
-      const nextThread = await router.createThread(input.workspaceId, title);
-      const inheritedMode = this.options.store.getThreadRow?.(threadId)?.agent_mode || '';
-      if (inheritedMode && inheritedMode !== 'default') {
-        this.options.store.updateThreadAgentMode?.(nextThread.id, inheritedMode);
-      }
-      const now = new Date().toISOString();
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, platformKey);
-      this.options.store.upsertPlatformThreadBinding({
-        workspace_id: input.workspaceId,
-        platform: platformKey,
-        chat_id: input.chatId,
-        platform_user_id: input.platformUserId,
-        thread_id: nextThread.id,
-        last_platform_message_id: null,
-        created_at: now,
-        updated_at: now,
-      });
-      this.threadRouting.set(this.options.getWorkspaceRouter().getThreadSessionKey(nextThread.id), {
-        workspaceId: input.workspaceId,
-        instanceId,
-        platformKey,
-        platformUserId: input.platformUserId,
-        chatId: input.chatId,
-        threadId: nextThread.id,
-      });
-      await this.sendImmediateCard(input.workspaceId, input.chatId, '**已开始新会话**', instanceId);
-      return { paired: true, threadId: nextThread.id };
+    const sessionCommand = await this.executeSessionCommand({
+      workspaceId: input.workspaceId,
+      currentThreadId: threadId,
+      text: input.text,
+      defaultTitle: `${input.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`,
+      chatId: input.chatId,
+      platformUserId: input.platformUserId,
+      platformKey,
+      instanceId,
+    });
+    if (sessionCommand.handled) {
+      return { paired: true, threadId: sessionCommand.threadId || threadId };
     }
     const latestRun = this.options.store.getLatestRunForThread(threadId);
     if (
@@ -1253,6 +1299,29 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return String(response?.data?.message_id || '').trim();
   }
 
+  private async sendSessionCommandCard(
+    state: LarkRuntimeState,
+    chatId: string,
+    text: string,
+    actionRows: SessionCommandAction[][],
+    sessionKey?: string,
+    threadId?: string,
+  ) {
+    const startedAt = Date.now();
+    const response = await state.client.im.message.create({
+      params: {
+        receive_id_type: this.resolveReceiveIdType(chatId),
+      },
+      data: {
+        receive_id: chatId,
+        msg_type: 'interactive',
+        content: JSON.stringify(buildSessionCommandCard(text, actionRows, sessionKey, threadId)),
+      },
+    });
+    this.options.log?.(`localcore-lark session card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    return String(response?.data?.message_id || '').trim();
+  }
+
   private async sendTextAsMessage(
     state: LarkRuntimeState,
     chatId: string,
@@ -1391,6 +1460,27 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const instanceId = legacyCall ? 'default' : instanceIdOrData;
     const data = (legacyCall ? instanceIdOrData : maybeData) || {};
     try {
+      const sessionAction = extractSessionCommandActionValue(data);
+      if (sessionAction) {
+        const route = this.threadRouting.get(sessionAction.sessionKey)
+          || this.routeFromThreadBinding(sessionAction.threadId, instanceId);
+        if (!route) {
+          this.options.log?.(`localcore-lark session card action ignored without route for thread=${sessionAction.threadId}`);
+          return;
+        }
+        await this.executeSessionCommand({
+          workspaceId,
+          currentThreadId: sessionAction.threadId,
+          text: sessionAction.command,
+          defaultTitle: `Lark ${new Date().toLocaleTimeString()}`,
+          chatId: route.chatId,
+          platformUserId: route.platformUserId,
+          platformKey: route.platformKey,
+          instanceId: route.instanceId,
+        });
+        this.options.log?.(`localcore-lark processed session card action for ${workspaceId}/${instanceId}: ${sessionAction.command}`);
+        return;
+      }
       const action = extractCardActionValue(data);
       if (!action) {
         return;
@@ -1402,6 +1492,22 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     } catch (error) {
       this.options.log?.(`localcore-lark card action failed for ${workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private routeFromThreadBinding(threadId: string, instanceId: string): LarkThreadRoute | undefined {
+    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+    if (!binding || (binding.platform !== 'lark' && !binding.platform.startsWith('lark:'))) {
+      return undefined;
+    }
+    const bindingInstanceId = getLarkInstanceId(binding.platform) || instanceId || 'default';
+    return {
+      workspaceId: binding.workspace_id,
+      instanceId: bindingInstanceId,
+      platformKey: binding.platform,
+      platformUserId: binding.platform_user_id,
+      chatId: binding.chat_id,
+      threadId: binding.thread_id,
+    };
   }
 
   private async markPermissionCardActionHandled(

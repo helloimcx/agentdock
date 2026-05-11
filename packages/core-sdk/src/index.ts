@@ -129,6 +129,7 @@ function ensureEventSource() {
     'runtime.detect.failed',
     'runtime.status.changed',
     'thread.updated',
+    'thread.session.activated',
     'message.created',
     'message.updated',
     'run.updated',

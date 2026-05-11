@@ -109,6 +109,8 @@ export class LocalCoreAcpStore {
   }
 
   deleteThread(threadId: string) {
+    this.platform.clearAuthorizedUserThreadByThreadId(threadId);
+    this.platform.deletePlatformThreadBindingsByThreadId(threadId);
     this.threads.delete(threadId);
   }
 
@@ -382,12 +384,20 @@ export class LocalCoreAcpStore {
     this.platform.updateAuthorizedUserThread(workspaceId, platformUserId, threadId, platform);
   }
 
+  clearAuthorizedUserThreadByThreadId(threadId: string) {
+    this.platform.clearAuthorizedUserThreadByThreadId(threadId);
+  }
+
   getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
     return this.platform.getPlatformThreadBinding(workspaceId, chatId, platformUserId, platform);
   }
 
   getPlatformThreadBindingByThreadId(threadId: string) {
     return this.platform.getPlatformThreadBindingByThreadId(threadId);
+  }
+
+  deletePlatformThreadBindingsByThreadId(threadId: string) {
+    this.platform.deletePlatformThreadBindingsByThreadId(threadId);
   }
 
   upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: string }) {

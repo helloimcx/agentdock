@@ -1249,6 +1249,7 @@ export type LocalCoreEvent =
   | ({ type: 'runtime.detect.failed'; error: string } & RuntimeDetectionEventBase)
   | { type: 'runtime.status.changed'; runtime: InstalledAgentRuntime }
   | { type: 'thread.updated'; thread: ThreadSummary }
+  | { type: 'thread.session.activated'; workspaceId: string; threadId: string; previousThreadId?: string; reason: 'created' | 'switched' }
   | { type: 'message.created'; threadId: string; message: ThreadMessage; stream?: DesktopBridgeEvent }
   | { type: 'message.updated'; threadId: string; message: Partial<ThreadMessage>; stream?: DesktopBridgeEvent }
   | { type: 'run.updated'; run: RunSummary; stream?: DesktopBridgeEvent }

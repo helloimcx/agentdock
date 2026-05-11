@@ -1,5 +1,6 @@
 import type { DesktopBridgeEvent } from '../../../../../packages/contracts/src/index.js';
 import { normalizePermissionResponse } from '../../../../../shared/desktop.js';
+import type { SessionCommandAction } from '../../thread/session-command-service.js';
 import type { LarkButtonRow, LarkTurnState } from './types.js';
 
 export function buildInteractiveCard(
@@ -83,6 +84,43 @@ export function renderPendingPairingCard(code: string) {
   return lines.join('\n\n');
 }
 
+export function buildSessionCommandCard(
+  text: string,
+  actionRows: SessionCommandAction[][] = [],
+  sessionKey?: string,
+  threadId?: string,
+) {
+  const elements: Array<Record<string, unknown>> = [];
+  if (text) {
+    elements.push({ tag: 'markdown', content: text });
+  }
+  for (const row of actionRows) {
+    const actions = row
+      .filter((button) => button.label && button.command)
+      .map((button) => ({
+        tag: 'button',
+        text: {
+          tag: 'plain_text',
+          content: button.label,
+        },
+        type: button.type || 'default',
+        value: {
+          action: 'session_command',
+          command: button.command,
+          session_key: sessionKey || '',
+          thread_id: threadId || '',
+        },
+      }));
+    if (actions.length) {
+      elements.push({ tag: 'action', actions });
+    }
+  }
+  return {
+    config: { wide_screen_mode: true },
+    elements,
+  };
+}
+
 export function extractCardActionMessageId(...payloads: Array<Record<string, unknown> | undefined>) {
   for (const payload of payloads) {
     const messageId = extractKnownCardActionMessageId(payload);
@@ -117,6 +155,29 @@ export function extractCardActionValue(payload: Record<string, unknown>) {
     event,
     value: value as Record<string, unknown>,
     response,
+    threadId,
+    sessionKey,
+  };
+}
+
+export function extractSessionCommandActionValue(payload: Record<string, unknown>) {
+  const event = ((payload as any)?.event && typeof (payload as any).event === 'object')
+    ? (payload as any).event as Record<string, unknown>
+    : payload;
+  const value = (event as any)?.action?.value;
+  if (!value || value.action !== 'session_command') {
+    return null;
+  }
+  const command = String(value.command || '').trim();
+  const threadId = String(value.thread_id || '').trim();
+  const sessionKey = String(value.session_key || '').trim();
+  if (!command || !threadId) {
+    return null;
+  }
+  return {
+    event,
+    value: value as Record<string, unknown>,
+    command,
     threadId,
     sessionKey,
   };

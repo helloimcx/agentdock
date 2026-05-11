@@ -12,10 +12,12 @@ import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/sche
 import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
 import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../services/local-ai-core/src/channel/lark/cards.js';
 import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
 import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { SessionCommandService, matchThread } from '../../services/local-ai-core/src/thread/session-command-service.js';
 import { ThreadCommandService } from '../../services/local-ai-core/src/thread/thread-command-service.js';
 import {
   applyAssistantMessageChunk,
@@ -4126,6 +4128,217 @@ test('slash agent commands switch and reset the current thread agent', async () 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('session command matcher resolves by number, id, title, and excerpt in order', () => {
+  const threads = [
+    { id: 'thread-alpha-123', title: 'Alpha notes', excerpt: 'budget review', historyCount: 2, updatedAt: '2026-05-11T08:00:00.000Z' },
+    { id: 'thread-beta-456', title: 'Beta plan', excerpt: 'alpha appears here', historyCount: 1, updatedAt: '2026-05-11T07:00:00.000Z' },
+    { id: 'thread-gamma-789', title: 'Gamma', excerpt: 'release checklist', historyCount: 4, updatedAt: '2026-05-11T06:00:00.000Z' },
+  ] as any[];
+
+  assert.equal(matchThread(threads, '2')?.id, 'thread-beta-456');
+  assert.equal(matchThread(threads, 'thread-gamma')?.id, 'thread-gamma-789');
+  assert.equal(matchThread(threads, 'Beta plan')?.id, 'thread-beta-456');
+  assert.equal(matchThread(threads, 'Alpha')?.id, 'thread-alpha-123');
+  assert.equal(matchThread(threads, 'release')?.id, 'thread-gamma-789');
+});
+
+test('session slash commands manage thread sessions through shared operations', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-session-command-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const current = store.createThread('workspace-a', 'Current', 'codex');
+    const other = store.createThread('workspace-a', 'Other session', 'codex');
+    store.appendMessage(current.id, 'user', 'ping', 'final');
+    store.appendMessage(current.id, 'assistant', 'pong', 'final');
+
+    const service = new SessionCommandService({
+      listThreads: (workspaceId) => store.listThreadSummaries(workspaceId),
+      getThread: (threadId) => store.getThread(threadId, []),
+      createThread: (workspaceId, title) => store.createThread(workspaceId, title, 'codex'),
+      renameThread: (threadId, title) => {
+        store.renameThread(threadId, title);
+        return store.getThread(threadId, []);
+      },
+      deleteThread: (threadId) => {
+        store.deleteThread(threadId);
+        return { deleted: true };
+      },
+    });
+    const context = { workspaceId: 'workspace-a', currentThreadId: current.id, defaultTitle: 'Untitled' };
+
+    const listResult = await service.execute('/list', context);
+    assert.equal(listResult.handled, true);
+    assert.match(listResult.displayText, /会话列表/);
+    assert.ok(listResult.card?.actions.flat().some((action) => action.command.startsWith('/switch ')));
+
+    const historyResult = await service.execute('/history 2', context);
+    assert.match(historyResult.displayText, /ping/);
+    assert.match(historyResult.displayText, /pong/);
+
+    const newResult = await service.execute('/new Scratch session', context);
+    const createdThreadEffect = newResult.effects?.find((effect) => effect.type === 'created_thread');
+    const activatedCreatedEffect = newResult.effects?.find((effect) => effect.type === 'activate_thread' && effect.reason === 'created');
+    assert.equal(createdThreadEffect?.threadId, activatedCreatedEffect?.threadId);
+    assert.equal(store.getThread(createdThreadEffect?.threadId || '', []).title, 'Scratch session');
+
+    const switchResult = await service.execute('/switch Other session', context);
+    assert.equal(switchResult.effects?.find((effect) => effect.type === 'activate_thread')?.threadId, other.id);
+    assert.match(switchResult.displayText, /后续消息将发送到该会话/);
+
+    const renameResult = await service.execute('/name Renamed current', context);
+    assert.match(renameResult.displayText, /Renamed current/);
+    assert.equal(store.getThread(current.id, []).title, 'Renamed current');
+
+    const currentDeleteResult = await service.execute('/del Renamed current --confirm', context);
+    assert.match(currentDeleteResult.displayText, /不能删除当前正在使用的会话/);
+
+    const deletePrompt = await service.execute('/del Other session', context);
+    assert.match(deletePrompt.displayText, /确认删除会话/);
+    assert.ok(deletePrompt.card?.actions.flat().some((action) => action.command.includes('--confirm')));
+
+    const deleteResult = await service.execute('/del Other session --confirm', context);
+    assert.equal(deleteResult.effects?.find((effect) => effect.type === 'deleted_thread')?.threadId, other.id);
+    assert.equal(store.listThreadSummaries('workspace-a').some((thread) => thread.id === other.id), false);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('store deleteThread clears channel references without backend help', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-store-delete-thread-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const thread = store.createThread('workspace-a', 'Bound thread', 'codex');
+    const now = new Date().toISOString();
+    store.createAuthorizedUser({
+      id: 'lark-user-store',
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      platform_user_id: 'user-store',
+      chat_id: 'chat-store',
+      display_name: 'User',
+      thread_id: thread.id,
+      authorized_at: now,
+    });
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-store',
+      platform_user_id: 'user-store',
+      thread_id: thread.id,
+      last_platform_message_id: 'msg-store',
+      created_at: now,
+      updated_at: now,
+    });
+
+    store.deleteThread(thread.id);
+
+    assert.equal(store.getThreadRow(thread.id), undefined);
+    assert.equal(store.getAuthorizedUser('workspace-a', 'user-store', 'lark')?.thread_id, null);
+    assert.equal(store.getPlatformThreadBinding('workspace-a', 'chat-store', 'user-store', 'lark'), undefined);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('backend session delete command clears channel bindings for deleted threads', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-session-delete-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const current = store.createThread('workspace-a', 'Current', 'codex');
+    const other = store.createThread('workspace-a', 'Other session', 'codex');
+    const now = new Date().toISOString();
+    store.createAuthorizedUser({
+      id: 'lark-user-1',
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      platform_user_id: 'user-1',
+      chat_id: 'chat-1',
+      display_name: 'User',
+      thread_id: other.id,
+      authorized_at: now,
+    });
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: other.id,
+      last_platform_message_id: 'msg-1',
+      created_at: now,
+      updated_at: now,
+    });
+    const events: any[] = [];
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+      eventBus: {
+        emit: (event: any) => events.push(event),
+        on: () => () => {},
+      } as any,
+      scheduler: {
+        createJob: async () => { throw new Error('not used'); },
+        listJobsForThread: async () => [],
+        deleteJob: async () => {},
+      },
+      getAgentTypes: () => ['codex'],
+    });
+
+    await backend.sendThreadMessage(current.id, '/del Other session --confirm', {
+      workspaceId: 'workspace-a',
+      agentType: 'codex',
+      workDir: dir,
+      command: process.execPath,
+      args: ['-e', ''],
+      env: {},
+      model: '',
+    });
+
+    assert.equal(store.getThreadRow(other.id), undefined);
+    assert.equal(store.getAuthorizedUser('workspace-a', 'user-1', 'lark')?.thread_id, null);
+    assert.equal(store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark'), undefined);
+
+    const created = await backend.createThread('workspace-a', 'Switch target', 'codex');
+    await backend.sendThreadMessage(current.id, '/switch Switch target', {
+      workspaceId: 'workspace-a',
+      agentType: 'codex',
+      workDir: dir,
+      command: process.execPath,
+      args: ['-e', ''],
+      env: {},
+      model: '',
+    });
+    assert.deepEqual(events.find((event) => event.type === 'thread.session.activated')?.payload, {
+      workspaceId: 'workspace-a',
+      threadId: created.id,
+      previousThreadId: current.id,
+      reason: 'switched',
+    });
+    backend.close();
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Lark session command cards round-trip slash command action values', () => {
+  const card = buildSessionCommandCard('会话列表', [[
+    { label: '1. Current', command: '/switch 1', type: 'primary' },
+    { label: '删除', command: '/del 1', type: 'danger' },
+  ]], 'session-key-1', 'thread-1');
+  const actionElement = card.elements.find((element: any) => element.tag === 'action') as any;
+  const value = actionElement.actions[0].value;
+
+  const extracted = extractSessionCommandActionValue({ event: { action: { value } } } as any);
+
+  assert.equal(extracted?.command, '/switch 1');
+  assert.equal(extracted?.threadId, 'thread-1');
+  assert.equal(extracted?.sessionKey, 'session-key-1');
 });
 
 test('scheduled conversation executor uses execution policy hooks around a thread run', async () => {

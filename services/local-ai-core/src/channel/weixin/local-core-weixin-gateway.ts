@@ -22,6 +22,8 @@ import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/inde
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
+import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
+import { SessionCommandService, type SessionCommandResult } from '../../thread/session-command-service.js';
 import {
   channelPlatformKey,
   collectWeixinWorkspaceBindings,
@@ -206,11 +208,36 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   private readonly outboundTurns = new Map<string, WeixinTurnState>();
   private readonly processedInboundMessages = new Map<string, number>();
   private readonly mutedThreadBridgeCounts = new Map<string, number>();
+  private readonly sessionCommandRuntime: ChannelSessionCommandRuntime<WeixinThreadRoute>;
   readonly platform = 'weixin';
   readonly routeType = 'channel.chat';
 
   constructor(private readonly options: LocalCoreWeixinGatewayOptions) {
     super();
+    const sessionCommandService = new SessionCommandService({
+      listThreads: (workspaceId) => this.options.getWorkspaceRouter().listThreads(workspaceId),
+      getThread: (threadId) => this.options.getWorkspaceRouter().getThread(threadId),
+      createThread: (workspaceId, title) => this.options.getWorkspaceRouter().createThread(workspaceId, title),
+      renameThread: (threadId, title) => this.options.getWorkspaceRouter().renameThread(threadId, title),
+      deleteThread: (threadId) => this.options.getWorkspaceRouter().deleteThread(threadId),
+    });
+    this.sessionCommandRuntime = new ChannelSessionCommandRuntime({
+      service: sessionCommandService,
+      store: this.options.store,
+      getThreadSessionKey: (threadId) => this.options.getWorkspaceRouter().getThreadSessionKey(threadId),
+      setThreadRoute: (sessionKey, route) => {
+        this.threadRouting.set(sessionKey, route);
+      },
+      createRoute: (input, threadId) => ({
+        workspaceId: input.workspaceId,
+        instanceId: input.instanceId,
+        platformKey: input.platformKey,
+        platformUserId: input.platformUserId,
+        chatId: input.chatId,
+        threadId,
+      }),
+      sendResult: (input, result) => this.sendSessionCommandResult(input, result),
+    });
   }
 
   // ==================== Lifecycle ====================
@@ -741,7 +768,6 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       });
     }
 
-    const sessionKey = router.getThreadSessionKey(threadId);
     const normalizedText = String(input.text || '').trim().toLowerCase();
     const permissionThreadId = (
       normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
@@ -762,38 +788,19 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
     // Handle slash commands
     const slashCommand = this.parseSlashCommand(input.text);
-    if (slashCommand?.name === 'new') {
-      const title = slashCommand.args.join(' ').trim() || `${input.displayName || 'WeChat'} ${new Date().toLocaleTimeString()}`;
-      const nextThread = await router.createThread(input.workspaceId, title);
-      const inheritedMode = this.options.store.getThreadRow?.(threadId)?.agent_mode || '';
-      if (inheritedMode && inheritedMode !== 'default') {
-        this.options.store.updateThreadAgentMode?.(nextThread.id, inheritedMode);
-      }
-      const now = new Date().toISOString();
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, nextThread.id, platformKey);
-      this.options.store.upsertPlatformThreadBinding({
-        workspace_id: input.workspaceId,
-        platform: platformKey,
-        chat_id: input.chatId,
-        platform_user_id: input.platformUserId,
-        thread_id: nextThread.id,
-        last_platform_message_id: null,
-        created_at: now,
-        updated_at: now,
-      });
-      this.threadRouting.set(router.getThreadSessionKey(nextThread.id), {
-        workspaceId: input.workspaceId,
-        instanceId,
-        platformKey,
-        platformUserId: input.platformUserId,
-        chatId: input.chatId,
-        threadId: nextThread.id,
-      });
-      const st = this.runtime.get(runtimeKey(input.workspaceId, instanceId));
-      if (st?.connected) {
-        await this.sendTextMessage(st, input.chatId, '**已开始新会话**', input.contextToken);
-      }
-      return { paired: true, threadId: nextThread.id };
+    const sessionCommand = await this.executeSessionCommand({
+      workspaceId: input.workspaceId,
+      currentThreadId: threadId,
+      text: input.text,
+      defaultTitle: `${input.displayName || 'WeChat'} ${new Date().toLocaleTimeString()}`,
+      chatId: input.chatId,
+      platformUserId: input.platformUserId,
+      platformKey,
+      instanceId,
+      contextToken: input.contextToken,
+    });
+    if (sessionCommand.handled) {
+      return { paired: true, threadId: sessionCommand.threadId || threadId };
     }
 
     const latestRun = this.options.store.getLatestRunForThread(threadId);
@@ -817,6 +824,34 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       : wrapUserMessageWithSchedulerProtocol(input.text);
     await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, input.contentParts));
     return { paired: true, threadId };
+  }
+
+  private async executeSessionCommand(input: {
+    workspaceId: string;
+    currentThreadId: string;
+    text: string;
+    defaultTitle: string;
+    chatId: string;
+    platformUserId: string;
+    platformKey: string;
+    instanceId: string;
+    contextToken?: string;
+  }) {
+    return this.sessionCommandRuntime.execute(input);
+  }
+
+  private async sendSessionCommandResult(input: {
+    workspaceId: string;
+    chatId: string;
+    instanceId: string;
+    contextToken?: string;
+  }, result: SessionCommandResult) {
+    const state = this.resolveRuntimeState(input.workspaceId, input.instanceId).state;
+    if (!state?.connected) {
+      this.options.log?.(`localcore-weixin session command response skipped: workspace not connected: ${input.workspaceId}`);
+      return;
+    }
+    await this.sendTextMessage(state, input.chatId, result.displayText, input.contextToken);
   }
 
   // ==================== Private: Bindings ====================

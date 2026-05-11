@@ -253,6 +253,9 @@ export class LocalAiCoreServer {
         });
       }
     });
+    this.bindings.on('thread-session-activated', (event: Omit<Extract<LocalCoreEvent, { type: 'thread.session.activated' }>, 'type'>) => {
+      this.broadcast({ type: 'thread.session.activated', ...event });
+    });
     this.bindings.on('scheduler-job', (job: ScheduledJob) => {
       this.broadcast({ type: 'scheduler.job.updated', job });
     });

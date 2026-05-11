@@ -75,8 +75,11 @@ flowchart LR
 
 ### 2026-05-11
 
-- 发布 AgentDock 0.1.42。
+- 发布 AgentDock 0.1.43。
 - 新增事件监控任务框架与 `lac monitor` 子命令，支持通过对话创建股票价格监控，触发后在 side-thread 分析并把过程回传到 channel。
+- Lark、微信和桌面会话新增 `/new`、`/list`、`/switch`、`/history`、`/name`、`/search`、`/del` 会话命令；Lark 可通过会话卡片按钮切换和删除。
+- 会话命令执行路径改为 effects 模型，并抽出 channel 共享 runtime；桌面 `/new`、`/switch` 现在会跟随激活目标会话。
+- 发布 AgentDock 0.1.42。
 - 线程级 `/mode` 与 `/agent` 命令处理抽取为独立 command service，ACP backend 只负责消息落库、bridge 回复和运行时调度，后续扩展 `/model`、`/knowledge` 等命令更容易复用。
 
 ### 2026-05-09

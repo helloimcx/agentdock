@@ -8,9 +8,9 @@ import {
   modeHelpText,
   normalizeAgentCommandTarget,
   normalizeAgentMode,
-  parseSlashCommand,
 } from '../acp/local-core-slash-commands.js';
 import { resolveAgentRuntimeDefinition } from '../agents/index.js';
+import { SlashCommandRegistry } from './slash-command-registry.js';
 
 export type ThreadCommandResult = {
   handled: boolean;
@@ -43,26 +43,27 @@ export type ExecuteThreadCommandInput = {
 };
 
 export class ThreadCommandService {
-  constructor(private readonly options: ThreadCommandServiceOptions) {}
+  private readonly registry = new SlashCommandRegistry<ExecuteThreadCommandInput, ThreadCommandResult>();
 
-  async execute(input: ExecuteThreadCommandInput): Promise<ThreadCommandResult> {
-    const command = parseSlashCommand(input.content);
-    if (!command) {
-      return { handled: false, displayText: '' };
-    }
-    if (command.name === 'mode') {
-      return {
+  constructor(private readonly options: ThreadCommandServiceOptions) {
+    this.registry.register({
+      names: ['mode'],
+      execute: async (command, input) => ({
         handled: true,
         displayText: await this.executeModeCommand(input.threadId, input.workspaceId, command.args),
-      };
-    }
-    if (command.name === 'agent') {
-      return {
+      }),
+    });
+    this.registry.register({
+      names: ['agent'],
+      execute: (command, input) => ({
         handled: true,
         displayText: this.executeAgentCommand(input.threadId, input.workspaceId, command.args, input.defaultAgentType),
-      };
-    }
-    return { handled: false, displayText: '' };
+      }),
+    });
+  }
+
+  async execute(input: ExecuteThreadCommandInput): Promise<ThreadCommandResult> {
+    return await this.registry.execute(input.content, input) || { handled: false, displayText: '' };
   }
 
   private async executeModeCommand(threadId: string, workspaceId: string, args: string[]) {

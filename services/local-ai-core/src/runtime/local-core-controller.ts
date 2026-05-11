@@ -131,6 +131,9 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       this.kernel.context.bus.on('platform.bridge.updated', (event) => {
         this.emit('bridge', event);
       }),
+      this.kernel.context.bus.on('thread.session.activated', (event) => {
+        this.emit('thread-session-activated', event);
+      }),
       this.kernel.context.bus.on('scheduler.job.updated', (job) => {
         this.emit('scheduler-job', job);
       }),

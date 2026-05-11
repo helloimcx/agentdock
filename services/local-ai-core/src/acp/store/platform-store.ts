@@ -136,6 +136,10 @@ export class LocalPlatformStore {
     `).run(threadId, workspaceId, platform, platformUserId);
   }
 
+  clearAuthorizedUserThreadByThreadId(threadId: string) {
+    this.db.prepare('UPDATE platform_users SET thread_id = NULL WHERE thread_id = ?').run(threadId);
+  }
+
   getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
     return this.db.prepare(`
       SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at
@@ -152,6 +156,10 @@ export class LocalPlatformStore {
       ORDER BY updated_at DESC
       LIMIT 1
     `).get(threadId) as LocalPlatformThreadBindingRow | undefined;
+  }
+
+  deletePlatformThreadBindingsByThreadId(threadId: string) {
+    this.db.prepare('DELETE FROM platform_thread_bindings WHERE thread_id = ?').run(threadId);
   }
 
   upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: string }) {

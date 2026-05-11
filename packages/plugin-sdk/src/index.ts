@@ -345,6 +345,12 @@ export interface DomainEventPayloadMap {
     kind?: import('../../contracts/src/index.js').ThreadMessage['kind'];
     source: 'user' | 'agent' | 'platform' | 'scheduler' | 'system';
   };
+  'thread.session.activated': {
+    workspaceId: string;
+    threadId: string;
+    previousThreadId?: string;
+    reason: 'created' | 'switched';
+  };
   'run.started': {
     runId: string;
     threadId: string;

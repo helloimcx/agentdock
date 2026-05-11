@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { getThreadKnowledgeBases } from '@/api/desktop';
 import { listProjects } from '@/api/projects';
 import { getSession, listSessions } from '@/api/sessions';
-import { getThread, listThreads, listWorkspaces } from '../../../packages/core-sdk/src';
+import { getThread, listThreads, listWorkspaces, subscribeEvents } from '../../../packages/core-sdk/src';
 import type { ThreadGroup } from './thread-chat-model';
 import {
   chatThreadMatchesSearch,
@@ -230,6 +230,22 @@ export function useThreadChatSessionBrowser({
     setThreadGroups,
     usesManagedThreadApi,
   ]);
+
+  useEffect(() => {
+    if (!serviceRunning || runtimeProvider !== 'local_core') {
+      return;
+    }
+    return subscribeEvents((event) => {
+      if (event.type !== 'thread.session.activated') {
+        return;
+      }
+      if (event.threadId === activeThreadId) {
+        return;
+      }
+      void refreshThreadsForWorkspace(event.workspaceId)
+        .then(() => loadActiveThread(event.workspaceId, event.threadId));
+    });
+  }, [activeThreadId, loadActiveThread, refreshThreadsForWorkspace, runtimeProvider, serviceRunning]);
 
   useEffect(() => {
     if (!serviceRunning) {
