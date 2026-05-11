@@ -29,7 +29,7 @@ src/
 - `src/channel/lark/local-core-lark-gateway.ts`: Feishu/Lark 原生通道网关
 - `src/channel/weixin/local-core-weixin-gateway.ts`: Weixin 原生通道网关
 - `src/acp/local-core-acp-backend.ts`: ACP 子进程桥接与流式事件处理
-- `src/acp/local-core-acp-store.ts`: SQLite 持久化层
+- `src/acp/store/local-core-acp-store.ts`: SQLite 持久化层 facade
 - `src/scheduler/scheduled-job-application-service.ts`: 定时任务创建、路由解析与 controller/bridge 应用层入口
 - `src/scheduler/scheduler-service.ts`: 定时任务调度主入口
 
