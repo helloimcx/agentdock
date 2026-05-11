@@ -25,7 +25,9 @@
 - [x] lark支持扫码新建和绑定机器人
 - [x] app，web，channels支持常用斜杠命令，特别是/mode，用来调整工具权限
 - [x] 新增pi mono内置agent实现，不用安装claude等coding agent也能用
-- [] 支持/agent命令来切换agent
+- [ ] slash命令支持
+  - [x] 支持/agent命令来切换agent
+  - [ ] 参考cc-connect, 支持切换和查看会话
 - [ ] 原生支持联网搜索
 - [ ] 飞书 channel 支持群聊
 - [ ] 支持隐藏中间过程
