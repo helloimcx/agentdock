@@ -3396,6 +3396,214 @@ test('lark file messages are downloaded and forwarded as generic channel file pa
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.fileName, 'report.pdf');
 });
 
+test('lark group text messages strip the bot mention before dispatching', async () => {
+  const sentMessages: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'default',
+        platform: 'lark',
+        platform_user_id: 'user-1',
+        chat_id: 'oc_group_1',
+        display_name: 'User',
+        thread_id: 'thread-1',
+      }),
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'default',
+        platform: 'lark',
+        chat_id: 'oc_group_1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      getLatestRunForThread: () => null,
+      clearPlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => ({ projects: [] }) as any,
+    getWorkspaceRouter: () => ({
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (threadId: string, content: any) => {
+        sentMessages.push({ threadId, content });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    botOpenId: 'ou_bot',
+    groupReplyAll: false,
+    client: {
+      im: {
+        messageReaction: {
+          create: async () => ({ data: { reaction_id: 'reaction-1' } }),
+        },
+      },
+    },
+  });
+
+  await internals.handleMessageEvent('default', {
+    event: {
+      sender: {
+        sender_id: { user_id: 'user-1' },
+      },
+      message: {
+        message_id: 'msg-group-1',
+        message_type: 'text',
+        chat_id: 'oc_group_1',
+        chat_type: 'group',
+        mentions: [
+          { key: '@_user_1', id: { open_id: 'ou_bot' }, name: 'AgentDock' },
+          { key: '@_user_2', id: { open_id: 'ou_other' }, name: '张三' },
+        ],
+        content: JSON.stringify({ text: '@_user_1 ask @_user_2 to review' }),
+      },
+    },
+  });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0]?.threadId, 'thread-1');
+  assert.match(sentMessages[0]?.content, /\[User Message\]\nask @张三 to review\n\[\/User Message\]/);
+});
+
+test('lark group text messages ignore non-mentioned bot messages by default', async () => {
+  const sentMessages: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => {
+        throw new Error('group message without bot mention should not look up authorization');
+      },
+    } as any,
+    readConfig: async () => ({ projects: [] }) as any,
+    getWorkspaceRouter: () => ({
+      sendThreadMessage: async (threadId: string, content: any) => {
+        sentMessages.push({ threadId, content });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    botOpenId: 'ou_bot',
+    groupReplyAll: false,
+    client: {},
+  });
+
+  await internals.handleMessageEvent('default', {
+    event: {
+      sender: {
+        sender_id: { user_id: 'user-1' },
+      },
+      message: {
+        message_id: 'msg-group-2',
+        message_type: 'text',
+        chat_id: 'oc_group_1',
+        chat_type: 'group',
+        mentions: [{ key: '@_user_2', id: { open_id: 'ou_other' }, name: '张三' }],
+        content: JSON.stringify({ text: 'ask @_user_2 to review' }),
+      },
+    },
+  });
+
+  assert.equal(sentMessages.length, 0);
+});
+
+test('lark inbound messages create a chat binding when an authorized user has an old direct thread', async () => {
+  const bindings: any[] = [];
+  const createdThreads: any[] = [];
+  const sentMessages: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'project-1',
+        platform: 'lark:lark-1',
+        platform_user_id: 'user-1',
+        chat_id: 'old-direct-chat',
+        display_name: 'User',
+        thread_id: 'old-thread-1',
+      }),
+      getPlatformThreadBinding: () => undefined,
+      upsertPlatformThreadBinding: (binding: any) => bindings.push(binding),
+      updateAuthorizedUserThread: () => {},
+      getLatestRunForThread: () => null,
+      clearPlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => ({ projects: [] }) as any,
+    getWorkspaceRouter: () => ({
+      createThread: async (workspaceId: string, title: string) => {
+        const thread = { id: 'group-thread-1', workspaceId, title };
+        createdThreads.push(thread);
+        return thread;
+      },
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (threadId: string, content: any) => {
+        sentMessages.push({ threadId, content });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('project-1::lark-1', {
+    workspaceId: 'project-1',
+    instanceId: 'lark-1',
+    platformKey: 'lark:lark-1',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    botOpenId: 'ou_bot',
+    groupReplyAll: false,
+    client: {
+      im: {
+        messageReaction: {
+          create: async () => ({ data: { reaction_id: 'reaction-1' } }),
+        },
+      },
+    },
+  });
+
+  await internals.handleMessageEvent('project-1', 'lark-1', 'lark:lark-1', {
+    event: {
+      sender: {
+        sender_id: { user_id: 'user-1' },
+      },
+      message: {
+        message_id: 'msg-group-old-user',
+        message_type: 'text',
+        chat_id: 'new-group-chat',
+        chat_type: 'group',
+        mentions: [{ key: '@_user_1', id: { open_id: 'ou_bot' }, name: 'AgentDock' }],
+        content: JSON.stringify({ text: '@_user_1 hi' }),
+      },
+    },
+  });
+
+  assert.deepEqual(createdThreads, [{ id: 'group-thread-1', workspaceId: 'project-1', title: 'user-1' }]);
+  assert.equal(bindings.length, 1);
+  assert.equal(bindings[0]?.platform, 'lark:lark-1');
+  assert.equal(bindings[0]?.chat_id, 'new-group-chat');
+  assert.equal(bindings[0]?.platform_user_id, 'user-1');
+  assert.equal(bindings[0]?.thread_id, 'group-thread-1');
+  assert.equal(sentMessages[0]?.threadId, 'group-thread-1');
+});
+
 test('lark channel can upload and send a local file', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'lark-file-send-'));
   try {
@@ -5012,6 +5220,72 @@ test('weixin inbound message handling is idempotent by message identity', async 
 
   assert.equal(sentThreadMessages.length, 1);
   assert.match(sentThreadMessages[0] || '', /hello/);
+});
+
+test('weixin inbound messages create a chat binding when an authorized user has an old direct thread', async () => {
+  const bindings: any[] = [];
+  const sentThreadMessages: Array<{ threadId: string; text: string }> = [];
+  const gateway = new LocalCoreWeixinGateway({
+    store: {
+      expirePendingPairings: () => {},
+      listPendingPairings: () => [],
+      listPairingRequests: () => [],
+      listAuthorizedUsers: () => [],
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'default',
+        platform: 'weixin',
+        platform_user_id: 'user-1',
+        chat_id: 'old-direct-chat',
+        display_name: 'User',
+        thread_id: 'old-thread-1',
+      }),
+      getPlatformThreadBinding: () => undefined,
+      updateAuthorizedUserThread: () => {},
+      upsertPlatformThreadBinding: (binding: any) => bindings.push(binding),
+      updatePlatformThreadMessageId: (_workspaceId: string, _chatId: string, _platformUserId: string, messageId: string) => {
+        bindings[0] = { ...bindings[0], last_platform_message_id: messageId };
+      },
+      getLatestRunForThread: () => null,
+    } as any,
+    readConfig: async () => ({
+      projects: [
+        {
+          name: 'default',
+          agent: { type: 'localcore-acp', providers: [] },
+          platforms: [{ type: 'weixin', options: {} }],
+        },
+      ],
+    } as any),
+    getWorkspaceRouter: () => ({
+      createThread: async () => ({ id: 'group-thread-1' }),
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (threadId: string, text: string) => {
+        sentThreadMessages.push({ threadId, text });
+        return { runId: 'run-1' };
+      },
+    } as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+
+  await gateway.handleInboundMessage({
+    workspaceId: 'default',
+    platformUserId: 'user-1',
+    chatId: 'new-group-chat',
+    displayName: 'User',
+    text: 'hello',
+    messageId: 'msg-1',
+    contextToken: 'ctx-1',
+  });
+
+  assert.equal(bindings.length, 1);
+  assert.equal(bindings[0]?.platform, 'weixin');
+  assert.equal(bindings[0]?.chat_id, 'new-group-chat');
+  assert.equal(bindings[0]?.platform_user_id, 'user-1');
+  assert.equal(bindings[0]?.thread_id, 'group-thread-1');
+  assert.equal(bindings[0]?.last_platform_message_id, 'ctx-1');
+  assert.equal(sentThreadMessages[0]?.threadId, 'group-thread-1');
+  assert.match(sentThreadMessages[0]?.text || '', /hello/);
 });
 
 test('weixin downloaded file attachment becomes a structured file content part', () => {

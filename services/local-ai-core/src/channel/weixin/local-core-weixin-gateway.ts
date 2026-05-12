@@ -23,6 +23,7 @@ import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desk
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
+import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { SessionCommandService, type SessionCommandResult } from '../../thread/session-command-service.js';
 import {
   channelPlatformKey,
@@ -749,24 +750,17 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     }
 
     const router = this.options.getWorkspaceRouter();
-    const threadBinding = this.options.store.getPlatformThreadBinding(input.workspaceId, input.chatId, input.platformUserId, platformKey);
-    let threadId = threadBinding?.thread_id || authorized.thread_id || '';
-    if (!threadId) {
-      const thread = await router.createThread(input.workspaceId, input.displayName || `WeChat ${input.chatId}`);
-      threadId = thread.id;
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, threadId, platformKey);
-      const now = new Date().toISOString();
-      this.options.store.upsertPlatformThreadBinding({
-        workspace_id: input.workspaceId,
-        platform: platformKey,
-        chat_id: input.chatId,
-        platform_user_id: input.platformUserId,
-        thread_id: threadId,
-        last_platform_message_id: null,
-        created_at: now,
-        updated_at: now,
-      });
-    }
+    let { threadId } = await resolveChannelThreadRoute({
+      store: this.options.store,
+      router,
+      workspaceId: input.workspaceId,
+      platformKey,
+      chatId: input.chatId,
+      platformUserId: input.platformUserId,
+      displayName: input.displayName,
+      fallbackTitlePrefix: 'WeChat',
+      authorized,
+    });
 
     const normalizedText = String(input.text || '').trim().toLowerCase();
     const permissionThreadId = (

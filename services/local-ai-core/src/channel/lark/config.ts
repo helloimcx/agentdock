@@ -48,6 +48,8 @@ export function collectLarkWorkspaceBindings(
             || platform.options.card_actions === true
             || platform.options.enable_card_actions === true
             || options.defaultCardActionsEnabled,
+          groupReplyAll: String(platform.options.group_reply_all || '').trim().toLowerCase() === 'true'
+            || platform.options.group_reply_all === true,
           brand: String(platform.options.brand || platform.options.lark_brand || '').trim().toLowerCase() === 'lark' ? 'lark' : 'feishu',
           enabled: Boolean(String(platform.options.app_id || '').trim() && String(platform.options.app_secret || '').trim()),
           project,

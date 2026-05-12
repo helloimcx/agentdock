@@ -21,6 +21,8 @@ export type LarkWorkspaceBinding = {
   verificationToken: string;
   autoApprove: boolean;
   cardActionsEnabled: boolean;
+  groupReplyAll: boolean;
+  botOpenId?: string;
   brand: 'feishu' | 'lark';
   enabled: boolean;
   project: DesktopProjectConfig;
@@ -37,6 +39,8 @@ export type LarkRuntimeState = {
   appId: string;
   autoApprove: boolean;
   cardActionsEnabled: boolean;
+  groupReplyAll: boolean;
+  botOpenId?: string;
   lastError?: string;
   connectedAt?: string;
   client?: any;

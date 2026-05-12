@@ -76,6 +76,7 @@ flowchart LR
 ### 2026-05-11
 
 - 发布 AgentDock 0.1.43。
+- Lark channel 支持群聊 @ 机器人触发，默认忽略未 @ 的群消息，并在转发给 Agent 前清理机器人 mention、保留其他被 @ 用户名。
 - 新增事件监控任务框架与 `lac monitor` 子命令，支持通过对话创建股票价格监控，触发后在 side-thread 分析并把过程回传到 channel。
 - Lark、微信和桌面会话新增 `/new`、`/list`、`/switch`、`/history`、`/name`、`/search`、`/del` 会话命令；Lark 可通过会话卡片按钮切换和删除。
 - 会话命令执行路径改为 effects 模型，并抽出 channel 共享 runtime；桌面 `/new`、`/switch` 现在会跟随激活目标会话。

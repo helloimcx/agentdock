@@ -24,6 +24,7 @@ import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desk
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
+import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import {
   buildSessionCommandCard,
   buildInteractiveCard,
@@ -43,6 +44,7 @@ import {
   requestAppRegistration,
 } from './registration.js';
 import { renderLarkTextMessage } from './rendering/messages.js';
+import { normalizeLarkInboundMessageEvent, summarizeLarkInboundPayload } from './inbound.js';
 import {
   consumeLarkBridgeEvent,
   createLarkTurnState,
@@ -137,6 +139,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
             appId: binding.appId,
             autoApprove: binding.autoApprove,
             cardActionsEnabled: binding.cardActionsEnabled,
+            groupReplyAll: binding.groupReplyAll,
+            botOpenId: binding.botOpenId,
           });
         }
         continue;
@@ -752,25 +756,17 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       return { paired: false };
     }
     const router = this.options.getWorkspaceRouter();
-    const threadBinding = this.options.store.getPlatformThreadBinding(input.workspaceId, input.chatId, input.platformUserId, platformKey);
-    let threadId = threadBinding?.thread_id || authorized.thread_id || '';
-    if (!threadId) {
-      const thread = await router.createThread(input.workspaceId, input.displayName || `Lark ${input.chatId}`);
-      threadId = thread.id;
-      this.options.store.updateAuthorizedUserThread(input.workspaceId, input.platformUserId, threadId, platformKey);
-      const now = new Date().toISOString();
-      this.options.store.upsertPlatformThreadBinding({
-        workspace_id: input.workspaceId,
-        platform: platformKey,
-        chat_id: input.chatId,
-        platform_user_id: input.platformUserId,
-        thread_id: threadId,
-        last_platform_message_id: null,
-        created_at: now,
-        updated_at: now,
-      });
-    }
-    const sessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
+    let { threadId } = await resolveChannelThreadRoute({
+      store: this.options.store,
+      router,
+      workspaceId: input.workspaceId,
+      platformKey,
+      chatId: input.chatId,
+      platformUserId: input.platformUserId,
+      displayName: input.displayName,
+      fallbackTitlePrefix: 'Lark',
+      authorized,
+    });
     const normalizedText = String(input.text || '').trim().toLowerCase();
     const permissionThreadId = (
       normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
@@ -890,6 +886,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       appId: binding.appId,
       autoApprove: binding.autoApprove,
       cardActionsEnabled: binding.cardActionsEnabled,
+      groupReplyAll: binding.groupReplyAll,
+      botOpenId: binding.botOpenId,
     };
     this.runtime.set(key, status);
     this.notifyRuntimeStateChanged();
@@ -902,6 +900,13 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         appType: mod.AppType.SelfBuild,
         domain: mod.Domain.Feishu,
       });
+      try {
+        status.botOpenId = await this.fetchBotOpenId(status);
+        binding.botOpenId = status.botOpenId;
+        this.options.log?.(`localcore-lark bot identified for ${binding.workspaceId}/${binding.instanceId}: ${status.botOpenId}`);
+      } catch (error) {
+        this.options.log?.(`localcore-lark bot identity lookup failed for ${binding.workspaceId}/${binding.instanceId}; group mention filtering may be limited: ${error instanceof Error ? error.message : String(error)}`);
+      }
       status.eventDispatcher = new mod.EventDispatcher({
         encryptKey: binding.encryptKey || '',
         verificationToken: binding.verificationToken || '',
@@ -976,6 +981,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       appId: state.appId,
       autoApprove: state.autoApprove,
       cardActionsEnabled: state.cardActionsEnabled,
+      groupReplyAll: state.groupReplyAll,
+      botOpenId: state.botOpenId,
     });
     this.notifyRuntimeStateChanged();
   }
@@ -994,24 +1001,28 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     const instanceId = legacyCall ? 'default' : instanceIdOrData;
     const platformKey = legacyCall ? 'lark' : String(platformKeyOrData || channelPlatformKey('lark', instanceId));
     const data = (legacyCall ? instanceIdOrData : maybeData) || {};
-    const payload = ((data as any)?.event && typeof (data as any).event === 'object')
-      ? (data as any).event
-      : data;
-    const message = (payload as any)?.message;
-    const sender = (payload as any)?.sender;
-    this.options.log?.(`localcore-lark handling message event for ${workspaceId}: ${this.summarizeLarkPayload(payload)}`);
-    if (!message || !sender) {
-      this.options.log?.(`localcore-lark ignored event without message/sender for ${workspaceId}: ${JSON.stringify(Object.keys(data || {}))}`);
+    const runtimeState = this.resolveRuntimeState(workspaceId, instanceId).state;
+    const normalized = normalizeLarkInboundMessageEvent(data, {
+      botOpenId: runtimeState?.botOpenId,
+      groupReplyAll: runtimeState?.groupReplyAll,
+    });
+    this.options.log?.(`localcore-lark handling message event for ${workspaceId}: ${summarizeLarkInboundPayload(data)}`);
+    if (!normalized.ok) {
+      this.options.log?.(`localcore-lark ignored message event for ${workspaceId}: reason=${normalized.reason}${normalized.detail ? ` ${normalized.detail}` : ''}`);
       return;
     }
-    let parsedContent: Record<string, unknown> = {};
-    try {
-      parsedContent = JSON.parse(String(message.content || '{}'));
-    } catch {
-      parsedContent = {};
-    }
-    const messageType = String(message.message_type || '').trim().toLowerCase();
-    const text = String(parsedContent.text || '').trim();
+    const {
+      message,
+      parsedContent,
+      messageType,
+      chatType,
+      mentions,
+      text,
+      platformUserId,
+      chatId,
+      displayName,
+      messageId,
+    } = normalized.message;
     const contentParts: ChannelInboundContentPart[] = [];
     if (text) {
       contentParts.push({ type: 'text', text });
@@ -1051,26 +1062,16 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       return;
     }
     const displayText = text || this.summarizeInboundContentParts(contentParts);
-    const platformUserId = String(sender.sender_id?.user_id || sender.sender_id?.open_id || '').trim();
-    const chatId = String(message.chat_id || platformUserId).trim();
-    if (!platformUserId || !chatId) {
-      this.options.log?.(`localcore-lark ignored message without sender/chat for ${workspaceId}: senderKeys=${JSON.stringify(Object.keys(sender?.sender_id || {}))} chat=${String(message.chat_id || '')}`);
-      return;
-    }
-    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
+    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} chatType=${chatType || 'unknown'} mentions=${mentions.length} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
     await this.handleInboundMessage({
       workspaceId,
       instanceId,
       platformKey,
       platformUserId,
       chatId,
-      displayName: String(
-        (payload as any)?.sender?.sender_id?.user_id ||
-        (payload as any)?.sender?.sender_id?.open_id ||
-        `Lark ${platformUserId.slice(-6)}`
-      ),
+      displayName,
       text: displayText,
-      messageId: String(message.message_id || randomUUID()),
+      messageId,
       contentParts,
     });
   }
@@ -1216,25 +1217,20 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
   }
 
   private summarizeLarkEvent(data: Record<string, unknown>) {
-    const payload = ((data as any)?.event && typeof (data as any).event === 'object')
-      ? (data as any).event
-      : data;
-    return this.summarizeLarkPayload(payload);
+    return summarizeLarkInboundPayload(data);
   }
 
-  private summarizeLarkPayload(payload: Record<string, unknown>) {
-    const message = (payload as any)?.message || {};
-    const sender = (payload as any)?.sender || {};
-    const senderId = sender?.sender_id || {};
-    const content = typeof message.content === 'string' ? message.content : '';
-    return [
-      `message=${String(message.message_id || '') || 'missing'}`,
-      `type=${String(message.message_type || '') || 'missing'}`,
-      `chat=${String(message.chat_id || '') || 'missing'}`,
-      `sender=${String(senderId.user_id || senderId.open_id || '') || 'missing'}`,
-      `contentBytes=${Buffer.byteLength(content, 'utf8')}`,
-      `keys=${JSON.stringify(Object.keys(payload || {}))}`,
-    ].join(' ');
+  private async fetchBotOpenId(state: LarkRuntimeState) {
+    const response = await state.client.request({
+      url: '/open-apis/bot/v3/info',
+      method: 'GET',
+    });
+    const bot = response?.bot || response?.data?.bot;
+    const openId = String(bot?.open_id || bot?.openId || '').trim();
+    if (!openId) {
+      throw new Error('Lark bot info response did not include bot.open_id');
+    }
+    return openId;
   }
 
   private summarizeWsArgs(args: unknown[]) {

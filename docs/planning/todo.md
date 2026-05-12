@@ -27,9 +27,9 @@
 - [x] 新增pi mono内置agent实现，不用安装claude等coding agent也能用
 - [ ] slash命令支持
   - [x] 支持/agent命令来切换agent
-  - [ ] 参考cc-connect, 支持切换和查看会话
+  - [x] 参考cc-connect, 支持切换和查看会话
 - [ ] 原生支持联网搜索
-- [ ] 飞书 channel 支持群聊
+- [x] 飞书 channel 支持群聊
 - [ ] 支持隐藏中间过程
 - [x] 定时任务只绑定项目，不绑定路由，避免失败
 - [ ] 支持监控特定事件，自动发起任务，比如监控到股票价格变动，就自动发起一个分析任务，并通过channel回传结果
