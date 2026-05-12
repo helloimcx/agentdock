@@ -73,6 +73,11 @@ flowchart LR
 
 ## New
 
+### 2026-05-12
+
+- 发布 AgentDock 0.1.44。
+- 拆分超大测试文件，按 Local Core 路由、ACP 进度、Lark/Weixin channel gateway 等边界组织集成测试。
+
 ### 2026-05-11
 
 - 发布 AgentDock 0.1.43。

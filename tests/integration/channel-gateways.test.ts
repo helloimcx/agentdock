@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
+import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+
+
+
+test('channel gateways ignore unowned bridge events without route miss log noise', async () => {
+  const logs: string[] = [];
+  const commonOptions = {
+    store: {} as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+    log: (line: string) => logs.push(line),
+  };
+  const larkGateway = new LocalCoreLarkGateway(commonOptions as any);
+  const weixinGateway = new LocalCoreWeixinGateway(commonOptions as any);
+
+  await larkGateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'localcore-acp:project-1:thread-1',
+    content: 'stream chunk',
+  } as any);
+  await weixinGateway.onBridgeEvent({
+    type: 'update_message',
+    sessionKey: 'localcore-acp:project-1:thread-1',
+    content: 'stream chunk',
+  } as any);
+
+  assert.deepEqual(logs, []);
+});
