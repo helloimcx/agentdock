@@ -74,6 +74,8 @@ export type LocalAiCoreRoute =
   | { name: 'knowledge.base.search'; knowledgeBaseId: string }
   | { name: 'capabilities.read' }
   | { name: 'capabilities.snapshot' }
+  | { name: 'diagnostics.errors' }
+  | { name: 'diagnostics.doctor' }
   | { name: 'plugins.diagnostics' }
   | { name: 'workspace.streaming-probe'; workspaceId: string }
   | { name: 'events.stream' }
@@ -176,6 +178,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
   if (segments[0] === 'capabilities') {
     return parseCapabilitiesRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'diagnostics') {
+    return parseDiagnosticsRoute(normalizedMethod, segments);
   }
   if (segments[0] === 'plugins') {
     return parsePluginsRoute(normalizedMethod, segments);
@@ -510,6 +515,16 @@ function parseCapabilitiesRoute(method: string, segments: string[]): LocalAiCore
 function parsePluginsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   if (method === 'GET' && segments.length === 2 && segments[1] === 'diagnostics') {
     return { name: 'plugins.diagnostics' };
+  }
+  return null;
+}
+
+function parseDiagnosticsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'errors') {
+    return { name: 'diagnostics.errors' };
+  }
+  if (method === 'POST' && segments.length === 2 && segments[1] === 'doctor') {
+    return { name: 'diagnostics.doctor' };
   }
   return null;
 }

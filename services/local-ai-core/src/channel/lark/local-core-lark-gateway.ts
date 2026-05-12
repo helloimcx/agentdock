@@ -14,12 +14,14 @@ import type {
   DesktopConnectConfig,
   LocalCoreAuthorizedUser,
   LocalCoreChannelQrCode,
+  LocalCoreErrorInfo,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCorePairingRequest,
 } from '../../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
+import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
@@ -441,6 +443,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status: binding?.status || 'disabled',
       appId: binding?.appId || '',
       lastError: binding?.lastError,
+      lastErrorInfo: binding?.lastErrorInfo,
+      lastErrorAt: binding?.lastErrorAt,
       connectedAt: binding?.connectedAt,
       pendingPairings: pairings.length,
       authorizedUsers: users.length,
@@ -941,12 +945,22 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       status.status = 'running';
       status.connected = true;
       status.connectedAt = new Date().toISOString();
-      status.lastError = undefined;
+      this.clearRuntimeError(status);
       this.options.log?.(`localcore-lark ws ready for ${binding.workspaceId}`);
     } catch (error) {
       status.status = 'error';
       status.connected = false;
-      status.lastError = error instanceof Error ? error.message : String(error);
+      const errorInfo = toLocalCoreErrorInfo(
+        error instanceof LocalCoreError
+          ? error
+          : new LocalCoreError('channel_auth_failed', error instanceof Error ? error.message : String(error), {
+            userMessage: 'Lark is not connected.',
+            suggestedAction: 'Check app credentials and restart the Lark gateway.',
+            details: { workspaceId: binding.workspaceId, instanceId: binding.instanceId },
+          }),
+        'channel_auth_failed',
+      );
+      this.setRuntimeError(status, errorInfo);
       this.options.log?.(`localcore-lark start failed for ${binding.workspaceId}: ${status.lastError}`);
     }
     this.notifyRuntimeStateChanged();
@@ -992,6 +1006,30 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       type: 'runtime.state.changed',
       payload: {
         reason: 'channel-bindings',
+      },
+    });
+  }
+
+  private clearRuntimeError(state: LarkRuntimeState) {
+    state.lastError = undefined;
+    state.lastErrorInfo = undefined;
+    state.lastErrorAt = undefined;
+  }
+
+  private setRuntimeError(state: LarkRuntimeState, errorInfo: LocalCoreErrorInfo) {
+    state.lastError = errorInfo.message;
+    state.lastErrorInfo = errorInfo;
+    state.lastErrorAt = new Date().toISOString();
+    this.options.eventBus.emit({
+      type: 'localcore.error',
+      payload: {
+        scope: 'channel.lark',
+        errorInfo,
+        context: {
+          workspaceId: state.workspaceId,
+          instanceId: state.instanceId,
+          platform: 'lark',
+        },
       },
     });
   }

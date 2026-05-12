@@ -15,6 +15,8 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCoreChannelQrCode,
   LocalCoreChannelQrCodeStatus,
+  LocalCoreDoctorResult,
+  LocalCoreErrorSummary,
   LocalCoreLarkQrCodeStatus,
   LocalCoreChannelPairingRequest,
   LocalCoreEvent,
@@ -37,6 +39,7 @@ import {
   refreshRuntimeDetections as refreshCoreRuntimeDetections,
   getCapabilitySnapshot as getCoreCapabilitySnapshot,
   getPluginDiagnostics as getCorePluginDiagnostics,
+  listDiagnosticErrors as listCoreDiagnosticErrors,
   checkChannelQrCodeStatus as checkCoreChannelQrCodeStatus,
   getLarkGatewayStatus as getCoreLarkGatewayStatus,
   listChannelAuthorizedUsers as listCoreChannelAuthorizedUsers,
@@ -50,6 +53,7 @@ import {
   rejectChannelPairing as rejectCoreChannelPairing,
   rejectLarkPairing as rejectCoreLarkPairing,
   restartCoreService,
+  runDiagnosticsDoctor as runCoreDiagnosticsDoctor,
   testChannelConnection as testCoreChannelConnection,
   testLarkConnection as testCoreLarkConnection,
   saveCoreRawConfigFile,
@@ -88,6 +92,8 @@ type DesktopProvider = {
   saveSettings: (input: DesktopSettingsInput) => Promise<DesktopSettings>;
   getCapabilitySnapshot: () => Promise<LocalCoreCapabilitySnapshot>;
   getPluginDiagnostics: () => Promise<LocalCorePluginDiagnostics>;
+  listDiagnosticErrors: () => Promise<LocalCoreErrorSummary[]>;
+  runDiagnosticsDoctor: () => Promise<LocalCoreDoctorResult>;
   listChannelGateways: (platform: string) => Promise<LocalCoreChannelGatewayStatus[]>;
   getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelGatewayStatus>;
   testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelConnectionResult>;
@@ -149,6 +155,8 @@ const electronProvider: DesktopProvider = {
   saveSettings: (input: DesktopSettingsInput) => requireDesktopBridge().saveSettings(input),
   getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
   getPluginDiagnostics: () => getCorePluginDiagnostics(),
+  listDiagnosticErrors: () => listCoreDiagnosticErrors().then((result) => result.errors),
+  runDiagnosticsDoctor: () => runCoreDiagnosticsDoctor(),
   listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
   getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
   testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
@@ -206,6 +214,8 @@ const localCoreProvider: DesktopProvider = {
   saveSettings: (input: DesktopSettingsInput) => saveCoreSettings(input),
   getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
   getPluginDiagnostics: () => getCorePluginDiagnostics(),
+  listDiagnosticErrors: () => listCoreDiagnosticErrors().then((result) => result.errors),
+  runDiagnosticsDoctor: () => runCoreDiagnosticsDoctor(),
   listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
   getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
   testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
@@ -305,6 +315,8 @@ export const deleteThreadKnowledgeBases = (workspaceId: string, threadId: string
 export const saveDesktopSettings = (input: DesktopSettingsInput): Promise<DesktopSettings> => requireProvider().saveSettings(input);
 export const getRuntimeCapabilitySnapshot = (): Promise<LocalCoreCapabilitySnapshot> => requireProvider().getCapabilitySnapshot();
 export const getRuntimePluginDiagnostics = (): Promise<LocalCorePluginDiagnostics> => requireProvider().getPluginDiagnostics();
+export const getRuntimeDiagnosticErrors = (): Promise<LocalCoreErrorSummary[]> => requireProvider().listDiagnosticErrors();
+export const runRuntimeDiagnosticsDoctor = (): Promise<LocalCoreDoctorResult> => requireProvider().runDiagnosticsDoctor();
 export const listChannelGateways = (platform: string): Promise<LocalCoreChannelGatewayStatus[]> => requireProvider().listChannelGateways(platform);
 export const getChannelGatewayStatus = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> =>
   requireProvider().getChannelGatewayStatus(platform, workspaceId, instanceId);

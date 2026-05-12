@@ -18,6 +18,8 @@ import type {
   KnowledgeSource,
   LocalCoreCapabilities,
   LocalCoreCapabilitySnapshot,
+  LocalCoreDoctorResult,
+  LocalCoreErrorSummary,
   LocalCorePluginDiagnostics,
   LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
@@ -220,6 +222,14 @@ export async function refreshRuntimeDetections() {
 
 export async function refreshRuntimeDetection(runtimeId: string) {
   return coreRequest<RuntimeDetectionListResponse>('POST', `/runtimes/${encodeURIComponent(runtimeId)}/refresh`);
+}
+
+export async function listDiagnosticErrors() {
+  return coreRequest<{ errors: LocalCoreErrorSummary[] }>('GET', '/diagnostics/errors');
+}
+
+export async function runDiagnosticsDoctor() {
+  return coreRequest<LocalCoreDoctorResult>('POST', '/diagnostics/doctor');
 }
 
 export async function readCoreConfigFile() {

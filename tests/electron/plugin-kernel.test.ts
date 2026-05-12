@@ -80,6 +80,50 @@ function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
   };
 }
 
+async function invokeServer(
+  server: LocalAiCoreServer,
+  method: string,
+  url: string,
+) {
+  const req = Object.assign(new EventEmitter(), {
+    method,
+    url,
+    headers: {},
+    async *[Symbol.asyncIterator]() {},
+  }) as any;
+  let body = '';
+  const headers = new Map<string, string>();
+  const res = Object.assign(new EventEmitter(), {
+    statusCode: 200,
+    setHeader(name: string, value: string) {
+      headers.set(name, value);
+    },
+    writeHead(statusCode: number, nextHeaders: Record<string, string>) {
+      this.statusCode = statusCode;
+      for (const [name, value] of Object.entries(nextHeaders)) {
+        headers.set(name, value);
+      }
+    },
+    write(chunk: string) {
+      body += chunk;
+      return true;
+    },
+    end(chunk?: string) {
+      if (chunk) {
+        body += chunk;
+      }
+      res.emit('finish');
+    },
+  }) as any;
+
+  await (server as any).handleRequest(req, res);
+  return {
+    statusCode: res.statusCode,
+    headers,
+    body: body ? JSON.parse(body) : null,
+  };
+}
+
 test('bootstrapLocalCoreKernel exposes the static built-in capability snapshot', () => {
   const kernel = bootstrapLocalCoreKernel();
 
@@ -933,23 +977,66 @@ test('server QR routes dispatch through generic channel bindings', async () => {
     },
   }) as any;
   const server = new LocalAiCoreServer(bindings, { port: 0 });
-  await server.start();
-  try {
-    const address = (server as any).server.address();
-    const baseUrl = `http://127.0.0.1:${address.port}/api/local/v1`;
-    const qrResponse = await fetch(`${baseUrl}/platforms/slack/workspace-1/qrcode?instance_id=bot-1`, { method: 'POST' });
-    const qrBody = await qrResponse.json() as any;
-    assert.equal(qrBody.data.ticket, 'ticket-1');
-    const statusResponse = await fetch(`${baseUrl}/platforms/slack/workspace-1/qrcode/status?ticket=ticket-1&instance_id=bot-1`);
-    const statusBody = await statusResponse.json() as any;
-    assert.equal(statusBody.data.status, 'signed');
-    assert.deepEqual(calls, [
-      'get:slack:workspace-1:bot-1',
-      'check:slack:workspace-1:ticket-1:bot-1',
-    ]);
-  } finally {
-    await server.stop();
-  }
+  const qrResponse = await invokeServer(server, 'POST', '/api/local/v1/platforms/slack/workspace-1/qrcode?instance_id=bot-1');
+  assert.equal(qrResponse.body.data.ticket, 'ticket-1');
+  const statusResponse = await invokeServer(server, 'GET', '/api/local/v1/platforms/slack/workspace-1/qrcode/status?ticket=ticket-1&instance_id=bot-1');
+  assert.equal(statusResponse.body.data.status, 'signed');
+  assert.deepEqual(calls, [
+    'get:slack:workspace-1:bot-1',
+    'check:slack:workspace-1:ticket-1:bot-1',
+  ]);
+});
+
+test('server unknown routes return structured error responses', async () => {
+  const bindings = new EventEmitter() as any;
+  const server = new LocalAiCoreServer(bindings, { port: 0 });
+  const response = await invokeServer(server, 'GET', '/api/local/v1/not-found');
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.body.ok, false);
+  assert.equal(response.body.code, 'internal_error');
+  assert.match(response.body.error, /Unknown route/);
+  assert.equal(response.body.errorInfo?.severity, 'error');
+});
+
+test('server diagnostics routes dispatch through generic bindings', async () => {
+  const calls: string[] = [];
+  const bindings = Object.assign(new EventEmitter(), {
+    listDiagnosticErrors: async () => {
+      calls.push('errors');
+      return [{
+        key: 'channel.weixin:channel_session_expired:workspace-1',
+        count: 2,
+        firstSeenAt: '2026-05-12T00:00:00.000Z',
+        lastSeenAt: '2026-05-12T00:05:00.000Z',
+        errorInfo: {
+          code: 'channel_session_expired',
+          message: 'WeChat login expired.',
+          userMessage: 'Channel login has expired.',
+          severity: 'error',
+          retryable: false,
+          suggestedAction: 'Reconnect the channel.',
+        },
+      }];
+    },
+    runDiagnosticsDoctor: async () => {
+      calls.push('doctor');
+      return {
+        status: 'warn',
+        checkedAt: '2026-05-12T00:00:00.000Z',
+        checks: [
+          { id: 'config', label: 'Configuration', status: 'pass', summary: 'ok' },
+        ],
+      };
+    },
+  }) as any;
+  const server = new LocalAiCoreServer(bindings, { port: 0 });
+  const errorsResponse = await invokeServer(server, 'GET', '/api/local/v1/diagnostics/errors');
+  const doctorResponse = await invokeServer(server, 'POST', '/api/local/v1/diagnostics/doctor');
+
+  assert.equal(errorsResponse.body.data.errors[0].errorInfo.code, 'channel_session_expired');
+  assert.equal(doctorResponse.body.data.status, 'warn');
+  assert.deepEqual(calls, ['errors', 'doctor']);
 });
 
 test('channel and scheduler capabilities use registry targets instead of Lark-specific routing', () => {

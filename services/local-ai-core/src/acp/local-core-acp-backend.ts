@@ -23,6 +23,7 @@ import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadCommandService } from '../thread/thread-command-service.js';
 import { SessionCommandService } from '../thread/session-command-service.js';
+import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -552,13 +553,18 @@ export class LocalCoreAcpBackend {
         replyCtx: runId,
       });
     } catch (error) {
-      const errorContent = `Agent error: ${error instanceof Error ? error.message : String(error)}`;
+      const errorInfo = toLocalCoreErrorInfo(error, 'internal_error', {
+        threadId,
+        workspaceId: row.workspace_id,
+        runtimeId: config.agentType,
+      });
+      const errorContent = formatUserError(errorInfo);
       this.options.store.updateRun(runId, threadId, 'failed');
       const task = this.options.store.getAgentTaskByRunId(runId);
       if (task) {
         this.options.store.updateAgentTask(task.taskId, {
           status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
+          error: errorInfo.message,
         });
       }
       this.options.store.appendMessage(threadId, 'assistant', errorContent, 'final');
@@ -579,7 +585,21 @@ export class LocalCoreAcpBackend {
           runId,
           threadId,
           workspaceId: row.workspace_id,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorInfo.message,
+          errorInfo,
+        },
+      });
+      this.options.eventBus.emit({
+        type: 'localcore.error',
+        payload: {
+          scope: 'acp.run',
+          errorInfo,
+          context: {
+            threadId,
+            workspaceId: row.workspace_id,
+            runtimeId: config.agentType,
+            runId,
+          },
         },
       });
       this.emitBridgeEvent({
@@ -615,7 +635,27 @@ export class LocalCoreAcpBackend {
   }
 
   private handleTransportSessionClosed(session: AcpSessionState, error: Error) {
+    const row = this.options.store.getThreadRow(session.threadId);
+    const runtimeId = session.currentTurn?.agentType || row?.agent_type || '';
+    const errorInfo = toLocalCoreErrorInfo(error, 'runtime_exited', {
+      threadId: session.threadId,
+      workspaceId: row?.workspace_id || '',
+      runtimeId,
+    });
     this.sessionCoordinator.handleTransportSessionClosed(session, error);
+    this.options.eventBus.emit({
+      type: 'localcore.error',
+      payload: {
+        scope: 'acp.session',
+        errorInfo,
+        context: {
+          threadId: session.threadId,
+          workspaceId: row?.workspace_id || '',
+          runtimeId,
+          runId: session.currentRunId || '',
+        },
+      },
+    });
   }
 
   private emitBridgeEvent(event: DesktopBridgeEvent) {

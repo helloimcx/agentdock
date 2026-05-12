@@ -76,6 +76,7 @@ flowchart LR
 ### 2026-05-12
 
 - 发布 AgentDock 0.1.44。
+- Local AI Core 新增结构化错误模型，ACP runtime 与微信通道会把启动失败、会话过期等问题回写为可诊断状态，并提供 diagnostics 错误摘要与 doctor 自检接口。
 - 拆分超大测试文件，按 Local Core 路由、ACP 进度、Lark/Weixin channel gateway 等边界组织集成测试。
 
 ### 2026-05-11

@@ -1,4 +1,4 @@
-import type { DesktopConnectConfig, InstalledAgentRuntime } from '../../../../packages/contracts/src/index.js';
+import type { DesktopConnectConfig, InstalledAgentRuntime, LocalCoreErrorInfo } from '../../../../packages/contracts/src/index.js';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   LOCALCORE_ACP_AGENT_TYPE,
@@ -10,7 +10,7 @@ import { RuntimeDetectionStore } from './runtime-detection-store.js';
 export type RuntimeDetectionEvent =
   | { type: 'runtime.detect.started'; runtimeId?: string; detectedAt: string }
   | { type: 'runtime.detect.completed'; runtimeId?: string; detectedAt: string; runtimes: InstalledAgentRuntime[] }
-  | { type: 'runtime.detect.failed'; runtimeId?: string; detectedAt: string; error: string }
+  | { type: 'runtime.detect.failed'; runtimeId?: string; detectedAt: string; error: string; errorInfo?: LocalCoreErrorInfo }
   | { type: 'runtime.status.changed'; runtime: InstalledAgentRuntime };
 
 interface RuntimeDetectionServiceOptions {
@@ -65,6 +65,42 @@ export class RuntimeDetectionService {
     }
   }
 
+  recordLaunchError(runtimeId: string, errorInfo: LocalCoreErrorInfo) {
+    const current = this.store.read() || this.createUnknownResults();
+    const checkedAt = new Date().toISOString();
+    const next = current.map((runtime) => {
+      if (runtime.runtimeId !== runtimeId && runtime.agentType !== runtimeId) {
+        return runtime;
+      }
+      return {
+        ...runtime,
+        status: 'error' as const,
+        readiness: 'failed' as const,
+        lastLaunchError: errorInfo,
+        lastCheckedAt: checkedAt,
+        error: errorInfo.message,
+        details: errorInfo.userMessage,
+        issues: prependIssue(runtime.issues, {
+          code: errorInfo.code,
+          severity: errorInfo.severity,
+          message: errorInfo.message,
+          help: errorInfo.suggestedAction,
+        }),
+        recommendedActions: errorInfo.suggestedAction
+          ? prependAction(runtime.recommendedActions, {
+              label: 'Fix runtime launch',
+              description: errorInfo.suggestedAction,
+            })
+          : runtime.recommendedActions,
+      };
+    });
+    this.store.write(next);
+    const runtime = next.find((entry) => entry.runtimeId === runtimeId || entry.agentType === runtimeId);
+    if (runtime) {
+      this.emit({ type: 'runtime.status.changed', runtime });
+    }
+  }
+
   private async runRefresh(runtimeId?: string): Promise<InstalledAgentRuntime[]> {
     const previous = this.store.read() || [];
     const startedAt = new Date().toISOString();
@@ -89,7 +125,20 @@ export class RuntimeDetectionService {
       return detected;
     } catch (err: any) {
       const message = err?.message || String(err);
-      this.emit({ type: 'runtime.detect.failed', runtimeId, detectedAt: new Date().toISOString(), error: message });
+      this.emit({
+        type: 'runtime.detect.failed',
+        runtimeId,
+        detectedAt: new Date().toISOString(),
+        error: message,
+        errorInfo: {
+          code: 'internal_error',
+          message,
+          userMessage: 'Runtime detection failed.',
+          severity: 'error',
+          retryable: true,
+          suggestedAction: 'Retry runtime detection and inspect the logs if it repeats.',
+        },
+      });
       this.options.log?.(`Runtime detection failed: ${message}`);
       throw err;
     } finally {
@@ -105,6 +154,7 @@ export class RuntimeDetectionService {
       displayName: displayName(agentType),
       status: agentType === LOCALCORE_ACP_AGENT_TYPE ? 'installed' : 'unknown',
       installed: agentType === LOCALCORE_ACP_AGENT_TYPE,
+      readiness: agentType === LOCALCORE_ACP_AGENT_TYPE ? 'ready' : 'unknown',
       detectedAt,
       summary: agentType === LOCALCORE_ACP_AGENT_TYPE
         ? `${displayName(agentType)} is built in.`
@@ -151,4 +201,15 @@ function changedRuntimes(previous: InstalledAgentRuntime[], next: InstalledAgent
 
 function displayName(agentType: string) {
   return resolveAgentRuntimeDefinition(agentType)?.displayName || agentType;
+}
+
+function prependIssue(issues: InstalledAgentRuntime['issues'], issue: InstalledAgentRuntime['issues'][number]) {
+  return [issue, ...issues.filter((entry) => entry.code !== issue.code)];
+}
+
+function prependAction(
+  actions: InstalledAgentRuntime['recommendedActions'],
+  action: InstalledAgentRuntime['recommendedActions'][number],
+) {
+  return [action, ...actions.filter((entry) => entry.label !== action.label || entry.description !== action.description)];
 }

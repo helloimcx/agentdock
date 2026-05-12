@@ -64,6 +64,19 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
   );
 }
 
+function runtimeReadinessVariant(runtime: InstalledAgentRuntime) {
+  if (runtime.readiness === 'ready') return 'success';
+  if (runtime.readiness === 'failed') return 'danger';
+  if (runtime.readiness === 'degraded') return 'warning';
+  if (runtime.status === 'installed') return 'success';
+  if (runtime.status === 'error') return 'danger';
+  return 'warning';
+}
+
+function runtimeReadinessLabel(runtime: InstalledAgentRuntime) {
+  return runtime.readiness || (runtime.status === 'installed' ? 'ready' : 'unknown');
+}
+
 function TaskPanel({
   title,
   description,
@@ -458,13 +471,25 @@ export default function Dashboard() {
                     <Badge variant={runtime.status === 'installed' ? 'success' : runtime.status === 'error' ? 'danger' : 'warning'}>
                       {runtime.status}
                     </Badge>
+                    <Badge variant={runtimeReadinessVariant(runtime)}>
+                      {runtimeReadinessLabel(runtime)}
+                    </Badge>
                     <Badge>{runtime.source}</Badge>
                     {runtime.version ? <Badge variant="secondary">v{runtime.version}</Badge> : null}
                   </div>
                   <p className="mt-3 text-sm leading-5 text-muted-foreground">{runtime.summary}</p>
-                  {runtime.issues[0] ? (
+                  {runtime.lastLaunchError ? (
+                    <p className="mt-2 text-xs leading-5 text-red-600 dark:text-red-200">
+                      {runtime.lastLaunchError.userMessage}
+                    </p>
+                  ) : runtime.issues[0] ? (
                     <p className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-200">
                       {runtime.issues[0].message}
+                    </p>
+                  ) : null}
+                  {runtime.lastLaunchError?.suggestedAction ? (
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                      {runtime.lastLaunchError.suggestedAction}
                     </p>
                   ) : null}
                   {runtime.binaryPath || runtime.command ? (
@@ -472,13 +497,13 @@ export default function Dashboard() {
                       {runtime.binaryPath || runtime.command}
                     </p>
                   ) : null}
-                  {runtime.recommendedActions[0] ? (
+                  {runtime.recommendedActions[0] && !runtime.lastLaunchError?.suggestedAction ? (
                     <p className="mt-3 text-xs leading-5 text-muted-foreground">
                       {runtime.recommendedActions[0].description}
                     </p>
                   ) : null}
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Last checked {new Date(runtime.detectedAt).toLocaleString()}
+                    Last checked {new Date(runtime.lastCheckedAt || runtime.detectedAt).toLocaleString()}
                   </p>
                 </div>
               ))}

@@ -712,6 +712,71 @@ test('lark bridge does not stream thought updates before completion', async () =
   assert.ok(!createdCards.some((card) => /处理中|正在思考/.test(card.text)));
 });
 
+test('lark gateway records structured error state when startup fails', async () => {
+  const emittedEvents: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      listPendingPairings: () => [],
+      listAuthorizedUsers: () => [],
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: {
+      emit: (event: any) => emittedEvents.push(event),
+      on: () => () => {},
+    } as any,
+  });
+  (gateway as any).larkModulePromise = Promise.resolve({
+    AppType: { SelfBuild: 'SelfBuild' },
+    Domain: { Feishu: 'Feishu' },
+    LoggerLevel: { info: 'info' },
+    Client: class {
+      request() {
+        return Promise.resolve({ bot: { open_id: 'bot-open-id' } });
+      }
+    },
+    EventDispatcher: class {
+      register() {}
+    },
+    WSClient: class {
+      start() {
+        throw new Error('invalid app credentials');
+      }
+      on() {}
+    },
+  });
+
+  await (gateway as any).startWorkspace({
+    workspaceId: 'workspace-1',
+    instanceId: 'default',
+    displayName: 'Workspace 1',
+    platformKey: 'lark',
+    appId: 'cli_a1',
+    appSecret: 'secret',
+    encryptKey: '',
+    verificationToken: '',
+    autoApprove: false,
+    cardActionsEnabled: true,
+    groupReplyAll: false,
+    enabled: true,
+    brand: 'lark',
+    project: { name: 'workspace-1' },
+  });
+
+  const status = gateway.getStatus('workspace-1');
+  assert.equal(status.status, 'error');
+  assert.equal(status.connected, false);
+  assert.equal(status.lastErrorInfo?.code, 'channel_auth_failed');
+  assert.equal(status.lastErrorInfo?.suggestedAction, 'Check app credentials and restart the Lark gateway.');
+  assert.match(status.lastError || '', /invalid app credentials/);
+  assert.ok(status.lastErrorAt);
+  assert.equal(
+    emittedEvents.some((event) => event.type === 'localcore.error' && event.payload?.scope === 'channel.lark'),
+    true,
+  );
+});
+
 test('lark permission requests render as clickable card buttons', async () => {
   const createdCards: any[] = [];
   const patchedCards: any[] = [];

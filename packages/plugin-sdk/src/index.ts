@@ -375,6 +375,13 @@ export interface DomainEventPayloadMap {
     threadId: string;
     workspaceId: string;
     error: string;
+    errorInfo?: import('../../contracts/src/index.js').LocalCoreErrorInfo;
+  };
+  'localcore.error': {
+    scope: string;
+    errorInfo?: import('../../contracts/src/index.js').LocalCoreErrorInfo;
+    error?: string;
+    context?: Record<string, unknown>;
   };
   'scheduler.job.updated': import('../../contracts/src/index.js').ScheduledJob;
   'scheduler.run.updated': import('../../contracts/src/index.js').ScheduledJobRun;

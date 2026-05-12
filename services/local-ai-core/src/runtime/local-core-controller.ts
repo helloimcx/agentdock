@@ -10,6 +10,8 @@ import type {
   LocalCoreCapabilitySnapshot,
   LocalCoreCapabilities,
   LocalCorePluginDiagnostics,
+  LocalCoreDoctorResult,
+  LocalCoreErrorSummary,
   LocalCoreChannelAuthorizedUser,
   ChannelFileSendInput,
   ChannelFileSendResult,
@@ -71,6 +73,7 @@ import type {
 import type { ChannelRuntime, KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
 import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
+import { LocalCoreError, LocalCoreErrorReporter, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
@@ -88,6 +91,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly runtimeDetection: RuntimeDetectionService;
+  private readonly errorReporter: LocalCoreErrorReporter;
   private readonly busUnsubscribers: Array<() => void> = [];
   private readonly pendingLogs: string[] = [];
   private handlingLog = false;
@@ -120,6 +124,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       runMonitorNow: async () => { throw new Error('Automation monitor service is not available.'); },
       listRuns: () => [],
     } as unknown as AutomationMonitorService;
+    this.errorReporter = new LocalCoreErrorReporter((message) => this.handleLog(message));
     this.runtimeDetection = new RuntimeDetectionService({
       userDataPath,
       readConfig: async () => (await this.readConfigFile()).parsed,
@@ -148,6 +153,17 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       }),
       this.kernel.context.bus.on('runtime.state.changed', () => {
         void this.emitRuntime();
+      }),
+      this.kernel.context.bus.on('localcore.error', (event) => {
+        const errorInfo = this.errorReporter.report(
+          String(event.scope || 'local-ai-core'),
+          event.errorInfo || event.error || 'Unknown error',
+          event.context || {},
+        );
+        const runtimeId = String(event.context?.runtimeId || event.context?.agentType || '').trim();
+        if (runtimeId) {
+          this.runtimeDetection.recordLaunchError(runtimeId, errorInfo);
+        }
       }),
     );
   }
@@ -504,6 +520,75 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
 
   async getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics> {
     return this.kernel.diagnostics.snapshot();
+  }
+
+  async listDiagnosticErrors(): Promise<LocalCoreErrorSummary[]> {
+    return this.errorReporter.list();
+  }
+
+  async runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult> {
+    const checkedAt = new Date().toISOString();
+    const configFile = await this.readConfigFile();
+    const runtimeChecks = await this.refreshInstalledAgentRuntimes().catch((error) => {
+      const errorInfo = toLocalCoreErrorInfo(error, 'internal_error');
+      return [{
+        agentType: 'runtime',
+        runtimeId: 'runtime',
+        displayName: 'Runtime Detection',
+        status: 'error' as const,
+        installed: false,
+        detectedAt: checkedAt,
+        summary: errorInfo.userMessage,
+        issues: [{ code: errorInfo.code, severity: errorInfo.severity, message: errorInfo.message, help: errorInfo.suggestedAction }],
+        recommendedActions: errorInfo.suggestedAction ? [{ label: 'Fix runtime detection', description: errorInfo.suggestedAction }] : [],
+        source: 'path' as const,
+        error: errorInfo.message,
+        readiness: 'failed' as const,
+        lastLaunchError: errorInfo,
+      }];
+    });
+    const channelStatuses = await this.listChannelGatewayStatuses().catch(() => []);
+    const checks = [
+      configFile.error
+        ? {
+            id: 'config',
+            label: 'Configuration',
+            status: 'fail' as const,
+            summary: configFile.error,
+            errorInfo: new LocalCoreError('config_invalid', configFile.error).info,
+          }
+        : {
+            id: 'config',
+            label: 'Configuration',
+            status: configFile.exists ? 'pass' as const : 'warn' as const,
+            summary: configFile.exists ? 'Configuration file is readable.' : 'Configuration file has not been created yet.',
+          },
+      {
+        id: 'runtime-detection',
+        label: 'Runtime Detection',
+        status: runtimeChecks.some((runtime) => runtime.status === 'error') ? 'fail' as const : 'pass' as const,
+        summary: `${runtimeChecks.length} runtime(s) checked.`,
+      },
+      {
+        id: 'channels',
+        label: 'Channel Gateways',
+        status: channelStatuses.some((status) => status.status === 'error') ? 'warn' as const : 'pass' as const,
+        summary: `${channelStatuses.length} channel gateway status record(s) checked.`,
+        errorInfo: channelStatuses.find((status) => status.lastErrorInfo)?.lastErrorInfo,
+      },
+      {
+        id: 'logs',
+        label: 'Logs',
+        status: 'pass' as const,
+        summary: 'Local AI Core log reader is available.',
+      },
+    ];
+    const status = checks.some((check) => check.status === 'fail')
+      ? 'fail'
+      : checks.some((check) => check.status === 'warn')
+        ? 'warn'
+        : 'pass';
+    return { status, checkedAt, checks };
   }
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {

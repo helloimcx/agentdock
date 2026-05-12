@@ -3,6 +3,7 @@ import type {
   DesktopBridgeEvent,
   DesktopConnectConfig,
   DesktopProjectConfig,
+  LocalCoreErrorInfo,
 } from '../../../../../packages/contracts/src/index.js';
 import type { EventBus } from '../../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
@@ -42,6 +43,8 @@ export type LarkRuntimeState = {
   groupReplyAll: boolean;
   botOpenId?: string;
   lastError?: string;
+  lastErrorInfo?: LocalCoreErrorInfo;
+  lastErrorAt?: string;
   connectedAt?: string;
   client?: any;
   wsClient?: any;

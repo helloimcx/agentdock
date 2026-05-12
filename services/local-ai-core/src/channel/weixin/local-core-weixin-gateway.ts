@@ -16,10 +16,12 @@ import type {
   LocalCoreAuthorizedUser,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
+  LocalCoreErrorInfo,
   LocalCorePairingRequest,
 } from '../../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
+import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
@@ -74,6 +76,7 @@ const WEIXIN_RESERVED_TERMINAL_SENDS = 1;
 const WEIXIN_PROGRESS_SEND_BUDGET = WEIXIN_CONTEXT_SEND_LIMIT - WEIXIN_RESERVED_TERMINAL_SENDS;
 const RESPONSE_TIMEOUT_MS = 5 * 60 * 1000;
 const WEIXIN_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+const ERROR_LOG_WINDOW_MS = 5 * 60 * 1000;
 
 // ==================== Utilities ====================
 
@@ -209,6 +212,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
   private readonly outboundTurns = new Map<string, WeixinTurnState>();
   private readonly processedInboundMessages = new Map<string, number>();
   private readonly mutedThreadBridgeCounts = new Map<string, number>();
+  private readonly pollErrorLogWindows = new Map<string, { at: number; count: number; errorKey: string }>();
   private readonly sessionCommandRuntime: ChannelSessionCommandRuntime<WeixinThreadRoute>;
   readonly platform = 'weixin';
   readonly routeType = 'channel.chat';
@@ -320,6 +324,10 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       status: binding?.status || 'disabled',
       appId: binding?.accountId || '',
       lastError: binding?.lastError,
+      lastErrorInfo: binding?.lastErrorInfo,
+      lastErrorAt: binding?.lastErrorAt,
+      consecutiveFailures: binding?.consecutiveFailures,
+      nextRetryAt: binding?.nextRetryAt,
       connectedAt: binding?.connectedAt,
       pendingPairings: pairings.length,
       authorizedUsers: users.length,
@@ -899,29 +907,40 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
         status.status = 'stopped';
         status.connected = false;
         status.lastError = 'Scan the WeChat QR code to finish login before starting message polling.';
+        status.lastErrorInfo = new LocalCoreError('channel_auth_failed', status.lastError, {
+          userMessage: 'WeChat is not connected.',
+          suggestedAction: 'Scan the WeChat QR code to finish login.',
+        }).info;
+        status.lastErrorAt = new Date().toISOString();
         this.notifyRuntimeStateChanged();
         return;
       }
       status.status = 'running';
       status.connected = true;
       status.connectedAt = new Date().toISOString();
-      status.lastError = undefined;
+      this.clearRuntimeError(status);
 
       // Start long-poll loop in background
       this.runMonitorLoop(binding, abortController.signal).catch((err) => {
         if (!abortController.signal.aborted) {
-          this.options.log?.(`localcore-weixin monitor terminated for ${binding.workspaceId}: ${formatError(err)}`);
           status.status = 'error';
           status.connected = false;
-          status.lastError = formatError(err);
+          this.setRuntimeError(status, err, 'internal_error', {
+            workspaceId: binding.workspaceId,
+            instanceId: binding.instanceId,
+            runtimeId: 'weixin',
+          });
           this.notifyRuntimeStateChanged();
         }
       });
     } catch (error) {
       status.status = 'error';
       status.connected = false;
-      status.lastError = formatError(error);
-      this.options.log?.(`localcore-weixin start failed for ${binding.workspaceId}: ${status.lastError}`);
+      this.setRuntimeError(status, error, 'internal_error', {
+        workspaceId: binding.workspaceId,
+        instanceId: binding.instanceId,
+        runtimeId: 'weixin',
+      });
     }
     this.notifyRuntimeStateChanged();
   }
@@ -974,27 +993,57 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
         if (isApiError) {
           consecutiveFailures++;
-          const errorText = resp.errmsg ? ` errmsg=${resp.errmsg}` : '';
-          this.options.log?.(`localcore-weixin getUpdates failed for ${binding.workspaceId}: ret=${resp.ret} errcode=${resp.errcode}${errorText} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`);
+          const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
+          const retryDelayMs = this.computeRetryDelay(consecutiveFailures);
           if (resp.errcode === -14 || resp.ret === -14) {
-            const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
             if (state) {
               state.status = 'error';
               state.connected = false;
-              state.lastError = 'WeChat login expired. Generate and scan a new QR code.';
+              state.consecutiveFailures = consecutiveFailures;
+              state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
+              this.setRuntimeError(
+                state,
+                new LocalCoreError('channel_session_expired', 'WeChat login expired. Generate and scan a new QR code.', {
+                  suggestedAction: 'Generate and scan a new WeChat QR code.',
+                  details: {
+                    errcode: resp.errcode ?? resp.ret ?? -14,
+                  },
+                }),
+                'channel_session_expired',
+                {
+                  workspaceId: binding.workspaceId,
+                  instanceId: binding.instanceId,
+                  runtimeId: 'weixin',
+                  errcode: resp.errcode ?? resp.ret ?? -14,
+                },
+              );
               this.notifyRuntimeStateChanged();
             }
           }
+          this.logPollError(
+            binding,
+            `ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg || ''}`,
+            `localcore-weixin getUpdates failed for ${binding.workspaceId}: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''} (${consecutiveFailures})`,
+          );
+          if (state && resp.errcode !== -14 && resp.ret !== -14) {
+            state.consecutiveFailures = consecutiveFailures;
+            state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
+          }
+          await sleep(retryDelayMs, signal);
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            consecutiveFailures = 0;
-            await sleep(BACKOFF_DELAY_MS, signal);
-          } else {
-            await sleep(RETRY_DELAY_MS, signal);
+            consecutiveFailures = MAX_CONSECUTIVE_FAILURES;
           }
           continue;
         }
 
         consecutiveFailures = 0;
+        const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
+        if (state) {
+          this.clearRuntimeError(state);
+          state.status = 'running';
+          state.connected = true;
+          this.notifyRuntimeStateChanged();
+        }
 
         if (resp.get_updates_buf) {
           buf = resp.get_updates_buf;
@@ -1057,13 +1106,24 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       } catch (err) {
         if (signal.aborted) return;
         consecutiveFailures++;
-        this.options.log?.(`localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}): ${formatError(err)}`);
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          consecutiveFailures = 0;
-          await sleep(BACKOFF_DELAY_MS, signal);
-        } else {
-          await sleep(RETRY_DELAY_MS, signal);
+        const retryDelayMs = this.computeRetryDelay(consecutiveFailures);
+        const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
+        if (state) {
+          state.consecutiveFailures = consecutiveFailures;
+          state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
+          this.setRuntimeError(state, err, 'internal_error', {
+            workspaceId: binding.workspaceId,
+            instanceId: binding.instanceId,
+            runtimeId: 'weixin',
+          });
+          this.notifyRuntimeStateChanged();
         }
+        this.logPollError(
+          binding,
+          formatError(err),
+          `localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}): ${formatError(err)}`,
+        );
+        await sleep(retryDelayMs, signal);
       }
     }
   }
@@ -1442,6 +1502,55 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       type: 'runtime.state.changed',
       payload: { reason: 'channel-bindings' },
     });
+  }
+
+  private clearRuntimeError(state: WeixinRuntimeState) {
+    state.lastError = undefined;
+    state.lastErrorInfo = undefined;
+    state.lastErrorAt = undefined;
+    state.consecutiveFailures = 0;
+    state.nextRetryAt = undefined;
+  }
+
+  private setRuntimeError(
+    state: WeixinRuntimeState,
+    error: unknown,
+    fallbackCode: LocalCoreErrorInfo['code'],
+    context: Record<string, unknown>,
+  ) {
+    const errorInfo = toLocalCoreErrorInfo(error, fallbackCode, context);
+    state.lastError = errorInfo.message;
+    state.lastErrorInfo = errorInfo;
+    state.lastErrorAt = new Date().toISOString();
+    this.options.eventBus.emit({
+      type: 'localcore.error',
+      payload: {
+        scope: 'channel.weixin',
+        errorInfo,
+        context,
+      },
+    });
+  }
+
+  private computeRetryDelay(failures: number) {
+    if (failures <= 1) return RETRY_DELAY_MS;
+    if (failures === 2) return 5_000;
+    if (failures === 3) return 15_000;
+    if (failures === 4) return 30_000;
+    return 60_000;
+  }
+
+  private logPollError(binding: WeixinWorkspaceBinding, errorKey: string, message: string) {
+    const key = runtimeKey(binding.workspaceId, binding.instanceId);
+    const current = this.pollErrorLogWindows.get(key);
+    const now = Date.now();
+    if (!current || current.errorKey !== errorKey || now - current.at >= ERROR_LOG_WINDOW_MS) {
+      this.pollErrorLogWindows.set(key, { at: now, count: 1, errorKey });
+      this.options.log?.(message);
+      return;
+    }
+    current.count += 1;
+    this.pollErrorLogWindows.set(key, current);
   }
 }
 

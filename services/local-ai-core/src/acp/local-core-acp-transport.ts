@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { DesktopBridgeEvent } from '../../../../packages/contracts/src/index.js';
+import { LocalCoreError } from '../kernel/local-core-errors.js';
 import type {
   AcpSessionState,
   LocalCoreProjectConfig,
@@ -70,14 +71,40 @@ export class LocalCoreAcpTransport {
     child.on('exit', (code, signal) => {
       this.options.onSessionClosed(
         session,
-        new Error(`ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`),
+        new LocalCoreError(
+          'runtime_exited',
+          `ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`,
+          {
+            details: {
+              code: code ?? 'unknown',
+              signal: signal || '',
+              threadId: input.threadId,
+              runtimeId: input.config.agentType,
+            },
+          },
+        ),
       );
     });
     child.on('error', (error: NodeJS.ErrnoException) => {
-      const message = error.code === 'ENOENT'
-        ? `ACP agent command not found: ${input.config.command}`
-        : `ACP agent failed to start: ${error.message}`;
-      this.options.onSessionClosed(session, new Error(message));
+      this.options.onSessionClosed(
+        session,
+        error.code === 'ENOENT'
+          ? new LocalCoreError('runtime_not_found', `ACP agent command not found: ${input.config.command}`, {
+              details: {
+                command: input.config.command,
+                threadId: input.threadId,
+                runtimeId: input.config.agentType,
+              },
+            })
+          : new LocalCoreError('runtime_start_failed', `ACP agent failed to start: ${error.message}`, {
+              cause: error.code,
+              details: {
+                command: input.config.command,
+                threadId: input.threadId,
+                runtimeId: input.config.agentType,
+              },
+            }),
+      );
     });
     return session;
   }
@@ -109,7 +136,14 @@ export class LocalCoreAcpTransport {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         session.pending.delete(id);
-        reject(new Error(`Timed out waiting for ACP ${method} after ${timeoutMs}ms`));
+        reject(new LocalCoreError('runtime_protocol_timeout', `Timed out waiting for ACP ${method} after ${timeoutMs}ms`, {
+          details: {
+            method,
+            timeoutMs,
+            threadId: session.threadId,
+            runtimeId: session.currentTurn?.agentType || '',
+          },
+        }));
       }, timeoutMs);
       session.pending.set(id, {
         resolve: (value: any) => {
@@ -207,7 +241,14 @@ export class LocalCoreAcpTransport {
         }
         session.pending.delete(payload.id);
         if (payload.error) {
-          pending.reject(new Error(payload.error.message || `ACP request failed: ${payload.id}`));
+          pending.reject(new LocalCoreError('runtime_protocol_error', payload.error.message || `ACP request failed: ${payload.id}`, {
+            details: {
+              payloadId: payload.id,
+              errorCode: payload.error.code,
+              threadId: session.threadId,
+              runtimeId: session.currentTurn?.agentType || '',
+            },
+          }));
         } else {
           pending.resolve(payload.result);
         }
@@ -218,6 +259,11 @@ export class LocalCoreAcpTransport {
   private handlePipeFailure(session: AcpSessionState, error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     this.options.log?.(`[localcore-acp:${session.threadId}] stdin failure: ${message}`);
-    this.options.onSessionClosed(session, new Error(message));
+    this.options.onSessionClosed(session, new LocalCoreError('runtime_protocol_error', message, {
+      details: {
+        threadId: session.threadId,
+        runtimeId: session.currentTurn?.agentType || '',
+      },
+    }));
   }
 }

@@ -3,6 +3,7 @@ import type {
   DesktopConnectConfig,
   DesktopProjectConfig,
   LocalCoreChannelGatewayStatus,
+  LocalCoreErrorInfo,
 } from '../../../../../packages/contracts/src/index.js';
 import type { EventBus } from '../../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
@@ -46,6 +47,10 @@ export type WeixinRuntimeState = {
   connected: boolean;
   accountId: string;
   lastError?: string;
+  lastErrorInfo?: LocalCoreErrorInfo;
+  lastErrorAt?: string;
+  consecutiveFailures?: number;
+  nextRetryAt?: string;
   connectedAt?: string;
   abortController?: AbortController;
 };

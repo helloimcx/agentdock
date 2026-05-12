@@ -1014,6 +1014,59 @@ export interface RuntimeDetectionRecommendedAction {
   href?: string;
 }
 
+export type LocalCoreErrorCode =
+  | 'runtime_not_found'
+  | 'runtime_start_failed'
+  | 'runtime_protocol_timeout'
+  | 'runtime_protocol_error'
+  | 'runtime_exited'
+  | 'channel_session_expired'
+  | 'channel_auth_failed'
+  | 'channel_rate_limited'
+  | 'channel_delivery_failed'
+  | 'channel_download_failed'
+  | 'config_invalid'
+  | 'permission_waiting'
+  | 'provider_auth_failed'
+  | 'scheduler_delivery_failed'
+  | 'internal_error';
+
+export type LocalCoreErrorSeverity = 'info' | 'warning' | 'error';
+
+export interface LocalCoreErrorInfo {
+  code: LocalCoreErrorCode;
+  message: string;
+  userMessage: string;
+  severity: LocalCoreErrorSeverity;
+  retryable: boolean;
+  suggestedAction?: string;
+  details?: Record<string, unknown>;
+  cause?: string;
+}
+
+export interface LocalCoreErrorSummary {
+  key: string;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  errorInfo: LocalCoreErrorInfo;
+  context?: Record<string, unknown>;
+}
+
+export interface LocalCoreDoctorCheck {
+  id: string;
+  label: string;
+  status: 'pass' | 'warn' | 'fail';
+  summary: string;
+  errorInfo?: LocalCoreErrorInfo;
+}
+
+export interface LocalCoreDoctorResult {
+  status: 'pass' | 'warn' | 'fail';
+  checkedAt: string;
+  checks: LocalCoreDoctorCheck[];
+}
+
 export interface InstalledAgentRuntime {
   agentType: string;
   runtimeId: string;
@@ -1030,6 +1083,9 @@ export interface InstalledAgentRuntime {
   recommendedActions: RuntimeDetectionRecommendedAction[];
   source: 'path' | 'config' | 'bundled' | 'builtin';
   error?: string;
+  readiness?: 'unknown' | 'ready' | 'degraded' | 'failed';
+  lastLaunchError?: LocalCoreErrorInfo;
+  lastCheckedAt?: string;
 }
 
 export interface RuntimeDetectionListResponse {
@@ -1071,6 +1127,7 @@ export interface LocalCorePluginHealth {
   status: LocalCorePluginHealthStatus;
   summary?: string;
   details?: Record<string, unknown>;
+  errorInfo?: LocalCoreErrorInfo;
 }
 
 export interface LocalCorePluginDiagnostic {
@@ -1116,6 +1173,10 @@ export interface LocalCoreChannelGatewayStatus {
   status: 'disabled' | 'stopped' | 'starting' | 'running' | 'error';
   appId?: string;
   lastError?: string;
+  lastErrorInfo?: LocalCoreErrorInfo;
+  lastErrorAt?: string;
+  consecutiveFailures?: number;
+  nextRetryAt?: string;
   connectedAt?: string;
   pendingPairings: number;
   authorizedUsers: number;
@@ -1246,7 +1307,7 @@ export type LocalCoreEvent =
   | { type: 'runtime.updated'; runtime: DesktopRuntimeStatus }
   | ({ type: 'runtime.detect.started' } & RuntimeDetectionEventBase)
   | ({ type: 'runtime.detect.completed'; runtimes: InstalledAgentRuntime[] } & RuntimeDetectionEventBase)
-  | ({ type: 'runtime.detect.failed'; error: string } & RuntimeDetectionEventBase)
+  | ({ type: 'runtime.detect.failed'; error: string; errorInfo?: LocalCoreErrorInfo } & RuntimeDetectionEventBase)
   | { type: 'runtime.status.changed'; runtime: InstalledAgentRuntime }
   | { type: 'thread.updated'; thread: ThreadSummary }
   | { type: 'thread.session.activated'; workspaceId: string; threadId: string; previousThreadId?: string; reason: 'created' | 'switched' }

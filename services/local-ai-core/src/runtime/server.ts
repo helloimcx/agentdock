@@ -12,6 +12,8 @@ import type {
   LocalCoreCapabilities,
   LocalCoreCapabilitySnapshot,
   LocalCorePluginDiagnostics,
+  LocalCoreDoctorResult,
+  LocalCoreErrorSummary,
   LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
@@ -74,6 +76,7 @@ import type {
   WorkspaceSecuritySettingsUpdateInput,
 } from '../../../../packages/contracts/src/index.js';
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
+import { errorInfoToHttpBody, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 
 export interface LocalAiCoreBindings extends EventEmitter {
   getRuntimeStatus(): Promise<DesktopRuntimeStatus>;
@@ -152,6 +155,8 @@ export interface LocalAiCoreBindings extends EventEmitter {
   refreshInstalledAgentRuntimes(runtimeId?: string): Promise<InstalledAgentRuntime[]>;
   isRuntimeDetectionRunning(runtimeId?: string): boolean;
   getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
+  listDiagnosticErrors(): Promise<LocalCoreErrorSummary[]>;
+  runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
   getChannelGatewayStatus(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
@@ -196,6 +201,13 @@ function json<T>(res: ServerResponse, statusCode: number, data: T, ok = true, er
   res.end(JSON.stringify(ok ? { ok: true, data } : { ok: false, error }));
 }
 
+function jsonError(res: ServerResponse, statusCode: number, error: unknown) {
+  const info = toLocalCoreErrorInfo(error);
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(errorInfoToHttpBody(info)));
+}
+
 async function readJsonBody(req: IncomingMessage) {
   const body = await readRawBody(req);
   if (!body.length) {
@@ -237,7 +249,7 @@ export class LocalAiCoreServer {
 
   constructor(private readonly bindings: LocalAiCoreBindings, options: LocalAiCoreServerOptions = {}) {
     this.host = options.host || '127.0.0.1';
-    this.port = options.port || 9831;
+    this.port = options.port ?? 9831;
     this.bindings.on('runtime', (runtime: DesktopRuntimeStatus) => {
       this.broadcast({ type: 'runtime.updated', runtime });
     });
@@ -320,9 +332,9 @@ export class LocalAiCoreServer {
         await this.handleParsedRoute(route, req, res, url);
         return;
       }
-      json(res, 404, null, false, `Unknown route: ${path}`);
+      jsonError(res, 404, new Error(`Unknown route: ${path}`));
     } catch (error) {
-      json(res, 500, null, false, error instanceof Error ? error.message : String(error));
+      jsonError(res, 500, error);
     }
   }
 
@@ -678,6 +690,12 @@ export class LocalAiCoreServer {
       case 'capabilities.snapshot':
         json(res, 200, await this.bindings.getCapabilitySnapshot());
         return;
+      case 'diagnostics.errors':
+        json(res, 200, { errors: await this.bindings.listDiagnosticErrors() });
+        return;
+      case 'diagnostics.doctor':
+        json(res, 200, await this.bindings.runDiagnosticsDoctor());
+        return;
       case 'plugins.diagnostics':
         json(res, 200, await this.bindings.getPluginDiagnostics());
         return;
@@ -703,7 +721,7 @@ export class LocalAiCoreServer {
       case 'platform.qrcode.status': {
         const ticket = String(url.searchParams.get('ticket') || '');
         if (!ticket) {
-          json(res, 400, null, false, 'Missing ticket parameter');
+          jsonError(res, 400, new Error('Missing ticket parameter'));
           return;
         }
         json(res, 200, await this.bindings.checkChannelQrCodeStatus(route.platform, route.workspaceId, ticket, this.channelInstanceId(url)));

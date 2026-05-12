@@ -99,6 +99,34 @@ test('runtime detection service emits detection events and filters single runtim
   }
 });
 
+test('runtime detection service records runtime launch errors as failed readiness', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'runtime-detection-service-launch-error-'));
+  try {
+    const service = new RuntimeDetectionService({
+      userDataPath,
+      readConfig: async () => null,
+      detect: () => [runtimeResult({ runtimeId: 'hermes', agentType: 'hermes', displayName: 'Hermes' })],
+    });
+
+    service.recordLaunchError('hermes', {
+      code: 'runtime_not_found',
+      message: 'ACP agent command not found: hermes',
+      userMessage: 'Hermes is not installed or is not available on PATH.',
+      severity: 'error',
+      retryable: false,
+      suggestedAction: 'Install Hermes or update the service PATH.',
+    });
+
+    const runtime = service.list('hermes')[0];
+    assert.equal(runtime?.status, 'error');
+    assert.equal(runtime?.readiness, 'failed');
+    assert.equal(runtime?.lastLaunchError?.code, 'runtime_not_found');
+    assert.equal(runtime?.recommendedActions[0]?.label, 'Fix runtime launch');
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 function runtimeResult(input: Partial<InstalledAgentRuntime> = {}): InstalledAgentRuntime {
   return {
     agentType: input.agentType || 'opencode',
@@ -116,5 +144,8 @@ function runtimeResult(input: Partial<InstalledAgentRuntime> = {}): InstalledAge
     recommendedActions: input.recommendedActions || [],
     source: input.source || 'path',
     error: input.error,
+    readiness: input.readiness,
+    lastLaunchError: input.lastLaunchError,
+    lastCheckedAt: input.lastCheckedAt,
   };
 }

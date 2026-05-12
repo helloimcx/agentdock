@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileCode, Plug, RefreshCw, RotateCcw, Save, ScrollText } from 'lucide-react';
+import { AlertTriangle, FileCode, Plug, RefreshCw, RotateCcw, Save, ScrollText, ShieldCheck, Stethoscope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { restartSystem, reloadConfig } from '@/api/status';
-import { getRuntimePluginDiagnostics, getRuntimeStatus, saveDesktopSettings } from '@/api/desktop';
+import {
+  getRuntimeDiagnosticErrors,
+  getRuntimePluginDiagnostics,
+  getRuntimeStatus,
+  runRuntimeDiagnosticsDoctor,
+  saveDesktopSettings,
+} from '@/api/desktop';
 import { Badge, Button, Input, PageHeader, SectionCard, StatusPill } from '@/components/ui';
 import type { DesktopRuntimeStatus } from '../../../shared/desktop';
-import type { LocalCorePluginDiagnostics } from '../../../packages/contracts/src';
+import type { LocalCoreDoctorResult, LocalCoreErrorSummary, LocalCorePluginDiagnostics } from '../../../packages/contracts/src';
 
 function runtimeTone(phase?: string) {
   if (phase === 'api_ready') return 'success';
@@ -19,18 +25,22 @@ export default function SystemConfig() {
   const { t } = useTranslation();
   const [runtime, setRuntime] = useState<DesktopRuntimeStatus | null>(null);
   const [plugins, setPlugins] = useState<LocalCorePluginDiagnostics | null>(null);
+  const [diagnosticErrors, setDiagnosticErrors] = useState<LocalCoreErrorSummary[]>([]);
+  const [doctorResult, setDoctorResult] = useState<LocalCoreDoctorResult | null>(null);
   const [knowledgeBaseUrl, setKnowledgeBaseUrl] = useState('');
   const [persistedKnowledgeBaseUrl, setPersistedKnowledgeBaseUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingKnowledge, setSavingKnowledge] = useState(false);
+  const [runningDoctor, setRunningDoctor] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [runtimeResult, pluginResult] = await Promise.allSettled([
+      const [runtimeResult, pluginResult, errorResult] = await Promise.allSettled([
         getRuntimeStatus(),
         getRuntimePluginDiagnostics(),
+        getRuntimeDiagnosticErrors(),
       ]);
       if (runtimeResult.status === 'fulfilled') {
         setRuntime(runtimeResult.value);
@@ -38,6 +48,7 @@ export default function SystemConfig() {
         setPersistedKnowledgeBaseUrl(runtimeResult.value.settings.knowledge.baseUrl || '');
       }
       if (pluginResult.status === 'fulfilled') setPlugins(pluginResult.value);
+      if (errorResult.status === 'fulfilled') setDiagnosticErrors(errorResult.value);
     } finally {
       setLoading(false);
     }
@@ -91,6 +102,20 @@ export default function SystemConfig() {
     }
   };
 
+  const handleRunDoctor = async () => {
+    setRunningDoctor(true);
+    try {
+      const result = await runRuntimeDiagnosticsDoctor();
+      setDoctorResult(result);
+      setDiagnosticErrors(await getRuntimeDiagnosticErrors());
+      setActionMsg(`Diagnostics completed with ${result.status} status.`);
+    } catch (e: any) {
+      setActionMsg(e.message);
+    } finally {
+      setRunningDoctor(false);
+    }
+  };
+
   const knowledgeDirty = knowledgeBaseUrl !== persistedKnowledgeBaseUrl;
 
   return (
@@ -135,6 +160,89 @@ export default function SystemConfig() {
             {plugins ? `${plugins.enabledPluginCount}/${plugins.pluginCount}` : '-'}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">enabled plugins</p>
+        </SectionCard>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <SectionCard
+          title="Diagnostics"
+          description="Structured runtime and channel health checks."
+          actions={(
+            <Button size="sm" variant="secondary" onClick={() => void handleRunDoctor()} loading={runningDoctor}>
+              <Stethoscope size={14} /> Run doctor
+            </Button>
+          )}
+        >
+          {!doctorResult ? (
+            <div className="flex items-start gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+              <ShieldCheck size={16} className="mt-0.5 shrink-0" />
+              <p>Run doctor to validate config, runtime readiness, channel health, and log access.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <StatusPill tone={doctorResult.status === 'pass' ? 'success' : doctorResult.status === 'warn' ? 'warning' : 'danger'}>
+                  {doctorResult.status}
+                </StatusPill>
+                <p className="text-xs text-muted-foreground">
+                  Checked {new Date(doctorResult.checkedAt).toLocaleString()}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {doctorResult.checks.map((check) => (
+                  <div key={check.id} className="rounded-lg border border-border px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{check.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{check.summary}</p>
+                        {check.errorInfo?.suggestedAction ? (
+                          <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-200">
+                            {check.errorInfo.suggestedAction}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Badge variant={check.status === 'pass' ? 'success' : check.status === 'warn' ? 'warning' : 'danger'}>
+                        {check.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Recent Errors" description="Aggregated runtime and channel failures from the current window.">
+          {diagnosticErrors.length === 0 ? (
+            <div className="py-8 text-sm text-muted-foreground">No aggregated errors in the current diagnostics window.</div>
+          ) : (
+            <div className="space-y-3">
+              {diagnosticErrors.map((entry) => (
+                <div key={entry.key} className="rounded-lg border border-border px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <AlertTriangle size={14} className="text-amber-500" />
+                        <p className="text-sm font-medium text-foreground">{entry.errorInfo.userMessage}</p>
+                        <Badge variant={entry.errorInfo.severity === 'error' ? 'danger' : entry.errorInfo.severity === 'warning' ? 'warning' : 'info'}>
+                          {entry.errorInfo.code}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{entry.errorInfo.message}</p>
+                      {entry.errorInfo.suggestedAction ? (
+                        <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-200">
+                          {entry.errorInfo.suggestedAction}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {entry.count} occurrence(s), last seen {new Date(entry.lastSeenAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </SectionCard>
       </div>
 
