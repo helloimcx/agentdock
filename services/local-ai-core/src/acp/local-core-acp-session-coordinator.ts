@@ -1,4 +1,5 @@
 import { delimiter } from 'node:path';
+import { homedir } from 'node:os';
 import type { DesktopBridgeEvent } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
@@ -226,9 +227,9 @@ export class LocalCoreAcpSessionCoordinator {
       env.LOCAL_AI_PLATFORM_USER_ID = binding.platform_user_id;
     }
     if (this.options.cliBinDir) {
-      env.PATH = existingPath
-        ? `${this.options.cliBinDir}${delimiter}${existingPath}`
-        : this.options.cliBinDir;
+      env.PATH = buildAgentPath(existingPath, this.options.cliBinDir);
+    } else {
+      env.PATH = buildAgentPath(existingPath);
     }
     return {
       ...env,
@@ -270,4 +271,31 @@ export class LocalCoreAcpSessionCoordinator {
       },
     };
   }
+}
+
+export function buildAgentPath(existingPath: string, cliBinDir?: string) {
+  const entries = [
+    cliBinDir,
+    ...userBinDirs(),
+    ...String(existingPath || '').split(delimiter),
+  ];
+  const seen = new Set<string>();
+  return entries
+    .map((entry) => String(entry || '').trim())
+    .filter((entry) => {
+      if (!entry || seen.has(entry)) {
+        return false;
+      }
+      seen.add(entry);
+      return true;
+    })
+    .join(delimiter);
+}
+
+function userBinDirs() {
+  if (process.platform === 'win32') {
+    return [];
+  }
+  const home = process.env.HOME || homedir();
+  return home ? [`${home}/.local/bin`, `${home}/bin`] : [];
 }

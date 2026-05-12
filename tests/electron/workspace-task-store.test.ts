@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
+import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
+import { LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { SchedulerService } from '../../services/local-ai-core/src/scheduler/scheduler-service.js';
 import { LarkScheduleAdapter } from '../../services/local-ai-core/src/scheduler/lark-schedule-adapter.js';
@@ -450,6 +451,51 @@ test('ACP runtime env includes the current workspace path for file returns', asy
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
+});
+
+test('ACP runtime PATH includes service-safe user bin directories', () => {
+  const previousHome = process.env.HOME;
+  process.env.HOME = '/home/agentdock-test';
+  try {
+    const path = buildAgentPath('/usr/bin:/bin', '/opt/agentdock/bin');
+    assert.equal(path, '/opt/agentdock/bin:/home/agentdock-test/.local/bin:/home/agentdock-test/bin:/usr/bin:/bin');
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+  }
+});
+
+test('ACP transport reports missing agent commands without an unhandled process error', async () => {
+  const closed = new Promise<Error>((resolve) => {
+    const transport = new LocalCoreAcpTransport({
+      log: () => {},
+      onAgentRequest: () => {},
+      onAgentNotification: () => {},
+      onSessionClosed: (_session, error) => {
+        resolve(error);
+      },
+    });
+    transport.spawnSession({
+      threadId: 'thread-missing-command',
+      bridgeSessionKey: 'session:missing-command',
+      config: {
+        workspaceId: 'workspace-a',
+        agentType: 'hermes',
+        command: 'agentdock-command-that-does-not-exist',
+        args: ['acp'],
+        env: {},
+        workDir: tmpdir(),
+        model: '',
+      },
+      runtimeEnv: {},
+    });
+  });
+
+  const error = await closed;
+  assert.equal(error.message, 'ACP agent command not found: agentdock-command-that-does-not-exist');
 });
 
 test('ACP scheduled session can override permission mode without changing thread mode', async () => {

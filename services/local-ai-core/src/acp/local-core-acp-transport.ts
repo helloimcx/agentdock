@@ -73,6 +73,12 @@ export class LocalCoreAcpTransport {
         new Error(`ACP agent exited with code ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`),
       );
     });
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      const message = error.code === 'ENOENT'
+        ? `ACP agent command not found: ${input.config.command}`
+        : `ACP agent failed to start: ${error.message}`;
+      this.options.onSessionClosed(session, new Error(message));
+    });
     return session;
   }
 
