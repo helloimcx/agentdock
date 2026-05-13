@@ -166,7 +166,7 @@ export async function detectLocalAiCore(timeoutMs = 350) {
   try {
     const response = await fetch(`${LOCAL_AI_CORE_BASE}/health`, { signal: controller.signal });
     const json = await response.json() as JsonEnvelope<{ name: string }>;
-    return response.ok && json.ok && json.data?.name === 'local-ai-core';
+    return response.ok && json.ok && (json.data?.name === 'local-ai-core' || json.data?.name === 'agentdock-cloud');
   } catch {
     return false;
   } finally {

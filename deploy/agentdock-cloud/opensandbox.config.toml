@@ -1,0 +1,14 @@
+[server]
+host = "0.0.0.0"
+port = 8090
+api_key = "dev-opensandbox-key"
+max_sandbox_timeout_seconds = 3600
+
+[runtime]
+type = "docker"
+
+[docker]
+network_mode = "bridge"
+no_new_privileges = true
+pids_limit = 4096
+host_mount_allowed_prefixes = ["/data/agentdock"]

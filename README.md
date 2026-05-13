@@ -73,6 +73,10 @@ flowchart LR
 
 ## New
 
+### 2026-05-13
+
+- 新增 AgentDock Cloud MVP 骨架：Cloud Web 复用本地前端，agentdock-cloud 提供 local-compatible chat API/SSE，并通过 sandbox runtime 事件投影会话记录。
+
 ### 2026-05-12
 
 - 发布 AgentDock 0.1.44。

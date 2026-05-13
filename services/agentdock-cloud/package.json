@@ -1,0 +1,13 @@
+{
+  "name": "@agentdock/agentdock-cloud",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "src/main.ts",
+  "scripts": {
+    "start": "node ../../dist-electron/services/agentdock-cloud/src/main.js"
+  },
+  "dependencies": {
+    "rocketmq-client-nodejs": "^1.0.3"
+  }
+}

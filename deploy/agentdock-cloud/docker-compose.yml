@@ -1,0 +1,76 @@
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/agentdock-cloud/web.Dockerfile
+    environment:
+      AGENTDOCK_CLOUD_ORIGIN: http://agentdock-cloud:9831
+    ports:
+      - "8080:80"
+    depends_on:
+      - agentdock-cloud
+
+  agentdock-cloud:
+    build:
+      context: ../..
+      dockerfile: deploy/agentdock-cloud/cloud.Dockerfile
+    environment:
+      AGENTDOCK_CLOUD_PORT: "9831"
+      AGENTDOCK_CLOUD_DATA_ROOT: /data/agentdock
+      AGENTDOCK_CLOUD_SQLITE_PATH: /data/agentdock/agentdock-cloud.db
+      AGENTDOCK_CLOUD_EVENT_BUS: rocketmq
+      AGENTDOCK_CLOUD_SANDBOX_PROVIDER: opensandbox
+      AGENTDOCK_SANDBOX_IMAGE: agentdock/pi-sandbox-runtime:local
+      OPENSANDBOX_BASE_URL: http://opensandbox-server:8090
+      ROCKETMQ_ENDPOINTS: rocketmq-proxy:8081
+      ROCKETMQ_TOPIC: agentdock_events
+      ROCKETMQ_CONSUMER_GROUP: agentdock-cloud-consumer
+    volumes:
+      - agentdock-data:/data/agentdock
+    ports:
+      - "9831:9831"
+    depends_on:
+      - rocketmq-proxy
+      - opensandbox-server
+
+  agent-sandbox-runtime:
+    build:
+      context: ../..
+      dockerfile: images/agent-sandbox-runtime/Dockerfile
+    image: agentdock/pi-sandbox-runtime:local
+    command: ["true"]
+    profiles:
+      - build-only
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    command: sh mqnamesrv
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.2
+    command: sh mqbroker -n rocketmq-namesrv:9876
+    depends_on:
+      - rocketmq-namesrv
+
+  rocketmq-proxy:
+    image: apache/rocketmq:5.3.2
+    command: sh mqproxy -n rocketmq-namesrv:9876
+    ports:
+      - "8081:8081"
+    depends_on:
+      - rocketmq-broker
+
+  opensandbox-server:
+    image: ghcr.io/alibaba/opensandbox:latest
+    environment:
+      OPEN_SANDBOX_PORT: "8090"
+      SANDBOX_CONFIG_PATH: /etc/opensandbox/config.toml
+      OPEN_SANDBOX_API_KEY: dev-opensandbox-key
+    ports:
+      - "8090:8090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./opensandbox.config.toml:/etc/opensandbox/config.toml:ro
+
+volumes:
+  agentdock-data:

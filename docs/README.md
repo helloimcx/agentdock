@@ -37,6 +37,7 @@ This directory is organized by documentation purpose.
 ## Planning
 
 - [Development Plan](planning/development-plan.md): phased implementation plan.
+- [AgentDock Cloud Development Steps](planning/agentdock-cloud-development-steps.md): checklist for the docker-compose cloud execution plane MVP.
 - [Bug Reduction Plan](planning/bug-reduction-plan.md): guardrails for repeated bug patterns, core contracts, tests, and release checks.
 - [Agent Command Architecture Optimization Plan](planning/agent-command-architecture-plan.md): follow-up plan for `/agent`, thread command handling, runtime selection, and channel `/new` inheritance cleanup.
 - [TODO](planning/todo.md): short running checklist.
