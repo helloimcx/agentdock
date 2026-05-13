@@ -3,16 +3,42 @@ import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Plug, Heart, Layers, Zap, Pause, Play,
-  Trash2, Plus, Check, Clock,
+  Trash2, Plus, Check, Clock, ShieldCheck, Save,
 } from 'lucide-react';
-import { Card, Badge, Button, Input, Modal, EmptyState, PageHeader, SectionCard } from '@/components/ui';
-import { getProject, updateProject, type ProjectDetail as ProjectDetailType } from '@/api/projects';
+import { Card, Badge, Button, Input, Modal, EmptyState, PageHeader, SectionCard, Select } from '@/components/ui';
+import { getProject, type ProjectDetail as ProjectDetailType } from '@/api/projects';
 import { listProviders, addProvider, removeProvider, activateProvider, listModels, setModel, type Provider } from '@/api/providers';
 import { getHeartbeat, pauseHeartbeat, resumeHeartbeat, triggerHeartbeat, setHeartbeatInterval, type HeartbeatStatus } from '@/api/heartbeat';
+import { readConfigFile, saveStructuredConfigFile } from '@/api/desktop';
 import { formatTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import type { DesktopConnectConfig, DesktopSandboxOptions } from '../../../shared/desktop';
 
-type Tab = 'overview' | 'providers' | 'heartbeat';
+type Tab = 'overview' | 'providers' | 'sandbox' | 'heartbeat';
+
+type SandboxForm = {
+  enabled: boolean;
+  server_url: string;
+  image: string;
+  state_scope: 'project' | 'thread' | 'run';
+  timeout_seconds: string;
+  cpu: string;
+  memory: string;
+  workspace_mount_path: string;
+  state_mount_path: string;
+};
+
+const defaultSandboxForm: SandboxForm = {
+  enabled: false,
+  server_url: 'http://127.0.0.1:8080',
+  image: 'agentdock/pi-acp:local',
+  state_scope: 'project',
+  timeout_seconds: '7200',
+  cpu: '1000m',
+  memory: '2Gi',
+  workspace_mount_path: '/workspace',
+  state_mount_path: '/agent-state',
+};
 
 export default function ProjectDetail() {
   const { t } = useTranslation();
@@ -25,6 +51,9 @@ export default function ProjectDetail() {
   const [models, setModels] = useState<string[]>([]);
   const [currentModel, setCurrentModel] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sandbox, setSandbox] = useState<SandboxForm>(defaultSandboxForm);
+  const [savingSandbox, setSavingSandbox] = useState(false);
+  const [actionMsg, setActionMsg] = useState('');
 
   // Add provider modal
   const [showAddProvider, setShowAddProvider] = useState(false);
@@ -38,11 +67,12 @@ export default function ProjectDetail() {
     if (!name) return;
     try {
       setLoading(true);
-      const [proj, provs, hb, mdls] = await Promise.allSettled([
+      const [proj, provs, hb, mdls, config] = await Promise.allSettled([
         getProject(name),
         listProviders(name),
         getHeartbeat(name),
         listModels(name),
+        readConfigFile(),
       ]);
       if (proj.status === 'fulfilled') {
         setProject(proj.value);
@@ -55,6 +85,10 @@ export default function ProjectDetail() {
       if (mdls.status === 'fulfilled') {
         setModels(mdls.value.models || []);
         setCurrentModel(mdls.value.current || '');
+      }
+      if (config.status === 'fulfilled') {
+        const configuredProject = config.value.parsed?.projects?.find((entry) => entry.name === name);
+        setSandbox(toSandboxForm(configuredProject?.agent?.options?.sandbox));
       }
     } finally {
       setLoading(false);
@@ -86,8 +120,45 @@ export default function ProjectDetail() {
   const tabs: { key: Tab; icon: React.ElementType }[] = [
     { key: 'overview', icon: Layers },
     { key: 'providers', icon: Zap },
+    { key: 'sandbox', icon: ShieldCheck },
     { key: 'heartbeat', icon: Heart },
   ];
+
+  const handleSaveSandbox = async () => {
+    if (!name) return;
+    setSavingSandbox(true);
+    setActionMsg('');
+    try {
+      const state = await readConfigFile();
+      const config = state.parsed || {};
+      const projects = Array.isArray(config.projects) ? [...config.projects] : [];
+      const index = projects.findIndex((entry) => entry.name === name);
+      if (index < 0) {
+        throw new Error(`Project not found in config: ${name}`);
+      }
+      const projectConfig = projects[index];
+      projects[index] = {
+        ...projectConfig,
+        agent: {
+          ...projectConfig.agent,
+          options: {
+            ...(projectConfig.agent?.options || {}),
+            sandbox: fromSandboxForm(sandbox),
+          },
+        },
+      };
+      await saveStructuredConfigFile({
+        ...(config as DesktopConnectConfig),
+        projects,
+      });
+      setActionMsg('Sandbox settings saved.');
+      await fetchAll();
+    } catch (error: any) {
+      setActionMsg(error?.message || String(error));
+    } finally {
+      setSavingSandbox(false);
+    }
+  };
 
   if (loading && !project) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Loading...</div>;
@@ -106,6 +177,11 @@ export default function ProjectDetail() {
         )}
       />
       {project && <Badge variant="info">{project.agent_type}</Badge>}
+      {actionMsg ? (
+        <div role="status" className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+          {actionMsg}
+        </div>
+      ) : null}
 
       {/* Tabs */}
       <div className="flex gap-2">
@@ -230,6 +306,48 @@ export default function ProjectDetail() {
         </div>
       )}
 
+      {tab === 'sandbox' && (
+        <SectionCard
+          title="Sandbox"
+          description="Run this project agent inside an OpenSandbox container."
+          actions={(
+            <Button size="sm" onClick={() => void handleSaveSandbox()} loading={savingSandbox}>
+              <Save size={14} /> Save
+            </Button>
+          )}
+        >
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 text-sm font-medium text-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border"
+                checked={sandbox.enabled}
+                onChange={(event) => setSandbox((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+              Enable sandbox mode
+            </label>
+            {sandbox.enabled ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Input label="OpenSandbox URL" value={sandbox.server_url} onChange={(event) => setSandbox((current) => ({ ...current, server_url: event.target.value }))} />
+                <Input label="Image" value={sandbox.image} onChange={(event) => setSandbox((current) => ({ ...current, image: event.target.value }))} />
+                <Select label="State scope" value={sandbox.state_scope} onChange={(event) => setSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}>
+                  <option value="project">Project</option>
+                  <option value="thread">Thread</option>
+                  <option value="run">Run</option>
+                </Select>
+                <Input label="Timeout seconds" type="number" value={sandbox.timeout_seconds} onChange={(event) => setSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))} />
+                <Input label="CPU" value={sandbox.cpu} onChange={(event) => setSandbox((current) => ({ ...current, cpu: event.target.value }))} />
+                <Input label="Memory" value={sandbox.memory} onChange={(event) => setSandbox((current) => ({ ...current, memory: event.target.value }))} />
+                <Input label="Workspace mount path" value={sandbox.workspace_mount_path} onChange={(event) => setSandbox((current) => ({ ...current, workspace_mount_path: event.target.value }))} />
+                <Input label="State mount path" value={sandbox.state_mount_path} onChange={(event) => setSandbox((current) => ({ ...current, state_mount_path: event.target.value }))} />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Local bundled runtime execution is active for this project.</p>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
       {tab === 'heartbeat' && (
         <div className="space-y-4">
           {!heartbeat ? (
@@ -274,4 +392,33 @@ export default function ProjectDetail() {
 
     </div>
   );
+}
+
+function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
+  return {
+    enabled: Boolean(input?.enabled),
+    server_url: input?.server_url || defaultSandboxForm.server_url,
+    image: input?.image || defaultSandboxForm.image,
+    state_scope: input?.state_scope || defaultSandboxForm.state_scope,
+    timeout_seconds: String(input?.timeout_seconds || defaultSandboxForm.timeout_seconds),
+    cpu: input?.cpu || defaultSandboxForm.cpu,
+    memory: input?.memory || defaultSandboxForm.memory,
+    workspace_mount_path: input?.workspace_mount_path || defaultSandboxForm.workspace_mount_path,
+    state_mount_path: input?.state_mount_path || defaultSandboxForm.state_mount_path,
+  };
+}
+
+function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
+  return {
+    enabled: input.enabled,
+    provider: 'opensandbox',
+    server_url: input.server_url.trim() || defaultSandboxForm.server_url,
+    image: input.image.trim() || defaultSandboxForm.image,
+    state_scope: input.state_scope,
+    timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
+    cpu: input.cpu.trim() || defaultSandboxForm.cpu,
+    memory: input.memory.trim() || defaultSandboxForm.memory,
+    workspace_mount_path: input.workspace_mount_path.trim() || defaultSandboxForm.workspace_mount_path,
+    state_mount_path: input.state_mount_path.trim() || defaultSandboxForm.state_mount_path,
+  };
 }

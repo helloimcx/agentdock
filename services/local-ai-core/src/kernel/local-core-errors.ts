@@ -97,6 +97,42 @@ const DEFAULTS: Record<LocalCoreErrorCode, ErrorDefaults> = {
     userMessage: 'Scheduled delivery failed.',
     suggestedAction: 'Check the target channel and retry the scheduled job.',
   },
+  sandbox_unavailable: {
+    severity: 'error',
+    retryable: true,
+    userMessage: 'Sandbox service is unavailable.',
+    suggestedAction: 'Start OpenSandbox with docker compose and retry.',
+  },
+  sandbox_unauthorized: {
+    severity: 'error',
+    retryable: false,
+    userMessage: 'Sandbox service rejected authentication.',
+    suggestedAction: 'Check OPEN_SANDBOX_API_KEY and retry.',
+  },
+  sandbox_request_failed: {
+    severity: 'error',
+    retryable: true,
+    userMessage: 'Sandbox service request failed.',
+    suggestedAction: 'Check OpenSandbox logs and retry.',
+  },
+  sandbox_start_failed: {
+    severity: 'error',
+    retryable: true,
+    userMessage: 'Sandbox failed to start.',
+    suggestedAction: 'Check image availability, mounts, and OpenSandbox logs.',
+  },
+  sandbox_start_timeout: {
+    severity: 'error',
+    retryable: true,
+    userMessage: 'Sandbox startup timed out.',
+    suggestedAction: 'Check Docker image startup time and OpenSandbox health.',
+  },
+  sandbox_endpoint_missing: {
+    severity: 'error',
+    retryable: true,
+    userMessage: 'Sandbox ACP endpoint is unavailable.',
+    suggestedAction: 'Check that the sandbox image exposes the configured ACP port.',
+  },
   internal_error: {
     severity: 'error',
     retryable: true,

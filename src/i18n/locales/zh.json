@@ -40,6 +40,7 @@
     "tabs": {
       "overview": "概览",
       "providers": "服务商",
+      "sandbox": "沙箱",
       "heartbeat": "心跳",
       "settings": "设置"
     }

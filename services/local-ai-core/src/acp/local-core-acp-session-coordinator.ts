@@ -19,6 +19,7 @@ type LocalCoreAcpSessionCoordinatorOptions = {
 type EnsureSessionOptions = {
   permissionMode?: string;
   runtimeEnv?: Record<string, string>;
+  runId?: string;
 };
 
 export class LocalCoreAcpSessionCoordinator {
@@ -77,7 +78,7 @@ export class LocalCoreAcpSessionCoordinator {
       threadId,
       bridgeSessionKey,
       config,
-      runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || ''), options.runtimeEnv),
+      runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || ''), options.runtimeEnv, options.runId),
     });
     session.launchPermissionMode = permissionMode;
     session.launchConfigKey = configKey;
@@ -201,7 +202,7 @@ export class LocalCoreAcpSessionCoordinator {
       .join('\n');
   }
 
-  private buildAgentRuntimeEnv(threadId: string, existingPath: string, runtimeEnv: Record<string, string> = {}) {
+  private buildAgentRuntimeEnv(threadId: string, existingPath: string, runtimeEnv: Record<string, string> = {}, runId = '') {
     const row = this.options.store.getThreadRow(threadId);
     if (!row) {
       return {};
@@ -211,6 +212,7 @@ export class LocalCoreAcpSessionCoordinator {
       LOCAL_AI_CORE_BASE: this.options.localCoreBase || 'http://127.0.0.1:9831/api/local/v1',
       LOCAL_AI_WORKSPACE_ID: row.workspace_id,
       LOCAL_AI_THREAD_ID: threadId,
+      ...(runId ? { AGENTDOCK_SANDBOX_RUN_ID: runId } : {}),
     };
     const workspace = this.options.store.getWorkspaceRegistryEntry(row.workspace_id);
     if (workspace?.path) {
@@ -245,6 +247,7 @@ export class LocalCoreAcpSessionCoordinator {
       args: config.args || [],
       env: config.env || {},
       model: config.model || '',
+      sandbox: config.sandbox || null,
     });
   }
 

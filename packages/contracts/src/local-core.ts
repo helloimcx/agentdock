@@ -1029,6 +1029,12 @@ export type LocalCoreErrorCode =
   | 'permission_waiting'
   | 'provider_auth_failed'
   | 'scheduler_delivery_failed'
+  | 'sandbox_unavailable'
+  | 'sandbox_unauthorized'
+  | 'sandbox_request_failed'
+  | 'sandbox_start_failed'
+  | 'sandbox_start_timeout'
+  | 'sandbox_endpoint_missing'
   | 'internal_error';
 
 export type LocalCoreErrorSeverity = 'info' | 'warning' | 'error';

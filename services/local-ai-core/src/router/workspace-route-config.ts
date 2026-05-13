@@ -8,6 +8,12 @@ import {
 } from '../../../../shared/desktop.js';
 import { resolveAgentRuntimeDefinition, type AgentRuntimeDefinition } from '../agents/index.js';
 import { collectProviderEnv as collectSharedProviderEnv } from '../agents/shared/launch-utils.js';
+import {
+  isProjectSandboxEnabled,
+  normalizeSandboxLaunchConfig,
+  sandboxProxyLaunchEnv,
+  sandboxProxyScriptPath,
+} from '../sandbox/sandbox-config.js';
 
 export function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
   return Array.isArray(project?.platforms)
@@ -68,7 +74,7 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
     throw new Error(`Workspace "${project.name}" requires [projects.agent.options].command for Local AI Core ACP execution.`);
   }
   const defaultArgs = launchDefaults.args || [];
-  return {
+  const launchConfig: AgentLaunchConfig = {
     workspaceId: project.name,
     agentType,
     workDir,
@@ -80,5 +86,22 @@ export function toLocalCoreProjectConfig(configState: ConfigFileState, project: 
       ...env,
     },
     model,
+  };
+  if (!isProjectSandboxEnabled(project)) {
+    return launchConfig;
+  }
+  const sandbox = normalizeSandboxLaunchConfig({ configState, project, launchConfig });
+  if (!sandbox) {
+    return launchConfig;
+  }
+  return {
+    ...launchConfig,
+    command: process.execPath,
+    args: [sandboxProxyScriptPath()],
+    env: {
+      ...sandboxProxyLaunchEnv(sandbox),
+      AGENTDOCK_SANDBOX_AGENT_TYPE: agentType,
+    },
+    sandbox,
   };
 }

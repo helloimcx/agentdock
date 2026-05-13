@@ -69,6 +69,9 @@ export class LocalCoreAcpTransport {
       this.handlePipeFailure(session, error);
     });
     child.on('exit', (code, signal) => {
+      if (session.closed) {
+        return;
+      }
       this.options.onSessionClosed(
         session,
         new LocalCoreError(

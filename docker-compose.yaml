@@ -1,0 +1,24 @@
+services:
+  opensandbox-server:
+    image: opensandbox/server:latest
+    container_name: agentdock-opensandbox-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      OPEN_SANDBOX_API_KEY: ${OPEN_SANDBOX_API_KEY:-agentdock-local}
+      OPENSANDBOX_INSECURE_SERVER: ${OPENSANDBOX_INSECURE_SERVER:-YES}
+      OPEN_SANDBOX_HOST_MOUNT_ALLOWLIST: ${OPEN_SANDBOX_HOST_MOUNT_ALLOWLIST:-/Users,/private/tmp,/tmp}
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /Users:/Users
+      - /private/tmp:/private/tmp
+      - /tmp:/tmp
+      - ./docker/opensandbox/config.toml:/config/sandbox.toml:ro
+      - opensandbox-data:/root/.opensandbox
+    entrypoint: ["/app/.venv/bin/opensandbox-server"]
+    command: ["--config", "/config/sandbox.toml"]
+    restart: unless-stopped
+
+volumes:
+  opensandbox-data:

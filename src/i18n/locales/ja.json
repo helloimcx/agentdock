@@ -39,6 +39,7 @@
     "tabs": {
       "overview": "概要",
       "providers": "プロバイダー",
+      "sandbox": "サンドボックス",
       "heartbeat": "ハートビート",
       "settings": "設定"
     }

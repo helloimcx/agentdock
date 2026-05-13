@@ -75,6 +75,7 @@ flowchart LR
 
 ### 2026-05-12
 
+- 新增 OpenSandbox 沙箱运行基础：提供 `docker-compose.yaml` 手动启动 OpenSandbox server，项目可开启 sandbox 模式后通过一次性容器运行 agent ACP server，并为 Pi sandbox 预留按用户/项目/Agent 持久化的 runtime state 挂载。
 - 发布 AgentDock 0.1.44。
 - 本地线程与 Lark/微信通道支持 `/help` 查看命令清单，支持 `/stop` 停止当前正在运行的任务。
 - Local AI Core 新增结构化错误模型，ACP runtime 与微信通道会把启动失败、会话过期等问题回写为可诊断状态，并提供 diagnostics 错误摘要与 doctor 自检接口。

@@ -39,6 +39,7 @@
     "tabs": {
       "overview": "Resumen",
       "providers": "Proveedores",
+      "sandbox": "Sandbox",
       "heartbeat": "Latido",
       "settings": "Ajustes"
     }

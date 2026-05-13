@@ -22,6 +22,32 @@ export interface AgentLaunchConfig {
   args: string[];
   env: Record<string, string>;
   model: string;
+  sandbox?: AgentSandboxLaunchConfig;
+}
+
+export type AgentSandboxStateScope = 'project' | 'thread' | 'run';
+
+export interface AgentSandboxLaunchConfig {
+  enabled: boolean;
+  provider: string;
+  serverUrl: string;
+  apiKeyEnv: string;
+  image: string;
+  acpPort: number;
+  entrypoint: string[];
+  timeoutSeconds: number;
+  cpu: string;
+  memory: string;
+  userId: string;
+  projectId: string;
+  stateScope: AgentSandboxStateScope;
+  workspaceHostPath: string;
+  workspaceMountPath: string;
+  stateHostPath?: string;
+  stateMountPath: string;
+  runtimeCommand: string;
+  runtimeArgs: string[];
+  runtimeEnv: Record<string, string>;
 }
 
 export interface AgentRuntimeRoute {

@@ -465,11 +465,31 @@ export interface DesktopProviderConfig {
   env?: Record<string, string>;
 }
 
+export type DesktopSandboxStateScope = 'project' | 'thread' | 'run';
+
+export interface DesktopSandboxOptions {
+  enabled?: boolean;
+  provider?: 'opensandbox' | (string & {});
+  server_url?: string;
+  image?: string;
+  api_key_env?: string;
+  state_scope?: DesktopSandboxStateScope;
+  timeout_seconds?: number;
+  cpu?: string;
+  memory?: string;
+  workspace_mount_path?: string;
+  state_mount_path?: string;
+  acp_port?: number;
+  entrypoint?: string[];
+}
+
 export interface DesktopProjectConfig {
   name: string;
   agent: {
     type: string;
-    options?: Record<string, unknown>;
+    options?: Record<string, unknown> & {
+      sandbox?: DesktopSandboxOptions;
+    };
     providers?: DesktopProviderConfig[];
   };
   platforms: DesktopPlatformConfig[];

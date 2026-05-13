@@ -40,6 +40,7 @@
     "tabs": {
       "overview": "Overview",
       "providers": "Providers",
+      "sandbox": "Sandbox",
       "heartbeat": "Heartbeat",
       "settings": "Settings"
     }

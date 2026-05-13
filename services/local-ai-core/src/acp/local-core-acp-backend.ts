@@ -379,6 +379,7 @@ export class LocalCoreAcpBackend {
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
         permissionMode: options.permissionMode,
         runtimeEnv: options.runtimeEnv,
+        runId,
       });
       const priorAssistantFinalMessages = this.options.store
         .getThread(threadId, [])
@@ -603,6 +604,9 @@ export class LocalCoreAcpBackend {
       }
       if (session) {
         session.promptPromise = null;
+      }
+      if (config.sandbox?.enabled) {
+        this.sessionCoordinator.closeThreadSession(threadId);
       }
     }
   }

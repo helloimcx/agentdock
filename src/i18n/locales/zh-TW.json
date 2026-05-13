@@ -39,6 +39,7 @@
     "tabs": {
       "overview": "總覽",
       "providers": "供應商",
+      "sandbox": "沙箱",
       "heartbeat": "心跳",
       "settings": "設定"
     }
