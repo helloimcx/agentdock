@@ -10,10 +10,11 @@ import { SchedulerRunLifecycle } from '../../services/local-ai-core/src/schedule
 import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/scheduler/lark-execution-policies.js';
 import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../services/local-ai-core/src/channel/lark/cards.js';
+import { ChannelSessionCommandRuntime } from '../../services/local-ai-core/src/channel/shared/session-command-runtime.js';
 import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import { SessionCommandService, matchThread } from '../../services/local-ai-core/src/thread/session-command-service.js';
-import { ThreadCommandService } from '../../services/local-ai-core/src/thread/thread-command-service.js';
+import { ThreadSlashCommandDispatcher, slashHelpText } from '../../services/local-ai-core/src/thread/thread-slash-command-dispatcher.js';
 
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({
@@ -83,7 +84,16 @@ test('slash agent commands normalize aliases and expose current help', () => {
   }), /当前线程 Agent：pi/);
 });
 
-test('thread command service handles local slash commands without ACP transport', async () => {
+test('slash help command exposes global local command help', () => {
+  const help = slashHelpText();
+  assert.match(help, /`\/help`/);
+  assert.match(help, /`\/stop`/);
+  assert.match(help, /`\/mode /);
+  assert.match(help, /`\/agent /);
+  assert.match(help, /`\/list`/);
+});
+
+test('thread slash command dispatcher handles local slash commands without ACP transport', async () => {
   const row = {
     id: 'thread-1',
     workspace_id: 'workspace-a',
@@ -102,24 +112,39 @@ test('thread command service handles local slash commands without ACP transport'
   const audits: any[] = [];
   const syncedModes: string[] = [];
   const closedThreads: string[] = [];
-  const service = new ThreadCommandService({
-    getThreadRow: () => row,
-    updateThreadAgentMode: (_threadId, mode) => {
-      row.agent_mode = mode;
+  const interruptedRuns: string[] = [];
+  let latestRun: any;
+  const service = new ThreadSlashCommandDispatcher({
+    session: {
+      listThreads: () => [],
+      getThread: () => ({ id: row.id, title: row.title, messages: [] }) as any,
+      createThread: () => ({ id: 'created-thread', title: 'Created', messages: [] }) as any,
+      renameThread: () => ({ id: row.id, title: 'Renamed', messages: [] }) as any,
+      deleteThread: () => ({ deleted: true }),
     },
-    updateThreadAgentType: (_threadId, agentType) => {
-      row.agent_type = agentType;
-    },
-    getLatestRunForThread: () => undefined,
-    createAuditEvent: (input) => {
-      audits.push(input);
-    },
-    getAgentTypes: () => ['codex', 'pi', 'hermes', 'claudecode'],
-    setThreadMode: async (_threadId, mode) => {
-      syncedModes.push(mode);
-    },
-    closeThreadSession: (threadId) => {
-      closedThreads.push(threadId);
+    thread: {
+      getThreadRow: () => row,
+      updateThreadAgentMode: (_threadId, mode) => {
+        row.agent_mode = mode;
+      },
+      updateThreadAgentType: (_threadId, agentType) => {
+        row.agent_type = agentType;
+      },
+      getLatestRunForThread: () => latestRun,
+      createAuditEvent: (input) => {
+        audits.push(input);
+      },
+      getAgentTypes: () => ['codex', 'pi', 'hermes', 'claudecode'],
+      setThreadMode: async (_threadId, mode) => {
+        syncedModes.push(mode);
+      },
+      closeThreadSession: (threadId) => {
+        closedThreads.push(threadId);
+      },
+      interruptRun: async (runId) => {
+        interruptedRuns.push(runId);
+        return { interrupted: true };
+      },
     },
   });
 
@@ -129,6 +154,34 @@ test('thread command service handles local slash commands without ACP transport'
     content: '/not-local',
     defaultAgentType: 'codex',
   }), { handled: false, displayText: '' });
+
+  const inactiveStopResult = await service.execute({
+    threadId: row.id,
+    workspaceId: row.workspace_id,
+    content: '/stop',
+    defaultAgentType: 'codex',
+  });
+  assert.equal(inactiveStopResult.handled, true);
+  assert.match(inactiveStopResult.displayText, /没有正在运行的任务/);
+
+  latestRun = {
+    id: 'run-active',
+    thread_id: row.id,
+    status: 'running',
+    started_at: '2026-05-11T00:00:00.000Z',
+    updated_at: '2026-05-11T00:00:00.000Z',
+  };
+  const stopResult = await service.execute({
+    threadId: row.id,
+    workspaceId: row.workspace_id,
+    content: '/stop',
+    defaultAgentType: 'codex',
+  });
+  assert.equal(stopResult.handled, true);
+  assert.match(stopResult.displayText, /已请求停止当前任务/);
+  assert.deepEqual(interruptedRuns, ['run-active']);
+  assert.equal(audits.at(-1)?.type, 'task.updated');
+  latestRun = undefined;
 
   const modeResult = await service.execute({
     threadId: row.id,
@@ -163,6 +216,114 @@ test('thread command service handles local slash commands without ACP transport'
   assert.equal(row.agent_type, 'codex');
   assert.match(resetResult.displayText, /回到默认 Agent：codex/);
   assert.deepEqual(closedThreads, ['thread-1', 'thread-1']);
+});
+
+test('channel session command runtime uses unified slash dispatcher for thread commands', async () => {
+  const row = {
+    id: 'thread-1',
+    workspace_id: 'workspace-a',
+    session_id: 'session-1',
+    bridge_session_key: 'bridge-1',
+    title: 'Channel command',
+    agent_type: 'codex',
+    created_at: '2026-05-11T00:00:00.000Z',
+    updated_at: '2026-05-11T00:00:00.000Z',
+    history_count: 0,
+    excerpt: '',
+    acp_session_id: null,
+    acp_supports_load: 0,
+    agent_mode: 'default',
+  };
+  const sentResults: any[] = [];
+  const interruptedRuns: string[] = [];
+  const routes = new Map<string, any>();
+  const dispatcher = new ThreadSlashCommandDispatcher({
+    session: {
+      listThreads: () => [],
+      getThread: (threadId) => ({ id: threadId, title: row.title, messages: [] }) as any,
+      createThread: () => ({ id: 'created-thread', title: 'Created channel thread', messages: [] }) as any,
+      renameThread: (threadId, title) => ({ id: threadId, title, messages: [] }) as any,
+      deleteThread: () => ({ deleted: true }),
+    },
+    thread: {
+      getThreadRow: () => row,
+      updateThreadAgentMode: (_threadId, mode) => {
+        row.agent_mode = mode;
+      },
+      updateThreadAgentType: (_threadId, agentType) => {
+        row.agent_type = agentType;
+      },
+      getLatestRunForThread: () => ({
+        id: 'run-channel',
+        thread_id: row.id,
+        status: 'running',
+        started_at: '2026-05-11T00:00:00.000Z',
+        updated_at: '2026-05-11T00:00:00.000Z',
+      }),
+      createAuditEvent: () => {},
+      getAgentTypes: () => ['codex', 'pi'],
+      interruptRun: async (runId) => {
+        interruptedRuns.push(runId);
+        return { interrupted: true };
+      },
+    },
+  });
+  const runtime = new ChannelSessionCommandRuntime({
+    dispatcher,
+    store: {
+      getThreadRow: () => row,
+      updateThreadAgentMode: (_threadId: string, mode: string) => {
+        row.agent_mode = mode;
+      },
+      updateAuthorizedUserThread: () => {},
+      upsertPlatformThreadBinding: () => {},
+    },
+    getThreadSessionKey: (threadId) => `session:${threadId}`,
+    setThreadRoute: (sessionKey, route) => {
+      routes.set(sessionKey, route);
+    },
+    createRoute: (input, threadId) => ({
+      workspaceId: input.workspaceId,
+      instanceId: input.instanceId,
+      platformKey: input.platformKey,
+      platformUserId: input.platformUserId,
+      chatId: input.chatId,
+      threadId,
+    }),
+    sendResult: async (_input, result) => {
+      sentResults.push(result);
+    },
+  });
+
+  const stopResult = await runtime.execute({
+    workspaceId: 'workspace-a',
+    currentThreadId: row.id,
+    text: '/stop',
+    defaultTitle: 'Channel thread',
+    defaultAgentType: 'codex',
+    chatId: 'chat-1',
+    platformUserId: 'user-1',
+    platformKey: 'lark',
+    instanceId: 'default',
+  });
+  assert.equal(stopResult.handled, true);
+  assert.deepEqual(interruptedRuns, ['run-channel']);
+  assert.match(sentResults.at(-1)?.displayText || '', /已请求停止当前任务/);
+
+  const newResult = await runtime.execute({
+    workspaceId: 'workspace-a',
+    currentThreadId: row.id,
+    text: '/new Follow up',
+    defaultTitle: 'Channel thread',
+    defaultAgentType: 'codex',
+    chatId: 'chat-1',
+    platformUserId: 'user-1',
+    platformKey: 'lark',
+    instanceId: 'default',
+  });
+  assert.equal(newResult.handled, true);
+  assert.equal(newResult.threadId, 'created-thread');
+  assert.equal(routes.get('session:created-thread')?.threadId, 'created-thread');
 });
 
 test('thread agent mode persists with thread state', () => {
@@ -205,9 +366,10 @@ test('slash agent commands switch and reset the current thread agent', async () 
     const thread = store.createThread('workspace-a', 'Agent command', 'codex');
     const bridgeEvents: any[] = [];
     const acceptedMessages: any[] = [];
+    const runThreadMap = new Map<string, string>();
     const backend = new LocalCoreAcpBackend({
       store,
-      runThreadMap: new Map(),
+      runThreadMap,
       emitBridge: (event) => bridgeEvents.push(event),
       eventBus: {
         emit: (event: any) => acceptedMessages.push(event),
@@ -254,6 +416,15 @@ test('slash agent commands switch and reset the current thread agent', async () 
     await backend.sendThreadMessage(thread.id, '/agent use hermes', config);
     assert.equal(store.getThreadRow(thread.id)?.agent_type, 'hermes');
     assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /下一轮开始生效/);
+
+    store.updateRun('run-stop', thread.id, 'running');
+    runThreadMap.set('run-stop', thread.id);
+    await backend.sendThreadMessage(thread.id, '/stop', config);
+    assert.equal(store.getRun('run-stop')?.status, 'interrupted');
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /已将当前任务标记为停止|已请求停止当前任务/);
+
+    await backend.sendThreadMessage(thread.id, '/help', config);
+    assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /`\/stop`/);
     assert.ok(acceptedMessages.length >= 8);
     backend.close();
     store.close();

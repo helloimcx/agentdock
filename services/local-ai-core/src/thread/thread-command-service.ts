@@ -32,6 +32,7 @@ export type ThreadCommandServiceOptions = {
   getAgentTypes?: () => string[];
   setThreadMode?: (threadId: string, mode: string) => Promise<void>;
   closeThreadSession?: (threadId: string) => void;
+  interruptRun?: (runId: string) => Promise<{ interrupted: boolean }>;
   log?: (message: string) => void;
 };
 
@@ -46,6 +47,13 @@ export class ThreadCommandService {
   private readonly registry = new SlashCommandRegistry<ExecuteThreadCommandInput, ThreadCommandResult>();
 
   constructor(private readonly options: ThreadCommandServiceOptions) {
+    this.registry.register({
+      names: ['stop'],
+      execute: async (_command, input) => ({
+        handled: true,
+        displayText: await this.executeStopCommand(input.threadId, input.workspaceId),
+      }),
+    });
     this.registry.register({
       names: ['mode'],
       execute: async (command, input) => ({
@@ -169,6 +177,31 @@ export class ThreadCommandService {
       metadata: { threadId, agentType: canonicalAgent, previousAgentType: currentAgent },
     });
     return `已将当前线程 Agent 切换为 ${canonicalAgent}。\n后续消息将使用 ${canonicalAgent} 处理。${runningNote}`;
+  }
+
+  private async executeStopCommand(threadId: string, workspaceId: string) {
+    const latestRun = this.options.getLatestRunForThread(threadId);
+    if (!latestRun || !['queued', 'running', 'awaiting_input'].includes(latestRun.status)) {
+      return '当前没有正在运行的任务。';
+    }
+    if (!this.options.interruptRun) {
+      return '当前运行时不支持通过 `/stop` 停止任务。';
+    }
+    try {
+      const result = await this.options.interruptRun(latestRun.id);
+      this.options.createAuditEvent({
+        type: 'task.updated',
+        workspaceId,
+        actor: 'local',
+        summary: `Stop requested for run ${latestRun.id}.`,
+        metadata: { threadId, runId: latestRun.id, interrupted: result.interrupted },
+      });
+      return result.interrupted
+        ? '已请求停止当前任务。'
+        : '已将当前任务标记为停止；运行时可能已经结束或无法接收取消信号。';
+    } catch (error) {
+      return `停止任务失败：${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 
   private hasActiveRun(threadId: string) {

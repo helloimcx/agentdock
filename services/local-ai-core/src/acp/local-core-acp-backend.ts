@@ -21,8 +21,7 @@ import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
-import { ThreadCommandService } from '../thread/thread-command-service.js';
-import { SessionCommandService } from '../thread/session-command-service.js';
+import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 
 const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -61,8 +60,7 @@ export class LocalCoreAcpBackend {
   private readonly turnCoordinator: LocalCoreAcpTurnCoordinator;
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
   private readonly responseProcessor: LocalCoreAcpResponseProcessor;
-  private readonly commandService: ThreadCommandService;
-  private readonly sessionCommandService: SessionCommandService;
+  private readonly slashCommands: ThreadSlashCommandDispatcher;
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
     this.transport = new LocalCoreAcpTransport({
@@ -130,25 +128,28 @@ export class LocalCoreAcpBackend {
       emitBridge: (event) => this.emitBridgeEvent(event),
       log: options.log,
     });
-    this.commandService = new ThreadCommandService({
-      getThreadRow: (threadId) => this.options.store.getThreadRow(threadId),
-      updateThreadAgentMode: (threadId, mode) => this.options.store.updateThreadAgentMode(threadId, mode),
-      updateThreadAgentType: (threadId, agentType) => this.options.store.updateThreadAgentType(threadId, agentType),
-      getLatestRunForThread: (threadId) => this.options.store.getLatestRunForThread(threadId),
-      createAuditEvent: (input) => {
-        this.options.store.createAuditEvent(input);
+    this.slashCommands = new ThreadSlashCommandDispatcher({
+      session: {
+        listThreads: (workspaceId) => this.listThreads(workspaceId),
+        getThread: (targetThreadId) => this.getThread(targetThreadId),
+        createThread: (workspaceId, title) => this.createThread(workspaceId, title),
+        renameThread: (targetThreadId, title) => this.renameThread(targetThreadId, title),
+        deleteThread: (targetThreadId) => this.deleteThread(targetThreadId),
       },
-      getAgentTypes: options.getAgentTypes,
-      setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
-      closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
-      log: options.log,
-    });
-    this.sessionCommandService = new SessionCommandService({
-      listThreads: (workspaceId) => this.listThreads(workspaceId),
-      getThread: (targetThreadId) => this.getThread(targetThreadId),
-      createThread: (workspaceId, title) => this.createThread(workspaceId, title),
-      renameThread: (targetThreadId, title) => this.renameThread(targetThreadId, title),
-      deleteThread: (targetThreadId) => this.deleteThread(targetThreadId),
+      thread: {
+        getThreadRow: (threadId) => this.options.store.getThreadRow(threadId),
+        updateThreadAgentMode: (threadId, mode) => this.options.store.updateThreadAgentMode(threadId, mode),
+        updateThreadAgentType: (threadId, agentType) => this.options.store.updateThreadAgentType(threadId, agentType),
+        getLatestRunForThread: (threadId) => this.options.store.getLatestRunForThread(threadId),
+        createAuditEvent: (input) => {
+          this.options.store.createAuditEvent(input);
+        },
+        getAgentTypes: options.getAgentTypes,
+        setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
+        closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
+        interruptRun: (runId) => this.sessionCoordinator.interruptRun(runId),
+        log: options.log,
+      },
     });
     this.responseProcessor = new LocalCoreAcpResponseProcessor({
       getScheduledDeliveryBinding: (threadId) => {
@@ -224,22 +225,24 @@ export class LocalCoreAcpBackend {
         source: 'user',
       },
     });
-    const sessionCommandResult = await this.sessionCommandService.execute(content, {
-      currentThreadId: threadId,
+    const slashCommandResult = await this.slashCommands.execute({
+      threadId,
       workspaceId: row.workspace_id,
+      content,
+      defaultAgentType: config.agentType,
       defaultTitle: `New thread ${new Date().toLocaleTimeString()}`,
     });
-    if (sessionCommandResult.handled) {
-      const activeThreadEffect = (sessionCommandResult.effects || [])
+    if (slashCommandResult.handled) {
+      const activeThreadEffect = (slashCommandResult.effects || [])
         .find((effect) => effect.type === 'activate_thread');
-      this.options.store.appendMessage(threadId, 'assistant', sessionCommandResult.displayText, 'final');
+      this.options.store.appendMessage(threadId, 'assistant', slashCommandResult.displayText, 'final');
       this.options.eventBus.emit({
         type: 'thread.message.accepted',
         payload: {
           threadId,
           workspaceId: row.workspace_id,
           role: 'assistant',
-          content: sessionCommandResult.displayText,
+          content: slashCommandResult.displayText,
           kind: 'final',
           source: 'system',
         },
@@ -258,37 +261,7 @@ export class LocalCoreAcpBackend {
       this.emitBridgeEvent({
         type: 'reply',
         sessionKey: row.bridge_session_key,
-        content: sessionCommandResult.displayText,
-      });
-      this.emitBridgeEvent({
-        type: 'typing_stop',
-        sessionKey: row.bridge_session_key,
-      });
-      return { runId: '' };
-    }
-    const commandResult = await this.commandService.execute({
-      threadId,
-      workspaceId: row.workspace_id,
-      content,
-      defaultAgentType: config.agentType,
-    });
-    if (commandResult.handled) {
-      this.options.store.appendMessage(threadId, 'assistant', commandResult.displayText, 'final');
-      this.options.eventBus.emit({
-        type: 'thread.message.accepted',
-        payload: {
-          threadId,
-          workspaceId: row.workspace_id,
-          role: 'assistant',
-          content: commandResult.displayText,
-          kind: 'final',
-          source: 'system',
-        },
-      });
-      this.emitBridgeEvent({
-        type: 'reply',
-        sessionKey: row.bridge_session_key,
-        content: commandResult.displayText,
+        content: slashCommandResult.displayText,
       });
       this.emitBridgeEvent({
         type: 'typing_stop',
@@ -372,6 +345,14 @@ export class LocalCoreAcpBackend {
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
     return this.sessionCoordinator.interruptRun(runId);
+  }
+
+  async setThreadMode(threadId: string, mode: string) {
+    return this.sessionCoordinator.setThreadMode(threadId, mode);
+  }
+
+  closeThreadSession(threadId: string) {
+    this.sessionCoordinator.closeThreadSession(threadId);
   }
 
   private async runPrompt(

@@ -301,6 +301,25 @@ export class WorkspaceRouter {
     return this.localCoreAcp.interruptRun(runId);
   }
 
+  async setThreadMode(threadId: string, mode: string) {
+    const { workspaceId } = decodeThreadId(threadId);
+    await this.getWorkspaceRoute(workspaceId);
+    return this.localCoreAcp.setThreadMode(threadId, mode);
+  }
+
+  closeThreadSession(threadId: string) {
+    this.localCoreAcp.closeThreadSession(threadId);
+  }
+
+  async getWorkspaceDefaultAgentType(workspaceId: string) {
+    const route = await this.getWorkspaceRoute(workspaceId);
+    return route.agentType;
+  }
+
+  getAgentTypes() {
+    return this.options.getCapabilities().snapshot.agents.map((agent) => agent.agentType);
+  }
+
   getCapabilities(): LocalCoreCapabilities {
     return this.options.getCapabilities();
   }

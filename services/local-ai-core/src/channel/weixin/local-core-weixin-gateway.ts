@@ -26,7 +26,8 @@ import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
-import { SessionCommandService, type SessionCommandResult } from '../../thread/session-command-service.js';
+import type { SessionCommandResult } from '../../thread/session-command-service.js';
+import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import {
   channelPlatformKey,
   collectWeixinWorkspaceBindings,
@@ -219,15 +220,29 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
 
   constructor(private readonly options: LocalCoreWeixinGatewayOptions) {
     super();
-    const sessionCommandService = new SessionCommandService({
-      listThreads: (workspaceId) => this.options.getWorkspaceRouter().listThreads(workspaceId),
-      getThread: (threadId) => this.options.getWorkspaceRouter().getThread(threadId),
-      createThread: (workspaceId, title) => this.options.getWorkspaceRouter().createThread(workspaceId, title),
-      renameThread: (threadId, title) => this.options.getWorkspaceRouter().renameThread(threadId, title),
-      deleteThread: (threadId) => this.options.getWorkspaceRouter().deleteThread(threadId),
+    const slashCommands = new ThreadSlashCommandDispatcher({
+      session: {
+        listThreads: (workspaceId) => this.options.getWorkspaceRouter().listThreads(workspaceId),
+        getThread: (threadId) => this.options.getWorkspaceRouter().getThread(threadId),
+        createThread: (workspaceId, title) => this.options.getWorkspaceRouter().createThread(workspaceId, title),
+        renameThread: (threadId, title) => this.options.getWorkspaceRouter().renameThread(threadId, title),
+        deleteThread: (threadId) => this.options.getWorkspaceRouter().deleteThread(threadId),
+      },
+      thread: {
+        getThreadRow: (threadId) => this.options.store.getThreadRow(threadId),
+        updateThreadAgentMode: (threadId, mode) => this.options.store.updateThreadAgentMode(threadId, mode),
+        updateThreadAgentType: (threadId, agentType) => this.options.store.updateThreadAgentType(threadId, agentType),
+        getLatestRunForThread: (threadId) => this.options.store.getLatestRunForThread(threadId),
+        createAuditEvent: (input) => this.options.store.createAuditEvent(input),
+        getAgentTypes: () => this.options.getWorkspaceRouter().getAgentTypes(),
+        setThreadMode: (threadId, mode) => this.options.getWorkspaceRouter().setThreadMode(threadId, mode),
+        closeThreadSession: (threadId) => this.options.getWorkspaceRouter().closeThreadSession(threadId),
+        interruptRun: (runId) => this.options.getWorkspaceRouter().interruptRun(runId),
+        log: this.options.log,
+      },
     });
     this.sessionCommandRuntime = new ChannelSessionCommandRuntime({
-      service: sessionCommandService,
+      dispatcher: slashCommands,
       store: this.options.store,
       getThreadSessionKey: (threadId) => this.options.getWorkspaceRouter().getThreadSessionKey(threadId),
       setThreadRoute: (sessionKey, route) => {
@@ -795,6 +810,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       currentThreadId: threadId,
       text: input.text,
       defaultTitle: `${input.displayName || 'WeChat'} ${new Date().toLocaleTimeString()}`,
+      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(input.workspaceId, threadId) : '',
       chatId: input.chatId,
       platformUserId: input.platformUserId,
       platformKey,
@@ -833,6 +849,7 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
     currentThreadId: string;
     text: string;
     defaultTitle: string;
+    defaultAgentType: string;
     chatId: string;
     platformUserId: string;
     platformKey: string;
@@ -854,6 +871,14 @@ export class LocalCoreWeixinGateway extends EventEmitter implements ChannelRunti
       return;
     }
     await this.sendTextMessage(state, input.chatId, result.displayText, input.contextToken);
+  }
+
+  private async resolveDefaultAgentType(workspaceId: string, threadId: string) {
+    const router = this.options.getWorkspaceRouter();
+    if (typeof router.getWorkspaceDefaultAgentType === 'function') {
+      return router.getWorkspaceDefaultAgentType(workspaceId);
+    }
+    return this.options.store.getThreadRow(threadId)?.agent_type || 'codex';
   }
 
   // ==================== Private: Bindings ====================

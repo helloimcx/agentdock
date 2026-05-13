@@ -7,6 +7,8 @@ export type ParsedSlashCommand = {
 
 export type SlashCommandHandler<TContext, TResult> = {
   names: string[];
+  usage?: string;
+  summary?: string;
   execute(command: ParsedSlashCommand, context: TContext): Promise<TResult> | TResult;
 };
 
@@ -20,6 +22,10 @@ export class SlashCommandRegistry<TContext, TResult> {
         this.handlers.set(normalized, handler);
       }
     }
+  }
+
+  list() {
+    return [...new Set(this.handlers.values())];
   }
 
   async execute(text: string, context: TContext): Promise<TResult | null> {

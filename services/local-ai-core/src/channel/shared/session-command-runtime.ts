@@ -1,8 +1,8 @@
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
-import { SessionCommandService } from '../../thread/session-command-service.js';
+import type { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 
 export type ChannelSessionCommandStore = {
-  getThreadRow?: (threadId: string) => { agent_mode?: string | null } | undefined;
+  getThreadRow?: (threadId: string) => { agent_mode?: string | null; agent_type?: string | null } | undefined;
   updateThreadAgentMode?: (threadId: string, mode: string) => void;
   updateAuthorizedUserThread: (workspaceId: string, platformUserId: string, threadId: string, platform?: string) => void;
   upsertPlatformThreadBinding: (input: {
@@ -18,7 +18,7 @@ export type ChannelSessionCommandStore = {
 };
 
 export type ChannelSessionCommandRuntimeOptions<TRoute> = {
-  service: SessionCommandService;
+  dispatcher: ThreadSlashCommandDispatcher;
   store: ChannelSessionCommandStore;
   getThreadSessionKey: (threadId: string) => string;
   setThreadRoute: (sessionKey: string, route: TRoute) => void;
@@ -31,6 +31,7 @@ export type ChannelSessionCommandInput = {
   currentThreadId: string;
   text: string;
   defaultTitle: string;
+  defaultAgentType: string;
   chatId: string;
   platformUserId: string;
   platformKey: string;
@@ -48,10 +49,12 @@ export class ChannelSessionCommandRuntime<TRoute> {
   constructor(private readonly options: ChannelSessionCommandRuntimeOptions<TRoute>) {}
 
   async execute(input: ChannelSessionCommandInput): Promise<ChannelSessionCommandExecution> {
-    const result = await this.options.service.execute(input.text, {
+    const result = await this.options.dispatcher.execute({
       workspaceId: input.workspaceId,
-      currentThreadId: input.currentThreadId,
+      threadId: input.currentThreadId,
+      content: input.text,
       defaultTitle: input.defaultTitle,
+      defaultAgentType: input.defaultAgentType,
     });
     if (!result.handled) {
       return { handled: false, threadId: input.currentThreadId };
