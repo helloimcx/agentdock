@@ -4,6 +4,7 @@ import type {
   DesktopProviderConfig,
   DesktopSandboxOptions,
 } from '../../../../packages/contracts/src/index.js';
+import { defaultOpenSandboxServerUrl } from '../sandbox/sandbox-config.js';
 
 export const CURRENT_DESKTOP_CONFIG_VERSION = 2;
 
@@ -85,7 +86,7 @@ function normalizeSandboxOptions(input?: DesktopSandboxOptions): { value?: Deskt
       changed = true;
     }
     if (!sandbox.server_url) {
-      sandbox.server_url = 'http://127.0.0.1:8080';
+      sandbox.server_url = defaultOpenSandboxServerUrl();
       changed = true;
     }
     if (!sandbox.api_key_env) {

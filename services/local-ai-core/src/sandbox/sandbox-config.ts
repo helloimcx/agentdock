@@ -4,6 +4,7 @@ import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxStateScop
 import type { ConfigFileState, DesktopProjectConfig, DesktopSandboxOptions } from '../../../../packages/contracts/src/index.js';
 
 export const DEFAULT_OPENSANDBOX_SERVER_URL = 'http://127.0.0.1:8080';
+export const DEFAULT_OPENSANDBOX_SERVER_URL_ENV = 'AGENTDOCK_OPENSANDBOX_SERVER_URL';
 export const DEFAULT_OPENSANDBOX_API_KEY_ENV = 'OPEN_SANDBOX_API_KEY';
 export const DEFAULT_PI_SANDBOX_IMAGE = 'agentdock/pi-acp:local';
 export const DEFAULT_SANDBOX_ACP_PORT = 8080;
@@ -122,7 +123,14 @@ function defaultSandboxImage(agentType: string) {
 }
 
 function normalizeServerUrl(value?: string) {
-  return String(value || DEFAULT_OPENSANDBOX_SERVER_URL).trim().replace(/\/+$/, '') || DEFAULT_OPENSANDBOX_SERVER_URL;
+  const fallback = defaultOpenSandboxServerUrl();
+  return String(value || fallback).trim().replace(/\/+$/, '') || fallback;
+}
+
+export function defaultOpenSandboxServerUrl(env: NodeJS.ProcessEnv = process.env) {
+  return String(env[DEFAULT_OPENSANDBOX_SERVER_URL_ENV] || DEFAULT_OPENSANDBOX_SERVER_URL)
+    .trim()
+    .replace(/\/+$/, '') || DEFAULT_OPENSANDBOX_SERVER_URL;
 }
 
 function normalizeStateScope(value?: string): AgentSandboxStateScope {

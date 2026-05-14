@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { AgentLaunchConfig } from '../../packages/plugin-sdk/src/index.js';
 import type { ConfigFileState, DesktopProjectConfig } from '../../packages/contracts/src/index.js';
 import {
+  defaultOpenSandboxServerUrl,
   normalizeSandboxLaunchConfig,
   resolveSandboxStateHostPath,
   sandboxProxyLaunchEnv,
@@ -314,6 +315,14 @@ test('OpenSandbox local compose auth falls back to the default local API key', (
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('OpenSandbox default server URL can be overridden for compose networks', () => {
+  assert.equal(defaultOpenSandboxServerUrl({}), 'http://127.0.0.1:8080');
+  assert.equal(
+    defaultOpenSandboxServerUrl({ AGENTDOCK_OPENSANDBOX_SERVER_URL: 'http://opensandbox-server:8080/' }),
+    'http://opensandbox-server:8080',
+  );
 });
 
 test('sandbox manager deletes sandbox and run scoped state on cleanup', async () => {

@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-electron
+out
+release
+.git
+.DS_Store
+*.log
+.agentdock-core
+coverage
+.vite
+.turbo
+.cache
+docker-compose.override.yaml

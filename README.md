@@ -75,6 +75,7 @@ flowchart LR
 
 ### 2026-05-14
 
+- Docker Compose 支持一键启动 AgentDock Web、Local AI Core 和 OpenSandbox，Core 容器默认通过 compose 内网访问 OpenSandbox。
 - 工作区项目配置新增“云端模式”入口，可直接配置 OpenSandbox URL、Pi ACP sandbox 镜像、ACP 端口和 state scope。
 - 云端模式新增 execution 元数据、user/project/thread/run state scope、配置迁移和 Pi provider 规范化，便于多用户云端部署与运行排障。
 - Provider 从工作区配置中独立为共享模块，工作区现在选择 provider，并支持旧项目内嵌 provider 自动迁移。
@@ -164,6 +165,22 @@ pnpm dev          # 启动开发环境（Vite + Electron）
 pnpm start:core   # 启动已构建的 Local AI Core
 ```
 
+## Docker Compose
+
+```bash
+docker compose up --build
+```
+
+默认会启动 AgentDock Web、Local AI Core 和 OpenSandbox：
+
+| 服务 | 地址 |
+|---|---|
+| AgentDock Web | `http://127.0.0.1:14173` |
+| Local AI Core | `http://127.0.0.1:9831/api/local/v1` |
+| OpenSandbox | `http://127.0.0.1:8080` |
+
+Compose 模式下 Core 容器通过 `http://opensandbox-server:8080` 访问 OpenSandbox；桌面本地模式仍默认使用 `http://127.0.0.1:8080`。Core 数据默认保存在 Docker volume `agentdock-core-data`。
+
 ## macOS 打开应用
 
 如果安装后提示应用无法打开，可先清除隔离属性再启动：
@@ -196,6 +213,8 @@ xattr -cr /Applications/AgentDock.app
 | `AI_WORKSTATION_SMOKE_SCENARIO` | 冒烟测试场景 |
 | `AI_WORKSTATION_FORCE_RUNTIME_STATUS_ERROR` | 强制触发运行时状态错误，用于测试 |
 | `AI_WORKSTATION_DEV_SERVER_URL` | Electron 开发模式连接的前端地址 |
+| `OPEN_SANDBOX_API_KEY` | OpenSandbox API key，compose 默认 `agentdock-local` |
+| `AGENTDOCK_OPENSANDBOX_SERVER_URL` | OpenSandbox server 地址，容器内默认可设为 `http://opensandbox-server:8080` |
 | `AGENTDOCK_LOG_DIR` | 日志目录，默认 `~/.agentdock/logs` |
 | `AGENTDOCK_LOG_MAX_BYTES` | 单个日志文件轮动大小，默认 10MB |
 | `AGENTDOCK_LOG_MAX_FILES` | 单个日志保留的轮动文件数，默认 5 |

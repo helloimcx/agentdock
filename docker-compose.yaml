@@ -1,4 +1,46 @@
 services:
+  agentdock-core:
+    build:
+      context: .
+      dockerfile: docker/agentdock/Dockerfile
+    image: agentdock/app:local
+    container_name: agentdock-core
+    command: ["node", "bin/agentdock.mjs", "core"]
+    ports:
+      - "127.0.0.1:9831:9831"
+    environment:
+      AI_WORKSTATION_HOST: 0.0.0.0
+      AI_WORKSTATION_USER_DATA_DIR: /data/agentdock
+      OPEN_SANDBOX_API_KEY: ${OPEN_SANDBOX_API_KEY:-agentdock-local}
+      AGENTDOCK_OPENSANDBOX_SERVER_URL: http://opensandbox-server:8080
+    volumes:
+      - agentdock-core-data:/data/agentdock
+    depends_on:
+      - opensandbox-server
+    restart: unless-stopped
+
+  agentdock-web:
+    build:
+      context: .
+      dockerfile: docker/agentdock/Dockerfile
+    image: agentdock/app:local
+    container_name: agentdock-web
+    command:
+      - node
+      - bin/agentdock.mjs
+      - web
+      - --host
+      - 0.0.0.0
+      - --port
+      - "14173"
+      - --core-origin
+      - http://agentdock-core:9831
+    ports:
+      - "127.0.0.1:14173:14173"
+    depends_on:
+      - agentdock-core
+    restart: unless-stopped
+
   opensandbox-server:
     image: opensandbox/server:latest
     container_name: agentdock-opensandbox-server
@@ -21,4 +63,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  agentdock-core-data:
   opensandbox-data:
