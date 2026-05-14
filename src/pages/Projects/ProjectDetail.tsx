@@ -20,7 +20,8 @@ type SandboxForm = {
   enabled: boolean;
   server_url: string;
   image: string;
-  state_scope: 'project' | 'thread' | 'run';
+  acp_port: string;
+  state_scope: 'user' | 'project' | 'thread' | 'run';
   timeout_seconds: string;
   cpu: string;
   memory: string;
@@ -32,6 +33,7 @@ const defaultSandboxForm: SandboxForm = {
   enabled: false,
   server_url: 'http://127.0.0.1:8080',
   image: 'agentdock/pi-acp:local',
+  acp_port: '8080',
   state_scope: 'project',
   timeout_seconds: '7200',
   cpu: '1000m',
@@ -330,7 +332,9 @@ export default function ProjectDetail() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Input label="OpenSandbox URL" value={sandbox.server_url} onChange={(event) => setSandbox((current) => ({ ...current, server_url: event.target.value }))} />
                 <Input label="Image" value={sandbox.image} onChange={(event) => setSandbox((current) => ({ ...current, image: event.target.value }))} />
+                <Input label="ACP port" type="number" value={sandbox.acp_port} onChange={(event) => setSandbox((current) => ({ ...current, acp_port: event.target.value }))} />
                 <Select label="State scope" value={sandbox.state_scope} onChange={(event) => setSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}>
+                  <option value="user">User</option>
                   <option value="project">Project</option>
                   <option value="thread">Thread</option>
                   <option value="run">Run</option>
@@ -399,6 +403,7 @@ function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
     enabled: Boolean(input?.enabled),
     server_url: input?.server_url || defaultSandboxForm.server_url,
     image: input?.image || defaultSandboxForm.image,
+    acp_port: String(input?.acp_port || defaultSandboxForm.acp_port),
     state_scope: input?.state_scope || defaultSandboxForm.state_scope,
     timeout_seconds: String(input?.timeout_seconds || defaultSandboxForm.timeout_seconds),
     cpu: input?.cpu || defaultSandboxForm.cpu,
@@ -414,6 +419,7 @@ function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
     provider: 'opensandbox',
     server_url: input.server_url.trim() || defaultSandboxForm.server_url,
     image: input.image.trim() || defaultSandboxForm.image,
+    acp_port: Number(input.acp_port) || Number(defaultSandboxForm.acp_port),
     state_scope: input.state_scope,
     timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
     cpu: input.cpu.trim() || defaultSandboxForm.cpu,

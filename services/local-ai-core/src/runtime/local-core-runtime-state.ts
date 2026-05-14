@@ -9,6 +9,7 @@ import type {
   KnowledgeConfig,
 } from '../../../../packages/contracts/src/index.js';
 import { AgentDockRotatingLogger, inferLogLevel, type AgentDockLogEntry, type AgentDockLogFile } from '../kernel/rotating-logger.js';
+import { migrateDesktopConnectConfig } from './config-migration.js';
 
 const DEFAULT_CONFIG = `# Managed by Local AI Core
 # Add [[projects]] entries from the workspace page before starting a conversation.
@@ -157,7 +158,14 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     const raw = readFileSync(path, 'utf8');
     try {
       const parsed = TOML.parse(raw) as DesktopConnectConfig;
-      return { path, exists: true, raw, parsed };
+      const migrated = migrateDesktopConnectConfig(parsed);
+      return {
+        path,
+        exists: true,
+        raw,
+        parsed: migrated.config,
+        warnings: migrated.warnings.length > 0 ? migrated.warnings : undefined,
+      };
     } catch (error) {
       return {
         path,
@@ -176,8 +184,9 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
   }
 
   async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
+    const migrated = migrateDesktopConnectConfig(config);
     mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, TOML.stringify(config as any), 'utf8');
+    writeFileSync(this.settings.configPath, TOML.stringify(migrated.config as any), 'utf8');
     return this.readConfigFile();
   }
 

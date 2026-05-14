@@ -25,6 +25,7 @@ import type {
   DesktopPlatformConfig,
   DesktopProjectConfig,
   DesktopProviderConfig,
+  DesktopSandboxOptions,
 } from '../../../shared/desktop';
 
 const CUSTOM_SELECT_VALUE = '__custom__';
@@ -35,7 +36,7 @@ type Notice = {
   message: string;
 };
 
-type ProjectTab = 'basic' | 'providers' | 'platforms';
+type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox';
 
 type PlatformDialogState = {
   index: number | null;
@@ -47,6 +48,20 @@ type ProjectDialogDraft = {
   agentType: string;
   workDir: string;
   model: string;
+};
+
+type SandboxForm = {
+  enabled: boolean;
+  server_url: string;
+  image: string;
+  api_key_env: string;
+  acp_port: string;
+  state_scope: 'user' | 'project' | 'thread' | 'run';
+  timeout_seconds: string;
+  cpu: string;
+  memory: string;
+  workspace_mount_path: string;
+  state_mount_path: string;
 };
 
 type WeixinQrState = {
@@ -66,9 +81,24 @@ const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: strin
   { id: 'openai', label: 'OpenAI', name: 'openai', base_url: 'https://api.openai.com/v1', model: 'gpt-4.1-mini' },
   { id: 'openrouter', label: 'OpenRouter', name: 'openrouter', base_url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4.1-mini' },
   { id: 'anthropic', label: 'Anthropic', name: 'anthropic', base_url: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-latest' },
+  { id: 'deepseek', label: 'DeepSeek', name: 'deepseek', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
   { id: 'minimax', label: 'Minimax', name: 'minimax', base_url: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.5' },
   { id: 'ollama', label: 'Ollama', name: 'ollama', base_url: 'http://127.0.0.1:11434/v1', model: 'qwen2.5-coder:7b' },
 ];
+
+const defaultSandboxForm: SandboxForm = {
+  enabled: false,
+  server_url: 'http://127.0.0.1:8080',
+  image: 'agentdock/pi-acp:local',
+  api_key_env: 'OPEN_SANDBOX_API_KEY',
+  acp_port: '8080',
+  state_scope: 'project',
+  timeout_seconds: '7200',
+  cpu: '1000m',
+  memory: '2Gi',
+  workspace_mount_path: '/workspace',
+  state_mount_path: '/agent-state',
+};
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -193,6 +223,39 @@ function noticeClass(tone: Notice['tone']) {
   return 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-200';
 }
 
+function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
+  return {
+    enabled: Boolean(input?.enabled),
+    server_url: input?.server_url || defaultSandboxForm.server_url,
+    image: input?.image || defaultSandboxForm.image,
+    api_key_env: input?.api_key_env || defaultSandboxForm.api_key_env,
+    acp_port: String(input?.acp_port || defaultSandboxForm.acp_port),
+    state_scope: input?.state_scope || defaultSandboxForm.state_scope,
+    timeout_seconds: String(input?.timeout_seconds || defaultSandboxForm.timeout_seconds),
+    cpu: input?.cpu || defaultSandboxForm.cpu,
+    memory: input?.memory || defaultSandboxForm.memory,
+    workspace_mount_path: input?.workspace_mount_path || defaultSandboxForm.workspace_mount_path,
+    state_mount_path: input?.state_mount_path || defaultSandboxForm.state_mount_path,
+  };
+}
+
+function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
+  return {
+    enabled: input.enabled,
+    provider: 'opensandbox',
+    server_url: input.server_url.trim() || defaultSandboxForm.server_url,
+    image: input.image.trim() || defaultSandboxForm.image,
+    api_key_env: input.api_key_env.trim() || defaultSandboxForm.api_key_env,
+    acp_port: Number(input.acp_port) || Number(defaultSandboxForm.acp_port),
+    state_scope: input.state_scope,
+    timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
+    cpu: input.cpu.trim() || defaultSandboxForm.cpu,
+    memory: input.memory.trim() || defaultSandboxForm.memory,
+    workspace_mount_path: input.workspace_mount_path.trim() || defaultSandboxForm.workspace_mount_path,
+    state_mount_path: input.state_mount_path.trim() || defaultSandboxForm.state_mount_path,
+  };
+}
+
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProject = searchParams.get('project') || '';
@@ -239,6 +302,7 @@ export default function DesktopWorkspace() {
 
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex] || null;
+  const selectedSandbox = toSandboxForm(selectedProject?.agent?.options?.sandbox);
   const configDirty = JSON.stringify(configDraft || {}) !== JSON.stringify(persistedConfig || {});
 
   useEffect(() => {
@@ -282,6 +346,19 @@ export default function DesktopWorkspace() {
       providers[index] = updater(provider);
       return { ...project, agent: { ...project.agent, providers } };
     });
+  }, [updateSelectedProject]);
+
+  const updateSelectedSandbox = useCallback((updater: (sandbox: SandboxForm) => SandboxForm) => {
+    updateSelectedProject((project) => ({
+      ...project,
+      agent: {
+        ...project.agent,
+        options: {
+          ...(project.agent.options || {}),
+          sandbox: fromSandboxForm(updater(toSandboxForm(project.agent.options?.sandbox))),
+        },
+      },
+    }));
   }, [updateSelectedProject]);
 
   const handleAddProject = () => {
@@ -683,6 +760,7 @@ export default function DesktopWorkspace() {
                   ['basic', '基本信息'],
                   ['providers', 'Provider'],
                   ['platforms', '平台接入'],
+                  ['sandbox', '云端模式'],
                 ].map(([key, label]) => (
                   <button
                     key={key}
@@ -887,6 +965,96 @@ export default function DesktopWorkspace() {
                     ))}
                   </div>
                 )}
+                </section>
+              ) : null}
+
+              {projectTab === 'sandbox' ? (
+                <section className="space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-950 dark:text-white">云端模式</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">通过 OpenSandbox 为 Agent 运行启动独立容器。</p>
+                    </div>
+                    <StatusPill tone={selectedSandbox.enabled ? 'success' : 'neutral'}>
+                      {selectedSandbox.enabled ? 'Enabled' : 'Local'}
+                    </StatusPill>
+                  </div>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-black/10 px-4 py-3 text-sm font-medium text-slate-950 dark:border-white/[0.08] dark:text-white">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                      checked={selectedSandbox.enabled}
+                      onChange={(event) => updateSelectedSandbox((current) => ({ ...current, enabled: event.target.checked }))}
+                    />
+                    启用云端模式（Sandbox）
+                  </label>
+
+                  {selectedSandbox.enabled ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input
+                        label="OpenSandbox URL"
+                        value={selectedSandbox.server_url}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, server_url: event.target.value }))}
+                      />
+                      <Input
+                        label="Sandbox image"
+                        value={selectedSandbox.image}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, image: event.target.value }))}
+                      />
+                      <Input
+                        label="ACP port"
+                        type="number"
+                        value={selectedSandbox.acp_port}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, acp_port: event.target.value }))}
+                      />
+                      <Input
+                        label="OpenSandbox API key env"
+                        value={selectedSandbox.api_key_env}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, api_key_env: event.target.value }))}
+                      />
+                      <Select
+                        label="State scope"
+                        value={selectedSandbox.state_scope}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}
+                      >
+                        <option value="user">User</option>
+                        <option value="project">Project</option>
+                        <option value="thread">Thread</option>
+                        <option value="run">Run</option>
+                      </Select>
+                      <Input
+                        label="Timeout seconds"
+                        type="number"
+                        value={selectedSandbox.timeout_seconds}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))}
+                      />
+                      <Input
+                        label="CPU"
+                        value={selectedSandbox.cpu}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, cpu: event.target.value }))}
+                      />
+                      <Input
+                        label="Memory"
+                        value={selectedSandbox.memory}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, memory: event.target.value }))}
+                      />
+                      <Input
+                        label="Workspace mount path"
+                        value={selectedSandbox.workspace_mount_path}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, workspace_mount_path: event.target.value }))}
+                      />
+                      <Input
+                        label="State mount path"
+                        value={selectedSandbox.state_mount_path}
+                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, state_mount_path: event.target.value }))}
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-black/10 px-4 py-3 text-sm text-muted-foreground dark:border-white/[0.08]">
+                      当前项目会继续使用本地 Agent runtime。
+                    </div>
+                  )}
                 </section>
               ) : null}
 

@@ -6,7 +6,7 @@ import type { ConfigFileState, DesktopProjectConfig, DesktopSandboxOptions } fro
 export const DEFAULT_OPENSANDBOX_SERVER_URL = 'http://127.0.0.1:8080';
 export const DEFAULT_OPENSANDBOX_API_KEY_ENV = 'OPEN_SANDBOX_API_KEY';
 export const DEFAULT_PI_SANDBOX_IMAGE = 'agentdock/pi-acp:local';
-export const DEFAULT_SANDBOX_ACP_PORT = 39231;
+export const DEFAULT_SANDBOX_ACP_PORT = 8080;
 export const DEFAULT_SANDBOX_TIMEOUT_SECONDS = 7200;
 export const DEFAULT_SANDBOX_CPU = '1000m';
 export const DEFAULT_SANDBOX_MEMORY = '2Gi';
@@ -37,16 +37,17 @@ export function normalizeSandboxLaunchConfig(input: {
   const stateScope = normalizeStateScope(raw.state_scope);
   const stateMountPath = normalizeAbsoluteContainerPath(raw.state_mount_path, DEFAULT_STATE_MOUNT_PATH);
   const projectId = sanitizePathSegment(input.project.name, 'project');
-  const userId = sanitizePathSegment(String(input.project.agent?.options?.user_id || 'local'), 'local');
+  const rawOptions = input.project.agent?.options || {};
+  const userId = sanitizePathSegment(String(rawOptions.user_id || (rawOptions as Record<string, unknown>).tenant_id || 'local'), 'local');
+  const agentId = sanitizePathSegment(agentType, 'agent');
   const stateHostPath = resolve(
     userDataRoot,
     'sandbox-state',
     'users',
     userId,
-    'projects',
-    projectId,
-    'agents',
-    sanitizePathSegment(agentType, 'agent'),
+    ...(stateScope === 'user'
+      ? ['agents', agentId]
+      : ['projects', projectId, 'agents', agentId]),
     ...(stateScope === 'thread'
       ? ['threads', '${LOCAL_AI_THREAD_ID}', 'state']
       : stateScope === 'run'
@@ -74,6 +75,14 @@ export function normalizeSandboxLaunchConfig(input: {
     workspaceMountPath: normalizeAbsoluteContainerPath(raw.workspace_mount_path, DEFAULT_WORKSPACE_MOUNT_PATH),
     stateHostPath,
     stateMountPath,
+    stateMount: {
+      userId,
+      projectId,
+      agentType,
+      scope: stateScope,
+      hostPath: stateHostPath,
+      containerPath: stateMountPath,
+    },
     runtimeCommand: normalizeRuntimeCommandForSandbox(agentType, input.launchConfig.command),
     runtimeArgs: normalizeRuntimeArgsForSandbox(agentType, input.launchConfig.args || []),
     runtimeEnv: normalizeRuntimeEnvForSandbox(agentType, input.launchConfig.env || {}, stateMountPath),
@@ -117,7 +126,7 @@ function normalizeServerUrl(value?: string) {
 }
 
 function normalizeStateScope(value?: string): AgentSandboxStateScope {
-  return value === 'thread' || value === 'run' ? value : 'project';
+  return value === 'user' || value === 'thread' || value === 'run' ? value : 'project';
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number) {

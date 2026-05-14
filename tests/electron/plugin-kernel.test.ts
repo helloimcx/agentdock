@@ -541,6 +541,46 @@ model = "deepseek-v4-flash"
   }
 });
 
+test('pi agent runtime normalizes DeepSeek provider when provider name is the model id', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    await runtime.state.saveRawConfigFile(`
+[[projects]]
+name = "deepseek-model-name-workspace"
+
+[projects.agent]
+type = "pi"
+
+[[projects.agent.providers]]
+name = "deepseek-v4-flash"
+api_key = "test-deepseek-key"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-flash"
+`);
+    const configState = await runtime.state.readConfigFile();
+    const project = configState.parsed?.projects?.find((entry) => entry.name === 'deepseek-model-name-workspace');
+    const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
+    const route = project ? piRuntime?.createRoute(configState, project) : null;
+    const piAgentDir = route?.config.env.PI_CODING_AGENT_DIR || '';
+
+    assert.equal(route?.config.env.DEEPSEEK_API_KEY, 'test-deepseek-key');
+    assert.deepEqual(JSON.parse(readFileSync(join(piAgentDir, 'auth.json'), 'utf8')), {
+      deepseek: { type: 'api_key', key: 'test-deepseek-key' },
+    });
+    assert.deepEqual(JSON.parse(readFileSync(join(piAgentDir, 'settings.json'), 'utf8')), {
+      defaultProvider: 'deepseek',
+      defaultModel: 'deepseek-v4-flash',
+      quietStartup: true,
+    });
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('runtime bootstrap knowledge capabilities come from the selected provider plugin', () => {
   const enabledUserDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   const disabledUserDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));

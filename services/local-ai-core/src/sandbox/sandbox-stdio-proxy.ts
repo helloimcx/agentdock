@@ -44,7 +44,7 @@ async function main() {
 
   try {
     run = await manager.start();
-    socket = await connect(run.endpoint);
+    socket = await connectStable(run.endpoint);
     const rl = readline.createInterface({
       input: process.stdin,
       crlfDelay: Infinity,
@@ -87,22 +87,70 @@ function parseConfig(): AgentSandboxLaunchConfig {
   return JSON.parse(raw) as AgentSandboxLaunchConfig;
 }
 
-function connect(endpoint: string) {
+async function connectStable(endpoint: string) {
+  const deadline = Date.now() + 30000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return await connectOnce(endpoint, Math.min(5000, Math.max(1000, deadline - Date.now())), 1000);
+    } catch (error) {
+      lastError = error;
+      await delay(300);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Timed out connecting to sandbox ACP bridge: ${endpoint}`);
+}
+
+function connectOnce(endpoint: string, timeoutMs: number, stableMs: number) {
   return new Promise<WebSocket>((resolve, reject) => {
     const socket = new WebSocket(endpoint);
+    let settled = false;
+    let stableTimer: NodeJS.Timeout | undefined;
     const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       socket.close();
       reject(new Error(`Timed out connecting to sandbox ACP bridge: ${endpoint}`));
-    }, 30000);
+    }, timeoutMs);
     socket.once('open', () => {
-      clearTimeout(timeout);
-      resolve(socket);
+      stableTimer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolve(socket);
+      }, stableMs);
     });
     socket.once('error', (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timeout);
+      if (stableTimer) {
+        clearTimeout(stableTimer);
+      }
       reject(error);
     });
+    socket.once('close', () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      if (stableTimer) {
+        clearTimeout(stableTimer);
+      }
+      reject(new Error(`Sandbox ACP bridge closed before it was ready: ${endpoint}`));
+    });
   });
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 void main();

@@ -465,7 +465,7 @@ export interface DesktopProviderConfig {
   env?: Record<string, string>;
 }
 
-export type DesktopSandboxStateScope = 'project' | 'thread' | 'run';
+export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 
 export interface DesktopSandboxOptions {
   enabled?: boolean;

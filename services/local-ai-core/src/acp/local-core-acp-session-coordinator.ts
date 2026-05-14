@@ -91,7 +91,7 @@ export class LocalCoreAcpSessionCoordinator {
         session.loadReplayMode = true;
         await this.options.transport.request(session, 'session/load', {
           sessionId: row.acp_session_id,
-          cwd: config.workDir,
+          cwd: acpSessionCwd(config),
           mcpServers: [],
         }, 30000);
         session.sessionId = row.acp_session_id;
@@ -104,7 +104,7 @@ export class LocalCoreAcpSessionCoordinator {
     if (!session.sessionId) {
       try {
         const created = await this.options.transport.request(session, 'session/new', {
-          cwd: config.workDir,
+          cwd: acpSessionCwd(config),
           mcpServers: [],
           _meta: this.buildSessionMeta(threadId, permissionMode),
         }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
@@ -247,6 +247,7 @@ export class LocalCoreAcpSessionCoordinator {
       args: config.args || [],
       env: config.env || {},
       model: config.model || '',
+      execution: config.execution || null,
       sandbox: config.sandbox || null,
     });
   }
@@ -274,6 +275,10 @@ export class LocalCoreAcpSessionCoordinator {
       },
     };
   }
+}
+
+function acpSessionCwd(config: LocalCoreProjectConfig) {
+  return config.sandbox?.enabled ? config.sandbox.workspaceMountPath : config.workDir;
 }
 
 export function buildAgentPath(existingPath: string, cliBinDir?: string) {

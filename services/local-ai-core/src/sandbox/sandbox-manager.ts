@@ -24,7 +24,7 @@ export class SandboxManager {
 
   async start(): Promise<SandboxRun> {
     const config = materializeSandboxLaunchConfig(this.options.config, this.options.env);
-    const apiKey = String(this.options.env[config.apiKeyEnv] || '').trim();
+    const apiKey = resolveOpenSandboxApiKey(config, this.options.env);
     const client = this.options.client || new OpenSandboxClient({
       serverUrl: config.serverUrl,
       apiKey,
@@ -59,7 +59,7 @@ export class SandboxManager {
       try {
         const client = this.options.client || new OpenSandboxClient({
           serverUrl: config.serverUrl,
-          apiKey: String(this.options.env[config.apiKeyEnv] || '').trim(),
+          apiKey: resolveOpenSandboxApiKey(config, this.options.env),
         });
         await client.deleteSandbox(sandboxId);
       } catch (error) {
@@ -90,6 +90,23 @@ export class SandboxManager {
       await delay(500);
     }
     this.options.log?.(`OpenSandbox sandbox ${sandboxId} last status before timeout: ${lastStatus || 'unknown'}`);
+    return false;
+  }
+}
+
+export function resolveOpenSandboxApiKey(config: AgentSandboxLaunchConfig, env: NodeJS.ProcessEnv) {
+  const configured = String(env[config.apiKeyEnv] || '').trim();
+  if (configured) {
+    return configured;
+  }
+  return isLocalOpenSandboxServer(config.serverUrl) ? 'agentdock-local' : '';
+}
+
+function isLocalOpenSandboxServer(serverUrl: string) {
+  try {
+    const url = new URL(serverUrl);
+    return (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '::1') && url.port === '8080';
+  } catch {
     return false;
   }
 }

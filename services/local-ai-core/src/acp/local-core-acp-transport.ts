@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { DesktopBridgeEvent } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, LocalCoreErrorCode } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreError } from '../kernel/local-core-errors.js';
 import type {
   AcpSessionState,
@@ -244,10 +244,11 @@ export class LocalCoreAcpTransport {
         }
         session.pending.delete(payload.id);
         if (payload.error) {
-          pending.reject(new LocalCoreError('runtime_protocol_error', payload.error.message || `ACP request failed: ${payload.id}`, {
+          pending.reject(new LocalCoreError(errorCodeForAcpError(payload.error), payload.error.message || `ACP request failed: ${payload.id}`, {
             details: {
               payloadId: payload.id,
               errorCode: payload.error.code,
+              errorData: payload.error.data,
               threadId: session.threadId,
               runtimeId: session.currentTurn?.agentType || '',
             },
@@ -260,6 +261,9 @@ export class LocalCoreAcpTransport {
   }
 
   private handlePipeFailure(session: AcpSessionState, error: unknown) {
+    if (session.closed) {
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     this.options.log?.(`[localcore-acp:${session.threadId}] stdin failure: ${message}`);
     this.options.onSessionClosed(session, new LocalCoreError('runtime_protocol_error', message, {
@@ -269,4 +273,12 @@ export class LocalCoreAcpTransport {
       },
     }));
   }
+}
+
+function errorCodeForAcpError(error: { message?: unknown; data?: unknown }): LocalCoreErrorCode {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('authentication required') || message.includes('api key') || message.includes('oauth')) {
+    return 'provider_auth_failed';
+  }
+  return 'runtime_protocol_error';
 }

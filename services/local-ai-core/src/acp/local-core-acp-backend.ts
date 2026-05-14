@@ -281,6 +281,23 @@ export class LocalCoreAcpBackend {
       title: content.trim().slice(0, 80) || row.title || 'Agent task',
       prompt: content,
       status: 'running',
+      metadata: {
+        execution: config.execution || {
+          mode: config.sandbox?.enabled ? 'sandbox' : 'local',
+          transport: config.sandbox?.enabled ? 'sandbox-ws-stdio-proxy' : 'stdio',
+        },
+        ...(config.sandbox?.enabled
+          ? {
+              sandbox: {
+                provider: config.sandbox.provider,
+                image: config.sandbox.image,
+                acpPort: config.sandbox.acpPort,
+                stateScope: config.sandbox.stateScope,
+                stateMount: config.sandbox.stateMount || null,
+              },
+            }
+          : {}),
+      },
     });
     this.options.eventBus.emit({
       type: 'run.started',

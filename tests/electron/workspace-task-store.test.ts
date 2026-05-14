@@ -574,6 +574,81 @@ test('ACP scheduled session can override permission mode without changing thread
   }
 });
 
+test('ACP sandbox sessions use container workspace cwd', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'sandbox-session-cwd-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Thread');
+    let sessionNewParams: any;
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+            launchPermissionMode: '',
+          };
+        },
+        initializeSession: async () => {},
+        request: async (_session: any, method: string, params: any) => {
+          if (method === 'session/new') {
+            sessionNewParams = params;
+            return { sessionId: 'session-1' };
+          }
+          return {};
+        },
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: () => true,
+      } as any,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+    });
+
+    await coordinator.ensureSession(thread.id, 'session:thread-1', {
+      workspaceId: 'workspace-a',
+      agentType: 'pi',
+      command: process.execPath,
+      args: ['/host/sandbox-stdio-proxy.js'],
+      env: {},
+      workDir: '/host/workspace-a',
+      model: '',
+      sandbox: {
+        enabled: true,
+        provider: 'opensandbox',
+        serverUrl: 'http://127.0.0.1:8080',
+        apiKeyEnv: 'OPEN_SANDBOX_API_KEY',
+        image: 'agentdock/pi-acp:local',
+        acpPort: 8080,
+        entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
+        timeoutSeconds: 600,
+        cpu: '1000m',
+        memory: '1Gi',
+        userId: 'local',
+        projectId: 'workspace-a',
+        stateScope: 'project',
+        workspaceHostPath: '/host/workspace-a',
+        workspaceMountPath: '/workspace',
+        stateHostPath: '/host/state',
+        stateMountPath: '/agent-state',
+        runtimeCommand: '/usr/local/bin/pi-acp',
+        runtimeArgs: [],
+        runtimeEnv: {},
+      },
+    });
+
+    assert.equal(sessionNewParams?.cwd, '/workspace');
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('ACP permission requests honor scheduled session permission override', () => {
   const sentPayloads: any[] = [];
   let approvalCreated = false;

@@ -11,9 +11,10 @@ import {
   sandboxProxyLaunchEnv,
 } from '../../services/local-ai-core/src/sandbox/sandbox-config.js';
 import { toLocalCoreProjectConfig } from '../../services/local-ai-core/src/router/workspace-route-config.js';
-import { buildOpenSandboxCreateInput, normalizeEndpoint } from '../../services/local-ai-core/src/sandbox/sandbox-manager.js';
+import { buildOpenSandboxCreateInput, normalizeEndpoint, resolveOpenSandboxApiKey } from '../../services/local-ai-core/src/sandbox/sandbox-manager.js';
 import { SandboxManager } from '../../services/local-ai-core/src/sandbox/sandbox-manager.js';
 import type { OpenSandboxClient } from '../../services/local-ai-core/src/sandbox/opensandbox-client.js';
+import { migrateDesktopConnectConfig } from '../../services/local-ai-core/src/runtime/config-migration.js';
 
 function configState(path: string): ConfigFileState {
   return {
@@ -69,12 +70,66 @@ test('sandbox config normalizes project scoped Pi defaults', () => {
     assert.equal(sandbox?.stateScope, 'project');
     assert.equal(sandbox?.workspaceMountPath, '/workspace');
     assert.equal(sandbox?.stateMountPath, '/agent-state');
+    assert.deepEqual(sandbox?.stateMount, {
+      userId: 'local',
+      projectId: 'my-project',
+      agentType: 'pi',
+      scope: 'project',
+      hostPath: sandbox?.stateHostPath,
+      containerPath: '/agent-state',
+    });
+    assert.equal(sandbox?.acpPort, 8080);
     assert.match(sandbox?.stateHostPath || '', /sandbox-state[/\\]users[/\\]local[/\\]projects[/\\]my-project[/\\]agents[/\\]pi[/\\]state$/);
     assert.equal(sandbox?.runtimeCommand, '/usr/local/bin/pi-acp');
     assert.deepEqual(sandbox?.runtimeArgs, []);
     assert.equal(sandbox?.runtimeEnv.PI_CODING_AGENT_DIR, '/agent-state/pi');
     assert.equal(sandbox?.runtimeEnv.PI_ACP_PI_COMMAND, '/usr/local/bin/pi');
     assert.equal(sandbox?.runtimeEnv.OPENAI_API_KEY, 'secret');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sandbox config supports user scoped state shared across projects', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  try {
+    const first = normalizeSandboxLaunchConfig({
+      configState: configState(join(root, 'runtime', 'config.toml')),
+      project: {
+        ...project({ enabled: true, state_scope: 'user' }),
+        name: 'first-project',
+        agent: {
+          ...project({ enabled: true, state_scope: 'user' }).agent,
+          options: {
+            work_dir: '/workspace/source',
+            user_id: 'alice@example.com',
+            sandbox: { enabled: true, state_scope: 'user' },
+          },
+        },
+      },
+      launchConfig: { ...launchConfig(), workspaceId: 'first-project' },
+    });
+    const second = normalizeSandboxLaunchConfig({
+      configState: configState(join(root, 'runtime', 'config.toml')),
+      project: {
+        ...project({ enabled: true, state_scope: 'user' }),
+        name: 'second-project',
+        agent: {
+          ...project({ enabled: true, state_scope: 'user' }).agent,
+          options: {
+            work_dir: '/workspace/source',
+            user_id: 'alice@example.com',
+            sandbox: { enabled: true, state_scope: 'user' },
+          },
+        },
+      },
+      launchConfig: { ...launchConfig(), workspaceId: 'second-project' },
+    });
+    assert.ok(first);
+    assert.ok(second);
+    assert.equal(first.stateHostPath, second.stateHostPath);
+    assert.match(first.stateHostPath || '', /sandbox-state[/\\]users[/\\]alice-example.com[/\\]agents[/\\]pi[/\\]state$/);
+    assert.equal(first.stateMount?.scope, 'user');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -123,11 +178,61 @@ test('workspace route launches sandbox proxy when sandbox is enabled', () => {
 
     assert.equal(route.command, process.execPath);
     assert.match(route.args[0], /sandbox-stdio-proxy\.js$/);
+    assert.equal(route.workDir, '/workspace/source');
+    assert.equal(route.execution?.mode, 'sandbox');
+    assert.equal(route.execution?.transport, 'sandbox-ws-stdio-proxy');
+    assert.equal(route.execution?.sandbox?.stateScope, 'project');
+    assert.equal(route.sandbox?.workspaceHostPath, '/workspace/source');
     assert.equal(route.sandbox?.image, 'agentdock/pi-acp:test');
     assert.equal(JSON.parse(route.env.AGENTDOCK_SANDBOX_CONFIG).image, 'agentdock/pi-acp:test');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('workspace route records local execution when sandbox is disabled', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  try {
+    const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), project({
+      enabled: false,
+    }));
+
+    assert.equal(route.execution?.mode, 'local');
+    assert.equal(route.execution?.transport, 'stdio');
+    assert.equal(route.sandbox, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('desktop config migration normalizes user id, DeepSeek provider, and sandbox defaults', () => {
+  const migrated = migrateDesktopConnectConfig({
+    projects: [{
+      name: 'cloud-project',
+      agent: {
+        type: 'pi',
+        options: {
+          tenant_id: 'team-a',
+          sandbox: { enabled: true },
+        } as any,
+        providers: [{
+          name: 'deepseek-v4-flash',
+          api_key: 'secret',
+          model: 'deepseek-v4-flash',
+        }],
+      },
+      platforms: [],
+    }],
+  });
+
+  assert.equal(migrated.changed, true);
+  assert.equal(migrated.config.config_version, 2);
+  const projectConfig = migrated.config.projects?.[0];
+  assert.equal(projectConfig?.agent.options?.user_id, 'team-a');
+  assert.equal((projectConfig?.agent.options as any).tenant_id, undefined);
+  assert.equal(projectConfig?.agent.providers?.[0]?.name, 'deepseek');
+  assert.equal(projectConfig?.agent.options?.sandbox?.provider, 'opensandbox');
+  assert.equal(projectConfig?.agent.options?.sandbox?.acp_port, 8080);
 });
 
 test('OpenSandbox create input includes volumes, resources, env, and metadata', () => {
@@ -145,7 +250,7 @@ test('OpenSandbox create input includes volumes, resources, env, and metadata', 
       AGENTDOCK_SANDBOX_RUN_ID: 'run-1',
     });
     assert.equal(input.image, 'agentdock/pi-acp:local');
-    assert.deepEqual(input.ports, [39231]);
+    assert.deepEqual(input.ports, [8080]);
     assert.equal(input.cpu, '2000m');
     assert.equal(input.memory, '4Gi');
     assert.deepEqual(input.volumes.map((volume) => volume.container), ['/workspace', '/agent-state']);
@@ -192,6 +297,23 @@ test('normalizeEndpoint converts HTTP endpoints to WebSocket endpoints', () => {
   assert.equal(normalizeEndpoint('https://example.test/acp'), 'wss://example.test/acp');
   assert.equal(normalizeEndpoint('127.0.0.1:3000'), 'ws://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('ws://127.0.0.1:3000'), 'ws://127.0.0.1:3000');
+});
+
+test('OpenSandbox local compose auth falls back to the default local API key', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  try {
+    const sandbox = normalizeSandboxLaunchConfig({
+      configState: configState(join(root, 'runtime', 'config.toml')),
+      project: project({ enabled: true }),
+      launchConfig: launchConfig(),
+    });
+    assert.ok(sandbox);
+    assert.equal(resolveOpenSandboxApiKey(sandbox, {}), 'agentdock-local');
+    assert.equal(resolveOpenSandboxApiKey({ ...sandbox, serverUrl: 'https://sandbox.example.com' }, {}), '');
+    assert.equal(resolveOpenSandboxApiKey(sandbox, { OPEN_SANDBOX_API_KEY: 'custom-key' }), 'custom-key');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('sandbox manager deletes sandbox and run scoped state on cleanup', async () => {

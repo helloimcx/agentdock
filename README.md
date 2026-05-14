@@ -73,6 +73,11 @@ flowchart LR
 
 ## New
 
+### 2026-05-14
+
+- 工作区项目配置新增“云端模式”入口，可直接配置 OpenSandbox URL、Pi ACP sandbox 镜像、ACP 端口和 state scope。
+- 云端模式新增 execution 元数据、user/project/thread/run state scope、配置迁移和 Pi provider 规范化，便于多用户云端部署与运行排障。
+
 ### 2026-05-12
 
 - 新增 OpenSandbox 沙箱运行基础：提供 `docker-compose.yaml` 手动启动 OpenSandbox server，项目可开启 sandbox 模式后通过一次性容器运行 agent ACP server，并为 Pi sandbox 预留按用户/项目/Agent 持久化的 runtime state 挂载。
