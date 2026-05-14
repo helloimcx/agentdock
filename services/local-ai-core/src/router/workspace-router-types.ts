@@ -147,6 +147,19 @@ export type LocalAutomationMonitorRunRow = {
   last_bridge_event_at: string | null;
 };
 
+export type LocalModelProviderRow = {
+  id: string;
+  name: string;
+  api_key: string | null;
+  base_url: string | null;
+  model: string | null;
+  models_json: string;
+  thinking: string | null;
+  env_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type LocalWorkspaceRegistryRow = {
   id: string;
   display_name: string;

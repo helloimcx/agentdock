@@ -614,11 +614,12 @@ export class WorkspaceRouter {
   }
 
   private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readConfigState']>>, project: DesktopProjectConfig) {
+    const routeProject = this.withResolvedProjectProvider(project);
     for (const runtime of this.options.getAgentRuntimes?.() || []) {
-      if (!runtime.matchesProject(project)) {
+      if (!runtime.matchesProject(routeProject)) {
         continue;
       }
-      const route = runtime.createRoute(configState, project);
+      const route = runtime.createRoute(configState, routeProject);
       if (route) {
         return {
           ...route,
@@ -626,14 +627,14 @@ export class WorkspaceRouter {
         } satisfies WorkspaceRoute;
       }
     }
-    if (isLocalCoreNativeAcpProject(project)) {
-      const agentType = String(project.agent?.type || '').trim().toLowerCase() || 'localcore-acp';
+    if (isLocalCoreNativeAcpProject(routeProject)) {
+      const agentType = String(routeProject.agent?.type || '').trim().toLowerCase() || 'localcore-acp';
       return {
         kind: 'localcore-acp',
         agentType,
         transport: 'localcore-acp',
         config: {
-          ...toLocalCoreProjectConfig(configState, project),
+          ...toLocalCoreProjectConfig(configState, routeProject),
           agentType,
         },
         supportsStreamingProbe: true,
@@ -646,6 +647,24 @@ export class WorkspaceRouter {
       } satisfies WorkspaceRoute;
     }
     return null;
+  }
+
+  private withResolvedProjectProvider(project: DesktopProjectConfig): DesktopProjectConfig {
+    const providerId = String(project.agent?.options?.provider_id || '').trim();
+    if (!providerId) {
+      return project;
+    }
+    const provider = this.store.getModelProvider(providerId);
+    if (!provider) {
+      throw new Error(`Workspace "${project.name}" references missing provider "${providerId}".`);
+    }
+    return {
+      ...project,
+      agent: {
+        ...project.agent,
+        providers: [provider],
+      },
+    };
   }
 }
 

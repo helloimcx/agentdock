@@ -74,6 +74,9 @@ import type {
   WorkspaceRegistryUpdateInput,
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
+  DesktopModelProvider,
+  DesktopModelProviderInput,
+  DesktopModelProviderListResponse,
 } from '../../../../packages/contracts/src/index.js';
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
 import { errorInfoToHttpBody, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
@@ -89,6 +92,10 @@ export interface LocalAiCoreBindings extends EventEmitter {
   saveRawConfigFile(raw: string): Promise<ConfigFileState>;
   saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
   saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
+  listModelProviders(): Promise<DesktopModelProviderListResponse>;
+  createModelProvider(input: DesktopModelProviderInput): Promise<DesktopModelProvider>;
+  updateModelProvider(providerId: string, input: DesktopModelProviderInput): Promise<DesktopModelProvider>;
+  deleteModelProvider(providerId: string): Promise<{ deleted: boolean }>;
   listWorkspaces(): Promise<WorkspaceSummary[]>;
   listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]>;
   getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry>;
@@ -540,6 +547,22 @@ export class LocalAiCoreServer {
       }
       case 'workspace-registry.delete':
         json(res, 200, await this.bindings.deleteWorkspaceRegistryEntry(route.workspaceId));
+        return;
+      case 'providers.list':
+        json(res, 200, await this.bindings.listModelProviders());
+        return;
+      case 'providers.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createModelProvider(body as unknown as DesktopModelProviderInput));
+        return;
+      }
+      case 'provider.update': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.updateModelProvider(route.providerId, body as unknown as DesktopModelProviderInput));
+        return;
+      }
+      case 'provider.delete':
+        json(res, 200, await this.bindings.deleteModelProvider(route.providerId));
         return;
       case 'workspace-security.get':
         json(res, 200, await this.bindings.getWorkspaceSecuritySettings(route.workspaceId));

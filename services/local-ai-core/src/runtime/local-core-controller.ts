@@ -69,6 +69,9 @@ import type {
   WorkspaceRegistryUpdateInput,
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
+  DesktopModelProvider,
+  DesktopModelProviderInput,
+  DesktopModelProviderListResponse,
 } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime, KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
@@ -80,6 +83,8 @@ import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-
 import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 import type { LocalAiCoreBindings } from './server.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
+import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 export class LocalCoreController extends EventEmitter implements LocalAiCoreBindings {
   private readonly state: LocalCoreRuntimeState;
@@ -88,6 +93,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   private readonly channelRuntimes: Map<string, ChannelRuntime>;
   private readonly scheduledJobs: ScheduledJobApplicationService;
   private readonly automationMonitors: AutomationMonitorService;
+  private readonly store: LocalCoreAcpStore;
   private readonly kernel: LocalCoreKernel;
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly runtimeDetection: RuntimeDetectionService;
@@ -107,6 +113,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
       log: (message) => this.handleLog(message),
     });
     this.state = this.runtime.state;
+    this.store = this.runtime.store;
     this.kernel = this.runtime.kernel;
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
@@ -171,7 +178,9 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   async init() {
     await this.runtime.start();
     await this.emitRuntime();
-    void this.runtimeDetection.refreshOnStartup();
+    setTimeout(() => {
+      void this.runtimeDetection.refreshOnStartup();
+    }, 5000);
   }
 
   async close() {
@@ -235,7 +244,7 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async readConfigFile(): Promise<ConfigFileState> {
-    return this.state.readConfigFile();
+    return this.readAndMigrateConfigFile();
   }
 
   async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
@@ -246,10 +255,38 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
   }
 
   async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
-    const next = await this.state.saveStructuredConfigFile(config);
+    const migrated = migrateLegacyProjectProvidersToStore(config, this.store);
+    const next = await this.state.saveStructuredConfigFile(migrated.config);
     await this.refreshChannelBindings();
     await this.emitRuntime();
     return next;
+  }
+
+  async listModelProviders(): Promise<DesktopModelProviderListResponse> {
+    return { providers: this.store.listModelProviders() };
+  }
+
+  async createModelProvider(input: DesktopModelProviderInput): Promise<DesktopModelProvider> {
+    return this.store.upsertModelProvider(input);
+  }
+
+  async updateModelProvider(providerId: string, input: DesktopModelProviderInput): Promise<DesktopModelProvider> {
+    const existing = this.store.getModelProvider(providerId);
+    if (!existing) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+    return this.store.upsertModelProvider({ ...input, id: providerId });
+  }
+
+  async deleteModelProvider(providerId: string): Promise<{ deleted: boolean }> {
+    const config = await this.readAndMigrateConfigFile();
+    const referencingProjects = (config.parsed?.projects || [])
+      .filter((project) => project.agent?.options?.provider_id === providerId)
+      .map((project) => project.name);
+    if (referencingProjects.length > 0) {
+      throw new Error(`Provider "${providerId}" is still used by projects: ${referencingProjects.join(', ')}`);
+    }
+    return this.store.deleteModelProvider(providerId);
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
@@ -257,6 +294,26 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     await this.refreshChannelBindings();
     await this.emitRuntime();
     return settings;
+  }
+
+  private async readAndMigrateConfigFile(): Promise<ConfigFileState> {
+    const current = await this.state.readConfigFile();
+    if (!current.parsed) {
+      return current;
+    }
+    const migrated = migrateLegacyProjectProvidersToStore(current.parsed, this.store);
+    if (!migrated.changed) {
+      return current;
+    }
+    const saved = await this.state.saveStructuredConfigFile(migrated.config);
+    return {
+      ...saved,
+      warnings: [
+        ...(current.warnings || []),
+        ...(saved.warnings || []),
+        ...migrated.warnings,
+      ],
+    };
   }
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {

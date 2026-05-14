@@ -175,6 +175,19 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       last_opened_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_workspace_registry_updated ON workspace_registry (updated_at DESC);
+    CREATE TABLE IF NOT EXISTS model_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      api_key TEXT,
+      base_url TEXT,
+      model TEXT,
+      models_json TEXT NOT NULL DEFAULT '[]',
+      thinking TEXT,
+      env_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_model_providers_name ON model_providers (name);
     CREATE TABLE IF NOT EXISTS agent_tasks (
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,

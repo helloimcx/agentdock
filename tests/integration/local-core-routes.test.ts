@@ -82,6 +82,20 @@ test('local core route parser keeps workspace state routes bounded to one id seg
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/workspace-1/streaming-probe'), null);
 });
 
+test('local core route parser handles shared model provider routes', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/providers'), { name: 'providers.list' });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/providers'), { name: 'providers.create' });
+  assert.deepEqual(parseLocalAiCoreRoute('PUT', '/api/local/v1/providers/deepseek'), {
+    name: 'provider.update',
+    providerId: 'deepseek',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('DELETE', '/api/local/v1/providers/deepseek'), {
+    name: 'provider.delete',
+    providerId: 'deepseek',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/providers/deepseek/extra'), null);
+});
+
 test('local core route parser keeps approval resolution separate from approval detail', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/approvals'), { name: 'approvals.list' });
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/approvals'), { name: 'approvals.create' });

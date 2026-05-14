@@ -67,6 +67,12 @@ function normalizeDeepSeekProvider(provider: DesktopProviderConfig) {
   return true;
 }
 
+export function normalizeDesktopProviderForStorage(provider: DesktopProviderConfig): DesktopProviderConfig {
+  const next = JSON.parse(JSON.stringify(provider || {})) as DesktopProviderConfig;
+  normalizeDeepSeekProvider(next);
+  return next;
+}
+
 function normalizeSandboxOptions(input?: DesktopSandboxOptions): { value?: DesktopSandboxOptions; changed: boolean } {
   if (!input || typeof input !== 'object') {
     return { value: input, changed: false };

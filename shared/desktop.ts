@@ -465,6 +465,27 @@ export interface DesktopProviderConfig {
   env?: Record<string, string>;
 }
 
+export interface DesktopModelProvider extends DesktopProviderConfig {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DesktopModelProviderInput {
+  id?: string;
+  name: string;
+  api_key?: string;
+  base_url?: string;
+  model?: string;
+  models?: DesktopProviderModelConfig[];
+  thinking?: string;
+  env?: Record<string, string>;
+}
+
+export interface DesktopModelProviderListResponse {
+  providers: DesktopModelProvider[];
+}
+
 export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 
 export interface DesktopSandboxOptions {
@@ -488,8 +509,10 @@ export interface DesktopProjectConfig {
   agent: {
     type: string;
     options?: Record<string, unknown> & {
+      provider_id?: string;
       sandbox?: DesktopSandboxOptions;
     };
+    /** @deprecated Providers are stored independently and projects should reference options.provider_id. */
     providers?: DesktopProviderConfig[];
   };
   platforms: DesktopPlatformConfig[];

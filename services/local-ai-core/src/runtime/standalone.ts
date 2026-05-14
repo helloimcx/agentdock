@@ -8,6 +8,7 @@ async function main() {
   const userDataPath = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim() || join(process.cwd(), '.agentdock-core');
   mkdirSync(userDataPath, { recursive: true });
   const controller = new LocalCoreController(userDataPath);
+  const server = new LocalAiCoreServer(controller);
   controller.on('logs', (line: string) => {
     if (!line) {
       return;
@@ -17,9 +18,8 @@ async function main() {
   controller.on('bridge', (event: unknown) => {
     process.stdout.write(`[local-ai-core bridge] ${JSON.stringify(event)}\n`);
   });
-  await controller.init();
-  const server = new LocalAiCoreServer(controller);
   await server.start();
+  await controller.init();
   process.on('SIGINT', async () => {
     await server.stop();
     await controller.close();
@@ -32,4 +32,13 @@ async function main() {
   });
 }
 
-void main();
+void main().catch((error) => {
+  const code = typeof error === 'object' && error ? (error as { code?: string }).code : '';
+  if (code === 'EADDRINUSE') {
+    process.stderr.write('[local-ai-core] Port 9831 is already in use; another Local AI Core process is listening.\n');
+    process.exit(0);
+    return;
+  }
+  process.stderr.write(`${error instanceof Error ? error.stack || error.message : String(error)}\n`);
+  process.exit(1);
+});

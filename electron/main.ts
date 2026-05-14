@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
 
 let mainWindow: BrowserWindow | null = null;
@@ -41,7 +42,25 @@ async function isLocalCoreHealthy(timeoutMs = 350) {
   }
 }
 
-async function waitForLocalCoreHealthy(timeoutMs = 15000) {
+async function isLocalCorePortListening(timeoutMs = 350) {
+  return new Promise<boolean>((resolve) => {
+    const socket = createConnection({ host: '127.0.0.1', port: 9831 });
+    let settled = false;
+    const finish = (listening: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function waitForLocalCoreHealthy(timeoutMs = 60000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     if (await isLocalCoreHealthy(500)) {
@@ -68,6 +87,10 @@ async function ensureLocalCoreProcess() {
     return localCoreStartupPromise;
   }
   localCoreStartupPromise = (async () => {
+    if (await isLocalCorePortListening()) {
+      await waitForLocalCoreHealthy();
+      return;
+    }
     if (!localCoreProcess) {
       const entry = localCoreEntryPath();
       if (!existsSync(entry)) {
@@ -163,6 +186,9 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+}).catch((error) => {
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  app.quit();
 });
 
 app.on('window-all-closed', () => {

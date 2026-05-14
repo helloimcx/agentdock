@@ -38,6 +38,107 @@ test('workspace registry entries persist in LocalCoreAcpStore', () => {
   }
 });
 
+test('model providers persist independently from workspace config', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'model-provider-store-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const provider = store.upsertModelProvider({
+      name: 'deepseek',
+      api_key: 'secret',
+      base_url: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+      env: { CUSTOM_PROVIDER_ENV: '1' },
+    });
+
+    assert.equal(provider.id, 'deepseek');
+    assert.equal(provider.api_key, 'secret');
+    assert.equal(store.listModelProviders().length, 1);
+
+    const reopened = new LocalCoreAcpStore(userDataPath);
+    assert.equal(reopened.getModelProvider('deepseek')?.model, 'deepseek-v4-flash');
+    reopened.close();
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('controller migrates embedded project providers into shared provider store', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'model-provider-migration-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+      log: () => {},
+    });
+    const controller = new LocalCoreController(userDataPath, runtime);
+    await controller.saveStructuredConfigFile({
+      projects: [{
+        name: 'workspace-a',
+        agent: {
+          type: 'pi',
+          options: { work_dir: '/tmp/workspace-a' },
+          providers: [{
+            name: 'deepseek-v4-flash',
+            api_key: 'secret',
+            base_url: 'https://api.deepseek.com',
+            model: 'deepseek-v4-flash',
+          }],
+        },
+        platforms: [],
+      }],
+    });
+
+    const config = await controller.readConfigFile();
+    assert.equal(config.parsed?.projects?.[0]?.agent.options?.provider_id, 'deepseek');
+    assert.equal(config.parsed?.projects?.[0]?.agent.providers, undefined);
+    const providers = await controller.listModelProviders();
+    assert.equal(providers.providers[0]?.id, 'deepseek');
+    assert.equal(providers.providers[0]?.name, 'deepseek');
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('workspace router resolves projects that select a shared provider', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-provider-ref-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+      log: () => {},
+    });
+    const controller = new LocalCoreController(userDataPath, runtime);
+    const provider = await controller.createModelProvider({
+      name: 'deepseek',
+      api_key: 'secret',
+      base_url: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    });
+    await controller.saveStructuredConfigFile({
+      projects: [{
+        name: 'workspace-a',
+        agent: {
+          type: 'pi',
+          options: {
+            work_dir: '/tmp/workspace-a',
+            provider_id: provider.id,
+          },
+        },
+        platforms: [],
+      }],
+    });
+
+    const workspaces = await controller.listWorkspaces();
+    assert.equal(workspaces[0]?.id, 'workspace-a');
+    assert.equal(workspaces[0]?.agentType, 'pi');
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('scheduler create resolves a Lark delivery route without binding the job to a thread', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-binding-route-'));
   try {

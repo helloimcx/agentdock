@@ -37,6 +37,8 @@ import type {
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
+  DesktopModelProvider,
+  DesktopModelProviderInput,
 } from '../../../../../packages/contracts/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '../../../../../shared/desktop.js';
@@ -55,6 +57,7 @@ import { LocalSchedulerStore } from './scheduler-store.js';
 import { LocalSecurityStore } from './security-store.js';
 import { LocalThreadStore } from './thread-store.js';
 import { LocalWorkspaceRegistryStore } from './workspace-registry-store.js';
+import { LocalModelProviderStore } from './model-provider-store.js';
 
 export class LocalCoreAcpStore {
   private readonly db: DatabaseSync;
@@ -65,6 +68,7 @@ export class LocalCoreAcpStore {
   private readonly scheduler: LocalSchedulerStore;
   private readonly automationMonitors: LocalAutomationMonitorStore;
   private readonly platform: LocalPlatformStore;
+  private readonly modelProviders: LocalModelProviderStore;
 
   constructor(userDataPath: string) {
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
@@ -81,6 +85,7 @@ export class LocalCoreAcpStore {
     this.scheduler = new LocalSchedulerStore(this.db);
     this.automationMonitors = new LocalAutomationMonitorStore(this.db);
     this.platform = new LocalPlatformStore(this.db);
+    this.modelProviders = new LocalModelProviderStore(this.db);
     ensureLocalCoreAcpSchema(this.db);
   }
 
@@ -178,6 +183,22 @@ export class LocalCoreAcpStore {
 
   touchWorkspaceRegistryEntry(workspaceId: string) {
     this.workspaceRegistry.touch(workspaceId);
+  }
+
+  listModelProviders(): DesktopModelProvider[] {
+    return this.modelProviders.list();
+  }
+
+  getModelProvider(providerId: string): DesktopModelProvider | undefined {
+    return this.modelProviders.get(providerId);
+  }
+
+  upsertModelProvider(input: DesktopModelProviderInput): DesktopModelProvider {
+    return this.modelProviders.upsert(input);
+  }
+
+  deleteModelProvider(providerId: string) {
+    return this.modelProviders.delete(providerId);
   }
 
   getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {

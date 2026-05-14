@@ -77,6 +77,7 @@ flowchart LR
 
 - 工作区项目配置新增“云端模式”入口，可直接配置 OpenSandbox URL、Pi ACP sandbox 镜像、ACP 端口和 state scope。
 - 云端模式新增 execution 元数据、user/project/thread/run state scope、配置迁移和 Pi provider 规范化，便于多用户云端部署与运行排障。
+- Provider 从工作区配置中独立为共享模块，工作区现在选择 provider，并支持旧项目内嵌 provider 自动迁移。
 
 ### 2026-05-12
 

@@ -44,6 +44,10 @@ export type LocalAiCoreRoute =
   | { name: 'workspace-registry.get'; workspaceId: string }
   | { name: 'workspace-registry.update'; workspaceId: string }
   | { name: 'workspace-registry.delete'; workspaceId: string }
+  | { name: 'providers.list' }
+  | { name: 'providers.create' }
+  | { name: 'provider.update'; providerId: string }
+  | { name: 'provider.delete'; providerId: string }
   | { name: 'workspace-security.get'; workspaceId: string }
   | { name: 'workspace-security.update'; workspaceId: string }
   | { name: 'security.command-risk.classify' }
@@ -158,6 +162,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (segments[0] === 'workspace-registry') {
     return parseWorkspaceRegistryRoute(normalizedMethod, segments);
   }
+  if (segments[0] === 'providers') {
+    return parseProvidersRoute(normalizedMethod, segments);
+  }
   if (segments[0] === 'workspace-security') {
     return parseWorkspaceSecurityRoute(normalizedMethod, segments);
   }
@@ -192,6 +199,26 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
     return parsePlatformsRoute(normalizedMethod, segments);
   }
 
+  return null;
+}
+
+function parseProvidersRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 1) {
+    return { name: 'providers.list' };
+  }
+  if (method === 'POST' && segments.length === 1) {
+    return { name: 'providers.create' };
+  }
+  const providerId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
+  if (!providerId || segments.length !== 2) {
+    return null;
+  }
+  if (method === 'PUT' || method === 'PATCH') {
+    return { name: 'provider.update', providerId };
+  }
+  if (method === 'DELETE') {
+    return { name: 'provider.delete', providerId };
+  }
   return null;
 }
 

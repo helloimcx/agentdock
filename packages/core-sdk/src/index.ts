@@ -65,6 +65,9 @@ import type {
   WorkspaceRegistryUpdateInput,
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
+  DesktopModelProvider,
+  DesktopModelProviderInput,
+  DesktopModelProviderListResponse,
 } from '../../contracts/src';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
@@ -246,6 +249,22 @@ export async function saveCoreStructuredConfigFile(config: unknown) {
 
 export async function saveCoreSettings(input: DesktopSettingsInput) {
   return coreRequest<DesktopSettings>('POST', '/runtime/settings', input);
+}
+
+export async function listModelProviders() {
+  return coreRequest<DesktopModelProviderListResponse>('GET', '/providers');
+}
+
+export async function createModelProvider(input: DesktopModelProviderInput) {
+  return coreRequest<DesktopModelProvider>('POST', '/providers', input);
+}
+
+export async function updateModelProvider(providerId: string, input: DesktopModelProviderInput) {
+  return coreRequest<DesktopModelProvider>('PUT', `/providers/${encodeURIComponent(providerId)}`, input);
+}
+
+export async function deleteModelProvider(providerId: string) {
+  return coreRequest<{ deleted: boolean }>('DELETE', `/providers/${encodeURIComponent(providerId)}`);
 }
 
 export async function listChannelGateways(platform: string) {

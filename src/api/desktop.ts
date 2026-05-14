@@ -4,6 +4,9 @@ import type {
   DesktopRuntimeStatus,
   DesktopSettings,
   DesktopSettingsInput,
+  DesktopModelProvider,
+  DesktopModelProviderInput,
+  DesktopModelProviderListResponse,
 } from '../../shared/desktop';
 import type {
   LocalCoreAuthorizedUser,
@@ -72,6 +75,10 @@ import {
   checkWeixinQrCodeStatus as checkCoreWeixinQrCodeStatus,
   getLarkQrCode as getCoreLarkQrCode,
   checkLarkQrCodeStatus as checkCoreLarkQrCodeStatus,
+  createModelProvider as createCoreModelProvider,
+  deleteModelProvider as deleteCoreModelProvider,
+  listModelProviders as listCoreModelProviders,
+  updateModelProvider as updateCoreModelProvider,
 } from '../../packages/core-sdk/src';
 import { getRuntimeProvider, setRuntimeProvider, type RuntimeProvider } from '@/app/runtime';
 
@@ -86,6 +93,10 @@ type DesktopProvider = {
   readConfigFile: () => Promise<ConfigFileState>;
   saveRawConfigFile: (raw: string) => Promise<ConfigFileState>;
   saveStructuredConfigFile: (config: unknown) => Promise<ConfigFileState>;
+  listModelProviders: () => Promise<DesktopModelProviderListResponse>;
+  createModelProvider: (input: DesktopModelProviderInput) => Promise<DesktopModelProvider>;
+  updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => Promise<DesktopModelProvider>;
+  deleteModelProvider: (providerId: string) => Promise<{ deleted: boolean }>;
   getThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<string[]>;
   updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) => Promise<string[]>;
   deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;
@@ -146,6 +157,10 @@ const electronProvider: DesktopProvider = {
   readConfigFile: () => requireDesktopBridge().readConfigFile(),
   saveRawConfigFile: (raw: string) => requireDesktopBridge().saveRawConfigFile(raw),
   saveStructuredConfigFile: (config: unknown) => requireDesktopBridge().saveStructuredConfigFile(config),
+  listModelProviders: () => listCoreModelProviders(),
+  createModelProvider: (input: DesktopModelProviderInput) => createCoreModelProvider(input),
+  updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => updateCoreModelProvider(providerId, input),
+  deleteModelProvider: (providerId: string) => deleteCoreModelProvider(providerId),
   getThreadKnowledgeBases: (workspaceId: string, threadId: string) =>
     requireDesktopBridge().getThreadKnowledgeBases(workspaceId, threadId),
   updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) =>
@@ -205,6 +220,10 @@ const localCoreProvider: DesktopProvider = {
   readConfigFile: () => readCoreConfigFile(),
   saveRawConfigFile: (raw: string) => saveCoreRawConfigFile(raw),
   saveStructuredConfigFile: (config: unknown) => saveCoreStructuredConfigFile(config),
+  listModelProviders: () => listCoreModelProviders(),
+  createModelProvider: (input: DesktopModelProviderInput) => createCoreModelProvider(input),
+  updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => updateCoreModelProvider(providerId, input),
+  deleteModelProvider: (providerId: string) => deleteCoreModelProvider(providerId),
   getThreadKnowledgeBases: (_workspaceId: string, threadId: string) =>
     getCoreThread(threadId).then((thread) => thread.selectedKnowledgeBaseIds || []),
   updateThreadKnowledgeBases: (_workspaceId: string, threadId: string, knowledgeBaseIds: string[]) =>
@@ -303,6 +322,11 @@ export const refreshInstalledAgentRuntimes = (): Promise<InstalledAgentRuntime[]
 export const readConfigFile = (): Promise<ConfigFileState> => requireProvider().readConfigFile();
 export const saveRawConfigFile = (raw: string): Promise<ConfigFileState> => requireProvider().saveRawConfigFile(raw);
 export const saveStructuredConfigFile = (config: unknown): Promise<ConfigFileState> => requireProvider().saveStructuredConfigFile(config);
+export const listModelProviders = (): Promise<DesktopModelProviderListResponse> => requireProvider().listModelProviders();
+export const createModelProvider = (input: DesktopModelProviderInput): Promise<DesktopModelProvider> => requireProvider().createModelProvider(input);
+export const updateModelProvider = (providerId: string, input: DesktopModelProviderInput): Promise<DesktopModelProvider> =>
+  requireProvider().updateModelProvider(providerId, input);
+export const deleteModelProvider = (providerId: string): Promise<{ deleted: boolean }> => requireProvider().deleteModelProvider(providerId);
 export const getThreadKnowledgeBases = (workspaceId: string, threadId: string): Promise<string[]> =>
   requireProvider().getThreadKnowledgeBases(workspaceId, threadId);
 export const updateThreadKnowledgeBases = (

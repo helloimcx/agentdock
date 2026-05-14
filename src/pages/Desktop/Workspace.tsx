@@ -6,12 +6,16 @@ import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, Stat
 import {
   checkLarkQrCodeStatus,
   checkWeixinQrCodeStatus,
+  createModelProvider,
+  deleteModelProvider,
   enableLarkGateway,
   getLarkQrCode,
   getWeixinQrCode,
+  listModelProviders,
   readConfigFile,
   saveStructuredConfigFile,
   testLarkConnection,
+  updateModelProvider,
 } from '@/api/desktop';
 import {
   DEFAULT_DESKTOP_AGENT_TYPE,
@@ -22,6 +26,8 @@ import {
 } from '../../../shared/desktop';
 import type {
   DesktopConnectConfig,
+  DesktopModelProvider,
+  DesktopModelProviderInput,
   DesktopPlatformConfig,
   DesktopProjectConfig,
   DesktopProviderConfig,
@@ -132,9 +138,21 @@ function normalizeProject(project: DesktopProjectConfig): DesktopProjectConfig {
         ...(project.agent?.options || {}),
         model: normalizeDesktopAgentModel(project.agent?.type, String(project.agent?.options?.model || '')),
       },
-      providers: project.agent?.providers || [],
     },
     platforms: project.platforms || [],
+  };
+}
+
+function providerToDraft(provider: DesktopModelProvider): DesktopModelProviderInput {
+  return {
+    id: provider.id,
+    name: provider.name,
+    api_key: provider.api_key || '',
+    base_url: provider.base_url || '',
+    model: provider.model || '',
+    models: provider.models || [],
+    thinking: provider.thinking || '',
+    env: provider.env || {},
   };
 }
 
@@ -261,6 +279,8 @@ export default function DesktopWorkspace() {
   const requestedProject = searchParams.get('project') || '';
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
   const [persistedConfig, setPersistedConfig] = useState<DesktopConnectConfig | null>(null);
+  const [modelProviders, setModelProviders] = useState<DesktopModelProvider[]>([]);
+  const [providerDrafts, setProviderDrafts] = useState<Record<string, DesktopModelProviderInput>>({});
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [projectTab, setProjectTab] = useState<ProjectTab>('basic');
   const [projectDialog, setProjectDialog] = useState<ProjectDialogDraft | null>(null);
@@ -280,11 +300,16 @@ export default function DesktopWorkspace() {
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
     try {
-      const configState = await readConfigFile();
+      const [configState, providerState] = await Promise.all([
+        readConfigFile(),
+        listModelProviders(),
+      ]);
       const parsed = clone(configState.parsed || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
       setPersistedConfig(clone(parsed));
+      setModelProviders(providerState.providers || []);
+      setProviderDrafts(Object.fromEntries((providerState.providers || []).map((provider) => [provider.id, providerToDraft(provider)])));
       if (projectName) {
         const index = (parsed.projects || []).findIndex((project) => project.name === projectName);
         setSelectedIndex(index >= 0 ? index : 0);
@@ -338,16 +363,6 @@ export default function DesktopWorkspace() {
     });
   }, [selectedIndex]);
 
-  const updateSelectedProvider = useCallback((index: number, updater: (provider: DesktopProviderConfig) => DesktopProviderConfig) => {
-    updateSelectedProject((project) => {
-      const providers = [...(project.agent.providers || [])];
-      const provider = providers[index];
-      if (!provider) return project;
-      providers[index] = updater(provider);
-      return { ...project, agent: { ...project.agent, providers } };
-    });
-  }, [updateSelectedProject]);
-
   const updateSelectedSandbox = useCallback((updater: (sandbox: SandboxForm) => SandboxForm) => {
     updateSelectedProject((project) => ({
       ...project,
@@ -363,6 +378,53 @@ export default function DesktopWorkspace() {
 
   const handleAddProject = () => {
     setProjectDialog(createProjectDialogDraft(projects));
+  };
+
+  const updateProviderDraft = useCallback((providerId: string, updater: (provider: DesktopModelProviderInput) => DesktopModelProviderInput) => {
+    setProviderDrafts((current) => {
+      const provider = current[providerId];
+      if (!provider) return current;
+      return { ...current, [providerId]: updater(provider) };
+    });
+  }, []);
+
+  const handleAddProvider = async () => {
+    try {
+      const provider = await createModelProvider({ name: `provider-${modelProviders.length + 1}` });
+      setModelProviders((current) => [...current, provider].sort((a, b) => a.name.localeCompare(b.name)));
+      setProviderDrafts((current) => ({ ...current, [provider.id]: providerToDraft(provider) }));
+      setNotice({ tone: 'success', message: 'Provider created.' });
+    } catch (err) {
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  const handleSaveProvider = async (providerId: string) => {
+    const draft = providerDrafts[providerId];
+    if (!draft) return;
+    try {
+      const provider = await updateModelProvider(providerId, draft);
+      setModelProviders((current) => current.map((item) => item.id === provider.id ? provider : item).sort((a, b) => a.name.localeCompare(b.name)));
+      setProviderDrafts((current) => ({ ...current, [provider.id]: providerToDraft(provider) }));
+      setNotice({ tone: 'success', message: 'Provider saved.' });
+    } catch (err) {
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  const handleDeleteProvider = async (providerId: string) => {
+    try {
+      await deleteModelProvider(providerId);
+      setModelProviders((current) => current.filter((provider) => provider.id !== providerId));
+      setProviderDrafts((current) => {
+        const next = { ...current };
+        delete next[providerId];
+        return next;
+      });
+      setNotice({ tone: 'success', message: 'Provider removed.' });
+    } catch (err) {
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
   };
 
   const updateProjectDialog = (patch: Partial<ProjectDialogDraft>) => {
@@ -833,88 +895,101 @@ export default function DesktopWorkspace() {
 
               {projectTab === 'providers' ? (
                 <section className="space-y-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Providers</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Basic endpoint and default model only.</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() =>
-                      updateSelectedProject((project) => ({
-                        ...project,
-                        agent: {
-                          ...project.agent,
-                          providers: [...(project.agent.providers || []), { name: `provider-${(project.agent.providers || []).length + 1}` }],
-                        },
-                      }))
-                    }
-                  >
-                    <Plus size={14} /> Provider
-                  </Button>
-                </div>
-
-                {(selectedProject.agent.providers || []).length === 0 ? (
-                  <div className="flex flex-col gap-3 rounded-xl border border-black/10 px-4 py-4 dark:border-white/[0.08] sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-muted-foreground">No providers configured.</p>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Select
+                      label="Project provider"
+                      value={String(selectedProject.agent?.options?.provider_id || '')}
+                      onChange={(event) =>
                         updateSelectedProject((project) => ({
                           ...project,
                           agent: {
                             ...project.agent,
-                            providers: [...(project.agent.providers || []), { name: `provider-${(project.agent.providers || []).length + 1}` }],
+                            options: {
+                              ...(project.agent.options || {}),
+                              provider_id: event.target.value,
+                            },
                           },
                         }))
                       }
                     >
+                      <option value="">No provider</option>
+                      {modelProviders.map((provider) => (
+                        <option key={provider.id} value={provider.id}>{provider.name}</option>
+                      ))}
+                    </Select>
+                    <Input
+                      label="Model override"
+                      value={String(selectedProject.agent?.options?.model || '')}
+                      onChange={(event) =>
+                        updateSelectedProject((project) => ({
+                          ...project,
+                          agent: { ...project.agent, options: { ...(project.agent.options || {}), model: event.target.value } },
+                        }))
+                      }
+                      placeholder="Use provider default model"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Shared providers</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Providers are shared and selected by projects.</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleAddProvider()}
+                    >
                       <Plus size={14} /> Add provider
                     </Button>
                   </div>
-                ) : (
+                  {modelProviders.length === 0 ? (
+                    <div className="rounded-xl border border-black/10 px-4 py-4 text-sm text-muted-foreground dark:border-white/[0.08]">
+                      No shared providers configured.
+                    </div>
+                  ) : (
                   <div className="space-y-3">
-                    {(selectedProject.agent.providers || []).map((provider, index) => (
-                      <div key={`${provider.name}-${index}`} className="rounded-xl border border-black/10 p-4 dark:border-white/[0.08]">
+                    {modelProviders.map((provider) => {
+                      const draft = providerDrafts[provider.id] || providerToDraft(provider);
+                      return (
+                      <div key={provider.id} className="rounded-xl border border-black/10 p-4 dark:border-white/[0.08]">
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <Select
                             label="Preset"
-                            value={getProviderPresetValue(provider)}
+                            value={getProviderPresetValue(draft as DesktopProviderConfig)}
                             onChange={(event) => {
                               if (event.target.value !== CUSTOM_SELECT_VALUE) {
-                                updateSelectedProvider(index, (current) => applyProviderPreset(current, event.target.value));
+                                updateProviderDraft(provider.id, (current) => applyProviderPreset(current as DesktopProviderConfig, event.target.value));
                               }
                             }}
                           >
                             {PROVIDER_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
                             <option value={CUSTOM_SELECT_VALUE}>custom</option>
                           </Select>
-                          <Input label="Name" value={provider.name || ''} onChange={(event) => updateSelectedProvider(index, (current) => ({ ...current, name: event.target.value }))} />
-                          <Input label="API key" type="password" value={provider.api_key || ''} onChange={(event) => updateSelectedProvider(index, (current) => ({ ...current, api_key: event.target.value }))} />
-                          <Input label="Base URL" value={provider.base_url || ''} onChange={(event) => updateSelectedProvider(index, (current) => ({ ...current, base_url: event.target.value }))} />
-                          <Input label="Default model" value={provider.model || ''} onChange={(event) => updateSelectedProvider(index, (current) => ({ ...current, model: event.target.value }))} />
-                          <div className="flex items-end">
+                          <Input label="Name" value={draft.name || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, name: event.target.value }))} />
+                          <Input label="API key" type="password" value={draft.api_key || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, api_key: event.target.value }))} />
+                          <Input label="Base URL" value={draft.base_url || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, base_url: event.target.value }))} />
+                          <Input label="Default model" value={draft.model || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, model: event.target.value }))} />
+                          <div className="flex items-end gap-2">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void handleSaveProvider(provider.id)}
+                            >
+                              <Save size={14} /> Save
+                            </Button>
                             <Button
                               variant="danger"
                               size="sm"
-                              onClick={() =>
-                                updateSelectedProject((project) => {
-                                  const providers = [...(project.agent.providers || [])];
-                                  providers.splice(index, 1);
-                                  return { ...project, agent: { ...project.agent, providers } };
-                                })
-                              }
+                              onClick={() => void handleDeleteProvider(provider.id)}
                             >
                               <Trash2 size={14} /> Remove
                             </Button>
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
-                )}
+                  )}
                 </section>
               ) : null}
 
