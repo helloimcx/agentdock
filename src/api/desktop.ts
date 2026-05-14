@@ -56,6 +56,7 @@ import {
   rejectChannelPairing as rejectCoreChannelPairing,
   rejectLarkPairing as rejectCoreLarkPairing,
   restartCoreService,
+  runDeploymentDiagnostics as runCoreDeploymentDiagnostics,
   runDiagnosticsDoctor as runCoreDiagnosticsDoctor,
   testChannelConnection as testCoreChannelConnection,
   testLarkConnection as testCoreLarkConnection,
@@ -105,6 +106,7 @@ type DesktopProvider = {
   getPluginDiagnostics: () => Promise<LocalCorePluginDiagnostics>;
   listDiagnosticErrors: () => Promise<LocalCoreErrorSummary[]>;
   runDiagnosticsDoctor: () => Promise<LocalCoreDoctorResult>;
+  runDeploymentDiagnostics: () => Promise<LocalCoreDoctorResult>;
   listChannelGateways: (platform: string) => Promise<LocalCoreChannelGatewayStatus[]>;
   getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelGatewayStatus>;
   testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => Promise<LocalCoreChannelConnectionResult>;
@@ -172,6 +174,7 @@ const electronProvider: DesktopProvider = {
   getPluginDiagnostics: () => getCorePluginDiagnostics(),
   listDiagnosticErrors: () => listCoreDiagnosticErrors().then((result) => result.errors),
   runDiagnosticsDoctor: () => runCoreDiagnosticsDoctor(),
+  runDeploymentDiagnostics: () => runCoreDeploymentDiagnostics(),
   listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
   getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
   testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
@@ -235,6 +238,7 @@ const localCoreProvider: DesktopProvider = {
   getPluginDiagnostics: () => getCorePluginDiagnostics(),
   listDiagnosticErrors: () => listCoreDiagnosticErrors().then((result) => result.errors),
   runDiagnosticsDoctor: () => runCoreDiagnosticsDoctor(),
+  runDeploymentDiagnostics: () => runCoreDeploymentDiagnostics(),
   listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
   getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
   testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
@@ -341,6 +345,7 @@ export const getRuntimeCapabilitySnapshot = (): Promise<LocalCoreCapabilitySnaps
 export const getRuntimePluginDiagnostics = (): Promise<LocalCorePluginDiagnostics> => requireProvider().getPluginDiagnostics();
 export const getRuntimeDiagnosticErrors = (): Promise<LocalCoreErrorSummary[]> => requireProvider().listDiagnosticErrors();
 export const runRuntimeDiagnosticsDoctor = (): Promise<LocalCoreDoctorResult> => requireProvider().runDiagnosticsDoctor();
+export const runDeploymentDiagnostics = (): Promise<LocalCoreDoctorResult> => requireProvider().runDeploymentDiagnostics();
 export const listChannelGateways = (platform: string): Promise<LocalCoreChannelGatewayStatus[]> => requireProvider().listChannelGateways(platform);
 export const getChannelGatewayStatus = (platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> =>
   requireProvider().getChannelGatewayStatus(platform, workspaceId, instanceId);

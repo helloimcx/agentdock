@@ -487,20 +487,147 @@ export interface DesktopModelProviderListResponse {
 }
 
 export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
+export type DesktopDeploymentProfileId = 'local-desktop' | 'docker-compose' | 'remote-cloud';
+
+export interface DesktopDeploymentProfile {
+  id: DesktopDeploymentProfileId;
+  label: string;
+  corePublicOrigin: string;
+  coreBindHost: string;
+  openSandboxServerUrl: string;
+  defaultWorkspaceRoot: string;
+  sandboxImagePrefix: string;
+  workspaceMountPath: string;
+  stateMountPath: string;
+  defaultSandboxProviderId: string;
+}
+
+export interface DesktopSandboxProviderConfig {
+  id: string;
+  type: 'opensandbox' | (string & {});
+  name: string;
+  server_url: string;
+  api_key_env?: string;
+}
+
+export interface DesktopSandboxRuntimeImage {
+  id: string;
+  agent_type: string;
+  image: string;
+  acp_port: number;
+  entrypoint?: string[];
+  workspace_mount_path?: string;
+  state_mount_path?: string;
+}
+
+export const DEFAULT_SANDBOX_PROVIDER_ID = 'opensandbox-default';
+export const DEFAULT_SANDBOX_RUNTIME_IMAGE_ID = 'pi-acp-local';
+export const DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH = '/workspace';
+export const DEFAULT_SANDBOX_STATE_MOUNT_PATH = '/agent-state';
+
+export const DESKTOP_DEPLOYMENT_PROFILES: DesktopDeploymentProfile[] = [
+  {
+    id: 'local-desktop',
+    label: 'Local Desktop',
+    corePublicOrigin: 'http://127.0.0.1:9831',
+    coreBindHost: '127.0.0.1',
+    openSandboxServerUrl: 'http://127.0.0.1:8080',
+    defaultWorkspaceRoot: '',
+    sandboxImagePrefix: 'agentdock',
+    workspaceMountPath: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
+    stateMountPath: DEFAULT_SANDBOX_STATE_MOUNT_PATH,
+    defaultSandboxProviderId: DEFAULT_SANDBOX_PROVIDER_ID,
+  },
+  {
+    id: 'docker-compose',
+    label: 'Docker Compose',
+    corePublicOrigin: 'http://127.0.0.1:9831',
+    coreBindHost: '0.0.0.0',
+    openSandboxServerUrl: 'http://opensandbox-server:8080',
+    defaultWorkspaceRoot: '/workspace',
+    sandboxImagePrefix: 'agentdock',
+    workspaceMountPath: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
+    stateMountPath: DEFAULT_SANDBOX_STATE_MOUNT_PATH,
+    defaultSandboxProviderId: DEFAULT_SANDBOX_PROVIDER_ID,
+  },
+  {
+    id: 'remote-cloud',
+    label: 'Remote Cloud',
+    corePublicOrigin: '',
+    coreBindHost: '0.0.0.0',
+    openSandboxServerUrl: '',
+    defaultWorkspaceRoot: '/workspace',
+    sandboxImagePrefix: 'agentdock',
+    workspaceMountPath: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
+    stateMountPath: DEFAULT_SANDBOX_STATE_MOUNT_PATH,
+    defaultSandboxProviderId: DEFAULT_SANDBOX_PROVIDER_ID,
+  },
+];
+
+export const DEFAULT_SANDBOX_RUNTIME_IMAGES: DesktopSandboxRuntimeImage[] = [
+  {
+    id: DEFAULT_SANDBOX_RUNTIME_IMAGE_ID,
+    agent_type: 'pi',
+    image: 'agentdock/pi-acp:local',
+    acp_port: 8080,
+    entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
+    workspace_mount_path: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
+    state_mount_path: DEFAULT_SANDBOX_STATE_MOUNT_PATH,
+  },
+];
+
+export function getDesktopDeploymentProfile(profileId?: string | null) {
+  const normalized = String(profileId || '').trim();
+  return DESKTOP_DEPLOYMENT_PROFILES.find((profile) => profile.id === normalized) || DESKTOP_DEPLOYMENT_PROFILES[0];
+}
+
+export function defaultSandboxProviderForProfile(profileId?: string | null): DesktopSandboxProviderConfig {
+  const profile = getDesktopDeploymentProfile(profileId);
+  return {
+    id: profile.defaultSandboxProviderId,
+    type: 'opensandbox',
+    name: 'OpenSandbox',
+    server_url: profile.openSandboxServerUrl,
+    api_key_env: 'OPEN_SANDBOX_API_KEY',
+  };
+}
+
+export function defaultSandboxRuntimeImage(agentType?: string | null): DesktopSandboxRuntimeImage {
+  const normalized = String(agentType || '').trim().toLowerCase() || 'pi';
+  return DEFAULT_SANDBOX_RUNTIME_IMAGES.find((image) => image.agent_type === normalized) || {
+    id: `${normalized}-acp-local`,
+    agent_type: normalized,
+    image: `agentdock/${normalized}-acp:local`,
+    acp_port: 8080,
+    entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
+    workspace_mount_path: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
+    state_mount_path: DEFAULT_SANDBOX_STATE_MOUNT_PATH,
+  };
+}
 
 export interface DesktopSandboxOptions {
   enabled?: boolean;
   provider?: 'opensandbox' | (string & {});
+  provider_id?: string;
+  runtime_image_id?: string;
+  deployment_profile?: DesktopDeploymentProfileId | (string & {});
+  /** @deprecated Prefer config-level sandbox_providers plus sandbox.provider_id. */
   server_url?: string;
+  /** @deprecated Prefer config-level sandbox_runtime_images plus sandbox.runtime_image_id. */
   image?: string;
+  /** @deprecated Prefer config-level sandbox_providers plus sandbox.provider_id. */
   api_key_env?: string;
   state_scope?: DesktopSandboxStateScope;
   timeout_seconds?: number;
   cpu?: string;
   memory?: string;
+  /** @deprecated Prefer config-level sandbox_runtime_images. */
   workspace_mount_path?: string;
+  /** @deprecated Prefer config-level sandbox_runtime_images. */
   state_mount_path?: string;
+  /** @deprecated Prefer config-level sandbox_runtime_images. */
   acp_port?: number;
+  /** @deprecated Prefer config-level sandbox_runtime_images. */
   entrypoint?: string[];
 }
 
@@ -521,8 +648,12 @@ export interface DesktopProjectConfig {
 }
 
 export interface DesktopConnectConfig {
+  config_version?: number;
   data_dir?: string;
   language?: string;
+  deployment_profile?: DesktopDeploymentProfileId | (string & {});
+  sandbox_providers?: DesktopSandboxProviderConfig[];
+  sandbox_runtime_images?: DesktopSandboxRuntimeImage[];
   bridge?: Record<string, unknown>;
   management?: Record<string, unknown>;
   projects?: DesktopProjectConfig[];

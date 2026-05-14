@@ -4,6 +4,8 @@ import type { AgentSandboxLaunchConfig } from '../../../../packages/plugin-sdk/s
 import { cleanupRunScopedState, materializeSandboxLaunchConfig, sanitizePathSegment } from './sandbox-config.js';
 import { OpenSandboxClient, type OpenSandboxCreateInput } from './opensandbox-client.js';
 
+export const SANDBOX_ENDPOINT_HOST_ENV = 'AGENTDOCK_SANDBOX_ENDPOINT_HOST';
+
 export type SandboxRun = {
   sandboxId: string;
   endpoint: string;
@@ -42,7 +44,7 @@ export class SandboxManager {
     const endpoint = await client.getEndpoint(sandbox.id, config.acpPort);
     return {
       sandboxId: sandbox.id,
-      endpoint: normalizeEndpoint(endpoint.endpoint),
+      endpoint: normalizeEndpoint(endpoint.endpoint, this.options.env[SANDBOX_ENDPOINT_HOST_ENV]),
       config,
       stateHostPath: config.stateHostPath || '',
     };
@@ -185,18 +187,31 @@ function metadataLabel(value: string, fallback: string) {
   return `${trimmed.slice(0, 54).replace(/[^a-zA-Z0-9]+$/g, '')}-${hash}`;
 }
 
-export function normalizeEndpoint(endpoint: string) {
+export function normalizeEndpoint(endpoint: string, endpointHostOverride?: string) {
   const trimmed = endpoint.trim();
-  if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
-    return trimmed;
+  const normalized = (() => {
+    if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('http://')) {
+      return `ws://${trimmed.slice('http://'.length)}`;
+    }
+    if (trimmed.startsWith('https://')) {
+      return `wss://${trimmed.slice('https://'.length)}`;
+    }
+    return `ws://${trimmed}`;
+  })();
+  const override = String(endpointHostOverride || '').trim();
+  if (!override) {
+    return normalized;
   }
-  if (trimmed.startsWith('http://')) {
-    return `ws://${trimmed.slice('http://'.length)}`;
+  try {
+    const url = new URL(normalized);
+    url.hostname = override;
+    return url.toString();
+  } catch {
+    return normalized;
   }
-  if (trimmed.startsWith('https://')) {
-    return `wss://${trimmed.slice('https://'.length)}`;
-  }
-  return `ws://${trimmed}`;
 }
 
 function delay(ms: number) {

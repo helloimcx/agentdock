@@ -80,6 +80,7 @@ export type LocalAiCoreRoute =
   | { name: 'capabilities.snapshot' }
   | { name: 'diagnostics.errors' }
   | { name: 'diagnostics.doctor' }
+  | { name: 'diagnostics.deployment' }
   | { name: 'plugins.diagnostics' }
   | { name: 'workspace.streaming-probe'; workspaceId: string }
   | { name: 'events.stream' }
@@ -547,6 +548,9 @@ function parsePluginsRoute(method: string, segments: string[]): LocalAiCoreRoute
 }
 
 function parseDiagnosticsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'POST' && segments.length === 2 && segments[1] === 'deployment') {
+    return { name: 'diagnostics.deployment' };
+  }
   if (method === 'GET' && segments.length === 2 && segments[1] === 'errors') {
     return { name: 'diagnostics.errors' };
   }

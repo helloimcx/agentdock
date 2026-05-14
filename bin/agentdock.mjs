@@ -75,11 +75,11 @@ Examples:
 `);
 }
 
-function ensureBuildOutput() {
-  if (!existsSync(rendererRoot)) {
+function ensureBuildOutput({ requireRenderer = true, requireCore = true } = {}) {
+  if (requireRenderer && !existsSync(rendererRoot)) {
     throw new Error(`Missing renderer build output: ${rendererRoot}`);
   }
-  if (!existsSync(coreEntry)) {
+  if (requireCore && !existsSync(coreEntry)) {
     throw new Error(`Missing Local AI Core build output: ${coreEntry}`);
   }
 }
@@ -93,7 +93,7 @@ function coreEnv() {
 }
 
 function startCoreProcess({ stdio = 'inherit' } = {}) {
-  ensureBuildOutput();
+  ensureBuildOutput({ requireRenderer: false, requireCore: true });
   return spawn(process.execPath, [coreEntry], {
     cwd: process.cwd(),
     env: coreEnv(),
@@ -268,7 +268,7 @@ function proxyToCore(req, res, coreOrigin) {
 }
 
 function startWebServer({ host, port, coreOrigin }) {
-  ensureBuildOutput();
+  ensureBuildOutput({ requireRenderer: true, requireCore: false });
   const normalizedCoreOrigin = coreOrigin.replace(/\/+$/, '');
   const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url || '/', `http://${req.headers.host || `${host}:${port}`}`);

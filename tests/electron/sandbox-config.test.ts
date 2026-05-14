@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { AgentLaunchConfig } from '../../packages/plugin-sdk/src/index.js';
 import type { ConfigFileState, DesktopProjectConfig } from '../../packages/contracts/src/index.js';
 import {
+  DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV,
   defaultOpenSandboxServerUrl,
   normalizeSandboxLaunchConfig,
   resolveSandboxStateHostPath,
@@ -232,8 +233,10 @@ test('desktop config migration normalizes user id, DeepSeek provider, and sandbo
   assert.equal(projectConfig?.agent.options?.user_id, 'team-a');
   assert.equal((projectConfig?.agent.options as any).tenant_id, undefined);
   assert.equal(projectConfig?.agent.providers?.[0]?.name, 'deepseek');
-  assert.equal(projectConfig?.agent.options?.sandbox?.provider, 'opensandbox');
-  assert.equal(projectConfig?.agent.options?.sandbox?.acp_port, 8080);
+  assert.equal(projectConfig?.agent.options?.sandbox?.provider_id, 'opensandbox-default');
+  assert.equal(projectConfig?.agent.options?.sandbox?.runtime_image_id, 'pi-acp-local');
+  assert.equal(migrated.config.sandbox_providers?.[0]?.server_url, 'http://127.0.0.1:8080');
+  assert.equal(migrated.config.sandbox_runtime_images?.[0]?.image, 'agentdock/pi-acp:local');
 });
 
 test('OpenSandbox create input includes volumes, resources, env, and metadata', () => {
@@ -298,6 +301,7 @@ test('normalizeEndpoint converts HTTP endpoints to WebSocket endpoints', () => {
   assert.equal(normalizeEndpoint('https://example.test/acp'), 'wss://example.test/acp');
   assert.equal(normalizeEndpoint('127.0.0.1:3000'), 'ws://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('ws://127.0.0.1:3000'), 'ws://127.0.0.1:3000');
+  assert.equal(normalizeEndpoint('127.0.0.1:3000', 'host.docker.internal'), 'ws://host.docker.internal:3000/');
 });
 
 test('OpenSandbox local compose auth falls back to the default local API key', () => {
@@ -323,6 +327,29 @@ test('OpenSandbox default server URL can be overridden for compose networks', ()
     defaultOpenSandboxServerUrl({ AGENTDOCK_OPENSANDBOX_SERVER_URL: 'http://opensandbox-server:8080/' }),
     'http://opensandbox-server:8080',
   );
+});
+
+test('sandbox state host root can be overridden for compose host mounts', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  const previous = process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV];
+  const stateRoot = join(root, 'host-state');
+  try {
+    process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] = stateRoot;
+    const sandbox = normalizeSandboxLaunchConfig({
+      configState: configState(join(root, 'runtime', 'config.toml')),
+      project: project({ enabled: true, state_scope: 'project' }),
+      launchConfig: launchConfig(),
+    });
+    assert.ok(sandbox);
+    assert.ok(sandbox.stateHostPath?.startsWith(stateRoot));
+  } finally {
+    if (previous === undefined) {
+      delete process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV];
+    } else {
+      process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] = previous;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('sandbox manager deletes sandbox and run scoped state on cleanup', async () => {

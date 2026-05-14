@@ -235,6 +235,10 @@ export async function runDiagnosticsDoctor() {
   return coreRequest<LocalCoreDoctorResult>('POST', '/diagnostics/doctor');
 }
 
+export async function runDeploymentDiagnostics() {
+  return coreRequest<LocalCoreDoctorResult>('POST', '/diagnostics/deployment');
+}
+
 export async function readCoreConfigFile() {
   return coreRequest<ConfigFileState>('GET', '/runtime/config');
 }

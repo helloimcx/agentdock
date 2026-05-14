@@ -85,6 +85,7 @@ import type { LocalAiCoreBindings } from './server.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import { runDeploymentDiagnostics } from './deployment-diagnostics.js';
 
 export class LocalCoreController extends EventEmitter implements LocalAiCoreBindings {
   private readonly state: LocalCoreRuntimeState;
@@ -646,6 +647,11 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
         ? 'warn'
         : 'pass';
     return { status, checkedAt, checks };
+  }
+
+  async runDeploymentDiagnostics(): Promise<LocalCoreDoctorResult> {
+    const configFile = await this.readConfigFile();
+    return runDeploymentDiagnostics({ config: configFile.parsed });
   }
 
   async probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult> {

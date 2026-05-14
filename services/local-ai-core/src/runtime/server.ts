@@ -164,6 +164,7 @@ export interface LocalAiCoreBindings extends EventEmitter {
   getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
   listDiagnosticErrors(): Promise<LocalCoreErrorSummary[]>;
   runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;
+  runDeploymentDiagnostics(): Promise<LocalCoreDoctorResult>;
   probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
   listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
   getChannelGatewayStatus(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
@@ -718,6 +719,9 @@ export class LocalAiCoreServer {
         return;
       case 'diagnostics.doctor':
         json(res, 200, await this.bindings.runDiagnosticsDoctor());
+        return;
+      case 'diagnostics.deployment':
+        json(res, 200, await this.bindings.runDeploymentDiagnostics());
         return;
       case 'plugins.diagnostics':
         json(res, 200, await this.bindings.getPluginDiagnostics());

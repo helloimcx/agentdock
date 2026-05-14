@@ -19,8 +19,13 @@ import {
 } from '@/api/desktop';
 import {
   DEFAULT_DESKTOP_AGENT_TYPE,
+  DEFAULT_SANDBOX_PROVIDER_ID,
   DESKTOP_AGENT_TYPE_OPTIONS,
+  DESKTOP_DEPLOYMENT_PROFILES,
   DESKTOP_PLATFORM_TYPE_OPTIONS,
+  defaultSandboxProviderForProfile,
+  defaultSandboxRuntimeImage,
+  getDesktopDeploymentProfile,
   getDefaultDesktopAgentModel,
   normalizeDesktopAgentModel,
 } from '../../../shared/desktop';
@@ -58,6 +63,8 @@ type ProjectDialogDraft = {
 
 type SandboxForm = {
   enabled: boolean;
+  provider_id: string;
+  runtime_image_id: string;
   server_url: string;
   image: string;
   api_key_env: string;
@@ -94,6 +101,8 @@ const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: strin
 
 const defaultSandboxForm: SandboxForm = {
   enabled: false,
+  provider_id: DEFAULT_SANDBOX_PROVIDER_ID,
+  runtime_image_id: defaultSandboxRuntimeImage('pi').id,
   server_url: 'http://127.0.0.1:8080',
   image: 'agentdock/pi-acp:local',
   api_key_env: 'OPEN_SANDBOX_API_KEY',
@@ -244,6 +253,8 @@ function noticeClass(tone: Notice['tone']) {
 function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
   return {
     enabled: Boolean(input?.enabled),
+    provider_id: input?.provider_id || DEFAULT_SANDBOX_PROVIDER_ID,
+    runtime_image_id: input?.runtime_image_id || defaultSandboxForm.runtime_image_id,
     server_url: input?.server_url || defaultSandboxForm.server_url,
     image: input?.image || defaultSandboxForm.image,
     api_key_env: input?.api_key_env || defaultSandboxForm.api_key_env,
@@ -260,17 +271,12 @@ function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
 function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
   return {
     enabled: input.enabled,
-    provider: 'opensandbox',
-    server_url: input.server_url.trim() || defaultSandboxForm.server_url,
-    image: input.image.trim() || defaultSandboxForm.image,
-    api_key_env: input.api_key_env.trim() || defaultSandboxForm.api_key_env,
-    acp_port: Number(input.acp_port) || Number(defaultSandboxForm.acp_port),
+    provider_id: input.provider_id.trim() || DEFAULT_SANDBOX_PROVIDER_ID,
+    runtime_image_id: input.runtime_image_id.trim() || defaultSandboxForm.runtime_image_id,
     state_scope: input.state_scope,
     timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
     cpu: input.cpu.trim() || defaultSandboxForm.cpu,
     memory: input.memory.trim() || defaultSandboxForm.memory,
-    workspace_mount_path: input.workspace_mount_path.trim() || defaultSandboxForm.workspace_mount_path,
-    state_mount_path: input.state_mount_path.trim() || defaultSandboxForm.state_mount_path,
   };
 }
 
@@ -328,6 +334,11 @@ export default function DesktopWorkspace() {
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex] || null;
   const selectedSandbox = toSandboxForm(selectedProject?.agent?.options?.sandbox);
+  const selectedProfile = getDesktopDeploymentProfile(String(configDraft?.deployment_profile || '').trim());
+  const selectedSandboxProvider = (configDraft?.sandbox_providers || []).find((provider) => provider.id === selectedSandbox.provider_id)
+    || defaultSandboxProviderForProfile(selectedProfile.id);
+  const selectedSandboxRuntimeImage = (configDraft?.sandbox_runtime_images || []).find((image) => image.id === selectedSandbox.runtime_image_id)
+    || defaultSandboxRuntimeImage(selectedProject?.agent?.type || 'pi');
   const configDirty = JSON.stringify(configDraft || {}) !== JSON.stringify(persistedConfig || {});
 
   useEffect(() => {
@@ -375,6 +386,25 @@ export default function DesktopWorkspace() {
       },
     }));
   }, [updateSelectedProject]);
+
+  const updateDeploymentProfile = useCallback((profileId: string) => {
+    const profile = getDesktopDeploymentProfile(profileId);
+    setConfigDraft((current) => {
+      if (!current) return current;
+      const next = clone(current);
+      next.deployment_profile = profile.id;
+      const defaultProvider = defaultSandboxProviderForProfile(profile.id);
+      const providers = Array.isArray(next.sandbox_providers) ? [...next.sandbox_providers] : [];
+      const existingIndex = providers.findIndex((provider) => provider.id === defaultProvider.id);
+      if (existingIndex >= 0) {
+        providers[existingIndex] = { ...providers[existingIndex], server_url: defaultProvider.server_url };
+      } else {
+        providers.push(defaultProvider);
+      }
+      next.sandbox_providers = providers;
+      return next;
+    });
+  }, []);
 
   const handleAddProject = () => {
     setProjectDialog(createProjectDialogDraft(projects));
@@ -1060,70 +1090,72 @@ export default function DesktopWorkspace() {
                       type="checkbox"
                       className="h-4 w-4 rounded border-black/20 dark:border-white/20"
                       checked={selectedSandbox.enabled}
-                      onChange={(event) => updateSelectedSandbox((current) => ({ ...current, enabled: event.target.checked }))}
+                      onChange={(event) => updateSelectedSandbox((current) => ({
+                        ...current,
+                        enabled: event.target.checked,
+                        provider_id: current.provider_id || DEFAULT_SANDBOX_PROVIDER_ID,
+                        runtime_image_id: current.runtime_image_id || defaultSandboxRuntimeImage(selectedProject?.agent?.type || 'pi').id,
+                      }))}
                     />
                     启用云端模式（Sandbox）
                   </label>
 
                   {selectedSandbox.enabled ? (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <Input
-                        label="OpenSandbox URL"
-                        value={selectedSandbox.server_url}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, server_url: event.target.value }))}
-                      />
-                      <Input
-                        label="Sandbox image"
-                        value={selectedSandbox.image}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, image: event.target.value }))}
-                      />
-                      <Input
-                        label="ACP port"
-                        type="number"
-                        value={selectedSandbox.acp_port}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, acp_port: event.target.value }))}
-                      />
-                      <Input
-                        label="OpenSandbox API key env"
-                        value={selectedSandbox.api_key_env}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, api_key_env: event.target.value }))}
-                      />
-                      <Select
-                        label="State scope"
-                        value={selectedSandbox.state_scope}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}
-                      >
-                        <option value="user">User</option>
-                        <option value="project">Project</option>
-                        <option value="thread">Thread</option>
-                        <option value="run">Run</option>
-                      </Select>
-                      <Input
-                        label="Timeout seconds"
-                        type="number"
-                        value={selectedSandbox.timeout_seconds}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))}
-                      />
-                      <Input
-                        label="CPU"
-                        value={selectedSandbox.cpu}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, cpu: event.target.value }))}
-                      />
-                      <Input
-                        label="Memory"
-                        value={selectedSandbox.memory}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, memory: event.target.value }))}
-                      />
-                      <Input
-                        label="Workspace mount path"
-                        value={selectedSandbox.workspace_mount_path}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, workspace_mount_path: event.target.value }))}
-                      />
-                      <Input
-                        label="State mount path"
-                        value={selectedSandbox.state_mount_path}
-                        onChange={(event) => updateSelectedSandbox((current) => ({ ...current, state_mount_path: event.target.value }))}
-                      />
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Select
+                          label="Deployment"
+                          value={selectedProfile.id}
+                          onChange={(event) => updateDeploymentProfile(event.target.value)}
+                        >
+                          {DESKTOP_DEPLOYMENT_PROFILES.map((profile) => (
+                            <option key={profile.id} value={profile.id}>{profile.label}</option>
+                          ))}
+                        </Select>
+                        <Select
+                          label="State scope"
+                          value={selectedSandbox.state_scope}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}
+                        >
+                          <option value="user">User</option>
+                          <option value="project">Project</option>
+                          <option value="thread">Thread</option>
+                          <option value="run">Run</option>
+                        </Select>
+                        <Input
+                          label="CPU"
+                          value={selectedSandbox.cpu}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, cpu: event.target.value }))}
+                        />
+                        <Input
+                          label="Memory"
+                          value={selectedSandbox.memory}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, memory: event.target.value }))}
+                        />
+                        <Input
+                          label="Timeout seconds"
+                          type="number"
+                          value={selectedSandbox.timeout_seconds}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))}
+                        />
+                      </div>
+                      <div className="rounded-xl border border-black/10 px-4 py-3 text-sm text-muted-foreground dark:border-white/[0.08]">
+                        <div className="font-medium text-slate-950 dark:text-white">当前运行配置</div>
+                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <div>OpenSandbox: {selectedSandboxProvider.server_url || 'not configured'}</div>
+                          <div>Image: {selectedSandboxRuntimeImage.image}</div>
+                          <div>ACP port: {selectedSandboxRuntimeImage.acp_port}</div>
+                          <div>Workspace mount: {selectedSandboxRuntimeImage.workspace_mount_path || selectedProfile.workspaceMountPath}</div>
+                          <div>State mount: {selectedSandboxRuntimeImage.state_mount_path || selectedProfile.stateMountPath}</div>
+                          <div>API key env: {selectedSandboxProvider.api_key_env || 'OPEN_SANDBOX_API_KEY'}</div>
+                        </div>
+                      </div>
+                      <details className="rounded-xl border border-black/10 px-4 py-3 text-sm dark:border-white/[0.08]">
+                        <summary className="cursor-pointer font-medium text-slate-950 dark:text-white">Advanced</summary>
+                        <div className="mt-3 text-muted-foreground">
+                          底层 OpenSandbox URL、API key env、镜像、ACP 端口和挂载路径来自全局 Deployment Profile / Sandbox Provider / Runtime Image 注册表，项目这里只保存引用和资源覆盖项。
+                        </div>
+                      </details>
                     </div>
                   ) : (
                     <div className="rounded-xl border border-black/10 px-4 py-3 text-sm text-muted-foreground dark:border-white/[0.08]">

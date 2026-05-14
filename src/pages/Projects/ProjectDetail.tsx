@@ -12,12 +12,19 @@ import { getHeartbeat, pauseHeartbeat, resumeHeartbeat, triggerHeartbeat, setHea
 import { readConfigFile, saveStructuredConfigFile } from '@/api/desktop';
 import { formatTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import type { DesktopConnectConfig, DesktopSandboxOptions } from '../../../shared/desktop';
+import {
+  DEFAULT_SANDBOX_PROVIDER_ID,
+  defaultSandboxRuntimeImage,
+  type DesktopConnectConfig,
+  type DesktopSandboxOptions,
+} from '../../../shared/desktop';
 
 type Tab = 'overview' | 'providers' | 'sandbox' | 'heartbeat';
 
 type SandboxForm = {
   enabled: boolean;
+  provider_id: string;
+  runtime_image_id: string;
   server_url: string;
   image: string;
   acp_port: string;
@@ -31,6 +38,8 @@ type SandboxForm = {
 
 const defaultSandboxForm: SandboxForm = {
   enabled: false,
+  provider_id: DEFAULT_SANDBOX_PROVIDER_ID,
+  runtime_image_id: defaultSandboxRuntimeImage('pi').id,
   server_url: 'http://127.0.0.1:8080',
   image: 'agentdock/pi-acp:local',
   acp_port: '8080',
@@ -329,10 +338,8 @@ export default function ProjectDetail() {
               Enable sandbox mode
             </label>
             {sandbox.enabled ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Input label="OpenSandbox URL" value={sandbox.server_url} onChange={(event) => setSandbox((current) => ({ ...current, server_url: event.target.value }))} />
-                <Input label="Image" value={sandbox.image} onChange={(event) => setSandbox((current) => ({ ...current, image: event.target.value }))} />
-                <Input label="ACP port" type="number" value={sandbox.acp_port} onChange={(event) => setSandbox((current) => ({ ...current, acp_port: event.target.value }))} />
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Select label="State scope" value={sandbox.state_scope} onChange={(event) => setSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}>
                   <option value="user">User</option>
                   <option value="project">Project</option>
@@ -342,8 +349,10 @@ export default function ProjectDetail() {
                 <Input label="Timeout seconds" type="number" value={sandbox.timeout_seconds} onChange={(event) => setSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))} />
                 <Input label="CPU" value={sandbox.cpu} onChange={(event) => setSandbox((current) => ({ ...current, cpu: event.target.value }))} />
                 <Input label="Memory" value={sandbox.memory} onChange={(event) => setSandbox((current) => ({ ...current, memory: event.target.value }))} />
-                <Input label="Workspace mount path" value={sandbox.workspace_mount_path} onChange={(event) => setSandbox((current) => ({ ...current, workspace_mount_path: event.target.value }))} />
-                <Input label="State mount path" value={sandbox.state_mount_path} onChange={(event) => setSandbox((current) => ({ ...current, state_mount_path: event.target.value }))} />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  OpenSandbox URL, API key env, image, ACP port, and mount paths are resolved from the global sandbox provider and runtime image registry.
+                </p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Local bundled runtime execution is active for this project.</p>
@@ -401,6 +410,8 @@ export default function ProjectDetail() {
 function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
   return {
     enabled: Boolean(input?.enabled),
+    provider_id: input?.provider_id || DEFAULT_SANDBOX_PROVIDER_ID,
+    runtime_image_id: input?.runtime_image_id || defaultSandboxForm.runtime_image_id,
     server_url: input?.server_url || defaultSandboxForm.server_url,
     image: input?.image || defaultSandboxForm.image,
     acp_port: String(input?.acp_port || defaultSandboxForm.acp_port),
@@ -416,15 +427,11 @@ function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
 function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
   return {
     enabled: input.enabled,
-    provider: 'opensandbox',
-    server_url: input.server_url.trim() || defaultSandboxForm.server_url,
-    image: input.image.trim() || defaultSandboxForm.image,
-    acp_port: Number(input.acp_port) || Number(defaultSandboxForm.acp_port),
+    provider_id: input.provider_id.trim() || DEFAULT_SANDBOX_PROVIDER_ID,
+    runtime_image_id: input.runtime_image_id.trim() || defaultSandboxForm.runtime_image_id,
     state_scope: input.state_scope,
     timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
     cpu: input.cpu.trim() || defaultSandboxForm.cpu,
     memory: input.memory.trim() || defaultSandboxForm.memory,
-    workspace_mount_path: input.workspace_mount_path.trim() || defaultSandboxForm.workspace_mount_path,
-    state_mount_path: input.state_mount_path.trim() || defaultSandboxForm.state_mount_path,
   };
 }

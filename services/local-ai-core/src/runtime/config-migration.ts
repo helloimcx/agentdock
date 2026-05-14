@@ -1,10 +1,14 @@
+import {
+  DEFAULT_SANDBOX_PROVIDER_ID,
+  defaultSandboxProviderForProfile,
+  defaultSandboxRuntimeImage,
+} from '../../../../packages/contracts/src/index.js';
 import type {
   DesktopConnectConfig,
   DesktopProjectConfig,
   DesktopProviderConfig,
   DesktopSandboxOptions,
 } from '../../../../packages/contracts/src/index.js';
-import { defaultOpenSandboxServerUrl } from '../sandbox/sandbox-config.js';
 
 export const CURRENT_DESKTOP_CONFIG_VERSION = 2;
 
@@ -23,6 +27,8 @@ export function migrateDesktopConnectConfig(input: DesktopConnectConfig): Deskto
     config.config_version = CURRENT_DESKTOP_CONFIG_VERSION;
     changed = true;
   }
+
+  const deploymentProfile = String(config.deployment_profile || '').trim();
 
   for (const project of Array.isArray(config.projects) ? config.projects : []) {
     const options = ensureProjectOptions(project);
@@ -46,6 +52,16 @@ export function migrateDesktopConnectConfig(input: DesktopConnectConfig): Deskto
     if (sandbox.changed) {
       options.sandbox = sandbox.value;
       changed = true;
+    }
+    if (options.sandbox?.enabled) {
+      const providerMigration = migrateProjectSandboxProvider(config, options.sandbox, deploymentProfile);
+      if (providerMigration.changed) {
+        changed = true;
+      }
+      const imageMigration = migrateProjectSandboxRuntimeImage(config, project, options.sandbox);
+      if (imageMigration.changed) {
+        changed = true;
+      }
     }
   }
 
@@ -81,20 +97,8 @@ function normalizeSandboxOptions(input?: DesktopSandboxOptions): { value?: Deskt
   const sandbox = { ...input };
   let changed = false;
   if (sandbox.enabled) {
-    if (!sandbox.provider) {
-      sandbox.provider = 'opensandbox';
-      changed = true;
-    }
-    if (!sandbox.server_url) {
-      sandbox.server_url = defaultOpenSandboxServerUrl();
-      changed = true;
-    }
-    if (!sandbox.api_key_env) {
-      sandbox.api_key_env = 'OPEN_SANDBOX_API_KEY';
-      changed = true;
-    }
-    if (!sandbox.acp_port) {
-      sandbox.acp_port = 8080;
+    if (!sandbox.provider_id) {
+      sandbox.provider_id = DEFAULT_SANDBOX_PROVIDER_ID;
       changed = true;
     }
     if (!sandbox.state_scope) {
@@ -103,6 +107,55 @@ function normalizeSandboxOptions(input?: DesktopSandboxOptions): { value?: Deskt
     }
   }
   return { value: sandbox, changed };
+}
+
+function migrateProjectSandboxProvider(
+  config: DesktopConnectConfig,
+  sandbox: DesktopSandboxOptions,
+  deploymentProfile: string,
+): { changed: boolean } {
+  const providerId = String(sandbox.provider_id || DEFAULT_SANDBOX_PROVIDER_ID).trim() || DEFAULT_SANDBOX_PROVIDER_ID;
+  config.sandbox_providers = Array.isArray(config.sandbox_providers) ? config.sandbox_providers : [];
+  const existing = config.sandbox_providers.find((provider) => provider.id === providerId);
+  if (existing) {
+    return { changed: false };
+  }
+  const defaultProvider = defaultSandboxProviderForProfile(deploymentProfile);
+  config.sandbox_providers.push({
+    ...defaultProvider,
+    id: providerId,
+    type: sandbox.provider || defaultProvider.type,
+    server_url: sandbox.server_url || defaultProvider.server_url,
+    api_key_env: sandbox.api_key_env || defaultProvider.api_key_env,
+  });
+  return { changed: true };
+}
+
+function migrateProjectSandboxRuntimeImage(
+  config: DesktopConnectConfig,
+  project: DesktopProjectConfig,
+  sandbox: DesktopSandboxOptions,
+): { changed: boolean } {
+  const agentType = String(project.agent?.type || 'pi').trim().toLowerCase() || 'pi';
+  const fallback = defaultSandboxRuntimeImage(agentType);
+  const imageId = String(sandbox.runtime_image_id || fallback.id).trim() || fallback.id;
+  const assignedRuntimeImage = sandbox.runtime_image_id === imageId;
+  sandbox.runtime_image_id = imageId;
+  config.sandbox_runtime_images = Array.isArray(config.sandbox_runtime_images) ? config.sandbox_runtime_images : [];
+  const existing = config.sandbox_runtime_images.find((image) => image.id === imageId);
+  if (existing) {
+    return { changed: !assignedRuntimeImage };
+  }
+  config.sandbox_runtime_images.push({
+    ...fallback,
+    id: imageId,
+    image: sandbox.image || fallback.image,
+    acp_port: sandbox.acp_port || fallback.acp_port,
+    entrypoint: sandbox.entrypoint || fallback.entrypoint,
+    workspace_mount_path: sandbox.workspace_mount_path || fallback.workspace_mount_path,
+    state_mount_path: sandbox.state_mount_path || fallback.state_mount_path,
+  });
+  return { changed: true };
 }
 
 function cloneConfig(input: DesktopConnectConfig): DesktopConnectConfig {

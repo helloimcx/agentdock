@@ -1,11 +1,22 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxStateScope } from '../../../../packages/plugin-sdk/src/index.js';
-import type { ConfigFileState, DesktopProjectConfig, DesktopSandboxOptions } from '../../../../packages/contracts/src/index.js';
+import {
+  DEFAULT_SANDBOX_PROVIDER_ID,
+  defaultSandboxProviderForProfile,
+  defaultSandboxRuntimeImage,
+  getDesktopDeploymentProfile,
+  type ConfigFileState,
+  type DesktopProjectConfig,
+  type DesktopSandboxOptions,
+  type DesktopSandboxProviderConfig,
+  type DesktopSandboxRuntimeImage,
+} from '../../../../packages/contracts/src/index.js';
 
 export const DEFAULT_OPENSANDBOX_SERVER_URL = 'http://127.0.0.1:8080';
 export const DEFAULT_OPENSANDBOX_SERVER_URL_ENV = 'AGENTDOCK_OPENSANDBOX_SERVER_URL';
 export const DEFAULT_OPENSANDBOX_API_KEY_ENV = 'OPEN_SANDBOX_API_KEY';
+export const DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV = 'AGENTDOCK_SANDBOX_STATE_HOST_ROOT';
 export const DEFAULT_PI_SANDBOX_IMAGE = 'agentdock/pi-acp:local';
 export const DEFAULT_SANDBOX_ACP_PORT = 8080;
 export const DEFAULT_SANDBOX_TIMEOUT_SECONDS = 7200;
@@ -35,15 +46,23 @@ export function normalizeSandboxLaunchConfig(input: {
   const configDir = dirname(input.configState.path);
   const userDataRoot = dirname(configDir);
   const agentType = input.launchConfig.agentType || String(input.project.agent?.type || '').trim().toLowerCase() || 'agent';
+  const desktopConfig = input.configState.parsed || {};
+  const deploymentProfileId = String(raw.deployment_profile || desktopConfig.deployment_profile || process.env.AGENTDOCK_DEPLOYMENT_PROFILE || '').trim();
+  const profile = getDesktopDeploymentProfile(deploymentProfileId);
+  const sandboxProvider = resolveSandboxProvider(desktopConfig.sandbox_providers, raw, profile.id);
+  const runtimeImage = resolveSandboxRuntimeImage(desktopConfig.sandbox_runtime_images, raw, agentType);
   const stateScope = normalizeStateScope(raw.state_scope);
-  const stateMountPath = normalizeAbsoluteContainerPath(raw.state_mount_path, DEFAULT_STATE_MOUNT_PATH);
+  const stateMountPath = normalizeAbsoluteContainerPath(
+    raw.state_mount_path || runtimeImage.state_mount_path || profile.stateMountPath,
+    DEFAULT_STATE_MOUNT_PATH,
+  );
   const projectId = sanitizePathSegment(input.project.name, 'project');
   const rawOptions = input.project.agent?.options || {};
   const userId = sanitizePathSegment(String(rawOptions.user_id || (rawOptions as Record<string, unknown>).tenant_id || 'local'), 'local');
   const agentId = sanitizePathSegment(agentType, 'agent');
+  const stateHostRoot = String(process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] || '').trim() || resolve(userDataRoot, 'sandbox-state');
   const stateHostPath = resolve(
-    userDataRoot,
-    'sandbox-state',
+    stateHostRoot,
     'users',
     userId,
     ...(stateScope === 'user'
@@ -60,12 +79,12 @@ export function normalizeSandboxLaunchConfig(input: {
   }
   return {
     enabled: true,
-    provider: String(raw.provider || 'opensandbox').trim() || 'opensandbox',
-    serverUrl: normalizeServerUrl(raw.server_url),
-    apiKeyEnv: String(raw.api_key_env || DEFAULT_OPENSANDBOX_API_KEY_ENV).trim() || DEFAULT_OPENSANDBOX_API_KEY_ENV,
-    image: String(raw.image || defaultSandboxImage(agentType)).trim() || defaultSandboxImage(agentType),
-    acpPort: normalizePositiveInteger(raw.acp_port, DEFAULT_SANDBOX_ACP_PORT),
-    entrypoint: normalizeEntrypoint(raw.entrypoint),
+    provider: String(raw.provider || sandboxProvider.type || 'opensandbox').trim() || 'opensandbox',
+    serverUrl: normalizeServerUrl(sandboxProvider.server_url || raw.server_url || profile.openSandboxServerUrl),
+    apiKeyEnv: String(sandboxProvider.api_key_env || raw.api_key_env || DEFAULT_OPENSANDBOX_API_KEY_ENV).trim() || DEFAULT_OPENSANDBOX_API_KEY_ENV,
+    image: String(runtimeImage.image || raw.image || defaultSandboxImage(agentType)).trim() || defaultSandboxImage(agentType),
+    acpPort: normalizePositiveInteger(runtimeImage.acp_port || raw.acp_port, DEFAULT_SANDBOX_ACP_PORT),
+    entrypoint: normalizeEntrypoint(runtimeImage.entrypoint || raw.entrypoint),
     timeoutSeconds: normalizePositiveInteger(raw.timeout_seconds, DEFAULT_SANDBOX_TIMEOUT_SECONDS),
     cpu: String(raw.cpu || DEFAULT_SANDBOX_CPU).trim() || DEFAULT_SANDBOX_CPU,
     memory: String(raw.memory || DEFAULT_SANDBOX_MEMORY).trim() || DEFAULT_SANDBOX_MEMORY,
@@ -73,7 +92,10 @@ export function normalizeSandboxLaunchConfig(input: {
     projectId,
     stateScope,
     workspaceHostPath: input.launchConfig.workDir,
-    workspaceMountPath: normalizeAbsoluteContainerPath(raw.workspace_mount_path, DEFAULT_WORKSPACE_MOUNT_PATH),
+    workspaceMountPath: normalizeAbsoluteContainerPath(
+      raw.workspace_mount_path || runtimeImage.workspace_mount_path || profile.workspaceMountPath,
+      DEFAULT_WORKSPACE_MOUNT_PATH,
+    ),
     stateHostPath,
     stateMountPath,
     stateMount: {
@@ -88,6 +110,62 @@ export function normalizeSandboxLaunchConfig(input: {
     runtimeArgs: normalizeRuntimeArgsForSandbox(agentType, input.launchConfig.args || []),
     runtimeEnv: normalizeRuntimeEnvForSandbox(agentType, input.launchConfig.env || {}, stateMountPath),
   };
+}
+
+function resolveSandboxProvider(
+  providers: DesktopSandboxProviderConfig[] | undefined,
+  raw: DesktopSandboxOptions,
+  profileId: string,
+): DesktopSandboxProviderConfig {
+  const providerId = String(raw.provider_id || '').trim();
+  const selected = Array.isArray(providers)
+    ? providers.find((provider) => provider.id === providerId)
+      || providers.find((provider) => provider.id === DEFAULT_SANDBOX_PROVIDER_ID)
+    : undefined;
+  if (selected) {
+    return selected;
+  }
+  if (raw.server_url || raw.api_key_env || raw.provider) {
+    return {
+      id: providerId || DEFAULT_SANDBOX_PROVIDER_ID,
+      type: raw.provider || 'opensandbox',
+      name: 'OpenSandbox',
+      server_url: raw.server_url || defaultOpenSandboxServerUrl(),
+      api_key_env: raw.api_key_env || DEFAULT_OPENSANDBOX_API_KEY_ENV,
+    };
+  }
+  return {
+    ...defaultSandboxProviderForProfile(profileId),
+    server_url: defaultOpenSandboxServerUrl(),
+  };
+}
+
+function resolveSandboxRuntimeImage(
+  images: DesktopSandboxRuntimeImage[] | undefined,
+  raw: DesktopSandboxOptions,
+  agentType: string,
+): DesktopSandboxRuntimeImage {
+  const runtimeImageId = String(raw.runtime_image_id || '').trim();
+  const selected = Array.isArray(images)
+    ? images.find((image) => image.id === runtimeImageId)
+      || images.find((image) => image.agent_type === agentType)
+    : undefined;
+  if (selected) {
+    return selected;
+  }
+  if (raw.image || raw.acp_port || raw.entrypoint || raw.workspace_mount_path || raw.state_mount_path) {
+    const fallback = defaultSandboxRuntimeImage(agentType);
+    return {
+      id: runtimeImageId || fallback.id,
+      agent_type: agentType,
+      image: raw.image || fallback.image,
+      acp_port: normalizePositiveInteger(raw.acp_port, fallback.acp_port),
+      entrypoint: raw.entrypoint || fallback.entrypoint,
+      workspace_mount_path: raw.workspace_mount_path || fallback.workspace_mount_path,
+      state_mount_path: raw.state_mount_path || fallback.state_mount_path,
+    };
+  }
+  return defaultSandboxRuntimeImage(agentType);
 }
 
 export function resolveSandboxStateHostPath(config: AgentSandboxLaunchConfig, threadId: string, runId: string) {

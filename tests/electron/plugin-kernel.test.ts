@@ -1069,14 +1069,26 @@ test('server diagnostics routes dispatch through generic bindings', async () => 
         ],
       };
     },
+    runDeploymentDiagnostics: async () => {
+      calls.push('deployment');
+      return {
+        status: 'pass',
+        checkedAt: '2026-05-14T00:00:00.000Z',
+        checks: [
+          { id: 'deployment.profile', label: 'Deployment profile', status: 'pass', summary: 'ok' },
+        ],
+      };
+    },
   }) as any;
   const server = new LocalAiCoreServer(bindings, { port: 0 });
   const errorsResponse = await invokeServer(server, 'GET', '/api/local/v1/diagnostics/errors');
   const doctorResponse = await invokeServer(server, 'POST', '/api/local/v1/diagnostics/doctor');
+  const deploymentResponse = await invokeServer(server, 'POST', '/api/local/v1/diagnostics/deployment');
 
   assert.equal(errorsResponse.body.data.errors[0].errorInfo.code, 'channel_session_expired');
   assert.equal(doctorResponse.body.data.status, 'warn');
-  assert.deepEqual(calls, ['errors', 'doctor']);
+  assert.equal(deploymentResponse.body.data.status, 'pass');
+  assert.deepEqual(calls, ['errors', 'doctor', 'deployment']);
 });
 
 test('channel and scheduler capabilities use registry targets instead of Lark-specific routing', () => {
