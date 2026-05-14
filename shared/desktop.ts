@@ -488,6 +488,7 @@ export interface DesktopModelProviderListResponse {
 
 export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 export type DesktopDeploymentProfileId = 'local-desktop' | 'docker-compose' | 'remote-cloud';
+export type DesktopSandboxTransport = 'http-ndjson' | 'websocket';
 
 export interface DesktopDeploymentProfile {
   id: DesktopDeploymentProfileId;
@@ -514,8 +515,11 @@ export interface DesktopSandboxRuntimeImage {
   id: string;
   agent_type: string;
   image: string;
+  transport?: DesktopSandboxTransport;
   acp_port: number;
   entrypoint?: string[];
+  runtime_command?: string;
+  runtime_args?: string[];
   workspace_mount_path?: string;
   state_mount_path?: string;
 }
@@ -569,6 +573,7 @@ export const DEFAULT_SANDBOX_RUNTIME_IMAGES: DesktopSandboxRuntimeImage[] = [
     id: DEFAULT_SANDBOX_RUNTIME_IMAGE_ID,
     agent_type: 'pi',
     image: 'agentdock/pi-acp:local',
+    transport: 'http-ndjson',
     acp_port: 8080,
     entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
     workspace_mount_path: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
@@ -598,6 +603,7 @@ export function defaultSandboxRuntimeImage(agentType?: string | null): DesktopSa
     id: `${normalized}-acp-local`,
     agent_type: normalized,
     image: `agentdock/${normalized}-acp:local`,
+    transport: 'http-ndjson',
     acp_port: 8080,
     entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
     workspace_mount_path: DEFAULT_SANDBOX_WORKSPACE_MOUNT_PATH,
@@ -615,6 +621,8 @@ export interface DesktopSandboxOptions {
   server_url?: string;
   /** @deprecated Prefer config-level sandbox_runtime_images plus sandbox.runtime_image_id. */
   image?: string;
+  /** @deprecated Prefer config-level sandbox_runtime_images plus sandbox.runtime_image_id. */
+  transport?: DesktopSandboxTransport;
   /** @deprecated Prefer config-level sandbox_providers plus sandbox.provider_id. */
   api_key_env?: string;
   state_scope?: DesktopSandboxStateScope;

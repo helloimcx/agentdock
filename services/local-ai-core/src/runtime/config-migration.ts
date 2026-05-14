@@ -150,8 +150,11 @@ function migrateProjectSandboxRuntimeImage(
     ...fallback,
     id: imageId,
     image: sandbox.image || fallback.image,
+    transport: sandbox.transport || (sandbox.image ? 'websocket' : fallback.transport),
     acp_port: sandbox.acp_port || fallback.acp_port,
     entrypoint: sandbox.entrypoint || fallback.entrypoint,
+    runtime_command: fallback.runtime_command,
+    runtime_args: fallback.runtime_args,
     workspace_mount_path: sandbox.workspace_mount_path || fallback.workspace_mount_path,
     state_mount_path: sandbox.state_mount_path || fallback.state_mount_path,
   });

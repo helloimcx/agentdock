@@ -723,6 +723,7 @@ test('ACP sandbox sessions use container workspace cwd', async () => {
       sandbox: {
         enabled: true,
         provider: 'opensandbox',
+        transport: 'http-ndjson',
         serverUrl: 'http://127.0.0.1:8080',
         apiKeyEnv: 'OPEN_SANDBOX_API_KEY',
         image: 'agentdock/pi-acp:local',

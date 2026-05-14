@@ -50,10 +50,11 @@ export class OpenSandboxExecutionBackend implements AgentExecutionBackend {
       },
       execution: {
         mode: 'sandbox',
-        transport: 'sandbox-ws-stdio-proxy',
+        transport: `sandbox-${sandbox.transport}-stdio-proxy`,
         provider: sandbox.provider,
         sandbox: {
           image: sandbox.image,
+          transport: sandbox.transport,
           acpPort: sandbox.acpPort,
           stateScope: sandbox.stateScope,
           stateMountPath: sandbox.stateMountPath,

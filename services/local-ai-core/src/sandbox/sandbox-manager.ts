@@ -44,7 +44,7 @@ export class SandboxManager {
     const endpoint = await client.getEndpoint(sandbox.id, config.acpPort);
     return {
       sandboxId: sandbox.id,
-      endpoint: normalizeEndpoint(endpoint.endpoint, this.options.env[SANDBOX_ENDPOINT_HOST_ENV]),
+      endpoint: normalizeEndpoint(endpoint.endpoint, this.options.env[SANDBOX_ENDPOINT_HOST_ENV], config.transport),
       config,
       stateHostPath: config.stateHostPath || '',
     };
@@ -130,6 +130,12 @@ export function buildOpenSandboxCreateInput(config: AgentSandboxLaunchConfig, en
     AGENTDOCK_ACP_COMMAND: config.runtimeCommand,
     AGENTDOCK_ACP_ARGS: JSON.stringify(config.runtimeArgs || []),
     AGENTDOCK_ACP_CWD: config.workspaceMountPath,
+    AGENTDOCK_ACP_STATE_DIRS: JSON.stringify([
+      config.stateMountPath,
+      ...Object.entries(config.runtimeEnv)
+        .filter(([key]) => key.endsWith('_DIR'))
+        .map(([, value]) => value),
+    ].filter(Boolean)),
   };
   const volumes = [
     {
@@ -187,9 +193,21 @@ function metadataLabel(value: string, fallback: string) {
   return `${trimmed.slice(0, 54).replace(/[^a-zA-Z0-9]+$/g, '')}-${hash}`;
 }
 
-export function normalizeEndpoint(endpoint: string, endpointHostOverride?: string) {
+export function normalizeEndpoint(endpoint: string, endpointHostOverride?: string, transport: 'http-ndjson' | 'websocket' = 'websocket') {
   const trimmed = endpoint.trim();
   const normalized = (() => {
+    if (transport === 'http-ndjson') {
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed;
+      }
+      if (trimmed.startsWith('ws://')) {
+        return `http://${trimmed.slice('ws://'.length)}`;
+      }
+      if (trimmed.startsWith('wss://')) {
+        return `https://${trimmed.slice('wss://'.length)}`;
+      }
+      return `http://${trimmed}`;
+    }
     if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
       return trimmed;
     }

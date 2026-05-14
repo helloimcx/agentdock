@@ -284,13 +284,14 @@ export class LocalCoreAcpBackend {
       metadata: {
         execution: config.execution || {
           mode: config.sandbox?.enabled ? 'sandbox' : 'local',
-          transport: config.sandbox?.enabled ? 'sandbox-ws-stdio-proxy' : 'stdio',
+          transport: config.sandbox?.enabled ? `sandbox-${config.sandbox.transport}-stdio-proxy` : 'stdio',
         },
         ...(config.sandbox?.enabled
           ? {
               sandbox: {
                 provider: config.sandbox.provider,
                 image: config.sandbox.image,
+                transport: config.sandbox.transport,
                 acpPort: config.sandbox.acpPort,
                 stateScope: config.sandbox.stateScope,
                 stateMount: config.sandbox.stateMount || null,

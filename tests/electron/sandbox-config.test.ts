@@ -70,6 +70,7 @@ test('sandbox config normalizes project scoped Pi defaults', () => {
     assert.equal(sandbox?.enabled, true);
     assert.equal(sandbox?.serverUrl, 'http://127.0.0.1:8080');
     assert.equal(sandbox?.image, 'agentdock/pi-acp:local');
+    assert.equal(sandbox?.transport, 'http-ndjson');
     assert.equal(sandbox?.stateScope, 'project');
     assert.equal(sandbox?.workspaceMountPath, '/workspace');
     assert.equal(sandbox?.stateMountPath, '/agent-state');
@@ -177,19 +178,66 @@ test('workspace route launches sandbox proxy when sandbox is enabled', () => {
     mkdirSync(join(root, 'runtime'), { recursive: true });
     const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), project({
       enabled: true,
-      image: 'agentdock/pi-acp:test',
     }));
 
     assert.equal(route.command, process.execPath);
     assert.match(route.args[0], /sandbox-stdio-proxy\.js$/);
     assert.equal(route.workDir, '/workspace/source');
     assert.equal(route.execution?.mode, 'sandbox');
-    assert.equal(route.execution?.transport, 'sandbox-ws-stdio-proxy');
+    assert.equal(route.execution?.transport, 'sandbox-http-ndjson-stdio-proxy');
     assert.equal(route.execution?.sandbox?.stateScope, 'project');
+    assert.equal(route.execution?.sandbox?.transport, 'http-ndjson');
     assert.equal(route.sandbox?.workspaceHostPath, '/workspace/source');
     assert.equal(route.sandbox?.proxyCwd, join(root, 'runtime'));
-    assert.equal(route.sandbox?.image, 'agentdock/pi-acp:test');
-    assert.equal(JSON.parse(route.env.AGENTDOCK_SANDBOX_CONFIG).image, 'agentdock/pi-acp:test');
+    assert.equal(route.sandbox?.image, 'agentdock/pi-acp:local');
+    assert.equal(JSON.parse(route.env.AGENTDOCK_SANDBOX_CONFIG).image, 'agentdock/pi-acp:local');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('legacy sandbox image overrides without transport keep websocket compatibility', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  try {
+    const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), project({
+      enabled: true,
+      image: 'agentdock/pi-acp:legacy',
+    }));
+
+    assert.equal(route.execution?.transport, 'sandbox-websocket-stdio-proxy');
+    assert.equal(route.sandbox?.transport, 'websocket');
+    assert.equal(route.sandbox?.image, 'agentdock/pi-acp:legacy');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sandbox runtime image can override the stdio runtime command behind the generic bridge', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  try {
+    const state = configState(join(root, 'runtime', 'config.toml'));
+    state.parsed = {
+      projects: [],
+      sandbox_runtime_images: [{
+        id: 'fake-acp',
+        agent_type: 'pi',
+        image: 'agentdock/fake-acp:local',
+        transport: 'http-ndjson',
+        acp_port: 8080,
+        entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
+        runtime_command: '/usr/local/bin/node',
+        runtime_args: ['/opt/agentdock/fake-acp.mjs'],
+      }],
+    };
+    const sandbox = normalizeSandboxLaunchConfig({
+      configState: state,
+      project: project({ enabled: true, runtime_image_id: 'fake-acp' }),
+      launchConfig: launchConfig(),
+    });
+
+    assert.equal(sandbox?.runtimeCommand, '/usr/local/bin/node');
+    assert.deepEqual(sandbox?.runtimeArgs, ['/opt/agentdock/fake-acp.mjs']);
+    assert.equal(sandbox?.transport, 'http-ndjson');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -271,6 +319,7 @@ test('desktop config migration normalizes user id, DeepSeek provider, and sandbo
   assert.equal(projectConfig?.agent.options?.sandbox?.runtime_image_id, 'pi-acp-local');
   assert.equal(migrated.config.sandbox_providers?.[0]?.server_url, 'http://127.0.0.1:8080');
   assert.equal(migrated.config.sandbox_runtime_images?.[0]?.image, 'agentdock/pi-acp:local');
+  assert.equal(migrated.config.sandbox_runtime_images?.[0]?.transport, 'http-ndjson');
 });
 
 test('OpenSandbox create input includes volumes, resources, env, and metadata', () => {
@@ -295,6 +344,7 @@ test('OpenSandbox create input includes volumes, resources, env, and metadata', 
     assert.equal(input.volumes[0]?.host, '/workspace/source');
     assert.equal(input.env.AGENTDOCK_ACP_COMMAND, '/usr/local/bin/pi-acp');
     assert.equal(input.env.LOCAL_AI_WORKSPACE_PATH, '/workspace');
+    assert.equal(input.env.AGENTDOCK_ACP_STATE_DIRS, '["/agent-state","/agent-state/pi"]');
     assert.equal(input.metadata.userId, 'local');
     assert.equal(input.metadata.runId, 'run-1');
     assert.equal(input.metadata.agentType, 'pi');
@@ -331,12 +381,20 @@ test('OpenSandbox metadata is Kubernetes label safe while env keeps raw ids', ()
   }
 });
 
-test('normalizeEndpoint converts HTTP endpoints to WebSocket endpoints', () => {
+test('normalizeEndpoint converts HTTP endpoints to WebSocket endpoints for legacy websocket transport', () => {
   assert.equal(normalizeEndpoint('http://127.0.0.1:3000'), 'ws://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('https://example.test/acp'), 'wss://example.test/acp');
   assert.equal(normalizeEndpoint('127.0.0.1:3000'), 'ws://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('ws://127.0.0.1:3000'), 'ws://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('127.0.0.1:3000', 'host.docker.internal'), 'ws://host.docker.internal:3000/');
+});
+
+test('normalizeEndpoint keeps HTTP endpoints for http ndjson transport', () => {
+  assert.equal(normalizeEndpoint('http://127.0.0.1:3000', '', 'http-ndjson'), 'http://127.0.0.1:3000');
+  assert.equal(normalizeEndpoint('https://example.test/acp', '', 'http-ndjson'), 'https://example.test/acp');
+  assert.equal(normalizeEndpoint('127.0.0.1:3000', '', 'http-ndjson'), 'http://127.0.0.1:3000');
+  assert.equal(normalizeEndpoint('ws://127.0.0.1:3000', '', 'http-ndjson'), 'http://127.0.0.1:3000');
+  assert.equal(normalizeEndpoint('127.0.0.1:3000', 'host.docker.internal', 'http-ndjson'), 'http://host.docker.internal:3000/');
 });
 
 test('OpenSandbox local compose auth falls back to the default local API key', () => {

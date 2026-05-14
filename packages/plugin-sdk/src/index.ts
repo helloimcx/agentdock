@@ -34,6 +34,7 @@ export interface AgentExecutionDescriptor {
   provider?: string;
   sandbox?: {
     image: string;
+    transport?: AgentSandboxTransport;
     acpPort: number;
     stateScope: AgentSandboxStateScope;
     stateMountPath: string;
@@ -41,6 +42,7 @@ export interface AgentExecutionDescriptor {
 }
 
 export type AgentSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
+export type AgentSandboxTransport = 'http-ndjson' | 'websocket';
 
 export interface AgentStateMount {
   userId: string;
@@ -54,6 +56,7 @@ export interface AgentStateMount {
 export interface AgentSandboxLaunchConfig {
   enabled: boolean;
   provider: string;
+  transport: AgentSandboxTransport;
   serverUrl: string;
   apiKeyEnv: string;
   image: string;

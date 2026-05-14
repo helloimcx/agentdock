@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxStateScope } from '../../../../packages/plugin-sdk/src/index.js';
+import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxStateScope, AgentSandboxTransport } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
@@ -81,6 +81,7 @@ export function normalizeSandboxLaunchConfig(input: {
   return {
     enabled: true,
     provider: String(raw.provider || sandboxProvider.type || 'opensandbox').trim() || 'opensandbox',
+    transport: normalizeSandboxTransport(runtimeImage.transport || raw.transport),
     serverUrl: normalizeServerUrl(sandboxProvider.server_url || raw.server_url || profile.openSandboxServerUrl),
     apiKeyEnv: String(sandboxProvider.api_key_env || raw.api_key_env || DEFAULT_OPENSANDBOX_API_KEY_ENV).trim() || DEFAULT_OPENSANDBOX_API_KEY_ENV,
     image: String(runtimeImage.image || raw.image || defaultSandboxImage(agentType)).trim() || defaultSandboxImage(agentType),
@@ -108,8 +109,8 @@ export function normalizeSandboxLaunchConfig(input: {
       hostPath: stateHostPath,
       containerPath: stateMountPath,
     },
-    runtimeCommand: normalizeRuntimeCommandForSandbox(agentType, input.launchConfig.command),
-    runtimeArgs: normalizeRuntimeArgsForSandbox(agentType, input.launchConfig.args || []),
+    runtimeCommand: normalizeRuntimeCommandForSandbox(agentType, input.launchConfig.command, runtimeImage.runtime_command),
+    runtimeArgs: normalizeRuntimeArgsForSandbox(agentType, input.launchConfig.args || [], runtimeImage.runtime_args),
     runtimeEnv: normalizeRuntimeEnvForSandbox(agentType, input.launchConfig.env || {}, stateMountPath),
   };
 }
@@ -153,14 +154,18 @@ function resolveSandboxRuntimeImage(
       || images.find((image) => image.agent_type === agentType)
     : undefined;
   if (selected) {
-    return selected;
+    return {
+      ...selected,
+      transport: selected.transport || 'websocket',
+    };
   }
-  if (raw.image || raw.acp_port || raw.entrypoint || raw.workspace_mount_path || raw.state_mount_path) {
+  if (raw.image || raw.transport || raw.acp_port || raw.entrypoint || raw.workspace_mount_path || raw.state_mount_path) {
     const fallback = defaultSandboxRuntimeImage(agentType);
     return {
       id: runtimeImageId || fallback.id,
       agent_type: agentType,
       image: raw.image || fallback.image,
+      transport: normalizeSandboxTransport(raw.transport || 'websocket'),
       acp_port: normalizePositiveInteger(raw.acp_port, fallback.acp_port),
       entrypoint: raw.entrypoint || fallback.entrypoint,
       workspace_mount_path: raw.workspace_mount_path || fallback.workspace_mount_path,
@@ -217,6 +222,10 @@ function normalizeStateScope(value?: string): AgentSandboxStateScope {
   return value === 'user' || value === 'thread' || value === 'run' ? value : 'project';
 }
 
+function normalizeSandboxTransport(value?: string): AgentSandboxTransport {
+  return value === 'websocket' ? 'websocket' : 'http-ndjson';
+}
+
 function normalizePositiveInteger(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
@@ -249,11 +258,18 @@ function normalizeRuntimeEnvForSandbox(agentType: string, env: Record<string, st
   return output;
 }
 
-function normalizeRuntimeCommandForSandbox(agentType: string, command: string) {
+function normalizeRuntimeCommandForSandbox(agentType: string, command: string, override?: string) {
+  const runtimeCommand = String(override || '').trim();
+  if (runtimeCommand) {
+    return runtimeCommand;
+  }
   return agentType === 'pi' ? '/usr/local/bin/pi-acp' : command;
 }
 
-function normalizeRuntimeArgsForSandbox(agentType: string, args: string[]) {
+function normalizeRuntimeArgsForSandbox(agentType: string, args: string[], override?: string[]) {
+  if (Array.isArray(override)) {
+    return override.map((entry) => String(entry || '').trim()).filter(Boolean);
+  }
   return agentType === 'pi' ? [] : args;
 }
 
