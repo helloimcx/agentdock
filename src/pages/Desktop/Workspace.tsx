@@ -900,7 +900,7 @@ export default function DesktopWorkspace() {
                     <option value={CUSTOM_SELECT_VALUE}>custom</option>
                   </Select>
                   <Input
-                    label="Work directory"
+                    label="Host workspace path"
                     value={String(selectedProject.agent?.options?.work_dir || '')}
                     onChange={(event) =>
                       updateSelectedProject((project) => ({
@@ -1145,7 +1145,7 @@ export default function DesktopWorkspace() {
                           <div>OpenSandbox: {selectedSandboxProvider.server_url || 'not configured'}</div>
                           <div>Image: {selectedSandboxRuntimeImage.image}</div>
                           <div>ACP port: {selectedSandboxRuntimeImage.acp_port}</div>
-                          <div>Workspace mount: {selectedSandboxRuntimeImage.workspace_mount_path || selectedProfile.workspaceMountPath}</div>
+                          <div>Sandbox workspace path: {selectedSandboxRuntimeImage.workspace_mount_path || selectedProfile.workspaceMountPath}</div>
                           <div>State mount: {selectedSandboxRuntimeImage.state_mount_path || selectedProfile.stateMountPath}</div>
                           <div>API key env: {selectedSandboxProvider.api_key_env || 'OPEN_SANDBOX_API_KEY'}</div>
                         </div>
@@ -1153,7 +1153,7 @@ export default function DesktopWorkspace() {
                       <details className="rounded-xl border border-black/10 px-4 py-3 text-sm dark:border-white/[0.08]">
                         <summary className="cursor-pointer font-medium text-slate-950 dark:text-white">Advanced</summary>
                         <div className="mt-3 text-muted-foreground">
-                          底层 OpenSandbox URL、API key env、镜像、ACP 端口和挂载路径来自全局 Deployment Profile / Sandbox Provider / Runtime Image 注册表，项目这里只保存引用和资源覆盖项。
+                          Host workspace path 是 OpenSandbox 挂载源；Sandbox workspace path 是 Agent 容器内的工作目录。Core 只启动代理进程，不直接使用 host workspace path 作为代理工作目录。
                         </div>
                       </details>
                     </div>
@@ -1199,7 +1199,7 @@ export default function DesktopWorkspace() {
               {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
             </Select>
             <Input
-              label="Work directory"
+              label="Host workspace path"
               value={projectDialog.workDir}
               onChange={(event) => updateProjectDialog({ workDir: event.target.value })}
               placeholder="/Users/yinyin/code/my-project"

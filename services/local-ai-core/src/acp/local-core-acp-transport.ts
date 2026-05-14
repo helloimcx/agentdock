@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import type { DesktopBridgeEvent, LocalCoreErrorCode } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreError } from '../kernel/local-core-errors.js';
 import type {
@@ -30,8 +31,9 @@ export class LocalCoreAcpTransport {
       ...process.env,
       ...input.config.env,
     };
+    const cwd = resolveTransportCwd(input.config);
     const child = spawn(input.config.command, input.config.args, {
-      cwd: input.config.workDir,
+      cwd,
       env: {
         ...baseEnv,
         ...input.runtimeEnv,
@@ -95,6 +97,7 @@ export class LocalCoreAcpTransport {
           ? new LocalCoreError('runtime_not_found', `ACP agent command not found: ${input.config.command}`, {
               details: {
                 command: input.config.command,
+                cwd,
                 threadId: input.threadId,
                 runtimeId: input.config.agentType,
               },
@@ -103,6 +106,7 @@ export class LocalCoreAcpTransport {
               cause: error.code,
               details: {
                 command: input.config.command,
+                cwd,
                 threadId: input.threadId,
                 runtimeId: input.config.agentType,
               },
@@ -273,6 +277,17 @@ export class LocalCoreAcpTransport {
       },
     }));
   }
+}
+
+function resolveTransportCwd(config: LocalCoreProjectConfig) {
+  if (config.sandbox?.enabled) {
+    const proxyCwd = String(config.sandbox.proxyCwd || '').trim();
+    if (proxyCwd && existsSync(proxyCwd)) {
+      return proxyCwd;
+    }
+    return process.cwd();
+  }
+  return config.workDir;
 }
 
 function errorCodeForAcpError(error: { message?: unknown; data?: unknown }): LocalCoreErrorCode {

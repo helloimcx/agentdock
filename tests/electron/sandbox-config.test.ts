@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentLaunchConfig } from '../../packages/plugin-sdk/src/index.js';
@@ -17,6 +17,7 @@ import { buildOpenSandboxCreateInput, normalizeEndpoint, resolveOpenSandboxApiKe
 import { SandboxManager } from '../../services/local-ai-core/src/sandbox/sandbox-manager.js';
 import type { OpenSandboxClient } from '../../services/local-ai-core/src/sandbox/opensandbox-client.js';
 import { migrateDesktopConnectConfig } from '../../services/local-ai-core/src/runtime/config-migration.js';
+import { runDeploymentDiagnostics } from '../../services/local-ai-core/src/runtime/deployment-diagnostics.js';
 
 function configState(path: string): ConfigFileState {
   return {
@@ -173,6 +174,7 @@ test('sandbox proxy env stores serialized launch config', () => {
 test('workspace route launches sandbox proxy when sandbox is enabled', () => {
   const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
   try {
+    mkdirSync(join(root, 'runtime'), { recursive: true });
     const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), project({
       enabled: true,
       image: 'agentdock/pi-acp:test',
@@ -185,9 +187,41 @@ test('workspace route launches sandbox proxy when sandbox is enabled', () => {
     assert.equal(route.execution?.transport, 'sandbox-ws-stdio-proxy');
     assert.equal(route.execution?.sandbox?.stateScope, 'project');
     assert.equal(route.sandbox?.workspaceHostPath, '/workspace/source');
+    assert.equal(route.sandbox?.proxyCwd, join(root, 'runtime'));
     assert.equal(route.sandbox?.image, 'agentdock/pi-acp:test');
     assert.equal(JSON.parse(route.env.AGENTDOCK_SANDBOX_CONFIG).image, 'agentdock/pi-acp:test');
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sandbox proxy cwd is independent from host workspace path', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  const previous = process.env.AI_WORKSTATION_USER_DATA_DIR;
+  try {
+    process.env.AI_WORKSTATION_USER_DATA_DIR = root;
+    const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), {
+      ...project({ enabled: true }),
+      agent: {
+        ...project({ enabled: true }).agent,
+        options: {
+          work_dir: '/Users/example/persistent-project',
+          sandbox: { enabled: true },
+        },
+      },
+    });
+
+    assert.equal(route.workDir, '/Users/example/persistent-project');
+    assert.equal(route.sandbox?.workspaceHostPath, '/Users/example/persistent-project');
+    assert.equal(route.sandbox?.workspaceMountPath, '/workspace');
+    assert.equal(route.sandbox?.proxyCwd, root);
+    assert.notEqual(route.sandbox?.proxyCwd, route.workDir);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.AI_WORKSTATION_USER_DATA_DIR;
+    } else {
+      process.env.AI_WORKSTATION_USER_DATA_DIR = previous;
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -258,6 +292,7 @@ test('OpenSandbox create input includes volumes, resources, env, and metadata', 
     assert.equal(input.cpu, '2000m');
     assert.equal(input.memory, '4Gi');
     assert.deepEqual(input.volumes.map((volume) => volume.container), ['/workspace', '/agent-state']);
+    assert.equal(input.volumes[0]?.host, '/workspace/source');
     assert.equal(input.env.AGENTDOCK_ACP_COMMAND, '/usr/local/bin/pi-acp');
     assert.equal(input.env.LOCAL_AI_WORKSPACE_PATH, '/workspace');
     assert.equal(input.metadata.userId, 'local');
@@ -349,6 +384,45 @@ test('sandbox state host root can be overridden for compose host mounts', () => 
       process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] = previous;
     }
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('deployment diagnostics delegate compose sandbox workspace paths to OpenSandbox', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response('{}', { status: 200 })) as typeof fetch;
+    const result = await runDeploymentDiagnostics({
+      config: {
+        deployment_profile: 'docker-compose',
+        sandbox_providers: [{
+          id: 'opensandbox-default',
+          type: 'opensandbox',
+          name: 'OpenSandbox',
+          server_url: 'http://opensandbox-server:8080',
+          api_key_env: 'OPEN_SANDBOX_API_KEY',
+        }],
+        projects: [{
+          name: 'remote-project',
+          agent: {
+            type: 'pi',
+            options: {
+              work_dir: '/Users/example/persistent-project',
+              sandbox: { enabled: true },
+            },
+          },
+          platforms: [],
+        }],
+      },
+      env: {
+        AI_WORKSTATION_HOST: '0.0.0.0',
+        OPEN_SANDBOX_HOST_MOUNT_ALLOWLIST: '/Users,/tmp',
+      },
+    });
+    const workspaceCheck = result.checks.find((check) => check.id === 'workspace.paths');
+    assert.equal(workspaceCheck?.status, 'pass');
+    assert.equal(workspaceCheck?.summary, 'Sandbox workspace host paths are delegated to OpenSandbox.');
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

@@ -77,6 +77,7 @@ flowchart LR
 
 - Docker Compose 支持一键启动 AgentDock Web、Local AI Core 和 OpenSandbox，Core 容器默认通过 compose 内网访问 OpenSandbox。
 - 工作区“云端模式”改为选择 Deployment Profile，项目只保存 Sandbox Provider / Runtime Image 引用、state scope 和资源覆盖项。
+- Sandbox 模式下工作区路径作为 OpenSandbox host mount 使用，Core 启动代理不再要求该路径在 Core 容器内可见。
 - 新增部署诊断接口与 `pnpm e2e:compose`，用于检查 Web/Core/OpenSandbox/Docker socket/工作区挂载和 sandbox 镜像注册。
 - Docker Compose 云端模式支持通过 `AGENTDOCK_SANDBOX_STATE_HOST_ROOT` 将 agent state 持久化到 OpenSandbox 可挂载的宿主机路径。
 - 云端模式新增 execution 元数据、user/project/thread/run state scope、配置迁移和 Pi provider 规范化，便于多用户云端部署与运行排障。

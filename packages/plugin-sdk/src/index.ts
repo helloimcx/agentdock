@@ -67,6 +67,7 @@ export interface AgentSandboxLaunchConfig {
   stateScope: AgentSandboxStateScope;
   workspaceHostPath: string;
   workspaceMountPath: string;
+  proxyCwd?: string;
   stateHostPath?: string;
   stateMountPath: string;
   stateMount?: AgentStateMount;

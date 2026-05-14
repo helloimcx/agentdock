@@ -37,7 +37,7 @@ export async function runDeploymentDiagnostics(input: {
       summary: `AI_WORKSTATION_HOST=${env.AI_WORKSTATION_HOST || '127.0.0.1'}.`,
     },
     dockerSocketCheck(profile.id),
-    workspacePathCheck(config),
+    workspacePathCheck(config, profile.id),
     allowlistCheck(config, env),
     sandboxImageCheck(config),
     await opensandboxHealthCheck(opensandboxUrl, sandboxProvider.api_key_env, env),
@@ -68,13 +68,15 @@ function dockerSocketCheck(profileId: string): LocalCoreDoctorCheck {
   };
 }
 
-function workspacePathCheck(config: DesktopConnectConfig): LocalCoreDoctorCheck {
+function workspacePathCheck(config: DesktopConnectConfig, profileId: string): LocalCoreDoctorCheck {
   const projects = Array.isArray(config.projects) ? config.projects : [];
   const missing = projects
     .map((project) => ({
       name: project.name,
       workDir: String(project.agent?.options?.work_dir || '').trim(),
+      sandboxEnabled: Boolean(project.agent?.options?.sandbox?.enabled),
     }))
+    .filter((project) => !(profileId === 'docker-compose' && project.sandboxEnabled))
     .filter((project) => project.workDir && !existsSync(project.workDir));
   if (missing.length > 0) {
     return {
@@ -82,6 +84,14 @@ function workspacePathCheck(config: DesktopConnectConfig): LocalCoreDoctorCheck 
       label: 'Workspace paths',
       status: 'warn',
       summary: `${missing.length} configured workspace path(s) are not visible to Core.`,
+    };
+  }
+  if (profileId === 'docker-compose' && projects.some((project) => project.agent?.options?.sandbox?.enabled)) {
+    return {
+      id: 'workspace.paths',
+      label: 'Workspace paths',
+      status: 'pass',
+      summary: 'Sandbox workspace host paths are delegated to OpenSandbox.',
     };
   }
   return {

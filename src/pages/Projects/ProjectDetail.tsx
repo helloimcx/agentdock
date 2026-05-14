@@ -351,7 +351,7 @@ export default function ProjectDetail() {
                 <Input label="Memory" value={sandbox.memory} onChange={(event) => setSandbox((current) => ({ ...current, memory: event.target.value }))} />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  OpenSandbox URL, API key env, image, ACP port, and mount paths are resolved from the global sandbox provider and runtime image registry.
+                  OpenSandbox URL, API key env, image, ACP port, and sandbox mount paths are resolved from the global sandbox provider and runtime image registry.
                 </p>
               </div>
             ) : (

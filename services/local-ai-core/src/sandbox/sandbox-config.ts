@@ -61,6 +61,7 @@ export function normalizeSandboxLaunchConfig(input: {
   const userId = sanitizePathSegment(String(rawOptions.user_id || (rawOptions as Record<string, unknown>).tenant_id || 'local'), 'local');
   const agentId = sanitizePathSegment(agentType, 'agent');
   const stateHostRoot = String(process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] || '').trim() || resolve(userDataRoot, 'sandbox-state');
+  const proxyCwd = resolveSandboxProxyCwd(configDir);
   const stateHostPath = resolve(
     stateHostRoot,
     'users',
@@ -96,6 +97,7 @@ export function normalizeSandboxLaunchConfig(input: {
       raw.workspace_mount_path || runtimeImage.workspace_mount_path || profile.workspaceMountPath,
       DEFAULT_WORKSPACE_MOUNT_PATH,
     ),
+    proxyCwd,
     stateHostPath,
     stateMountPath,
     stateMount: {
@@ -257,6 +259,16 @@ function normalizeRuntimeArgsForSandbox(agentType: string, args: string[]) {
 
 export function sandboxProxyScriptPath() {
   return resolve(__dirname, 'sandbox-stdio-proxy.js');
+}
+
+export function resolveSandboxProxyCwd(configDir: string) {
+  const candidates = [
+    String(process.env.AI_WORKSTATION_USER_DATA_DIR || '').trim(),
+    configDir,
+    process.cwd(),
+    '/tmp',
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || process.cwd();
 }
 
 export function sandboxProxyLaunchEnv(config: AgentSandboxLaunchConfig) {
