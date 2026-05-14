@@ -42,7 +42,17 @@ function spawnManaged(command, args, options = {}) {
 }
 
 const viteProcess = spawnManaged('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', '5173']);
-const tscProcess = spawnManaged('pnpm', ['exec', 'tsc', '-p', 'tsconfig.electron.json', '--watch', '--preserveWatchOutput']);
+const tscProcess = spawnManaged('pnpm', ['exec', 'tsc', '-p', 'tsconfig.electron.json', '--watch', '--preserveWatchOutput'], {
+  stdio: ['inherit', 'pipe', 'pipe'],
+});
+
+tscProcess.stdout?.on('data', (chunk) => {
+  handleElectronCompilerOutput(chunk, process.stdout);
+});
+
+tscProcess.stderr?.on('data', (chunk) => {
+  handleElectronCompilerOutput(chunk, process.stderr);
+});
 
 function isPortOpen(port, host) {
   return new Promise((resolve) => {
@@ -119,6 +129,9 @@ function restartElectron() {
 }
 
 function scheduleElectronRestart() {
+  if (!electronReady) {
+    return;
+  }
   if (!watchStarted) {
     watchElectronOutput();
   }
@@ -149,35 +162,23 @@ function watchElectronOutput() {
     if (!normalized.endsWith('.js')) {
       return;
     }
-    if (fs.existsSync(path.join(distElectronDir, 'electron', 'main.js'))) {
-      electronReady = true;
+    if (electronReady && fs.existsSync(path.join(distElectronDir, 'electron', 'main.js'))) {
       scheduleElectronRestart();
     }
   });
 }
 
 function waitForElectronBuild() {
-  const electronEntry = path.join(distElectronDir, 'electron', 'main.js');
-  if (fs.existsSync(electronEntry)) {
-    electronReady = true;
-    watchElectronOutput();
-    maybeLaunchElectron();
-    return;
-  }
-
   watchElectronOutput();
-  const interval = setInterval(() => {
-    if (shuttingDown) {
-      clearInterval(interval);
-      return;
-    }
-    if (!fs.existsSync(electronEntry)) {
-      return;
-    }
-    clearInterval(interval);
+}
+
+function handleElectronCompilerOutput(chunk, stream) {
+  const text = chunk.toString();
+  stream.write(chunk);
+  if (/Found 0 errors?\. Watching for file changes\./.test(text)) {
     electronReady = true;
     maybeLaunchElectron();
-  }, 300);
+  }
 }
 
 function shutdown(code = 0) {

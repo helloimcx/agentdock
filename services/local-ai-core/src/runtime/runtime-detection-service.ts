@@ -58,11 +58,7 @@ export class RuntimeDetectionService {
   }
 
   async refreshOnStartup() {
-    try {
-      await this.refresh();
-    } catch (err: any) {
-      this.options.log?.(`Startup runtime detection failed: ${err?.message || String(err)}`);
-    }
+    this.options.log?.('Startup runtime detection skipped; using cached runtime versions until manual refresh.');
   }
 
   recordLaunchError(runtimeId: string, errorInfo: LocalCoreErrorInfo) {
@@ -102,7 +98,7 @@ export class RuntimeDetectionService {
   }
 
   private async runRefresh(runtimeId?: string): Promise<InstalledAgentRuntime[]> {
-    const previous = this.store.read() || [];
+    const previous = this.store.read() || this.createUnknownResults();
     const startedAt = new Date().toISOString();
     this.markChecking(runtimeId);
     this.emit({ type: 'runtime.detect.started', runtimeId, detectedAt: startedAt });
@@ -112,7 +108,11 @@ export class RuntimeDetectionService {
 
     try {
       const config = await this.options.readConfig();
-      const detected = this.detect({ config });
+      const detected = mergeDetectedRuntimes(
+        previous,
+        this.detect({ config, runtimeId }),
+        runtimeId,
+      );
       this.store.write(detected);
       const completedAt = new Date().toISOString();
       this.emit({ type: 'runtime.detect.completed', runtimeId, detectedAt: completedAt, runtimes: this.filter(detected, runtimeId) });
@@ -197,6 +197,29 @@ function changedRuntimes(previous: InstalledAgentRuntime[], next: InstalledAgent
       || before.binaryPath !== runtime.binaryPath
       || before.error !== runtime.error;
   });
+}
+
+function mergeDetectedRuntimes(
+  previous: InstalledAgentRuntime[],
+  detected: InstalledAgentRuntime[],
+  runtimeId?: string,
+) {
+  if (!runtimeId) {
+    return detected;
+  }
+  const detectedRuntime = detected.find((runtime) => runtime.runtimeId === runtimeId || runtime.agentType === runtimeId);
+  if (!detectedRuntime) {
+    return previous;
+  }
+  let replaced = false;
+  const next = previous.map((runtime) => {
+    if (runtime.runtimeId !== runtimeId && runtime.agentType !== runtimeId) {
+      return runtime;
+    }
+    replaced = true;
+    return detectedRuntime;
+  });
+  return replaced ? next : [...next, detectedRuntime];
 }
 
 function displayName(agentType: string) {

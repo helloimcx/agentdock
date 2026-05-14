@@ -14,6 +14,7 @@ export interface AgentRuntimeDetectionOptions {
   config?: DesktopConnectConfig | null;
   requireFrom?: string;
   now?: Date;
+  runtimeId?: string;
   versionTimeoutMs?: number;
 }
 
@@ -23,8 +24,11 @@ export function detectInstalledAgentRuntimes(
   const env = options.env || process.env;
   const configuredCommands = collectConfiguredAgentCommands(options.config);
   const detectedAt = (options.now || new Date()).toISOString();
-  const versionTimeoutMs = options.versionTimeoutMs ?? 2500;
-  return DESKTOP_AGENT_TYPE_OPTIONS.map((agentType) => {
+  const versionTimeoutMs = options.versionTimeoutMs ?? 1500;
+  const agentTypes = options.runtimeId
+    ? DESKTOP_AGENT_TYPE_OPTIONS.filter((agentType) => agentType === options.runtimeId)
+    : DESKTOP_AGENT_TYPE_OPTIONS;
+  return agentTypes.map((agentType) => {
     const definition = resolveAgentRuntimeDefinition(agentType);
     const detection = definition?.detection;
     if (detection?.builtin || agentType === LOCALCORE_ACP_AGENT_TYPE) {

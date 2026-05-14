@@ -51,6 +51,28 @@ test('runtime detection service refresh persists latest results', async () => {
   }
 });
 
+test('runtime detection service does not probe runtimes on startup', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'runtime-detection-service-startup-'));
+  try {
+    let calls = 0;
+    const service = new RuntimeDetectionService({
+      userDataPath,
+      readConfig: async () => null,
+      detect: () => {
+        calls += 1;
+        return [runtimeResult({ version: '9.9.9' })];
+      },
+    });
+
+    await service.refreshOnStartup();
+
+    assert.equal(calls, 0);
+    assert.equal(service.list('opencode')[0]?.status, 'unknown');
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('runtime detection service ignores corrupted persisted state', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'runtime-detection-service-corrupt-'));
   try {
@@ -73,13 +95,14 @@ test('runtime detection service emits detection events and filters single runtim
   const userDataPath = mkdtempSync(join(tmpdir(), 'runtime-detection-service-events-'));
   try {
     const events: string[] = [];
+    const runtimeIds: Array<string | undefined> = [];
     const service = new RuntimeDetectionService({
       userDataPath,
       readConfig: async () => null,
-      detect: () => [
-        runtimeResult({ runtimeId: 'opencode', agentType: 'opencode' }),
-        runtimeResult({ runtimeId: 'codex', agentType: 'codex' }),
-      ],
+      detect: (options) => {
+        runtimeIds.push(options.runtimeId);
+        return [runtimeResult({ runtimeId: 'codex', agentType: 'codex' })];
+      },
       emit: (event) => {
         events.push(event.type);
       },
@@ -88,10 +111,12 @@ test('runtime detection service emits detection events and filters single runtim
     const refreshed = await service.refresh('codex');
 
     assert.deepEqual(refreshed.map((runtime) => runtime.runtimeId), ['codex']);
+    assert.deepEqual(runtimeIds, ['codex']);
+    assert.equal(service.list('opencode')[0]?.status, 'unknown');
+    assert.equal(service.list('codex')[0]?.status, 'installed');
     assert.deepEqual(events, [
       'runtime.detect.started',
       'runtime.detect.completed',
-      'runtime.status.changed',
       'runtime.status.changed',
     ]);
   } finally {
