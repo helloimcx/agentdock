@@ -105,6 +105,7 @@ async function assertSandboxMessageRoundTrip() {
               provider_id: 'opensandbox-default',
               runtime_image_id: 'fake-acp',
               state_scope: 'run',
+              sandbox_lifecycle: 'per_run',
               timeout_seconds: 300,
               cpu: '500m',
               memory: '512Mi',

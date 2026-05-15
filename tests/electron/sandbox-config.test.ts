@@ -72,6 +72,9 @@ test('sandbox config normalizes project scoped Pi defaults', () => {
     assert.equal(sandbox?.image, 'agentdock/pi-acp:local');
     assert.equal(sandbox?.transport, 'http-ndjson');
     assert.equal(sandbox?.stateScope, 'project');
+    assert.equal(sandbox?.lifecycle, 'per_thread');
+    assert.equal(sandbox?.idleSeconds, 900);
+    assert.equal(sandbox?.warmPoolSize, 0);
     assert.equal(sandbox?.workspaceMountPath, '/workspace');
     assert.equal(sandbox?.stateMountPath, '/agent-state');
     assert.deepEqual(sandbox?.stateMount, {
@@ -317,6 +320,8 @@ test('desktop config migration normalizes user id, DeepSeek provider, and sandbo
   assert.equal(projectConfig?.agent.providers?.[0]?.name, 'deepseek');
   assert.equal(projectConfig?.agent.options?.sandbox?.provider_id, 'opensandbox-default');
   assert.equal(projectConfig?.agent.options?.sandbox?.runtime_image_id, 'pi-acp-local');
+  assert.equal(projectConfig?.agent.options?.sandbox?.sandbox_lifecycle, 'per_thread');
+  assert.equal(projectConfig?.agent.options?.sandbox?.idle_seconds, 900);
   assert.equal(migrated.config.sandbox_providers?.[0]?.server_url, 'http://127.0.0.1:8080');
   assert.equal(migrated.config.sandbox_runtime_images?.[0]?.image, 'agentdock/pi-acp:local');
   assert.equal(migrated.config.sandbox_runtime_images?.[0]?.transport, 'http-ndjson');

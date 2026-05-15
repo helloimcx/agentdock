@@ -106,6 +106,14 @@ function normalizeSandboxOptions(input?: DesktopSandboxOptions): { value?: Deskt
       sandbox.state_scope = 'project';
       changed = true;
     }
+    if (!sandbox.sandbox_lifecycle) {
+      sandbox.sandbox_lifecycle = 'per_thread';
+      changed = true;
+    }
+    if (!sandbox.idle_seconds) {
+      sandbox.idle_seconds = 900;
+      changed = true;
+    }
   }
   return { value: sandbox, changed };
 }

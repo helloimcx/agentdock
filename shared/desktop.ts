@@ -489,6 +489,7 @@ export interface DesktopModelProviderListResponse {
 export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 export type DesktopDeploymentProfileId = 'local-desktop' | 'docker-compose' | 'remote-cloud';
 export type DesktopSandboxTransport = 'http-ndjson' | 'websocket';
+export type DesktopSandboxLifecycle = 'per_run' | 'per_thread';
 
 export interface DesktopDeploymentProfile {
   id: DesktopDeploymentProfileId;
@@ -627,6 +628,9 @@ export interface DesktopSandboxOptions {
   api_key_env?: string;
   state_scope?: DesktopSandboxStateScope;
   timeout_seconds?: number;
+  sandbox_lifecycle?: DesktopSandboxLifecycle;
+  idle_seconds?: number;
+  warm_pool_size?: number;
   cpu?: string;
   memory?: string;
   /** @deprecated Prefer config-level sandbox_runtime_images. */

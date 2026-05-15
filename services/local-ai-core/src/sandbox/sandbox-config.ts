@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxStateScope, AgentSandboxTransport } from '../../../../packages/plugin-sdk/src/index.js';
+import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxLifecycle, AgentSandboxStateScope, AgentSandboxTransport } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
@@ -20,6 +20,8 @@ export const DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV = 'AGENTDOCK_SANDBOX_STATE_HOST
 export const DEFAULT_PI_SANDBOX_IMAGE = 'agentdock/pi-acp:local';
 export const DEFAULT_SANDBOX_ACP_PORT = 8080;
 export const DEFAULT_SANDBOX_TIMEOUT_SECONDS = 7200;
+export const DEFAULT_SANDBOX_IDLE_SECONDS = 900;
+export const DEFAULT_SANDBOX_WARM_POOL_SIZE = 0;
 export const DEFAULT_SANDBOX_CPU = '1000m';
 export const DEFAULT_SANDBOX_MEMORY = '2Gi';
 export const DEFAULT_WORKSPACE_MOUNT_PATH = '/workspace';
@@ -88,6 +90,9 @@ export function normalizeSandboxLaunchConfig(input: {
     acpPort: normalizePositiveInteger(runtimeImage.acp_port || raw.acp_port, DEFAULT_SANDBOX_ACP_PORT),
     entrypoint: normalizeEntrypoint(runtimeImage.entrypoint || raw.entrypoint),
     timeoutSeconds: normalizePositiveInteger(raw.timeout_seconds, DEFAULT_SANDBOX_TIMEOUT_SECONDS),
+    lifecycle: normalizeSandboxLifecycle(raw.sandbox_lifecycle),
+    idleSeconds: normalizePositiveInteger(raw.idle_seconds, DEFAULT_SANDBOX_IDLE_SECONDS),
+    warmPoolSize: normalizeNonNegativeInteger(raw.warm_pool_size, DEFAULT_SANDBOX_WARM_POOL_SIZE),
     cpu: String(raw.cpu || DEFAULT_SANDBOX_CPU).trim() || DEFAULT_SANDBOX_CPU,
     memory: String(raw.memory || DEFAULT_SANDBOX_MEMORY).trim() || DEFAULT_SANDBOX_MEMORY,
     userId,
@@ -227,9 +232,18 @@ function normalizeSandboxTransport(value?: string): AgentSandboxTransport {
   return value === 'websocket' ? 'websocket' : 'http-ndjson';
 }
 
+function normalizeSandboxLifecycle(value?: string): AgentSandboxLifecycle {
+  return value === 'per_run' ? 'per_run' : 'per_thread';
+}
+
 function normalizePositiveInteger(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
 }
 
 function normalizeAbsoluteContainerPath(value: unknown, fallback: string) {

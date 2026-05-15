@@ -329,6 +329,7 @@ export type RunningTurn = {
   toolCallSequence?: number;
   toolObservations?: RunningToolObservation[];
   permission?: RunningPermissionRequest | null;
+  firstAgentUpdateLogged?: boolean;
 };
 
 export type RunningToolObservation = {
@@ -361,6 +362,7 @@ export type AcpSessionState = {
   launchPermissionMode: string;
   launchConfigKey?: string;
   launchRuntimeEnvKey?: string;
+  idleCloseTimer?: NodeJS.Timeout;
 };
 
 export type OpencodeInlineProviderConfig = {

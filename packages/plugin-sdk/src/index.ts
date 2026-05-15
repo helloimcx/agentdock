@@ -43,6 +43,7 @@ export interface AgentExecutionDescriptor {
 
 export type AgentSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 export type AgentSandboxTransport = 'http-ndjson' | 'websocket';
+export type AgentSandboxLifecycle = 'per_run' | 'per_thread';
 
 export interface AgentStateMount {
   userId: string;
@@ -63,6 +64,9 @@ export interface AgentSandboxLaunchConfig {
   acpPort: number;
   entrypoint: string[];
   timeoutSeconds: number;
+  lifecycle: AgentSandboxLifecycle;
+  idleSeconds: number;
+  warmPoolSize: number;
   cpu: string;
   memory: string;
   userId: string;

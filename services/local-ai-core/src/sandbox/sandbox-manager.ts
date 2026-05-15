@@ -25,6 +25,7 @@ export class SandboxManager {
   }) {}
 
   async start(): Promise<SandboxRun> {
+    const startedAt = Date.now();
     const config = materializeSandboxLaunchConfig(this.options.config, this.options.env);
     const apiKey = resolveOpenSandboxApiKey(config, this.options.env);
     const client = this.options.client || new OpenSandboxClient({
@@ -32,16 +33,23 @@ export class SandboxManager {
       apiKey,
     });
     await client.health();
+    this.options.log?.(`OpenSandbox health ready in ${Date.now() - startedAt}ms`);
     const createInput = buildOpenSandboxCreateInput(config, this.options.env);
+    const createStartedAt = Date.now();
     const sandbox = await client.createSandbox(createInput);
+    this.options.log?.(`OpenSandbox sandbox created in ${Date.now() - createStartedAt}ms id=${sandbox.id}`);
     this.activeSandboxId = sandbox.id;
+    const runningStartedAt = Date.now();
     const ready = await this.waitForRunning(client, sandbox.id, config.timeoutSeconds);
     if (!ready) {
       throw new LocalCoreError('sandbox_start_timeout', `OpenSandbox sandbox ${sandbox.id} did not reach Running state.`, {
         details: { sandboxId: sandbox.id, timeoutSeconds: config.timeoutSeconds },
       });
     }
+    this.options.log?.(`OpenSandbox sandbox running in ${Date.now() - runningStartedAt}ms id=${sandbox.id}`);
+    const endpointStartedAt = Date.now();
     const endpoint = await client.getEndpoint(sandbox.id, config.acpPort);
+    this.options.log?.(`OpenSandbox endpoint ready in ${Date.now() - endpointStartedAt}ms id=${sandbox.id}`);
     return {
       sandboxId: sandbox.id,
       endpoint: normalizeEndpoint(endpoint.endpoint, this.options.env[SANDBOX_ENDPOINT_HOST_ENV], config.transport),

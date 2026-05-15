@@ -141,10 +141,11 @@ async function waitForHttpReady(endpoint: string, signal: AbortSignal) {
         method: 'GET',
         signal,
       }, Math.min(3000, Math.max(1000, deadline - Date.now())));
-      if (response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.runtimeRunning !== false) {
         return;
       }
-      lastError = new Error(`Health check failed with ${response.status}`);
+      lastError = new Error(`Health check failed with ${response.status}${payload?.runtimeRunning === false ? ' runtime not running' : ''}`);
     } catch (error) {
       lastError = error;
     }

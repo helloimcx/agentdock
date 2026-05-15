@@ -33,6 +33,7 @@ export class LocalCoreAcpSessionCoordinator {
 
   closeAll() {
     for (const session of this.sessions.values()) {
+      this.clearIdleClose(session);
       this.options.transport.closeSession(session);
     }
     this.sessions.clear();
@@ -43,8 +44,21 @@ export class LocalCoreAcpSessionCoordinator {
     if (!session) {
       return;
     }
+    this.clearIdleClose(session);
     this.options.transport.closeSession(session);
     this.sessions.delete(threadId);
+  }
+
+  releaseThreadSession(threadId: string, config: LocalCoreProjectConfig) {
+    if (!config.sandbox?.enabled || config.sandbox.lifecycle === 'per_run' || config.sandbox.stateScope === 'run') {
+      this.closeThreadSession(threadId);
+      return;
+    }
+    const session = this.sessions.get(threadId);
+    if (!session || session.closed) {
+      return;
+    }
+    this.scheduleIdleClose(session, config.sandbox.idleSeconds);
   }
 
   async ensureSession(
@@ -65,11 +79,15 @@ export class LocalCoreAcpSessionCoordinator {
       && existing.launchConfigKey === configKey
       && existing.launchRuntimeEnvKey === runtimeEnvKey
     ) {
+      this.clearIdleClose(existing);
+      this.options.log?.(`[acp.session:${threadId}] reuse existing session mode=${config.sandbox?.enabled ? 'sandbox' : 'local'}`);
       return existing;
     }
     if (existing) {
       this.closeThreadSession(threadId);
     }
+    const startedAt = Date.now();
+    this.options.log?.(`[acp.session:${threadId}] spawn mode=${config.sandbox?.enabled ? 'sandbox' : 'local'} transport=${config.execution?.transport || 'stdio'}`);
     const baseEnv = {
       ...process.env,
       ...config.env,
@@ -85,6 +103,7 @@ export class LocalCoreAcpSessionCoordinator {
     session.launchRuntimeEnvKey = runtimeEnvKey;
     this.sessions.set(threadId, session);
     await this.options.transport.initializeSession(session);
+    this.options.log?.(`[acp.session:${threadId}] initialize done in ${Date.now() - startedAt}ms`);
     const row = this.options.store.getThreadRow(threadId);
     if (row?.acp_session_id && row.acp_supports_load && session.supportsLoad) {
       try {
@@ -113,11 +132,13 @@ export class LocalCoreAcpSessionCoordinator {
           throw new Error('ACP session/new did not return a sessionId');
         }
         this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad);
+        this.options.log?.(`[acp.session:${threadId}] session/new done in ${Date.now() - startedAt}ms`);
       } catch (error) {
         this.closeThreadSession(threadId);
         throw error;
       }
     }
+    this.options.log?.(`[acp.session:${threadId}] ready in ${Date.now() - startedAt}ms`);
     return session;
   }
 
@@ -180,6 +201,7 @@ export class LocalCoreAcpSessionCoordinator {
       return;
     }
     const activeRunId = session.currentRunId;
+    this.clearIdleClose(session);
     this.options.transport.closeSessionWithError(session, error);
     if (activeRunId) {
       this.options.store.updateRun(activeRunId, session.threadId, 'failed');
@@ -192,6 +214,26 @@ export class LocalCoreAcpSessionCoordinator {
     }
     if (this.sessions.get(session.threadId) === session) {
       this.sessions.delete(session.threadId);
+    }
+  }
+
+  private scheduleIdleClose(session: AcpSessionState, idleSeconds: number) {
+    this.clearIdleClose(session);
+    const seconds = Number.isFinite(idleSeconds) && idleSeconds > 0 ? idleSeconds : 900;
+    this.options.log?.(`[acp.session:${session.threadId}] keep sandbox session warm for ${seconds}s`);
+    session.idleCloseTimer = setTimeout(() => {
+      if (this.sessions.get(session.threadId) === session && !session.closed && !session.currentRunId) {
+        this.options.log?.(`[acp.session:${session.threadId}] idle timeout reached; closing sandbox session`);
+        this.closeThreadSession(session.threadId);
+      }
+    }, seconds * 1000);
+    session.idleCloseTimer.unref?.();
+  }
+
+  private clearIdleClose(session: AcpSessionState) {
+    if (session.idleCloseTimer) {
+      clearTimeout(session.idleCloseTimer);
+      session.idleCloseTimer = undefined;
     }
   }
 

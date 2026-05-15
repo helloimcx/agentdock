@@ -393,12 +393,14 @@ export class LocalCoreAcpBackend {
     const message = normalizeThreadMessageInput(input);
     const content = message.displayText;
     let session: AcpSessionState | null = null;
+    const runStartedAt = Date.now();
     try {
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
         permissionMode: options.permissionMode,
         runtimeEnv: options.runtimeEnv,
         runId,
       });
+      this.options.log?.(`[acp.run:${runId}] session ready in ${Date.now() - runStartedAt}ms`);
       const priorAssistantFinalMessages = this.options.store
         .getThread(threadId, [])
         .messages
@@ -446,8 +448,10 @@ export class LocalCoreAcpBackend {
         messageId: randomUUID(),
         prompt: message.contentParts,
       }, ACP_PROMPT_TIMEOUT_MS) as Promise<{ stopReason?: string }>;
+      this.options.log?.(`[acp.run:${runId}] prompt sent in ${Date.now() - runStartedAt}ms`);
       session.promptPromise = promptPromise;
       const result = await promptPromise;
+      this.options.log?.(`[acp.run:${runId}] prompt completed in ${Date.now() - runStartedAt}ms`);
       const currentTurn = session.currentTurn;
       if (!currentTurn || currentTurn.runId !== runId) {
         return;
@@ -624,7 +628,7 @@ export class LocalCoreAcpBackend {
         session.promptPromise = null;
       }
       if (config.sandbox?.enabled) {
-        this.sessionCoordinator.closeThreadSession(threadId);
+        this.sessionCoordinator.releaseThreadSession(threadId, config);
       }
     }
   }
@@ -634,6 +638,10 @@ export class LocalCoreAcpBackend {
   }
 
   private handleAgentNotification(session: AcpSessionState, payload: any) {
+    if (session.currentTurn && !session.currentTurn.firstAgentUpdateLogged) {
+      session.currentTurn.firstAgentUpdateLogged = true;
+      this.options.log?.(`[acp.run:${session.currentTurn.runId}] first agent update received`);
+    }
     this.turnCoordinator.handleAgentNotification(session, payload);
   }
 

@@ -20,9 +20,14 @@ const child = spawn(command, args, {
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 const subscribers = new Set();
+const pendingOutputChunks = [];
 let closed = false;
 
 child.stdout.on('data', (chunk) => {
+  if (subscribers.size === 0) {
+    queueOutputChunk(chunk);
+    return;
+  }
   for (const response of subscribers) {
     response.write(chunk);
   }
@@ -82,6 +87,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     subscribers.add(response);
+    flushPendingOutput(response);
     request.on('close', () => {
       subscribers.delete(response);
     });
@@ -112,6 +118,24 @@ function shutdown() {
 function terminateRuntime() {
   if (!closed && !child.killed) {
     child.kill('SIGTERM');
+  }
+}
+
+function queueOutputChunk(chunk) {
+  pendingOutputChunks.push(Buffer.from(chunk));
+  let totalBytes = pendingOutputChunks.reduce((sum, entry) => sum + entry.byteLength, 0);
+  while (totalBytes > 1024 * 1024 && pendingOutputChunks.length > 1) {
+    const removed = pendingOutputChunks.shift();
+    totalBytes -= removed.byteLength;
+  }
+}
+
+function flushPendingOutput(response) {
+  if (pendingOutputChunks.length === 0) {
+    return;
+  }
+  for (const chunk of pendingOutputChunks.splice(0)) {
+    response.write(chunk);
   }
 }
 

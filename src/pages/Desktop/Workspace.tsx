@@ -71,6 +71,9 @@ type SandboxForm = {
   acp_port: string;
   state_scope: 'user' | 'project' | 'thread' | 'run';
   timeout_seconds: string;
+  sandbox_lifecycle: 'per_run' | 'per_thread';
+  idle_seconds: string;
+  warm_pool_size: string;
   cpu: string;
   memory: string;
   workspace_mount_path: string;
@@ -109,6 +112,9 @@ const defaultSandboxForm: SandboxForm = {
   acp_port: '8080',
   state_scope: 'project',
   timeout_seconds: '7200',
+  sandbox_lifecycle: 'per_thread',
+  idle_seconds: '900',
+  warm_pool_size: '0',
   cpu: '1000m',
   memory: '2Gi',
   workspace_mount_path: '/workspace',
@@ -261,6 +267,9 @@ function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
     acp_port: String(input?.acp_port || defaultSandboxForm.acp_port),
     state_scope: input?.state_scope || defaultSandboxForm.state_scope,
     timeout_seconds: String(input?.timeout_seconds || defaultSandboxForm.timeout_seconds),
+    sandbox_lifecycle: input?.sandbox_lifecycle || defaultSandboxForm.sandbox_lifecycle,
+    idle_seconds: String(input?.idle_seconds || defaultSandboxForm.idle_seconds),
+    warm_pool_size: String(input?.warm_pool_size ?? defaultSandboxForm.warm_pool_size),
     cpu: input?.cpu || defaultSandboxForm.cpu,
     memory: input?.memory || defaultSandboxForm.memory,
     workspace_mount_path: input?.workspace_mount_path || defaultSandboxForm.workspace_mount_path,
@@ -275,6 +284,9 @@ function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
     runtime_image_id: input.runtime_image_id.trim() || defaultSandboxForm.runtime_image_id,
     state_scope: input.state_scope,
     timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
+    sandbox_lifecycle: input.sandbox_lifecycle,
+    idle_seconds: Number(input.idle_seconds) || Number(defaultSandboxForm.idle_seconds),
+    warm_pool_size: Math.max(0, Number(input.warm_pool_size) || 0),
     cpu: input.cpu.trim() || defaultSandboxForm.cpu,
     memory: input.memory.trim() || defaultSandboxForm.memory,
   };
@@ -1137,6 +1149,26 @@ export default function DesktopWorkspace() {
                           type="number"
                           value={selectedSandbox.timeout_seconds}
                           onChange={(event) => updateSelectedSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))}
+                        />
+                        <Select
+                          label="Sandbox lifecycle"
+                          value={selectedSandbox.sandbox_lifecycle}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, sandbox_lifecycle: event.target.value as SandboxForm['sandbox_lifecycle'] }))}
+                        >
+                          <option value="per_thread">Keep warm per thread</option>
+                          <option value="per_run">Close after each run</option>
+                        </Select>
+                        <Input
+                          label="Idle seconds"
+                          type="number"
+                          value={selectedSandbox.idle_seconds}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, idle_seconds: event.target.value }))}
+                        />
+                        <Input
+                          label="Warm pool"
+                          type="number"
+                          value={selectedSandbox.warm_pool_size}
+                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, warm_pool_size: event.target.value }))}
                         />
                       </div>
                       <div className="rounded-xl border border-black/10 px-4 py-3 text-sm text-muted-foreground dark:border-white/[0.08]">
