@@ -67,7 +67,7 @@ async function assertDeploymentDiagnostics() {
 async function assertSandboxMessageRoundTrip() {
   const configState = await coreRequest('GET', '/runtime/config');
   const previousConfig = configState.parsed || {};
-  const workspaceId = 'compose-e2e-sandbox';
+  const providerId = 'compose-e2e-provider';
   const nextConfig = {
     ...previousConfig,
     deployment_profile: 'docker-compose',
@@ -90,42 +90,82 @@ async function assertSandboxMessageRoundTrip() {
       workspace_mount_path: '/workspace',
       state_mount_path: '/agent-state',
     }],
-    projects: [
-      ...(Array.isArray(previousConfig.projects)
-        ? previousConfig.projects.filter((project) => project.name !== workspaceId)
-        : []),
-      {
-        name: workspaceId,
-        agent: {
-          type: 'pi',
-          options: {
-            work_dir: '/tmp',
-            sandbox: {
-              enabled: true,
-              provider_id: 'opensandbox-default',
-              runtime_image_id: 'fake-acp',
-              state_scope: 'run',
-              sandbox_lifecycle: 'per_run',
-              timeout_seconds: 300,
-              cpu: '500m',
-              memory: '512Mi',
-            },
-          },
-        },
-        platforms: [],
-      },
-    ],
+    projects: Array.isArray(previousConfig.projects) ? previousConfig.projects : [],
   };
   try {
     await coreRequest('POST', '/runtime/config/structured', { config: nextConfig });
-    const thread = await coreRequest('POST', '/threads', { workspaceId, title: 'Compose E2E' });
-    await coreRequest('POST', `/threads/${encodeURIComponent(thread.id)}/messages`, { content: 'hello compose sandbox' });
-    const detail = await waitForAssistantMessage(thread.id, 'compose sandbox acp ok');
+    await coreRequest('POST', '/providers', {
+      id: providerId,
+      name: 'compose-e2e',
+      api_key: 'fake-key',
+      model: 'fake-model',
+    });
+    const run = await coreRequest('POST', '/external/runs', {
+      user_id: 'compose-user',
+      external_project_id: 'compose-project',
+      external_thread_id: 'compose-thread',
+      title: 'Compose E2E',
+      agent_type: 'pi',
+      provider_id: providerId,
+      prompt: 'hello compose sandbox',
+    });
+    const events = await waitForExternalRunEvents(run.events_url, 'compose sandbox acp ok');
+    const detail = await waitForAssistantMessage(run.thread_id, 'compose sandbox acp ok');
     const final = [...detail.messages].reverse().find((message) => message.role === 'assistant' && message.kind === 'final');
+    if (!String(run.thread?.workspacePath || '').includes('/threads/compose-thread/workspace')) {
+      throw new Error(`external thread workspace path was not isolated: ${JSON.stringify(run.thread)}`);
+    }
+    if (!events.some((event) => event.type === 'external.run.snapshot')) {
+      throw new Error(`external run SSE snapshot was not received: ${JSON.stringify(events)}`);
+    }
     console.log(`[e2e:compose] Sandbox ACP reply: ${final?.content || ''}`);
   } finally {
     await coreRequest('POST', '/runtime/config/structured', { config: previousConfig });
+    await coreRequest('DELETE', `/providers/${encodeURIComponent(providerId)}`).catch(() => undefined);
   }
+}
+
+async function waitForExternalRunEvents(eventsUrl, expected) {
+  const response = await fetch(`${coreBase}${eventsUrl.replace(/^\/api\/local\/v1/, '')}`);
+  if (!response.ok || !response.body) {
+    throw new Error(`external run events failed: HTTP ${response.status}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const events = [];
+  let buffer = '';
+  const deadline = Date.now() + 90000;
+  try {
+    while (Date.now() < deadline) {
+      const read = await reader.read();
+      if (read.done) {
+        break;
+      }
+      if (read.value) {
+        buffer += decoder.decode(read.value, { stream: true });
+      }
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() || '';
+      for (const chunk of chunks) {
+        const dataLine = chunk.split('\n').find((line) => line.startsWith('data: '));
+        if (!dataLine) {
+          continue;
+        }
+        const event = JSON.parse(dataLine.slice(6));
+        events.push(event);
+        if (
+          event.type === 'external.run.stream'
+          && event.stream?.type === 'reply'
+          && String(event.stream?.content || '').includes(expected)
+        ) {
+          return events;
+        }
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  throw new Error(`external run events did not include "${expected}": ${JSON.stringify(events)}`);
 }
 
 async function waitForAssistantMessage(threadId, expected) {

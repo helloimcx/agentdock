@@ -96,6 +96,21 @@ test('local core route parser handles shared model provider routes', () => {
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/providers/deepseek/extra'), null);
 });
 
+test('local core route parser handles external project and run routes', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/external/projects'), {
+    name: 'external.project.ensure',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/external/runs'), {
+    name: 'external.run.create',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/external/runs/run%2Fone/events'), {
+    name: 'external.run.events',
+    runId: 'run/one',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/external/projects'), null);
+  assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/external/runs/run-1/events'), null);
+});
+
 test('local core route parser keeps approval resolution separate from approval detail', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/approvals'), { name: 'approvals.list' });
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/approvals'), { name: 'approvals.create' });

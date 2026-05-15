@@ -77,6 +77,7 @@ flowchart LR
 
 - 删除旧的 sandbox WebSocket proxy 兼容路径，云端 sandbox ACP 通信统一走 HTTP NDJSON bridge。
 - 云端模式默认按 thread 复用 sandbox/ACP session，并增加 idle TTL 与阶段耗时日志，降低连续对话的首 token 延迟。
+- 新增外部系统 API，可按 `user_id` 创建/复用项目、发起 agent run，并通过 per-run SSE 订阅回答过程；compose 模式下外部 workspace 默认持久化到 `AGENTDOCK_EXTERNAL_WORKSPACE_ROOT`。
 
 ### 2026-05-14
 

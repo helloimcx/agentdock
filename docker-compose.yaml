@@ -16,10 +16,12 @@ services:
       AGENTDOCK_OPENSANDBOX_SERVER_URL: http://opensandbox-server:8080
       AGENTDOCK_SANDBOX_ENDPOINT_HOST: ${AGENTDOCK_SANDBOX_ENDPOINT_HOST:-host.docker.internal}
       AGENTDOCK_SANDBOX_STATE_HOST_ROOT: ${AGENTDOCK_SANDBOX_STATE_HOST_ROOT:-/tmp/agentdock-sandbox-state}
+      AGENTDOCK_EXTERNAL_WORKSPACE_ROOT: ${AGENTDOCK_EXTERNAL_WORKSPACE_ROOT:-/tmp/agentdock-external-workspaces}
       OPEN_SANDBOX_HOST_MOUNT_ALLOWLIST: ${OPEN_SANDBOX_HOST_MOUNT_ALLOWLIST:-/Users,/private/tmp,/tmp}
     volumes:
       - agentdock-core-data:/data/agentdock
       - ${AGENTDOCK_SANDBOX_STATE_HOST_ROOT:-/tmp/agentdock-sandbox-state}:${AGENTDOCK_SANDBOX_STATE_HOST_ROOT:-/tmp/agentdock-sandbox-state}
+      - ${AGENTDOCK_EXTERNAL_WORKSPACE_ROOT:-/tmp/agentdock-external-workspaces}:${AGENTDOCK_EXTERNAL_WORKSPACE_ROOT:-/tmp/agentdock-external-workspaces}
     depends_on:
       - opensandbox-server
     restart: unless-stopped

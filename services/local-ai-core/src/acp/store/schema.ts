@@ -188,6 +188,36 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_model_providers_name ON model_providers (name);
+    CREATE TABLE IF NOT EXISTS external_projects (
+      user_id TEXT NOT NULL,
+      external_project_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      workspace_path TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, external_project_id),
+      UNIQUE(workspace_id)
+    );
+    CREATE TABLE IF NOT EXISTS external_threads (
+      user_id TEXT NOT NULL,
+      external_project_id TEXT NOT NULL,
+      external_thread_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      workspace_path TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, external_project_id, external_thread_id),
+      UNIQUE(thread_id),
+      FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_external_threads_thread ON external_threads (thread_id);
+    CREATE INDEX IF NOT EXISTS idx_external_threads_workspace ON external_threads (workspace_id);
     CREATE TABLE IF NOT EXISTS agent_tasks (
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,

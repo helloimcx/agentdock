@@ -83,6 +83,9 @@ export type LocalAiCoreRoute =
   | { name: 'diagnostics.deployment' }
   | { name: 'plugins.diagnostics' }
   | { name: 'workspace.streaming-probe'; workspaceId: string }
+  | { name: 'external.project.ensure' }
+  | { name: 'external.run.create' }
+  | { name: 'external.run.events'; runId: string }
   | { name: 'events.stream' }
   | { name: 'platform.gateways.list'; platform: string }
   | { name: 'platform.pairings.list'; platform: string }
@@ -193,6 +196,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (segments[0] === 'plugins') {
     return parsePluginsRoute(normalizedMethod, segments);
   }
+  if (segments[0] === 'external') {
+    return parseExternalRoute(normalizedMethod, segments);
+  }
   if (normalizedMethod === 'GET' && segments.length === 1 && segments[0] === 'events') {
     return { name: 'events.stream' };
   }
@@ -200,6 +206,20 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
     return parsePlatformsRoute(normalizedMethod, segments);
   }
 
+  return null;
+}
+
+function parseExternalRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'POST' && segments.length === 2 && segments[1] === 'projects') {
+    return { name: 'external.project.ensure' };
+  }
+  if (method === 'POST' && segments.length === 2 && segments[1] === 'runs') {
+    return { name: 'external.run.create' };
+  }
+  if (method === 'GET' && segments.length === 4 && segments[1] === 'runs' && segments[3] === 'events') {
+    const runId = decodeURIComponent(segments[2] || '').trim();
+    return runId ? { name: 'external.run.events', runId } : null;
+  }
   return null;
 }
 

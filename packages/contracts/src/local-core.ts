@@ -450,6 +450,63 @@ export interface AgentTaskListResponse {
   nextCursor?: string;
 }
 
+export interface ExternalProjectEnsureInput {
+  user_id: string;
+  external_project_id: string;
+  display_name?: string;
+  agent_type?: string;
+  provider_id?: string;
+  model?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ExternalProject {
+  userId: string;
+  externalProjectId: string;
+  workspaceId: string;
+  workspacePath: string;
+  displayName: string;
+  agentType: string;
+  providerId: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ExternalRunCreateInput extends ExternalProjectEnsureInput {
+  external_thread_id?: string;
+  title?: string;
+  prompt: string;
+}
+
+export interface ExternalThread {
+  userId: string;
+  externalProjectId: string;
+  externalThreadId: string;
+  workspaceId: string;
+  threadId: string;
+  workspacePath: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ExternalRunCreateResponse {
+  project: ExternalProject;
+  thread: ExternalThread;
+  workspace_id: string;
+  thread_id: string;
+  run_id: string;
+  task_id?: string;
+  events_url: string;
+}
+
+export interface ExternalRunSnapshot {
+  runId: string;
+  task?: AgentTask;
+  thread?: ThreadDetail;
+}
+
 export interface ChannelRoute {
   type: string;
   channelId: string;
@@ -1325,4 +1382,6 @@ export type LocalCoreEvent =
   | { type: 'automation.monitor.updated'; monitor: AutomationMonitor }
   | { type: 'automation.monitor.run.updated'; run: AutomationMonitorRun }
   | { type: 'presence.updated'; threadId?: string; live: boolean; stream?: DesktopBridgeEvent }
-  | { type: 'stream.updated'; stream: DesktopBridgeEvent };
+  | { type: 'stream.updated'; stream: DesktopBridgeEvent }
+  | { type: 'external.run.snapshot'; snapshot: ExternalRunSnapshot }
+  | { type: 'external.run.stream'; runId: string; stream: DesktopBridgeEvent };

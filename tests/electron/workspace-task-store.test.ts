@@ -63,6 +63,48 @@ test('model providers persist independently from workspace config', () => {
   }
 });
 
+test('external project and thread mappings persist with isolated workspace paths', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'external-store-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const project = store.upsertExternalProject({
+      userId: 'user-a',
+      externalProjectId: 'project-a',
+      workspaceId: 'external-user-a-project-a',
+      workspacePath: '/data/users/user-a/projects/project-a',
+      displayName: 'Project A',
+      agentType: 'pi',
+      providerId: 'deepseek',
+      metadata: { source: 'external' },
+      createdAt: '2026-05-15T00:00:00.000Z',
+      updatedAt: '2026-05-15T00:00:00.000Z',
+    });
+    const thread = store.createThread(project.workspaceId, 'Thread A', 'pi');
+    store.upsertExternalThread({
+      userId: project.userId,
+      externalProjectId: project.externalProjectId,
+      externalThreadId: 'thread-a',
+      workspaceId: project.workspaceId,
+      threadId: thread.id,
+      workspacePath: '/data/users/user-a/projects/project-a/threads/thread-a/workspace',
+      metadata: { channel: 'api' },
+      createdAt: '2026-05-15T00:00:00.000Z',
+      updatedAt: '2026-05-15T00:00:00.000Z',
+    });
+    store.close();
+
+    const reopened = new LocalCoreAcpStore(userDataPath);
+    assert.equal(reopened.getExternalProject('user-a', 'project-a')?.workspacePath, '/data/users/user-a/projects/project-a');
+    assert.equal(
+      reopened.getExternalThreadByThreadId(thread.id)?.workspacePath,
+      '/data/users/user-a/projects/project-a/threads/thread-a/workspace',
+    );
+    reopened.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('controller migrates embedded project providers into shared provider store', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'model-provider-migration-'));
   try {

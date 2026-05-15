@@ -77,6 +77,11 @@ import type {
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopModelProviderListResponse,
+  ExternalProject,
+  ExternalProjectEnsureInput,
+  ExternalRunCreateInput,
+  ExternalRunCreateResponse,
+  ExternalRunSnapshot,
 } from '../../../../packages/contracts/src/index.js';
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
 import { errorInfoToHttpBody, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
@@ -96,6 +101,9 @@ export interface LocalAiCoreBindings extends EventEmitter {
   createModelProvider(input: DesktopModelProviderInput): Promise<DesktopModelProvider>;
   updateModelProvider(providerId: string, input: DesktopModelProviderInput): Promise<DesktopModelProvider>;
   deleteModelProvider(providerId: string): Promise<{ deleted: boolean }>;
+  ensureExternalProject(input: ExternalProjectEnsureInput): Promise<ExternalProject>;
+  createExternalRun(input: ExternalRunCreateInput): Promise<ExternalRunCreateResponse>;
+  getExternalRunSnapshot(runId: string): Promise<ExternalRunSnapshot>;
   listWorkspaces(): Promise<WorkspaceSummary[]>;
   listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]>;
   getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry>;
@@ -251,6 +259,8 @@ export class LocalAiCoreServer {
   private readonly port: number;
   private readonly sseClients = new Set<ServerResponse>();
   private readonly heartbeatTimers = new Map<ServerResponse, NodeJS.Timeout>();
+  private readonly externalReplayTimers = new Map<ServerResponse, NodeJS.Timeout>();
+  private readonly externalRunSseClients = new Map<string, Set<ServerResponse>>();
   private server = createServer((req, res) => {
     void this.handleRequest(req, res);
   });
@@ -263,6 +273,9 @@ export class LocalAiCoreServer {
     });
     this.bindings.on('bridge', (bridge: DesktopBridgeEvent) => {
       this.broadcast({ type: 'stream.updated', stream: bridge });
+      if (bridge.replyCtx) {
+        this.broadcastExternalRunStream(String(bridge.replyCtx), bridge);
+      }
       if (bridge.sessionKey) {
         const threadId = this.findThreadIdFromSessionKey(bridge.sessionKey);
         this.broadcast({
@@ -312,6 +325,16 @@ export class LocalAiCoreServer {
       clearInterval(timer);
     }
     this.heartbeatTimers.clear();
+    for (const timer of this.externalReplayTimers.values()) {
+      clearInterval(timer);
+    }
+    this.externalReplayTimers.clear();
+    for (const clients of this.externalRunSseClients.values()) {
+      for (const client of clients) {
+        client.end();
+      }
+    }
+    this.externalRunSseClients.clear();
     await new Promise<void>((resolve, reject) => {
       this.server.close((error) => {
         if (error) {
@@ -565,6 +588,19 @@ export class LocalAiCoreServer {
       case 'provider.delete':
         json(res, 200, await this.bindings.deleteModelProvider(route.providerId));
         return;
+      case 'external.project.ensure': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.ensureExternalProject(body as unknown as ExternalProjectEnsureInput));
+        return;
+      }
+      case 'external.run.create': {
+        const body = await readJsonBody(req);
+        json(res, 200, await this.bindings.createExternalRun(body as unknown as ExternalRunCreateInput));
+        return;
+      }
+      case 'external.run.events':
+        await this.attachExternalRunSseClient(route.runId, res);
+        return;
       case 'workspace-security.get':
         json(res, 200, await this.bindings.getWorkspaceSecuritySettings(route.workspaceId));
         return;
@@ -812,10 +848,102 @@ export class LocalAiCoreServer {
     });
   }
 
+  private async attachExternalRunSseClient(runId: string, res: ServerResponse) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+    res.write(': connected\n\n');
+    const clients = this.externalRunSseClients.get(runId) || new Set<ServerResponse>();
+    clients.add(res);
+    this.externalRunSseClients.set(runId, clients);
+    const replayedMessageIds = new Set<string>();
+    const heartbeat = setInterval(() => {
+      res.write(': heartbeat\n\n');
+    }, 15000);
+    this.heartbeatTimers.set(res, heartbeat);
+    const replayTimer = setInterval(() => {
+      void this.bindings.getExternalRunSnapshot(runId)
+        .then((snapshot) => this.replayExternalRunMessages(res, runId, snapshot, replayedMessageIds))
+        .catch(() => undefined);
+    }, 1000);
+    this.externalReplayTimers.set(res, replayTimer);
+    res.on('close', () => {
+      clearInterval(heartbeat);
+      clearInterval(replayTimer);
+      this.heartbeatTimers.delete(res);
+      this.externalReplayTimers.delete(res);
+      clients.delete(res);
+      if (clients.size === 0) {
+        this.externalRunSseClients.delete(runId);
+      }
+    });
+    const snapshot = await this.bindings.getExternalRunSnapshot(runId);
+    res.write(createSseEvent('external.run.snapshot', {
+      type: 'external.run.snapshot',
+      snapshot,
+    }));
+    this.replayExternalRunMessages(res, runId, snapshot, replayedMessageIds);
+  }
+
   private broadcast(event: LocalCoreEvent) {
     const payload = createSseEvent(event.type, event);
     for (const client of this.sseClients) {
       client.write(payload);
+    }
+  }
+
+  private broadcastExternalRunStream(runId: string, stream: DesktopBridgeEvent) {
+    const clients = this.externalRunSseClients.get(runId);
+    if (!clients?.size) {
+      return;
+    }
+    const payload = createSseEvent('external.run.stream', {
+      type: 'external.run.stream',
+      runId,
+      stream,
+    });
+    for (const client of clients) {
+      client.write(payload);
+    }
+  }
+
+  private replayExternalRunMessages(
+    res: ServerResponse,
+    runId: string,
+    snapshot: ExternalRunSnapshot,
+    replayedMessageIds: Set<string>,
+  ) {
+    const thread = snapshot.thread;
+    const startedAt = Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || '');
+    if (!thread || !Number.isFinite(startedAt)) {
+      return;
+    }
+    for (const message of thread.messages || []) {
+      if (message.role !== 'assistant') {
+        continue;
+      }
+      const messageAt = Date.parse(message.timestamp || '');
+      if (!Number.isFinite(messageAt) || messageAt < startedAt) {
+        continue;
+      }
+      if (replayedMessageIds.has(message.id)) {
+        continue;
+      }
+      replayedMessageIds.add(message.id);
+      res.write(createSseEvent('external.run.stream', {
+        type: 'external.run.stream',
+        runId,
+        stream: {
+          type: message.kind === 'final' ? 'reply' : 'update_message',
+          sessionKey: thread.bridgeSessionKey,
+          replyCtx: runId,
+          content: message.content,
+          bridgeKind: message.bridgeKind,
+          bridgeStatus: message.bridgeStatus,
+        },
+      }));
     }
   }
 

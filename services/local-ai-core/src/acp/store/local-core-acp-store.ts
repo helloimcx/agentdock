@@ -39,6 +39,8 @@ import type {
   WorkspaceRegistryUpdateInput,
   DesktopModelProvider,
   DesktopModelProviderInput,
+  ExternalProject,
+  ExternalThread,
 } from '../../../../../packages/contracts/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '../../../../../shared/desktop.js';
@@ -58,6 +60,7 @@ import { LocalSecurityStore } from './security-store.js';
 import { LocalThreadStore } from './thread-store.js';
 import { LocalWorkspaceRegistryStore } from './workspace-registry-store.js';
 import { LocalModelProviderStore } from './model-provider-store.js';
+import { LocalExternalStore } from './external-store.js';
 
 export class LocalCoreAcpStore {
   private readonly db: DatabaseSync;
@@ -69,6 +72,7 @@ export class LocalCoreAcpStore {
   private readonly automationMonitors: LocalAutomationMonitorStore;
   private readonly platform: LocalPlatformStore;
   private readonly modelProviders: LocalModelProviderStore;
+  private readonly external: LocalExternalStore;
 
   constructor(userDataPath: string) {
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
@@ -86,6 +90,7 @@ export class LocalCoreAcpStore {
     this.automationMonitors = new LocalAutomationMonitorStore(this.db);
     this.platform = new LocalPlatformStore(this.db);
     this.modelProviders = new LocalModelProviderStore(this.db);
+    this.external = new LocalExternalStore(this.db);
     ensureLocalCoreAcpSchema(this.db);
   }
 
@@ -199,6 +204,26 @@ export class LocalCoreAcpStore {
 
   deleteModelProvider(providerId: string) {
     return this.modelProviders.delete(providerId);
+  }
+
+  getExternalProject(userId: string, externalProjectId: string): ExternalProject | undefined {
+    return this.external.getProject(userId, externalProjectId);
+  }
+
+  upsertExternalProject(input: ExternalProject): ExternalProject {
+    return this.external.upsertProject(input);
+  }
+
+  getExternalThread(userId: string, externalProjectId: string, externalThreadId: string): ExternalThread | undefined {
+    return this.external.getThread(userId, externalProjectId, externalThreadId);
+  }
+
+  getExternalThreadByThreadId(threadId: string): ExternalThread | undefined {
+    return this.external.getThreadByThreadId(threadId);
+  }
+
+  upsertExternalThread(input: ExternalThread): ExternalThread {
+    return this.external.upsertThread(input);
   }
 
   getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {

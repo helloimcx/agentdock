@@ -565,10 +565,13 @@ export class WorkspaceRouter {
     const defaultRoute = await this.getWorkspaceRoute(workspaceId);
     const row = this.store.getThreadRow(threadId);
     const threadAgentType = String(row?.agent_type || '').trim().toLowerCase();
-    if (!threadAgentType || threadAgentType === defaultRoute.agentType) {
-      return defaultRoute;
-    }
-    return this.getWorkspaceRoute(workspaceId, threadAgentType);
+    const route = !threadAgentType || threadAgentType === defaultRoute.agentType
+      ? defaultRoute
+      : await this.getWorkspaceRoute(workspaceId, threadAgentType);
+    const externalThread = this.store.getExternalThreadByThreadId(threadId);
+    return externalThread
+      ? withThreadWorkspacePath(route, externalThread.workspacePath)
+      : route;
   }
 
   private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
@@ -695,6 +698,26 @@ function withAgentTypeOverride(project: DesktopProjectConfig, agentType: string)
       ...(project.agent || {}),
       type: agentType,
       options,
+    },
+  };
+}
+
+function withThreadWorkspacePath(route: WorkspaceRoute, workspacePath: string): WorkspaceRoute {
+  const workDir = String(workspacePath || '').trim();
+  if (!workDir) {
+    return route;
+  }
+  return {
+    ...route,
+    config: {
+      ...route.config,
+      workDir,
+      sandbox: route.config.sandbox
+        ? {
+            ...route.config.sandbox,
+            workspaceHostPath: workDir,
+          }
+        : route.config.sandbox,
     },
   };
 }
