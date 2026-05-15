@@ -40,6 +40,8 @@ apps/            Future shell directories (shell-desktop, shell-web — stubs)
 shared/          Cross-process shared types (desktop.ts)
 electron/        Electron main process + preload + managed skills + tests
 src/             React renderer
+tests/           Cross-layer tests (electron, contracts, integration)
+public/          Static assets
 ```
 
 ### Two Separate TypeScript Compilations
@@ -94,11 +96,13 @@ React 19, Electron 35, Vite 6.3, TypeScript 5.8 (strict), Tailwind CSS 3.4, Zust
 
 ## Architecture Boundaries
 
-Keep the directory structure intentional with clear ownership and single-purpose modules. Page components orchestrate UI and data flow, shared components stay presentation-focused, stores own state transitions, API modules isolate transport concerns, and Local AI Core logic does not leak into renderer code except through shared contracts. Prefer small, cohesive files over broad utility modules, and move reusable behavior to the nearest appropriate shared layer only after a real second use appears.
+Keep the directory structure intentional with clear ownership and single-purpose modules. Page components orchestrate UI and data flow, shared components stay presentation-focused, stores own state transitions, API modules isolate transport concerns, and Local AI Core logic does not leak into renderer code except through shared contracts. Prefer small, cohesive files over broad utility modules, and move reusable behavior to the nearest appropriate shared layer only after a real second use appears. When a file exceeds 1000 lines, consider splitting it. Keep agent runtime quirks in `services/local-ai-core/src/agents/<agent-id>/` first, and only move behavior into shared ACP/router/storage/renderer layers when the invariant truly applies across agents.
+
+When changing chat UI styles, consider all chat surfaces together: desktop app, web, mobile H5, and the different channel/session entry points.
 
 ## Plugin Development
 
-Plugin contracts and runtime types belong in `packages/plugin-sdk/`. Built-in plugins live under `services/local-ai-core/src/plugins/builtin/`, one focused file per plugin with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`). Register plugins through the local core registry and declare dependencies in the manifest rather than relying on implicit load order. Put reusable kernel behavior in `services/local-ai-core/src/kernel/`, not inside individual plugins.
+Plugin contracts and runtime types belong in `packages/plugin-sdk/`; keep cross-process data shapes in shared contracts instead of duplicating them in plugins. Built-in plugins live under `services/local-ai-core/src/plugins/builtin/`, one focused file per plugin with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`). Register plugins through the local core registry and declare dependencies in the manifest rather than relying on implicit load order. Put reusable kernel behavior in `services/local-ai-core/src/kernel/`, not inside individual plugins, and avoid adding dynamic plugin loading until the static registration path is stable.
 
 ## Conventions
 
@@ -112,14 +116,20 @@ Plugin contracts and runtime types belong in `packages/plugin-sdk/`. Built-in pl
 
 ## Testing
 
-`pnpm test` runs the Node.js built-in test runner against Electron-side tests (`electron/*.test.ts`) and knowledge-api tests (`packages/knowledge-api/test/`). `pnpm e2e:smoke` exercises the full built Electron app end to end. When adding tests, place them near the feature they cover and name them after the target module (e.g., `thread-chat-permission.test.ts`).
+`pnpm test` builds renderer and Electron outputs, then runs the compiled Node test suite. `pnpm e2e:smoke` exercises the full built Electron app end to end.
+
+When adding tests, keep single-module renderer tests near the feature they cover, put cross-layer Electron/contract/integration tests under `tests/electron/`, `tests/contracts/`, or `tests/integration/`, and keep package-private tests under `packages/<name>/test/`.
+
+Use TDD selectively where it prevents repeated regressions. Bug fixes should start with the smallest failing test that reproduces the issue. Cross-layer features should add contract or state-machine coverage first, especially for ACP streaming, permission lifecycle, thread/task state, channel content normalization, scheduler behavior, and shared enum parsing. Pure UI polish, copy changes, and exploratory product work do not require strict TDD; validate them with focused manual checks, screenshots when useful, or smoke/e2e coverage.
 
 ## Agent Workflow
 
 - Before writing any code, describe the intended approach and wait for approval
 - If requirements are ambiguous, ask clarifying questions before writing code
 - If a user request conflicts with best practices, briefly explain the concern and suggest a better approach
-- When fixing a bug, start by writing a test that reproduces it, then fix the bug until the test passes
+- When fixing a bug, start by writing a test that reproduces it, then fix the bug until the test passes. When investigating issues, reason from first principles about the data model, event flow, and ownership boundaries; locate whether the faulty state is in agent session storage, Local AI Core logs, SQLite thread records, bridge events, or live UI state before deciding on a fix
+- When adding a new feature, update the `README.md` `New` section with a concise user-visible note
+- When updating project progress, status notes, changelogs, or date-sensitive logs, verify the current date first and use concrete dates instead of stale relative dates
 - After writing code, list relevant edge cases and suggest test cases to cover them
 - Every time the user corrects you, reflect on what went wrong and provide a plan to avoid repeating the same mistake
 
@@ -137,3 +147,7 @@ These files are intentionally large:
 - `services/local-ai-core/src/channel/lark/local-core-lark-gateway.ts` (~41KB) — Lark gateway
 - `services/local-ai-core/src/runtime/server.ts` (~29KB) — core HTTP server
 - `services/local-ai-core/src/acp/local-core-acp-store.ts` (~30KB) — ACP session store
+
+## Configuration Notes
+
+Development scripts honor Electron runtime overrides such as `AI_WORKSTATION_USER_DATA_DIR` and `AI_WORKSTATION_SMOKE_OUTPUT`. Avoid committing machine-specific paths, secrets, or generated output.
