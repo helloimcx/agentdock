@@ -488,7 +488,7 @@ export interface DesktopModelProviderListResponse {
 
 export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 export type DesktopDeploymentProfileId = 'local-desktop' | 'docker-compose' | 'remote-cloud';
-export type DesktopSandboxTransport = 'http-ndjson' | 'websocket';
+export type DesktopSandboxTransport = 'http-ndjson';
 export type DesktopSandboxLifecycle = 'per_run' | 'per_thread';
 
 export interface DesktopDeploymentProfile {

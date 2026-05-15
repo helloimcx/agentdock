@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import process from 'node:process';
 import readline from 'node:readline';
-import WebSocket from 'ws';
 import type { AgentSandboxLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
 import { SandboxManager, type SandboxRun } from './sandbox-manager.js';
 
@@ -15,7 +14,6 @@ async function main() {
     },
   });
   let run: SandboxRun | undefined;
-  let socket: WebSocket | undefined;
   let abortController: AbortController | undefined;
   let closed = false;
   const cleanup = async () => {
@@ -24,11 +22,6 @@ async function main() {
     }
     closed = true;
     abortController?.abort();
-    try {
-      socket?.close();
-    } catch {
-      // ignore close races
-    }
     await manager.cleanup(run);
   };
 
@@ -38,52 +31,17 @@ async function main() {
   process.once('SIGTERM', signalHandler);
   process.once('SIGINT', signalHandler);
   process.once('disconnect', signalHandler);
-  process.on('exit', () => {
-    if (!closed) {
-      socket?.close();
-    }
-  });
 
   try {
     run = await manager.start();
-    if (config.transport === 'websocket') {
-      socket = await connectStable(run.endpoint);
-      pipeWebSocket(socket, cleanup);
-    } else {
-      abortController = new AbortController();
-      process.stderr.write(`[agentdock-sandbox] HTTP ACP bridge endpoint: ${run.endpoint}\n`);
-      await pipeHttpNdjson(run.endpoint, abortController, cleanup);
-    }
+    abortController = new AbortController();
+    process.stderr.write(`[agentdock-sandbox] HTTP ACP bridge endpoint: ${run.endpoint}\n`);
+    await pipeHttpNdjson(run.endpoint, abortController, cleanup);
   } catch (error) {
     process.stderr.write(`[agentdock-sandbox] ${error instanceof Error ? error.message : String(error)}\n`);
     await cleanup();
     process.exit(1);
   }
-}
-
-function pipeWebSocket(socket: WebSocket, cleanup: () => Promise<void>) {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    crlfDelay: Infinity,
-  });
-  rl.on('line', (line) => {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(line);
-    }
-  });
-  process.stdin.on('end', () => {
-    void cleanup().finally(() => process.exit(0));
-  });
-  socket.on('message', (data) => {
-    writeOutputLines(typeof data === 'string' ? data : data.toString('utf8'));
-  });
-  socket.on('close', () => {
-    void cleanup().finally(() => process.exit(0));
-  });
-  socket.on('error', (error) => {
-    process.stderr.write(`[agentdock-sandbox] ACP bridge error: ${error.message}\n`);
-    void cleanup().finally(() => process.exit(1));
-  });
 }
 
 async function pipeHttpNdjson(endpoint: string, abortController: AbortController, cleanup: () => Promise<void>) {
@@ -228,68 +186,6 @@ function writeOutputLines(text: string) {
 
 function joinEndpointPath(endpoint: string, path: string) {
   return `${endpoint.replace(/\/+$/, '')}${path}`;
-}
-
-async function connectStable(endpoint: string) {
-  const deadline = Date.now() + 30000;
-  let lastError: unknown;
-  while (Date.now() < deadline) {
-    try {
-      return await connectOnce(endpoint, Math.min(5000, Math.max(1000, deadline - Date.now())), 1000);
-    } catch (error) {
-      lastError = error;
-      await delay(300);
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error(`Timed out connecting to sandbox ACP bridge: ${endpoint}`);
-}
-
-function connectOnce(endpoint: string, timeoutMs: number, stableMs: number) {
-  return new Promise<WebSocket>((resolve, reject) => {
-    const socket = new WebSocket(endpoint);
-    let settled = false;
-    let stableTimer: NodeJS.Timeout | undefined;
-    const timeout = setTimeout(() => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      socket.close();
-      reject(new Error(`Timed out connecting to sandbox ACP bridge: ${endpoint}`));
-    }, timeoutMs);
-    socket.once('open', () => {
-      stableTimer = setTimeout(() => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        resolve(socket);
-      }, stableMs);
-    });
-    socket.once('error', (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      if (stableTimer) {
-        clearTimeout(stableTimer);
-      }
-      reject(error);
-    });
-    socket.once('close', () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      if (stableTimer) {
-        clearTimeout(stableTimer);
-      }
-      reject(new Error(`Sandbox ACP bridge closed before it was ready: ${endpoint}`));
-    });
-  });
 }
 
 function delay(ms: number) {

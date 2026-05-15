@@ -199,7 +199,7 @@ test('workspace route launches sandbox proxy when sandbox is enabled', () => {
   }
 });
 
-test('legacy sandbox image overrides without transport keep websocket compatibility', () => {
+test('legacy sandbox image overrides without transport use the generic HTTP bridge', () => {
   const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
   try {
     const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), project({
@@ -207,8 +207,8 @@ test('legacy sandbox image overrides without transport keep websocket compatibil
       image: 'agentdock/pi-acp:legacy',
     }));
 
-    assert.equal(route.execution?.transport, 'sandbox-websocket-stdio-proxy');
-    assert.equal(route.sandbox?.transport, 'websocket');
+    assert.equal(route.execution?.transport, 'sandbox-http-ndjson-stdio-proxy');
+    assert.equal(route.sandbox?.transport, 'http-ndjson');
     assert.equal(route.sandbox?.image, 'agentdock/pi-acp:legacy');
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -418,19 +418,14 @@ test('OpenSandbox metadata is Kubernetes label safe while env keeps raw ids', ()
   }
 });
 
-test('normalizeEndpoint converts HTTP endpoints to WebSocket endpoints for legacy websocket transport', () => {
-  assert.equal(normalizeEndpoint('http://127.0.0.1:3000'), 'ws://127.0.0.1:3000');
-  assert.equal(normalizeEndpoint('https://example.test/acp'), 'wss://example.test/acp');
-  assert.equal(normalizeEndpoint('127.0.0.1:3000'), 'ws://127.0.0.1:3000');
-  assert.equal(normalizeEndpoint('ws://127.0.0.1:3000'), 'ws://127.0.0.1:3000');
-  assert.equal(normalizeEndpoint('127.0.0.1:3000', 'host.docker.internal'), 'ws://host.docker.internal:3000/');
-});
-
-test('normalizeEndpoint keeps HTTP endpoints for http ndjson transport', () => {
+test('normalizeEndpoint keeps HTTP endpoints for the sandbox ACP bridge', () => {
+  assert.equal(normalizeEndpoint('http://127.0.0.1:3000'), 'http://127.0.0.1:3000');
+  assert.equal(normalizeEndpoint('https://example.test/acp'), 'https://example.test/acp');
+  assert.equal(normalizeEndpoint('127.0.0.1:3000'), 'http://127.0.0.1:3000');
+  assert.equal(normalizeEndpoint('127.0.0.1:3000', 'host.docker.internal'), 'http://host.docker.internal:3000/');
   assert.equal(normalizeEndpoint('http://127.0.0.1:3000', '', 'http-ndjson'), 'http://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('https://example.test/acp', '', 'http-ndjson'), 'https://example.test/acp');
   assert.equal(normalizeEndpoint('127.0.0.1:3000', '', 'http-ndjson'), 'http://127.0.0.1:3000');
-  assert.equal(normalizeEndpoint('ws://127.0.0.1:3000', '', 'http-ndjson'), 'http://127.0.0.1:3000');
   assert.equal(normalizeEndpoint('127.0.0.1:3000', 'host.docker.internal', 'http-ndjson'), 'http://host.docker.internal:3000/');
 });
 

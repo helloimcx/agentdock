@@ -168,7 +168,7 @@ function migrateProjectSandboxRuntimeImage(
     ...fallback,
     id: imageId,
     image: sandbox.image || fallback.image,
-    transport: sandbox.transport || (sandbox.image ? 'websocket' : fallback.transport),
+    transport: fallback.transport,
     acp_port: sandbox.acp_port || fallback.acp_port,
     entrypoint: sandbox.entrypoint || fallback.entrypoint,
     runtime_command: fallback.runtime_command,

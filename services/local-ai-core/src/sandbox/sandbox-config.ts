@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxLifecycle, AgentSandboxStateScope, AgentSandboxTransport } from '../../../../packages/plugin-sdk/src/index.js';
+import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxLifecycle, AgentSandboxStateScope } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
@@ -162,7 +162,7 @@ function resolveSandboxRuntimeImage(
     const fallback = defaultSandboxRuntimeImage(agentType);
     return {
       ...selected,
-      transport: selected.transport || (selected.id === fallback.id && selected.image === fallback.image ? fallback.transport : 'websocket'),
+      transport: normalizeSandboxTransport(selected.transport || fallback.transport),
     };
   }
   if (raw.image || raw.transport || raw.acp_port || raw.entrypoint || raw.workspace_mount_path || raw.state_mount_path) {
@@ -171,7 +171,7 @@ function resolveSandboxRuntimeImage(
       id: runtimeImageId || fallback.id,
       agent_type: agentType,
       image: raw.image || fallback.image,
-      transport: normalizeSandboxTransport(raw.transport || 'websocket'),
+      transport: normalizeSandboxTransport(raw.transport || fallback.transport),
       acp_port: normalizePositiveInteger(raw.acp_port, fallback.acp_port),
       entrypoint: raw.entrypoint || fallback.entrypoint,
       workspace_mount_path: raw.workspace_mount_path || fallback.workspace_mount_path,
@@ -228,8 +228,8 @@ function normalizeStateScope(value?: string): AgentSandboxStateScope {
   return value === 'user' || value === 'thread' || value === 'run' ? value : 'project';
 }
 
-function normalizeSandboxTransport(value?: string): AgentSandboxTransport {
-  return value === 'websocket' ? 'websocket' : 'http-ndjson';
+function normalizeSandboxTransport(_value?: string): 'http-ndjson' {
+  return 'http-ndjson';
 }
 
 function normalizeSandboxLifecycle(value?: string): AgentSandboxLifecycle {

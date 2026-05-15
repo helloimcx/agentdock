@@ -201,31 +201,13 @@ function metadataLabel(value: string, fallback: string) {
   return `${trimmed.slice(0, 54).replace(/[^a-zA-Z0-9]+$/g, '')}-${hash}`;
 }
 
-export function normalizeEndpoint(endpoint: string, endpointHostOverride?: string, transport: 'http-ndjson' | 'websocket' = 'websocket') {
+export function normalizeEndpoint(endpoint: string, endpointHostOverride?: string, _transport: 'http-ndjson' = 'http-ndjson') {
   const trimmed = endpoint.trim();
   const normalized = (() => {
-    if (transport === 'http-ndjson') {
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        return trimmed;
-      }
-      if (trimmed.startsWith('ws://')) {
-        return `http://${trimmed.slice('ws://'.length)}`;
-      }
-      if (trimmed.startsWith('wss://')) {
-        return `https://${trimmed.slice('wss://'.length)}`;
-      }
-      return `http://${trimmed}`;
-    }
-    if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://')) {
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
     }
-    if (trimmed.startsWith('http://')) {
-      return `ws://${trimmed.slice('http://'.length)}`;
-    }
-    if (trimmed.startsWith('https://')) {
-      return `wss://${trimmed.slice('https://'.length)}`;
-    }
-    return `ws://${trimmed}`;
+    return `http://${trimmed}`;
   })();
   const override = String(endpointHostOverride || '').trim();
   if (!override) {

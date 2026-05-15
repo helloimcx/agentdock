@@ -42,7 +42,7 @@ export interface AgentExecutionDescriptor {
 }
 
 export type AgentSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
-export type AgentSandboxTransport = 'http-ndjson' | 'websocket';
+export type AgentSandboxTransport = 'http-ndjson';
 export type AgentSandboxLifecycle = 'per_run' | 'per_thread';
 
 export interface AgentStateMount {
