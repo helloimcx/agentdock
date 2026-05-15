@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SANDBOX_RUNTIME_IMAGE_ID,
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
   defaultSandboxRuntimeImage,
@@ -144,7 +145,16 @@ function migrateProjectSandboxRuntimeImage(
   config.sandbox_runtime_images = Array.isArray(config.sandbox_runtime_images) ? config.sandbox_runtime_images : [];
   const existing = config.sandbox_runtime_images.find((image) => image.id === imageId);
   if (existing) {
-    return { changed: !assignedRuntimeImage };
+    let changed = !assignedRuntimeImage;
+    if (!existing.transport && isBuiltInHttpSandboxRuntimeImage(existing.id, existing.image, fallback.image)) {
+      existing.transport = fallback.transport;
+      changed = true;
+    }
+    if (!existing.entrypoint) {
+      existing.entrypoint = fallback.entrypoint;
+      changed = true;
+    }
+    return { changed };
   }
   config.sandbox_runtime_images.push({
     ...fallback,
@@ -159,6 +169,10 @@ function migrateProjectSandboxRuntimeImage(
     state_mount_path: sandbox.state_mount_path || fallback.state_mount_path,
   });
   return { changed: true };
+}
+
+function isBuiltInHttpSandboxRuntimeImage(id: string, image: string, fallbackImage: string) {
+  return id === DEFAULT_SANDBOX_RUNTIME_IMAGE_ID && String(image || fallbackImage).trim() === fallbackImage;
 }
 
 function cloneConfig(input: DesktopConnectConfig): DesktopConnectConfig {

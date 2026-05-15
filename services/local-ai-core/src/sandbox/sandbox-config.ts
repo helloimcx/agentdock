@@ -154,9 +154,10 @@ function resolveSandboxRuntimeImage(
       || images.find((image) => image.agent_type === agentType)
     : undefined;
   if (selected) {
+    const fallback = defaultSandboxRuntimeImage(agentType);
     return {
       ...selected,
-      transport: selected.transport || 'websocket',
+      transport: selected.transport || (selected.id === fallback.id && selected.image === fallback.image ? fallback.transport : 'websocket'),
     };
   }
   if (raw.image || raw.transport || raw.acp_port || raw.entrypoint || raw.workspace_mount_path || raw.state_mount_path) {

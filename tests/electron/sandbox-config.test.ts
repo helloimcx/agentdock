@@ -322,6 +322,38 @@ test('desktop config migration normalizes user id, DeepSeek provider, and sandbo
   assert.equal(migrated.config.sandbox_runtime_images?.[0]?.transport, 'http-ndjson');
 });
 
+test('desktop config migration upgrades built-in Pi sandbox image to HTTP transport', () => {
+  const migrated = migrateDesktopConnectConfig({
+    config_version: 2,
+    projects: [{
+      name: 'cloud-project',
+      agent: {
+        type: 'pi',
+        options: {
+          sandbox: {
+            enabled: true,
+            provider_id: 'opensandbox-default',
+            runtime_image_id: 'pi-acp-local',
+          },
+        },
+      },
+      platforms: [],
+    }],
+    sandbox_runtime_images: [{
+      id: 'pi-acp-local',
+      agent_type: 'pi',
+      image: 'agentdock/pi-acp:local',
+      acp_port: 8080,
+      entrypoint: ['node', '/opt/agentdock/acp-bridge.mjs'],
+      workspace_mount_path: '/workspace',
+      state_mount_path: '/agent-state',
+    }],
+  });
+
+  assert.equal(migrated.changed, true);
+  assert.equal(migrated.config.sandbox_runtime_images?.[0]?.transport, 'http-ndjson');
+});
+
 test('OpenSandbox create input includes volumes, resources, env, and metadata', () => {
   const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
   try {
