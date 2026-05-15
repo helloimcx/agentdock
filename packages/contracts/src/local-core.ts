@@ -477,6 +477,8 @@ export interface ExternalRunCreateInput extends ExternalProjectEnsureInput {
   external_thread_id?: string;
   title?: string;
   prompt: string;
+  permission_mode?: string;
+  runtime_env?: Record<string, string>;
 }
 
 export interface ExternalThread {
@@ -505,6 +507,75 @@ export interface ExternalRunSnapshot {
   runId: string;
   task?: AgentTask;
   thread?: ThreadDetail;
+}
+
+export type OpenAiChatRole = 'system' | 'developer' | 'user' | 'assistant';
+
+export interface OpenAiChatCompletionMessage {
+  role: OpenAiChatRole | string;
+  content:
+    | string
+    | Array<{
+        type?: string;
+        text?: string;
+        [key: string]: unknown;
+      }>
+    | null;
+  name?: string;
+}
+
+export interface OpenAiChatCompletionRequest {
+  model?: string;
+  messages?: OpenAiChatCompletionMessage[];
+  stream?: boolean;
+  user?: string;
+  metadata?: Record<string, unknown>;
+  n?: number;
+  tools?: unknown;
+  tool_choice?: unknown;
+  response_format?: unknown;
+  audio?: unknown;
+  logprobs?: unknown;
+  [key: string]: unknown;
+}
+
+export interface OpenAiChatCompletionChoice {
+  index: number;
+  message: {
+    role: 'assistant';
+    content: string;
+  };
+  finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null;
+}
+
+export interface OpenAiChatCompletionResponse {
+  id: string;
+  object: 'chat.completion';
+  created: number;
+  model: string;
+  choices: OpenAiChatCompletionChoice[];
+  agentdock?: Record<string, unknown>;
+}
+
+export interface OpenAiChatCompletionChunk {
+  id: string;
+  object: 'chat.completion.chunk';
+  created: number;
+  model: string;
+  choices: Array<{
+    index: number;
+    delta: {
+      role?: 'assistant';
+      content?: string;
+    };
+    finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | null;
+  }>;
+  agentdock?: Record<string, unknown>;
+  error?: {
+    message: string;
+    type?: string;
+    code?: string;
+  };
 }
 
 export interface ChannelRoute {

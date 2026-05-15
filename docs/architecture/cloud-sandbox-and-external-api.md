@@ -49,6 +49,7 @@ The external API is for systems that need to run AgentDock without driving the d
 | `POST /api/local/v1/external/projects` | Create or reuse a workspace for `user_id` and `external_project_id`. |
 | `POST /api/local/v1/external/runs` | Ensure the project/thread, send the prompt, and return `workspace_id`, `thread_id`, `run_id`, optional `task_id`, and `events_url`. |
 | `GET /api/local/v1/external/runs/:runId/events` | Stream a snapshot plus bridge updates for one run over SSE. |
+| `POST /api/local/v1/openai/chat/completions` | Accept OpenAI Chat Completions-style requests, map metadata to an external run, and return OpenAI-style JSON or SSE chunks with AgentDock extensions. |
 
 `ExternalProjectEnsureInput` accepts `user_id`, `external_project_id`, optional display name, agent type, provider id, model, and metadata. `ExternalRunCreateInput` adds `external_thread_id`, title, and prompt.
 
@@ -59,6 +60,46 @@ Local AI Core maps external identities to internal state:
 - Workspace files default to `AGENTDOCK_EXTERNAL_WORKSPACE_ROOT`, or `<userData>/external-workspaces` when the environment variable is not set.
 - External projects are persisted into the workspace registry with `deviceId: "external"` and metadata marking the external owner.
 - External project config enables sandbox mode with `state_scope: "project"` and `sandbox_lifecycle: "per_thread"` by default.
+
+## OpenAI-Compatible Chat Completions
+
+The OpenAI-compatible endpoint is intended for SDK-style clients that can set the Local AI Core base URL and send Chat Completions requests. It does not call OpenAI; it adapts the request to an AgentDock external run.
+
+Identity is passed through the request body `metadata`:
+
+```json
+{
+  "model": "gpt-4.1-mini",
+  "stream": true,
+  "metadata": {
+    "user_id": "user-1",
+    "project_id": "repo-1",
+    "thread_id": "issue-42",
+    "agent_type": "pi",
+    "agentdock_progress_mode": "extension"
+  },
+  "messages": [
+    { "role": "user", "content": "Summarize this repository." }
+  ]
+}
+```
+
+Rules:
+
+- `metadata.user_id` and `metadata.project_id` are required; `metadata.thread_id` is optional.
+- Body `user` may fill `user_id` only for legacy clients, but `metadata.user_id` is the canonical field.
+- Runs from this endpoint always request sandbox execution and `bypassPermissions`/yolo permission mode.
+- Request `model` is treated as a model override for the generated external project config.
+- v1 supports text-only messages and `n=1`.
+
+Streaming responses use the OpenAI `chat.completion.chunk` object and add an `agentdock` extension object. Final assistant text is emitted through `choices[0].delta.content`. Agent progress is emitted through `agentdock`:
+
+- `agentdock.event = "thought_delta"` for thinking.
+- `agentdock.event = "plan_update"` for planning.
+- `agentdock.event = "tool_update"` for tool progress and results.
+- `agentdock.event = "status"` or `"card"` for runtime status events.
+
+By default, progress is extension-only so regular OpenAI SDK consumers see the assistant answer stream. Set `metadata.agentdock_progress_mode` to `"content"` to also include progress as concise Markdown in `delta.content`.
 
 ## Event Stream
 

@@ -111,6 +111,14 @@ test('local core route parser handles external project and run routes', () => {
   assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/external/runs/run-1/events'), null);
 });
 
+test('local core route parser handles OpenAI-compatible chat completions route', () => {
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/openai/chat/completions'), {
+    name: 'openai.chat.completions',
+  });
+  assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/openai/chat/completions'), null);
+  assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/openai/completions'), null);
+});
+
 test('local core route parser keeps approval resolution separate from approval detail', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/approvals'), { name: 'approvals.list' });
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/approvals'), { name: 'approvals.create' });

@@ -84,12 +84,18 @@ async function invokeServer(
   server: LocalAiCoreServer,
   method: string,
   url: string,
+  inputBody?: unknown,
 ) {
+  const requestBody = inputBody === undefined ? '' : JSON.stringify(inputBody);
   const req = Object.assign(new EventEmitter(), {
     method,
     url,
     headers: {},
-    async *[Symbol.asyncIterator]() {},
+    async *[Symbol.asyncIterator]() {
+      if (requestBody) {
+        yield Buffer.from(requestBody);
+      }
+    },
   }) as any;
   let body = '';
   const headers = new Map<string, string>();
@@ -1089,6 +1095,84 @@ test('server diagnostics routes dispatch through generic bindings', async () => 
   assert.equal(doctorResponse.body.data.status, 'warn');
   assert.equal(deploymentResponse.body.data.status, 'pass');
   assert.deepEqual(calls, ['errors', 'doctor', 'deployment']);
+});
+
+test('server OpenAI-compatible chat route maps metadata to sandbox yolo external run', async () => {
+  let externalInput: any;
+  const bindings = Object.assign(new EventEmitter(), {
+    createExternalRun: async (input: any) => {
+      externalInput = input;
+      return {
+        project: {},
+        thread: {},
+        workspace_id: 'external-user-project',
+        thread_id: 'thread-1',
+        run_id: 'run-1',
+        task_id: 'task-1',
+        events_url: '/api/local/v1/external/runs/run-1/events',
+      };
+    },
+    getExternalRunSnapshot: async () => ({
+      runId: 'run-1',
+      task: {
+        taskId: 'task-1',
+        workspaceId: 'external-user-project',
+        runtimeId: 'pi',
+        threadId: 'thread-1',
+        runId: 'run-1',
+        title: 'Task',
+        status: 'completed',
+        createdAt: '2026-05-15T00:00:00.000Z',
+        updatedAt: '2026-05-15T00:00:02.000Z',
+        startedAt: '2026-05-15T00:00:01.000Z',
+        timeline: [],
+        logs: [],
+        artifacts: [],
+        approvalIds: [],
+      },
+      thread: {
+        id: 'thread-1',
+        workspaceId: 'external-user-project',
+        title: 'Thread',
+        createdAt: '2026-05-15T00:00:00.000Z',
+        updatedAt: '2026-05-15T00:00:02.000Z',
+        messages: [{
+          id: 'message-1',
+          role: 'assistant',
+          content: 'final answer',
+          timestamp: '2026-05-15T00:00:02.000Z',
+          kind: 'final',
+        }],
+      },
+    }),
+  }) as any;
+  const server = new LocalAiCoreServer(bindings, { port: 0 });
+
+  const response = await invokeServer(server, 'POST', '/api/local/v1/openai/chat/completions', {
+    model: 'model-1',
+    stream: false,
+    metadata: {
+      user_id: 'user-1',
+      project_id: 'project-1',
+      thread_id: 'thread-1',
+      agent_type: 'pi',
+    },
+    messages: [
+      { role: 'system', content: 'Be concise.' },
+      { role: 'user', content: 'Hello' },
+    ],
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.object, 'chat.completion');
+  assert.equal(response.body.choices[0].message.content, 'final answer');
+  assert.equal(externalInput.user_id, 'user-1');
+  assert.equal(externalInput.external_project_id, 'project-1');
+  assert.equal(externalInput.external_thread_id, 'thread-1');
+  assert.equal(externalInput.permission_mode, 'bypassPermissions');
+  assert.equal(externalInput.runtime_env.AGENTDOCK_OPENAI_COMPAT, '1');
+  assert.match(externalInput.prompt, /\[system\]\nBe concise\./);
+  assert.match(externalInput.prompt, /Hello/);
 });
 
 test('channel and scheduler capabilities use registry targets instead of Lark-specific routing', () => {

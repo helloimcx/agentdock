@@ -354,7 +354,10 @@ export class LocalCoreController extends EventEmitter implements LocalAiCoreBind
     }
     const project = await this.ensureExternalProject(input);
     const thread = await this.ensureExternalThread(project, input);
-    const sent = await this.workspaceRouter.sendThreadMessage(thread.threadId, input.prompt);
+    const sent = await this.workspaceRouter.sendThreadMessage(thread.threadId, input.prompt, {
+      permissionMode: input.permission_mode,
+      runtimeEnv: input.runtime_env,
+    });
     const task = this.store.getAgentTaskByRunId(sent.runId);
     return {
       project,

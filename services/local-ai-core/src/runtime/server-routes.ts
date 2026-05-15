@@ -86,6 +86,7 @@ export type LocalAiCoreRoute =
   | { name: 'external.project.ensure' }
   | { name: 'external.run.create' }
   | { name: 'external.run.events'; runId: string }
+  | { name: 'openai.chat.completions' }
   | { name: 'events.stream' }
   | { name: 'platform.gateways.list'; platform: string }
   | { name: 'platform.pairings.list'; platform: string }
@@ -199,6 +200,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (segments[0] === 'external') {
     return parseExternalRoute(normalizedMethod, segments);
   }
+  if (segments[0] === 'openai') {
+    return parseOpenAiRoute(normalizedMethod, segments);
+  }
   if (normalizedMethod === 'GET' && segments.length === 1 && segments[0] === 'events') {
     return { name: 'events.stream' };
   }
@@ -206,6 +210,13 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
     return parsePlatformsRoute(normalizedMethod, segments);
   }
 
+  return null;
+}
+
+function parseOpenAiRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'POST' && segments.length === 3 && segments[1] === 'chat' && segments[2] === 'completions') {
+    return { name: 'openai.chat.completions' };
+  }
   return null;
 }
 
