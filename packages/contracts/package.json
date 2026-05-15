@@ -2,5 +2,8 @@
   "name": "@cc/superai-contracts",
   "private": true,
   "version": "0.1.0",
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }

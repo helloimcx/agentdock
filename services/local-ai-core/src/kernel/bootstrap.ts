@@ -31,24 +31,15 @@ import { LocalCoreEventBus } from './event-bus.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import {
-  createBuiltinCodexAgentPlugin,
-  createBuiltinClaudeCodeAgentPlugin,
-  createBuiltinHermesAgentPlugin,
-  createBuiltinLocalCoreAcpAgentPlugin,
-  createBuiltinOpencodeAgentPlugin,
-  createBuiltinPiAgentPlugin,
-  createBuiltinStaticAgentCapabilityPlugin,
-  getStaticAgentRuntimeDefinitions,
-} from '../agents/index.js';
-import { createBuiltinLarkChannelPlugin } from '../plugins/builtin/channel-lark-plugin.js';
-import { createBuiltinWeixinChannelPlugin } from '../plugins/builtin/channel-weixin-plugin.js';
-import { createBuiltinAiVectorKnowledgePlugin } from '../plugins/builtin/knowledge-ai-vector-plugin.js';
-import { createBuiltinNoopKnowledgePlugin } from '../plugins/builtin/knowledge-noop-plugin.js';
-import { createBuiltinCronSchedulerPlugin } from '../plugins/builtin/scheduler-cron-plugin.js';
-import { createBuiltinLarkSchedulerPlugin } from '../plugins/builtin/scheduler-lark-plugin.js';
-import { createBuiltinLocalSchedulerPlugin } from '../plugins/builtin/scheduler-local-plugin.js';
-import { createBuiltinWeixinSchedulerPlugin } from '../plugins/builtin/scheduler-weixin-plugin.js';
-import { createBuiltinStockMonitorPlugin } from '../plugins/builtin/monitor-stock-plugin.js';
+  createBuiltinCronSchedulerPlugin,
+  createBuiltinNoopKnowledgePlugin,
+  createKernelBuiltinPlugins,
+  createRuntimeAgentPlugins,
+  createRuntimeChannelPlugins,
+  createRuntimeKnowledgePlugin,
+  createRuntimeMonitorPlugins,
+  createRuntimeSchedulerPlugins,
+} from '../plugins/builtin/catalog.js';
 import { createWorkspaceRouter, type WorkspaceRouter } from '../router/workspace-router.js';
 import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runtime/local-core-runtime-state.js';
 import { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
@@ -100,14 +91,7 @@ export function bootstrapLocalCoreKernel(options?: {
   const lifecycle = new LocalCoreLifecycleManager(plugins, context);
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
-  const builtIns = [
-    ...getStaticAgentRuntimeDefinitions().map((definition) =>
-      createBuiltinStaticAgentCapabilityPlugin(definition.agentType, definition.displayName)
-    ),
-    createBuiltinLocalCoreAcpAgentPlugin(),
-    createBuiltinCronSchedulerPlugin(),
-  ];
-  for (const plugin of builtIns) {
+  for (const plugin of createKernelBuiltinPlugins()) {
     plugins.register(plugin);
     options?.log?.(`[plugin:${plugin.manifest.id}] registered`);
     if (plugin.capabilities && plugins.isEnabled(plugin.manifest.id)) {
@@ -263,56 +247,31 @@ export function bootstrapLocalCoreRuntime(options: {
   if (!localCoreAgentPlugin) {
     throw new Error('Missing built-in LocalCore ACP agent plugin.');
   }
-  const agentPlugins = [
-    localCoreAgentPlugin,
-    createBuiltinPiAgentPlugin(),
-    createBuiltinOpencodeAgentPlugin(),
-    createBuiltinCodexAgentPlugin(),
-    createBuiltinClaudeCodeAgentPlugin(),
-    createBuiltinHermesAgentPlugin(),
-  ];
+  const agentPlugins = createRuntimeAgentPlugins(localCoreAgentPlugin);
   let workspaceRouter!: WorkspaceRouter;
   let weixinChannelRuntime!: ChannelRuntime;
-  const channelPlugin = createBuiltinLarkChannelPlugin({
+  const channelPlugins = createRuntimeChannelPlugins({
     store,
     readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
     getWorkspaceRouter: () => workspaceRouter,
     log: options.log,
   });
-  const weixinChannelPlugin = createBuiltinWeixinChannelPlugin({
+  const channelPlugin = channelPlugins.lark;
+  const weixinChannelPlugin = channelPlugins.weixin;
+  const knowledgePlugin = createRuntimeKnowledgePlugin({
+    enableKnowledge: options.enableKnowledge,
+    userDataPath: options.userDataPath,
+    getConfig: () => state.getKnowledgeConfig(),
+    setConfig: (input) => state.updateKnowledgeConfig(input),
+  });
+  const schedulerPlugins = createRuntimeSchedulerPlugins({
     store,
-    readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
     getWorkspaceRouter: () => workspaceRouter,
+    getLarkChannelRuntime: () => channelRuntime,
+    getWeixinChannelRuntime: () => weixinChannelRuntime,
     log: options.log,
   });
-  const knowledgePlugin = options.enableKnowledge === false
-    ? createBuiltinNoopKnowledgePlugin()
-    : createBuiltinAiVectorKnowledgePlugin({
-        userDataPath: options.userDataPath,
-        getConfig: () => state.getKnowledgeConfig(),
-        setConfig: (input) => state.updateKnowledgeConfig(input),
-      });
-  const schedulerPlugins = [
-    createBuiltinLocalSchedulerPlugin({
-      store,
-      getWorkspaceRouter: () => workspaceRouter,
-    }),
-    createBuiltinLarkSchedulerPlugin({
-      store,
-      getWorkspaceRouter: () => workspaceRouter,
-      getChannelRuntime: () => channelRuntime,
-      log: options.log,
-    }),
-    createBuiltinWeixinSchedulerPlugin({
-      store,
-      getWorkspaceRouter: () => workspaceRouter,
-      getChannelRuntime: () => weixinChannelRuntime,
-      log: options.log,
-    }),
-  ];
-  const monitorPlugins = [
-    createBuiltinStockMonitorPlugin(),
-  ];
+  const monitorPlugins = createRuntimeMonitorPlugins();
   for (const plugin of agentPlugins.filter((plugin) => plugin !== localCoreAgentPlugin)) {
     registerPlugin(kernel, plugin);
   }
