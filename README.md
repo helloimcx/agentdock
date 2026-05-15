@@ -13,7 +13,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## 系统架构
 
-AgentDock 由 Electron 桌面壳、React 渲染进程和 Local AI Core 组成。Electron 负责应用生命周期、窗口与本地进程编排；React 渲染进程通过 API 客户端与本地 core 通信，承载桌面、Web、线程、项目、知识库和系统配置界面；Local AI Core 提供 runtime、ACP 会话、channel 网关、定时任务、知识库和插件能力。跨进程契约集中在 `shared/` 与 `packages/contracts/`，插件 SDK 与内置插件分别位于 `packages/plugin-sdk/` 和 `services/local-ai-core/src/plugins/`。
+AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 core 启动；React/Web 通过 API client 访问 Local AI Core；Local AI Core 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时任务、知识库、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Local AI Core 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。
 
 ```mermaid
 ---
@@ -26,44 +26,65 @@ config:
     textColor: "#0f172a"
 ---
 flowchart LR
-  Web["Web 入口<br/>apps/shell-web"]
+  Web["AgentDock Web<br/>apps/shell-web"]
+  External["外部系统 / Agent API Client"]
 
   subgraph Desktop["AgentDock Desktop"]
     direction LR
-    Electron["Electron Shell<br/>窗口 / 应用生命周期"]
-    Renderer["React Renderer<br/>页面 / 状态 / API Client"]
+    Electron["Electron Shell<br/>窗口 / 本地 Core 启动"]
+    Renderer["React Renderer<br/>桌面 UI / API Client"]
   end
 
   subgraph Core["Local AI Core"]
     direction TB
-    CoreApi["HTTP API / SSE<br/>127.0.0.1:9831"]
+    CoreApi["HTTP API / SSE<br/>/api/local/v1"]
+    ExternalApi["External Agent API<br/>/external/projects · /external/runs"]
     Kernel["Kernel & Plugin Registry"]
-    Runtime["Workspace Router / ACP / Scheduler / Knowledge"]
+    Router["Workspace Router<br/>workspace · thread · run"]
+    Acp["ACP Runtime<br/>stdio 或 HTTP NDJSON bridge"]
+    Scheduler["Scheduler / Automation"]
+    Knowledge["Knowledge Runtime"]
+    Channels["Lark / 微信 Channel Gateway"]
   end
 
-  subgraph Integrations["外部通道与 Agent"]
+  subgraph Sandbox["Cloud Sandbox Mode"]
     direction TB
-    Channels["Lark / 微信 Channel"]
-    Agents["Codex / Claude Code / Hermes / Pi / opencode"]
+    OpenSandbox["OpenSandbox Server"]
+    Container["Sandbox Container<br/>agent runtime + HTTP NDJSON ACP bridge"]
+    State["workspace mount / agent state mount"]
   end
 
+  Agents["本地 Agent Runtime<br/>Codex / Claude Code / Hermes / Pi / opencode"]
   Contracts["共享契约<br/>shared/ · packages/contracts/"]
+  CoreSdk["Core SDK<br/>packages/core-sdk/"]
   PluginSdk["Plugin SDK<br/>packages/plugin-sdk/"]
 
   Web --> CoreApi
+  External --> ExternalApi
   Electron --> Renderer --> CoreApi
   Electron -.启动 / 管理.-> CoreApi
-  CoreApi --> Kernel --> Runtime
+  CoreApi --> ExternalApi
+  CoreApi --> Kernel --> Router
+  Router --> Acp
+  Router --> Scheduler
+  Router --> Knowledge
   Kernel --> Channels
-  Kernel --> Agents
+  Acp --> Agents
+  Acp --> OpenSandbox --> Container
+  Container --> State
+  Container -.HTTP NDJSON ACP.-> Acp
+  Scheduler --> Channels
 
   Contracts -.-> Renderer
   Contracts -.-> CoreApi
+  CoreSdk -.-> Renderer
   PluginSdk -.-> Kernel
 ```
 
 后台关键模块说明：
 
+- [架构总览](docs/architecture/overview.md)
+- [云端 Sandbox 与外部 Agent API](docs/architecture/cloud-sandbox-and-external-api.md)
 - [Local AI Core Kernel 与插件装配](docs/architecture/local-core-kernel.md)
 - [Workspace Router 路由层](docs/architecture/workspace-router.md)
 - [ACP 会话运行时](docs/architecture/acp-protocol.md)
