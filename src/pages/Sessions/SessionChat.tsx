@@ -62,16 +62,16 @@ export default function SessionChat() {
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b">
+      <div className="flex items-center justify-between border-b border-slate-200/80 pb-4 dark:border-white/[0.08]">
         <div className="flex items-center gap-3">
           <Link to="/sessions" className="p-2 rounded-md hover:bg-accent/10 transition-colors">
             <ArrowLeft size={18} className="text-muted-foreground" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-foreground">{session?.name || id}</h2>
+              <h2 className="text-[1.4rem] font-semibold text-foreground">{session?.name || id}</h2>
               {session?.live ? (
-                <span className="flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
                   <Circle size={5} className="fill-current" /> live
                 </span>
               ) : (
@@ -93,49 +93,52 @@ export default function SessionChat() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-6 space-y-5">
+      <div className="flex-1 overflow-y-auto py-6">
         {(!session?.history || session.history.length === 0) && (
           <p className="text-center text-sm text-muted-foreground py-12">{t('sessions.noMessages')}</p>
         )}
-        {session?.history?.map((msg, i) => {
-          const isUser = msg.role === 'user';
-          return (
-            <div key={i} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
-              {!isUser && (
-                <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                  <Bot size={16} className="text-primary" />
+        <div className="mx-auto max-w-4xl space-y-5">
+          {session?.history?.map((msg, i) => {
+            const isUser = msg.role === 'user';
+            return (
+              <div key={i} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
+                {!isUser && (
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 dark:bg-white/[0.06]">
+                    <Bot size={16} className="text-primary" />
+                  </div>
+                )}
+                <div className={cn(
+                  'rounded-[20px] px-5 py-3.5 text-sm',
+                  isUser
+                    ? 'chat-user-glass max-w-[70%] rounded-br-sm text-slate-950 dark:text-slate-50'
+                    : 'max-w-[78%] rounded-bl-sm border border-slate-200 bg-[#fbfbfd] text-card-foreground dark:border-white/[0.08] dark:bg-white/[0.04]'
+                )}>
+                  <ChatMarkdown content={msg.content} isUser={isUser} />
                 </div>
-              )}
-              <div className={cn(
-                'rounded-lg px-5 py-3.5 text-sm',
-                isUser
-                  ? 'max-w-[70%] bg-primary text-primary-foreground rounded-br-md'
-                  : 'max-w-[85%] bg-card border text-card-foreground rounded-bl-md shadow-sm'
-              )}>
-                <ChatMarkdown content={msg.content} isUser={isUser} />
+                {isUser && (
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted dark:bg-white/[0.08]">
+                    <User size={16} className="text-muted-foreground" />
+                  </div>
+                )}
               </div>
-              {isUser && (
-                <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center shrink-0 mt-1">
-                  <User size={16} className="text-muted-foreground" />
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
         <div ref={messagesEnd} />
       </div>
 
       {/* Input */}
       <div className="border-t pt-4">
         {session?.live ? (
-          <div className="relative">
+          <div className="mx-auto max-w-4xl">
+            <div className="relative">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('sessions.messageInput')}
               rows={2}
-              className="min-h-[88px] rounded-[24px] border-gray-200 bg-white px-4 pb-14 pt-3 text-[15px] leading-6 shadow-[0_12px_34px_rgba(15,23,42,0.08)] dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.42)] sm:min-h-[96px] sm:px-5 sm:pt-4"
+              className="min-h-[88px] rounded-[22px] border-gray-200 bg-[#fbfbfd] px-4 pb-14 pt-3 text-[15px] leading-6 dark:border-white/[0.08] dark:bg-[rgba(255,255,255,0.04)] sm:min-h-[96px] sm:px-5 sm:pt-4"
               disabled={sending}
             />
             <Button
@@ -143,7 +146,7 @@ export default function SessionChat() {
               disabled={sending || !input.trim()}
               size="icon"
               aria-label={t('sessions.messageInput')}
-              className="absolute bottom-3 right-3 h-10 w-10 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-11 sm:w-11"
+              className="absolute bottom-3 right-3 h-10 w-10 rounded-full bg-primary px-0 text-white shadow-none hover:bg-[#0071e3] disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-primary dark:text-white dark:hover:bg-[#2997ff] dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-11 sm:w-11"
             >
               {sending ? (
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
@@ -154,6 +157,7 @@ export default function SessionChat() {
                 <ArrowUp size={20} strokeWidth={2.2} />
               )}
             </Button>
+          </div>
           </div>
         ) : (
           <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground bg-muted rounded-lg">

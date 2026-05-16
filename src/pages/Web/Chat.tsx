@@ -597,14 +597,14 @@ export default function WebChat() {
 
   return (
     <div className="grid min-h-[calc(100vh-8rem)] grid-cols-1 gap-4 xl:grid-cols-[22rem_minmax(0,1fr)] animate-fade-in">
-      <Card className="flex flex-col gap-4 p-4 xl:h-[calc(100vh-8rem)] xl:overflow-hidden">
+      <Card className="flex flex-col gap-4 border-gray-200/80 bg-[#fbfbfd] p-4 shadow-none xl:h-[calc(100vh-8rem)] xl:overflow-hidden dark:border-white/[0.08] dark:bg-[#111214]">
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-gray-400">{t('sessions.selectProject')}</p>
             <select
               value={selectedProject}
               onChange={(event) => void handleProjectChange(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-gray-300/90 bg-white/90 px-3 py-2 text-sm text-gray-900 transition-all focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/45 dark:border-white/[0.1] dark:bg-[rgba(0,0,0,0.45)] dark:text-white"
+              className="mt-2 w-full rounded-[18px] border border-gray-300/90 bg-white px-3 py-2 text-sm text-gray-900 transition-all focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 dark:border-white/[0.1] dark:bg-[rgba(0,0,0,0.45)] dark:text-white"
             >
               <option value="">{t('sessions.allProjects')}</option>
               {projects.map((project) => (
@@ -657,10 +657,10 @@ export default function WebChat() {
                   <div
                     key={session.id}
                     className={cn(
-                      'rounded-2xl border p-3 transition-all',
+                      'rounded-[18px] border p-3 transition-all',
                       active
-                        ? 'border-accent/45 bg-accent/10 shadow-[0_0_20px_-12px_rgba(139,92,246,0.55)]'
-                        : 'border-gray-200/80 bg-white/70 hover:border-accent/30 dark:border-white/[0.08] dark:bg-white/[0.03]'
+                        ? 'border-primary/25 bg-primary/5'
+                        : 'border-gray-200/80 bg-white hover:border-gray-300 dark:border-white/[0.08] dark:bg-white/[0.03]'
                     )}
                   >
                     <button
@@ -676,7 +676,7 @@ export default function WebChat() {
                               {sessionLabel(session)}
                             </span>
                             {session.live || activeSessionIds.has(session.id) ? (
-                              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-600 dark:bg-violet-950/20 dark:text-violet-300">
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
                                 live
                               </span>
                             ) : (
@@ -726,7 +726,7 @@ export default function WebChat() {
         </div>
       </Card>
 
-      <Card className="flex min-h-[32rem] flex-col p-0 xl:h-[calc(100vh-8rem)]">
+      <Card className="flex min-h-[32rem] flex-col border-gray-200/80 bg-white p-0 shadow-none xl:h-[calc(100vh-8rem)] dark:border-white/[0.08] dark:bg-[#0b0d10]">
         <div className="flex items-center justify-between gap-3 border-b border-gray-200/80 px-5 py-4 dark:border-white/[0.08]">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -758,28 +758,28 @@ export default function WebChat() {
               />
             </div>
           ) : (
-            <div className="space-y-5">
+            <div className="mx-auto max-w-4xl space-y-5">
               {messages.map((message) => {
                 const isUser = message.role === 'user';
                 return (
                   <div key={message.id} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
                     {!isUser && (
-                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-                        <Bot size={16} className="text-accent" />
+                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] dark:bg-white/[0.06]">
+                        <Bot size={16} className="text-primary" />
                       </div>
                     )}
                     <div
                       className={cn(
-                        'max-w-[85%] rounded-2xl px-5 py-3.5 text-sm',
+                        'max-w-[78%] rounded-[20px] px-5 py-3.5 text-sm',
                         isUser
-                          ? 'bg-accent text-white rounded-br-md'
-                          : 'border border-gray-200 bg-white text-gray-900 shadow-sm dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.42)] dark:text-gray-100 rounded-bl-md'
+                          ? 'chat-user-glass rounded-br-sm text-slate-950 dark:text-slate-50'
+                          : 'rounded-bl-sm border border-gray-200 bg-[#fbfbfd] text-gray-900 dark:border-white/[0.08] dark:bg-[rgba(255,255,255,0.04)] dark:text-gray-100'
                       )}
                     >
                       <ChatMarkdown content={message.content} isUser={isUser} />
                     </div>
                     {isUser && (
-                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-200 dark:bg-white/[0.08]">
+                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f0f0f0] dark:bg-white/[0.08]">
                         <User size={16} className="text-gray-500 dark:text-gray-300" />
                       </div>
                     )}
@@ -812,7 +812,8 @@ export default function WebChat() {
             </div>
           )}
 
-          <div className="relative">
+          <div className="mx-auto max-w-4xl">
+            <div className="relative">
             <Textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -825,7 +826,7 @@ export default function WebChat() {
               rows={3}
               placeholder={selectedProject ? t('sessions.messageInput') : t('sessions.projectRequired')}
               disabled={!selectedProject || !activeSessionReady || sending || pollingState === 'polling' || pollingState === 'activating'}
-              className="min-h-[104px] rounded-[24px] border-gray-200 bg-white px-4 pb-16 pt-3 text-[15px] leading-6 shadow-[0_12px_34px_rgba(15,23,42,0.08)] dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.42)] sm:min-h-[112px] sm:px-5 sm:pt-4"
+              className="min-h-[104px] rounded-[22px] border-gray-200 bg-[#fbfbfd] px-4 pb-16 pt-3 text-[15px] leading-6 dark:border-white/[0.08] dark:bg-[rgba(255,255,255,0.04)] sm:min-h-[112px] sm:px-5 sm:pt-4"
               data-testid="web-chat-input"
             />
             <Button
@@ -833,11 +834,12 @@ export default function WebChat() {
               disabled={!canSend}
               size="icon"
               aria-label={t('sessions.send')}
-              className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
+              className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-primary px-0 text-white shadow-none hover:bg-[#0071e3] disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-primary dark:text-white dark:hover:bg-[#2997ff] dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
               data-testid="web-chat-send"
             >
               {sending ? <LoaderCircle size={18} className="animate-spin" /> : <ArrowUp size={22} strokeWidth={2.2} />}
             </Button>
+          </div>
           </div>
           {!activeSessionReady && activeSession && (
             <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-400">

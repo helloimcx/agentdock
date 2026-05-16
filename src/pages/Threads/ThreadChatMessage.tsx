@@ -29,10 +29,10 @@ function ToolResultCardView({ card }: { card: ToolResultCard }) {
   const [expanded, setExpanded] = useState(() => !shouldCollapseToolResultByDefault(card));
   const hasOutput = Boolean(card.output.trim());
   return (
-    <div className="overflow-hidden rounded-[20px] border border-slate-200/80 bg-slate-50/95 shadow-[0_8px_22px_rgba(15,23,42,0.04)] dark:border-white/[0.07] dark:bg-[#111820] dark:shadow-none">
+    <div className="overflow-hidden rounded-[18px] border border-slate-200 bg-[#f5f5f7] dark:border-white/[0.08] dark:bg-[#111214]">
       <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06]">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary dark:text-primary">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary dark:text-primary">
             <Wrench size={14} />
           </span>
           <div className="min-w-0">
@@ -104,13 +104,13 @@ export function PermissionRequestCardView({
     <div
       data-testid={testId}
       className={cn(
-        'overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50/90 shadow-[0_10px_26px_rgba(180,83,9,0.08)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:shadow-none',
+        'overflow-hidden rounded-[18px] border border-amber-200 bg-[#fff8eb] dark:border-amber-400/20 dark:bg-amber-500/10',
         className,
       )}
     >
       <div className="flex items-center justify-between gap-3 border-b border-amber-200/80 px-4 py-3 dark:border-amber-400/15">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200">
             <ShieldCheck size={14} />
           </span>
           <div className="min-w-0">
@@ -169,7 +169,7 @@ export function ThreadChatMessage({
   const toolResultCard = !isUser ? toolCallToResultCard(message.toolCall) : null;
   const isToolResult = Boolean(toolResultCard);
   return (
-    <div className={cn('flex gap-2 sm:gap-3', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex gap-3 sm:gap-4', isUser ? 'justify-end' : 'justify-start')}>
       {!isUser ? (
         <div
           className={cn(
@@ -177,8 +177,8 @@ export function ThreadChatMessage({
             isSystem
               ? 'h-7 w-7 bg-amber-100 text-amber-600 dark:bg-amber-500/12 dark:text-amber-300'
               : isProgress
-                ? 'h-6 w-6 bg-slate-100 dark:bg-white/[0.04]'
-                : 'h-8 w-8 bg-slate-100 dark:bg-white/[0.06]',
+                ? 'h-6 w-6 bg-[#f0f0f0] dark:bg-white/[0.04]'
+                : 'h-8 w-8 bg-[#f5f5f7] dark:bg-white/[0.06]',
           )}
         >
           {isSystem ? <Check size={14} /> : isProgress ? <Circle size={7} className="fill-current" /> : <Bot size={14} />}
@@ -194,33 +194,33 @@ export function ThreadChatMessage({
         className={cn(
           'transition-all',
           isUser
-            ? 'max-w-[calc(100%-2.25rem)] sm:max-w-[72%]'
+            ? 'max-w-[calc(100%-2.25rem)] sm:max-w-[70%]'
             : isToolResult
-              ? 'max-w-[calc(100%-2.25rem)] sm:max-w-[86%]'
+              ? 'max-w-[calc(100%-2.25rem)] sm:max-w-[80%]'
               : isProgress
-                ? 'max-w-[calc(100%-2.25rem)] sm:max-w-[76%]'
-                : 'max-w-[calc(100%-2.25rem)] sm:max-w-[84%]',
+                ? 'max-w-[calc(100%-2.25rem)] sm:max-w-[72%]'
+                : 'max-w-[calc(100%-2.25rem)] sm:max-w-[78%]',
         )}
       >
         <div
           className={cn(
-            'rounded-[22px] px-4 py-3 text-sm',
+            'rounded-[20px] px-4 py-3 text-sm',
             isUser
-              ? 'chat-user-glass rounded-br-md text-slate-950 dark:text-slate-50'
+              ? 'chat-user-glass rounded-br-sm text-slate-950 dark:text-slate-50'
               : isSystem
-                ? 'rounded-bl-md border border-amber-200/80 bg-amber-50 text-amber-900 shadow-[0_6px_18px_rgba(15,23,42,0.03)] dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100 dark:shadow-none'
+                ? 'rounded-bl-sm border border-amber-200/80 bg-[#fff8eb] text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100'
                 : isProgress
-                  ? 'rounded-bl-lg bg-slate-100/80 text-[13px] leading-6 text-slate-500 dark:bg-white/[0.04] dark:text-slate-400'
-                  : 'rounded-bl-md border border-slate-200/80 bg-white text-slate-800 shadow-[0_6px_18px_rgba(15,23,42,0.04)] dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-slate-100 dark:shadow-none',
+                  ? 'rounded-bl-lg bg-[#f5f5f7] text-[13px] leading-6 text-slate-500 dark:bg-white/[0.04] dark:text-slate-400'
+                  : 'rounded-bl-sm border border-slate-200 bg-[#fbfbfd] text-slate-800 dark:border-white/[0.06] dark:bg-white/[0.04] dark:text-slate-100',
             isToolResult && 'bg-transparent p-0 shadow-none dark:bg-transparent',
           )}
         >
-          <div className={cn('mb-2 flex items-center gap-2 text-[10px]', isUser ? 'justify-end text-slate-600 dark:text-white/55' : 'text-slate-400 dark:text-slate-500')}>
+          <div className={cn('mb-2 flex items-center gap-2 text-[10px]', isUser ? 'justify-end text-slate-500 dark:text-white/55' : 'text-slate-400 dark:text-slate-500')}>
             {isSystem ? (
-              <span className="tracking-[0.16em] text-amber-600 dark:text-amber-300">系统</span>
+              <span className="tracking-[0.14em] text-amber-600 dark:text-amber-300">系统</span>
             ) : null}
             {isProgress ? (
-              <span className="tracking-[0.16em] text-amber-500 dark:text-amber-300">{isToolResult ? '工具' : '过程'}</span>
+              <span className="tracking-[0.14em] text-amber-500 dark:text-amber-300">{isToolResult ? '工具' : '过程'}</span>
             ) : null}
             {formatMessageTimestamp(message.timestamp) ? (
               <span data-testid="desktop-chat-message-timestamp">{formatMessageTimestamp(message.timestamp)}</span>
@@ -277,7 +277,7 @@ export function ThreadChatMessage({
       </div>
 
       {isUser ? (
-        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-white/[0.08] sm:h-8 sm:w-8">
+        <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0f0f0] dark:bg-white/[0.08] sm:h-8 sm:w-8">
           <User size={14} className="text-slate-500 dark:text-slate-300" />
         </div>
       ) : null}

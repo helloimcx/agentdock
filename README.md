@@ -94,6 +94,10 @@ flowchart LR
 
 ## New
 
+### 2026-05-16
+
+- 优化桌面与 Web 聊天界面视觉层级：统一会话列表、消息气泡、工具结果卡片和输入区样式，降低装饰噪音，提升长对话可读性。
+
 ### 2026-05-15
 
 - 删除旧的 sandbox WebSocket proxy 兼容路径，云端 sandbox ACP 通信统一走 HTTP NDJSON bridge。

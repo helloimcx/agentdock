@@ -173,11 +173,11 @@ export default function ThreadChat() {
 
   return (
     <>
-      <div className="relative h-full min-h-0 overflow-hidden border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] animate-fade-in dark:border-white/[0.06] dark:bg-[#0b0f14] dark:shadow-[0_20px_70px_rgba(0,0,0,0.28)] md:rounded-[28px] md:border">
+      <div className="relative h-full min-h-0 overflow-hidden border-slate-200/80 bg-[#f5f5f7] animate-fade-in dark:border-white/[0.06] dark:bg-[#0b0d10] md:rounded-[24px] md:border">
         <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[288px_minmax(0,1fr)]">
           <aside
             className={cn(
-              'min-h-0 flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,#fbfcfe_0%,#f5f7fb_100%)] dark:border-white/[0.06] dark:bg-[linear-gradient(180deg,#10151c_0%,#0c1016_100%)]',
+              'min-h-0 flex-col border-r border-slate-200/80 bg-[#fbfbfd] dark:border-white/[0.06] dark:bg-[#111214]',
               mobileSessionsOpen ? 'flex' : 'hidden md:flex',
               'absolute inset-0 z-30 md:static md:z-auto',
             )}
@@ -186,7 +186,7 @@ export default function ThreadChat() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[11px] font-medium tracking-[0.18em] text-slate-400 dark:text-slate-500">会话导航</p>
-                  <h2 className="mt-2 text-[1.7rem] font-semibold leading-tight text-slate-900 dark:text-white">
+                  <h2 className="mt-2 text-[1.65rem] font-semibold leading-tight text-slate-900 dark:text-white">
                     {branding.chatHeading}
                   </h2>
                 </div>
@@ -217,7 +217,8 @@ export default function ThreadChat() {
                     value={selectedProject}
                     onChange={(event) => setSelectedProject(event.target.value)}
                     data-testid="desktop-chat-project-select"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15 dark:border-white/[0.08] dark:bg-[#0b1016] dark:text-white"
+                    aria-label={branding.scopeLabel}
+                    className="w-full rounded-[18px] border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/10 dark:border-white/[0.08] dark:bg-[#0b1016] dark:text-white"
                   >
                     <option value="">{branding.scopeSelectPlaceholder}</option>
                     {visibleProjects.map((project) => (
@@ -234,7 +235,7 @@ export default function ThreadChat() {
                     variant="secondary"
                     onClick={() => void handleCreateNew()}
                     data-testid="desktop-chat-new-chat"
-                    className="h-11 flex-1 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-slate-100 dark:hover:bg-white/[0.09]"
+                    className="h-11 flex-1 rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-slate-100 dark:hover:bg-white/[0.09]"
                   >
                     <MessageSquarePlus size={15} />
                     {branding.newThreadLabel}
@@ -258,12 +259,13 @@ export default function ThreadChat() {
                     value={sessionSearch}
                     onChange={(event) => setSessionSearch(event.target.value)}
                     placeholder={branding.searchPlaceholder}
+                    aria-label={branding.searchPlaceholder}
                     data-testid="desktop-chat-session-search"
-                    className="h-11 rounded-2xl border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#0b1016] dark:text-white dark:placeholder:text-slate-500"
+                    className="h-11 rounded-[18px] border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#0b1016] dark:text-white dark:placeholder:text-slate-500"
                   />
                 </div>
 
-                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/85 px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                <div className="flex items-center justify-between gap-3 rounded-[18px] border border-slate-200/80 bg-white px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.03]">
                   <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
                     <Circle size={7} className={cn('fill-current', serviceRunning ? 'text-primary' : 'text-slate-300 dark:text-slate-500')} />
                     {serviceRunning ? '服务在线' : isRuntimeStarting ? '服务启动中' : '服务未启动'}
@@ -337,10 +339,10 @@ export default function ThreadChat() {
                             }
                           }}
                           className={cn(
-                            'group relative overflow-hidden rounded-2xl border px-4 py-3 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/20',
+                            'group relative overflow-hidden rounded-[18px] border px-4 py-3 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/15',
                             session.id === activeSessionId
-                              ? 'border-primary/20 bg-primary/10 shadow-[inset_3px_0_0_0_rgba(0,122,255,0.9)] dark:border-primary/25 dark:bg-primary/10'
-                              : 'border-transparent bg-white/70 hover:border-slate-200 hover:bg-white dark:bg-white/[0.03] dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]',
+                              ? 'border-primary/20 bg-primary/5 shadow-[inset_2px_0_0_0_rgba(0,102,204,0.92)] dark:border-primary/25 dark:bg-primary/10'
+                              : 'border-transparent bg-white hover:border-slate-200 hover:bg-[#fcfcfd] dark:bg-white/[0.03] dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]',
                           )}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -412,7 +414,7 @@ export default function ThreadChat() {
             </div>
           </aside>
 
-          <section className="flex min-h-0 flex-col bg-[linear-gradient(180deg,#ffffff_0%,#fbfcfe_100%)] dark:bg-[linear-gradient(180deg,#0d1218_0%,#0a0f15_100%)]">
+          <section className="flex min-h-0 flex-col bg-white dark:bg-[#0b0d10]">
             <div className="border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06] sm:px-6 sm:py-4">
               <div className="flex items-start gap-3">
                 <Button
@@ -427,7 +429,7 @@ export default function ThreadChat() {
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-medium tracking-[0.16em] text-slate-400 dark:text-slate-500">当前会话</p>
                   <h2
-                    className="mt-1 truncate text-2xl font-semibold leading-tight text-slate-900 dark:text-white sm:mt-2 sm:text-[2rem] sm:leading-none"
+                    className="mt-1 truncate text-[1.75rem] font-semibold leading-tight text-slate-900 dark:text-white sm:mt-2 sm:text-[1.95rem] sm:leading-none"
                     data-testid="desktop-chat-active-title"
                   >
                     {activeSessionName || branding.activeConversationFallback}
@@ -461,8 +463,8 @@ export default function ThreadChat() {
             <div className="flex-1 overflow-y-auto px-3 py-4 [scrollbar-gutter:stable] sm:px-6 sm:py-5">
               {renderedMessages.length === 0 ? (
                 <div className="flex h-full min-h-[18rem] items-center justify-center">
-                  <div className="w-full max-w-2xl rounded-3xl border border-slate-200/80 bg-white px-5 py-8 text-center shadow-[0_10px_30px_rgba(15,23,42,0.04)] dark:border-white/[0.06] dark:bg-white/[0.03] dark:shadow-none sm:rounded-[28px] sm:px-8 sm:py-10">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <div className="w-full max-w-2xl rounded-[24px] border border-slate-200 bg-[#fbfbfd] px-5 py-8 text-center dark:border-white/[0.06] dark:bg-white/[0.03] sm:px-8 sm:py-10">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <MessageSquarePlus size={22} />
                     </div>
                     <h3 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">开始一段新的桌面对话</h3>
@@ -490,7 +492,7 @@ export default function ThreadChat() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-5">
+                <div className="mx-auto w-full max-w-4xl space-y-5">
                   {renderedMessages.map((message) => {
                     if (!shouldRenderThreadChatMessage(message, composerPermissionCard)) {
                       return null;
@@ -524,9 +526,9 @@ export default function ThreadChat() {
             </div>
 
             <div className="border-t border-slate-200/80 px-3 py-3 dark:border-white/[0.06] sm:px-6">
-              <div className="rounded-3xl border border-slate-200/80 bg-white p-2 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-[#0f151c] dark:shadow-[0_12px_28px_rgba(0,0,0,0.20)] sm:rounded-[24px] sm:p-2.5">
+              <div className="mx-auto max-w-4xl rounded-[24px] border border-slate-200 bg-[#fbfbfd] p-2 dark:border-white/[0.08] dark:bg-[#111214] sm:p-2.5">
                 <div className="relative" ref={knowledgePickerRef}>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                  <div className="rounded-[18px] border border-slate-200 bg-white px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.03]">
                     <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                       <p className="shrink-0 text-[11px] font-medium text-slate-500 dark:text-slate-400">知识库范围</p>
                       <Button
@@ -535,7 +537,7 @@ export default function ThreadChat() {
                         disabled={!selectedProject}
                         onClick={() => setKnowledgePickerOpen((current) => !current)}
                         data-testid="desktop-chat-knowledge-base-toggle"
-                        className="shrink-0 rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-slate-100 dark:hover:bg-white/[0.1]"
+                        className="shrink-0 rounded-full border border-slate-200 bg-[#f5f5f7] text-slate-700 hover:bg-slate-100 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-slate-100 dark:hover:bg-white/[0.1]"
                       >
                         <Database size={13} />
                         {selectedKnowledgeCount > 0 ? '调整知识库' : '选择知识库'}
@@ -549,7 +551,7 @@ export default function ThreadChat() {
                           selectedKnowledgeBases.map((base) => (
                             <span
                               key={base.id}
-                              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-slate-100"
+                              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-[#f5f5f7] px-2.5 py-1 text-xs text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-slate-100"
                             >
                               <span className="max-w-[10rem] truncate">{base.name}</span>
                               {base.fileCount > 0 ? <span className="text-[10px] text-slate-500">{base.fileCount} 文档</span> : null}
@@ -576,7 +578,7 @@ export default function ThreadChat() {
                   </div>
 
                   {knowledgePickerOpen ? (
-                    <div className="animate-float-in absolute bottom-full left-0 right-0 z-20 mb-3 max-h-[70dvh] overflow-hidden rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_22px_50px_rgba(15,23,42,0.12)] dark:border-white/[0.08] dark:bg-[#0c1117] dark:shadow-[0_28px_80px_rgba(0,0,0,0.40)]">
+                    <div className="animate-float-in absolute bottom-full left-0 right-0 z-20 mb-3 max-h-[70dvh] overflow-hidden rounded-[22px] border border-slate-200 bg-white p-3 dark:border-white/[0.08] dark:bg-[#0c1117]">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-900 dark:text-white">选择知识库</p>
@@ -596,7 +598,8 @@ export default function ThreadChat() {
                         value={knowledgeSearch}
                         onChange={(event) => setKnowledgeSearch(event.target.value)}
                         placeholder="搜索知识库"
-                        className="mt-3 rounded-2xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:placeholder:text-slate-500"
+                        aria-label="搜索知识库"
+                        className="mt-3 rounded-[18px] border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:placeholder:text-slate-500"
                       />
                       <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-2 [scrollbar-gutter:stable]">
                         {orderedKnowledgeBases.length === 0 ? (
@@ -619,10 +622,10 @@ export default function ThreadChat() {
                                 }
                                 data-testid="desktop-chat-knowledge-base-select"
                                 className={cn(
-                                  'flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200',
+                                  'flex w-full items-start gap-3 rounded-[16px] border px-3 py-3 text-left transition-all duration-200',
                                   checked
-                                    ? 'border-primary/25 bg-primary/10 dark:border-primary/30 dark:bg-primary/10'
-                                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:border-white/[0.12] dark:hover:bg-white/[0.05]',
+                                    ? 'border-primary/25 bg-primary/5 dark:border-primary/30 dark:bg-primary/10'
+                                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-[#fafafa] dark:border-white/[0.06] dark:bg-white/[0.03] dark:hover:border-white/[0.12] dark:hover:bg-white/[0.05]',
                                 )}
                               >
                                 <span
@@ -675,8 +678,9 @@ export default function ThreadChat() {
                           }}
                           rows={3}
                           placeholder={composerPlaceholder}
+                          aria-label={composerPlaceholder}
                           disabled={!serviceRunning || !transportReady || sending || !selectedProject || taskInputLocked}
-                          className="min-h-[104px] rounded-[24px] border-slate-200 bg-white px-4 pb-16 pt-3 text-[15px] leading-6 text-slate-900 shadow-[0_12px_34px_rgba(15,23,42,0.08)] placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[116px] sm:px-5 sm:pt-4"
+                          className="min-h-[104px] rounded-[22px] border-slate-200 bg-white px-4 pb-16 pt-3 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary/15 dark:border-white/[0.08] dark:bg-[#090d12] dark:text-white dark:placeholder:text-slate-500 sm:min-h-[116px] sm:px-5 sm:pt-4"
                         />
 
                         {taskRunning ? (
@@ -695,13 +699,13 @@ export default function ThreadChat() {
                             onClick={() => void handleSend()}
                             disabled={!composerCanSubmit}
                             data-testid="desktop-chat-send"
-                            className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-slate-900 px-0 text-white shadow-none hover:bg-slate-800 disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
+                            className="absolute bottom-3 right-3 h-11 w-11 rounded-full bg-primary px-0 text-white shadow-none hover:bg-[#0071e3] disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-primary dark:text-white dark:hover:bg-[#2997ff] dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-12 sm:w-12"
                           >
                             {sending ? <LoaderCircle size={18} className="animate-spin" /> : <ArrowUp size={22} strokeWidth={2.2} />}
                           </Button>
                         )}
                       </div>
-                      <div className="mt-1.5 hidden items-center justify-between px-1 pr-[4.5rem] text-[11px] text-slate-500 dark:text-slate-400 sm:flex">
+                      <div className="mt-2 hidden items-center justify-between px-1 pr-[4.5rem] text-[11px] text-slate-500 dark:text-slate-400 sm:flex">
                         <span>Enter 发送，Shift + Enter 换行</span>
                         <span>{selectedProject ? '范围会随当前线程保存' : '请先选择项目'}</span>
                       </div>
