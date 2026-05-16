@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
+import { Plus, QrCode, Save } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, StatusPill } from '@/components/ui';
 import {
@@ -18,15 +18,12 @@ import {
   updateModelProvider,
 } from '@/api/desktop';
 import {
-  DEFAULT_SANDBOX_PROVIDER_ID,
   DESKTOP_AGENT_TYPE_OPTIONS,
-  DESKTOP_DEPLOYMENT_PROFILES,
   DESKTOP_PLATFORM_TYPE_OPTIONS,
   defaultSandboxProviderForProfile,
   defaultSandboxRuntimeImage,
   getDesktopDeploymentProfile,
   getDefaultDesktopAgentModel,
-  normalizeDesktopAgentModel,
 } from '../../../shared/desktop';
 import type {
   DesktopConnectConfig,
@@ -35,7 +32,6 @@ import type {
   DesktopProjectConfig,
 } from '../../../shared/desktop';
 import {
-  applyProviderPreset,
   clone,
   createPlatformDraft,
   createProjectDialogDraft,
@@ -43,14 +39,11 @@ import {
   ensureProjects,
   fromSandboxForm,
   getPlatformInstanceId,
-  getProviderPresetValue,
   getSelectValue,
   normalizePlatformDraft,
   normalizeProject,
   noticeClass,
   PLATFORM_TYPE_OPTIONS,
-  platformSummary,
-  PROVIDER_PRESETS,
   providerToDraft,
   toSandboxForm,
   type LarkQrState,
@@ -62,6 +55,7 @@ import {
   type WeixinQrState,
 } from './workspace-model';
 import { ProjectListPanel, ProjectOverviewCards } from './workspace-components';
+import { BasicProjectSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
 
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -630,320 +624,40 @@ export default function DesktopWorkspace() {
               </div>
 
               {projectTab === 'basic' ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <Input
-                    label="Project name"
-                    value={selectedProject.name}
-                    onChange={(event) => updateSelectedProject((project) => ({ ...project, name: event.target.value }))}
-                  />
-                  <Select
-                    label="Agent type"
-                    value={getSelectValue(selectedProject.agent?.type || '', DESKTOP_AGENT_TYPE_OPTIONS)}
-                    onChange={(event) =>
-                      updateSelectedProject((project) => {
-                        const type = event.target.value === CUSTOM_SELECT_VALUE ? project.agent.type : event.target.value;
-                        return {
-                          ...project,
-                          agent: {
-                            ...project.agent,
-                            type,
-                            options: {
-                              ...(project.agent.options || {}),
-                              model: normalizeDesktopAgentModel(type, String(project.agent.options?.model || '')),
-                            },
-                          },
-                        };
-                      })
-                    }
-                  >
-                    {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-                    <option value={CUSTOM_SELECT_VALUE}>custom</option>
-                  </Select>
-                  <Input
-                    label="Host workspace path"
-                    value={String(selectedProject.agent?.options?.work_dir || '')}
-                    onChange={(event) =>
-                      updateSelectedProject((project) => ({
-                        ...project,
-                        agent: { ...project.agent, options: { ...(project.agent.options || {}), work_dir: event.target.value } },
-                      }))
-                    }
-                  />
-                  <Input
-                    label="Default model"
-                    value={String(selectedProject.agent?.options?.model || '')}
-                    onChange={(event) =>
-                      updateSelectedProject((project) => ({
-                        ...project,
-                        agent: { ...project.agent, options: { ...(project.agent.options || {}), model: event.target.value } },
-                      }))
-                    }
-                    placeholder={getDefaultDesktopAgentModel(selectedProject.agent?.type) || 'Use agent default model'}
-                  />
-                </div>
+                <BasicProjectSection project={selectedProject} updateProject={updateSelectedProject} />
               ) : null}
 
               {projectTab === 'providers' ? (
-                <section className="space-y-3">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <Select
-                      label="Project provider"
-                      value={String(selectedProject.agent?.options?.provider_id || '')}
-                      onChange={(event) =>
-                        updateSelectedProject((project) => ({
-                          ...project,
-                          agent: {
-                            ...project.agent,
-                            options: {
-                              ...(project.agent.options || {}),
-                              provider_id: event.target.value,
-                            },
-                          },
-                        }))
-                      }
-                    >
-                      <option value="">No provider</option>
-                      {modelProviders.map((provider) => (
-                        <option key={provider.id} value={provider.id}>{provider.name}</option>
-                      ))}
-                    </Select>
-                    <Input
-                      label="Model override"
-                      value={String(selectedProject.agent?.options?.model || '')}
-                      onChange={(event) =>
-                        updateSelectedProject((project) => ({
-                          ...project,
-                          agent: { ...project.agent, options: { ...(project.agent.options || {}), model: event.target.value } },
-                        }))
-                      }
-                      placeholder="Use provider default model"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Shared providers</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">Providers are shared and selected by projects.</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleAddProvider()}
-                    >
-                      <Plus size={14} /> Add provider
-                    </Button>
-                  </div>
-                  {modelProviders.length === 0 ? (
-                    <div className="rounded-xl border border-black/10 px-4 py-4 text-sm text-muted-foreground dark:border-white/[0.08]">
-                      No shared providers configured.
-                    </div>
-                  ) : (
-                  <div className="space-y-3">
-                    {modelProviders.map((provider) => {
-                      const draft = providerDrafts[provider.id] || providerToDraft(provider);
-                      return (
-                      <div key={provider.id} className="app-surface p-4">
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                          <Select
-                            label="Preset"
-                            value={getProviderPresetValue(draft as DesktopProviderConfig)}
-                            onChange={(event) => {
-                              if (event.target.value !== CUSTOM_SELECT_VALUE) {
-                                updateProviderDraft(provider.id, (current) => applyProviderPreset(current as DesktopProviderConfig, event.target.value));
-                              }
-                            }}
-                          >
-                            {PROVIDER_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
-                            <option value={CUSTOM_SELECT_VALUE}>custom</option>
-                          </Select>
-                          <Input label="Name" value={draft.name || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, name: event.target.value }))} />
-                          <Input label="API key" type="password" value={draft.api_key || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, api_key: event.target.value }))} />
-                          <Input label="Base URL" value={draft.base_url || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, base_url: event.target.value }))} />
-                          <Input label="Default model" value={draft.model || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, model: event.target.value }))} />
-                          <div className="flex items-end gap-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => void handleSaveProvider(provider.id)}
-                            >
-                              <Save size={14} /> Save
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => void handleDeleteProvider(provider.id)}
-                            >
-                              <Trash2 size={14} /> Remove
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );})}
-                  </div>
-                  )}
-                </section>
+                <ProvidersSection
+                  project={selectedProject}
+                  modelProviders={modelProviders}
+                  providerDrafts={providerDrafts}
+                  updateProject={updateSelectedProject}
+                  updateProviderDraft={updateProviderDraft}
+                  onAddProvider={() => void handleAddProvider()}
+                  onSaveProvider={(providerId) => void handleSaveProvider(providerId)}
+                  onDeleteProvider={(providerId) => void handleDeleteProvider(providerId)}
+                />
               ) : null}
 
               {projectTab === 'platforms' ? (
-                <section className="space-y-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Platforms</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Configure each platform with its own required connection fields.</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => openPlatformDialog(null)}
-                  >
-                    <Plus size={14} /> Platform
-                  </Button>
-                </div>
-                {(selectedProject.platforms || []).length === 0 ? (
-                  <EmptyState message="No platforms configured." />
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {(selectedProject.platforms || []).map((platform, index) => (
-                      <div key={`${platform.type}-${index}`} className="app-list-row flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{platform.type}</p>
-                          <p className="mt-1 truncate text-xs text-muted-foreground">{platformSummary(platform)}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <Button variant="secondary" size="sm" className="app-icon-button" onClick={() => openPlatformDialog(index)} aria-label={`Configure ${platform.type}`}>
-                            <Settings size={14} />
-                          </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          className="app-icon-button"
-                          onClick={() =>
-                            updateSelectedProject((project) => {
-                              const platforms = [...(project.platforms || [])];
-                              platforms.splice(index, 1);
-                              return { ...project, platforms };
-                            })
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                </section>
+                <PlatformsSection
+                  project={selectedProject}
+                  updateProject={updateSelectedProject}
+                  onOpenPlatformDialog={openPlatformDialog}
+                />
               ) : null}
 
               {projectTab === 'sandbox' ? (
-                <section className="space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-950 dark:text-white">云端模式</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">通过 OpenSandbox 为 Agent 运行启动独立容器。</p>
-                    </div>
-                    <StatusPill tone={selectedSandbox.enabled ? 'success' : 'neutral'}>
-                      {selectedSandbox.enabled ? 'Enabled' : 'Local'}
-                    </StatusPill>
-                  </div>
-
-                  <label className="app-toolbar flex items-center gap-3 text-sm font-medium text-slate-950 dark:text-white">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
-                      checked={selectedSandbox.enabled}
-                      onChange={(event) => updateSelectedSandbox((current) => ({
-                        ...current,
-                        enabled: event.target.checked,
-                        provider_id: current.provider_id || DEFAULT_SANDBOX_PROVIDER_ID,
-                        runtime_image_id: current.runtime_image_id || defaultSandboxRuntimeImage(selectedProject?.agent?.type || 'pi').id,
-                      }))}
-                    />
-                    启用云端模式（Sandbox）
-                  </label>
-
-                  {selectedSandbox.enabled ? (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <Select
-                          label="Deployment"
-                          value={selectedProfile.id}
-                          onChange={(event) => updateDeploymentProfile(event.target.value)}
-                        >
-                          {DESKTOP_DEPLOYMENT_PROFILES.map((profile) => (
-                            <option key={profile.id} value={profile.id}>{profile.label}</option>
-                          ))}
-                        </Select>
-                        <Select
-                          label="State scope"
-                          value={selectedSandbox.state_scope}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, state_scope: event.target.value as SandboxForm['state_scope'] }))}
-                        >
-                          <option value="user">User</option>
-                          <option value="project">Project</option>
-                          <option value="thread">Thread</option>
-                          <option value="run">Run</option>
-                        </Select>
-                        <Input
-                          label="CPU"
-                          value={selectedSandbox.cpu}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, cpu: event.target.value }))}
-                        />
-                        <Input
-                          label="Memory"
-                          value={selectedSandbox.memory}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, memory: event.target.value }))}
-                        />
-                        <Input
-                          label="Timeout seconds"
-                          type="number"
-                          value={selectedSandbox.timeout_seconds}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, timeout_seconds: event.target.value }))}
-                        />
-                        <Select
-                          label="Sandbox lifecycle"
-                          value={selectedSandbox.sandbox_lifecycle}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, sandbox_lifecycle: event.target.value as SandboxForm['sandbox_lifecycle'] }))}
-                        >
-                          <option value="per_thread">Keep warm per thread</option>
-                          <option value="per_run">Close after each run</option>
-                        </Select>
-                        <Input
-                          label="Idle seconds"
-                          type="number"
-                          value={selectedSandbox.idle_seconds}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, idle_seconds: event.target.value }))}
-                        />
-                        <Input
-                          label="Warm pool"
-                          type="number"
-                          value={selectedSandbox.warm_pool_size}
-                          onChange={(event) => updateSelectedSandbox((current) => ({ ...current, warm_pool_size: event.target.value }))}
-                        />
-                      </div>
-                      <div className="rounded-xl border border-black/10 px-4 py-3 text-sm text-muted-foreground dark:border-white/[0.08]">
-                        <div className="font-medium text-slate-950 dark:text-white">当前运行配置</div>
-                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <div>OpenSandbox: {selectedSandboxProvider.server_url || 'not configured'}</div>
-                          <div>Image: {selectedSandboxRuntimeImage.image}</div>
-                          <div>ACP port: {selectedSandboxRuntimeImage.acp_port}</div>
-                          <div>Sandbox workspace path: {selectedSandboxRuntimeImage.workspace_mount_path || selectedProfile.workspaceMountPath}</div>
-                          <div>State mount: {selectedSandboxRuntimeImage.state_mount_path || selectedProfile.stateMountPath}</div>
-                          <div>API key env: {selectedSandboxProvider.api_key_env || 'OPEN_SANDBOX_API_KEY'}</div>
-                        </div>
-                      </div>
-                      <details className="rounded-xl border border-black/10 px-4 py-3 text-sm dark:border-white/[0.08]">
-                        <summary className="cursor-pointer font-medium text-slate-950 dark:text-white">Advanced</summary>
-                        <div className="mt-3 text-muted-foreground">
-                          Host workspace path 是 OpenSandbox 挂载源；Sandbox workspace path 是 Agent 容器内的工作目录。Core 只启动代理进程，不直接使用 host workspace path 作为代理工作目录。
-                        </div>
-                      </details>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-black/10 px-4 py-3 text-sm text-muted-foreground dark:border-white/[0.08]">
-                      当前项目会继续使用本地 Agent runtime。
-                    </div>
-                  )}
-                </section>
+                <SandboxSection
+                  project={selectedProject}
+                  sandbox={selectedSandbox}
+                  profile={selectedProfile}
+                  sandboxProvider={selectedSandboxProvider}
+                  runtimeImage={selectedSandboxRuntimeImage}
+                  updateSandbox={updateSelectedSandbox}
+                  updateDeploymentProfile={updateDeploymentProfile}
+                />
               ) : null}
 
               <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
