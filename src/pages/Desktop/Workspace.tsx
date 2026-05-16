@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, Cloud, FolderKanban, Plug, Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
+import { Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, StatusPill } from '@/components/ui';
 import {
@@ -18,7 +18,6 @@ import {
   updateModelProvider,
 } from '@/api/desktop';
 import {
-  DEFAULT_DESKTOP_AGENT_TYPE,
   DEFAULT_SANDBOX_PROVIDER_ID,
   DESKTOP_AGENT_TYPE_OPTIONS,
   DESKTOP_DEPLOYMENT_PROFILES,
@@ -33,264 +32,36 @@ import type {
   DesktopConnectConfig,
   DesktopModelProvider,
   DesktopModelProviderInput,
-  DesktopPlatformConfig,
   DesktopProjectConfig,
-  DesktopProviderConfig,
-  DesktopSandboxOptions,
 } from '../../../shared/desktop';
-
-const CUSTOM_SELECT_VALUE = '__custom__';
-const PLATFORM_TYPE_OPTIONS = ['weixin', 'lark'] as const;
-
-type Notice = {
-  tone: 'success' | 'warning' | 'error';
-  message: string;
-};
-
-type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox';
-
-type PlatformDialogState = {
-  index: number | null;
-  draft: DesktopPlatformConfig;
-};
-
-type ProjectDialogDraft = {
-  name: string;
-  agentType: string;
-  workDir: string;
-  model: string;
-};
-
-type SandboxForm = {
-  enabled: boolean;
-  provider_id: string;
-  runtime_image_id: string;
-  server_url: string;
-  image: string;
-  api_key_env: string;
-  acp_port: string;
-  state_scope: 'user' | 'project' | 'thread' | 'run';
-  timeout_seconds: string;
-  sandbox_lifecycle: 'per_run' | 'per_thread';
-  idle_seconds: string;
-  warm_pool_size: string;
-  cpu: string;
-  memory: string;
-  workspace_mount_path: string;
-  state_mount_path: string;
-};
-
-type WeixinQrState = {
-  ticket: string;
-  expiresIn: number;
-  interval?: number;
-  qrCodeUrl: string;
-  status?: 'wait' | 'signed' | 'confirmed' | 'expired';
-  createdAt?: number;
-};
-
-type LarkQrState = WeixinQrState & {
-  botName?: string;
-};
-
-const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: string }> = [
-  { id: 'openai', label: 'OpenAI', name: 'openai', base_url: 'https://api.openai.com/v1', model: 'gpt-4.1-mini' },
-  { id: 'openrouter', label: 'OpenRouter', name: 'openrouter', base_url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4.1-mini' },
-  { id: 'anthropic', label: 'Anthropic', name: 'anthropic', base_url: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-latest' },
-  { id: 'deepseek', label: 'DeepSeek', name: 'deepseek', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
-  { id: 'minimax', label: 'Minimax', name: 'minimax', base_url: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.5' },
-  { id: 'ollama', label: 'Ollama', name: 'ollama', base_url: 'http://127.0.0.1:11434/v1', model: 'qwen2.5-coder:7b' },
-];
-
-const defaultSandboxForm: SandboxForm = {
-  enabled: false,
-  provider_id: DEFAULT_SANDBOX_PROVIDER_ID,
-  runtime_image_id: defaultSandboxRuntimeImage('pi').id,
-  server_url: 'http://127.0.0.1:8080',
-  image: 'agentdock/pi-acp:local',
-  api_key_env: 'OPEN_SANDBOX_API_KEY',
-  acp_port: '8080',
-  state_scope: 'project',
-  timeout_seconds: '7200',
-  sandbox_lifecycle: 'per_thread',
-  idle_seconds: '900',
-  warm_pool_size: '0',
-  cpu: '1000m',
-  memory: '2Gi',
-  workspace_mount_path: '/workspace',
-  state_mount_path: '/agent-state',
-};
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function ensureProjects(config: DesktopConnectConfig) {
-  if (!Array.isArray(config.projects)) config.projects = [];
-  return config.projects;
-}
-
-function createProjectDialogDraft(projects: DesktopProjectConfig[]): ProjectDialogDraft {
-  const projectNames = new Set(projects.map((project) => project.name).filter(Boolean));
-  let index = projects.length + 1;
-  while (projectNames.has(`project-${index}`)) {
-    index += 1;
-  }
-  return {
-    name: `project-${index}`,
-    agentType: DEFAULT_DESKTOP_AGENT_TYPE,
-    workDir: '',
-    model: '',
-  };
-}
-
-function normalizeProject(project: DesktopProjectConfig): DesktopProjectConfig {
-  return {
-    ...project,
-    agent: {
-      ...project.agent,
-      options: {
-        ...(project.agent?.options || {}),
-        model: normalizeDesktopAgentModel(project.agent?.type, String(project.agent?.options?.model || '')),
-      },
-    },
-    platforms: project.platforms || [],
-  };
-}
-
-function providerToDraft(provider: DesktopModelProvider): DesktopModelProviderInput {
-  return {
-    id: provider.id,
-    name: provider.name,
-    api_key: provider.api_key || '',
-    base_url: provider.base_url || '',
-    model: provider.model || '',
-    models: provider.models || [],
-    thinking: provider.thinking || '',
-    env: provider.env || {},
-  };
-}
-
-function getSelectValue(value: string, options: readonly string[]) {
-  return options.includes(value as any) ? value : CUSTOM_SELECT_VALUE;
-}
-
-function getProviderPresetValue(provider: DesktopProviderConfig) {
-  return PROVIDER_PRESETS.find((preset) =>
-    provider.name === preset.name ||
-    (preset.base_url && provider.base_url === preset.base_url) ||
-    (preset.model && provider.model === preset.model && provider.name === preset.name),
-  )?.id || CUSTOM_SELECT_VALUE;
-}
-
-function applyProviderPreset(provider: DesktopProviderConfig, presetId: string): DesktopProviderConfig {
-  const preset = PROVIDER_PRESETS.find((item) => item.id === presetId);
-  if (!preset) return provider;
-  return {
-    ...provider,
-    name: preset.name,
-    base_url: preset.base_url,
-    model: preset.model,
-  };
-}
-
-function createPlatformDraft(type = 'weixin'): DesktopPlatformConfig {
-  return {
-    type,
-    options: {
-      instance_id: `${type}-${crypto.randomUUID?.() || Date.now().toString(36)}`,
-    },
-  };
-}
-
-function getPlatformInstanceId(platform?: DesktopPlatformConfig | null) {
-  return String(platform?.options?.instance_id || '').trim() || 'default';
-}
-
-function normalizePlatformDraft(platform: DesktopPlatformConfig): DesktopPlatformConfig {
-  const type = platform.type === 'feishu' ? 'lark' : platform.type;
-  const options = platform.options && typeof platform.options === 'object' ? { ...platform.options } : {};
-  if (type === 'weixin') {
-    return {
-      type,
-      options: {
-        ...options,
-        instance_id: String(options.instance_id || '').trim(),
-      },
-    };
-  }
-  if (type === 'lark') {
-    return {
-      type,
-      options: {
-        ...options,
-        instance_id: String(options.instance_id || '').trim(),
-        app_id: String(options.app_id || '').trim(),
-        app_secret: String(options.app_secret || '').trim(),
-        card_actions: options.card_actions === true,
-      },
-    };
-  }
-  return { type, options };
-}
-
-function platformSummary(platform: DesktopPlatformConfig) {
-  if (platform.type === 'weixin') return 'WeChat QR login';
-  if (platform.type === 'lark') {
-    const appId = String(platform.options?.app_id || '').trim();
-    return appId ? `App ID ${appId}` : 'App ID and secret required';
-  }
-  return 'Custom platform';
-}
-
-function workDirLabel(project: DesktopProjectConfig) {
-  const workDir = String(project.agent?.options?.work_dir || '').trim();
-  if (!workDir) return 'No work directory';
-  const normalized = workDir.replace(/\/+$/, '');
-  return normalized.split('/').filter(Boolean).pop() || workDir;
-}
-
-function noticeClass(tone: Notice['tone']) {
-  if (tone === 'success') return 'border-primary/20 bg-primary/10 text-primary dark:border-primary/25 dark:bg-primary/10 dark:text-blue-200';
-  if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200';
-  return 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-200';
-}
-
-function toSandboxForm(input?: DesktopSandboxOptions): SandboxForm {
-  return {
-    enabled: Boolean(input?.enabled),
-    provider_id: input?.provider_id || DEFAULT_SANDBOX_PROVIDER_ID,
-    runtime_image_id: input?.runtime_image_id || defaultSandboxForm.runtime_image_id,
-    server_url: input?.server_url || defaultSandboxForm.server_url,
-    image: input?.image || defaultSandboxForm.image,
-    api_key_env: input?.api_key_env || defaultSandboxForm.api_key_env,
-    acp_port: String(input?.acp_port || defaultSandboxForm.acp_port),
-    state_scope: input?.state_scope || defaultSandboxForm.state_scope,
-    timeout_seconds: String(input?.timeout_seconds || defaultSandboxForm.timeout_seconds),
-    sandbox_lifecycle: input?.sandbox_lifecycle || defaultSandboxForm.sandbox_lifecycle,
-    idle_seconds: String(input?.idle_seconds || defaultSandboxForm.idle_seconds),
-    warm_pool_size: String(input?.warm_pool_size ?? defaultSandboxForm.warm_pool_size),
-    cpu: input?.cpu || defaultSandboxForm.cpu,
-    memory: input?.memory || defaultSandboxForm.memory,
-    workspace_mount_path: input?.workspace_mount_path || defaultSandboxForm.workspace_mount_path,
-    state_mount_path: input?.state_mount_path || defaultSandboxForm.state_mount_path,
-  };
-}
-
-function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
-  return {
-    enabled: input.enabled,
-    provider_id: input.provider_id.trim() || DEFAULT_SANDBOX_PROVIDER_ID,
-    runtime_image_id: input.runtime_image_id.trim() || defaultSandboxForm.runtime_image_id,
-    state_scope: input.state_scope,
-    timeout_seconds: Number(input.timeout_seconds) || Number(defaultSandboxForm.timeout_seconds),
-    sandbox_lifecycle: input.sandbox_lifecycle,
-    idle_seconds: Number(input.idle_seconds) || Number(defaultSandboxForm.idle_seconds),
-    warm_pool_size: Math.max(0, Number(input.warm_pool_size) || 0),
-    cpu: input.cpu.trim() || defaultSandboxForm.cpu,
-    memory: input.memory.trim() || defaultSandboxForm.memory,
-  };
-}
+import {
+  applyProviderPreset,
+  clone,
+  createPlatformDraft,
+  createProjectDialogDraft,
+  CUSTOM_SELECT_VALUE,
+  ensureProjects,
+  fromSandboxForm,
+  getPlatformInstanceId,
+  getProviderPresetValue,
+  getSelectValue,
+  normalizePlatformDraft,
+  normalizeProject,
+  noticeClass,
+  PLATFORM_TYPE_OPTIONS,
+  platformSummary,
+  PROVIDER_PRESETS,
+  providerToDraft,
+  toSandboxForm,
+  type LarkQrState,
+  type Notice,
+  type PlatformDialogState,
+  type ProjectDialogDraft,
+  type ProjectTab,
+  type SandboxForm,
+  type WeixinQrState,
+} from './workspace-model';
+import { ProjectListPanel, ProjectOverviewCards } from './workspace-components';
 
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -810,45 +581,16 @@ export default function DesktopWorkspace() {
       ) : null}
 
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <SectionCard
-          title="项目"
-          actions={<Button size="sm" onClick={handleAddProject}><Plus size={14} /> 新建项目</Button>}
-          className="app-panel lg:self-start"
-        >
-          {projects.length === 0 ? (
-            <EmptyState message="还没有项目。" />
-          ) : (
-            <div className="space-y-2">
-              {projects.map((project, index) => (
-                <div
-                  key={`${project.name}-${index}`}
-                  className={`flex items-center justify-between gap-2 ${
-                    index === selectedIndex
-                      ? 'app-list-row app-list-row-active'
-                      : 'app-list-row'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedIndex(index);
-                      setSearchParams(project.name ? { project: project.name } : {});
-                    }}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{project.name || `Project ${index + 1}`}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {project.agent?.type || 'unknown'} · {workDirLabel(project)} · {project.platforms?.length || 0} platforms
-                    </p>
-                  </button>
-                  <Button variant="ghost" size="sm" className="app-icon-button shrink-0" onClick={() => handleRemoveProject(index)} aria-label={`Remove ${project.name}`}>
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
+        <ProjectListPanel
+          projects={projects}
+          selectedIndex={selectedIndex}
+          onAddProject={handleAddProject}
+          onSelectProject={(index, project) => {
+            setSelectedIndex(index);
+            setSearchParams(project.name ? { project: project.name } : {});
+          }}
+          onRemoveProject={(index) => handleRemoveProject(index)}
+        />
 
         <SectionCard
           title={selectedProject?.name || 'Project details'}
@@ -863,24 +605,7 @@ export default function DesktopWorkspace() {
             <EmptyState message="选择或新建项目后开始配置。" />
           ) : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                <div className="app-surface p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Bot size={14} /> Agent</div>
-                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{selectedProject.agent?.type || 'unknown'}</p>
-                </div>
-                <div className="app-surface p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><FolderKanban size={14} /> Workspace</div>
-                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{workDirLabel(selectedProject)}</p>
-                </div>
-                <div className="app-surface p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Plug size={14} /> Platforms</div>
-                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{selectedProject.platforms?.length || 0} configured</p>
-                </div>
-                <div className="app-surface p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Cloud size={14} /> Sandbox</div>
-                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{selectedSandbox.enabled ? 'Cloud enabled' : 'Local runtime'}</p>
-                </div>
-              </div>
+              <ProjectOverviewCards project={selectedProject} sandbox={selectedSandbox} />
 
               <div className="flex gap-2 overflow-x-auto border-b border-black/10 pb-4 [scrollbar-width:none] dark:border-white/[0.08] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
                 {[

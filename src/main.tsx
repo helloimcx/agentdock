@@ -32,6 +32,17 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function applyPlatformClass() {
+  const platform = window.navigator.userAgent.toLowerCase().includes('windows')
+    ? 'windows'
+    : window.navigator.userAgent.toLowerCase().includes('mac os x')
+      ? 'macos'
+      : window.navigator.userAgent.toLowerCase().includes('linux')
+        ? 'linux'
+        : 'unknown';
+  document.documentElement.classList.add(`platform-${platform}`);
+}
+
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 p-6">
@@ -190,6 +201,7 @@ function BootstrapApp() {
 }
 
 async function start() {
+  applyPlatformClass();
   await initializeI18n();
   useAuthStore.getState().init();
   useThemeStore.getState().init();

@@ -110,6 +110,61 @@
       radial-gradient(circle at 16% 0%, rgba(10, 132, 255, 0.08), transparent 32%),
       linear-gradient(180deg, rgba(18, 18, 20, 0.98), rgba(10, 10, 12, 0.98));
   }
+
+  .platform-windows body {
+    background: hsl(var(--background));
+  }
+
+  .platform-windows.dark body {
+    background: hsl(var(--background));
+  }
+}
+
+.platform-windows [class*="backdrop-blur"],
+.platform-windows [class*="supports-[backdrop-filter]"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.platform-windows .bg-background\/60,
+.platform-windows .bg-background\/45,
+.platform-windows .bg-background\/72 {
+  background-color: hsl(var(--background)) !important;
+}
+
+.platform-windows .bg-white\/18,
+.platform-windows .bg-white\/24,
+.platform-windows .bg-white\/62,
+.platform-windows .bg-white\/76,
+.platform-windows .bg-white\/80,
+.platform-windows .bg-white\/88,
+.platform-windows .bg-white\/90 {
+  background-color: hsl(var(--card)) !important;
+}
+
+.platform-windows.dark .dark\:bg-\[\#1c1c1e\]\/26,
+.platform-windows.dark .dark\:bg-\[\#1c1c1e\]\/34,
+.platform-windows.dark .dark\:bg-\[\#111113\]\/88,
+.platform-windows.dark .dark\:bg-\[\#2c2c2e\]\/90,
+.platform-windows.dark .dark\:bg-white\/\[0\.04\],
+.platform-windows.dark .dark\:bg-white\/\[0\.055\],
+.platform-windows.dark .dark\:bg-white\/\[0\.06\] {
+  background-color: hsl(var(--card)) !important;
+}
+
+.platform-windows .animate-fade-in,
+.platform-windows .animate-float-in,
+.platform-windows .animate-slide-up {
+  animation: none !important;
+}
+
+.platform-windows .transition-all {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow !important;
+  transition-duration: 120ms !important;
+}
+
+.platform-windows .duration-300 {
+  transition-duration: 150ms !important;
 }
 
 pre code.hljs {
