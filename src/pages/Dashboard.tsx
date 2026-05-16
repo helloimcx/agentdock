@@ -21,6 +21,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
 import { listProjects, type ProjectSummary } from '@/api/projects';
+import { cn } from '@/lib/utils';
 import {
   listInstalledAgentRuntimes,
   onRuntimeDetectionEvent,
@@ -44,14 +45,14 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
     <Link
       to={to}
       className={[
-        'group flex min-h-[118px] flex-col justify-between rounded-2xl p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring',
+        'group flex min-h-[112px] flex-col justify-between rounded-[18px] border p-5 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring',
         primary
-          ? 'bg-black/[0.07] text-foreground hover:bg-black/[0.09] dark:bg-white/[0.10] dark:hover:bg-white/[0.13]'
-          : 'bg-white/54 text-foreground hover:bg-white/72 dark:bg-white/[0.055] dark:hover:bg-white/[0.085]',
+          ? 'border-primary/20 bg-primary/5 text-foreground hover:bg-primary/10 dark:bg-primary/10 dark:hover:bg-primary/15'
+          : 'border-black/[0.08] bg-white text-foreground hover:bg-[#fcfcfd] dark:border-white/[0.07] dark:bg-white/[0.04] dark:hover:bg-white/[0.07]',
       ].join(' ')}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70 text-primary shadow-[0_1px_1px_rgba(0,0,0,0.04)] dark:bg-white/[0.08]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary dark:bg-primary/15">
           <Icon size={20} />
         </div>
         <ArrowRight size={17} className="mt-1 text-muted-foreground/45 transition-colors group-hover:text-foreground" />
@@ -61,6 +62,21 @@ function QuickAction({ title, description, to, icon: Icon, primary }: QuickActio
         <p className="mt-2 max-w-sm text-sm leading-5 text-muted-foreground">{description}</p>
       </div>
     </Link>
+  );
+}
+
+function MetricCard({ label, value, detail, tone = 'neutral' }: { label: string; value: string | number; detail: string; tone?: 'neutral' | 'primary' | 'warning' }) {
+  return (
+    <div className="app-surface p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn(
+        'mt-2 text-2xl font-semibold',
+        tone === 'primary' ? 'text-primary' : tone === 'warning' ? 'text-amber-600 dark:text-amber-300' : 'text-foreground',
+      )}>
+        {value}
+      </p>
+      <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>
+    </div>
   );
 }
 
@@ -91,7 +107,7 @@ function TaskPanel({
   urgent?: boolean;
 }) {
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="app-panel overflow-hidden p-0">
       <div className="border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -108,7 +124,7 @@ function TaskPanel({
       ) : (
         <div className="divide-y divide-black/[0.08] dark:divide-white/[0.07]">
           {tasks.map((task) => (
-            <div key={task.taskId} className="px-5 py-4">
+            <div key={task.taskId} className="px-5 py-4 transition-colors hover:bg-black/[0.025] dark:hover:bg-white/[0.035]">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
@@ -133,7 +149,7 @@ function TaskPanel({
 
 function ApprovalPanel({ approvals }: { approvals: ApprovalRequest[] }) {
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="app-panel overflow-hidden p-0">
       <div className="border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -171,7 +187,7 @@ function ApprovalPanel({ approvals }: { approvals: ApprovalRequest[] }) {
 
 function AuditPanel({ events }: { events: AuditEvent[] }) {
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="app-panel overflow-hidden p-0">
       <div className="border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
         <h2 className="text-base font-semibold text-foreground">审计记录</h2>
         <p className="mt-1 text-sm text-muted-foreground">最近的任务、审批和权限事件。</p>
@@ -381,6 +397,13 @@ export default function Dashboard() {
         description={`继续最近的工作，或进入项目、知识和自动化配置。当前版本 v${__APP_VERSION__}`}
       />
 
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label="Projects" value={projects.length} detail="configured workspaces" tone="primary" />
+        <MetricCard label="Running" value={activeTasks.length} detail="active agent tasks" />
+        <MetricCard label="Waiting" value={waitingTasks.length + pendingApprovals.length} detail="needs attention" tone={waitingTasks.length + pendingApprovals.length > 0 ? 'warning' : 'neutral'} />
+        <MetricCard label="Runtimes" value={installedAgentRuntimes.length} detail="installed locally" />
+      </section>
+
       {error ? (
         <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
           {error}
@@ -402,7 +425,7 @@ export default function Dashboard() {
       </section>
 
       {desktopRuntime ? (
-        <Card className="overflow-hidden p-0">
+        <Card className="app-panel overflow-hidden p-0">
           <div className="flex flex-col gap-3 border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07] sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-foreground">本机 Agent Runtime</h2>
@@ -442,7 +465,7 @@ export default function Dashboard() {
               {agentRuntimes.map((runtime) => (
                 <div
                   key={runtime.agentType}
-                  className="rounded-2xl border border-black/[0.08] bg-white/50 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-white/[0.055]"
+                  className="app-list-row"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
@@ -543,7 +566,7 @@ export default function Dashboard() {
         </section>
       ) : null}
 
-      <Card className="p-0">
+      <Card className="app-panel p-0">
         <div className="flex items-center justify-between gap-4 border-b border-black/[0.08] px-5 py-4 dark:border-white/[0.07]">
           <div>
             <h2 className="text-base font-semibold text-foreground">{t('nav.projects')}</h2>

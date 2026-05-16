@@ -36,7 +36,7 @@ interface NoticeState {
 
 function noticeClassName(tone: NoticeTone) {
   if (tone === 'success') {
-    return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/30 dark:bg-violet-950/20 dark:text-violet-300';
+    return 'border-primary/20 bg-primary/10 text-primary dark:border-primary/25 dark:bg-primary/10 dark:text-blue-200';
   }
   if (tone === 'warning') {
     return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300';
@@ -284,7 +284,7 @@ export default function KnowledgeHome() {
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <Card className="p-0 overflow-hidden">
+        <Card className="app-panel p-0 overflow-hidden">
           <div className="border-b border-gray-200/80 px-5 py-4 dark:border-white/[0.08]">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -302,9 +302,9 @@ export default function KnowledgeHome() {
               type="button"
               onClick={() => setSelectedFolderId(null)}
               className={cn(
-                'flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
+                'flex w-full items-center justify-between rounded-[16px] px-3 py-2.5 text-left text-sm transition-colors',
                 !selectedFolderId
-                  ? 'bg-accent/10 text-gray-900 ring-1 ring-accent/30 dark:text-white'
+                  ? 'bg-primary/10 text-gray-900 ring-1 ring-primary/25 dark:text-white'
                   : 'hover:bg-gray-100/80 text-gray-600 dark:text-gray-300 dark:hover:bg-white/[0.06]',
               )}
             >
@@ -327,8 +327,8 @@ export default function KnowledgeHome() {
                     <div
                       key={folder.id}
                       className={cn(
-                        'group rounded-xl px-2 py-1',
-                        isActive ? 'bg-accent/10 ring-1 ring-accent/25' : 'hover:bg-gray-100/80 dark:hover:bg-white/[0.04]',
+                        'group rounded-[16px] px-2 py-1',
+                        isActive ? 'bg-primary/10 ring-1 ring-primary/25' : 'hover:bg-gray-100/80 dark:hover:bg-white/[0.04]',
                       )}
                     >
                       <div className="flex items-center gap-2">
@@ -368,7 +368,7 @@ export default function KnowledgeHome() {
         </Card>
 
         <div className="space-y-5">
-          <Card>
+          <Card className="app-toolbar">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">知识库列表</h2>
@@ -383,6 +383,7 @@ export default function KnowledgeHome() {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="搜索名称、描述或创建者"
+                    aria-label="搜索名称、描述或创建者"
                     className="pl-9"
                   />
                 </div>
@@ -394,11 +395,11 @@ export default function KnowledgeHome() {
           </Card>
 
           {loading ? (
-            <Card>
+            <Card className="app-panel">
               <div className="py-16 text-center text-sm text-gray-400">正在加载知识库…</div>
             </Card>
           ) : filteredBases.length === 0 ? (
-            <Card>
+            <Card className="app-panel">
               <EmptyState
                 message={query ? '没有匹配的知识库。' : '还没有知识库，先创建一个开始上传文档。'}
                 icon={Library}
@@ -409,12 +410,13 @@ export default function KnowledgeHome() {
               {filteredBases.map((base) => (
                 <Card
                   key={base.id}
-                  className="group relative overflow-hidden border border-gray-200/90 bg-white/90 p-6 shadow-sm hover:border-accent/30 hover:shadow-xl hover:shadow-black/5 dark:border-white/[0.08] dark:bg-[rgba(0,0,0,0.55)]"
+                  className="group app-panel relative overflow-hidden p-5 hover:border-primary/25"
                 >
                   <div className="absolute right-4 top-4 flex gap-1">
                     <button
                       type="button"
                       onClick={() => void handleEditBase(base)}
+                      aria-label={`编辑 ${base.name}`}
                       className="rounded-lg p-2 text-gray-400 hover:bg-gray-100/90 hover:text-gray-700 dark:hover:bg-white/[0.08] dark:hover:text-white"
                     >
                       <Pencil size={15} />
@@ -422,6 +424,7 @@ export default function KnowledgeHome() {
                     <button
                       type="button"
                       onClick={() => void handleDeleteBase(base)}
+                      aria-label={`删除 ${base.name}`}
                       className="rounded-lg p-2 text-gray-400 hover:bg-red-500/10 hover:text-red-500"
                     >
                       <Trash2 size={15} />
@@ -430,7 +433,7 @@ export default function KnowledgeHome() {
 
                   <Link to={`/knowledge/${encodeURIComponent(base.id)}`} className="block space-y-5">
                     <div className="flex items-start gap-4">
-                      <div className={`mt-1 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg ${iconGlyph(base.icon)}`}>
+                      <div className={`mt-1 flex h-11 w-11 items-center justify-center rounded-full text-white ${iconGlyph(base.icon)}`}>
                         <BookOpen size={22} />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -439,11 +442,11 @@ export default function KnowledgeHome() {
                       </div>
                     </div>
 
-                    <div className="min-h-[72px] text-base leading-7 text-gray-600 dark:text-gray-300">
+                    <div className="min-h-[60px] text-sm leading-6 text-gray-600 dark:text-gray-300">
                       {base.description || '这个知识库还没有描述，点击进入后可以上传文件并开始检索。'}
                     </div>
 
-                    <div className="flex items-center gap-6 text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <div className="grid grid-cols-2 gap-3 rounded-[16px] bg-black/[0.035] px-3 py-2 text-sm font-medium text-gray-700 dark:bg-white/[0.05] dark:text-gray-200">
                       <span>{base.fileCount} 文档数</span>
                       <span>{(base.wordCount / 1000).toFixed(base.wordCount > 0 ? 1 : 0)}k 字符</span>
                     </div>

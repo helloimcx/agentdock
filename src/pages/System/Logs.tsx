@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Filter } from 'lucide-react';
-import { Card, Button, Badge, PageHeader, Select } from '@/components/ui';
+import { ArrowLeft, Filter, Search } from 'lucide-react';
+import { Card, Button, Badge, PageHeader, Select, Input } from '@/components/ui';
 import { getLogs } from '@/api/status';
 
 const levelColors: Record<string, string> = {
@@ -26,6 +26,8 @@ export default function SystemLogs() {
   const [entries, setEntries] = useState<any[]>([]);
   const [level, setLevel] = useState('sys');
   const [limit, setLimit] = useState('100');
+  const [query, setQuery] = useState('');
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchLogs = useCallback(async () => {
@@ -42,6 +44,20 @@ export default function SystemLogs() {
     fetchLogs();
   }, [fetchLogs]);
 
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+    const timer = window.setInterval(() => {
+      void fetchLogs();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, fetchLogs]);
+
+  const filteredEntries = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return entries;
+    return entries.filter((entry) => [entry.level, entry.time, entry.message].join(' ').toLowerCase().includes(needle));
+  }, [entries, query]);
+
   return (
     <div className="space-y-4 animate-fade-in">
       <PageHeader
@@ -55,7 +71,7 @@ export default function SystemLogs() {
       />
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="app-toolbar flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Filter size={14} className="text-muted-foreground" />
           <Select
@@ -81,21 +97,38 @@ export default function SystemLogs() {
           <option value="1000">1000</option>
         </Select>
         <Button size="sm" variant="secondary" onClick={fetchLogs}>{t('common.refresh')}</Button>
+        <Button
+          size="sm"
+          variant={autoRefresh ? 'primary' : 'secondary'}
+          onClick={() => setAutoRefresh((current) => !current)}
+        >
+          Auto
+        </Button>
+        <div className="relative min-w-[16rem] flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search logs"
+            aria-label="Search logs"
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {/* Log entries */}
-      <Card>
+      <Card className="app-panel">
         {loading ? (
           <div className="text-muted-foreground animate-pulse text-sm">Loading...</div>
-        ) : entries.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">{t('common.noData')}</p>
         ) : (
-          <div className="space-y-1 max-h-[65vh] overflow-y-auto font-mono text-xs">
-            {entries.map((entry, i) => (
-              <div key={i} className="flex items-start gap-3 py-1.5 border-b last:border-0">
+          <div className="max-h-[65vh] overflow-auto font-mono text-xs [scrollbar-gutter:stable]">
+            {filteredEntries.map((entry, i) => (
+              <div key={i} className="grid min-w-[760px] grid-cols-[9rem_5rem_minmax(0,1fr)] items-start gap-3 border-b py-2 last:border-0">
                 <span className="text-muted-foreground shrink-0 w-36">{entry.time?.slice(0, 19)}</span>
                 <Badge variant={levelBadge[entry.level] || 'default'}>{entry.level}</Badge>
-                <span className={`${levelColors[entry.level] || 'text-gray-500'} flex-1`}>{entry.message}</span>
+                <span className={`${levelColors[entry.level] || 'text-gray-500'} whitespace-pre-wrap break-words`}>{entry.message}</span>
               </div>
             ))}
           </div>

@@ -41,10 +41,12 @@ export default function ProjectList() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {projects.map((p) => (
           <Link key={p.name} to={`/projects/${p.name}`}>
-            <Card hover className="h-full">
+            <Card hover className="app-panel h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Server size={18} className="text-primary" />
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Server size={18} />
+                  </span>
                   <h3 className="font-semibold text-foreground">{p.name}</h3>
                 </div>
                 <ArrowRight size={16} className="text-muted-foreground/45" />
@@ -53,7 +55,7 @@ export default function ProjectList() {
                 <Badge variant="info">{p.agent_type}</Badge>
                 {p.platforms?.map((pl) => <Badge key={pl}>{pl}</Badge>)}
               </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="mt-4 flex items-center justify-between rounded-[16px] bg-black/[0.035] px-3 py-2 text-xs text-muted-foreground dark:bg-white/[0.05]">
                 <span>{p.sessions_count} {t('nav.sessions').toLowerCase()}</span>
                 {p.heartbeat_enabled && (
                   <span className="flex items-center gap-1 text-primary"><Heart size={12} /> {t('heartbeat.title')}</span>

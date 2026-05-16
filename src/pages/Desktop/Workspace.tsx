@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
+import { Bot, Cloud, FolderKanban, Plug, Plus, QrCode, Save, Settings, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, StatusPill } from '@/components/ui';
 import {
@@ -801,8 +801,11 @@ export default function DesktopWorkspace() {
       ) : null}
 
       {configDirty ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
-          You have unsaved project changes.
+        <div className="app-toolbar flex flex-col gap-3 border-amber-200 bg-amber-50 text-sm text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <span>You have unsaved project changes.</span>
+          <Button size="sm" onClick={() => void handleSaveConfig()} loading={pending === 'config'}>
+            <Save size={14} /> Save changes
+          </Button>
         </div>
       ) : null}
 
@@ -810,7 +813,7 @@ export default function DesktopWorkspace() {
         <SectionCard
           title="项目"
           actions={<Button size="sm" onClick={handleAddProject}><Plus size={14} /> 新建项目</Button>}
-          className="lg:self-start"
+          className="app-panel lg:self-start"
         >
           {projects.length === 0 ? (
             <EmptyState message="还没有项目。" />
@@ -819,10 +822,10 @@ export default function DesktopWorkspace() {
               {projects.map((project, index) => (
                 <div
                   key={`${project.name}-${index}`}
-                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition-colors ${
+                  className={`flex items-center justify-between gap-2 ${
                     index === selectedIndex
-                      ? 'border-accent/30 bg-accent/10'
-                      : 'border-black/10 hover:bg-black/[0.04] dark:border-white/[0.08] dark:hover:bg-white/[0.06]'
+                      ? 'app-list-row app-list-row-active'
+                      : 'app-list-row'
                   }`}
                 >
                   <button
@@ -838,7 +841,7 @@ export default function DesktopWorkspace() {
                       {project.agent?.type || 'unknown'} · {workDirLabel(project)} · {project.platforms?.length || 0} platforms
                     </p>
                   </button>
-                  <Button variant="ghost" size="sm" onClick={() => handleRemoveProject(index)} aria-label={`Remove ${project.name}`}>
+                  <Button variant="ghost" size="sm" className="app-icon-button shrink-0" onClick={() => handleRemoveProject(index)} aria-label={`Remove ${project.name}`}>
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -854,11 +857,31 @@ export default function DesktopWorkspace() {
               {selectedProject.agent?.type || 'unknown'} · {String(selectedProject.agent?.options?.work_dir || 'No work directory')}
             </span>
           ) : undefined}
+          className="app-panel"
         >
           {!selectedProject ? (
             <EmptyState message="选择或新建项目后开始配置。" />
           ) : (
             <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="app-surface p-4">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Bot size={14} /> Agent</div>
+                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{selectedProject.agent?.type || 'unknown'}</p>
+                </div>
+                <div className="app-surface p-4">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><FolderKanban size={14} /> Workspace</div>
+                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{workDirLabel(selectedProject)}</p>
+                </div>
+                <div className="app-surface p-4">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Plug size={14} /> Platforms</div>
+                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{selectedProject.platforms?.length || 0} configured</p>
+                </div>
+                <div className="app-surface p-4">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground"><Cloud size={14} /> Sandbox</div>
+                  <p className="mt-2 truncate text-sm font-semibold text-foreground">{selectedSandbox.enabled ? 'Cloud enabled' : 'Local runtime'}</p>
+                </div>
+              </div>
+
               <div className="flex gap-2 overflow-x-auto border-b border-black/10 pb-4 [scrollbar-width:none] dark:border-white/[0.08] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
                 {[
                   ['basic', '基本信息'],
@@ -870,10 +893,10 @@ export default function DesktopWorkspace() {
                     key={key}
                     type="button"
                     onClick={() => setProjectTab(key as ProjectTab)}
-                    className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`app-segment ${
                       projectTab === key
-                        ? 'bg-accent text-white'
-                        : 'bg-black/[0.04] text-muted-foreground hover:bg-black/[0.07] hover:text-foreground dark:bg-white/[0.05] dark:hover:bg-white/[0.08]'
+                        ? 'app-segment-active'
+                        : 'app-segment-idle'
                     }`}
                   >
                     {label}
@@ -993,7 +1016,7 @@ export default function DesktopWorkspace() {
                     {modelProviders.map((provider) => {
                       const draft = providerDrafts[provider.id] || providerToDraft(provider);
                       return (
-                      <div key={provider.id} className="rounded-xl border border-black/10 p-4 dark:border-white/[0.08]">
+                      <div key={provider.id} className="app-surface p-4">
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <Select
                             label="Preset"
@@ -1055,18 +1078,19 @@ export default function DesktopWorkspace() {
                 ) : (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {(selectedProject.platforms || []).map((platform, index) => (
-                      <div key={`${platform.type}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-black/10 p-3 dark:border-white/[0.08]">
+                      <div key={`${platform.type}-${index}`} className="app-list-row flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-950 dark:text-white">{platform.type}</p>
                           <p className="mt-1 truncate text-xs text-muted-foreground">{platformSummary(platform)}</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          <Button variant="secondary" size="sm" onClick={() => openPlatformDialog(index)} aria-label={`Configure ${platform.type}`}>
+                          <Button variant="secondary" size="sm" className="app-icon-button" onClick={() => openPlatformDialog(index)} aria-label={`Configure ${platform.type}`}>
                             <Settings size={14} />
                           </Button>
                         <Button
                           variant="danger"
                           size="sm"
+                          className="app-icon-button"
                           onClick={() =>
                             updateSelectedProject((project) => {
                               const platforms = [...(project.platforms || [])];
@@ -1097,7 +1121,7 @@ export default function DesktopWorkspace() {
                     </StatusPill>
                   </div>
 
-                  <label className="flex items-center gap-3 rounded-xl border border-black/10 px-4 py-3 text-sm font-medium text-slate-950 dark:border-white/[0.08] dark:text-white">
+                  <label className="app-toolbar flex items-center gap-3 text-sm font-medium text-slate-950 dark:text-white">
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-black/20 dark:border-white/20"

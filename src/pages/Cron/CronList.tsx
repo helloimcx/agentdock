@@ -196,8 +196,8 @@ export default function CronList() {
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => (
-            <Card key={job.id}>
-              <div className="flex items-start justify-between gap-3">
+            <Card key={job.id} className="app-panel">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-medium text-gray-900 dark:text-white text-sm">{job.description || job.id}</span>
@@ -214,17 +214,17 @@ export default function CronList() {
                     {job.route.threadId && <span><strong>Thread:</strong> {job.route.threadId}</span>}
                     {job.lastRunAt && <span><strong>{t('cron.lastRun')}:</strong> {formatTime(job.lastRunAt)}</span>}
                   </div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 mt-2 whitespace-pre-wrap">{job.promptTemplate}</p>
+                  <p className="mt-3 line-clamp-3 rounded-[16px] bg-black/[0.035] px-3 py-2 text-sm leading-6 text-gray-700 dark:bg-white/[0.05] dark:text-gray-300">{job.promptTemplate}</p>
                   {job.lastError && <p className="text-xs text-red-500 mt-2">{job.lastError}</p>}
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => void handleRun(job.id)}>
+                <div className="flex shrink-0 gap-2 lg:pt-0">
+                  <Button size="sm" variant="secondary" className="app-icon-button" onClick={() => void handleRun(job.id)} aria-label="Run now">
                     <Play size={14} />
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => openEdit(job)}>
+                  <Button size="sm" variant="secondary" className="app-icon-button" onClick={() => openEdit(job)} aria-label="Edit job">
                     <Pencil size={14} />
                   </Button>
-                  <Button size="sm" variant="danger" onClick={() => void handleDelete(job.id)}>
+                  <Button size="sm" variant="danger" className="app-icon-button" onClick={() => void handleDelete(job.id)} aria-label="Delete job">
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -235,7 +235,7 @@ export default function CronList() {
       )}
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editingJob ? 'Edit scheduler job' : t('cron.add')}>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <Select
             label="Workspace"
             value={form.workspaceId}
@@ -253,12 +253,30 @@ export default function CronList() {
             <option value="once">One time</option>
           </Select>
           {form.triggerType === 'cron' ? (
-            <Input
-              label={t('cron.expression')}
-              value={form.cronExpr}
-              onChange={(event) => setForm({ ...form, cronExpr: event.target.value })}
-              placeholder="0 9 * * *"
-            />
+            <div className="space-y-2">
+              <Input
+                label={t('cron.expression')}
+                value={form.cronExpr}
+                onChange={(event) => setForm({ ...form, cronExpr: event.target.value })}
+                placeholder="0 9 * * *"
+              />
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ['0 9 * * *', 'Daily 09:00'],
+                  ['0 9 * * 1', 'Weekly Mon'],
+                  ['*/30 * * * *', 'Every 30m'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setForm({ ...form, cronExpr: value })}
+                    className={`app-segment text-xs ${form.cronExpr === value ? 'app-segment-active' : 'app-segment-idle'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
             <Input
               label="Run at"

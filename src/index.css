@@ -4,6 +4,44 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .app-surface {
+    @apply rounded-[20px] border border-black/[0.08] bg-white/80 shadow-none dark:border-white/[0.07] dark:bg-white/[0.055];
+  }
+
+  .app-panel {
+    @apply rounded-[18px] border border-black/[0.08] bg-[#fbfbfd] shadow-none dark:border-white/[0.07] dark:bg-[#111214];
+  }
+
+  .app-list-row {
+    @apply rounded-[16px] border border-black/[0.08] bg-white px-4 py-3 transition-colors hover:border-black/[0.12] hover:bg-[#fcfcfd] dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-white/[0.11] dark:hover:bg-white/[0.06];
+  }
+
+  .app-list-row-active {
+    @apply border-primary/25 bg-primary/5 shadow-[inset_2px_0_0_0_rgba(0,102,204,0.92)] dark:border-primary/25 dark:bg-primary/10;
+  }
+
+  .app-toolbar {
+    @apply rounded-[18px] border border-black/[0.08] bg-[#fbfbfd] px-4 py-3 dark:border-white/[0.07] dark:bg-white/[0.04];
+  }
+
+  .app-icon-button {
+    @apply h-9 w-9 rounded-full px-0;
+  }
+
+  .app-segment {
+    @apply shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors;
+  }
+
+  .app-segment-active {
+    @apply bg-primary text-white;
+  }
+
+  .app-segment-idle {
+    @apply bg-black/[0.045] text-muted-foreground hover:bg-black/[0.07] hover:text-foreground dark:bg-white/[0.055] dark:hover:bg-white/[0.09];
+  }
+}
+
 @layer base {
   :root {
     --background: 240 20% 97%;

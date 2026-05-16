@@ -141,13 +141,13 @@ export default function SystemConfig() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SectionCard title="Runtime" description={loading ? 'Loading...' : 'Local service status.'}>
+        <SectionCard className="app-panel" title="Runtime" description={loading ? 'Loading...' : 'Local service status.'}>
           <StatusPill tone={runtimeTone(runtime?.phase) as any}>{runtime?.phase || 'unknown'}</StatusPill>
           <p className="mt-3 text-sm text-muted-foreground">
             {runtime?.pendingRestart ? 'Restart required to apply saved changes.' : 'No pending restart.'}
           </p>
         </SectionCard>
-        <SectionCard title="Config" description="Active config file location.">
+        <SectionCard className="app-panel" title="Config" description="Active config file location.">
           <div className="flex items-start gap-3">
             <FileCode size={18} className="mt-0.5 text-primary" />
             <p className="break-all font-mono text-xs leading-5 text-muted-foreground">
@@ -155,7 +155,7 @@ export default function SystemConfig() {
             </p>
           </div>
         </SectionCard>
-        <SectionCard title="Plugins" description="Health summary only.">
+        <SectionCard className="app-panel" title="Plugins" description="Health summary only.">
           <p className="text-2xl font-semibold text-foreground">
             {plugins ? `${plugins.enabledPluginCount}/${plugins.pluginCount}` : '-'}
           </p>
@@ -165,6 +165,7 @@ export default function SystemConfig() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <SectionCard
+          className="app-panel"
           title="Diagnostics"
           description="Structured runtime and channel health checks."
           actions={(
@@ -190,7 +191,7 @@ export default function SystemConfig() {
               </div>
               <div className="space-y-2">
                 {doctorResult.checks.map((check) => (
-                  <div key={check.id} className="rounded-lg border border-border px-3 py-3">
+                  <div key={check.id} className="app-list-row">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">{check.label}</p>
@@ -212,13 +213,13 @@ export default function SystemConfig() {
           )}
         </SectionCard>
 
-        <SectionCard title="Recent Errors" description="Aggregated runtime and channel failures from the current window.">
+        <SectionCard className="app-panel" title="Recent Errors" description="Aggregated runtime and channel failures from the current window.">
           {diagnosticErrors.length === 0 ? (
             <div className="py-8 text-sm text-muted-foreground">No aggregated errors in the current diagnostics window.</div>
           ) : (
             <div className="space-y-3">
               {diagnosticErrors.map((entry) => (
-                <div key={entry.key} className="rounded-lg border border-border px-3 py-3">
+                <div key={entry.key} className="app-list-row">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -247,6 +248,7 @@ export default function SystemConfig() {
       </div>
 
       <SectionCard
+        className="app-panel"
         title="Knowledge"
         description="System-wide knowledge API connection."
         actions={(
@@ -268,7 +270,7 @@ export default function SystemConfig() {
         />
       </SectionCard>
 
-      <SectionCard title={t('system.plugins')} description="Plugin state is read-only in the daily UI. Use backend config for advanced changes.">
+      <SectionCard className="app-panel" title={t('system.plugins')} description="Plugin state is read-only in the daily UI. Use backend config for advanced changes.">
         {!plugins ? (
           <div className="py-8 text-sm text-muted-foreground">Loading...</div>
         ) : plugins.plugins.length === 0 ? (

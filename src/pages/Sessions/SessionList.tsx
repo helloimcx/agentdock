@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { MessageSquare, Circle, Filter, User, Bot } from 'lucide-react';
-import { Badge, Card, EmptyState, Select } from '@/components/ui';
+import { Badge, Card, EmptyState, PageHeader, Select } from '@/components/ui';
 import { listProjects, type ProjectSummary } from '@/api/projects';
 import { listSessions, type Session } from '@/api/sessions';
 
@@ -72,8 +72,12 @@ export default function SessionList() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <PageHeader
+        title={t('sessions.title')}
+        description="Browse recent conversations across projects."
+      />
       {/* Filter bar */}
-      <div className="flex items-center gap-3">
+      <div className="app-toolbar flex items-center gap-3">
         <Filter size={16} className="text-muted-foreground" />
         <Select
           value={selectedProject}
@@ -99,7 +103,7 @@ export default function SessionList() {
               key={`${s._project}-${s.id}`}
               to={`/sessions/${encodeURIComponent(s._project)}/${encodeURIComponent(s.id)}`}
             >
-              <Card hover className="group relative h-full p-4">
+              <Card hover className="group app-panel relative h-full p-4">
                 {/* Top: name + time */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -131,7 +135,7 @@ export default function SessionList() {
                 </div>
 
                 {/* Bottom: badges + count */}
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="mt-3 flex items-center gap-1.5 flex-wrap rounded-[16px] bg-black/[0.035] px-3 py-2 dark:bg-white/[0.05]">
                   <Badge>{s._project}</Badge>
                   {s.platform && <Badge variant="info">{s.platform}</Badge>}
                   <span className="text-[10px] text-muted-foreground ml-auto">{s.history_count} msgs</span>

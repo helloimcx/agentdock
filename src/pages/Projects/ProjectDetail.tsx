@@ -193,7 +193,15 @@ export default function ProjectDetail() {
           </Link>
         )}
       />
-      {project && <Badge variant="info">{project.agent_type}</Badge>}
+      {project ? (
+        <div className="app-toolbar flex flex-wrap items-center gap-2">
+          <Badge variant="info">{project.agent_type}</Badge>
+          <Badge variant={project.heartbeat_enabled ? 'success' : 'secondary'}>
+            {project.heartbeat_enabled ? 'heartbeat on' : 'heartbeat off'}
+          </Badge>
+          <span className="text-xs text-muted-foreground">{project.sessions_count} sessions</span>
+        </div>
+      ) : null}
       {actionMsg ? (
         <div role="status" className="rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
           {actionMsg}
@@ -201,16 +209,16 @@ export default function ProjectDetail() {
       ) : null}
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map(({ key, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              'app-segment flex items-center gap-2',
               tab === key
-                ? 'bg-primary text-primary-foreground shadow-md'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                ? 'app-segment-active'
+                : 'app-segment-idle'
             )}
           >
             <Icon size={16} />
@@ -222,7 +230,7 @@ export default function ProjectDetail() {
       {/* Tab content */}
       {tab === 'overview' && project && (
         <div className="space-y-4">
-          <SectionCard title={t('projects.platforms')}>
+          <SectionCard className="app-panel" title={t('projects.platforms')}>
             <div className="flex flex-wrap gap-2">
               {project.platforms?.map((p) => (
                 <Badge key={p.type} variant={p.connected ? 'success' : 'danger'}>
@@ -231,7 +239,7 @@ export default function ProjectDetail() {
               ))}
             </div>
           </SectionCard>
-          <SectionCard title={t('sessions.title')}>
+          <SectionCard className="app-panel" title={t('sessions.title')}>
             <p className="text-sm text-muted-foreground">
               {project.sessions_count} {t('nav.sessions').toLowerCase()}
             </p>
@@ -257,7 +265,7 @@ export default function ProjectDetail() {
           ) : (
             <div className="space-y-2">
               {providers.map((p) => (
-                <Card key={p.name}>
+                <Card key={p.name} className="app-panel">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">

@@ -204,8 +204,8 @@ export default function MonitorList() {
       ) : (
         <div className="space-y-3">
           {monitors.map((monitor) => (
-            <Card key={monitor.id}>
-              <div className="flex items-start justify-between gap-3">
+            <Card key={monitor.id} className="app-panel">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">{monitor.title}</span>
@@ -222,17 +222,17 @@ export default function MonitorList() {
                     <span><strong>Cooldown:</strong> {Math.round(monitor.cooldownMs / 60000)}m</span>
                     {monitor.lastTriggeredAt && <span><strong>{t('monitors.lastRun')}:</strong> {formatTime(monitor.lastTriggeredAt)}</span>}
                   </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{monitor.promptTemplate}</p>
+                  <p className="mt-3 line-clamp-3 rounded-[16px] bg-black/[0.035] px-3 py-2 text-sm leading-6 text-gray-700 dark:bg-white/[0.05] dark:text-gray-300">{monitor.promptTemplate}</p>
                   {monitor.lastError && <p className="mt-2 text-xs text-red-500">{monitor.lastError}</p>}
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => handleRun(monitor.id)} title={t('monitors.run')}>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="secondary" size="sm" className="app-icon-button" onClick={() => handleRun(monitor.id)} title={t('monitors.run')} aria-label={t('monitors.run')}>
                     <Play size={14} />
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => openEdit(monitor)} title={t('common.save')}>
+                  <Button variant="secondary" size="sm" className="app-icon-button" onClick={() => openEdit(monitor)} title={t('common.save')} aria-label={t('common.save')}>
                     <Pencil size={14} />
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => handleDelete(monitor.id)} title={t('common.delete')}>
+                  <Button variant="danger" size="sm" className="app-icon-button" onClick={() => handleDelete(monitor.id)} title={t('common.delete')} aria-label={t('common.delete')}>
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -257,6 +257,25 @@ export default function MonitorList() {
             <Input label="Symbol" value={form.symbol} onChange={(event) => setForm({ ...form, symbol: event.target.value })} placeholder="AAPL" />
           )}
           <Input label={t('monitors.condition')} value={form.condition} onChange={(event) => setForm({ ...form, condition: event.target.value })} placeholder="abs_change_percent >= 3" />
+          <div className="flex flex-wrap gap-2">
+            {[
+              ['abs_change_percent >= 3', '+/- 3%'],
+              ['price >= 500', 'Price >= 500'],
+              ['volume_ratio >= 2', 'Volume spike'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setForm({ ...form, condition: value })}
+                className={`app-segment text-xs ${form.condition === value ? 'app-segment-active' : 'app-segment-idle'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {!parseCondition(form.condition) ? (
+            <p className="text-xs text-amber-700 dark:text-amber-200">Condition should look like metric &gt;= value or a boolean expression.</p>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <Input label={t('monitors.cooldown')} value={form.cooldownMinutes} onChange={(event) => setForm({ ...form, cooldownMinutes: event.target.value })} />
             <Select label="Execution" value={form.executionMode} onChange={(event) => setForm({ ...form, executionMode: event.target.value as MonitorFormState['executionMode'] })}>
