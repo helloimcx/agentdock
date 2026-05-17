@@ -1549,6 +1549,89 @@ test('lark group text messages ignore non-mentioned bot messages by default', as
   assert.equal(sentMessages.length, 0);
 });
 
+test('lark post messages from numbered lists are delivered as text', async () => {
+  const sentMessages: any[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      expirePendingPairings: () => {},
+      getAuthorizedUser: () => ({
+        id: 'auth-1',
+        workspace_id: 'project-1',
+        platform: 'lark:lark-1',
+        platform_user_id: 'user-1',
+        chat_id: 'chat-1',
+        display_name: 'User',
+        thread_id: 'thread-1',
+      }),
+      getPlatformThreadBinding: () => ({
+        workspace_id: 'project-1',
+        platform: 'lark:lark-1',
+        chat_id: 'chat-1',
+        platform_user_id: 'user-1',
+        thread_id: 'thread-1',
+        last_platform_message_id: null,
+      }),
+      getLatestRunForThread: () => null,
+      clearPlatformThreadMessageId: () => {},
+    } as any,
+    readConfig: async () => ({ projects: [] }) as any,
+    getWorkspaceRouter: () => ({
+      getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+      sendThreadMessage: async (threadId: string, content: any) => {
+        sentMessages.push({ threadId, content });
+        return { runId: 'run-1' };
+      },
+    }) as any,
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('project-1::lark-1', {
+    workspaceId: 'project-1',
+    instanceId: 'lark-1',
+    platformKey: 'lark:lark-1',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    appId: 'app-1',
+    client: {
+      im: {
+        messageReaction: {
+          create: async () => ({ data: { reaction_id: 'reaction-1' } }),
+        },
+      },
+    },
+  });
+
+  await internals.handleMessageEvent('project-1', 'lark-1', 'lark:lark-1', {
+    event: {
+      sender: {
+        sender_id: { user_id: 'user-1' },
+      },
+      message: {
+        message_id: 'msg-post-numbered-list',
+        message_type: 'post',
+        chat_id: 'chat-1',
+        chat_type: 'p2p',
+        content: JSON.stringify({
+          title: '',
+          content: [
+            [
+              { tag: 'text', text: '1. hi' },
+            ],
+            [
+              { tag: 'text', text: '2. hello' },
+            ],
+          ],
+        }),
+      },
+    },
+  });
+
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0]?.threadId, 'thread-1');
+  assert.match(sentMessages[0]?.content, /\[User Message\]\n1\. hi\n2\. hello\n\[\/User Message\]/);
+});
+
 test('lark inbound messages create a chat binding when an authorized user has an old direct thread', async () => {
   const bindings: any[] = [];
   const createdThreads: any[] = [];

@@ -58,7 +58,10 @@ export function normalizeLarkInboundMessageEvent(
     };
   }
 
-  const text = stripLarkMentions(String(parsedContent.text || '').trim(), mentions, botOpenId);
+  const rawText = messageType === 'post'
+    ? extractLarkPostText(parsedContent, botOpenId)
+    : String(parsedContent.text || '').trim();
+  const text = stripLarkMentions(rawText, mentions, botOpenId);
   const platformUserId = String(sender.sender_id?.user_id || sender.sender_id?.open_id || '').trim();
   const chatId = String(message.chat_id || platformUserId).trim();
   if (!platformUserId || !chatId) {
@@ -144,4 +147,59 @@ export function summarizeLarkInboundPayload(payload: Record<string, unknown>) {
 function getMentionOpenId(item: LarkInboundMention) {
   const id = item.id || item.user_id || item.userId || {};
   return String(id.open_id || id.openId || item.open_id || item.openId || '').trim();
+}
+
+function extractLarkPostText(content: Record<string, unknown>, botOpenId: string) {
+  const title = String(content.title || '').trim();
+  const lines = readLarkPostLines(content)
+    .map((line) => readLarkPostLineText(line, botOpenId).trim())
+    .filter(Boolean);
+  return [
+    ...(title ? [title] : []),
+    ...lines,
+  ].join('\n').trim();
+}
+
+function readLarkPostLines(content: Record<string, unknown>) {
+  const directContent = content.content;
+  if (Array.isArray(directContent)) {
+    return directContent;
+  }
+  const localizedContent = (content.zh_cn as any)?.content || (content.en_us as any)?.content;
+  return Array.isArray(localizedContent) ? localizedContent : [];
+}
+
+function readLarkPostLineText(line: unknown, botOpenId: string): string {
+  if (Array.isArray(line)) {
+    return line.map((item) => readLarkPostInlineText(item, botOpenId)).join('');
+  }
+  return readLarkPostInlineText(line, botOpenId);
+}
+
+function readLarkPostInlineText(item: unknown, botOpenId: string): string {
+  if (!item || typeof item !== 'object') {
+    return '';
+  }
+  const node = item as Record<string, any>;
+  const tag = String(node.tag || '').trim().toLowerCase();
+  if (tag === 'at') {
+    if (botOpenId && getMentionOpenId(node) === botOpenId) {
+      return '';
+    }
+    const name = String(node.user_name || node.name || node.display_name || node.text || '').trim();
+    return name ? `@${name}` : '';
+  }
+  if (tag === 'a') {
+    return String(node.text || node.href || '').trim();
+  }
+  if (typeof node.text === 'string') {
+    return node.text;
+  }
+  if (Array.isArray(node.children)) {
+    return node.children.map((child) => readLarkPostInlineText(child, botOpenId)).join('');
+  }
+  if (Array.isArray(node.content)) {
+    return node.content.map((child) => readLarkPostInlineText(child, botOpenId)).join('');
+  }
+  return '';
 }
