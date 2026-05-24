@@ -61,6 +61,7 @@ const rendererPackageSourceImportAllowlist = new Set([
   'src/pages/Threads/useThreadChatConversationState.ts',
   'src/pages/Threads/useThreadChatSendingActions.ts',
   'src/pages/Threads/useThreadChatSessionBrowser.ts',
+  'src/pages/Threads/ThreadChatComposer.tsx',
   'src/pages/Threads/useThreadChatThreadActions.ts',
   'src/types/window.d.ts',
 ]);

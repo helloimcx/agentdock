@@ -90,124 +90,44 @@ import type {
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
 import { errorInfoToHttpBody, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 
-export interface LocalAiCoreBindings extends EventEmitter {
-  getRuntimeStatus(): Promise<DesktopRuntimeStatus>;
-  startService(): Promise<DesktopServiceState>;
-  stopService(): Promise<DesktopServiceState>;
-  restartService(): Promise<DesktopServiceState>;
-  getLogs(limit?: number): string[];
-  getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
-  readConfigFile(): Promise<ConfigFileState>;
-  saveRawConfigFile(raw: string): Promise<ConfigFileState>;
-  saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
-  saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
-  listModelProviders(): Promise<DesktopModelProviderListResponse>;
-  createModelProvider(input: DesktopModelProviderInput): Promise<DesktopModelProvider>;
-  updateModelProvider(providerId: string, input: DesktopModelProviderInput): Promise<DesktopModelProvider>;
-  deleteModelProvider(providerId: string): Promise<{ deleted: boolean }>;
-  ensureExternalProject(input: ExternalProjectEnsureInput): Promise<ExternalProject>;
-  createExternalRun(input: ExternalRunCreateInput): Promise<ExternalRunCreateResponse>;
-  getExternalRunSnapshot(runId: string): Promise<ExternalRunSnapshot>;
-  listWorkspaces(): Promise<WorkspaceSummary[]>;
-  listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]>;
-  getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry>;
-  createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput): Promise<WorkspaceRegistryEntry>;
-  updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): Promise<WorkspaceRegistryEntry>;
-  deleteWorkspaceRegistryEntry(workspaceId: string): Promise<{ deleted: boolean }>;
-  listAgentTasks(query?: AgentTaskListQuery): Promise<AgentTaskListResponse>;
-  getAgentTask(taskId: string): Promise<AgentTask>;
-  createAgentTask(input: AgentTaskCreateInput): Promise<AgentTask>;
-  updateAgentTask(taskId: string, input: AgentTaskUpdateInput): Promise<AgentTask>;
-  getWorkspaceSecuritySettings(workspaceId: string): Promise<WorkspaceSecuritySettings>;
-  updateWorkspaceSecuritySettings(workspaceId: string, input: WorkspaceSecuritySettingsUpdateInput): Promise<WorkspaceSecuritySettings>;
-  classifyCommand(command: string, workspaceId?: string): Promise<CommandRiskClassification>;
-  listApprovalRequests(query?: ApprovalRequestListQuery): Promise<ApprovalRequestListResponse>;
-  getApprovalRequest(approvalId: string): Promise<ApprovalRequest>;
-  createApprovalRequest(input: ApprovalRequestCreateInput): Promise<ApprovalRequest>;
-  resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): Promise<ApprovalRequest>;
-  listAuditEvents(query?: AuditEventListQuery): Promise<AuditEventListResponse>;
-  listScheduledJobs(workspaceId?: string): Promise<ScheduledJob[]>;
-  getScheduledJob(jobId: string): Promise<ScheduledJob>;
-  createScheduledJob(input: ScheduledJobCreateInput): Promise<ScheduledJob>;
-  updateScheduledJob(jobId: string, input: ScheduledJobUpdateInput): Promise<ScheduledJob>;
-  deleteScheduledJob(jobId: string): Promise<{ deleted: boolean }>;
-  runScheduledJob(jobId: string): Promise<ScheduledJobRun>;
-  listScheduledJobRuns(jobId: string): Promise<ScheduledJobRun[]>;
-  listAutomationMonitors(workspaceId?: string): Promise<AutomationMonitor[]>;
-  getAutomationMonitor(monitorId: string): Promise<AutomationMonitor>;
-  createAutomationMonitor(input: AutomationMonitorCreateInput): Promise<AutomationMonitor>;
-  updateAutomationMonitor(monitorId: string, input: AutomationMonitorUpdateInput): Promise<AutomationMonitor>;
-  deleteAutomationMonitor(monitorId: string): Promise<{ deleted: boolean }>;
-  runAutomationMonitor(monitorId: string): Promise<AutomationMonitorRun>;
-  listAutomationMonitorRuns(monitorId: string): Promise<AutomationMonitorRun[]>;
-  listThreads(workspaceId: string): Promise<ThreadSummary[]>;
-  createThread(workspaceId: string, title?: string): Promise<ThreadDetail>;
-  getThread(threadId: string): Promise<ThreadDetail>;
-  renameThread(threadId: string, title: string): Promise<ThreadDetail>;
-  updateThreadKnowledgeBases(threadId: string, knowledgeBaseIds: string[]): Promise<{ knowledgeBaseIds: string[] }>;
-  deleteThread(threadId: string): Promise<{ deleted: boolean }>;
-  sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }>;
-  sendThreadAction(threadId: string, content: string): Promise<{ runId: string }>;
-  interruptRun(runId: string): Promise<{ interrupted: boolean }>;
-  listKnowledgeSources(): Promise<KnowledgeSource[]>;
-  getKnowledgeConfig(): Promise<KnowledgeConfig>;
-  updateKnowledgeConfig(input: Partial<KnowledgeConfig>): Promise<KnowledgeConfig>;
-  listKnowledgeFolders(): Promise<KnowledgeFolder[]>;
-  createKnowledgeFolder(input: KnowledgeFolderCreateInput): Promise<KnowledgeFolder>;
-  updateKnowledgeFolder(id: string, input: KnowledgeFolderUpdateInput): Promise<KnowledgeFolder>;
-  deleteKnowledgeFolder(id: string): Promise<{ deleted: boolean }>;
-  listKnowledgeBases(): Promise<KnowledgeBase[]>;
-  getKnowledgeBase(id: string): Promise<KnowledgeBase>;
-  createKnowledgeBase(input: KnowledgeBaseCreateInput): Promise<KnowledgeBase>;
-  updateKnowledgeBase(id: string, input: KnowledgeBaseUpdateInput): Promise<KnowledgeBase>;
-  deleteKnowledgeBase(id: string): Promise<{ deleted: boolean }>;
-  listKnowledgeBaseFiles(knowledgeBaseId: string): Promise<KnowledgeFile[]>;
-  uploadKnowledgeBaseFiles(
-    knowledgeBaseId: string,
-    request: { contentType: string; body: Uint8Array },
-  ): Promise<KnowledgeUploadResult[]>;
-  deleteKnowledgeBaseFile(knowledgeBaseId: string, fileId: string): Promise<{ deleted: boolean }>;
-  searchKnowledgeBase(knowledgeBaseId: string, input: KnowledgeSearchInput): Promise<KnowledgeSearchResult[]>;
-  getCapabilities(): Promise<LocalCoreCapabilities>;
-  getCapabilitySnapshot(): Promise<LocalCoreCapabilitySnapshot>;
-  listInstalledAgentRuntimes(): Promise<InstalledAgentRuntime[]>;
-  refreshInstalledAgentRuntimes(runtimeId?: string): Promise<InstalledAgentRuntime[]>;
-  isRuntimeDetectionRunning(runtimeId?: string): boolean;
-  getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
-  listDiagnosticErrors(): Promise<LocalCoreErrorSummary[]>;
-  runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;
-  runDeploymentDiagnostics(): Promise<LocalCoreDoctorResult>;
-  probeWorkspaceStreaming(workspaceId: string): Promise<WorkspaceStreamingProbeResult>;
-  listChannelGatewayStatuses(platform?: string): Promise<LocalCoreChannelGatewayStatus[]>;
-  getChannelGatewayStatus(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
-  testChannelConnection(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelConnectionResult>;
-  enableChannelGateway(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
-  disableChannelGateway(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus>;
-  listChannelPendingPairings(platform: string, workspaceId?: string): Promise<LocalCoreChannelPairingRequest[]>;
-  approveChannelPairing(platform: string, code: string): Promise<LocalCoreChannelAuthorizedUser>;
-  rejectChannelPairing(platform: string, code: string): Promise<{ rejected: boolean }>;
-  listChannelAuthorizedUsers(platform: string, workspaceId?: string): Promise<LocalCoreChannelAuthorizedUser[]>;
-  sendChannelFile(platform: string, workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult>;
-  sendChannelMessage(platform: string, workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult>;
-  getChannelQrCode(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
-  checkChannelQrCodeStatus(platform: string, workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreChannelQrCodeStatus>;
-  getWeixinQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
-  checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
-    status: 'wait' | 'signed' | 'confirmed' | 'expired';
-    userName?: string;
-    userId?: string;
-  }>;
-  getLarkQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode>;
-  checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus>;
-  listLarkGatewayStatuses(): Promise<LocalCoreLarkGatewayStatus[]>;
-  getLarkGatewayStatus(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus>;
-  testLarkConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult>;
-  enableLarkGateway(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus>;
-  disableLarkGateway(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus>;
-  listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]>;
-  approveLarkPairing(code: string): Promise<LocalCoreAuthorizedUser>;
-  rejectLarkPairing(code: string): Promise<{ rejected: boolean }>;
-  listLarkAuthorizedUsers(workspaceId?: string): Promise<LocalCoreAuthorizedUser[]>;
+import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { LocalCoreKernel } from '../kernel/bootstrap.js';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { WorkspaceRouter } from '../router/workspace-router.js';
+import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
+import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
+import type { RuntimeDetectionService } from './runtime-detection-service.js';
+import type { LocalCoreErrorReporter } from '../kernel/local-core-errors.js';
+import type { ChannelService } from './channel-service.js';
+import type { ExternalService } from './external-service.js';
+
+export interface LocalAiCoreServerBindings {
+  readonly controller: EventEmitter & {
+    getRuntimeStatus(): Promise<DesktopRuntimeStatus>;
+    startService(): Promise<DesktopServiceState>;
+    stopService(): Promise<DesktopServiceState>;
+    restartService(): Promise<DesktopServiceState>;
+    getLogs(limit?: number): string[];
+    getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
+    readConfigFile(): Promise<ConfigFileState>;
+    saveRawConfigFile(raw: string): Promise<ConfigFileState>;
+    saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
+    saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
+    getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
+    runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;
+    runDeploymentDiagnostics(): Promise<LocalCoreDoctorResult>;
+    emitBridge(event: DesktopBridgeEvent): void;
+  };
+  readonly channelService: ChannelService;
+  readonly externalService: ExternalService;
+  readonly workspaceRouter: WorkspaceRouter;
+  readonly knowledgeProvider: KnowledgeRuntime;
+  readonly scheduledJobs: ScheduledJobApplicationService;
+  readonly automationMonitors: AutomationMonitorService;
+  readonly store: LocalCoreAcpStore;
+  readonly runtimeDetection: RuntimeDetectionService;
+  readonly kernel: LocalCoreKernel;
+  readonly errorReporter: LocalCoreErrorReporter;
 }
 
 interface LocalAiCoreServerOptions {
@@ -736,13 +656,13 @@ export class LocalAiCoreServer {
     void this.handleRequest(req, res);
   });
 
-  constructor(private readonly bindings: LocalAiCoreBindings, options: LocalAiCoreServerOptions = {}) {
+  constructor(private readonly bindings: LocalAiCoreServerBindings, options: LocalAiCoreServerOptions = {}) {
     this.host = options.host || '127.0.0.1';
     this.port = options.port ?? 9831;
-    this.bindings.on('runtime', (runtime: DesktopRuntimeStatus) => {
+    this.bindings.controller.on('runtime', (runtime: DesktopRuntimeStatus) => {
       this.broadcast({ type: 'runtime.updated', runtime });
     });
-    this.bindings.on('bridge', (bridge: DesktopBridgeEvent) => {
+    this.bindings.controller.on('bridge', (bridge: DesktopBridgeEvent) => {
       this.broadcast({ type: 'stream.updated', stream: bridge });
       if (bridge.replyCtx) {
         const runId = String(bridge.replyCtx);
@@ -759,22 +679,22 @@ export class LocalAiCoreServer {
         });
       }
     });
-    this.bindings.on('thread-session-activated', (event: Omit<Extract<LocalCoreEvent, { type: 'thread.session.activated' }>, 'type'>) => {
+    this.bindings.controller.on('thread-session-activated', (event: Omit<Extract<LocalCoreEvent, { type: 'thread.session.activated' }>, 'type'>) => {
       this.broadcast({ type: 'thread.session.activated', ...event });
     });
-    this.bindings.on('scheduler-job', (job: ScheduledJob) => {
+    this.bindings.controller.on('scheduler-job', (job: ScheduledJob) => {
       this.broadcast({ type: 'scheduler.job.updated', job });
     });
-    this.bindings.on('scheduler-run', (run: ScheduledJobRun) => {
+    this.bindings.controller.on('scheduler-run', (run: ScheduledJobRun) => {
       this.broadcast({ type: 'scheduler.run.updated', run });
     });
-    this.bindings.on('automation-monitor', (monitor: AutomationMonitor) => {
+    this.bindings.controller.on('automation-monitor', (monitor: AutomationMonitor) => {
       this.broadcast({ type: 'automation.monitor.updated', monitor });
     });
-    this.bindings.on('automation-monitor-run', (run: AutomationMonitorRun) => {
+    this.bindings.controller.on('automation-monitor-run', (run: AutomationMonitorRun) => {
       this.broadcast({ type: 'automation.monitor.run.updated', run });
     });
-    this.bindings.on('runtime-detection', (event: LocalCoreEvent) => {
+    this.bindings.controller.on('runtime-detection', (event: LocalCoreEvent) => {
       this.broadcast(event);
     });
   }
@@ -854,27 +774,27 @@ export class LocalAiCoreServer {
         json(res, 200, { name: 'local-ai-core', version: '0.1.0' });
         return;
       case 'runtime.status':
-        json(res, 200, await this.bindings.getRuntimeStatus());
+        json(res, 200, await this.bindings.controller.getRuntimeStatus());
         return;
       case 'runtime.service.start':
-        json(res, 200, await this.bindings.startService());
+        json(res, 200, await this.bindings.controller.startService());
         return;
       case 'runtime.service.stop':
-        json(res, 200, await this.bindings.stopService());
+        json(res, 200, await this.bindings.controller.stopService());
         return;
       case 'runtime.service.restart':
-        json(res, 200, await this.bindings.restartService());
+        json(res, 200, await this.bindings.controller.restartService());
         return;
       case 'runtime.logs': {
         const limit = Number(url.searchParams.get('limit') || '200');
-        json(res, 200, this.bindings.getLogs(limit));
+        json(res, 200, this.bindings.controller.getLogs(limit));
         return;
       }
       case 'logs.list': {
         const level = url.searchParams.get('level') || 'sys';
         const limit = Number(url.searchParams.get('limit') || '200');
         json(res, 200, {
-          entries: this.bindings.getLogEntries(level, limit).map((entry) => ({
+          entries: this.bindings.controller.getLogEntries(level, limit).map((entry) => ({
             time: entry.ts,
             level: entry.level,
             scope: entry.scope,
@@ -889,7 +809,7 @@ export class LocalAiCoreServer {
         json(res, 200, await this.runtimeDetectionResponse());
         return;
       case 'runtimes.detail': {
-        const runtimes = await this.bindings.listInstalledAgentRuntimes();
+        const runtimes = await this.bindings.runtimeDetection.list();
         const runtime = runtimes.find((entry) => entry.runtimeId === route.runtimeId || entry.agentType === route.runtimeId);
         if (!runtime) {
           json(res, 404, null, false, 'Runtime not found');
@@ -899,90 +819,100 @@ export class LocalAiCoreServer {
         return;
       }
       case 'runtimes.refresh': {
-        const runtimes = await this.bindings.refreshInstalledAgentRuntimes();
-        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning() });
+        const runtimes = await this.bindings.runtimeDetection.refresh();
+        json(res, 200, { runtimes, checking: this.bindings.runtimeDetection.isChecking() });
         return;
       }
       case 'runtimes.refresh-one': {
-        const runtimes = await this.bindings.refreshInstalledAgentRuntimes(route.runtimeId);
-        json(res, 200, { runtimes, checking: this.bindings.isRuntimeDetectionRunning(route.runtimeId) });
+        const runtimes = await this.bindings.runtimeDetection.refresh(route.runtimeId);
+        json(res, 200, { runtimes, checking: this.bindings.runtimeDetection.isChecking(route.runtimeId) });
         return;
       }
       case 'runtime.config.read':
-        json(res, 200, await this.bindings.readConfigFile());
+        json(res, 200, await this.bindings.controller.readConfigFile());
         return;
       case 'runtime.config.save-raw': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.saveRawConfigFile(String(body.raw || '')));
+        json(res, 200, await this.bindings.controller.saveRawConfigFile(String(body.raw || '')));
         return;
       }
       case 'runtime.config.save-structured': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.saveStructuredConfigFile((body.config || {}) as DesktopConnectConfig));
+        json(res, 200, await this.bindings.controller.saveStructuredConfigFile((body.config || {}) as DesktopConnectConfig));
         return;
       }
       case 'runtime.settings.save': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.saveSettings(body as DesktopSettingsInput));
+        json(res, 200, await this.bindings.controller.saveSettings(body as DesktopSettingsInput));
         return;
       }
       case 'scheduler.jobs.list': {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { jobs: await this.bindings.listScheduledJobs(workspaceId || undefined) });
+        json(res, 200, { jobs: await this.bindings.scheduledJobs.listJobs(workspaceId || undefined) });
         return;
       }
       case 'scheduler.jobs.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createScheduledJob(body as unknown as ScheduledJobCreateInput));
+        json(res, 200, await this.bindings.scheduledJobs.createJob(body as unknown as ScheduledJobCreateInput));
         return;
       }
-      case 'scheduler.job.get':
-        json(res, 200, await this.bindings.getScheduledJob(route.jobId));
+      case 'scheduler.job.get': {
+        const job = this.bindings.scheduledJobs.getJob(route.jobId);
+        if (!job) {
+          throw new Error(`Scheduled job not found: ${route.jobId}`);
+        }
+        json(res, 200, job);
         return;
+      }
       case 'scheduler.job.runs':
-        json(res, 200, { runs: await this.bindings.listScheduledJobRuns(route.jobId) });
+        json(res, 200, { runs: await this.bindings.scheduledJobs.listJobRuns(route.jobId) });
         return;
       case 'scheduler.job.run':
-        json(res, 200, await this.bindings.runScheduledJob(route.jobId));
+        json(res, 200, await this.bindings.scheduledJobs.runJobNow(route.jobId));
         return;
       case 'scheduler.job.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateScheduledJob(route.jobId, body as unknown as ScheduledJobUpdateInput));
+        json(res, 200, await this.bindings.scheduledJobs.updateJob(route.jobId, body as unknown as ScheduledJobUpdateInput));
         return;
       }
       case 'scheduler.job.delete':
-        json(res, 200, await this.bindings.deleteScheduledJob(route.jobId));
+        json(res, 200, await this.bindings.scheduledJobs.deleteJob(route.jobId));
         return;
       case 'automation.monitors.list': {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { monitors: await this.bindings.listAutomationMonitors(workspaceId || undefined) });
+        json(res, 200, { monitors: await this.bindings.automationMonitors.listMonitors(workspaceId || undefined) });
         return;
       }
       case 'automation.monitors.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createAutomationMonitor(body as unknown as AutomationMonitorCreateInput));
+        json(res, 200, await this.bindings.automationMonitors.createMonitor(body as unknown as AutomationMonitorCreateInput));
         return;
       }
-      case 'automation.monitor.get':
-        json(res, 200, await this.bindings.getAutomationMonitor(route.monitorId));
+      case 'automation.monitor.get': {
+        const monitor = this.bindings.automationMonitors.getMonitor(route.monitorId);
+        if (!monitor) {
+          throw new Error(`Automation monitor not found: ${route.monitorId}`);
+        }
+        json(res, 200, monitor);
         return;
+      }
       case 'automation.monitor.runs':
-        json(res, 200, { runs: await this.bindings.listAutomationMonitorRuns(route.monitorId) });
+        json(res, 200, { runs: await this.bindings.automationMonitors.listRuns(route.monitorId) });
         return;
       case 'automation.monitor.run':
-        json(res, 200, await this.bindings.runAutomationMonitor(route.monitorId));
+        json(res, 200, await this.bindings.automationMonitors.runMonitorNow(route.monitorId));
         return;
       case 'automation.monitor.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateAutomationMonitor(route.monitorId, body as unknown as AutomationMonitorUpdateInput));
+        json(res, 200, await this.bindings.automationMonitors.updateMonitor(route.monitorId, body as unknown as AutomationMonitorUpdateInput));
         return;
       }
       case 'automation.monitor.delete':
-        json(res, 200, await this.bindings.deleteAutomationMonitor(route.monitorId));
+        json(res, 200, await this.bindings.automationMonitors.deleteMonitor(route.monitorId));
         return;
       case 'threads.list': {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { threads: workspaceId ? await this.bindings.listThreads(workspaceId) : [] });
+        json(res, 200, { threads: workspaceId ? await this.bindings.workspaceRouter.listThreads(workspaceId) : [] });
         return;
       }
       case 'threads.create': {
@@ -990,91 +920,95 @@ export class LocalAiCoreServer {
         json(
           res,
           200,
-          await this.bindings.createThread(String(body.workspaceId || ''), String(body.title || '') || undefined),
+          await this.bindings.workspaceRouter.createThread(String(body.workspaceId || ''), String(body.title || '') || undefined),
         );
         return;
       }
       case 'thread.get':
-        json(res, 200, await this.bindings.getThread(route.threadId));
+        json(res, 200, await this.bindings.workspaceRouter.getThread(route.threadId));
         return;
       case 'thread.update-knowledge-bases': {
         const body = await readJsonBody(req);
         const knowledgeBaseIds = Array.isArray(body.knowledgeBaseIds)
           ? body.knowledgeBaseIds.map((value) => String(value || ''))
           : [];
-        json(res, 200, await this.bindings.updateThreadKnowledgeBases(route.threadId, knowledgeBaseIds));
+        json(res, 200, await this.bindings.workspaceRouter.updateThreadKnowledgeBases(route.threadId, knowledgeBaseIds));
         return;
       }
       case 'thread.rename': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.renameThread(route.threadId, String(body.title || '')));
+        json(res, 200, await this.bindings.workspaceRouter.renameThread(route.threadId, String(body.title || '')));
         return;
       }
       case 'thread.delete':
-        json(res, 200, await this.bindings.deleteThread(route.threadId));
+        json(res, 200, await this.bindings.workspaceRouter.deleteThread(route.threadId));
         return;
       case 'thread.messages.send': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.sendThreadMessage(route.threadId, String(body.content || '')));
+        json(res, 200, await this.bindings.workspaceRouter.sendThreadMessage(route.threadId, String(body.content || '')));
         return;
       }
       case 'thread.actions.send': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.sendThreadAction(route.threadId, String(body.content || '')));
+        json(res, 200, await this.bindings.workspaceRouter.sendThreadAction(route.threadId, String(body.content || '')));
         return;
       }
       case 'run.interrupt':
-        json(res, 200, await this.bindings.interruptRun(route.runId));
+        json(res, 200, await this.bindings.workspaceRouter.interruptRun(route.runId));
         return;
       case 'workspaces.list':
-        json(res, 200, { workspaces: await this.bindings.listWorkspaces() });
+        json(res, 200, { workspaces: await this.bindings.workspaceRouter.listWorkspaces() });
         return;
       case 'workspace.streaming-probe':
-        json(res, 200, await this.bindings.probeWorkspaceStreaming(route.workspaceId));
+        json(res, 200, await this.bindings.workspaceRouter.probeWorkspaceStreaming(route.workspaceId));
         return;
       case 'workspace-registry.list':
-        json(res, 200, { workspaces: await this.bindings.listWorkspaceRegistry() });
+        json(res, 200, { workspaces: await this.bindings.workspaceRouter.listWorkspaceRegistry() });
         return;
       case 'workspace-registry.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createWorkspaceRegistryEntry(body as unknown as WorkspaceRegistryCreateInput));
+        json(res, 200, await this.bindings.workspaceRouter.createWorkspaceRegistryEntry(body as unknown as WorkspaceRegistryCreateInput));
         return;
       }
       case 'workspace-registry.get':
-        json(res, 200, await this.bindings.getWorkspaceRegistryEntry(route.workspaceId));
+        json(res, 200, await this.bindings.workspaceRouter.getWorkspaceRegistryEntry(route.workspaceId));
         return;
       case 'workspace-registry.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateWorkspaceRegistryEntry(route.workspaceId, body as unknown as WorkspaceRegistryUpdateInput));
+        json(res, 200, await this.bindings.workspaceRouter.updateWorkspaceRegistryEntry(route.workspaceId, body as unknown as WorkspaceRegistryUpdateInput));
         return;
       }
       case 'workspace-registry.delete':
-        json(res, 200, await this.bindings.deleteWorkspaceRegistryEntry(route.workspaceId));
+        json(res, 200, await this.bindings.workspaceRouter.deleteWorkspaceRegistryEntry(route.workspaceId));
         return;
       case 'providers.list':
-        json(res, 200, await this.bindings.listModelProviders());
+        json(res, 200, { providers: this.bindings.store.listModelProviders() });
         return;
       case 'providers.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createModelProvider(body as unknown as DesktopModelProviderInput));
+        json(res, 200, await this.bindings.store.upsertModelProvider(body as unknown as DesktopModelProviderInput));
         return;
       }
       case 'provider.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateModelProvider(route.providerId, body as unknown as DesktopModelProviderInput));
+        const existing = this.bindings.store.getModelProvider(route.providerId);
+        if (!existing) {
+          throw new Error(`Provider not found: ${route.providerId}`);
+        }
+        json(res, 200, this.bindings.store.upsertModelProvider({ ...(body as unknown as DesktopModelProviderInput), id: route.providerId }));
         return;
       }
       case 'provider.delete':
-        json(res, 200, await this.bindings.deleteModelProvider(route.providerId));
+        json(res, 200, this.bindings.store.deleteModelProvider(route.providerId));
         return;
       case 'external.project.ensure': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.ensureExternalProject(body as unknown as ExternalProjectEnsureInput));
+        json(res, 200, await this.bindings.externalService.ensureProject(body as unknown as ExternalProjectEnsureInput));
         return;
       }
       case 'external.run.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createExternalRun(body as unknown as ExternalRunCreateInput));
+        json(res, 200, await this.bindings.externalService.createRun(body as unknown as ExternalRunCreateInput));
         return;
       }
       case 'external.run.events':
@@ -1084,22 +1018,22 @@ export class LocalAiCoreServer {
         await this.handleOpenAiChatCompletions(req, res);
         return;
       case 'workspace-security.get':
-        json(res, 200, await this.bindings.getWorkspaceSecuritySettings(route.workspaceId));
+        json(res, 200, await this.bindings.workspaceRouter.getWorkspaceSecuritySettings(route.workspaceId));
         return;
       case 'workspace-security.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateWorkspaceSecuritySettings(route.workspaceId, body as unknown as WorkspaceSecuritySettingsUpdateInput));
+        json(res, 200, await this.bindings.workspaceRouter.updateWorkspaceSecuritySettings(route.workspaceId, body as unknown as WorkspaceSecuritySettingsUpdateInput));
         return;
       }
       case 'security.command-risk.classify': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.classifyCommand(String(body.command || ''), String(body.workspaceId || '') || undefined));
+        json(res, 200, await this.bindings.workspaceRouter.classifyCommand(String(body.command || ''), String(body.workspaceId || '') || undefined));
         return;
       }
       case 'approvals.list': {
         const statusParam = url.searchParams.get('status') || '';
         const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as ApprovalRequestListQuery['status'] : undefined;
-        json(res, 200, await this.bindings.listApprovalRequests({
+        json(res, 200, await this.bindings.workspaceRouter.listApprovalRequests({
           workspaceId: url.searchParams.get('workspace_id') || undefined,
           taskId: url.searchParams.get('task_id') || undefined,
           status,
@@ -1109,21 +1043,21 @@ export class LocalAiCoreServer {
       }
       case 'approvals.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createApprovalRequest(body as unknown as ApprovalRequestCreateInput));
+        json(res, 200, await this.bindings.workspaceRouter.createApprovalRequest(body as unknown as ApprovalRequestCreateInput));
         return;
       }
       case 'approval.get':
-        json(res, 200, await this.bindings.getApprovalRequest(route.approvalId));
+        json(res, 200, await this.bindings.workspaceRouter.getApprovalRequest(route.approvalId));
         return;
       case 'approval.resolve': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.resolveApprovalRequest(route.approvalId, body as unknown as ApprovalRequestResolveInput));
+        json(res, 200, await this.bindings.workspaceRouter.resolveApprovalRequest(route.approvalId, body as unknown as ApprovalRequestResolveInput));
         return;
       }
       case 'audit-events.list': {
         const typeParam = url.searchParams.get('type') || '';
         const type = typeParam ? typeParam.split(',').map((item) => item.trim()).filter(Boolean) as AuditEventListQuery['type'] : undefined;
-        json(res, 200, await this.bindings.listAuditEvents({
+        json(res, 200, await this.bindings.workspaceRouter.listAuditEvents({
           workspaceId: url.searchParams.get('workspace_id') || undefined,
           taskId: url.searchParams.get('task_id') || undefined,
           approvalId: url.searchParams.get('approval_id') || undefined,
@@ -1135,7 +1069,7 @@ export class LocalAiCoreServer {
       case 'tasks.list': {
         const statusParam = url.searchParams.get('status') || '';
         const status = statusParam ? statusParam.split(',').map((item) => item.trim()).filter(Boolean) as AgentTaskListQuery['status'] : undefined;
-        json(res, 200, await this.bindings.listAgentTasks({
+        json(res, 200, await this.bindings.workspaceRouter.listAgentTasks({
           workspaceId: url.searchParams.get('workspace_id') || undefined,
           runtimeId: url.searchParams.get('runtime_id') || undefined,
           status,
@@ -1145,65 +1079,65 @@ export class LocalAiCoreServer {
       }
       case 'tasks.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createAgentTask(body as unknown as AgentTaskCreateInput));
+        json(res, 200, await this.bindings.workspaceRouter.createAgentTask(body as unknown as AgentTaskCreateInput));
         return;
       }
       case 'task.get':
-        json(res, 200, await this.bindings.getAgentTask(route.taskId));
+        json(res, 200, await this.bindings.workspaceRouter.getAgentTask(route.taskId));
         return;
       case 'task.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateAgentTask(route.taskId, body as unknown as AgentTaskUpdateInput));
+        json(res, 200, await this.bindings.workspaceRouter.updateAgentTask(route.taskId, body as unknown as AgentTaskUpdateInput));
         return;
       }
       case 'knowledge.sources.list':
-        json(res, 200, { sources: await this.bindings.listKnowledgeSources() });
+        json(res, 200, { sources: await this.bindings.knowledgeProvider.listSources() });
         return;
       case 'knowledge.config.read':
-        json(res, 200, await this.bindings.getKnowledgeConfig());
+        json(res, 200, await this.bindings.knowledgeProvider.getConfig());
         return;
       case 'knowledge.config.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateKnowledgeConfig(body as Partial<KnowledgeConfig>));
+        json(res, 200, await this.bindings.knowledgeProvider.updateConfig(body as Partial<KnowledgeConfig>));
         return;
       }
       case 'knowledge.folders.list':
-        json(res, 200, { folders: await this.bindings.listKnowledgeFolders() });
+        json(res, 200, { folders: await this.bindings.knowledgeProvider.listFolders() });
         return;
       case 'knowledge.folders.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createKnowledgeFolder(body as unknown as KnowledgeFolderCreateInput));
+        json(res, 200, await this.bindings.knowledgeProvider.createFolder(body as unknown as KnowledgeFolderCreateInput));
         return;
       }
       case 'knowledge.folder.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateKnowledgeFolder(route.folderId, body as unknown as KnowledgeFolderUpdateInput));
+        json(res, 200, await this.bindings.knowledgeProvider.updateFolder(route.folderId, body as unknown as KnowledgeFolderUpdateInput));
         return;
       }
       case 'knowledge.folder.delete':
-        json(res, 200, await this.bindings.deleteKnowledgeFolder(route.folderId));
+        json(res, 200, await this.bindings.knowledgeProvider.deleteFolder(route.folderId));
         return;
       case 'knowledge.bases.list':
-        json(res, 200, { bases: await this.bindings.listKnowledgeBases() });
+        json(res, 200, { bases: await this.bindings.knowledgeProvider.listKnowledgeBases() });
         return;
       case 'knowledge.bases.create': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.createKnowledgeBase(body as unknown as KnowledgeBaseCreateInput));
+        json(res, 200, await this.bindings.knowledgeProvider.createKnowledgeBase(body as unknown as KnowledgeBaseCreateInput));
         return;
       }
       case 'knowledge.base.get':
-        json(res, 200, await this.bindings.getKnowledgeBase(route.knowledgeBaseId));
+        json(res, 200, await this.bindings.knowledgeProvider.getKnowledgeBase(route.knowledgeBaseId));
         return;
       case 'knowledge.base.update': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.updateKnowledgeBase(route.knowledgeBaseId, body as KnowledgeBaseUpdateInput));
+        json(res, 200, await this.bindings.knowledgeProvider.updateKnowledgeBase(route.knowledgeBaseId, body as KnowledgeBaseUpdateInput));
         return;
       }
       case 'knowledge.base.delete':
-        json(res, 200, await this.bindings.deleteKnowledgeBase(route.knowledgeBaseId));
+        json(res, 200, await this.bindings.knowledgeProvider.deleteKnowledgeBase(route.knowledgeBaseId));
         return;
       case 'knowledge.base.files.list':
-        json(res, 200, { files: await this.bindings.listKnowledgeBaseFiles(route.knowledgeBaseId) });
+        json(res, 200, { files: await this.bindings.knowledgeProvider.listKnowledgeBaseFiles(route.knowledgeBaseId) });
         return;
       case 'knowledge.base.files.upload': {
         const contentType = String(req.headers['content-type'] || '').trim();
@@ -1214,54 +1148,54 @@ export class LocalAiCoreServer {
         json(
           res,
           200,
-          { results: await this.bindings.uploadKnowledgeBaseFiles(route.knowledgeBaseId, { contentType, body }) },
+          { results: await this.bindings.knowledgeProvider.uploadKnowledgeBaseFiles(route.knowledgeBaseId, { contentType, body }) },
         );
         return;
       }
       case 'knowledge.base.file.delete':
-        json(res, 200, await this.bindings.deleteKnowledgeBaseFile(route.knowledgeBaseId, route.fileId));
+        json(res, 200, await this.bindings.knowledgeProvider.deleteKnowledgeBaseFile(route.knowledgeBaseId, route.fileId));
         return;
       case 'knowledge.base.search': {
         const body = await readJsonBody(req);
-        json(res, 200, { results: await this.bindings.searchKnowledgeBase(route.knowledgeBaseId, body as unknown as KnowledgeSearchInput) });
+        json(res, 200, { results: await this.bindings.knowledgeProvider.searchKnowledgeBase(route.knowledgeBaseId, body as unknown as KnowledgeSearchInput) });
         return;
       }
       case 'capabilities.read':
-        json(res, 200, await this.bindings.getCapabilities());
+        json(res, 200, await this.bindings.kernel.getCapabilitySnapshot());
         return;
       case 'capabilities.snapshot':
-        json(res, 200, await this.bindings.getCapabilitySnapshot());
+        json(res, 200, await this.bindings.kernel.getCapabilitySnapshot().snapshot);
         return;
       case 'diagnostics.errors':
-        json(res, 200, { errors: await this.bindings.listDiagnosticErrors() });
+        json(res, 200, { errors: await this.bindings.errorReporter.list() });
         return;
       case 'diagnostics.doctor':
-        json(res, 200, await this.bindings.runDiagnosticsDoctor());
+        json(res, 200, await this.bindings.controller.runDiagnosticsDoctor());
         return;
       case 'diagnostics.deployment':
-        json(res, 200, await this.bindings.runDeploymentDiagnostics());
+        json(res, 200, await this.bindings.controller.runDeploymentDiagnostics());
         return;
       case 'plugins.diagnostics':
-        json(res, 200, await this.bindings.getPluginDiagnostics());
+        json(res, 200, await this.bindings.controller.getPluginDiagnostics());
         return;
       case 'events.stream':
         this.attachSseClient(res);
         return;
       case 'platform.gateways.list':
-        json(res, 200, { gateways: await this.bindings.listChannelGatewayStatuses(route.platform) });
+        json(res, 200, { gateways: await this.bindings.channelService.listStatuses(route.platform) });
         return;
       case 'platform.pairings.list': {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { pairings: await this.bindings.listChannelPendingPairings(route.platform, workspaceId || undefined) });
+        json(res, 200, { pairings: await this.bindings.channelService.listPendingPairings(route.platform, workspaceId || undefined) });
         return;
       }
       case 'platform.users.list': {
         const workspaceId = String(url.searchParams.get('workspace_id') || '');
-        json(res, 200, { users: await this.bindings.listChannelAuthorizedUsers(route.platform, workspaceId || undefined) });
+        json(res, 200, { users: await this.bindings.channelService.listAuthorizedUsers(route.platform, workspaceId || undefined) });
         return;
       }
       case 'platform.gateway.get':
-        json(res, 200, await this.bindings.getChannelGatewayStatus(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        json(res, 200, await this.bindings.channelService.getStatus(route.platform, route.workspaceId, this.channelInstanceId(url)));
         return;
       case 'platform.qrcode.status': {
         const ticket = String(url.searchParams.get('ticket') || '');
@@ -1269,40 +1203,40 @@ export class LocalAiCoreServer {
           jsonError(res, 400, new Error('Missing ticket parameter'));
           return;
         }
-        json(res, 200, await this.bindings.checkChannelQrCodeStatus(route.platform, route.workspaceId, ticket, this.channelInstanceId(url)));
+        json(res, 200, await this.bindings.channelService.checkQrCodeStatus(route.platform, route.workspaceId, ticket, this.channelInstanceId(url)));
         return;
       }
       case 'platform.pairing.approve': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.approveChannelPairing(route.platform, String(body.code || '')));
+        json(res, 200, await this.bindings.channelService.approvePairing(route.platform, String(body.code || '')));
         return;
       }
       case 'platform.pairing.reject': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.rejectChannelPairing(route.platform, String(body.code || '')));
+        json(res, 200, await this.bindings.channelService.rejectPairing(route.platform, String(body.code || '')));
         return;
       }
       case 'platform.gateway.test':
-        json(res, 200, await this.bindings.testChannelConnection(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        json(res, 200, await this.bindings.channelService.testConnection(route.platform, route.workspaceId, this.channelInstanceId(url)));
         return;
       case 'platform.gateway.enable':
-        json(res, 200, await this.bindings.enableChannelGateway(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        json(res, 200, await this.bindings.channelService.enable(route.platform, route.workspaceId, this.channelInstanceId(url)));
         return;
       case 'platform.gateway.disable':
-        json(res, 200, await this.bindings.disableChannelGateway(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        json(res, 200, await this.bindings.channelService.disable(route.platform, route.workspaceId, this.channelInstanceId(url)));
         return;
       case 'platform.file.send': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.sendChannelFile(route.platform, route.workspaceId, body as unknown as ChannelFileSendInput));
+        json(res, 200, await this.bindings.channelService.sendFile(route.platform, route.workspaceId, body as unknown as ChannelFileSendInput));
         return;
       }
       case 'platform.message.send': {
         const body = await readJsonBody(req);
-        json(res, 200, await this.bindings.sendChannelMessage(route.platform, route.workspaceId, body as unknown as ChannelOutboundMessageInput));
+        json(res, 200, await this.bindings.channelService.sendMessage(route.platform, route.workspaceId, body as unknown as ChannelOutboundMessageInput));
         return;
       }
       case 'platform.qrcode.create':
-        json(res, 200, await this.bindings.getChannelQrCode(route.platform, route.workspaceId, this.channelInstanceId(url)));
+        json(res, 200, await this.bindings.channelService.getQrCode(route.platform, route.workspaceId, this.channelInstanceId(url)));
         return;
     }
   }
@@ -1346,7 +1280,7 @@ export class LocalAiCoreServer {
     }, 15000);
     this.heartbeatTimers.set(res, heartbeat);
     const replayTimer = setInterval(() => {
-      void this.bindings.getExternalRunSnapshot(runId)
+      void this.bindings.externalService.getRunSnapshot(runId)
         .then((snapshot) => this.replayExternalRunMessages(res, runId, snapshot, replayedMessageIds))
         .catch(() => undefined);
     }, 1000);
@@ -1361,7 +1295,7 @@ export class LocalAiCoreServer {
         this.externalRunSseClients.delete(runId);
       }
     });
-    const snapshot = await this.bindings.getExternalRunSnapshot(runId);
+    const snapshot = await this.bindings.externalService.getRunSnapshot(runId);
     res.write(createSseEvent('external.run.snapshot', {
       type: 'external.run.snapshot',
       snapshot,
@@ -1386,7 +1320,7 @@ export class LocalAiCoreServer {
 
   private async handleOpenAiStreamingChatCompletion(parsed: ParsedOpenAiChatCompletion, res: ServerResponse) {
     try {
-      const created = await this.bindings.createExternalRun(parsed.externalRun);
+      const created = await this.bindings.externalService.createRun(parsed.externalRun);
       const adapters = this.openAiRunStreams.get(created.run_id) || new Set<OpenAiChatCompletionStreamAdapter>();
       const adapter = new OpenAiChatCompletionStreamAdapter({
         runId: created.run_id,
@@ -1409,7 +1343,7 @@ export class LocalAiCoreServer {
           this.openAiRunStreams.delete(created.run_id);
         }
       });
-      const snapshot = await this.bindings.getExternalRunSnapshot(created.run_id);
+      const snapshot = await this.bindings.externalService.getRunSnapshot(created.run_id);
       this.replayOpenAiRunMessages(adapter, snapshot);
       if (isTerminalAgentTaskStatus(snapshot.task?.status)) {
         adapter.finish('stop', { event: 'run_finished', kind: 'status' });
@@ -1422,17 +1356,17 @@ export class LocalAiCoreServer {
   private async handleOpenAiNonStreamingChatCompletion(parsed: ParsedOpenAiChatCompletion, res: ServerResponse) {
     let created: ExternalRunCreateResponse;
     try {
-      created = await this.bindings.createExternalRun(parsed.externalRun);
+      created = await this.bindings.externalService.createRun(parsed.externalRun);
     } catch (error) {
       openAiJsonError(res, 500, error instanceof Error ? error.message : String(error), 'agentdock_run_error');
       return;
     }
     const started = Date.now();
     const timeoutMs = 10 * 60 * 1000;
-    let snapshot = await this.bindings.getExternalRunSnapshot(created.run_id);
+    let snapshot = await this.bindings.externalService.getRunSnapshot(created.run_id);
     while (!isTerminalAgentTaskStatus(snapshot.task?.status) && Date.now() - started < timeoutMs) {
       await new Promise((resolve) => setTimeout(resolve, 500));
-      snapshot = await this.bindings.getExternalRunSnapshot(created.run_id);
+      snapshot = await this.bindings.externalService.getRunSnapshot(created.run_id);
     }
     if (!isTerminalAgentTaskStatus(snapshot.task?.status)) {
       openAiJsonError(res, 504, 'OpenAI-compatible chat completion timed out waiting for the agent run.', 'run_timeout');
@@ -1569,8 +1503,8 @@ export class LocalAiCoreServer {
 
   private async runtimeDetectionResponse(): Promise<RuntimeDetectionListResponse> {
     return {
-      runtimes: await this.bindings.listInstalledAgentRuntimes(),
-      checking: this.bindings.isRuntimeDetectionRunning(),
+      runtimes: await this.bindings.runtimeDetection.list(),
+      checking: this.bindings.runtimeDetection.isChecking(),
     };
   }
 

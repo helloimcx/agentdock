@@ -134,9 +134,9 @@ test('controller migrates embedded project providers into shared provider store'
     const config = await controller.readConfigFile();
     assert.equal(config.parsed?.projects?.[0]?.agent.options?.provider_id, 'deepseek');
     assert.equal(config.parsed?.projects?.[0]?.agent.providers, undefined);
-    const providers = await controller.listModelProviders();
-    assert.equal(providers.providers[0]?.id, 'deepseek');
-    assert.equal(providers.providers[0]?.name, 'deepseek');
+    const providers = controller.store.listModelProviders();
+    assert.equal(providers[0]?.id, 'deepseek');
+    assert.equal(providers[0]?.name, 'deepseek');
     await controller.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -152,7 +152,7 @@ test('workspace router resolves projects that select a shared provider', async (
       log: () => {},
     });
     const controller = new LocalCoreController(userDataPath, runtime);
-    const provider = await controller.createModelProvider({
+    const provider = controller.store.upsertModelProvider({
       name: 'deepseek',
       api_key: 'secret',
       base_url: 'https://api.deepseek.com',
@@ -172,7 +172,7 @@ test('workspace router resolves projects that select a shared provider', async (
       }],
     });
 
-    const workspaces = await controller.listWorkspaces();
+    const workspaces = await controller.workspaceRouter.listWorkspaces();
     assert.equal(workspaces[0]?.id, 'workspace-a');
     assert.equal(workspaces[0]?.agentType, 'pi');
     await controller.close();
@@ -203,7 +203,7 @@ test('scheduler create resolves a Lark delivery route without binding the job to
       updated_at: now,
     });
 
-    const job = await controller.createScheduledJob({
+    const job = await controller.scheduledJobs.createJob({
       workspaceId: 'workspace-a',
       threadId: thread.id,
       executionMode: 'side-thread',
@@ -248,7 +248,7 @@ test('scheduler create from a bound thread preserves channel instance route', as
       updated_at: now,
     });
 
-    const job = await controller.createScheduledJob({
+    const job = await controller.scheduledJobs.createJob({
       workspaceId: 'workspace-a',
       threadId: thread.id,
       executionMode: 'side-thread',

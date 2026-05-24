@@ -9,7 +9,19 @@ async function main() {
   const host = process.env.AI_WORKSTATION_HOST?.trim() || '127.0.0.1';
   mkdirSync(userDataPath, { recursive: true });
   const controller = new LocalCoreController(userDataPath);
-  const server = new LocalAiCoreServer(controller, { host });
+  const server = new LocalAiCoreServer({
+    controller,
+    channelService: controller.channelService,
+    externalService: controller.externalService,
+    workspaceRouter: controller.workspaceRouter,
+    knowledgeProvider: controller.knowledgeProvider,
+    scheduledJobs: controller.scheduledJobs,
+    automationMonitors: controller.automationMonitors,
+    store: controller.store,
+    runtimeDetection: controller.runtimeDetection,
+    kernel: controller.kernel,
+    errorReporter: controller.errorReporter,
+  }, { host });
   controller.on('logs', (line: string) => {
     if (!line) {
       return;

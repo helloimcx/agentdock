@@ -787,14 +787,14 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
 
   await controller.init();
   assert.equal(started, true);
-  assert.deepEqual(await controller.getCapabilities(), capabilitySnapshot);
-  assert.deepEqual(await controller.getChannelQrCode('test-channel', 'workspace-1', 'instance-1'), {
+  assert.deepEqual(await controller.kernel.getCapabilitySnapshot(), capabilitySnapshot);
+  assert.deepEqual(await controller.channelService.getQrCode('test-channel', 'workspace-1', 'instance-1'), {
     ticket: 'ticket:workspace-1',
     expiresIn: 60,
     qrCodeUrl: 'https://example.test/qr',
     instanceId: 'instance-1',
   });
-  assert.deepEqual(await controller.checkChannelQrCodeStatus('test-channel', 'workspace-1', 'signed-ticket'), {
+  assert.deepEqual(await controller.channelService.checkQrCodeStatus('test-channel', 'workspace-1', 'signed-ticket'), {
     status: 'signed',
   });
   await controller.saveStructuredConfigFile({ projects: [] } as any);
@@ -1007,8 +1007,12 @@ test('channel plugin lifecycle start and stop are driven by the kernel lifecycle
 
 test('server QR routes dispatch through generic channel bindings', async () => {
   const calls: string[] = [];
-  const bindings = Object.assign(new EventEmitter(), {
-    getChannelQrCode: async (platform: string, workspaceId: string, instanceId?: string) => {
+  const controller = Object.assign(new EventEmitter(), {
+    getChannelQrCode: undefined,
+    checkChannelQrCodeStatus: undefined,
+  });
+  const channelService = {
+    getQrCode: async (platform: string, workspaceId: string, instanceId?: string) => {
       calls.push(`get:${platform}:${workspaceId}:${instanceId || ''}`);
       return {
         ticket: 'ticket-1',
@@ -1017,11 +1021,12 @@ test('server QR routes dispatch through generic channel bindings', async () => {
         instanceId,
       };
     },
-    checkChannelQrCodeStatus: async (platform: string, workspaceId: string, ticket: string, instanceId?: string) => {
+    checkQrCodeStatus: async (platform: string, workspaceId: string, ticket: string, instanceId?: string) => {
       calls.push(`check:${platform}:${workspaceId}:${ticket}:${instanceId || ''}`);
       return { status: 'signed' };
     },
-  }) as any;
+  };
+  const bindings = { controller, channelService } as any;
   const server = new LocalAiCoreServer(bindings, { port: 0 });
   const qrResponse = await invokeServer(server, 'POST', '/api/local/v1/platforms/slack/workspace-1/qrcode?instance_id=bot-1');
   assert.equal(qrResponse.body.data.ticket, 'ticket-1');
@@ -1034,7 +1039,8 @@ test('server QR routes dispatch through generic channel bindings', async () => {
 });
 
 test('server unknown routes return structured error responses', async () => {
-  const bindings = new EventEmitter() as any;
+  const controller = new EventEmitter() as any;
+  const bindings = { controller } as any;
   const server = new LocalAiCoreServer(bindings, { port: 0 });
   const response = await invokeServer(server, 'GET', '/api/local/v1/not-found');
 
@@ -1047,24 +1053,7 @@ test('server unknown routes return structured error responses', async () => {
 
 test('server diagnostics routes dispatch through generic bindings', async () => {
   const calls: string[] = [];
-  const bindings = Object.assign(new EventEmitter(), {
-    listDiagnosticErrors: async () => {
-      calls.push('errors');
-      return [{
-        key: 'channel.weixin:channel_session_expired:workspace-1',
-        count: 2,
-        firstSeenAt: '2026-05-12T00:00:00.000Z',
-        lastSeenAt: '2026-05-12T00:05:00.000Z',
-        errorInfo: {
-          code: 'channel_session_expired',
-          message: 'WeChat login expired.',
-          userMessage: 'Channel login has expired.',
-          severity: 'error',
-          retryable: false,
-          suggestedAction: 'Reconnect the channel.',
-        },
-      }];
-    },
+  const controller = Object.assign(new EventEmitter(), {
     runDiagnosticsDoctor: async () => {
       calls.push('doctor');
       return {
@@ -1085,7 +1074,27 @@ test('server diagnostics routes dispatch through generic bindings', async () => 
         ],
       };
     },
-  }) as any;
+  });
+  const errorReporter = {
+    list: async () => {
+      calls.push('errors');
+      return [{
+        key: 'channel.weixin:channel_session_expired:workspace-1',
+        count: 2,
+        firstSeenAt: '2026-05-12T00:00:00.000Z',
+        lastSeenAt: '2026-05-12T00:05:00.000Z',
+        errorInfo: {
+          code: 'channel_session_expired',
+          message: 'WeChat login expired.',
+          userMessage: 'Channel login has expired.',
+          severity: 'error',
+          retryable: false,
+          suggestedAction: 'Reconnect the channel.',
+        },
+      }];
+    },
+  };
+  const bindings = { controller, errorReporter } as any;
   const server = new LocalAiCoreServer(bindings, { port: 0 });
   const errorsResponse = await invokeServer(server, 'GET', '/api/local/v1/diagnostics/errors');
   const doctorResponse = await invokeServer(server, 'POST', '/api/local/v1/diagnostics/doctor');
@@ -1099,8 +1108,9 @@ test('server diagnostics routes dispatch through generic bindings', async () => 
 
 test('server OpenAI-compatible chat route maps metadata to sandbox yolo external run', async () => {
   let externalInput: any;
-  const bindings = Object.assign(new EventEmitter(), {
-    createExternalRun: async (input: any) => {
+  const controller = new EventEmitter() as any;
+  const externalService = {
+    createRun: async (input: any) => {
       externalInput = input;
       return {
         project: {},
@@ -1112,7 +1122,7 @@ test('server OpenAI-compatible chat route maps metadata to sandbox yolo external
         events_url: '/api/local/v1/external/runs/run-1/events',
       };
     },
-    getExternalRunSnapshot: async () => ({
+    getRunSnapshot: async () => ({
       runId: 'run-1',
       task: {
         taskId: 'task-1',
@@ -1145,7 +1155,8 @@ test('server OpenAI-compatible chat route maps metadata to sandbox yolo external
         }],
       },
     }),
-  }) as any;
+  };
+  const bindings = { controller, externalService } as any;
   const server = new LocalAiCoreServer(bindings, { port: 0 });
 
   const response = await invokeServer(server, 'POST', '/api/local/v1/openai/chat/completions', {
