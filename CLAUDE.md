@@ -137,14 +137,6 @@ Use TDD selectively where it prevents repeated regressions. Bug fixes should sta
 
 Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates. Avoid committing machine-specific paths, secrets, or generated output.
 
-## Large Files
-
-These files are intentionally large:
-- `services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.ts` (~52KB) — WeChat gateway
-- `services/local-ai-core/src/channel/lark/local-core-lark-gateway.ts` (~41KB) — Lark gateway
-- `services/local-ai-core/src/acp/local-core-acp-store.ts` (~30KB) — ACP session store
-- `packages/contracts/src/local-core.ts` (~46KB) — shared contract types and normalize functions
-- `services/local-ai-core/src/runtime/handlers/openai-handler.ts` (~580 lines) — OpenAI adapter class + request parsing + streaming/non-streaming
 
 ## Configuration Notes
 
