@@ -13,7 +13,10 @@ import type {
   DesktopBridgeEvent,
   DesktopConnectConfig,
   LocalCoreAuthorizedUser,
+  LocalCoreChannelConnectionResult,
+  LocalCoreChannelGatewayStatus,
   LocalCoreChannelQrCode,
+  LocalCoreChannelQrCodeStatus,
   LocalCoreErrorInfo,
   LocalCoreLarkConnectionResult,
   LocalCoreLarkGatewayStatus,
@@ -25,8 +28,9 @@ import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-er
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
-import { ChannelSessionCommandRuntime } from '../shared/session-command-runtime.js';
+import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
+import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
 import {
   buildSessionCommandCard,
   buildInteractiveCard,
@@ -71,104 +75,20 @@ const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 const LARK_FINAL_PATCH_INTERVAL_MS = 900;
 const LARK_PROGRESS_PATCH_INTERVAL_MS = 3000;
 
-export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime {
+export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, LarkWorkspaceBinding, LarkThreadRoute, LarkTurnState> {
   // Lark returns 200340 when card action events are not enabled in the app's
   // event subscription. Keep card actions opt-in so text approval always works.
   private readonly defaultCardActionsEnabled = false;
   // Keep permission state in a dedicated card to avoid mixing order in the main reply card.
   private readonly mirrorPermissionStateInMainCard = false;
-  private readonly runtime = new Map<string, LarkRuntimeState>();
-  private readonly threadRouting = new Map<string, LarkThreadRoute>();
-  private readonly outboundEventChains = new Map<string, Promise<void>>();
-  private readonly outboundTurns = new Map<string, LarkTurnState>();
-  private readonly mutedThreadBridgeCounts = new Map<string, number>();
-  private readonly sessionCommandRuntime: ChannelSessionCommandRuntime<LarkThreadRoute>;
   private larkModulePromise: Promise<LarkModule> | null = null;
   readonly platform = 'lark';
-  readonly routeType = 'channel.chat';
 
-  constructor(private readonly options: LocalCoreLarkGatewayOptions) {
-    super();
-    const slashCommands = new ThreadSlashCommandDispatcher({
-      session: {
-        listThreads: (workspaceId) => this.options.getWorkspaceRouter().listThreads(workspaceId),
-        getThread: (threadId) => this.options.getWorkspaceRouter().getThread(threadId),
-        createThread: (workspaceId, title) => this.options.getWorkspaceRouter().createThread(workspaceId, title),
-        renameThread: (threadId, title) => this.options.getWorkspaceRouter().renameThread(threadId, title),
-        deleteThread: (threadId) => this.options.getWorkspaceRouter().deleteThread(threadId),
-      },
-      thread: {
-        getThreadRow: (threadId) => this.options.store.getThreadRow(threadId),
-        updateThreadAgentMode: (threadId, mode) => this.options.store.updateThreadAgentMode(threadId, mode),
-        updateThreadAgentType: (threadId, agentType) => this.options.store.updateThreadAgentType(threadId, agentType),
-        getLatestRunForThread: (threadId) => this.options.store.getLatestRunForThread(threadId),
-        createAuditEvent: (input) => this.options.store.createAuditEvent(input),
-        getAgentTypes: () => this.options.getWorkspaceRouter().getAgentTypes(),
-        setThreadMode: (threadId, mode) => this.options.getWorkspaceRouter().setThreadMode(threadId, mode),
-        closeThreadSession: (threadId) => this.options.getWorkspaceRouter().closeThreadSession(threadId),
-        interruptRun: (runId) => this.options.getWorkspaceRouter().interruptRun(runId),
-        log: this.options.log,
-      },
-    });
-    this.sessionCommandRuntime = new ChannelSessionCommandRuntime({
-      dispatcher: slashCommands,
-      store: this.options.store,
-      getThreadSessionKey: (threadId) => this.options.getWorkspaceRouter().getThreadSessionKey(threadId),
-      setThreadRoute: (sessionKey, route) => {
-        this.threadRouting.set(sessionKey, route);
-      },
-      createRoute: (input, threadId) => ({
-        workspaceId: input.workspaceId,
-        instanceId: input.instanceId,
-        platformKey: input.platformKey,
-        platformUserId: input.platformUserId,
-        chatId: input.chatId,
-        threadId,
-      }),
-      sendResult: (input, result) => this.sendSessionCommandResult(input, result),
-    });
+  constructor(options: LocalCoreLarkGatewayOptions) {
+    super(options);
   }
 
-  async refreshBindings() {
-    const config = await this.options.readConfig();
-    const bindings = this.collectBindings(config);
-    const nextKeys = new Set(bindings.map((binding) => runtimeKey(binding.workspaceId, binding.instanceId)));
-    for (const key of [...this.runtime.keys()]) {
-      if (!nextKeys.has(key)) {
-        await this.stopWorkspaceKey(key);
-      }
-    }
-    for (const binding of bindings) {
-      const key = runtimeKey(binding.workspaceId, binding.instanceId);
-      const current = this.runtime.get(key);
-      if (!binding.enabled) {
-        if (current) {
-          await this.stopWorkspaceKey(key);
-        } else {
-          this.runtime.set(key, {
-            workspaceId: binding.workspaceId,
-            instanceId: binding.instanceId,
-            displayName: binding.displayName,
-            platformKey: binding.platformKey,
-            enabled: false,
-            status: 'disabled',
-            connected: false,
-            appId: binding.appId,
-            autoApprove: binding.autoApprove,
-            cardActionsEnabled: binding.cardActionsEnabled,
-            groupReplyAll: binding.groupReplyAll,
-            botOpenId: binding.botOpenId,
-          });
-        }
-        continue;
-      }
-      if (current?.status === 'running' && current.appId === binding.appId) {
-        continue;
-      }
-      await this.startWorkspace(binding);
-    }
-    this.notifyRuntimeStateChanged();
-  }
+  // ==================== Lifecycle (platform-specific) ====================
 
   async testConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult> {
     const binding = await this.getBinding(workspaceId, instanceId);
@@ -179,17 +99,6 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
       workspaceId,
       instanceId: binding.instanceId,
     };
-  }
-
-  async enable(workspaceId: string, instanceId?: string) {
-    const binding = await this.getBinding(workspaceId, instanceId);
-    await this.startWorkspace(binding);
-    return this.getStatus(workspaceId, binding.instanceId);
-  }
-
-  async disable(workspaceId: string, instanceId?: string) {
-    await this.stopWorkspace(workspaceId, instanceId);
-    return this.getStatus(workspaceId, instanceId);
   }
 
   async getQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
@@ -279,21 +188,8 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     };
   }
 
-  private async executeSessionCommand(input: {
-    workspaceId: string;
-    currentThreadId: string;
-    text: string;
-    defaultTitle: string;
-    defaultAgentType: string;
-    chatId: string;
-    platformUserId: string;
-    platformKey: string;
-    instanceId: string;
-  }) {
-    return this.sessionCommandRuntime.execute(input);
-  }
 
-  private async sendSessionCommandResult(input: {
+  protected async sendSessionCommandResult(input: {
     workspaceId: string;
     currentThreadId: string;
     chatId: string;
@@ -427,120 +323,15 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     };
   }
 
-  muteThreadBridge(threadId: string) {
-    const current = this.mutedThreadBridgeCounts.get(threadId) || 0;
-    this.mutedThreadBridgeCounts.set(threadId, current + 1);
-  }
 
-  unmuteThreadBridge(threadId: string) {
-    const current = this.mutedThreadBridgeCounts.get(threadId) || 0;
-    if (current <= 1) {
-      this.mutedThreadBridgeCounts.delete(threadId);
-      return;
-    }
-    this.mutedThreadBridgeCounts.set(threadId, current - 1);
-  }
 
-  getStatus(workspaceId: string, instanceId?: string): LocalCoreLarkGatewayStatus {
-    this.options.store.expirePendingPairings();
-    const resolved = this.resolveRuntimeState(workspaceId, instanceId);
-    const binding = resolved.state;
-    const platformKey = binding?.platformKey || channelPlatformKey('lark', resolved.instanceId);
-    const pairings = this.options.store.listPendingPairings(workspaceId)
-      .filter((row) => row.platform === platformKey && row.expires_at >= new Date().toISOString());
-    const users = this.options.store.listAuthorizedUsers(workspaceId, platformKey);
-    return {
-      workspaceId,
-      platform: 'lark',
-      instanceId: resolved.instanceId,
-      displayName: binding?.displayName,
-      enabled: Boolean(binding?.enabled),
-      connected: Boolean(binding?.connected),
-      status: binding?.status || 'disabled',
-      appId: binding?.appId || '',
-      lastError: binding?.lastError,
-      lastErrorInfo: binding?.lastErrorInfo,
-      lastErrorAt: binding?.lastErrorAt,
-      connectedAt: binding?.connectedAt,
-      pendingPairings: pairings.length,
-      authorizedUsers: users.length,
-    };
-  }
 
-  listStatuses(): LocalCoreLarkGatewayStatus[] {
-    return [...this.runtime.values()]
-      .sort((a, b) => `${a.workspaceId}:${a.instanceId}`.localeCompare(`${b.workspaceId}:${b.instanceId}`))
-      .map((state) => this.getStatus(state.workspaceId, state.instanceId));
-  }
 
-  listPendingPairings(workspaceId?: string): LocalCorePairingRequest[] {
-    this.options.store.expirePendingPairings();
-    return this.options.store
-      .listPairingRequests(workspaceId)
-      .filter((item) => item.platform === 'lark' || item.platform.startsWith('lark:'))
-      .filter((item) => item.status === 'pending' && item.expiresAt >= new Date().toISOString());
-  }
 
-  listAuthorizedUsers(workspaceId?: string): LocalCoreAuthorizedUser[] {
-    return this.options.store.listAuthorizedUsers(workspaceId)
-      .filter((item) => item.platform === 'lark' || item.platform.startsWith('lark:'));
-  }
 
-  async start() {
-    await this.refreshBindings();
-  }
 
-  async stop() {
-    this.close();
-  }
 
-  approvePairing(code: string): LocalCoreAuthorizedUser {
-    this.options.store.expirePendingPairings();
-    const pairing = this.options.store.getPairingRequest(code);
-    if (!pairing) {
-      throw new Error(`Pairing code not found: ${code}`);
-    }
-    if (pairing.platform !== 'lark' && !pairing.platform.startsWith('lark:')) {
-      throw new Error(`Pairing code ${code} is not a Lark pairing`);
-    }
-    if (pairing.status !== 'pending') {
-      throw new Error(`Pairing code ${code} is already ${pairing.status}`);
-    }
-    if (pairing.expires_at < new Date().toISOString()) {
-      this.options.store.updatePairingStatus(code, 'expired');
-      throw new Error(`Pairing code ${code} has expired`);
-    }
-    const existing = this.options.store.getAuthorizedUser(pairing.workspace_id, pairing.platform_user_id, pairing.platform);
-    const userId = existing?.id || `lark-user-${randomUUID()}`;
-    const authorizedAt = new Date().toISOString();
-    this.options.store.createAuthorizedUser({
-      id: userId,
-      workspace_id: pairing.workspace_id,
-      platform: pairing.platform,
-      platform_user_id: pairing.platform_user_id,
-      chat_id: pairing.chat_id,
-      display_name: pairing.display_name,
-      thread_id: existing?.thread_id || null,
-      authorized_at: authorizedAt,
-    });
-    this.options.store.updatePairingStatus(code, 'approved');
-    this.notifyRuntimeStateChanged();
-    const user = this.options.store.listAuthorizedUsers(pairing.workspace_id, pairing.platform).find((entry) => entry.id === userId);
-    if (!user) {
-      throw new Error('Authorized user lookup failed after approval');
-    }
-    return user;
-  }
 
-  rejectPairing(code: string) {
-    const pairing = this.options.store.getPairingRequest(code);
-    if (!pairing) {
-      throw new Error(`Pairing code not found: ${code}`);
-    }
-    this.options.store.updatePairingStatus(code, 'rejected');
-    this.notifyRuntimeStateChanged();
-    return { rejected: true };
-  }
 
   async onBridgeEvent(event: DesktopBridgeEvent) {
     if (!event.sessionKey) {
@@ -706,54 +497,55 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     await current;
   }
 
-  async handleInboundMessage(input: LarkInboundMessage) {
-    const instanceId = input.instanceId || 'default';
-    const platformKey = input.platformKey || channelPlatformKey('lark', instanceId);
+  async handleInboundMessage(input: unknown) {
+    const msg = input as LarkInboundMessage;
+    const instanceId = msg.instanceId || 'default';
+    const platformKey = msg.platformKey || channelPlatformKey('lark', instanceId);
     this.options.eventBus.emit({
       type: 'platform.message.received',
       payload: {
         platform: this.platform,
-        workspaceId: input.workspaceId,
-        participantId: input.platformUserId,
-        channelId: input.chatId,
-        displayName: input.displayName,
-        text: input.text,
-        messageId: input.messageId,
+        workspaceId: msg.workspaceId,
+        participantId: msg.platformUserId,
+        channelId: msg.chatId,
+        displayName: msg.displayName,
+        text: msg.text,
+        messageId: msg.messageId,
       },
     });
     this.options.store.expirePendingPairings();
-    const runtimeState = this.resolveRuntimeState(input.workspaceId, instanceId).state;
+    const runtimeState = this.resolveRuntimeState(msg.workspaceId, instanceId).state;
     let binding: LarkWorkspaceBinding | undefined;
     try {
-      binding = await this.getBinding(input.workspaceId, instanceId);
+      binding = await this.getBinding(msg.workspaceId, instanceId);
     } catch (error) {
       if (!runtimeState) {
         throw error;
       }
-      this.options.log?.(`localcore-lark using active runtime binding snapshot for ${input.workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.options.log?.(`localcore-lark using active runtime binding snapshot for ${msg.workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    let authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
+    let authorized = this.options.store.getAuthorizedUser(msg.workspaceId, msg.platformUserId, platformKey);
     if (!authorized) {
       if (binding?.autoApprove || runtimeState?.autoApprove) {
         const authorizedAt = new Date().toISOString();
         this.options.store.createAuthorizedUser({
           id: `lark-user-${randomUUID()}`,
-          workspace_id: input.workspaceId,
+          workspace_id: msg.workspaceId,
           platform: platformKey,
-          platform_user_id: input.platformUserId,
-          chat_id: input.chatId,
-          display_name: input.displayName,
+          platform_user_id: msg.platformUserId,
+          chat_id: msg.chatId,
+          display_name: msg.displayName,
           thread_id: null,
           authorized_at: authorizedAt,
         });
-        authorized = this.options.store.getAuthorizedUser(input.workspaceId, input.platformUserId, platformKey);
-        this.options.log?.(`localcore-lark auto-approved user for ${input.workspaceId}: ${input.platformUserId}`);
+        authorized = this.options.store.getAuthorizedUser(msg.workspaceId, msg.platformUserId, platformKey);
+        this.options.log?.(`localcore-lark auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
         this.notifyRuntimeStateChanged();
       }
     }
     if (!authorized) {
-      const existingPending = this.options.store.listPendingPairings(input.workspaceId).find((item) =>
-        item.platform === platformKey && item.platform_user_id === input.platformUserId && item.chat_id === input.chatId && item.status === 'pending',
+      const existingPending = this.options.store.listPendingPairings(msg.workspaceId).find((item) =>
+        item.platform === platformKey && item.platform_user_id === msg.platformUserId && item.chat_id === msg.chatId && item.status === 'pending',
       );
       let pairingCode = existingPending?.code || '';
       if (!existingPending) {
@@ -761,108 +553,85 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
         pairingCode = this.generatePairingCode();
         this.options.store.createPairingRequest({
           code: pairingCode,
-          workspace_id: input.workspaceId,
+          workspace_id: msg.workspaceId,
           platform: platformKey,
-          platform_user_id: input.platformUserId,
-          chat_id: input.chatId,
-          display_name: input.displayName,
+          platform_user_id: msg.platformUserId,
+          chat_id: msg.chatId,
+          display_name: msg.displayName,
           requested_at: now.toISOString(),
           expires_at: new Date(now.getTime() + PAIRING_EXPIRY_MS).toISOString(),
           status: 'pending',
         });
         this.notifyRuntimeStateChanged();
       }
-      await this.sendImmediateCard(input.workspaceId, input.chatId, renderPendingPairingCard(pairingCode), instanceId);
-      return { paired: false };
+      await this.sendImmediateCard(msg.workspaceId, msg.chatId, renderPendingPairingCard(pairingCode), instanceId);
+      return; // { paired: false };
     }
     const router = this.options.getWorkspaceRouter();
     let { threadId } = await resolveChannelThreadRoute({
       store: this.options.store,
       router,
-      workspaceId: input.workspaceId,
+      workspaceId: msg.workspaceId,
       platformKey,
-      chatId: input.chatId,
-      platformUserId: input.platformUserId,
-      displayName: input.displayName,
+      chatId: msg.chatId,
+      platformUserId: msg.platformUserId,
+      displayName: msg.displayName,
       fallbackTitlePrefix: 'Lark',
       authorized,
     });
-    const normalizedText = String(input.text || '').trim().toLowerCase();
+    const normalizedText = String(msg.text || '').trim().toLowerCase();
     const permissionThreadId = (
       normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
     )
-      ? this.findAwaitingPermissionThreadId(input.workspaceId, input.chatId, input.platformUserId)
+      ? this.findAwaitingPermissionThreadId(msg.workspaceId, msg.chatId, msg.platformUserId)
       : '';
     if (permissionThreadId && permissionThreadId !== threadId) {
       threadId = permissionThreadId;
     }
     const effectiveSessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
     this.threadRouting.set(effectiveSessionKey, {
-      workspaceId: input.workspaceId,
+      workspaceId: msg.workspaceId,
       instanceId,
       platformKey,
-      platformUserId: input.platformUserId,
-      chatId: input.chatId,
+      platformUserId: msg.platformUserId,
+      chatId: msg.chatId,
       threadId,
     });
-    const acknowledgement = this.createTurnState(effectiveSessionKey, input.messageId);
-    await this.addAcknowledgementReaction(input.workspaceId, input.messageId, acknowledgement, instanceId);
-    const slashCommand = this.parseSlashCommand(input.text);
+    const acknowledgement = this.createTurnState(effectiveSessionKey, msg.messageId);
+    await this.addAcknowledgementReaction(msg.workspaceId, msg.messageId, acknowledgement, instanceId);
+    const slashCommand = this.parseSlashCommand(msg.text);
     const sessionCommand = await this.executeSessionCommand({
-      workspaceId: input.workspaceId,
+      workspaceId: msg.workspaceId,
       currentThreadId: threadId,
-      text: input.text,
-      defaultTitle: `${input.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`,
-      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(input.workspaceId, threadId) : '',
-      chatId: input.chatId,
-      platformUserId: input.platformUserId,
+      text: msg.text,
+      defaultTitle: `${msg.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`,
+      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(msg.workspaceId, threadId) : '',
+      chatId: msg.chatId,
+      platformUserId: msg.platformUserId,
       platformKey,
       instanceId,
     });
     if (sessionCommand.handled) {
-      return { paired: true, threadId: sessionCommand.threadId || threadId };
+      return; // { paired: true, threadId: sessionCommand.threadId || threadId };
     }
     const latestRun = this.options.store.getLatestRunForThread(threadId);
     if (
       (normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny')
       && latestRun?.status === 'awaiting_input'
     ) {
-      await router.sendThreadAction(threadId, input.text);
-      return { paired: true, threadId };
+      await router.sendThreadAction(threadId, msg.text);
+      return; // { paired: true, threadId };
     }
-    this.options.store.clearPlatformThreadMessageId(input.workspaceId, input.chatId, input.platformUserId);
+    this.options.store.clearPlatformThreadMessageId(msg.workspaceId, msg.chatId, msg.platformUserId);
     const wrappedText = slashCommand
-      ? input.text
-      : wrapUserMessageWithSchedulerProtocol(input.text);
-    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, input.contentParts));
-    return { paired: true, threadId };
+      ? msg.text
+      : wrapUserMessageWithSchedulerProtocol(msg.text);
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, msg.contentParts));
+    return; // { paired: true, threadId };
   }
 
-  close() {
-    return Promise.all([...this.runtime.keys()].map((key) => this.stopWorkspaceKey(key))).then(() => undefined);
-  }
 
-  private resolveRuntimeState(workspaceId: string, instanceId?: string) {
-    if (instanceId) {
-      const state = this.runtime.get(runtimeKey(workspaceId, instanceId)) || (instanceId === 'default' ? this.runtime.get(workspaceId) : undefined);
-      return { instanceId, state };
-    }
-    const states = [...this.runtime.values()].filter((entry) => entry.workspaceId === workspaceId);
-    const state = states.find((entry) => entry.instanceId === 'default') || states[0];
-    return { instanceId: state?.instanceId || 'default', state: state || this.runtime.get(workspaceId) };
-  }
 
-  private async getBinding(workspaceId: string, instanceId?: string) {
-    const config = await this.options.readConfig();
-    const bindings = this.collectBindings(config).filter((entry) => entry.workspaceId === workspaceId);
-    const binding = instanceId
-      ? bindings.find((entry) => entry.instanceId === instanceId)
-      : bindings.find((entry) => entry.instanceId === 'default') || bindings[0];
-    if (!binding) {
-      throw new Error(`No Lark binding configured for workspace "${workspaceId}"${instanceId ? ` instance "${instanceId}"` : ''}`);
-    }
-    return binding;
-  }
 
   private async createSdkClientResult(binding: LarkWorkspaceBinding): Promise<LocalCoreLarkConnectionResult> {
     try {
@@ -893,7 +662,7 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     }
   }
 
-  private async startWorkspace(binding: LarkWorkspaceBinding) {
+  protected async startWorkspace(binding: LarkWorkspaceBinding) {
     const key = runtimeKey(binding.workspaceId, binding.instanceId);
     await this.stopWorkspaceKey(key);
     const status: LarkRuntimeState = {
@@ -983,73 +752,10 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     this.notifyRuntimeStateChanged();
   }
 
-  private async stopWorkspace(workspaceId: string, instanceId?: string) {
-    const resolved = this.resolveRuntimeState(workspaceId, instanceId);
-    await this.stopWorkspaceKey(runtimeKey(workspaceId, resolved.instanceId));
-  }
 
-  private async stopWorkspaceKey(key: string) {
-    const state = this.runtime.get(key);
-    if (!state) {
-      return;
-    }
-    this.options.log?.(`localcore-lark stopping workspace=${state.workspaceId}/${state.instanceId} status=${state.status}`);
-    try {
-      await state.wsClient?.stop?.();
-      this.options.log?.(`localcore-lark stopped workspace=${state.workspaceId}/${state.instanceId}`);
-    } catch (error) {
-      this.options.log?.(`localcore-lark stop failed for ${state.workspaceId}/${state.instanceId}: ${error instanceof Error ? error.message : String(error)}`);
-      // Best effort: current SDK versions may not implement stop().
-    }
-    this.runtime.set(key, {
-      workspaceId: state.workspaceId,
-      instanceId: state.instanceId,
-      displayName: state.displayName,
-      platformKey: state.platformKey,
-      enabled: false,
-      status: 'stopped',
-      connected: false,
-      appId: state.appId,
-      autoApprove: state.autoApprove,
-      cardActionsEnabled: state.cardActionsEnabled,
-      groupReplyAll: state.groupReplyAll,
-      botOpenId: state.botOpenId,
-    });
-    this.notifyRuntimeStateChanged();
-  }
 
-  private notifyRuntimeStateChanged() {
-    this.options.eventBus.emit({
-      type: 'runtime.state.changed',
-      payload: {
-        reason: 'channel-bindings',
-      },
-    });
-  }
 
-  private clearRuntimeError(state: LarkRuntimeState) {
-    state.lastError = undefined;
-    state.lastErrorInfo = undefined;
-    state.lastErrorAt = undefined;
-  }
 
-  private setRuntimeError(state: LarkRuntimeState, errorInfo: LocalCoreErrorInfo) {
-    state.lastError = errorInfo.message;
-    state.lastErrorInfo = errorInfo;
-    state.lastErrorAt = new Date().toISOString();
-    this.options.eventBus.emit({
-      type: 'localcore.error',
-      payload: {
-        scope: 'channel.lark',
-        errorInfo,
-        context: {
-          workspaceId: state.workspaceId,
-          instanceId: state.instanceId,
-          platform: 'lark',
-        },
-      },
-    });
-  }
 
   private async handleMessageEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, platformKeyOrData?: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
     const legacyCall = typeof instanceIdOrData === 'object';
@@ -1314,10 +1020,91 @@ export class LocalCoreLarkGateway extends EventEmitter implements ChannelRuntime
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
 
-  private collectBindings(config: DesktopConnectConfig | null | undefined): LarkWorkspaceBinding[] {
+  protected makeThreadRoute(input: ChannelSessionCommandInput, threadId: string): LarkThreadRoute {
+    return {
+      workspaceId: input.workspaceId,
+      instanceId: input.instanceId,
+      platformKey: input.platformKey,
+      platformUserId: input.platformUserId,
+      chatId: input.chatId,
+      threadId,
+    };
+  }
+
+  protected collectBindings(config: DesktopConnectConfig | null | undefined): LarkWorkspaceBinding[] {
     return collectLarkWorkspaceBindings(config, {
       defaultCardActionsEnabled: this.defaultCardActionsEnabled,
     });
+  }
+
+  protected buildStatusObject(state: LarkRuntimeState, _resolved: { instanceId: string }): LocalCoreLarkGatewayStatus {
+    this.options.store.expirePendingPairings();
+    const resolved = this.resolveRuntimeState(state.workspaceId, state.instanceId);
+    const binding = resolved.state;
+    const platformKey = binding?.platformKey || channelPlatformKey('lark', resolved.instanceId);
+    const pairings = this.options.store.listPendingPairings(state.workspaceId)
+      .filter((row) => row.platform === platformKey && row.expires_at >= new Date().toISOString());
+    const users = this.options.store.listAuthorizedUsers(state.workspaceId, platformKey);
+    return {
+      workspaceId: state.workspaceId,
+      platform: 'lark',
+      instanceId: resolved.instanceId,
+      displayName: binding?.displayName,
+      enabled: Boolean(binding?.enabled),
+      connected: Boolean(binding?.connected),
+      status: binding?.status || 'disabled',
+      appId: binding?.appId || '',
+      lastError: binding?.lastError,
+      lastErrorInfo: binding?.lastErrorInfo,
+      lastErrorAt: binding?.lastErrorAt,
+      connectedAt: binding?.connectedAt,
+      pendingPairings: pairings.length,
+      authorizedUsers: users.length,
+    };
+  }
+
+  protected createDisabledState(binding: LarkWorkspaceBinding): LarkRuntimeState {
+    return {
+      workspaceId: binding.workspaceId,
+      instanceId: binding.instanceId,
+      displayName: binding.displayName,
+      platformKey: binding.platformKey,
+      enabled: false,
+      status: 'disabled',
+      connected: false,
+      appId: binding.appId,
+      autoApprove: binding.autoApprove,
+      cardActionsEnabled: binding.cardActionsEnabled,
+      groupReplyAll: binding.groupReplyAll,
+      botOpenId: binding.botOpenId,
+    };
+  }
+
+  protected async stopWorkspaceTransport(state: LarkRuntimeState): Promise<void> {
+    this.options.log?.(`localcore-lark stopping workspace=${state.workspaceId}/${state.instanceId} status=${state.status}`);
+    try {
+      await state.wsClient?.stop?.();
+      this.options.log?.(`localcore-lark stopped workspace=${state.workspaceId}/${state.instanceId}`);
+    } catch (error) {
+      this.options.log?.(`localcore-lark stop failed for ${state.workspaceId}/${state.instanceId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  protected resetStateToStopped(state: LarkRuntimeState, _key: string): void {
+    Object.assign(state, {
+      enabled: false,
+      status: 'stopped' as const,
+      connected: false,
+      appId: state.appId,
+      autoApprove: state.autoApprove,
+      cardActionsEnabled: state.cardActionsEnabled,
+      groupReplyAll: state.groupReplyAll,
+      botOpenId: state.botOpenId,
+    });
+  }
+
+  protected isSameIdentity(state: LarkRuntimeState, binding: LarkWorkspaceBinding): boolean {
+    return state.appId === binding.appId;
   }
 
   private async getLarkModule() {
