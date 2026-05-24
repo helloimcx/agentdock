@@ -94,6 +94,12 @@ flowchart LR
 
 ## New
 
+### 2026-05-24
+
+- 重构 Local AI Core 控制器：提取 ChannelService 与 ExternalService 为独立领域服务，Controller 缩至约 20 个方法，只保留生命周期、配置和事件编排。
+- 拆分 Server 路由：102 路 switch 替换为 Map-based handler 调度，按 domain 提取为 14 个独立 handler 模块（runtime、runtimes、thread、workspace、security、task、scheduler、automation、knowledge、capabilities、provider、channel、external、openai），server.ts 从 1518 行缩减至 396 行。
+- 修复 lac-cli 与 knowledge-skill-script 测试在沙箱环境下的兼容性：用全局 fetch mock 替代 TCP server.listen，EPERM 时优雅跳过。
+
 ### 2026-05-16
 
 - 优化桌面与 Web 聊天界面视觉层级：统一会话列表、消息气泡、工具结果卡片和输入区样式，降低装饰噪音，提升长对话可读性。

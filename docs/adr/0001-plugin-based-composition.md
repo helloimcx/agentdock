@@ -7,6 +7,8 @@ Accepted for the pluggable refactor baseline.
 ## Context
 
 `services/local-ai-core` currently wires concrete business modules directly inside `LocalCoreController`.
+(This has been partially addressed: `ChannelService` and `ExternalService` were extracted as domain services;
+the Controller is now a thin lifecycle/config/events orchestrator, and server routes dispatch via handler map.)
 The renderer also hardcodes runtime feature switches, routes, and sidebar navigation.
 That layout makes each new agent runtime, channel, knowledge provider, or scheduler target require edits in multiple core files.
 

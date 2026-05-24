@@ -65,7 +65,7 @@ The core backend runtime with these subsystems:
 - **Kernel** (`src/kernel/`): Bootstrap, event bus, lifecycle, plugin registry, capability registry
 - **Plugins** (`src/plugins/builtin/`): Built-in plugins with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`, `knowledge.ai-vector`)
 - **Router** (`src/router/`): Workspace routing and route configuration
-- **Runtime** (`src/runtime/`): Core controller, server, runtime state management
+- **Runtime** (`src/runtime/`): Core controller (lifecycle/config/events), HTTP server with per-domain route handlers, channel service, external service, runtime state and detection
 - **Scheduler** (`src/scheduler/`): Cron-based task scheduling with platform-specific adapters (Lark, WeChat)
 - **Thread** (`src/thread/`): Workspace thread ID and mapper utilities
 
@@ -140,13 +140,11 @@ Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix
 ## Large Files
 
 These files are intentionally large:
-- `src/pages/Threads/ThreadChat.tsx` (~50KB) — main thread chat UI with extensive hook decomposition
-- `src/pages/Desktop/Workspace.tsx` (~37KB) — desktop workspace management
-- `src/pages/Web/Chat.tsx` (~34KB) — web chat interface
 - `services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.ts` (~52KB) — WeChat gateway
 - `services/local-ai-core/src/channel/lark/local-core-lark-gateway.ts` (~41KB) — Lark gateway
-- `services/local-ai-core/src/runtime/server.ts` (~29KB) — core HTTP server
 - `services/local-ai-core/src/acp/local-core-acp-store.ts` (~30KB) — ACP session store
+- `packages/contracts/src/local-core.ts` (~46KB) — shared contract types and normalize functions
+- `services/local-ai-core/src/runtime/handlers/openai-handler.ts` (~580 lines) — OpenAI adapter class + request parsing + streaming/non-streaming
 
 ## Configuration Notes
 

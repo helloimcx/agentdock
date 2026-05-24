@@ -10,7 +10,7 @@ Knowledge runtime 通过 Local AI Core plugin 接入 renderer、thread attachmen
 | Provider | `packages/knowledge-api/src/ai-vector-provider.ts` | 知识库、文件、搜索和远端向量服务适配。 |
 | SQLite store | `packages/knowledge-api/src/sqlite-store.ts` | 本地知识库、文件缓存、thread 绑定表。 |
 | Thread attachment store | `packages/knowledge-api/src/thread-knowledge-store.ts` | 维护 thread 到 knowledge base 的选择关系。 |
-| Controller API | `services/local-ai-core/src/runtime/local-core-controller.ts` | 暴露 knowledge API，并把 thread 知识库更新交给 Workspace Router。 |
+| Controller API | `services/local-ai-core/src/runtime/handlers/knowledge-handler.ts` | 将 knowledge HTTP 路由映射到 KnowledgeRuntime provider，不再通过 Controller 中转。 |
 
 ## API 请求流程
 
@@ -18,8 +18,8 @@ Knowledge runtime 通过 Local AI Core plugin 接入 renderer、thread attachmen
 flowchart TD
   Renderer["Knowledge UI / Thread UI"] --> Client["src/api/knowledge.ts"]
   Client --> Server["Local Core HTTP API"]
-  Server --> Controller["LocalCoreController"]
-  Controller --> Provider["KnowledgeRuntime provider"]
+  Server --> KnowledgeHandler["knowledge-handler<br/>(Map dispatch)"]
+  KnowledgeHandler --> Provider["KnowledgeRuntime provider"]
   Provider --> Store["knowledge.db SQLite cache"]
   Provider --> Vector["AI vector backend"]
   Store --> Response["Knowledge DTO"]
@@ -32,8 +32,8 @@ flowchart TD
 ```mermaid
 flowchart LR
   ThreadUI["Thread selectedKnowledgeBaseIds"] --> API["thread.update-knowledge-bases"]
-  API --> Controller["LocalCoreController"]
-  Controller --> Router["WorkspaceRouter"]
+  API --> KnowledgeHandler["knowledge-handler"]
+  KnowledgeHandler --> Router["WorkspaceRouter"]
   Router --> Attachments["ThreadKnowledgeAttachmentStore"]
   Attachments --> Table["thread_knowledge_bases"]
   Table --> ThreadDetail["ThreadDetail.selectedKnowledgeBaseIds"]

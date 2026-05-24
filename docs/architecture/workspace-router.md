@@ -16,7 +16,7 @@ Workspace Router 是 Local AI Core 内部的工作区路由层。它把配置中
 
 ```mermaid
 flowchart TD
-  Caller["Renderer / Channel / Scheduler"] --> API["LocalCoreController 或 channel gateway"]
+  Caller["Renderer / Channel / Scheduler"] --> API["server.ts handler dispatch 或 channel gateway"]
   API --> Router["WorkspaceRouter"]
   Router --> Decode["decodeThreadId 得到 workspaceId"]
   Decode --> Route["getWorkspaceRoute"]

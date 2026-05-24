@@ -8,7 +8,7 @@ Scheduled jobs are Local AI Core state. Renderer, Electron, and channel gateways
 
 | Area | Owner | Responsibility |
 | --- | --- | --- |
-| API entrypoints | `LocalCoreController` / `runtime/server.ts` | Parse HTTP requests and delegate scheduled job operations. |
+| API entrypoints | `runtime/server.ts` → `handlers/scheduler-handler.ts` | Parse HTTP requests and delegate scheduled job operations. |
 | Application service | `ScheduledJobApplicationService` | Resolve create/update input, derive channel routes from thread bindings, and expose job operations to controller and router bridge callers. |
 | Scheduler loop | `SchedulerService` | Poll for due jobs, prevent duplicate active runs, select a platform adapter, and trigger execution. |
 | Run lifecycle | `SchedulerRunLifecycle` | Persist `scheduled_job_runs` transitions and update job run metadata. |
