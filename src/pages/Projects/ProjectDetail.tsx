@@ -7,17 +7,29 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Button, Input, Modal, EmptyState, PageHeader, SectionCard, Select } from '@/components/ui';
 import { getProject, type ProjectDetail as ProjectDetailType } from '@/api/projects';
-import { listProviders, addProvider, removeProvider, activateProvider, listModels, setModel, type Provider } from '@/api/providers';
 import { getHeartbeat, pauseHeartbeat, resumeHeartbeat, triggerHeartbeat, setHeartbeatInterval, type HeartbeatStatus } from '@/api/heartbeat';
-import { readConfigFile, saveStructuredConfigFile } from '@/api/desktop';
+import {
+  createModelProvider,
+  deleteModelProvider,
+  listModelProviders,
+  readConfigFile,
+  saveStructuredConfigFile,
+} from '@/api/desktop';
 import { formatTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxRuntimeImage,
   type DesktopConnectConfig,
+  type DesktopModelProvider,
   type DesktopSandboxOptions,
 } from '../../../shared/desktop';
+import {
+  getProjectProviderId,
+  removeProviderReferences,
+  selectProjectModel,
+  selectProjectProvider,
+} from './project-provider-config';
 
 type Tab = 'overview' | 'providers' | 'sandbox' | 'heartbeat';
 
@@ -57,12 +69,27 @@ const defaultSandboxForm: SandboxForm = {
   state_mount_path: '/agent-state',
 };
 
+function getProviderModelIds(provider: DesktopModelProvider | undefined) {
+  const modelIds = new Set<string>();
+  const defaultModel = String(provider?.model || '').trim();
+  if (defaultModel) {
+    modelIds.add(defaultModel);
+  }
+  for (const entry of provider?.models || []) {
+    const model = String(entry?.model || '').trim();
+    if (model) {
+      modelIds.add(model);
+    }
+  }
+  return [...modelIds];
+}
+
 export default function ProjectDetail() {
   const { t } = useTranslation();
   const { name } = useParams<{ name: string }>();
   const [tab, setTab] = useState<Tab>('overview');
   const [project, setProject] = useState<ProjectDetailType | null>(null);
-  const [providers, setProviders] = useState<Provider[]>([]);
+  const [providers, setProviders] = useState<DesktopModelProvider[]>([]);
   const [activeProvider, setActiveProvider] = useState('');
   const [heartbeat, setHeartbeatState] = useState<HeartbeatStatus | null>(null);
   const [models, setModels] = useState<string[]>([]);
@@ -84,27 +111,28 @@ export default function ProjectDetail() {
     if (!name) return;
     try {
       setLoading(true);
-      const [proj, provs, hb, mdls, config] = await Promise.allSettled([
+      const [proj, provs, hb, config] = await Promise.allSettled([
         getProject(name),
-        listProviders(name),
+        listModelProviders(),
         getHeartbeat(name),
-        listModels(name),
         readConfigFile(),
       ]);
       if (proj.status === 'fulfilled') {
         setProject(proj.value);
       }
+      const providerList = provs.status === 'fulfilled' ? provs.value.providers || [] : [];
       if (provs.status === 'fulfilled') {
-        setProviders(provs.value.providers || []);
-        setActiveProvider(provs.value.active_provider || '');
+        setProviders(providerList);
       }
       if (hb.status === 'fulfilled') setHeartbeatState(hb.value);
-      if (mdls.status === 'fulfilled') {
-        setModels(mdls.value.models || []);
-        setCurrentModel(mdls.value.current || '');
-      }
       if (config.status === 'fulfilled') {
-        const configuredProject = config.value.parsed?.projects?.find((entry) => entry.name === name);
+        const parsed = config.value.parsed;
+        const configuredProject = parsed?.projects?.find((entry) => entry.name === name);
+        const providerId = getProjectProviderId(parsed, name);
+        const selectedProvider = providerList.find((entry) => entry.id === providerId);
+        setActiveProvider(providerId);
+        setModels(getProviderModelIds(selectedProvider));
+        setCurrentModel(String(configuredProject?.agent?.options?.model || selectedProvider?.model || ''));
         setSandbox(toSandboxForm(configuredProject?.agent?.options?.sandbox));
       }
     } finally {
@@ -121,10 +149,70 @@ export default function ProjectDetail() {
 
   const handleAddProvider = async () => {
     if (!name || !newProvider.name) return;
-    await addProvider(name, newProvider);
-    setShowAddProvider(false);
-    setNewProvider({ name: '', api_key: '', base_url: '', model: '' });
-    fetchAll();
+    setActionMsg('');
+    try {
+      const provider = await createModelProvider(newProvider);
+      const state = await readConfigFile();
+      if (!state.parsed) {
+        throw new Error('Config file is unavailable.');
+      }
+      await saveStructuredConfigFile(selectProjectProvider(state.parsed, name, provider.id));
+      setShowAddProvider(false);
+      setNewProvider({ name: '', api_key: '', base_url: '', model: '' });
+      setActionMsg('Provider created.');
+      await fetchAll();
+    } catch (err) {
+      setActionMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleActivateProvider = async (providerId: string) => {
+    if (!name) return;
+    setActionMsg('');
+    try {
+      const state = await readConfigFile();
+      if (!state.parsed) {
+        throw new Error('Config file is unavailable.');
+      }
+      await saveStructuredConfigFile(selectProjectProvider(state.parsed, name, providerId));
+      setActionMsg('Provider selected.');
+      await fetchAll();
+    } catch (err) {
+      setActionMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleRemoveProvider = async (providerId: string) => {
+    if (!name) return;
+    setActionMsg('');
+    try {
+      const state = await readConfigFile();
+      if (!state.parsed) {
+        throw new Error('Config file is unavailable.');
+      }
+      await saveStructuredConfigFile(removeProviderReferences(state.parsed, providerId));
+      await deleteModelProvider(providerId);
+      setActionMsg('Provider removed.');
+      await fetchAll();
+    } catch (err) {
+      setActionMsg(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleSetModel = async (model: string) => {
+    if (!name) return;
+    setActionMsg('');
+    try {
+      const state = await readConfigFile();
+      if (!state.parsed) {
+        throw new Error('Config file is unavailable.');
+      }
+      await saveStructuredConfigFile(selectProjectModel(state.parsed, name, model));
+      setActionMsg('Model selected.');
+      await fetchAll();
+    } catch (err) {
+      setActionMsg(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleSetInterval = async () => {
@@ -265,23 +353,23 @@ export default function ProjectDetail() {
           ) : (
             <div className="space-y-2">
               {providers.map((p) => (
-                <Card key={p.name} className="app-panel">
+                <Card key={p.id} className="app-panel">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-foreground">{p.name}</span>
-                        {p.active && <Badge variant="success">{t('providers.active')}</Badge>}
+                        {p.id === activeProvider && <Badge variant="success">{t('providers.active')}</Badge>}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">{p.model} {p.base_url ? `· ${p.base_url}` : ''}</p>
                     </div>
                     <div className="flex gap-2">
-                      {!p.active && (
-                        <Button size="sm" variant="secondary" onClick={() => { activateProvider(name!, p.name).then(fetchAll); }}>
+                      {p.id !== activeProvider && (
+                        <Button size="sm" variant="secondary" onClick={() => { void handleActivateProvider(p.id); }}>
                           <Check size={14} /> {t('providers.activate')}
                         </Button>
                       )}
-                      {!p.active && (
-                        <Button size="sm" variant="danger" onClick={() => { removeProvider(name!, p.name).then(fetchAll); }}>
+                      {p.id !== activeProvider && (
+                        <Button size="sm" variant="danger" onClick={() => { void handleRemoveProvider(p.id); }}>
                           <Trash2 size={14} />
                         </Button>
                       )}
@@ -300,7 +388,7 @@ export default function ProjectDetail() {
                 {models.map((m) => (
                   <button
                     key={m}
-                    onClick={() => { setModel(name!, m).then(fetchAll); }}
+                    onClick={() => { void handleSetModel(m); }}
                     className={cn(
                       'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                       m === currentModel

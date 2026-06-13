@@ -8,6 +8,7 @@ import {
   LOCALCORE_ACP_AGENT_TYPE,
 } from '../../../../shared/desktop.js';
 import { resolveAgentRuntimeDefinition } from '../agents/index.js';
+import { getPathEnv } from './env-utils.js';
 
 export interface AgentRuntimeDetectionOptions {
   env?: NodeJS.ProcessEnv;
@@ -165,7 +166,7 @@ function resolveCommand(command: string, env: NodeJS.ProcessEnv) {
     return isExecutableFile(normalized) ? normalized : null;
   }
 
-  for (const dir of String(env.PATH || '').split(delimiter).filter(Boolean)) {
+  for (const dir of getPathEnv(env).split(delimiter).filter(Boolean)) {
     for (const candidate of commandCandidates(normalized, env)) {
       const fullPath = join(dir, candidate);
       if (isExecutableFile(fullPath)) {

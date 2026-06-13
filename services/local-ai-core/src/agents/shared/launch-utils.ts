@@ -93,6 +93,29 @@ export function resolveBundledAcpCommand(packageName: string, binName: string) {
   };
 }
 
+export function resolveBundledBinCommand(packageName: string, binName: string) {
+  if (process.platform === 'win32') {
+    const shim = resolveBundledWindowsBinShim(packageName, binName);
+    if (shim) {
+      return shim;
+    }
+  }
+  return resolveBundledAcpCommand(packageName, binName).args[0];
+}
+
+function resolveBundledWindowsBinShim(packageName: string, binName: string) {
+  const require = createRequire(__filename);
+  for (const basePath of require.resolve.paths(packageName) || []) {
+    for (const extension of ['.CMD', '.cmd', '.BAT', '.bat']) {
+      const candidate = resolve(basePath, '.bin', `${binName}${extension}`);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return '';
+}
+
 export function resolveBundledPackageJsonPath(packageName: string) {
   const require = createRequire(__filename);
   try {

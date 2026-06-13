@@ -5,6 +5,7 @@ import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import type { AcpSessionState, LocalCoreProjectConfig } from '../router/workspace-router-types.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
+import { getPathEnv } from '../runtime/env-utils.js';
 
 type LocalCoreAcpSessionCoordinatorOptions = {
   store: LocalCoreAcpStore;
@@ -96,7 +97,7 @@ export class LocalCoreAcpSessionCoordinator {
       threadId,
       bridgeSessionKey,
       config,
-      runtimeEnv: this.buildAgentRuntimeEnv(threadId, String(baseEnv.PATH || ''), options.runtimeEnv, options.runId),
+      runtimeEnv: this.buildAgentRuntimeEnv(threadId, getPathEnv(baseEnv), options.runtimeEnv, options.runId),
     });
     session.launchPermissionMode = permissionMode;
     session.launchConfigKey = configKey;

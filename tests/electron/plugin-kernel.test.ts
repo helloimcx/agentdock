@@ -474,7 +474,11 @@ OPENAI_API_KEY = "override-openai-key"
     assert.equal(route?.agentType, 'pi');
     assert.equal(route?.config.command, process.execPath);
     assert.match(route?.config.args[0] || '', /pi-acp[/\\]dist[/\\]index\.js$/);
-    assert.match(route?.config.env.PI_ACP_PI_COMMAND || '', /@mariozechner[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/);
+    if (process.platform === 'win32') {
+      assert.match(route?.config.env.PI_ACP_PI_COMMAND || '', /[\\/]node_modules[\\/]\.bin[\\/]pi\.CMD$/i);
+    } else {
+      assert.match(route?.config.env.PI_ACP_PI_COMMAND || '', /@mariozechner[/\\]pi-coding-agent[/\\]dist[/\\]cli\.js$/);
+    }
     assert.equal(route?.config.env.OPENAI_API_KEY, 'override-openai-key');
     assert.match(route?.config.env.PI_CODING_AGENT_DIR || '', /[\\/]\.pi-agent[\\/]pi-workspace$/);
     assert.deepEqual(await runtime.workspaceRouter.listWorkspaces(), [

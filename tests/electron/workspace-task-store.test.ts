@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
@@ -11,6 +11,7 @@ import { SchedulerService } from '../../services/local-ai-core/src/scheduler/sch
 import { LarkScheduleAdapter } from '../../services/local-ai-core/src/scheduler/lark-schedule-adapter.js';
 import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
 import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
+import { getPathEnv } from '../../services/local-ai-core/src/runtime/env-utils.js';
 
 test('workspace registry entries persist in LocalCoreAcpStore', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-registry-'));
@@ -600,8 +601,12 @@ test('ACP runtime PATH includes service-safe user bin directories', () => {
   const previousHome = process.env.HOME;
   process.env.HOME = '/home/agentdock-test';
   try {
-    const path = buildAgentPath('/usr/bin:/bin', '/opt/agentdock/bin');
-    assert.equal(path, '/opt/agentdock/bin:/home/agentdock-test/.local/bin:/home/agentdock-test/bin:/usr/bin:/bin');
+    const existingPath = ['/usr/bin', '/bin'].join(delimiter);
+    const path = buildAgentPath(existingPath, '/opt/agentdock/bin');
+    const expectedEntries = process.platform === 'win32'
+      ? ['/opt/agentdock/bin', '/usr/bin', '/bin']
+      : ['/opt/agentdock/bin', '/home/agentdock-test/.local/bin', '/home/agentdock-test/bin', '/usr/bin', '/bin'];
+    assert.equal(path, expectedEntries.join(delimiter));
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;
@@ -609,6 +614,12 @@ test('ACP runtime PATH includes service-safe user bin directories', () => {
       process.env.HOME = previousHome;
     }
   }
+});
+
+test('ACP runtime reads Windows Path env regardless of key casing', () => {
+  assert.equal(getPathEnv({ Path: 'C:\\Windows\\System32;C:\\Program Files\\nodejs' }), 'C:\\Windows\\System32;C:\\Program Files\\nodejs');
+  assert.equal(getPathEnv({ PATH: '/usr/bin:/bin' }), '/usr/bin:/bin');
+  assert.equal(getPathEnv({ Path: 'C:\\Windows\\System32', PATH: 'D:\\agentdock\\bin' }), 'D:\\agentdock\\bin');
 });
 
 test('ACP transport reports missing agent commands without an unhandled process error', async () => {

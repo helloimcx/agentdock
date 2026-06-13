@@ -6,6 +6,7 @@ import type { AgentLaunchResolverInput, AgentLaunchDefaults, AgentModelResolverI
 import {
   getFirstProviderModelId,
   resolveBundledAcpCommand,
+  resolveBundledBinCommand,
 } from '../shared/launch-utils.js';
 import { materializePiProviderConfig } from './provider-materializer.js';
 
@@ -15,7 +16,7 @@ export function resolvePiModel(input: AgentModelResolverInput) {
 
 export function buildPiLaunchConfig(input: AgentLaunchResolverInput): AgentLaunchDefaults {
   const bundledPiAcp = resolveBundledAcpCommand(DESKTOP_PI_ACP_PACKAGE, 'pi-acp');
-  const bundledPiCommand = resolveBundledAcpCommand(DESKTOP_PI_CODING_AGENT_PACKAGE, 'pi').args[0];
+  const bundledPiCommand = resolveBundledBinCommand(DESKTOP_PI_CODING_AGENT_PACKAGE, 'pi');
   return {
     command: bundledPiAcp.command,
     args: [...bundledPiAcp.args],

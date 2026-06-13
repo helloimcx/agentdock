@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { detectInstalledAgentRuntimes } from '../../services/local-ai-core/src/runtime/agent-runtime-detector.js';
 import { resolveAgentRuntimeDefinition } from '../../services/local-ai-core/src/agents/index.js';
@@ -176,6 +176,26 @@ test('agent runtime detector reports version when version command succeeds', () 
     assert.equal(opencodeRuntime?.status, 'installed');
     assert.equal(opencodeRuntime?.version, '1.2.3');
     assert.equal(opencodeRuntime?.issues.length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('agent runtime detector reads PATH regardless of key casing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-runtime-path-casing-'));
+  try {
+    const opencode = join(dir, 'opencode');
+    writeFileSync(opencode, '#!/bin/sh\necho "opencode 1.2.3"\n', 'utf8');
+    chmodSync(opencode, 0o755);
+
+    const opencodeRuntime = detectInstalledAgentRuntimes({
+      env: { Path: [dir, process.env.PATH || ''].filter(Boolean).join(delimiter) } as NodeJS.ProcessEnv,
+      versionTimeoutMs: 50,
+    }).find((runtime) => runtime.agentType === 'opencode');
+
+    assert.equal(opencodeRuntime?.status, 'installed');
+    assert.equal(opencodeRuntime?.source, 'path');
+    assert.equal(opencodeRuntime?.command, opencode);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
