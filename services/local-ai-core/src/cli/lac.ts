@@ -323,10 +323,10 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
   if (cronExpr) {
     input.cronExpr = cronExpr;
   }
-  if (typeof promptTemplate === 'string') {
+  if (promptTemplate) {
     input.promptTemplate = promptTemplate;
   }
-  if (typeof description === 'string') {
+  if (description) {
     input.description = description;
   }
   if (typeof enabled === 'boolean') {

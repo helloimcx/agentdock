@@ -599,6 +599,45 @@ test('lac scheduler edit patches a short job id and normalizes execution mode', 
   }
 });
 
+test('lac scheduler edit with only --cron does not clear message or description', async () => {
+  let capturedBody: string | null = null;
+  const { restore } = withFetchMock(async (_input, init) => {
+    if (init?.body) capturedBody = init.body as string;
+    return new Response(JSON.stringify({
+      ok: true,
+      data: {
+        id: 'job:826aff79-570b-4308-822e-18318e2c96ba',
+        workspaceId: '知识库',
+        platform: 'lark',
+        route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' },
+        executionMode: 'same-thread',
+        triggerType: 'cron',
+        cronExpr: '0 2 * * *',
+        promptTemplate: 'preserved message',
+        description: 'preserved desc',
+        enabled: true,
+        concurrencyPolicy: 'skip_if_running',
+        createdAt: '2026-04-22T06:00:00.000Z',
+        updatedAt: '2026-04-22T07:00:00.000Z',
+      },
+    }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io, read } = createIo();
+    const exitCode = await runCli(
+      ['scheduler', 'edit', '826aff79', '--cron', '0 2 * * *'],
+      { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1' },
+      io,
+    );
+    assert.equal(exitCode, 0);
+    assert(capturedBody);
+    assert.deepEqual(JSON.parse(capturedBody), { cronExpr: '0 2 * * *' });
+    assert.match(read().stdout, /Updated scheduler job 826aff79/);
+  } finally {
+    restore();
+  }
+});
+
 test('lac scheduler del deletes a short job id', async () => {
   const { restore } = withFetchMock(async () => {
     return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), { headers: { 'content-type': 'application/json' } });
