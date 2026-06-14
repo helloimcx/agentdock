@@ -8,11 +8,13 @@ export function createWeixinExecutionPolicy(
   job: ScheduledJob,
   options: WeixinExecutionPolicyOptions,
   resolveSameThread: (job: ScheduledJob) => Promise<string>,
+  preferredAgentType?: (job: ScheduledJob) => string,
 ): ScheduledExecutionPolicy {
   return createChannelExecutionPolicy(job, options, {
     platformBase: 'weixin',
     resolveSameThread,
     sideThreadTitle: (nextJob) => `[Scheduled:Weixin] ${nextJob.description || nextJob.id}`,
     legacySideThreadTitles: (nextJob) => [`[Scheduled] ${nextJob.description || nextJob.id}`],
+    preferredAgentType,
   });
 }

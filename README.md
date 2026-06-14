@@ -98,6 +98,7 @@ flowchart LR
 
 - 聊天输入框下方新增权限模式选择器，可在请求批准和完全访问之间切换，并随当前线程保存。
 - 在 channel（Lark/Feishu/WeChat）里执行 `/agent use` 切换 Agent 时，选择会持久化到频道级偏好；后续 `/new` 创建新会话或重启后，新线程会自动继承该偏好。
+- 修复定时任务（side-thread 模式）在创建调度线程时忽略频道级 Agent 偏好、总是回退到 workspace 默认 Agent 的问题；现在调度线程也按频道偏好选择 Agent，未设置时仍回退到 workspace 默认。
 
 ### 2026-05-24
 

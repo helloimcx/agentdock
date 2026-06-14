@@ -17,6 +17,7 @@ type ChannelExecutionPolicyConfig = {
   resolveSameThread: (job: ScheduledJob) => Promise<string>;
   sideThreadTitle: (job: ScheduledJob) => string;
   legacySideThreadTitles?: (job: ScheduledJob) => string[];
+  preferredAgentType?: (job: ScheduledJob) => string;
 };
 
 export function createChannelExecutionPolicy(
@@ -80,7 +81,9 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
     ]);
     const existing = (await this.options.workspaceRouter.listThreads(job.workspaceId))
       .find((thread) => reusableTitles.has(thread.title));
-    const threadId = existing?.id || (await this.options.workspaceRouter.createThread(job.workspaceId, title)).id;
+    const preferredAgent = this.config.preferredAgentType?.(job) || '';
+    const threadId = existing?.id
+      || (await this.options.workspaceRouter.createThread(job.workspaceId, title, preferredAgent || undefined)).id;
     return {
       kind: `${this.config.platformBase}:side-thread`,
       threadId,

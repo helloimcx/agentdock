@@ -923,6 +923,96 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
   assert.equal(unregisteredBridge, true);
 });
 
+test('lark side-thread execution policy applies preferred agent when creating a new scheduled thread', async () => {
+  const job = {
+    id: 'job-1',
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-origin' },
+    executionMode: 'side-thread',
+    triggerType: 'cron',
+    cronExpr: '*/2 * * * *',
+    promptTemplate: 'ping',
+    description: 'two-minute ping',
+    enabled: true,
+    concurrencyPolicy: 'skip_if_running',
+    createdAt: '2026-04-22T06:00:00.000Z',
+    updatedAt: '2026-04-22T06:00:00.000Z',
+  } as const;
+  const createThreadCalls: Array<{ workspaceId: string; title: string; agentType?: string }> = [];
+  const policy = createLarkExecutionPolicy(
+    job as any,
+    {
+      store: {} as any,
+      workspaceRouter: {
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+        listThreads: async () => [],
+        createThread: async (workspaceId: string, title?: string, agentType?: string) => {
+          createThreadCalls.push({ workspaceId, title: title || '', agentType });
+          return { id: 'thread-new' };
+        },
+      } as any,
+      getChannelRuntime: () => ({
+        registerScheduledThreadBridge: () => () => {},
+      } as any),
+    },
+    async () => 'thread-origin',
+    () => 'claudecode',
+  );
+
+  const target = await policy.resolveTarget(job as any);
+  assert.equal(target.threadId, 'thread-new');
+  assert.equal(createThreadCalls.length, 1);
+  assert.deepEqual(createThreadCalls[0], {
+    workspaceId: '知识库',
+    title: '[Scheduled:Lark] two-minute ping',
+    agentType: 'claudecode',
+  });
+});
+
+test('lark side-thread execution policy falls back to workspace default when no preferred agent is set', async () => {
+  const job = {
+    id: 'job-1',
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-origin' },
+    executionMode: 'side-thread',
+    triggerType: 'cron',
+    cronExpr: '*/2 * * * *',
+    promptTemplate: 'ping',
+    description: 'two-minute ping',
+    enabled: true,
+    concurrencyPolicy: 'skip_if_running',
+    createdAt: '2026-04-22T06:00:00.000Z',
+    updatedAt: '2026-04-22T06:00:00.000Z',
+  } as const;
+  const createThreadCalls: Array<{ workspaceId: string; title: string; agentType?: string }> = [];
+  const policy = createLarkExecutionPolicy(
+    job as any,
+    {
+      store: {} as any,
+      workspaceRouter: {
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+        listThreads: async () => [],
+        createThread: async (workspaceId: string, title?: string, agentType?: string) => {
+          createThreadCalls.push({ workspaceId, title: title || '', agentType });
+          return { id: 'thread-new' };
+        },
+      } as any,
+      getChannelRuntime: () => ({
+        registerScheduledThreadBridge: () => () => {},
+      } as any),
+    },
+    async () => 'thread-origin',
+    () => '',
+  );
+
+  const target = await policy.resolveTarget(job as any);
+  assert.equal(target.threadId, 'thread-new');
+  assert.equal(createThreadCalls.length, 1);
+  assert.equal(createThreadCalls[0].agentType, undefined);
+});
+
 test('lark same-thread execution policy keeps the original thread target', async () => {
   const job = {
     id: 'job-1',

@@ -239,12 +239,12 @@ export class WorkspaceRouter {
     return this.localCoreAcp.listThreads(workspaceId);
   }
 
-  async createThread(workspaceId: string, title?: string): Promise<ThreadDetail> {
+  async createThread(workspaceId: string, title?: string, agentType?: string): Promise<ThreadDetail> {
     const route = await this.getWorkspaceRoute(workspaceId);
     return this.withKnowledge(await this.localCoreAcp.createThread(
       workspaceId,
       title || `New thread ${new Date().toLocaleTimeString()}`,
-      route.agentType,
+      agentType || route.agentType,
     ));
   }
 

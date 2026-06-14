@@ -31,11 +31,16 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
 
   async execute(context: ScheduledExecutionContext): Promise<ScheduledExecutionResult> {
     const { job } = context;
-    const executionPolicy = createWeixinExecutionPolicy(job, {
-      store: this.options.store,
-      workspaceRouter: this.options.getWorkspaceRouter(),
-      getChannelRuntime: this.options.getChannelRuntime,
-    }, (nextJob) => this.resolveThread(nextJob));
+    const executionPolicy = createWeixinExecutionPolicy(
+      job,
+      {
+        store: this.options.store,
+        workspaceRouter: this.options.getWorkspaceRouter(),
+        getChannelRuntime: this.options.getChannelRuntime,
+      },
+      (nextJob) => this.resolveThread(nextJob),
+      (nextJob) => this.preferredAgentFor(nextJob),
+    );
     const execution = await this.executor.execute(job, job.promptTemplate, executionPolicy);
     return {
       threadId: execution.threadId,
@@ -88,5 +93,14 @@ export class WeixinScheduleAdapter implements SchedulerExecutorRuntime {
     } catch {
       return false;
     }
+  }
+
+  private preferredAgentFor(job: ScheduledJob): string {
+    const route = job.route;
+    const channelId = route.channelId;
+    if (!channelId) return '';
+    const participantId = route.participantId || '';
+    const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, job.platform);
+    return binding?.preferred_agent_type || '';
   }
 }
