@@ -3,5 +3,13 @@ packages:
   - services/*
   - packages/*
 
+allowBuilds:
+  '@google/genai': true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  koffi: true
+  protobufjs: true
+
 onlyBuiltDependencies:
   - esbuild

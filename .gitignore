@@ -20,9 +20,12 @@ Thumbs.db
 
 # Local assistant/editor settings.
 .claude/settings.local.json
+.codex/config.toml
+.codex-shims/
 
 # Local AI Core runtime config/state.
 .local-ai-core/runtime/
+.codex/standalone-test-user-data/
 
 # Test runner output.
 test-results/
