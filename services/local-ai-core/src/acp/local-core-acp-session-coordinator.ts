@@ -1,4 +1,5 @@
-import { delimiter } from 'node:path';
+import { delimiter, win32 } from 'node:path';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { DesktopBridgeEvent } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
@@ -324,11 +325,19 @@ function acpSessionCwd(config: LocalCoreProjectConfig) {
   return config.sandbox?.enabled ? config.sandbox.workspaceMountPath : config.workDir;
 }
 
-export function buildAgentPath(existingPath: string, cliBinDir?: string) {
+type BuildAgentPathOptions = {
+  platform?: NodeJS.Platform;
+  pathExists?: (path: string) => boolean;
+};
+
+export function buildAgentPath(existingPath: string, cliBinDir?: string, options: BuildAgentPathOptions = {}) {
+  const platform = options.platform || process.platform;
+  const pathDelimiter = platform === 'win32' ? ';' : delimiter;
   const entries = [
     cliBinDir,
-    ...userBinDirs(),
-    ...String(existingPath || '').split(delimiter),
+    ...userBinDirs(platform),
+    ...windowsGitBashDirs(existingPath, platform, options.pathExists || existsSync),
+    ...String(existingPath || '').split(pathDelimiter),
   ];
   const seen = new Set<string>();
   return entries
@@ -340,13 +349,53 @@ export function buildAgentPath(existingPath: string, cliBinDir?: string) {
       seen.add(entry);
       return true;
     })
-    .join(delimiter);
+    .join(pathDelimiter);
 }
 
-function userBinDirs() {
-  if (process.platform === 'win32') {
+function userBinDirs(platform: NodeJS.Platform) {
+  if (platform === 'win32') {
     return [];
   }
   const home = process.env.HOME || homedir();
   return home ? [`${home}/.local/bin`, `${home}/bin`] : [];
+}
+
+function windowsGitBashDirs(existingPath: string, platform: NodeJS.Platform, pathExists: (path: string) => boolean) {
+  if (platform !== 'win32') {
+    return [];
+  }
+  const pathEntries = String(existingPath || '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const gitRoots = new Set<string>();
+  for (const entry of pathEntries) {
+    const normalized = win32.normalize(entry).replace(/[\\/]+$/, '');
+    const base = win32.basename(normalized).toLowerCase();
+    const parent = win32.dirname(normalized);
+    const parentBase = win32.basename(parent).toLowerCase();
+    const grandParent = win32.dirname(parent);
+    if (base === 'cmd' && parentBase === 'git') {
+      gitRoots.add(parent);
+    } else if (base === 'bin' && parentBase === 'git') {
+      gitRoots.add(parent);
+    } else if (base === 'bin' && parentBase === 'usr' && win32.basename(grandParent).toLowerCase() === 'git') {
+      gitRoots.add(grandParent);
+    }
+  }
+  for (const root of ['C:\\Program Files\\Git', 'C:\\Program Files (x86)\\Git', 'D:\\Program Files\\Git']) {
+    gitRoots.add(root);
+  }
+  const dirs: string[] = [];
+  for (const root of gitRoots) {
+    const binDir = win32.join(root, 'bin');
+    if (pathExists(win32.join(binDir, 'bash.exe'))) {
+      dirs.push(binDir);
+    }
+    const usrBinDir = win32.join(root, 'usr', 'bin');
+    if (pathExists(win32.join(usrBinDir, 'bash.exe'))) {
+      dirs.push(usrBinDir);
+    }
+  }
+  return dirs;
 }

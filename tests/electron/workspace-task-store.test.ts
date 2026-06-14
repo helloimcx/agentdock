@@ -602,7 +602,7 @@ test('ACP runtime PATH includes service-safe user bin directories', () => {
   process.env.HOME = '/home/agentdock-test';
   try {
     const existingPath = ['/usr/bin', '/bin'].join(delimiter);
-    const path = buildAgentPath(existingPath, '/opt/agentdock/bin');
+    const path = buildAgentPath(existingPath, '/opt/agentdock/bin', { pathExists: () => false });
     const expectedEntries = process.platform === 'win32'
       ? ['/opt/agentdock/bin', '/usr/bin', '/bin']
       : ['/opt/agentdock/bin', '/home/agentdock-test/.local/bin', '/home/agentdock-test/bin', '/usr/bin', '/bin'];
@@ -614,6 +614,25 @@ test('ACP runtime PATH includes service-safe user bin directories', () => {
       process.env.HOME = previousHome;
     }
   }
+});
+
+test('ACP runtime PATH adds Git Bash bin when Windows PATH only has Git cmd', () => {
+  const existingPath = [
+    'C:\\Windows\\System32',
+    'D:\\Program Files\\Git\\cmd',
+  ].join(';');
+  const path = buildAgentPath(existingPath, undefined, {
+    platform: 'win32',
+    pathExists: (candidate) => candidate === 'D:\\Program Files\\Git\\bin\\bash.exe',
+  });
+  assert.equal(
+    path,
+    [
+      'D:\\Program Files\\Git\\bin',
+      'C:\\Windows\\System32',
+      'D:\\Program Files\\Git\\cmd',
+    ].join(';'),
+  );
 });
 
 test('ACP runtime reads Windows Path env regardless of key casing', () => {
