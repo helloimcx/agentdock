@@ -16,7 +16,7 @@ type ScheduledConversationExecutorOptions = {
 export class ScheduledConversationExecutor {
   constructor(private readonly options: ScheduledConversationExecutorOptions) {}
 
-  async execute(job: ScheduledJob, prompt: string, policy: ScheduledExecutionPolicy, timeoutMs = 15 * 60 * 1000) {
+  async execute(job: ScheduledJob, prompt: string, policy: ScheduledExecutionPolicy, timeoutMs = 60 * 60 * 1000) {
     const target = await policy.resolveTarget(job);
     await policy.beforeExecute?.(target, job);
     try {
