@@ -6,6 +6,8 @@ import type { SchedulerExecutorRuntime, SchedulerTriggerRuntime } from './adapte
 import { toPublicScheduledJobId } from './job-id.js';
 import { SchedulerRunLifecycle } from './scheduler-run-lifecycle.js';
 
+const SCHEDULER_AUTO_DISABLE_THRESHOLD = 5;
+
 type SchedulerServiceOptions = {
   store: LocalCoreAcpStore;
   triggers: SchedulerTriggerRuntime[];
@@ -169,9 +171,34 @@ export class SchedulerService extends EventEmitter {
         this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: nextJob });
       }
       this.options.log?.(`scheduler job failed ${job.id}: ${failed.error || 'unknown error'}`);
+      this.maybeAutoDisableAfterFailure(job.id);
       return failed;
     } finally {
       this.runningJobs.delete(job.id);
     }
+  }
+
+  private maybeAutoDisableAfterFailure(jobId: string) {
+    const runs = this.options.store.listScheduledJobRuns(jobId);
+    let consecutiveFailures = 0;
+    for (const run of runs) {
+      if (run.status === 'failed') {
+        consecutiveFailures += 1;
+      } else {
+        break;
+      }
+    }
+    if (consecutiveFailures < SCHEDULER_AUTO_DISABLE_THRESHOLD) {
+      return;
+    }
+    this.options.store.updateScheduledJobStatus(jobId, { enabled: false });
+    const disabled = this.options.store.getScheduledJob(jobId);
+    if (disabled) {
+      this.emit('job', disabled);
+      this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: disabled });
+    }
+    this.options.log?.(
+      `scheduler auto-disabled job ${jobId} after ${consecutiveFailures} consecutive failures`,
+    );
   }
 }
