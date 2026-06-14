@@ -450,6 +450,16 @@ export class LocalCoreAcpStore {
     this.platform.upsertPlatformThreadBinding(input);
   }
 
+  updatePlatformThreadPreferredAgent(
+    workspaceId: string,
+    chatId: string,
+    platformUserId: string,
+    agentType: string | null,
+    platform = 'lark',
+  ) {
+    this.platform.updatePlatformThreadPreferredAgent(workspaceId, chatId, platformUserId, agentType, platform);
+  }
+
   updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string, platform = 'lark') {
     this.platform.updatePlatformThreadMessageId(workspaceId, chatId, platformUserId, messageId, platform);
   }

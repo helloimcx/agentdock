@@ -33,7 +33,20 @@ export type ThreadCommandServiceOptions = {
   setThreadMode?: (threadId: string, mode: string) => Promise<void>;
   closeThreadSession?: (threadId: string) => void;
   interruptRun?: (runId: string) => Promise<{ interrupted: boolean }>;
+  setChannelPreferredAgent?: (input: {
+    workspaceId: string;
+    chatId: string;
+    platformUserId: string;
+    platform: string;
+    agentType: string | null;
+  }) => void;
   log?: (message: string) => void;
+};
+
+export type ThreadCommandChannelContext = {
+  chatId: string;
+  platformUserId: string;
+  platform: string;
 };
 
 export type ExecuteThreadCommandInput = {
@@ -41,6 +54,7 @@ export type ExecuteThreadCommandInput = {
   workspaceId: string;
   content: string;
   defaultAgentType: string;
+  channel?: ThreadCommandChannelContext;
 };
 
 export class ThreadCommandService {
@@ -65,7 +79,13 @@ export class ThreadCommandService {
       names: ['agent'],
       execute: (command, input) => ({
         handled: true,
-        displayText: this.executeAgentCommand(input.threadId, input.workspaceId, command.args, input.defaultAgentType),
+        displayText: this.executeAgentCommand(
+          input.threadId,
+          input.workspaceId,
+          command.args,
+          input.defaultAgentType,
+          input.channel,
+        ),
       }),
     });
   }
@@ -104,7 +124,13 @@ export class ThreadCommandService {
     return `已切换到 ${formatAgentMode(mode)} 模式。`;
   }
 
-  private executeAgentCommand(threadId: string, workspaceId: string, args: string[], defaultAgentType: string) {
+  private executeAgentCommand(
+    threadId: string,
+    workspaceId: string,
+    args: string[],
+    defaultAgentType: string,
+    channel?: ThreadCommandChannelContext,
+  ) {
     const row = this.options.getThreadRow(threadId);
     const currentAgent = normalizeAgentCommandTarget(row?.agent_type || defaultAgentType);
     const defaultAgent = normalizeAgentCommandTarget(defaultAgentType);
@@ -127,6 +153,7 @@ export class ThreadCommandService {
 
     if (action === 'reset') {
       if (currentAgent === defaultAgent) {
+        this.persistChannelPreferredAgent(channel, workspaceId, null);
         return `当前线程已经使用默认 Agent：${defaultAgent}。`;
       }
       const activeRun = this.hasActiveRun(threadId);
@@ -134,6 +161,7 @@ export class ThreadCommandService {
       if (!activeRun) {
         this.options.closeThreadSession?.(threadId);
       }
+      this.persistChannelPreferredAgent(channel, workspaceId, null);
       this.options.createAuditEvent({
         type: 'agent.changed',
         workspaceId,
@@ -158,6 +186,7 @@ export class ThreadCommandService {
       return `Agent "${canonicalAgent}" 当前不可用。\n可用 Agent：${availableAgents.length ? availableAgents.join(', ') : '无'}`;
     }
     if (canonicalAgent === currentAgent) {
+      this.persistChannelPreferredAgent(channel, workspaceId, canonicalAgent);
       return `当前线程已经使用 Agent：${canonicalAgent}。`;
     }
 
@@ -166,6 +195,7 @@ export class ThreadCommandService {
     if (!activeRun) {
       this.options.closeThreadSession?.(threadId);
     }
+    this.persistChannelPreferredAgent(channel, workspaceId, canonicalAgent);
     const runningNote = activeRun
       ? `\n当前正在运行的任务仍会继续使用 ${currentAgent}，下一轮开始生效。`
       : '';
@@ -177,6 +207,27 @@ export class ThreadCommandService {
       metadata: { threadId, agentType: canonicalAgent, previousAgentType: currentAgent },
     });
     return `已将当前线程 Agent 切换为 ${canonicalAgent}。\n后续消息将使用 ${canonicalAgent} 处理。${runningNote}`;
+  }
+
+  private persistChannelPreferredAgent(
+    channel: ThreadCommandChannelContext | undefined,
+    workspaceId: string,
+    agentType: string | null,
+  ) {
+    if (!channel || !this.options.setChannelPreferredAgent) {
+      return;
+    }
+    try {
+      this.options.setChannelPreferredAgent({
+        workspaceId,
+        chatId: channel.chatId,
+        platformUserId: channel.platformUserId,
+        platform: channel.platform,
+        agentType,
+      });
+    } catch (error) {
+      this.options.log?.(`setChannelPreferredAgent failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async executeStopCommand(threadId: string, workspaceId: string) {

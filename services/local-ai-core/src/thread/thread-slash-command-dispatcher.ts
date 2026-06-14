@@ -2,7 +2,7 @@ import type { AuditEvent } from '../../../../packages/contracts/src/index.js';
 import type { LocalRunRow, LocalThreadRow } from '../router/workspace-router-types.js';
 import { parseSlashCommand } from '../acp/local-core-slash-commands.js';
 import { SessionCommandService, type SessionCommandOperations, type SessionCommandResult } from './session-command-service.js';
-import { ThreadCommandService } from './thread-command-service.js';
+import { ThreadCommandService, type ThreadCommandChannelContext } from './thread-command-service.js';
 
 export type SlashCommandDefinition = {
   names: string[];
@@ -31,6 +31,7 @@ export type ThreadSlashCommandContext = {
   content: string;
   defaultAgentType: string;
   defaultTitle?: string;
+  channel?: ThreadCommandChannelContext;
 };
 
 export type ThreadSlashCommandOptions = {
@@ -51,6 +52,13 @@ export type ThreadSlashCommandOptions = {
     setThreadMode?: (threadId: string, mode: string) => Promise<void>;
     closeThreadSession?: (threadId: string) => void;
     interruptRun?: (runId: string) => Promise<{ interrupted: boolean }>;
+    setChannelPreferredAgent?: (input: {
+      workspaceId: string;
+      chatId: string;
+      platformUserId: string;
+      platform: string;
+      agentType: string | null;
+    }) => void;
     log?: (message: string) => void;
   };
 };
@@ -88,6 +96,7 @@ export class ThreadSlashCommandDispatcher {
         workspaceId: context.workspaceId,
         content: context.content,
         defaultAgentType: context.defaultAgentType,
+        channel: context.channel,
       });
     }
     return { handled: false, displayText: '' };

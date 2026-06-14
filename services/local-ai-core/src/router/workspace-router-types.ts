@@ -276,6 +276,7 @@ export type LocalPlatformThreadBindingRow = {
   platform_user_id: string;
   thread_id: string;
   last_platform_message_id: string | null;
+  preferred_agent_type?: string | null;
   created_at: string;
   updated_at: string;
 };

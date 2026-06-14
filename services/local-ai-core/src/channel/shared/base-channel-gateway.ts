@@ -110,6 +110,13 @@ export abstract class BaseChannelGateway<
         },
         closeThreadSession: (threadId) => options.getWorkspaceRouter().closeThreadSession(threadId),
         interruptRun: (runId) => options.getWorkspaceRouter().interruptRun(runId),
+        setChannelPreferredAgent: (input) => options.store.updatePlatformThreadPreferredAgent(
+          input.workspaceId,
+          input.chatId,
+          input.platformUserId,
+          input.agentType,
+          input.platform,
+        ),
         log: options.log,
       },
     });

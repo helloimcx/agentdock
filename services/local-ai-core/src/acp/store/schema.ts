@@ -300,6 +300,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
   ensureColumn(db, 'messages', 'tool_call_json', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_kind', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_status', 'TEXT');
+  ensureColumn(db, 'platform_thread_bindings', 'preferred_agent_type', 'TEXT');
   ensureColumn(db, 'scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
   ensureColumn(db, 'scheduled_job_runs', 'platform_message_ids_json', 'TEXT');
   ensureColumn(db, 'scheduled_job_runs', 'delivery_mode', 'TEXT');

@@ -968,3 +968,207 @@ test('lark same-thread execution policy keeps the original thread target', async
     sessionKey: 'session:thread-origin',
   });
 });
+
+test('platform thread binding persists preferred agent across upserts and updates', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-binding-pref-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const now = new Date().toISOString();
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: 'thread-1',
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    store.updatePlatformThreadPreferredAgent('workspace-a', 'chat-1', 'user-1', 'claudecode', 'lark');
+    let binding = store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark');
+    assert.equal(binding?.preferred_agent_type, 'claudecode');
+
+    const later = new Date().toISOString();
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: 'thread-2',
+      last_platform_message_id: null,
+      created_at: later,
+      updated_at: later,
+    });
+    binding = store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark');
+    assert.equal(binding?.thread_id, 'thread-2');
+    assert.equal(binding?.preferred_agent_type, 'claudecode');
+
+    store.updatePlatformThreadPreferredAgent('workspace-a', 'chat-1', 'user-1', null, 'lark');
+    binding = store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark');
+    assert.equal(binding?.preferred_agent_type, null);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('slash agent command in a channel writes preferred agent to the binding', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-channel-agent-cmd-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const thread = store.createThread('workspace-a', 'Channel thread', 'codex');
+    const now = new Date().toISOString();
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const row = store.getThreadRow(thread.id)!;
+    const dispatcher = new ThreadSlashCommandDispatcher({
+      session: {
+        listThreads: () => [],
+        getThread: (id) => ({ id, title: row.title, messages: [] }) as any,
+        createThread: (workspaceId, title) => ({ id: 'new-thread', title, messages: [] }) as any,
+        renameThread: (id, title) => ({ id, title, messages: [] }) as any,
+        deleteThread: () => ({ deleted: true }),
+      },
+      thread: {
+        getThreadRow: (id) => store.getThreadRow(id),
+        updateThreadAgentMode: (id, mode) => store.updateThreadAgentMode(id, mode),
+        updateThreadAgentType: (id, agentType) => store.updateThreadAgentType(id, agentType),
+        getLatestRunForThread: () => undefined,
+        createAuditEvent: () => {},
+        getAgentTypes: () => ['codex', 'pi', 'claudecode'],
+        setChannelPreferredAgent: (input) => store.updatePlatformThreadPreferredAgent(
+          input.workspaceId,
+          input.chatId,
+          input.platformUserId,
+          input.agentType,
+          input.platform,
+        ),
+      },
+    });
+
+    const useResult = await dispatcher.execute({
+      threadId: thread.id,
+      workspaceId: 'workspace-a',
+      content: '/agent use claudecode',
+      defaultAgentType: 'codex',
+      channel: { chatId: 'chat-1', platformUserId: 'user-1', platform: 'lark' },
+    });
+    assert.equal(useResult.handled, true);
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'claudecode');
+    assert.equal(
+      store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark')?.preferred_agent_type,
+      'claudecode',
+    );
+
+    const resetResult = await dispatcher.execute({
+      threadId: thread.id,
+      workspaceId: 'workspace-a',
+      content: '/agent reset',
+      defaultAgentType: 'codex',
+      channel: { chatId: 'chat-1', platformUserId: 'user-1', platform: 'lark' },
+    });
+    assert.equal(resetResult.handled, true);
+    assert.equal(store.getThreadRow(thread.id)?.agent_type, 'codex');
+    assert.equal(
+      store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark')?.preferred_agent_type,
+      null,
+    );
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('channel session runtime applies preferred agent when creating a new thread', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-channel-new-inherit-'));
+  try {
+    const store = new LocalCoreAcpStore(dir);
+    const original = store.createThread('workspace-a', 'Original channel thread', 'codex');
+    const now = new Date().toISOString();
+    store.upsertPlatformThreadBinding({
+      workspace_id: 'workspace-a',
+      platform: 'lark',
+      chat_id: 'chat-1',
+      platform_user_id: 'user-1',
+      thread_id: original.id,
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+    store.updatePlatformThreadPreferredAgent('workspace-a', 'chat-1', 'user-1', 'claudecode', 'lark');
+    store.updateThreadAgentType(original.id, 'claudecode');
+
+    const createdThreadIds: { id: string; initialAgentType: string }[] = [];
+    const routes = new Map<string, any>();
+    const dispatcher = new ThreadSlashCommandDispatcher({
+      session: {
+        listThreads: () => [],
+        getThread: (id) => ({ id, title: 'X', messages: [] }) as any,
+        createThread: (_workspaceId, title) => {
+          const created = store.createThread('workspace-a', title, 'codex');
+          createdThreadIds.push({ id: created.id, initialAgentType: 'codex' });
+          return created;
+        },
+        renameThread: (id, title) => ({ id, title, messages: [] }) as any,
+        deleteThread: () => ({ deleted: true }),
+      },
+      thread: {
+        getThreadRow: (id) => store.getThreadRow(id),
+        updateThreadAgentMode: (id, mode) => store.updateThreadAgentMode(id, mode),
+        updateThreadAgentType: (id, agentType) => store.updateThreadAgentType(id, agentType),
+        getLatestRunForThread: () => undefined,
+        createAuditEvent: () => {},
+        getAgentTypes: () => ['codex', 'claudecode'],
+      },
+    });
+    const runtime = new ChannelSessionCommandRuntime({
+      dispatcher,
+      store,
+      getThreadSessionKey: (id) => `session:${id}`,
+      setThreadRoute: (sessionKey, route) => { routes.set(sessionKey, route); },
+      createRoute: (input, id) => ({ workspaceId: input.workspaceId, chatId: input.chatId, threadId: id }),
+      sendResult: async () => {},
+    });
+
+    const result = await runtime.execute({
+      workspaceId: 'workspace-a',
+      currentThreadId: original.id,
+      text: '/new Follow up',
+      defaultTitle: 'Follow up',
+      defaultAgentType: 'codex',
+      chatId: 'chat-1',
+      platformUserId: 'user-1',
+      platformKey: 'lark',
+      instanceId: 'default',
+    });
+    assert.equal(result.handled, true);
+    assert.equal(result.threadId, createdThreadIds[0]?.id);
+    assert.equal(
+      createdThreadIds[0]?.initialAgentType,
+      'codex',
+      'createThread starts with default agent before inheritance',
+    );
+    assert.equal(
+      store.getThreadRow(result.threadId)?.agent_type,
+      'claudecode',
+      'new thread should inherit preferred agent after creation',
+    );
+    assert.equal(
+      store.getPlatformThreadBinding('workspace-a', 'chat-1', 'user-1', 'lark')?.preferred_agent_type,
+      'claudecode',
+    );
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

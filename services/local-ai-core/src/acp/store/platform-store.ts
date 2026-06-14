@@ -142,7 +142,7 @@ export class LocalPlatformStore {
 
   getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
     return this.db.prepare(`
-      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at
+      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, created_at, updated_at
       FROM platform_thread_bindings
       WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
     `).get(workspaceId, platform, chatId, platformUserId) as LocalPlatformThreadBindingRow | undefined;
@@ -150,7 +150,7 @@ export class LocalPlatformStore {
 
   getPlatformThreadBindingByThreadId(threadId: string) {
     return this.db.prepare(`
-      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at
+      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, created_at, updated_at
       FROM platform_thread_bindings
       WHERE thread_id = ?
       ORDER BY updated_at DESC
@@ -165,11 +165,12 @@ export class LocalPlatformStore {
   upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
       INSERT INTO platform_thread_bindings
-      (workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, platform, chat_id, platform_user_id) DO UPDATE SET
         thread_id = excluded.thread_id,
         last_platform_message_id = COALESCE(excluded.last_platform_message_id, platform_thread_bindings.last_platform_message_id),
+        preferred_agent_type = COALESCE(excluded.preferred_agent_type, platform_thread_bindings.preferred_agent_type),
         updated_at = excluded.updated_at
     `).run(
       input.workspace_id,
@@ -178,9 +179,24 @@ export class LocalPlatformStore {
       input.platform_user_id,
       input.thread_id,
       input.last_platform_message_id,
+      input.preferred_agent_type ?? null,
       input.created_at,
       input.updated_at,
     );
+  }
+
+  updatePlatformThreadPreferredAgent(
+    workspaceId: string,
+    chatId: string,
+    platformUserId: string,
+    agentType: string | null,
+    platform = 'lark',
+  ) {
+    this.db.prepare(`
+      UPDATE platform_thread_bindings
+      SET preferred_agent_type = ?, updated_at = ?
+      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
+    `).run(agentType, new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
   }
 
   updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string, platform = 'lark') {
