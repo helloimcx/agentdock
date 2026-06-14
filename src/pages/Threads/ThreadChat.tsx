@@ -26,6 +26,7 @@ export default function ThreadChat() {
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const {
     activeRunId,
+    activeAgentMode,
     activeSessionId,
     activeSessionKey,
     activeSessionName,
@@ -46,6 +47,7 @@ export default function ThreadChat() {
     loading,
     openRenameModal,
     pendingBridgeActionId,
+    permissionModeSaving,
     pendingPermissionRequest,
     pendingSessionAction,
     projects,
@@ -61,6 +63,7 @@ export default function ThreadChat() {
     selectedProject,
     setDeleteTarget,
     setDraft,
+    setActiveAgentMode,
     setSelectedKnowledgeBaseIds,
     setRenameDraft,
     setRenameTarget,
@@ -243,12 +246,14 @@ export default function ThreadChat() {
 
             <ThreadChatComposer
               activeRunId={activeRunId}
+              activeAgentMode={activeAgentMode}
               activeSessionKey={activeSessionKey}
               availableKnowledgeBases={availableKnowledgeBases}
               branding={branding}
               composerPermissionCard={composerPermissionCard}
               draft={draft}
               pendingBridgeActionId={pendingBridgeActionId}
+              permissionModeSaving={permissionModeSaving}
               selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
               selectedProject={selectedProject}
               sending={sending}
@@ -260,6 +265,7 @@ export default function ThreadChat() {
               onBridgeAction={handleBridgeAction}
               onSend={handleSend}
               onStopTask={handleStopTask}
+              setActiveAgentMode={setActiveAgentMode}
               setDraft={setDraft}
               setSelectedKnowledgeBaseIds={setSelectedKnowledgeBaseIds}
             />

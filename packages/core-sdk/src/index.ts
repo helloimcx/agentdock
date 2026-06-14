@@ -557,6 +557,10 @@ export async function updateThreadKnowledgeBases(threadId: string, knowledgeBase
   );
 }
 
+export async function updateThreadMode(threadId: string, mode: string) {
+  return coreRequest<ThreadDetail>('PATCH', `/threads/${encodeURIComponent(threadId)}/mode`, { mode });
+}
+
 export async function deleteThread(threadId: string) {
   return coreRequest<{ deleted: boolean }>('DELETE', `/threads/${encodeURIComponent(threadId)}`);
 }

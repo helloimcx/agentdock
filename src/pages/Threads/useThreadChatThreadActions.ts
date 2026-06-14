@@ -4,6 +4,7 @@ import {
   deleteThread as deleteCoreThread,
   renameThread,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
+  updateThreadMode,
 } from '../../../packages/core-sdk/src';
 import type { ChatThreadSummary, ThreadActionTarget } from './thread-chat-model';
 import type {
@@ -22,6 +23,7 @@ type UseThreadChatThreadActionsInput = {
   renameTarget: ThreadActionTarget | null;
   searchParams: URLSearchParams;
   selectedKnowledgeBaseIds: string[];
+  activeAgentMode: string;
   setSearchParams: ThreadChatSearchParamsSetter;
 } & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
   Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
@@ -39,6 +41,7 @@ export function useThreadChatThreadActions({
   runtimeProvider,
   searchParams,
   selectedKnowledgeBaseIds,
+  activeAgentMode,
   selectedProject,
   updateTaskState,
   applyLocalCoreThreadDetail,
@@ -106,7 +109,10 @@ export function useThreadChatThreadActions({
     if (usesManagedThreadApi && shouldCreateThreadImmediately) {
       setPendingSessionAction('rename');
       try {
-        const detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
+        let detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
+        if (activeAgentMode && activeAgentMode !== 'default') {
+          detail = await updateThreadMode(detail.id, activeAgentMode);
+        }
         if (selectedKnowledgeBaseIds.length > 0) {
           const persistedIds = (await updateCoreThreadKnowledgeBases(detail.id, selectedKnowledgeBaseIds)).knowledgeBaseIds;
           detail.selectedKnowledgeBaseIds = persistedIds;
@@ -127,6 +133,7 @@ export function useThreadChatThreadActions({
     resetBlankConversation();
   }, [
     applyLocalCoreThreadDetail,
+    activeAgentMode,
     brandingNewThreadLabel,
     refreshSessionsForProject,
     resetBlankConversation,

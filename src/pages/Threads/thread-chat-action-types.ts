@@ -48,6 +48,7 @@ export type ThreadChatCoreSetters = {
 export type ThreadChatIdentitySetters = {
   setActiveRunId: Dispatch<SetStateAction<string>>;
   setActiveSessionAgentType: Dispatch<SetStateAction<string>>;
+  setActiveAgentMode: Dispatch<SetStateAction<string>>;
   setActiveSessionId: Dispatch<SetStateAction<string>>;
   setActiveSessionKey: Dispatch<SetStateAction<string>>;
   setActiveSessionName: Dispatch<SetStateAction<string>>;
@@ -90,6 +91,7 @@ export type ThreadChatActiveThreadIdentity = {
 export type ThreadChatBrowserSetters = {
   setActiveRunId: Dispatch<SetStateAction<string>>;
   setActiveSessionAgentType: Dispatch<SetStateAction<string>>;
+  setActiveAgentMode: Dispatch<SetStateAction<string>>;
   setActiveSessionId: Dispatch<SetStateAction<string>>;
   setActiveSessionKey: Dispatch<SetStateAction<string>>;
   setActiveSessionName: Dispatch<SetStateAction<string>>;

@@ -38,6 +38,7 @@ export class LocalThreadStore {
       runId: undefined,
       bridgeSessionKey: row.bridge_session_key,
       agentType: row.agent_type,
+      agentMode: row.agent_mode,
     }));
   }
 
@@ -66,6 +67,7 @@ export class LocalThreadStore {
       excerpt: '',
       bridgeSessionKey,
       agentType,
+      agentMode: agentMode || 'default',
       messages: [],
       selectedKnowledgeBaseIds: [],
       pendingPermissionRequest: null,
@@ -94,6 +96,7 @@ export class LocalThreadStore {
       excerpt: row.excerpt,
       bridgeSessionKey: row.bridge_session_key,
       agentType: row.agent_type,
+      agentMode: row.agent_mode,
       messages: messages.map((message) => ({
         id: message.id,
         role: message.role,

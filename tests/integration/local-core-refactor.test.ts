@@ -331,11 +331,15 @@ test('thread agent mode persists with thread state', () => {
   try {
     const store = new LocalCoreAcpStore(dir);
     const thread = store.createThread('workspace-a', 'Mode test', 'claudecode');
+    assert.equal(thread.agentMode, 'default');
     assert.equal(store.getThreadRow(thread.id)?.agent_mode, 'default');
     const inheritedThread = store.createThread('workspace-a', 'Inherited mode test', 'claudecode', 'bypassPermissions');
+    assert.equal(inheritedThread.agentMode, 'bypassPermissions');
     assert.equal(store.getThreadRow(inheritedThread.id)?.agent_mode, 'bypassPermissions');
     store.updateThreadAgentMode(thread.id, 'bypassPermissions');
     assert.equal(store.getThreadRow(thread.id)?.agent_mode, 'bypassPermissions');
+    assert.equal(store.getThread(thread.id, []).agentMode, 'bypassPermissions');
+    assert.equal(store.listThreadSummaries('workspace-a').find((item) => item.id === thread.id)?.agentMode, 'bypassPermissions');
     store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

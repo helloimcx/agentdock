@@ -70,6 +70,7 @@ export interface ChatThreadSummary {
   updatedAt: string;
   excerpt: string;
   agentType?: string;
+  agentMode?: string;
   bridgeSessionKey?: string;
 }
 
@@ -244,6 +245,7 @@ export function toChatThreadSummary(project: string, session: Session): ChatThre
     updatedAt: session.updated_at,
     excerpt: extractVisibleMessageContent(session.last_message?.content || ''),
     agentType: session.agent_type,
+    agentMode: undefined,
     bridgeSessionKey: session.session_key,
   };
 }
@@ -258,6 +260,7 @@ export function toCoreChatThreadSummary(thread: ThreadSummary): ChatThreadSummar
     updatedAt: thread.updatedAt,
     excerpt: extractVisibleMessageContent(thread.excerpt),
     agentType: thread.agentType,
+    agentMode: thread.agentMode,
     bridgeSessionKey: thread.bridgeSessionKey,
   };
 }

@@ -26,6 +26,7 @@ type UseThreadChatActionsInput = {
   runtimeProvider: RuntimeProvider;
   searchParams: URLSearchParams;
   selectedKnowledgeBaseIds: string[];
+  activeAgentMode: string;
   selectedWorkspaceId: string;
   taskState: ChatTaskState;
   updateTaskState: (next: ChatTaskState) => void;
@@ -37,6 +38,7 @@ type UseThreadChatActionsInput = {
   settlePreviewMessages: (turnKey?: string) => void;
   setActiveRunId: Dispatch<SetStateAction<string>>;
   setActiveSessionAgentType: Dispatch<SetStateAction<string>>;
+  setActiveAgentMode: Dispatch<SetStateAction<string>>;
   setActiveSessionId: Dispatch<SetStateAction<string>>;
   setActiveSessionKey: Dispatch<SetStateAction<string>>;
   setActiveSessionName: Dispatch<SetStateAction<string>>;
@@ -73,6 +75,7 @@ export function useThreadChatActions({
   runtimeProvider,
   searchParams,
   selectedKnowledgeBaseIds,
+  activeAgentMode,
   selectedWorkspaceId,
   taskState,
   updateTaskState,
@@ -84,6 +87,7 @@ export function useThreadChatActions({
   settlePreviewMessages,
   setActiveRunId,
   setActiveSessionAgentType,
+  setActiveAgentMode,
   setActiveSessionId,
   setActiveSessionKey,
   setActiveSessionName,
@@ -126,6 +130,7 @@ export function useThreadChatActions({
   const identitySetters: ThreadChatIdentitySetters = {
     setActiveRunId,
     setActiveSessionAgentType,
+    setActiveAgentMode,
     setActiveSessionId,
     setActiveSessionKey,
     setActiveSessionName,
@@ -163,6 +168,7 @@ export function useThreadChatActions({
     draft,
     loadActiveThread,
     selectedKnowledgeBaseIds,
+    activeAgentMode,
     taskState,
     armReplyTimeout,
     reserveNextMessageOrder,
@@ -188,6 +194,7 @@ export function useThreadChatActions({
     renameTarget,
     searchParams,
     selectedKnowledgeBaseIds,
+    activeAgentMode,
     setSearchParams,
     ...sharedContext,
     ...identitySetters,

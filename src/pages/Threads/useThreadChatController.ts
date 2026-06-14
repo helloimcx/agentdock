@@ -8,6 +8,7 @@ import { getRuntimeBranding } from '@/lib/runtime-branding';
 import {
   sendAction,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
+  updateThreadMode,
 } from '../../../packages/core-sdk/src';
 import type { KnowledgeBase } from '../../../packages/contracts/src';
 import {
@@ -29,6 +30,7 @@ export function useThreadChatController() {
   const [activeBridgeSessionKey, setActiveBridgeSessionKey] = useState('');
   const [activeThreadName, setActiveThreadName] = useState('');
   const [activeAgentType, setActiveAgentType] = useState('');
+  const [activeAgentMode, setActiveAgentMode] = useState('default');
   const [activeRunId, setActiveRunId] = useState('');
   const [draft, setDraft] = useState('');
   const [threadSearch, setThreadSearch] = useState('');
@@ -40,6 +42,7 @@ export function useThreadChatController() {
   const [pendingSessionAction, setPendingSessionAction] = useState<'rename' | 'delete' | null>(null);
   const [pendingBridgeActionId, setPendingBridgeActionId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [permissionModeSaving, setPermissionModeSaving] = useState(false);
   const [bridgeError, setBridgeError] = useState('');
   const knowledgeBaseSelectionRequestRef = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
@@ -79,6 +82,7 @@ export function useThreadChatController() {
     setSelectedKnowledgeBaseIds,
     setActiveRunId,
     setActiveSessionAgentType: setActiveAgentType,
+    setActiveAgentMode,
     setActiveSessionId: setActiveThreadId,
     setActiveSessionKey: setActiveBridgeSessionKey,
     setActiveSessionName: setActiveThreadName,
@@ -123,6 +127,7 @@ export function useThreadChatController() {
     setSelectedKnowledgeBaseIds,
     setActiveRunId,
     setActiveSessionAgentType: setActiveAgentType,
+    setActiveAgentMode,
     setActiveSessionId: setActiveThreadId,
     setActiveSessionKey: setActiveBridgeSessionKey,
     setActiveSessionName: setActiveThreadName,
@@ -185,6 +190,33 @@ export function useThreadChatController() {
     }
   }, [activeThreadId, runtimeProvider, selectedWorkspaceId, setBridgeError]);
 
+  const handleAgentModeChange = useCallback(async (nextMode: string) => {
+    const normalizedMode = ['default', 'bypassPermissions'].includes(nextMode) ? nextMode : 'default';
+    setActiveAgentMode(normalizedMode);
+    if (!selectedWorkspaceId || !activeThreadId) {
+      return;
+    }
+    setPermissionModeSaving(true);
+    setBridgeError('');
+    try {
+      const detail = await updateThreadMode(activeThreadId, normalizedMode);
+      applyLocalCoreThreadDetail(detail);
+      await refreshThreadsForWorkspace(selectedWorkspaceId);
+    } catch (error) {
+      setBridgeError(error instanceof Error ? error.message : 'Failed to save permission mode.');
+      const detail = await loadActiveThread(selectedWorkspaceId, activeThreadId).catch(() => null);
+      void detail;
+    } finally {
+      setPermissionModeSaving(false);
+    }
+  }, [
+    activeThreadId,
+    applyLocalCoreThreadDetail,
+    loadActiveThread,
+    refreshThreadsForWorkspace,
+    selectedWorkspaceId,
+  ]);
+
   const { handleBridgeAction } = useThreadChatBridge({
     activeAgentType,
     activeThreadId,
@@ -226,6 +258,7 @@ export function useThreadChatController() {
     activeThreadId,
     activeBridgeSessionKey,
     availableKnowledgeBases,
+    activeAgentMode,
     brandingNewThreadLabel: branding.newThreadLabel,
     deleteTarget,
     draft,
@@ -246,6 +279,7 @@ export function useThreadChatController() {
     settlePreviewMessages,
     setActiveRunId,
     setActiveSessionAgentType: setActiveAgentType,
+    setActiveAgentMode,
     setActiveSessionId: setActiveThreadId,
     setActiveSessionKey: setActiveBridgeSessionKey,
     setActiveSessionName: setActiveThreadName,
@@ -270,6 +304,7 @@ export function useThreadChatController() {
 
   return {
     activeRunId,
+    activeAgentMode,
     activeSessionId: activeThreadId,
     activeSessionKey: activeBridgeSessionKey,
     activeSessionName: activeThreadName,
@@ -290,6 +325,7 @@ export function useThreadChatController() {
     loading,
     openRenameModal,
     pendingBridgeActionId,
+    permissionModeSaving,
     pendingPermissionRequest,
     pendingSessionAction,
     projects: workspaceIds,
@@ -306,6 +342,7 @@ export function useThreadChatController() {
     setDeleteTarget,
     setDraft,
     setSelectedKnowledgeBaseIds: handleKnowledgeBaseSelectionChange,
+    setActiveAgentMode: handleAgentModeChange,
     setRenameDraft,
     setRenameTarget,
     setSelectedProject: setSelectedWorkspaceId,

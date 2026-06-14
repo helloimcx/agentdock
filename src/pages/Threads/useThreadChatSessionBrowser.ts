@@ -62,7 +62,7 @@ type UseThreadChatSessionBrowserInput = {
   Pick<ThreadChatSharedHookContext, 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatConversationRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef'> &
   Pick<ThreadChatSendingRefs, 'lastSessionByProjectRef'> &
-  Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionAgentType' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
+  Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionAgentType' | 'setActiveAgentMode' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
   Pick<ThreadChatBrowserSetters, 'setProjects' | 'setSelectedProject' | 'setThreadGroups' | 'setSearchParams'>;
 
 export function useThreadChatSessionBrowser({
@@ -80,6 +80,7 @@ export function useThreadChatSessionBrowser({
   setSelectedKnowledgeBaseIds,
   setActiveRunId,
   setActiveSessionAgentType,
+  setActiveAgentMode,
   setActiveSessionId,
   setActiveSessionKey,
   setActiveSessionName,
@@ -133,9 +134,12 @@ export function useThreadChatSessionBrowser({
     if (activeThread?.agentType) {
       setActiveSessionAgentType(activeThread.agentType);
     }
+    if (activeThread?.agentMode) {
+      setActiveAgentMode(activeThread.agentMode);
+    }
     setThreadGroups((current) => upsertThreadGroup(current, workspaceId, nextThreads));
     return nextThreads;
-  }, [activeThreadId, serviceRunning, setActiveSessionAgentType, setThreadGroups, usesManagedThreadApi]);
+  }, [activeThreadId, serviceRunning, setActiveAgentMode, setActiveSessionAgentType, setThreadGroups, usesManagedThreadApi]);
 
   const loadActiveThread = useCallback(async (workspaceId: string, threadId: string) => {
     if (!workspaceId || !threadId || !serviceRunning) {
@@ -158,6 +162,7 @@ export function useThreadChatSessionBrowser({
     setActiveSessionKey(detail.session_key);
     setActiveSessionName(toChatThreadSummary(workspaceId, detail).name);
     setActiveSessionAgentType(detail.agent_type || '');
+    setActiveAgentMode('default');
     setSelectedKnowledgeBaseIds(selectedKnowledgeBaseIds);
     setActiveRunId('');
     setThreadGroups((current) => upsertThreadInGroup(current, workspaceId, toChatThreadSummary(workspaceId, detail)));
@@ -176,6 +181,7 @@ export function useThreadChatSessionBrowser({
     progressSequenceByTurnRef,
     serviceRunning,
     setActiveRunId,
+    setActiveAgentMode,
     setActiveSessionAgentType,
     setActiveSessionId,
     setActiveSessionKey,

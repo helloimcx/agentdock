@@ -33,6 +33,7 @@ export type LocalAiCoreRoute =
   | { name: 'threads.create' }
   | { name: 'thread.get'; threadId: string }
   | { name: 'thread.rename'; threadId: string }
+  | { name: 'thread.update-mode'; threadId: string }
   | { name: 'thread.update-knowledge-bases'; threadId: string }
   | { name: 'thread.delete'; threadId: string }
   | { name: 'thread.messages.send'; threadId: string }
@@ -350,6 +351,9 @@ function parseThreadsRoute(method: string, segments: string[]): LocalAiCoreRoute
   }
   if (method === 'PATCH' && segments.length === 3 && segments[2] === 'knowledge-bases') {
     return { name: 'thread.update-knowledge-bases', threadId };
+  }
+  if (method === 'PATCH' && segments.length === 3 && segments[2] === 'mode') {
+    return { name: 'thread.update-mode', threadId };
   }
   if (method === 'POST' && segments.length === 3 && segments[2] === 'messages') {
     return { name: 'thread.messages.send', threadId };

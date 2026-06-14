@@ -105,7 +105,9 @@ export abstract class BaseChannelGateway<
         getLatestRunForThread: (threadId) => options.store.getLatestRunForThread(threadId),
         createAuditEvent: (input) => options.store.createAuditEvent(input),
         getAgentTypes: () => options.getWorkspaceRouter().getAgentTypes(),
-        setThreadMode: (threadId, mode) => options.getWorkspaceRouter().setThreadMode(threadId, mode),
+        setThreadMode: async (threadId, mode) => {
+          await options.getWorkspaceRouter().setThreadMode(threadId, mode);
+        },
         closeThreadSession: (threadId) => options.getWorkspaceRouter().closeThreadSession(threadId),
         interruptRun: (runId) => options.getWorkspaceRouter().interruptRun(runId),
         log: options.log,

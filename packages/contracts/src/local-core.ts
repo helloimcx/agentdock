@@ -250,6 +250,7 @@ export interface ThreadSummary {
   runId?: string;
   bridgeSessionKey?: string;
   agentType?: string;
+  agentMode?: string;
 }
 
 export interface ThreadMessage {

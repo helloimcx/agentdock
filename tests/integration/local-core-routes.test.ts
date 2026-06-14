@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
 import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
+import { registerThreadHandlers } from '../../services/local-ai-core/src/runtime/handlers/thread-handler.js';
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/logs'), { name: 'logs.list' });
@@ -43,6 +45,10 @@ test('local core route parser keeps thread actions separate from generic thread 
     name: 'thread.update-knowledge-bases',
     threadId: 'thread-1',
   });
+  assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/threads/thread-1/mode'), {
+    name: 'thread.update-mode',
+    threadId: 'thread-1',
+  });
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/threads/thread-1/messages'), {
     name: 'thread.messages.send',
     threadId: 'thread-1',
@@ -52,6 +58,54 @@ test('local core route parser keeps thread actions separate from generic thread 
     threadId: 'thread-1',
   });
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/threads/thread-1/messages'), null);
+});
+
+test('thread mode route handler persists normalized mode through workspace router', async () => {
+  const calls: Array<{ threadId: string; mode: string }> = [];
+  const map = new Map<string, any>();
+  registerThreadHandlers(map, {
+    setThreadMode: async (threadId: string, mode: string) => {
+      calls.push({ threadId, mode });
+      return {
+        id: threadId,
+        workspaceId: 'workspace-a',
+        title: 'Thread',
+        live: false,
+        updatedAt: '2026-06-14T00:00:00.000Z',
+        createdAt: '2026-06-14T00:00:00.000Z',
+        historyCount: 0,
+        excerpt: '',
+        agentMode: 'bypassPermissions',
+        messages: [],
+        selectedKnowledgeBaseIds: [],
+      };
+    },
+  } as any);
+
+  const req = Readable.from([Buffer.from(JSON.stringify({ mode: 'bypassPermissions' }))]);
+  const headers: Record<string, string> = {};
+  let responseBody = '';
+  const res = {
+    statusCode: 0,
+    setHeader: (name: string, value: string) => {
+      headers[name] = value;
+    },
+    end: (body: string) => {
+      responseBody = body;
+    },
+  };
+
+  await map.get('thread.update-mode')(
+    { name: 'thread.update-mode', threadId: 'thread-1' },
+    req,
+    res,
+    new URL('http://127.0.0.1/api/local/v1/threads/thread-1/mode'),
+  );
+
+  assert.deepEqual(calls, [{ threadId: 'thread-1', mode: 'bypassPermissions' }]);
+  assert.equal(res.statusCode, 200);
+  assert.equal(headers['Content-Type'], 'application/json; charset=utf-8');
+  assert.equal(JSON.parse(responseBody).data.agentMode, 'bypassPermissions');
 });
 
 test('local core route parser only accepts run interrupt action with POST', () => {

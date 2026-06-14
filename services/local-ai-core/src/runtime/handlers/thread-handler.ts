@@ -24,6 +24,10 @@ export function registerThreadHandlers(
       : [];
     json(res, 200, await workspaceRouter.updateThreadKnowledgeBases((route as { threadId: string }).threadId, knowledgeBaseIds));
   });
+  map.set('thread.update-mode', async (route, req, res) => {
+    const body = await readJsonBody(req);
+    json(res, 200, await workspaceRouter.setThreadMode((route as { threadId: string }).threadId, String(body.mode || '')));
+  });
   map.set('thread.rename', async (route, req, res) => {
     const body = await readJsonBody(req);
     json(res, 200, await workspaceRouter.renameThread((route as { threadId: string }).threadId, String(body.title || '')));

@@ -5,6 +5,7 @@ import {
   sendAction as sendThreadAction,
   sendMessage as sendThreadMessage,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
+  updateThreadMode,
 } from '../../../packages/core-sdk/src';
 import type { KnowledgeBase } from '../../../packages/contracts/src';
 import { wrapUserMessageWithSchedulerProtocol } from '../../../shared/desktop';
@@ -19,6 +20,7 @@ type UseThreadChatSendingActionsInput = {
   activeRunId: string;
   activeThreadId: string;
   activeBridgeSessionKey: string;
+  activeAgentMode: string;
   availableKnowledgeBases: KnowledgeBase[];
   brandingNewThreadLabel: string;
   draft: string;
@@ -40,6 +42,7 @@ export function useThreadChatSendingActions({
   activeRunId,
   activeThreadId,
   activeBridgeSessionKey,
+  activeAgentMode,
   availableKnowledgeBases,
   brandingNewThreadLabel,
   draft,
@@ -105,12 +108,16 @@ export function useThreadChatSendingActions({
       throw new Error('Managed desktop thread transport is unavailable.');
     }
 
-    const detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
+    let detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
+    if (activeAgentMode && activeAgentMode !== 'default') {
+      detail = await updateThreadMode(detail.id, activeAgentMode);
+    }
     applyLocalCoreThreadDetail(detail);
     await refreshSessionsForProject(selectedProject);
     return { id: detail.id, sessionKey: detail.bridgeSessionKey || '' };
   }, [
     activeBridgeSessionKey,
+    activeAgentMode,
     activeThreadId,
     applyLocalCoreThreadDetail,
     brandingNewThreadLabel,

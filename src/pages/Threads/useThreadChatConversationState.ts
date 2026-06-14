@@ -23,6 +23,7 @@ type UseThreadChatConversationStateInput = {
   setSelectedKnowledgeBaseIds: Dispatch<SetStateAction<string[]>>;
   setActiveRunId: Dispatch<SetStateAction<string>>;
   setActiveSessionAgentType: Dispatch<SetStateAction<string>>;
+  setActiveAgentMode: Dispatch<SetStateAction<string>>;
   setActiveSessionId: Dispatch<SetStateAction<string>>;
   setActiveSessionKey: Dispatch<SetStateAction<string>>;
   setActiveSessionName: Dispatch<SetStateAction<string>>;
@@ -37,6 +38,7 @@ export function useThreadChatConversationState({
   setSelectedKnowledgeBaseIds,
   setActiveRunId,
   setActiveSessionAgentType,
+  setActiveAgentMode,
   setActiveSessionId,
   setActiveSessionKey,
   setActiveSessionName,
@@ -153,6 +155,7 @@ export function useThreadChatConversationState({
     setActiveSessionKey(detail.bridgeSessionKey || '');
     setActiveSessionName(detail.title);
     setActiveSessionAgentType(detail.agentType || '');
+    setActiveAgentMode(detail.agentMode || 'default');
     setActiveRunId(detail.runId || '');
     setSelectedKnowledgeBaseIds(detail.selectedKnowledgeBaseIds || []);
     setPendingPermissionRequest(detail.pendingPermissionRequest || null);
@@ -165,6 +168,7 @@ export function useThreadChatConversationState({
     setMessages(sortChatMessages(nextMessages));
   }, [
     setActiveRunId,
+    setActiveAgentMode,
     setActiveSessionAgentType,
     setActiveSessionId,
     setActiveSessionKey,

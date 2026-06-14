@@ -94,6 +94,10 @@ flowchart LR
 
 ## New
 
+### 2026-06-14
+
+- 聊天输入框下方新增权限模式选择器，可在请求批准和完全访问之间切换，并随当前线程保存。
+
 ### 2026-05-24
 
 - 重构 Local AI Core 控制器：提取 ChannelService 与 ExternalService 为独立领域服务，Controller 缩至约 20 个方法，只保留生命周期、配置和事件编排。

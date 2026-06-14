@@ -31,6 +31,7 @@ import type {
   WorkspaceSummary,
 } from '../../../../packages/contracts/src/index.js';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
+import { DEFAULT_AGENT_MODE, normalizeAgentMode } from '../acp/local-core-slash-commands.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { decodeThreadId } from '../thread/workspace-thread-id.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
@@ -301,10 +302,16 @@ export class WorkspaceRouter {
     return this.localCoreAcp.interruptRun(runId);
   }
 
-  async setThreadMode(threadId: string, mode: string) {
+  async setThreadMode(threadId: string, mode: string): Promise<ThreadDetail> {
     const { workspaceId } = decodeThreadId(threadId);
     await this.getWorkspaceRoute(workspaceId);
-    return this.localCoreAcp.setThreadMode(threadId, mode);
+    const normalizedMode = normalizeAgentMode(mode) || (String(mode || '').trim() === '' ? DEFAULT_AGENT_MODE : '');
+    if (!normalizedMode) {
+      throw new Error(`Unknown thread mode: ${mode}`);
+    }
+    this.store.updateThreadAgentMode(threadId, normalizedMode);
+    await this.localCoreAcp.setThreadMode(threadId, normalizedMode);
+    return this.getThread(threadId);
   }
 
   closeThreadSession(threadId: string) {
