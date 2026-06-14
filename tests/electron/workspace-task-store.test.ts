@@ -1013,6 +1013,67 @@ test('scheduler dispatches due jobs without waiting for long-running jobs', asyn
   }
 });
 
+test('scheduler auto-disables a job after 5 consecutive failures', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-autodisable-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const created = store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-1' },
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '* * * * *',
+      promptTemplate: 'broken',
+      description: 'always-failing job',
+      enabled: true,
+    });
+
+    const logs: string[] = [];
+    const jobUpdates: { enabled: boolean }[] = [];
+    const scheduler = new SchedulerService({
+      store,
+      triggers: [{
+        triggerTypes: ['cron'],
+        supports: () => true,
+        isDue: () => true,
+      }],
+      executors: [{
+        deliveryTargets: ['local'],
+        supports: () => true,
+        execute: async () => {
+          throw new Error("The 'gpt-5.3-codex' model is not supported");
+        },
+      }],
+      eventBus: {
+        emit: (event: any) => {
+          if (event?.type === 'scheduler.job.updated') {
+            jobUpdates.push({ enabled: event.payload.enabled });
+          }
+        },
+        on: () => () => {},
+      },
+      log: (message) => logs.push(message),
+    });
+
+    for (let i = 0; i < 5; i += 1) {
+      await scheduler.runJobNow(created.id);
+    }
+
+    const jobAfter = store.getScheduledJob(created.id);
+    assert.equal(jobAfter?.enabled, false);
+    assert.ok(
+      logs.some((msg) => msg.includes('auto-disabled') && msg.includes('5 consecutive failures')),
+      `expected auto-disable log, got: ${JSON.stringify(logs)}`,
+    );
+    assert.ok(jobUpdates.some((update) => update.enabled === false));
+
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('scheduled jobs normalize enum-like input before persistence', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-enum-store-'));
   try {
