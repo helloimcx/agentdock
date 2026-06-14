@@ -673,8 +673,9 @@ test('ACP transport reports missing agent commands without an unhandled process 
 
 test('ACP scheduled session can override permission mode without changing thread mode', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-permission-mode-'));
+  let store: LocalCoreAcpStore | null = null;
   try {
-    const store = new LocalCoreAcpStore(userDataPath);
+    store = new LocalCoreAcpStore(userDataPath);
     const thread = store.createThread('workspace-a', 'Thread');
     const capturedSessionNewParams: any[] = [];
     let closeCount = 0;
@@ -743,14 +744,16 @@ test('ACP scheduled session can override permission mode without changing thread
       },
     });
   } finally {
+    store?.close();
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
 
 test('ACP sandbox sessions use container workspace cwd', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'sandbox-session-cwd-'));
+  let store: LocalCoreAcpStore | null = null;
   try {
-    const store = new LocalCoreAcpStore(userDataPath);
+    store = new LocalCoreAcpStore(userDataPath);
     const thread = store.createThread('workspace-a', 'Thread');
     let sessionNewParams: any;
     const coordinator = new LocalCoreAcpSessionCoordinator({
@@ -822,6 +825,7 @@ test('ACP sandbox sessions use container workspace cwd', async () => {
 
     assert.equal(sessionNewParams?.cwd, '/workspace');
   } finally {
+    store?.close();
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
