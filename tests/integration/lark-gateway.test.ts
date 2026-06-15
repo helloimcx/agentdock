@@ -2143,3 +2143,27 @@ test('lark channel keeps multiple bot instances in one workspace isolated', asyn
     ['default', 'bot-b', 'cli_b', 'running'],
   ]);
 });
+
+test('lark gateway samples empty-render log per session/type within the dedup window', () => {
+  const logs: string[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: {} as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+    log: (message: string) => logs.push(message),
+  });
+  const internals = gateway as any;
+
+  for (let i = 0; i < 5; i += 1) {
+    internals.logEmptyRender('session:thread-1', 'update_message');
+  }
+  internals.logEmptyRender('session:thread-1', 'preview_start');
+  internals.logEmptyRender('session:thread-2', 'update_message');
+
+  const emptyRenderLogs = logs.filter((line) => line.includes('produced empty render'));
+  assert.equal(emptyRenderLogs.length, 3);
+  assert.ok(emptyRenderLogs[0].includes('session:thread-1') && emptyRenderLogs[0].includes('type=update_message'));
+  assert.ok(emptyRenderLogs[1].includes('type=preview_start'));
+  assert.ok(emptyRenderLogs[2].includes('session:thread-2'));
+});
