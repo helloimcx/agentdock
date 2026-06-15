@@ -885,7 +885,8 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
       store: {} as any,
       workspaceRouter: {
         getThreadSessionKey: (threadId: string) => `session:${threadId}`,
-        listThreads: async () => [{ id: 'thread-scheduled', title: '[Scheduled] two-minute ping' }],
+        getWorkspaceDefaultAgentType: async () => 'claudecode',
+        listThreads: async () => [{ id: 'thread-scheduled', title: '[Scheduled] two-minute ping', agentType: 'claudecode' }],
         createThread: async () => ({ id: 'thread-new' }),
       } as any,
       getChannelRuntime: () => ({
@@ -1086,6 +1087,7 @@ test('lark side-thread execution policy falls back to workspace default when no 
       store: {} as any,
       workspaceRouter: {
         getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+        getWorkspaceDefaultAgentType: async () => 'pi',
         listThreads: async () => [],
         createThread: async (workspaceId: string, title?: string, agentType?: string) => {
           createThreadCalls.push({ workspaceId, title: title || '', agentType });
@@ -1103,7 +1105,61 @@ test('lark side-thread execution policy falls back to workspace default when no 
   const target = await policy.resolveTarget(job as any);
   assert.equal(target.threadId, 'thread-new');
   assert.equal(createThreadCalls.length, 1);
-  assert.equal(createThreadCalls[0].agentType, undefined);
+  assert.deepEqual(createThreadCalls[0], {
+    workspaceId: '知识库',
+    title: '[Scheduled:Lark] two-minute ping',
+    agentType: 'pi',
+  });
+});
+
+test('lark side-thread execution policy skips reusable threads with a different workspace default agent', async () => {
+  const job = {
+    id: 'job-1',
+    workspaceId: '知识库',
+    platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-origin' },
+    executionMode: 'side-thread',
+    triggerType: 'cron',
+    cronExpr: '*/2 * * * *',
+    promptTemplate: 'ping',
+    description: 'two-minute ping',
+    enabled: true,
+    concurrencyPolicy: 'skip_if_running',
+    createdAt: '2026-04-22T06:00:00.000Z',
+    updatedAt: '2026-04-22T06:00:00.000Z',
+  } as const;
+  const createThreadCalls: Array<{ workspaceId: string; title: string; agentType?: string }> = [];
+  const policy = createLarkExecutionPolicy(
+    job as any,
+    {
+      store: {} as any,
+      workspaceRouter: {
+        getThreadSessionKey: (threadId: string) => `session:${threadId}`,
+        getWorkspaceDefaultAgentType: async () => 'claudecode',
+        listThreads: async () => [
+          { id: 'thread-old-codex', title: '[Scheduled:Lark] two-minute ping', agentType: 'codex' },
+        ],
+        createThread: async (workspaceId: string, title?: string, agentType?: string) => {
+          createThreadCalls.push({ workspaceId, title: title || '', agentType });
+          return { id: 'thread-new-claudecode' };
+        },
+      } as any,
+      getChannelRuntime: () => ({
+        registerScheduledThreadBridge: () => () => {},
+      } as any),
+    },
+    async () => 'thread-origin',
+    () => '',
+  );
+
+  const target = await policy.resolveTarget(job as any);
+  assert.equal(target.threadId, 'thread-new-claudecode');
+  assert.equal(createThreadCalls.length, 1);
+  assert.deepEqual(createThreadCalls[0], {
+    workspaceId: '知识库',
+    title: '[Scheduled:Lark] two-minute ping',
+    agentType: 'claudecode',
+  });
 });
 
 test('lark same-thread execution policy keeps the original thread target', async () => {

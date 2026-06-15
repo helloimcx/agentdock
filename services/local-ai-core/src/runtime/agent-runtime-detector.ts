@@ -25,7 +25,7 @@ export function detectInstalledAgentRuntimes(
   const env = options.env || process.env;
   const configuredCommands = collectConfiguredAgentCommands(options.config);
   const detectedAt = (options.now || new Date()).toISOString();
-  const versionTimeoutMs = options.versionTimeoutMs ?? 1500;
+  const versionTimeoutMs = options.versionTimeoutMs ?? 3000;
   const agentTypes = options.runtimeId
     ? DESKTOP_AGENT_TYPE_OPTIONS.filter((agentType) => agentType === options.runtimeId)
     : DESKTOP_AGENT_TYPE_OPTIONS;

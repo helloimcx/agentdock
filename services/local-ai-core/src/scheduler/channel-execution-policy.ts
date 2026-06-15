@@ -79,11 +79,11 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
       title,
       ...(this.config.legacySideThreadTitles?.(job) || []),
     ]);
-    const preferredAgent = normalizeAgentType(this.config.preferredAgentType?.(job));
+    const targetAgent = await this.resolveTargetAgent(job);
     const existing = (await this.options.workspaceRouter.listThreads(job.workspaceId))
-      .find((thread) => reusableTitles.has(thread.title) && this.threadMatchesPreferredAgent(thread, preferredAgent));
+      .find((thread) => reusableTitles.has(thread.title) && this.threadMatchesTargetAgent(thread, targetAgent));
     const threadId = existing?.id
-      || (await this.options.workspaceRouter.createThread(job.workspaceId, title, preferredAgent || undefined)).id;
+      || (await this.options.workspaceRouter.createThread(job.workspaceId, title, targetAgent || undefined)).id;
     return {
       kind: `${this.config.platformBase}:side-thread`,
       threadId,
@@ -107,11 +107,16 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
     this.bridgeSession = undefined;
   }
 
-  private threadMatchesPreferredAgent(thread: { agentType?: string | null }, preferredAgent: string) {
-    if (!preferredAgent) {
-      return true;
+  private async resolveTargetAgent(job: ScheduledJob) {
+    const preferredAgent = normalizeAgentType(this.config.preferredAgentType?.(job));
+    if (preferredAgent) {
+      return preferredAgent;
     }
-    return normalizeAgentType(thread.agentType) === preferredAgent;
+    return normalizeAgentType(await this.options.workspaceRouter.getWorkspaceDefaultAgentType(job.workspaceId));
+  }
+
+  private threadMatchesTargetAgent(thread: { agentType?: string | null }, targetAgent: string) {
+    return normalizeAgentType(thread.agentType) === targetAgent;
   }
 }
 
