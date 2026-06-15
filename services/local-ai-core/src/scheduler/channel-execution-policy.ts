@@ -79,9 +79,9 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
       title,
       ...(this.config.legacySideThreadTitles?.(job) || []),
     ]);
+    const preferredAgent = normalizeAgentType(this.config.preferredAgentType?.(job));
     const existing = (await this.options.workspaceRouter.listThreads(job.workspaceId))
-      .find((thread) => reusableTitles.has(thread.title));
-    const preferredAgent = this.config.preferredAgentType?.(job) || '';
+      .find((thread) => reusableTitles.has(thread.title) && this.threadMatchesPreferredAgent(thread, preferredAgent));
     const threadId = existing?.id
       || (await this.options.workspaceRouter.createThread(job.workspaceId, title, preferredAgent || undefined)).id;
     return {
@@ -106,4 +106,15 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
     await this.bridgeSession?.close();
     this.bridgeSession = undefined;
   }
+
+  private threadMatchesPreferredAgent(thread: { agentType?: string | null }, preferredAgent: string) {
+    if (!preferredAgent) {
+      return true;
+    }
+    return normalizeAgentType(thread.agentType) === preferredAgent;
+  }
+}
+
+function normalizeAgentType(value?: string | null) {
+  return String(value || '').trim().toLowerCase();
 }
