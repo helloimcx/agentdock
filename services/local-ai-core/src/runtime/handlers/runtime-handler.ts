@@ -11,9 +11,8 @@ type ControllerDeps = {
   restartService(): Promise<unknown>;
   getLogs(limit?: number): string[];
   getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
-  readConfigFile(): Promise<unknown>;
-  saveRawConfigFile(raw: string): Promise<unknown>;
-  saveStructuredConfigFile(config: unknown): Promise<unknown>;
+  readRuntimeConfig(): Promise<unknown>;
+  saveRuntimeConfig(config: unknown): Promise<unknown>;
   saveSettings(input: unknown): Promise<unknown>;
   getPluginDiagnostics(): Promise<unknown>;
   runDiagnosticsDoctor(): Promise<unknown>;
@@ -61,16 +60,12 @@ export function registerRuntimeHandlers(
   map.set('diagnostics.errors', async (_route, _req, res) => {
     json(res, 200, { errors: await errorReporter.list() });
   });
-  map.set('runtime.config.read', async (_route, _req, res) => {
-    json(res, 200, await controller.readConfigFile());
+  map.set('runtime.runtime-config.read', async (_route, _req, res) => {
+    json(res, 200, await controller.readRuntimeConfig());
   });
-  map.set('runtime.config.save-raw', async (_route, req, res) => {
+  map.set('runtime.runtime-config.save', async (_route, req, res) => {
     const body = await readJsonBody(req);
-    json(res, 200, await controller.saveRawConfigFile(String(body.raw || '')));
-  });
-  map.set('runtime.config.save-structured', async (_route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await controller.saveStructuredConfigFile((body.config || {})));
+    json(res, 200, await controller.saveRuntimeConfig((body.config || {})));
   });
   map.set('runtime.settings.save', async (_route, req, res) => {
     const body = await readJsonBody(req);

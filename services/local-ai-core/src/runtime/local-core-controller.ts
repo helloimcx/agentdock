@@ -1,6 +1,5 @@
 import { EventEmitter } from 'node:events';
 import type {
-  ConfigFileState,
   DesktopConnectConfig,
   DesktopRuntimeStatus,
   DesktopServiceState,
@@ -8,6 +7,7 @@ import type {
   DesktopSettingsInput,
   LocalCoreDoctorResult,
   LocalCorePluginDiagnostics,
+  RuntimeConfigState,
 } from '../../../../packages/contracts/src/index.js';
 import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
@@ -66,8 +66,8 @@ export class LocalCoreController extends EventEmitter {
       this.store,
       this.workspaceRouter,
       {
-        readConfigState: () => this.readConfigFile(),
-        saveStructuredConfig: (config) => this.saveStructuredConfigFile(config),
+        readRuntimeConfig: () => this.readRuntimeConfig(),
+        saveRuntimeConfig: (config) => this.saveRuntimeConfig(config),
       },
       userDataPath,
     );
@@ -84,7 +84,7 @@ export class LocalCoreController extends EventEmitter {
     this.errorReporter = new LocalCoreErrorReporter((message) => this.handleLog(message));
     this.runtimeDetection = new RuntimeDetectionService({
       userDataPath,
-      readConfig: async () => (await this.readConfigFile()).parsed,
+      readConfig: async () => (await this.readRuntimeConfig()).config,
       log: (message) => this.handleLog(message),
       emit: (event) => this.handleRuntimeDetectionEvent(event),
     });
@@ -145,10 +145,10 @@ export class LocalCoreController extends EventEmitter {
       status: 'running',
       startedAt: new Date().toISOString(),
     };
-    const configFile = await this.readConfigFile();
+    const runtimeConfig = await this.readRuntimeConfig();
     const settings = this.state.getSettings();
-    const workspaceIds = Array.isArray(configFile.parsed?.projects)
-      ? configFile.parsed.projects
+    const workspaceIds = Array.isArray(runtimeConfig.config?.projects)
+      ? runtimeConfig.config.projects
           .map((project) => String(project?.name || '').trim())
           .filter(Boolean)
       : [];
@@ -165,7 +165,7 @@ export class LocalCoreController extends EventEmitter {
         ...settings,
         defaultProject,
       },
-      configFile,
+      runtimeConfig,
       logs: this.getLogs(200),
       pluginDiagnostics: await this.getPluginDiagnostics(),
     };
@@ -193,23 +193,22 @@ export class LocalCoreController extends EventEmitter {
     return this.state.getLogEntries(level, limit);
   }
 
-  async readConfigFile(): Promise<ConfigFileState> {
-    return this.readAndMigrateConfigFile();
+  async readRuntimeConfig(): Promise<RuntimeConfigState> {
+    return this.readAndMigrateRuntimeConfig();
   }
 
-  async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
-    const next = await this.state.saveRawConfigFile(raw);
-    await this.channelService.refreshBindings();
-    await this.emitRuntime();
-    return next;
-  }
-
-  async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
+  async saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState> {
     const migrated = migrateLegacyProjectProvidersToStore(config, this.store);
-    const next = await this.state.saveStructuredConfigFile(migrated.config);
+    const next = this.store.saveRuntimeConfig(migrated.config);
     await this.channelService.refreshBindings();
     await this.emitRuntime();
-    return next;
+    return {
+      ...next,
+      warnings: [
+        ...(next.warnings || []),
+        ...migrated.warnings,
+      ],
+    };
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
@@ -225,7 +224,7 @@ export class LocalCoreController extends EventEmitter {
 
   async runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult> {
     const checkedAt = new Date().toISOString();
-    const configFile = await this.readConfigFile();
+    const runtimeConfig = await this.readRuntimeConfig();
     const runtimeChecks = await this.runtimeDetection.refresh().catch((error) => {
       const errorInfo = toLocalCoreErrorInfo(error, 'internal_error');
       return [{
@@ -246,19 +245,19 @@ export class LocalCoreController extends EventEmitter {
     });
     const channelStatuses = await this.channelService.listStatuses().catch(() => []);
     const checks = [
-      configFile.error
+      runtimeConfig.error
         ? {
             id: 'config',
-            label: 'Configuration',
+            label: 'Runtime Configuration',
             status: 'fail' as const,
-            summary: configFile.error,
-            errorInfo: new LocalCoreError('config_invalid', configFile.error).info,
+            summary: runtimeConfig.error,
+            errorInfo: new LocalCoreError('config_invalid', runtimeConfig.error).info,
           }
         : {
             id: 'config',
-            label: 'Configuration',
-            status: configFile.exists ? 'pass' as const : 'warn' as const,
-            summary: configFile.exists ? 'Configuration file is readable.' : 'Configuration file has not been created yet.',
+            label: 'Runtime Configuration',
+            status: 'pass' as const,
+            summary: `Runtime configuration is stored in SQLite at ${runtimeConfig.databasePath}.`,
           },
       {
         id: 'runtime-detection',
@@ -289,8 +288,8 @@ export class LocalCoreController extends EventEmitter {
   }
 
   async runDeploymentDiagnostics(): Promise<LocalCoreDoctorResult> {
-    const configFile = await this.readConfigFile();
-    return runDeploymentDiagnostics({ config: configFile.parsed });
+    const runtimeConfig = await this.readRuntimeConfig();
+    return runDeploymentDiagnostics({ config: runtimeConfig.config });
   }
 
   emitBridge(event: DesktopBridgeEvent) {
@@ -339,16 +338,13 @@ export class LocalCoreController extends EventEmitter {
     }
   }
 
-  private async readAndMigrateConfigFile(): Promise<ConfigFileState> {
-    const current = await this.state.readConfigFile();
-    if (!current.parsed) {
-      return current;
-    }
-    const migrated = migrateLegacyProjectProvidersToStore(current.parsed, this.store);
+  private async readAndMigrateRuntimeConfig(): Promise<RuntimeConfigState> {
+    const current = this.store.readRuntimeConfig();
+    const migrated = migrateLegacyProjectProvidersToStore(current.config, this.store);
     if (!migrated.changed) {
       return current;
     }
-    const saved = await this.state.saveStructuredConfigFile(migrated.config);
+    const saved = this.store.saveRuntimeConfig(migrated.config);
     return {
       ...saved,
       warnings: [

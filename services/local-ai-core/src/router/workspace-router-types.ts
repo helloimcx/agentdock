@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type {
   ChannelInboundMessageContent,
-  ConfigFileState,
+  RuntimeConfigState,
   LocalCoreCapabilities,
   ThreadDetail,
   ThreadSummary,
@@ -22,7 +22,7 @@ export type WorkspaceRouterOptions = {
   store: LocalCoreAcpStore;
   cliBinDir?: string;
   localCoreBase?: string;
-  readConfigState: () => Promise<ConfigFileState>;
+  readRuntimeConfig: () => Promise<RuntimeConfigState>;
   getCapabilities: () => LocalCoreCapabilities;
   getAgentRuntimes?: () => AgentRuntime[];
   eventBus: EventBus;

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import type { ConfigFileState, DesktopProviderConfig } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopProviderConfig, RuntimeConfigState } from '../../../../../packages/contracts/src/index.js';
 
 export function getProviderDefaultModelId(provider: DesktopProviderConfig) {
   const directModel = String(provider.model || '').trim();
@@ -67,13 +67,12 @@ export function writeJsonFile(path: string, value: unknown, mode = 0o600) {
   chmodSync(path, mode);
 }
 
-export function projectLocalStateDir(configState: ConfigFileState, folderName: string, projectName: string) {
-  const configDir = dirname(configState.path);
+export function projectLocalStateDir(configState: RuntimeConfigState, folderName: string, projectName: string) {
   const safeProjectName = String(projectName || 'workspace')
     .trim()
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'workspace';
-  return resolve(configDir, folderName, safeProjectName);
+  return resolve(configState.baseDir, folderName, safeProjectName);
 }
 
 export function resolveBundledAcpCommand(packageName: string, binName: string) {

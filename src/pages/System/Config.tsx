@@ -147,11 +147,11 @@ export default function SystemConfig() {
             {runtime?.pendingRestart ? 'Restart required to apply saved changes.' : 'No pending restart.'}
           </p>
         </SectionCard>
-        <SectionCard className="app-panel" title="Config" description="Active config file location.">
+        <SectionCard className="app-panel" title="Runtime Config" description="Active SQLite storage location.">
           <div className="flex items-start gap-3">
             <FileCode size={18} className="mt-0.5 text-primary" />
             <p className="break-all font-mono text-xs leading-5 text-muted-foreground">
-              {runtime?.settings.configPath || runtime?.configFile.path || '-'}
+              {runtime?.runtimeConfig.databasePath || '-'}
             </p>
           </div>
         </SectionCard>

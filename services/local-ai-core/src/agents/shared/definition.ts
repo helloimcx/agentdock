@@ -1,4 +1,4 @@
-import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '../../../../../packages/contracts/src/index.js';
 import type { AgentAcpBehavior } from './acp-behavior.js';
 
 export type AgentBundledRuntime = {
@@ -21,7 +21,7 @@ export type AgentModelResolverInput = {
 };
 
 export type AgentLaunchResolverInput = {
-  configState: ConfigFileState;
+  configState: RuntimeConfigState;
   project: DesktopProjectConfig;
   agentType: string;
   providers: DesktopProviderConfig[];

@@ -27,7 +27,6 @@ function writeSettings(userDataDir, settings) {
   fs.writeFileSync(
     path.join(runtimeDir, 'local-core-settings.json'),
     `${JSON.stringify({
-      configPath: path.join(runtimeDir, 'config.toml'),
       defaultProject: 'default',
       autoStartService: true,
       knowledge: {

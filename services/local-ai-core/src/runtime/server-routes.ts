@@ -7,9 +7,8 @@ export type LocalAiCoreRoute =
   | { name: 'runtime.logs' }
   | { name: 'logs.list' }
   | { name: 'runtime.agent-runtimes' }
-  | { name: 'runtime.config.read' }
-  | { name: 'runtime.config.save-raw' }
-  | { name: 'runtime.config.save-structured' }
+  | { name: 'runtime.runtime-config.read' }
+  | { name: 'runtime.runtime-config.save' }
   | { name: 'runtime.settings.save' }
   | { name: 'runtimes.list' }
   | { name: 'runtimes.detail'; runtimeId: string }
@@ -133,14 +132,11 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (normalizedMethod === 'GET' && relativePath === '/runtime/agent-runtimes') {
     return { name: 'runtime.agent-runtimes' };
   }
-  if (normalizedMethod === 'GET' && relativePath === '/runtime/config') {
-    return { name: 'runtime.config.read' };
+  if (normalizedMethod === 'GET' && (relativePath === '/runtime/runtime-config' || relativePath === '/runtime/config')) {
+    return { name: 'runtime.runtime-config.read' };
   }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/config/raw') {
-    return { name: 'runtime.config.save-raw' };
-  }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/config/structured') {
-    return { name: 'runtime.config.save-structured' };
+  if (normalizedMethod === 'POST' && relativePath === '/runtime/runtime-config') {
+    return { name: 'runtime.runtime-config.save' };
   }
   if (normalizedMethod === 'POST' && relativePath === '/runtime/settings') {
     return { name: 'runtime.settings.save' };

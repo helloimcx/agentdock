@@ -161,16 +161,17 @@ https://agentdock-server.<tailnet>.ts.net/#/workspace
 
 ## Workspace Configuration
 
-Local AI Core reads its runtime config from:
+Local AI Core stores project runtime config in SQLite:
 
 ```text
-/var/lib/agentdock/runtime/config.toml
+/var/lib/agentdock/runtime/local-core.db
 ```
 
 Inspect runtime state:
 
 ```bash
 curl http://127.0.0.1:14173/api/local/v1/runtime
+curl http://127.0.0.1:14173/api/local/v1/runtime/runtime-config
 curl http://127.0.0.1:14173/api/local/v1/workspaces
 ```
 

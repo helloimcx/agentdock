@@ -11,7 +11,7 @@ flowchart TD
   Runs --> ExternalHandler["external-handler"]
   ExternalHandler --> ExternalSvc["ExternalService"]
   ExternalSvc --> ExternalStore["external_projects / external_threads"]
-  ExternalSvc --> Config["Desktop project config<br/>sandbox enabled"]
+  ExternalSvc --> Config["Runtime project config<br/>SQLite local-core.db"]
   ExternalSvc --> Router["WorkspaceRouter"]
   Router --> ACP["LocalCoreAcpBackend"]
   ACP --> SandboxProxy["sandbox stdio proxy"]
@@ -26,7 +26,7 @@ flowchart TD
 
 ## Sandbox Mode
 
-Cloud sandbox mode is project configuration, not a renderer-only mode. A project selects a sandbox provider and runtime image through `agent.options.sandbox`; Local AI Core materializes that into an `AgentSandboxLaunchConfig` before launching the agent runtime.
+Cloud sandbox mode is project configuration, not a renderer-only mode. Runtime project config is persisted in `<userData>/runtime/local-core.db`; legacy `<userData>/runtime/config.toml` is imported on first read but is no longer the write target. A project selects a sandbox provider and runtime image through `agent.options.sandbox`; Local AI Core materializes that into an `AgentSandboxLaunchConfig` before launching the agent runtime.
 
 Key behavior:
 
@@ -60,7 +60,7 @@ Local AI Core maps external identities to internal state:
 - `external_threads` stores the mapping from `(user_id, external_project_id, external_thread_id)` to a Local AI Core `threadId`.
 - Workspace files default to `AGENTDOCK_EXTERNAL_WORKSPACE_ROOT`, or `<userData>/external-workspaces` when the environment variable is not set.
 - External projects are persisted into the workspace registry with `deviceId: "external"` and metadata marking the external owner.
-- External project config enables sandbox mode with `state_scope: "project"` and `sandbox_lifecycle: "per_thread"` by default.
+- External project config is persisted in the SQLite runtime config and enables sandbox mode with `state_scope: "project"` and `sandbox_lifecycle: "per_thread"` by default.
 
 ## OpenAI-Compatible Chat Completions
 
@@ -111,7 +111,7 @@ This keeps external API clients decoupled from global renderer events while pres
 ## Ownership Rules
 
 - External callers own only their external ids and prompt input.
-- Local AI Core owns project/thread/run/task persistence, workspace config, sandbox launch, and SSE delivery.
+- Local AI Core owns project/thread/run/task persistence, SQLite-backed runtime project config, sandbox launch, and SSE delivery.
 - OpenSandbox owns container creation and lifecycle after Local AI Core submits the launch request.
 - Sandbox containers own agent runtime execution, but communicate only through the HTTP NDJSON ACP bridge.
 - Renderer and Electron are not in the external run path.

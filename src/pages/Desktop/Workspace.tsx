@@ -12,8 +12,8 @@ import {
   getLarkQrCode,
   getWeixinQrCode,
   listModelProviders,
-  readConfigFile,
-  saveStructuredConfigFile,
+  readRuntimeConfig,
+  saveRuntimeConfig,
   testLarkConnection,
   updateModelProvider,
 } from '@/api/desktop';
@@ -84,10 +84,10 @@ export default function DesktopWorkspace() {
     setLoading(true);
     try {
       const [configState, providerState] = await Promise.all([
-        readConfigFile(),
+        readRuntimeConfig(),
         listModelProviders(),
       ]);
-      const parsed = clone(configState.parsed || {});
+      const parsed = clone(configState.config || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
       setPersistedConfig(clone(parsed));
@@ -338,8 +338,8 @@ export default function DesktopWorkspace() {
       platforms[platformDialog.index] = nextPlatform;
     }
     nextProjects[selectedIndex] = normalizeProject({ ...project, platforms });
-    const saved = await saveStructuredConfigFile(nextConfig);
-    const savedConfig = clone(saved.parsed || nextConfig);
+    const saved = await saveRuntimeConfig(nextConfig);
+    const savedConfig = clone(saved.config || nextConfig);
     setPersistedConfig(savedConfig);
     setConfigDraft(clone(savedConfig));
     setPlatformDialog((current) => current ? { index: current.index ?? platforms.length - 1, draft: nextPlatform } : current);
@@ -446,8 +446,8 @@ export default function DesktopWorkspace() {
       platforms.push(nextPlatform);
     }
     nextProjects[projectIndex] = normalizeProject({ ...project, platforms });
-    const saved = await saveStructuredConfigFile(nextConfig);
-    const savedConfig = clone(saved.parsed || nextConfig);
+    const saved = await saveRuntimeConfig(nextConfig);
+    const savedConfig = clone(saved.config || nextConfig);
     setPersistedConfig(savedConfig);
     setConfigDraft(clone(savedConfig));
     setPlatformDialog((current) => current ? { ...current, index: current.index ?? (currentIndex >= 0 ? currentIndex : platforms.length - 1), draft: nextPlatform } : current);
@@ -536,9 +536,9 @@ export default function DesktopWorkspace() {
     if (!configDraft) return;
     setPending('config');
     try {
-      const saved = await saveStructuredConfigFile(configDraft);
-      setPersistedConfig(clone(saved.parsed || configDraft));
-      setConfigDraft(clone(saved.parsed || configDraft));
+      const saved = await saveRuntimeConfig(configDraft);
+      setPersistedConfig(clone(saved.config || configDraft));
+      setConfigDraft(clone(saved.config || configDraft));
       setNotice({ tone: 'success', message: 'Project changes saved.' });
       await loadAll();
     } catch (err) {

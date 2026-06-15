@@ -1,16 +1,16 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxLifecycle, AgentSandboxStateScope } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
   defaultSandboxRuntimeImage,
   getDesktopDeploymentProfile,
-  type ConfigFileState,
   type DesktopProjectConfig,
   type DesktopSandboxOptions,
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
+  type RuntimeConfigState,
 } from '../../../../packages/contracts/src/index.js';
 
 export const DEFAULT_OPENSANDBOX_SERVER_URL = 'http://127.0.0.1:8080';
@@ -37,7 +37,7 @@ export function isProjectSandboxEnabled(project: DesktopProjectConfig) {
 }
 
 export function normalizeSandboxLaunchConfig(input: {
-  configState: ConfigFileState;
+  configState: RuntimeConfigState;
   project: DesktopProjectConfig;
   launchConfig: AgentLaunchConfig;
 }): AgentSandboxLaunchConfig | undefined {
@@ -45,10 +45,10 @@ export function normalizeSandboxLaunchConfig(input: {
   if (!raw?.enabled) {
     return undefined;
   }
-  const configDir = dirname(input.configState.path);
-  const userDataRoot = dirname(configDir);
+  const configDir = input.configState.baseDir;
+  const userDataRoot = resolve(configDir, '..');
   const agentType = input.launchConfig.agentType || String(input.project.agent?.type || '').trim().toLowerCase() || 'agent';
-  const desktopConfig = input.configState.parsed || {};
+  const desktopConfig = input.configState.config || {};
   const deploymentProfileId = String(raw.deployment_profile || desktopConfig.deployment_profile || process.env.AGENTDOCK_DEPLOYMENT_PROFILE || '').trim();
   const profile = getDesktopDeploymentProfile(deploymentProfileId);
   const sandboxProvider = resolveSandboxProvider(desktopConfig.sandbox_providers, raw, profile.id);
@@ -315,6 +315,6 @@ export function sanitizePathSegment(value: string, fallback: string) {
     .replace(/^-+|-+$/g, '') || fallback;
 }
 
-export function resolveHostPathFromConfigDir(configState: ConfigFileState, rawPath: string) {
-  return isAbsolute(rawPath) ? rawPath : resolve(dirname(configState.path), rawPath);
+export function resolveHostPathFromConfigDir(configState: RuntimeConfigState, rawPath: string) {
+  return isAbsolute(rawPath) ? rawPath : resolve(configState.baseDir, rawPath);
 }

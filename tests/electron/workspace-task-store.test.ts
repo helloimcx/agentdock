@@ -115,7 +115,7 @@ test('controller migrates embedded project providers into shared provider store'
       log: () => {},
     });
     const controller = new LocalCoreController(userDataPath, runtime);
-    await controller.saveStructuredConfigFile({
+    await controller.saveRuntimeConfig({
       projects: [{
         name: 'workspace-a',
         agent: {
@@ -132,9 +132,9 @@ test('controller migrates embedded project providers into shared provider store'
       }],
     });
 
-    const config = await controller.readConfigFile();
-    assert.equal(config.parsed?.projects?.[0]?.agent.options?.provider_id, 'deepseek');
-    assert.equal(config.parsed?.projects?.[0]?.agent.providers, undefined);
+    const config = await controller.readRuntimeConfig();
+    assert.equal(config.config?.projects?.[0]?.agent.options?.provider_id, 'deepseek');
+    assert.equal(config.config?.projects?.[0]?.agent.providers, undefined);
     const providers = controller.store.listModelProviders();
     assert.equal(providers[0]?.id, 'deepseek');
     assert.equal(providers[0]?.name, 'deepseek');
@@ -159,7 +159,7 @@ test('workspace router resolves projects that select a shared provider', async (
       base_url: 'https://api.deepseek.com',
       model: 'deepseek-v4-flash',
     });
-    await controller.saveStructuredConfigFile({
+    await controller.saveRuntimeConfig({
       projects: [{
         name: 'workspace-a',
         agent: {

@@ -1,5 +1,5 @@
 import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
-import type { ConfigFileState, DesktopProjectConfig } from '../../../../packages/contracts/src/index.js';
+import type { DesktopProjectConfig, RuntimeConfigState } from '../../../../packages/contracts/src/index.js';
 import {
   isProjectSandboxEnabled,
   normalizeSandboxLaunchConfig,
@@ -8,7 +8,7 @@ import {
 } from '../sandbox/sandbox-config.js';
 
 export interface AgentExecutionBackendInput {
-  configState: ConfigFileState;
+  configState: RuntimeConfigState;
   project: DesktopProjectConfig;
   launchConfig: AgentLaunchConfig;
 }

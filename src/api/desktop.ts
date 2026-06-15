@@ -1,5 +1,4 @@
 import type {
-  ConfigFileState,
   DesktopBridgeEvent,
   DesktopRuntimeStatus,
   DesktopSettings,
@@ -7,6 +6,7 @@ import type {
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopModelProviderListResponse,
+  RuntimeConfigState,
 } from '../../shared/desktop';
 import type {
   LocalCoreAuthorizedUser,
@@ -52,7 +52,7 @@ import {
   onBridgeUpdated,
   onRuntimeUpdated,
   probeWorkspaceStreaming as probeCoreWorkspaceStreaming,
-  readCoreConfigFile,
+  readCoreRuntimeConfig,
   rejectChannelPairing as rejectCoreChannelPairing,
   rejectLarkPairing as rejectCoreLarkPairing,
   restartCoreService,
@@ -60,9 +60,8 @@ import {
   runDiagnosticsDoctor as runCoreDiagnosticsDoctor,
   testChannelConnection as testCoreChannelConnection,
   testLarkConnection as testCoreLarkConnection,
-  saveCoreRawConfigFile,
   saveCoreSettings,
-  saveCoreStructuredConfigFile,
+  saveCoreRuntimeConfig,
   approveLarkPairing as approveCoreLarkPairing,
   disableLarkGateway as disableCoreLarkGateway,
   enableLarkGateway as enableCoreLarkGateway,
@@ -91,9 +90,8 @@ type DesktopProvider = {
   getLogs: (limit?: number) => Promise<string[]>;
   listInstalledAgentRuntimes: () => Promise<InstalledAgentRuntime[]>;
   refreshInstalledAgentRuntimes: () => Promise<InstalledAgentRuntime[]>;
-  readConfigFile: () => Promise<ConfigFileState>;
-  saveRawConfigFile: (raw: string) => Promise<ConfigFileState>;
-  saveStructuredConfigFile: (config: unknown) => Promise<ConfigFileState>;
+  readRuntimeConfig: () => Promise<RuntimeConfigState>;
+  saveRuntimeConfig: (config: unknown) => Promise<RuntimeConfigState>;
   listModelProviders: () => Promise<DesktopModelProviderListResponse>;
   createModelProvider: (input: DesktopModelProviderInput) => Promise<DesktopModelProvider>;
   updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => Promise<DesktopModelProvider>;
@@ -156,9 +154,8 @@ const electronProvider: DesktopProvider = {
   getLogs: (limit?: number) => requireDesktopBridge().getLogs(limit),
   listInstalledAgentRuntimes: () => listCoreInstalledAgentRuntimes().then((result) => result.runtimes),
   refreshInstalledAgentRuntimes: () => refreshCoreRuntimeDetections().then((result) => result.runtimes),
-  readConfigFile: () => requireDesktopBridge().readConfigFile(),
-  saveRawConfigFile: (raw: string) => requireDesktopBridge().saveRawConfigFile(raw),
-  saveStructuredConfigFile: (config: unknown) => requireDesktopBridge().saveStructuredConfigFile(config),
+  readRuntimeConfig: () => requireDesktopBridge().readRuntimeConfig(),
+  saveRuntimeConfig: (config: unknown) => requireDesktopBridge().saveRuntimeConfig(config),
   listModelProviders: () => listCoreModelProviders(),
   createModelProvider: (input: DesktopModelProviderInput) => createCoreModelProvider(input),
   updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => updateCoreModelProvider(providerId, input),
@@ -220,9 +217,8 @@ const localCoreProvider: DesktopProvider = {
   getLogs: (limit?: number) => getCoreLogs(limit),
   listInstalledAgentRuntimes: () => listCoreInstalledAgentRuntimes().then((result) => result.runtimes),
   refreshInstalledAgentRuntimes: () => refreshCoreRuntimeDetections().then((result) => result.runtimes),
-  readConfigFile: () => readCoreConfigFile(),
-  saveRawConfigFile: (raw: string) => saveCoreRawConfigFile(raw),
-  saveStructuredConfigFile: (config: unknown) => saveCoreStructuredConfigFile(config),
+  readRuntimeConfig: () => readCoreRuntimeConfig(),
+  saveRuntimeConfig: (config: unknown) => saveCoreRuntimeConfig(config),
   listModelProviders: () => listCoreModelProviders(),
   createModelProvider: (input: DesktopModelProviderInput) => createCoreModelProvider(input),
   updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => updateCoreModelProvider(providerId, input),
@@ -323,9 +319,8 @@ export const listInstalledAgentRuntimes = (): Promise<InstalledAgentRuntime[]> =
   requireProvider().listInstalledAgentRuntimes();
 export const refreshInstalledAgentRuntimes = (): Promise<InstalledAgentRuntime[]> =>
   requireProvider().refreshInstalledAgentRuntimes();
-export const readConfigFile = (): Promise<ConfigFileState> => requireProvider().readConfigFile();
-export const saveRawConfigFile = (raw: string): Promise<ConfigFileState> => requireProvider().saveRawConfigFile(raw);
-export const saveStructuredConfigFile = (config: unknown): Promise<ConfigFileState> => requireProvider().saveStructuredConfigFile(config);
+export const readRuntimeConfig = (): Promise<RuntimeConfigState> => requireProvider().readRuntimeConfig();
+export const saveRuntimeConfig = (config: unknown): Promise<RuntimeConfigState> => requireProvider().saveRuntimeConfig(config);
 export const listModelProviders = (): Promise<DesktopModelProviderListResponse> => requireProvider().listModelProviders();
 export const createModelProvider = (input: DesktopModelProviderInput): Promise<DesktopModelProvider> => requireProvider().createModelProvider(input);
 export const updateModelProvider = (providerId: string, input: DesktopModelProviderInput): Promise<DesktopModelProvider> =>

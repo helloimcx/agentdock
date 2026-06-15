@@ -94,6 +94,10 @@ flowchart LR
 
 ## New
 
+### 2026-06-15
+
+- Local AI Core 项目配置从 `runtime/config.toml` 迁移到 `runtime/local-core.db` 的 SQLite 持久化存储；旧 TOML 会在首次读取时导入，但后续不再回写。
+
 ### 2026-06-14
 
 - 聊天输入框下方新增权限模式选择器，可在请求批准和完全访问之间切换，并随当前线程保存。

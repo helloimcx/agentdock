@@ -296,6 +296,14 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_audit_events_workspace_created ON audit_events (workspace_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_events_task_created ON audit_events (task_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_events_type_created ON audit_events (type, created_at DESC);
+    CREATE TABLE IF NOT EXISTS runtime_config (
+      id TEXT PRIMARY KEY,
+      config_json TEXT NOT NULL,
+      base_dir TEXT NOT NULL,
+      migrated_from_path TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
   ensureColumn(db, 'messages', 'tool_call_json', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_kind', 'TEXT');

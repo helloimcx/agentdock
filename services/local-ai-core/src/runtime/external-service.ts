@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
-  ConfigFileState,
   DesktopConnectConfig,
   DesktopProjectConfig,
   ExternalProject,
@@ -11,14 +10,15 @@ import type {
   ExternalRunCreateResponse,
   ExternalRunSnapshot,
   ExternalThread,
+  RuntimeConfigState,
 } from '../../../../packages/contracts/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 
 export interface ExternalServiceDeps {
-  readConfigState: () => Promise<ConfigFileState>;
-  saveStructuredConfig: (config: DesktopConnectConfig) => Promise<ConfigFileState>;
+  readRuntimeConfig: () => Promise<RuntimeConfigState>;
+  saveRuntimeConfig: (config: DesktopConnectConfig) => Promise<RuntimeConfigState>;
 }
 
 export class ExternalService {
@@ -125,8 +125,8 @@ export class ExternalService {
   private async ensureWorkspaceConfig(project: ExternalProject, model?: string) {
     const current = await this.readAndMigrateConfigFile();
     const config: DesktopConnectConfig = {
-      ...(current.parsed || {}),
-      projects: Array.isArray(current.parsed?.projects) ? [...current.parsed.projects] : [],
+      ...(current.config || {}),
+      projects: Array.isArray(current.config?.projects) ? [...current.config.projects] : [],
     };
     const existingIndex = config.projects!.findIndex((item) => item?.name === project.workspaceId);
     const existing = existingIndex >= 0 ? config.projects![existingIndex] : undefined;
@@ -163,7 +163,7 @@ export class ExternalService {
     } else {
       config.projects!.push(nextProject);
     }
-    await this.deps.saveStructuredConfig(config);
+    await this.deps.saveRuntimeConfig(config);
   }
 
   private async ensureThread(project: ExternalProject, input: ExternalRunCreateInput): Promise<ExternalThread> {
@@ -193,16 +193,13 @@ export class ExternalService {
     });
   }
 
-  private async readAndMigrateConfigFile(): Promise<ConfigFileState> {
-    const current = await this.deps.readConfigState();
-    if (!current.parsed) {
-      return current;
-    }
-    const migrated = migrateLegacyProjectProvidersToStore(current.parsed, this.store);
+  private async readAndMigrateConfigFile(): Promise<RuntimeConfigState> {
+    const current = await this.deps.readRuntimeConfig();
+    const migrated = migrateLegacyProjectProvidersToStore(current.config, this.store);
     if (!migrated.changed) {
       return current;
     }
-    const saved = await this.deps.saveStructuredConfig(migrated.config);
+    const saved = await this.deps.saveRuntimeConfig(migrated.config);
     return {
       ...saved,
       warnings: [

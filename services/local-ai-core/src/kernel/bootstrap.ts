@@ -252,7 +252,7 @@ export function bootstrapLocalCoreRuntime(options: {
   let weixinChannelRuntime!: ChannelRuntime;
   const channelPlugins = createRuntimeChannelPlugins({
     store,
-    readConfig: async () => (await state.readConfigFile()).parsed as DesktopConnectConfig | null | undefined,
+    readConfig: async () => (await store.readRuntimeConfig()).config as DesktopConnectConfig | null | undefined,
     getWorkspaceRouter: () => workspaceRouter,
     log: options.log,
   });
@@ -317,7 +317,7 @@ export function bootstrapLocalCoreRuntime(options: {
     store,
     cliBinDir: state.cliBinDir,
     localCoreBase: options.localCoreBase,
-    readConfigState: () => state.readConfigFile(),
+    readRuntimeConfig: async () => store.readRuntimeConfig(),
     getCapabilities: () => kernel.getCapabilitySnapshot(),
     getAgentRuntimes: () => agentRuntimes,
     eventBus: kernel.context.bus,

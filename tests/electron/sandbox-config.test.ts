@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { AgentLaunchConfig } from '../../packages/plugin-sdk/src/index.js';
-import type { ConfigFileState, DesktopProjectConfig } from '../../packages/contracts/src/index.js';
+import type { DesktopProjectConfig, RuntimeConfigState } from '../../packages/contracts/src/index.js';
 import {
   DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV,
   defaultOpenSandboxServerUrl,
@@ -19,12 +19,12 @@ import type { OpenSandboxClient } from '../../services/local-ai-core/src/sandbox
 import { migrateDesktopConnectConfig } from '../../services/local-ai-core/src/runtime/config-migration.js';
 import { runDeploymentDiagnostics } from '../../services/local-ai-core/src/runtime/deployment-diagnostics.js';
 
-function configState(path: string): ConfigFileState {
+function configState(path: string): RuntimeConfigState {
   return {
-    path,
-    exists: true,
-    raw: '',
-    parsed: { projects: [] },
+    storage: 'sqlite',
+    databasePath: join(dirname(path), 'local-core.db'),
+    baseDir: dirname(path),
+    config: { projects: [] },
   };
 }
 
@@ -219,7 +219,7 @@ test('sandbox runtime image can override the stdio runtime command behind the ge
   const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
   try {
     const state = configState(join(root, 'runtime', 'config.toml'));
-    state.parsed = {
+    state.config = {
       projects: [],
       sandbox_runtime_images: [{
         id: 'fake-acp',

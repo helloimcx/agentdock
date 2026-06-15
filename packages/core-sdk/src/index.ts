@@ -1,5 +1,4 @@
 import type {
-  ConfigFileState,
   DesktopBridgeEvent,
   DesktopRuntimeStatus,
   DesktopSettings,
@@ -68,6 +67,7 @@ import type {
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopModelProviderListResponse,
+  RuntimeConfigState,
 } from '../../contracts/src';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
@@ -239,16 +239,12 @@ export async function runDeploymentDiagnostics() {
   return coreRequest<LocalCoreDoctorResult>('POST', '/diagnostics/deployment');
 }
 
-export async function readCoreConfigFile() {
-  return coreRequest<ConfigFileState>('GET', '/runtime/config');
+export async function readCoreRuntimeConfig() {
+  return coreRequest<RuntimeConfigState>('GET', '/runtime/runtime-config');
 }
 
-export async function saveCoreRawConfigFile(raw: string) {
-  return coreRequest<ConfigFileState>('POST', '/runtime/config/raw', { raw });
-}
-
-export async function saveCoreStructuredConfigFile(config: unknown) {
-  return coreRequest<ConfigFileState>('POST', '/runtime/config/structured', { config });
+export async function saveCoreRuntimeConfig(config: unknown) {
+  return coreRequest<RuntimeConfigState>('POST', '/runtime/runtime-config', { config });
 }
 
 export async function saveCoreSettings(input: DesktopSettingsInput) {

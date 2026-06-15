@@ -121,7 +121,8 @@ export type DesktopRuntimePhase = 'stopped' | 'starting' | 'api_ready' | 'error'
 
 export interface DesktopSettings {
   binaryPath: string;
-  configPath: string;
+  /** @deprecated Project runtime config is stored in local-core.db. */
+  configPath?: string;
   autoStartService: boolean;
   defaultProject: string;
   managementPort: number;
@@ -160,7 +161,7 @@ export interface DesktopRuntimeStatus {
   service: DesktopServiceState;
   roles: DesktopRuntimeRoles;
   settings: DesktopSettings;
-  configFile: ConfigFileState;
+  runtimeConfig: RuntimeConfigState;
   logs: string[];
   pluginDiagnostics?: DesktopRuntimePluginDiagnostics;
 }
@@ -423,6 +424,7 @@ export interface DesktopRuntimeEvent {
 
 export interface DesktopSettingsInput {
   binaryPath?: string;
+  /** @deprecated Project runtime config is stored in local-core.db. */
   configPath?: string;
   autoStartService?: boolean;
   defaultProject?: string;
@@ -672,11 +674,13 @@ export interface DesktopConnectConfig {
   [key: string]: unknown;
 }
 
-export interface ConfigFileState {
-  path: string;
-  exists: boolean;
-  raw: string;
-  parsed: DesktopConnectConfig | null;
+export interface RuntimeConfigState {
+  storage: 'sqlite';
+  databasePath: string;
+  baseDir: string;
+  config: DesktopConnectConfig;
   error?: string;
   warnings?: string[];
+  migratedFromPath?: string;
+  updatedAt?: string;
 }

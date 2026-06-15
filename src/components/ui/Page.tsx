@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getDesktopLogs, getRuntimePluginDiagnostics, getRuntimeStatus, readConfigFile } from '@/api/desktop';
+import { getDesktopLogs, getRuntimePluginDiagnostics, getRuntimeStatus } from '@/api/desktop';
 import { cn } from '@/lib/utils';
 import { Badge } from './Badge';
 import { Button } from './Button';
@@ -79,14 +79,13 @@ export function StatusPill({ children, tone = 'neutral' }: { children: ReactNode
   );
 }
 
-function formatRaw(raw?: string) {
-  return raw?.trim() ? raw : 'No config file content available.';
+function formatJson(value: unknown) {
+  return value ? JSON.stringify(value, null, 2) : 'No runtime config available.';
 }
 
 export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [runtime, setRuntime] = useState<any>(null);
-  const [raw, setRaw] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [plugins, setPlugins] = useState<any>(null);
   const [error, setError] = useState('');
@@ -95,14 +94,12 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
     setLoading(true);
     setError('');
     try {
-      const [runtimeResult, configResult, logResult, pluginResult] = await Promise.allSettled([
+      const [runtimeResult, logResult, pluginResult] = await Promise.allSettled([
         getRuntimeStatus(),
-        readConfigFile(),
         getDesktopLogs(40),
         getRuntimePluginDiagnostics(),
       ]);
       if (runtimeResult.status === 'fulfilled') setRuntime(runtimeResult.value);
-      if (configResult.status === 'fulfilled') setRaw(configResult.value.raw || '');
       if (logResult.status === 'fulfilled') setLogs(logResult.value || []);
       if (pluginResult.status === 'fulfilled') setPlugins(pluginResult.value);
     } catch (err) {
@@ -155,9 +152,9 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
                 <p className="mt-1 font-medium text-foreground">{runtime?.pendingRestart ? 'needed' : 'not needed'}</p>
               </div>
               <div className="col-span-2">
-                <p className="text-xs text-muted-foreground">Config path</p>
+                <p className="text-xs text-muted-foreground">Runtime config database</p>
                 <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                  {runtime?.settings?.configPath || runtime?.configFile?.path || '-'}
+                  {runtime?.runtimeConfig?.databasePath || '-'}
                 </p>
               </div>
             </div>
@@ -176,9 +173,9 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
             </div>
           </SectionCard>
 
-          <SectionCard title="Raw config" description="Read-only TOML snapshot. Edit it outside the daily UI when needed.">
+          <SectionCard title="Runtime config" description="Read-only SQLite-backed JSON snapshot.">
             <pre className="max-h-72 overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-5 text-muted-foreground">
-              {formatRaw(raw)}
+              {formatJson(runtime?.runtimeConfig?.config)}
             </pre>
           </SectionCard>
 

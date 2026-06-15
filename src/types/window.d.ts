@@ -1,10 +1,10 @@
 import type {
-  ConfigFileState,
   DesktopBridgeEvent,
   DesktopRuntimeStatus,
   DesktopSettings,
   DesktopSettingsInput,
   DesktopServiceState,
+  RuntimeConfigState,
 } from '../../shared/desktop';
 import type {
   LocalCoreAuthorizedUser,
@@ -29,9 +29,8 @@ declare global {
       stopService: () => Promise<DesktopServiceState>;
       restartService: () => Promise<DesktopServiceState>;
       getLogs: (limit?: number) => Promise<string[]>;
-      readConfigFile: () => Promise<ConfigFileState>;
-      saveRawConfigFile: (raw: string) => Promise<ConfigFileState>;
-      saveStructuredConfigFile: (config: unknown) => Promise<ConfigFileState>;
+      readRuntimeConfig: () => Promise<RuntimeConfigState>;
+      saveRuntimeConfig: (config: unknown) => Promise<RuntimeConfigState>;
       getThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<string[]>;
       updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) => Promise<string[]>;
       deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) => Promise<{ deleted: boolean }>;

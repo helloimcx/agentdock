@@ -111,8 +111,9 @@ export class WorkspaceRouter {
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
     const localProjects = await this.listLocalCoreProjects();
     const workspaceMap = new Map<string, WorkspaceSummary>();
+    const configState = await this.options.readRuntimeConfig();
     for (const project of localProjects) {
-      const route = this.resolveProjectRoute(await this.options.readConfigState(), project);
+      const route = this.resolveProjectRoute(configState, project);
       if (!route) {
         continue;
       }
@@ -582,8 +583,8 @@ export class WorkspaceRouter {
   }
 
   private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
-    const configState = await this.options.readConfigState();
-    const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
+    const configState = await this.options.readRuntimeConfig();
+    const projects = Array.isArray(configState.config?.projects) ? configState.config.projects! : [];
     const matched = projects.find((project) => String(project?.name || '').trim() === workspaceId);
     const project = matched && agentTypeOverride ? withAgentTypeOverride(matched, agentTypeOverride) : matched;
     const route = project ? this.resolveProjectRoute(configState, project) : null;
@@ -594,14 +595,14 @@ export class WorkspaceRouter {
   }
 
   private async listLocalCoreProjects() {
-    const configState = await this.options.readConfigState();
-    const projects = Array.isArray(configState.parsed?.projects) ? configState.parsed!.projects! : [];
+    const configState = await this.options.readRuntimeConfig();
+    const projects = Array.isArray(configState.config?.projects) ? configState.config.projects! : [];
     return projects.filter((project) => this.resolveProjectRoute(configState, project));
   }
 
   private async syncConfiguredWorkspaces() {
-    const config = await this.options.readConfigState();
-    const projects = Array.isArray(config.parsed?.projects) ? config.parsed.projects : [];
+    const config = await this.options.readRuntimeConfig();
+    const projects = Array.isArray(config.config?.projects) ? config.config.projects : [];
     for (const project of projects) {
       const route = this.resolveProjectRoute(config, project);
       if (!route) {
@@ -623,7 +624,7 @@ export class WorkspaceRouter {
     }
   }
 
-  private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readConfigState']>>, project: DesktopProjectConfig) {
+  private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readRuntimeConfig']>>, project: DesktopProjectConfig) {
     const routeProject = this.withResolvedProjectProvider(project);
     for (const runtime of this.options.getAgentRuntimes?.() || []) {
       if (!runtime.matchesProject(routeProject)) {

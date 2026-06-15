@@ -97,7 +97,7 @@ export interface AgentRuntime {
   readonly displayName?: string;
   matchesProject(project: import('../../contracts/src/index.js').DesktopProjectConfig): boolean;
   createRoute(
-    configState: import('../../contracts/src/index.js').ConfigFileState,
+    configState: import('../../contracts/src/index.js').RuntimeConfigState,
     project: import('../../contracts/src/index.js').DesktopProjectConfig,
   ): AgentRuntimeRoute | null;
 }

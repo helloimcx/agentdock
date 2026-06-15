@@ -12,8 +12,8 @@ import {
   createModelProvider,
   deleteModelProvider,
   listModelProviders,
-  readConfigFile,
-  saveStructuredConfigFile,
+  readRuntimeConfig,
+  saveRuntimeConfig,
 } from '@/api/desktop';
 import { formatTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -115,7 +115,7 @@ export default function ProjectDetail() {
         getProject(name),
         listModelProviders(),
         getHeartbeat(name),
-        readConfigFile(),
+        readRuntimeConfig(),
       ]);
       if (proj.status === 'fulfilled') {
         setProject(proj.value);
@@ -126,7 +126,7 @@ export default function ProjectDetail() {
       }
       if (hb.status === 'fulfilled') setHeartbeatState(hb.value);
       if (config.status === 'fulfilled') {
-        const parsed = config.value.parsed;
+        const parsed = config.value.config;
         const configuredProject = parsed?.projects?.find((entry) => entry.name === name);
         const providerId = getProjectProviderId(parsed, name);
         const selectedProvider = providerList.find((entry) => entry.id === providerId);
@@ -152,11 +152,8 @@ export default function ProjectDetail() {
     setActionMsg('');
     try {
       const provider = await createModelProvider(newProvider);
-      const state = await readConfigFile();
-      if (!state.parsed) {
-        throw new Error('Config file is unavailable.');
-      }
-      await saveStructuredConfigFile(selectProjectProvider(state.parsed, name, provider.id));
+      const state = await readRuntimeConfig();
+      await saveRuntimeConfig(selectProjectProvider(state.config, name, provider.id));
       setShowAddProvider(false);
       setNewProvider({ name: '', api_key: '', base_url: '', model: '' });
       setActionMsg('Provider created.');
@@ -170,11 +167,8 @@ export default function ProjectDetail() {
     if (!name) return;
     setActionMsg('');
     try {
-      const state = await readConfigFile();
-      if (!state.parsed) {
-        throw new Error('Config file is unavailable.');
-      }
-      await saveStructuredConfigFile(selectProjectProvider(state.parsed, name, providerId));
+      const state = await readRuntimeConfig();
+      await saveRuntimeConfig(selectProjectProvider(state.config, name, providerId));
       setActionMsg('Provider selected.');
       await fetchAll();
     } catch (err) {
@@ -186,11 +180,8 @@ export default function ProjectDetail() {
     if (!name) return;
     setActionMsg('');
     try {
-      const state = await readConfigFile();
-      if (!state.parsed) {
-        throw new Error('Config file is unavailable.');
-      }
-      await saveStructuredConfigFile(removeProviderReferences(state.parsed, providerId));
+      const state = await readRuntimeConfig();
+      await saveRuntimeConfig(removeProviderReferences(state.config, providerId));
       await deleteModelProvider(providerId);
       setActionMsg('Provider removed.');
       await fetchAll();
@@ -203,11 +194,8 @@ export default function ProjectDetail() {
     if (!name) return;
     setActionMsg('');
     try {
-      const state = await readConfigFile();
-      if (!state.parsed) {
-        throw new Error('Config file is unavailable.');
-      }
-      await saveStructuredConfigFile(selectProjectModel(state.parsed, name, model));
+      const state = await readRuntimeConfig();
+      await saveRuntimeConfig(selectProjectModel(state.config, name, model));
       setActionMsg('Model selected.');
       await fetchAll();
     } catch (err) {
@@ -234,8 +222,8 @@ export default function ProjectDetail() {
     setSavingSandbox(true);
     setActionMsg('');
     try {
-      const state = await readConfigFile();
-      const config = state.parsed || {};
+      const state = await readRuntimeConfig();
+      const config = state.config || {};
       const projects = Array.isArray(config.projects) ? [...config.projects] : [];
       const index = projects.findIndex((entry) => entry.name === name);
       if (index < 0) {
@@ -252,7 +240,7 @@ export default function ProjectDetail() {
           },
         },
       };
-      await saveStructuredConfigFile({
+      await saveRuntimeConfig({
         ...(config as DesktopConnectConfig),
         projects,
       });

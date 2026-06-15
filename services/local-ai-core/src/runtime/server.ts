@@ -3,7 +3,6 @@ import { EventEmitter } from 'node:events';
 import { parseLocalAiCoreRoute, type LocalAiCoreRoute } from './server-routes.js';
 import { setCorsHeaders, jsonError, createSseEvent, type RouteHandler } from './server-helpers.js';
 import type {
-  ConfigFileState,
   DesktopBridgeEvent,
   DesktopConnectConfig,
   DesktopRuntimeStatus,
@@ -20,6 +19,7 @@ import type {
   ScheduledJob,
   ScheduledJobRun,
   ExternalRunSnapshot,
+  RuntimeConfigState,
 } from '../../../../packages/contracts/src/index.js';
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
 import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
@@ -59,9 +59,8 @@ export interface LocalAiCoreServerBindings {
     restartService(): Promise<DesktopServiceState>;
     getLogs(limit?: number): string[];
     getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
-    readConfigFile(): Promise<ConfigFileState>;
-    saveRawConfigFile(raw: string): Promise<ConfigFileState>;
-    saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
+    readRuntimeConfig(): Promise<RuntimeConfigState>;
+    saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState>;
     saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
     getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
     runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;

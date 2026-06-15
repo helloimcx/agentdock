@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as TOML from '@iarna/toml';
 import type { RuntimePlugin } from '../../packages/plugin-sdk/src/index.js';
 import { bootstrapLocalCoreKernel } from '../../services/local-ai-core/src/kernel/bootstrap.js';
 import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
@@ -66,6 +67,10 @@ function withLogEnv<T>(logDir: string, fn: () => T, options: {
 
 function parseLogLine(line: string) {
   return JSON.parse(line) as { ts: string; level: string; scope: string; message: string };
+}
+
+async function saveRawRuntimeConfig(runtime: { store: { saveRuntimeConfig(config: unknown): unknown } }, raw: string) {
+  runtime.store.saveRuntimeConfig(TOML.parse(raw) as Record<string, unknown>);
 }
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
@@ -344,15 +349,15 @@ test('codex agent runtime routes projects through the bundled ACP adapter', asyn
       userDataPath,
       enableKnowledge: false,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "codex-workspace"
 
 [projects.agent]
 type = "codex"
 `);
-    const configState = await runtime.state.readConfigFile();
-    const project = configState.parsed?.projects?.find((entry) => entry.name === 'codex-workspace');
+    const configState = runtime.store.readRuntimeConfig();
+    const project = configState.config?.projects?.find((entry) => entry.name === 'codex-workspace');
     const codexRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'codex');
     const route = project ? codexRuntime?.createRoute(configState, project) : null;
 
@@ -383,7 +388,7 @@ test('thread slash agent reset resolves the workspace default agent through the 
       userDataPath,
       enableKnowledge: false,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "agent-workspace"
 
@@ -412,15 +417,15 @@ test('hermes agent runtime routes projects through hermes ACP command', async ()
       userDataPath,
       enableKnowledge: false,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "hermes-workspace"
 
 [projects.agent]
 type = "hermes"
 `);
-    const configState = await runtime.state.readConfigFile();
-    const project = configState.parsed?.projects?.find((entry) => entry.name === 'hermes-workspace');
+    const configState = runtime.store.readRuntimeConfig();
+    const project = configState.config?.projects?.find((entry) => entry.name === 'hermes-workspace');
     const hermesRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'hermes');
     const route = project ? hermesRuntime?.createRoute(configState, project) : null;
 
@@ -452,7 +457,7 @@ test('pi agent runtime routes projects through bundled pi ACP and coding agent',
       userDataPath,
       enableKnowledge: false,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "pi-workspace"
 
@@ -466,8 +471,8 @@ api_key = "test-openai-key"
 [projects.agent.options.env]
 OPENAI_API_KEY = "override-openai-key"
 `);
-    const configState = await runtime.state.readConfigFile();
-    const project = configState.parsed?.projects?.find((entry) => entry.name === 'pi-workspace');
+    const configState = runtime.store.readRuntimeConfig();
+    const project = configState.config?.projects?.find((entry) => entry.name === 'pi-workspace');
     const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
     const route = project ? piRuntime?.createRoute(configState, project) : null;
 
@@ -505,7 +510,7 @@ test('pi agent runtime writes provider auth and default model into Pi config dir
       userDataPath,
       enableKnowledge: false,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "deepseek-workspace"
 
@@ -518,8 +523,8 @@ api_key = "test-deepseek-key"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-flash"
 `);
-    const configState = await runtime.state.readConfigFile();
-    const project = configState.parsed?.projects?.find((entry) => entry.name === 'deepseek-workspace');
+    const configState = runtime.store.readRuntimeConfig();
+    const project = configState.config?.projects?.find((entry) => entry.name === 'deepseek-workspace');
     const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
     const route = project ? piRuntime?.createRoute(configState, project) : null;
     const piAgentDir = route?.config.env.PI_CODING_AGENT_DIR || '';
@@ -558,7 +563,7 @@ test('pi agent runtime normalizes DeepSeek provider when provider name is the mo
       userDataPath,
       enableKnowledge: false,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "deepseek-model-name-workspace"
 
@@ -571,8 +576,8 @@ api_key = "test-deepseek-key"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-flash"
 `);
-    const configState = await runtime.state.readConfigFile();
-    const project = configState.parsed?.projects?.find((entry) => entry.name === 'deepseek-model-name-workspace');
+    const configState = runtime.store.readRuntimeConfig();
+    const project = configState.config?.projects?.find((entry) => entry.name === 'deepseek-model-name-workspace');
     const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
     const route = project ? piRuntime?.createRoute(configState, project) : null;
     const piAgentDir = route?.config.env.PI_CODING_AGENT_DIR || '';
@@ -630,7 +635,6 @@ test('runtime bootstrap keeps disabled plugins diagnosable without contributing 
     writeFileSync(
       join(runtimeDir, 'local-core-settings.json'),
       JSON.stringify({
-        configPath: join(runtimeDir, 'config.toml'),
         defaultProject: 'default',
         autoStartService: true,
         knowledge: {
@@ -694,6 +698,12 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   let stopped = false;
   let channelRefreshes = 0;
   let weixinRefreshes = 0;
+  let runtimeConfig: any = {
+    storage: 'sqlite' as const,
+    databasePath: '/tmp/local-core-controller-injected/runtime/local-core.db',
+    baseDir: '/tmp/local-core-controller-injected/runtime',
+    config: { projects: [] },
+  };
   const channelRuntime = {
     platform: 'test-channel',
     routeType: 'channel.test',
@@ -739,7 +749,6 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
     state: {
       getSettings: () => ({
         binaryPath: '',
-        configPath: '',
         autoStartService: true,
         defaultProject: 'default',
         managementPort: 0,
@@ -758,20 +767,18 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
       }),
       getLogs: () => [],
       getLogEntries: () => [],
-      readConfigFile: async () => ({
-        path: '',
-        exists: false,
-        raw: '',
-        parsed: null,
-      }),
-      saveStructuredConfigFile: async (config: unknown) => ({
-        path: '',
-        exists: true,
-        raw: JSON.stringify(config),
-        parsed: config,
-      }),
     } as any,
-    store: {} as any,
+    store: {
+      readRuntimeConfig: () => runtimeConfig,
+      saveRuntimeConfig: (config: any) => {
+        runtimeConfig = {
+          ...runtimeConfig,
+          config,
+          updatedAt: new Date().toISOString(),
+        };
+        return runtimeConfig;
+      },
+    } as any,
     agentRuntimes: [],
     channelRuntimes: [channelRuntime, weixinChannelRuntime],
     channelRuntime,
@@ -801,7 +808,7 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
   assert.deepEqual(await controller.channelService.checkQrCodeStatus('test-channel', 'workspace-1', 'signed-ticket'), {
     status: 'signed',
   });
-  await controller.saveStructuredConfigFile({ projects: [] } as any);
+  await controller.saveRuntimeConfig({ projects: [] } as any);
   assert.equal(channelRefreshes, 1);
   assert.equal(weixinRefreshes, 1);
   await controller.close();
@@ -1237,7 +1244,6 @@ test('agent runtime selection is registry-based and disabled runtimes do not rou
     writeFileSync(
       join(runtimeDir, 'local-core-settings.json'),
       JSON.stringify({
-        configPath: join(runtimeDir, 'config.toml'),
         defaultProject: 'default',
         autoStartService: true,
         knowledge: {
@@ -1257,7 +1263,7 @@ test('agent runtime selection is registry-based and disabled runtimes do not rou
     const runtime = bootstrapLocalCoreRuntime({
       userDataPath,
     });
-    await runtime.state.saveRawConfigFile(`
+    await saveRawRuntimeConfig(runtime, `
 [[projects]]
 name = "claude-workspace"
 

@@ -1,4 +1,4 @@
-import type { ConfigFileState, DesktopProjectConfig } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopProjectConfig, RuntimeConfigState } from '../../../../../packages/contracts/src/index.js';
 import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext } from '../../../../../packages/plugin-sdk/src/index.js';
 import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
 import { toLocalCoreProjectConfig } from '../../router/workspace-route-config.js';
@@ -13,7 +13,7 @@ function createRuntime(agentType: string, match: (normalizedAgentType: string) =
       const normalizedAgentType = String(project.agent?.type || '').trim().toLowerCase();
       return match(normalizedAgentType);
     },
-    createRoute(configState: ConfigFileState, project: DesktopProjectConfig): AgentRuntimeRoute | null {
+    createRoute(configState: RuntimeConfigState, project: DesktopProjectConfig): AgentRuntimeRoute | null {
       if (!this.matchesProject(project)) {
         return null;
       }

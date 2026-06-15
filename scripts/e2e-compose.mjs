@@ -65,8 +65,8 @@ async function assertDeploymentDiagnostics() {
 }
 
 async function assertSandboxMessageRoundTrip() {
-  const configState = await coreRequest('GET', '/runtime/config');
-  const previousConfig = configState.parsed || {};
+  const configState = await coreRequest('GET', '/runtime/runtime-config');
+  const previousConfig = configState.config || {};
   const providerId = 'compose-e2e-provider';
   const nextConfig = {
     ...previousConfig,
@@ -93,7 +93,7 @@ async function assertSandboxMessageRoundTrip() {
     projects: Array.isArray(previousConfig.projects) ? previousConfig.projects : [],
   };
   try {
-    await coreRequest('POST', '/runtime/config/structured', { config: nextConfig });
+    await coreRequest('POST', '/runtime/runtime-config', { config: nextConfig });
     await coreRequest('POST', '/providers', {
       id: providerId,
       name: 'compose-e2e',
@@ -120,7 +120,7 @@ async function assertSandboxMessageRoundTrip() {
     }
     console.log(`[e2e:compose] Sandbox ACP reply: ${final?.content || ''}`);
   } finally {
-    await coreRequest('POST', '/runtime/config/structured', { config: previousConfig });
+    await coreRequest('POST', '/runtime/runtime-config', { config: previousConfig });
     await coreRequest('DELETE', `/providers/${encodeURIComponent(providerId)}`).catch(() => undefined);
   }
 }

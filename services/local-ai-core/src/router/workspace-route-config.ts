@@ -1,5 +1,5 @@
-import { dirname, isAbsolute, resolve } from 'node:path';
-import type { ConfigFileState, DesktopProjectConfig, DesktopProviderConfig } from '../../../../packages/contracts/src/index.js';
+import { isAbsolute, resolve } from 'node:path';
+import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '../../../../packages/contracts/src/index.js';
 import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
@@ -35,9 +35,9 @@ function resolveAgentModel(project: DesktopProjectConfig, providers: DesktopProv
   }) || normalizedModel;
 }
 
-export function toLocalCoreProjectConfig(configState: ConfigFileState, project: DesktopProjectConfig): AgentLaunchConfig {
+export function toLocalCoreProjectConfig(configState: RuntimeConfigState, project: DesktopProjectConfig): AgentLaunchConfig {
   const rawWorkDir = String(project.agent?.options?.work_dir || '.').trim() || '.';
-  const configDir = dirname(configState.path);
+  const configDir = configState.baseDir;
   const workDir = isAbsolute(rawWorkDir) ? rawWorkDir : resolve(configDir, rawWorkDir);
   const rawArgs = project.agent?.options?.args;
   const args = Array.isArray(rawArgs)

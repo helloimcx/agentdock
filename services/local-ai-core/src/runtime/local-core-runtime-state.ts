@@ -1,22 +1,14 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import * as TOML from '@iarna/toml';
 import type {
-  ConfigFileState,
-  DesktopConnectConfig,
   DesktopSettings,
   DesktopSettingsInput,
   KnowledgeConfig,
 } from '../../../../packages/contracts/src/index.js';
 import { AgentDockRotatingLogger, inferLogLevel, type AgentDockLogEntry, type AgentDockLogFile } from '../kernel/rotating-logger.js';
-import { migrateDesktopConnectConfig } from './config-migration.js';
-
-const DEFAULT_CONFIG = `# Managed by Local AI Core
-# Add [[projects]] entries from the workspace page before starting a conversation.
-`;
 
 type RuntimeSettingsFile = {
-  configPath: string;
+  configPath?: string;
   defaultProject: string;
   autoStartService: boolean;
   plugins: DesktopSettings['plugins'];
@@ -42,9 +34,6 @@ export interface LocalCoreRuntimeState {
   getLogs(limit?: number): string[];
   getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
   pushLog(message: string): void;
-  readConfigFile(): Promise<ConfigFileState>;
-  saveRawConfigFile(raw: string): Promise<ConfigFileState>;
-  saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState>;
 }
 
 class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
@@ -67,7 +56,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     mkdirSync(this.runtimeDir, { recursive: true });
     this.cliBinDir = this.ensureCliWrapper();
     this.settings = this.loadSettings();
-    this.ensureConfigFile();
   }
 
   getSettings(): DesktopSettings {
@@ -79,7 +67,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
       ...this.settings,
       ...(input.defaultProject !== undefined ? { defaultProject: input.defaultProject } : {}),
       ...(typeof input.autoStartService === 'boolean' ? { autoStartService: input.autoStartService } : {}),
-      ...(input.configPath ? { configPath: input.configPath } : {}),
       plugins: input.plugins
         ? Object.fromEntries(
             Object.entries({
@@ -150,49 +137,8 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     }
   }
 
-  async readConfigFile(): Promise<ConfigFileState> {
-    const path = this.settings.configPath;
-    if (!existsSync(path)) {
-      return { path, exists: false, raw: '', parsed: null };
-    }
-    const raw = readFileSync(path, 'utf8');
-    try {
-      const parsed = TOML.parse(raw) as DesktopConnectConfig;
-      const migrated = migrateDesktopConnectConfig(parsed);
-      return {
-        path,
-        exists: true,
-        raw,
-        parsed: migrated.config,
-        warnings: migrated.warnings.length > 0 ? migrated.warnings : undefined,
-      };
-    } catch (error) {
-      return {
-        path,
-        exists: true,
-        raw,
-        parsed: null,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  async saveRawConfigFile(raw: string): Promise<ConfigFileState> {
-    mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, raw, 'utf8');
-    return this.readConfigFile();
-  }
-
-  async saveStructuredConfigFile(config: DesktopConnectConfig): Promise<ConfigFileState> {
-    const migrated = migrateDesktopConnectConfig(config);
-    mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, TOML.stringify(migrated.config as any), 'utf8');
-    return this.readConfigFile();
-  }
-
   private loadSettings(): DesktopSettings {
     const defaults: RuntimeSettingsFile = {
-      configPath: join(this.runtimeDir, 'config.toml'),
       defaultProject: '',
       autoStartService: true,
       plugins: {},
@@ -207,7 +153,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     if (!existsSync(this.settingsPath)) {
       return {
         binaryPath: '',
-        configPath: defaults.configPath,
         autoStartService: defaults.autoStartService,
         defaultProject: defaults.defaultProject,
         managementPort: 0,
@@ -222,7 +167,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     const raw = JSON.parse(readFileSync(this.settingsPath, 'utf8')) as Partial<RuntimeSettingsFile>;
     return {
       binaryPath: '',
-      configPath: String(raw.configPath || defaults.configPath),
       autoStartService: typeof raw.autoStartService === 'boolean' ? raw.autoStartService : defaults.autoStartService,
       defaultProject: String(raw.defaultProject || defaults.defaultProject),
       managementPort: 0,
@@ -240,7 +184,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
 
   private persistSettings() {
     const payload: RuntimeSettingsFile = {
-      configPath: this.settings.configPath,
       defaultProject: this.settings.defaultProject,
       autoStartService: this.settings.autoStartService,
       plugins: this.settings.plugins,
@@ -248,14 +191,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     };
     mkdirSync(dirname(this.settingsPath), { recursive: true });
     writeFileSync(this.settingsPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  }
-
-  private ensureConfigFile() {
-    if (existsSync(this.settings.configPath)) {
-      return;
-    }
-    mkdirSync(dirname(this.settings.configPath), { recursive: true });
-    writeFileSync(this.settings.configPath, DEFAULT_CONFIG, 'utf8');
   }
 
   private ensureCliWrapper() {
