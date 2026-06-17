@@ -2,25 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { DesktopConnectConfig } from '../../../../../packages/contracts/src/index.js';
 import { normalizeDesktopPlatformType } from '../../../../../shared/desktop.js';
+import { channelPlatformKey, normalizeChannelInstanceId } from '../shared/channel-keys.js';
 import type { WeixinCredentials, WeixinWorkspaceBinding } from './types.js';
 
 export const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
 export const DEFAULT_CDN_BASE_URL = 'https://novac2c.cdn.weixin.qq.com/c2c';
 export const LONG_POLL_TIMEOUT_MS = 35_000;
-
-export function normalizeChannelInstanceId(value: unknown, fallback: string) {
-  const raw = String(value || '').trim();
-  const normalized = raw.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 80);
-  return normalized || fallback;
-}
-
-export function channelPlatformKey(platform: string, instanceId: string) {
-  return instanceId === 'default' ? platform : `${platform}:${instanceId}`;
-}
-
-export function runtimeKey(workspaceId: string, instanceId: string) {
-  return `${workspaceId}::${instanceId}`;
-}
 
 export function getDefaultWeixinStateDir() {
   return path.join(process.cwd(), 'weixin-monitor');
