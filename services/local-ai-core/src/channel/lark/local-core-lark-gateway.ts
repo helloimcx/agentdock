@@ -74,6 +74,7 @@ const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 const LARK_FINAL_PATCH_INTERVAL_MS = 900;
 const LARK_PROGRESS_PATCH_INTERVAL_MS = 3000;
+const LARK_EMPTY_RENDER_LOG_WINDOW_MS = 5 * 60 * 1000;
 
 export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, LarkWorkspaceBinding, LarkThreadRoute, LarkTurnState> {
   // Lark returns 200340 when card action events are not enabled in the app's
@@ -82,6 +83,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   // Keep permission state in a dedicated card to avoid mixing order in the main reply card.
   private readonly mirrorPermissionStateInMainCard = false;
   private larkModulePromise: Promise<LarkModule> | null = null;
+  private readonly emptyRenderLogWindows = new Map<string, number>();
   readonly platform = 'lark';
 
   constructor(options: LocalCoreLarkGatewayOptions) {
@@ -442,7 +444,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
           const renderedMessages = renderLarkBridgeEventMessages(turn, event);
           for (const renderedMessage of renderedMessages) {
             if (!renderedMessage.text && renderedMessage.buttonRows.length === 0) {
-              this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${event.type}`);
+              this.logEmptyRender(sessionKey, event.type);
               continue;
             }
             const existingMessageId = getLarkRenderedMessageId(turn, renderedMessage);
@@ -1434,6 +1436,23 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     } catch (error) {
       this.options.log?.(`localcore-lark acknowledgement reaction failed for message=${messageId}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private logEmptyRender(sessionKey: string, type: string) {
+    const key = `${sessionKey}|${type}`;
+    const now = Date.now();
+    const lastAt = this.emptyRenderLogWindows.get(key);
+    if (lastAt !== undefined && now - lastAt < LARK_EMPTY_RENDER_LOG_WINDOW_MS) {
+      return;
+    }
+    this.emptyRenderLogWindows.set(key, now);
+    if (this.emptyRenderLogWindows.size > 1000) {
+      const oldestKey = this.emptyRenderLogWindows.keys().next().value;
+      if (oldestKey) {
+        this.emptyRenderLogWindows.delete(oldestKey);
+      }
+    }
+    this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${type}`);
   }
 
 }
