@@ -177,7 +177,9 @@ test('sandbox proxy env stores serialized launch config', () => {
 
 test('workspace route launches sandbox proxy when sandbox is enabled', () => {
   const root = mkdtempSync(join(tmpdir(), 'agentdock-sandbox-'));
+  const previousUserDataDir = process.env.AI_WORKSTATION_USER_DATA_DIR;
   try {
+    delete process.env.AI_WORKSTATION_USER_DATA_DIR;
     mkdirSync(join(root, 'runtime'), { recursive: true });
     const route = toLocalCoreProjectConfig(configState(join(root, 'runtime', 'config.toml')), project({
       enabled: true,
@@ -195,6 +197,9 @@ test('workspace route launches sandbox proxy when sandbox is enabled', () => {
     assert.equal(route.sandbox?.image, 'agentdock/pi-acp:local');
     assert.equal(JSON.parse(route.env.AGENTDOCK_SANDBOX_CONFIG).image, 'agentdock/pi-acp:local');
   } finally {
+    if (previousUserDataDir !== undefined) {
+      process.env.AI_WORKSTATION_USER_DATA_DIR = previousUserDataDir;
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });

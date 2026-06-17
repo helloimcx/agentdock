@@ -1,4 +1,4 @@
-import type { DesktopConnectConfig, DesktopProjectConfig } from '../../../../packages/contracts/src/index.js';
+import type { DesktopConnectConfig, DesktopProjectConfig, RuntimeConfigState } from '../../../../packages/contracts/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { normalizeDesktopProviderForStorage } from './config-migration.js';
 
@@ -35,6 +35,26 @@ export function migrateLegacyProjectProvidersToStore(
     changed = true;
   }
   return { config, changed, warnings };
+}
+
+export async function applyLegacyProviderMigration<T extends RuntimeConfigState>(
+  current: T,
+  store: Pick<LocalCoreAcpStore, 'upsertModelProvider'>,
+  save: (config: DesktopConnectConfig) => T | Promise<T>,
+): Promise<T> {
+  const migrated = migrateLegacyProjectProvidersToStore(current.config, store);
+  if (!migrated.changed) {
+    return current;
+  }
+  const saved = await save(migrated.config);
+  return {
+    ...saved,
+    warnings: [
+      ...(current.warnings || []),
+      ...(saved.warnings || []),
+      ...migrated.warnings,
+    ],
+  };
 }
 
 function cloneConfig(input: DesktopConnectConfig): DesktopConnectConfig {

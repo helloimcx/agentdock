@@ -13,7 +13,7 @@ import type {
   RuntimeConfigState,
 } from '../../../../packages/contracts/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
+import { applyLegacyProviderMigration } from './provider-config-migration.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 
 export interface ExternalServiceDeps {
@@ -194,20 +194,11 @@ export class ExternalService {
   }
 
   private async readAndMigrateConfigFile(): Promise<RuntimeConfigState> {
-    const current = await this.deps.readRuntimeConfig();
-    const migrated = migrateLegacyProjectProvidersToStore(current.config, this.store);
-    if (!migrated.changed) {
-      return current;
-    }
-    const saved = await this.deps.saveRuntimeConfig(migrated.config);
-    return {
-      ...saved,
-      warnings: [
-        ...(current.warnings || []),
-        ...(saved.warnings || []),
-        ...migrated.warnings,
-      ],
-    };
+    return applyLegacyProviderMigration(
+      await this.deps.readRuntimeConfig(),
+      this.store,
+      (config) => this.deps.saveRuntimeConfig(config),
+    );
   }
 
   private projectBasePath(userId: string, externalProjectId: string) {

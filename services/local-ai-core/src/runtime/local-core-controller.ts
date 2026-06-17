@@ -18,7 +18,7 @@ import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
-import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
+import { applyLegacyProviderMigration, migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { ChannelService } from './channel-service.js';
 import { ExternalService } from './external-service.js';
@@ -339,19 +339,10 @@ export class LocalCoreController extends EventEmitter {
   }
 
   private async readAndMigrateRuntimeConfig(): Promise<RuntimeConfigState> {
-    const current = this.store.readRuntimeConfig();
-    const migrated = migrateLegacyProjectProvidersToStore(current.config, this.store);
-    if (!migrated.changed) {
-      return current;
-    }
-    const saved = this.store.saveRuntimeConfig(migrated.config);
-    return {
-      ...saved,
-      warnings: [
-        ...(current.warnings || []),
-        ...(saved.warnings || []),
-        ...migrated.warnings,
-      ],
-    };
+    return applyLegacyProviderMigration(
+      this.store.readRuntimeConfig(),
+      this.store,
+      (config) => this.store.saveRuntimeConfig(config),
+    );
   }
 }

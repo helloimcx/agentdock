@@ -2,6 +2,7 @@ import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
 import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import { normalizeAgentType } from '../agents/shared/definition.js';
 import type { ScheduledExecutionTarget } from './adapters.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 import { ScheduledBridgeSession, type ScheduledBridgeSessionHandle } from './scheduled-bridge-session.js';
@@ -118,8 +119,4 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
   private threadMatchesTargetAgent(thread: { agentType?: string | null }, targetAgent: string) {
     return normalizeAgentType(thread.agentType) === targetAgent;
   }
-}
-
-function normalizeAgentType(value?: string | null) {
-  return String(value || '').trim().toLowerCase();
 }
