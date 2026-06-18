@@ -1,15 +1,10 @@
 import type {
-  LocalCoreAuthorizedUser,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
   LocalCoreChannelPairingRequest,
   LocalCoreChannelQrCode,
   LocalCoreChannelQrCodeStatus,
-  LocalCoreLarkConnectionResult,
-  LocalCoreLarkGatewayStatus,
-  LocalCoreLarkQrCodeStatus,
-  LocalCorePairingRequest,
   ChannelFileSendInput,
   ChannelFileSendResult,
   ChannelOutboundMessageInput,
@@ -125,64 +120,6 @@ export class ChannelService {
       throw new Error(`Channel platform does not support QR setup: ${platform}`);
     }
     return runtime.checkQrCodeStatus(workspaceId, ticket, instanceId);
-  }
-
-  async getWeixinQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
-    return this.getQrCode('weixin', workspaceId, instanceId);
-  }
-
-  async checkWeixinQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<{
-    status: 'wait' | 'signed' | 'confirmed' | 'expired';
-    userName?: string;
-    userId?: string;
-  }> {
-    return this.checkQrCodeStatus('weixin', workspaceId, ticket, instanceId);
-  }
-
-  // Lark convenience wrappers
-
-  async listLarkStatuses(): Promise<LocalCoreLarkGatewayStatus[]> {
-    return this.listStatuses('lark') as Promise<LocalCoreLarkGatewayStatus[]>;
-  }
-
-  async getLarkStatus(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.getStatus('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
-  }
-
-  async testLarkConnection(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkConnectionResult> {
-    return this.testConnection('lark', workspaceId, instanceId) as Promise<LocalCoreLarkConnectionResult>;
-  }
-
-  async enableLark(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.enable('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
-  }
-
-  async disableLark(workspaceId: string, instanceId?: string): Promise<LocalCoreLarkGatewayStatus> {
-    return this.disable('lark', workspaceId, instanceId) as Promise<LocalCoreLarkGatewayStatus>;
-  }
-
-  async listLarkPendingPairings(workspaceId?: string): Promise<LocalCorePairingRequest[]> {
-    return this.listPendingPairings('lark', workspaceId) as Promise<LocalCorePairingRequest[]>;
-  }
-
-  async approveLarkPairing(code: string): Promise<LocalCoreAuthorizedUser> {
-    return this.approvePairing('lark', code) as Promise<LocalCoreAuthorizedUser>;
-  }
-
-  async rejectLarkPairing(code: string) {
-    return this.rejectPairing('lark', code);
-  }
-
-  async listLarkAuthorizedUsers(workspaceId?: string): Promise<LocalCoreAuthorizedUser[]> {
-    return this.listAuthorizedUsers('lark', workspaceId) as Promise<LocalCoreAuthorizedUser[]>;
-  }
-
-  async getLarkQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
-    return this.getQrCode('lark', workspaceId, instanceId);
-  }
-
-  async checkLarkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> {
-    return this.checkQrCodeStatus('lark', workspaceId, ticket, instanceId) as Promise<LocalCoreLarkQrCodeStatus>;
   }
 
   async refreshBindings() {
