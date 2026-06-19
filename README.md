@@ -96,6 +96,7 @@ flowchart LR
 
 ### 2026-06-19
 
+- 发布 AgentDock 0.1.55。
 - Lark/Feishu 收到的普通文件改为流式下载到工作区 `.agentdock/channel-uploads/lark/<instanceId>/`，并以本地路径传给 Agent，避免整文件读入内存并转换为 Base64；可通过平台选项 `downloads_dir` 覆盖目录。
 
 ### 2026-06-15
