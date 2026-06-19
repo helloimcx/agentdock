@@ -96,7 +96,7 @@ export class LocalCoreAcpStore {
     this.modelProviders = new LocalModelProviderStore(this.db);
     this.external = new LocalExternalStore(this.db);
     ensureLocalCoreAcpSchema(this.db);
-    this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath, runtimeDir, resolveLegacyConfigPaths(runtimeDir));
+    this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath, resolveLegacyConfigPaths(runtimeDir));
   }
 
   close() {
