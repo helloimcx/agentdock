@@ -10,11 +10,12 @@ Channel gateway 负责把平台消息转换成 Local AI Core 的统一 channel c
 | Weixin gateway | `services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.ts` | 微信登录状态、长轮询入口、消息去重、分段回传、文件发送。 |
 | Shared content | `services/local-ai-core/src/channel/shared/content.ts` | 将平台 inbound parts 封装成 thread message input。 |
 | Shared file utils | `services/local-ai-core/src/channel/shared/file-utils.ts` | 统一准备 outbound 文件发送。 |
+| Inbound attachment store | `services/local-ai-core/src/channel/shared/inbound-attachment-store.ts` | 接收平台 Source 提供的可读流，统一完成限额、安全命名、临时文件清理和原子落盘。 |
 | Channel contracts | `packages/contracts/src/index.ts` | `ChannelInboundMessageContent`、`ChannelOutboundMessageInput`、`ChannelRoute` 等共享契约。 |
 
 ## Inbound 消息流程
 
-Lark/Feishu 普通文件使用流式下载，默认落到工作区 `.agentdock/channel-uploads/lark/<instanceId>/`，再通过 `ChannelInboundContentPart.path` 交给 ACP。平台配置的 `downloads_dir` 可覆盖该目录；相对路径以工作区根目录为基准。图片仍保留多模态 Base64 数据形式。
+Lark/Feishu 与微信分别负责平台 API、鉴权参数和解密流，公共 `InboundAttachmentStore` 只负责持久化。Lark/Feishu 普通文件默认落到工作区 `.agentdock/channel-uploads/lark/<instanceId>/`，再通过 `ChannelInboundContentPart.path` 交给 ACP。平台配置的 `downloads_dir` 可覆盖该目录；相对路径以工作区根目录为基准。图片通过 `data` 保留多模态 Base64 数据；当落盘位置对 Agent 可见时，还通过 `uri` 暴露本地或沙箱内路径。
 
 ```mermaid
 flowchart TD

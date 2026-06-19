@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
 import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../services/local-ai-core/src/channel/lark/cards.js';
 import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
@@ -1228,6 +1229,7 @@ test('lark permission requests fall back to text commands when card actions are 
 
 test('lark image messages are downloaded and forwarded as generic channel image parts', async () => {
   const sentMessages: any[] = [];
+  const tempDir = mkdtempSync(join(tmpdir(), 'lark-image-receive-'));
   const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const client = {
     im: {
@@ -1284,6 +1286,7 @@ test('lark image messages are downloaded and forwarded as generic channel image 
       }],
     }) as any,
     getWorkspaceRouter: () => ({
+      getWorkspaceRegistryEntry: async () => ({ path: tempDir }),
       getThreadSessionKey: (threadId: string) => `session:${threadId}`,
       sendThreadMessage: async (threadId: string, content: any) => {
         sentMessages.push({ threadId, content });
@@ -1322,6 +1325,10 @@ test('lark image messages are downloaded and forwarded as generic channel image 
   assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'image']);
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'image/png');
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, pngBytes.toString('base64'));
+  const imagePath = join(tempDir, '.agentdock', 'channel-uploads', 'lark', 'default', 'msg-image-1-img-key-1.png');
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.uri, pathToFileURL(imagePath).href);
+  assert.deepEqual(readFileSync(imagePath), pngBytes);
+  rmSync(tempDir, { recursive: true, force: true });
 });
 
 test('lark file messages are downloaded and forwarded as generic channel file parts', async () => {
@@ -1429,6 +1436,56 @@ test('lark file messages are downloaded and forwarded as generic channel file pa
   );
   assert.deepEqual(readFileSync(sentMessages[0]?.content?.contentParts?.[1]?.path), fileBytes);
   rmSync(tempDir, { recursive: true, force: true });
+});
+
+test('lark file messages are not downloaded before the sender is authorized', async () => {
+  let resourceDownloads = 0;
+  let inboundMessage: any;
+  const gateway = new LocalCoreLarkGateway({
+    store: {
+      getAuthorizedUser: () => undefined,
+    } as any,
+    readConfig: async () => null,
+    getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internals = gateway as any;
+  internals.runtime.set('default', {
+    workspaceId: 'default',
+    enabled: true,
+    status: 'running',
+    connected: true,
+    autoApprove: false,
+    client: {
+      im: {
+        messageResource: {
+          get: async () => {
+            resourceDownloads += 1;
+            throw new Error('should not download');
+          },
+        },
+      },
+    },
+  });
+  internals.handleInboundMessage = async (message: any) => {
+    inboundMessage = message;
+  };
+
+  await internals.handleMessageEvent('default', {
+    event: {
+      sender: { sender_id: { user_id: 'user-1' } },
+      message: {
+        message_id: 'msg-file-unauthorized',
+        message_type: 'file',
+        chat_id: 'chat-1',
+        content: JSON.stringify({ file_key: 'file-key-1', file_name: 'private.pdf' }),
+      },
+    },
+  });
+
+  assert.equal(resourceDownloads, 0);
+  assert.equal(inboundMessage.text, '[File: private.pdf]');
+  assert.deepEqual(inboundMessage.contentParts, [{ type: 'text', text: '[File: private.pdf]' }]);
 });
 
 test('lark group text messages strip the bot mention before dispatching', async () => {

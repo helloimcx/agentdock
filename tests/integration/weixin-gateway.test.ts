@@ -1,9 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import crypto from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
+
+test('weixin inbound attachment source streams AES-decrypted files into the shared store', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'weixin-file-receive-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    const plaintext = Buffer.from('%PDF streamed file');
+    const aesKey = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-128-ecb', aesKey, null);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    globalThis.fetch = (async () => new Response(encrypted)) as typeof fetch;
+    const gateway = new LocalCoreWeixinGateway({
+      store: {} as any,
+      readConfig: async () => null,
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+    });
+
+    const downloaded = await (gateway as any).downloadMediaItem({
+      type: 4,
+      file_item: {
+        file_name: 'report.pdf',
+        aeskey: aesKey.toString('hex'),
+        media: { encrypt_query_param: 'download-token' },
+      },
+    }, 'msg-1', 0, tempDir, { cdnBaseUrl: 'https://weixin.example' });
+
+    assert.equal(downloaded.kind, 'file');
+    assert.deepEqual(readFileSync(downloaded.path), plaintext);
+    assert.equal(downloaded.data, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 test('weixin channel can encrypt, upload, and send a local file', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'weixin-file-send-'));
@@ -405,6 +441,7 @@ test('weixin downloaded file attachment becomes a structured file content part',
 test('weixin downloaded image attachment keeps image data content part', () => {
   const part = createWeixinAttachmentContentPart({
     path: '/tmp/image.png',
+    uri: pathToFileURL('/tmp/image.png').href,
     kind: 'image',
     name: 'image.png',
     data: 'aW1n',
@@ -414,6 +451,7 @@ test('weixin downloaded image attachment keeps image data content part', () => {
   assert.deepEqual(part, {
     type: 'image',
     data: 'aW1n',
+    uri: pathToFileURL('/tmp/image.png').href,
     mimeType: 'image/png',
     fileName: 'image.png',
   });

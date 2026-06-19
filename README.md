@@ -96,6 +96,7 @@ flowchart LR
 
 ### 2026-06-19
 
+- Lark/Feishu 与微信 channel 共用流式 inbound 附件存储接口，统一执行安全命名、大小限制、临时文件清理和原子落盘；微信文件下载改为流式 AES 解密，图片同时保留 Agent 可访问的落盘 URI（如适用）与多模态 Base64 数据。
 - 发布 AgentDock 0.1.55。
 - Lark/Feishu 收到的普通文件改为流式下载到工作区 `.agentdock/channel-uploads/lark/<instanceId>/`，并以本地路径传给 Agent，避免整文件读入内存并转换为 Base64；可通过平台选项 `downloads_dir` 覆盖目录。
 

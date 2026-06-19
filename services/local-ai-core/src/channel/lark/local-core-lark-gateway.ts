@@ -1,9 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { extname, isAbsolute, join, resolve } from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import type {
   ChannelFileSendInput,
   ChannelFileSendResult,
@@ -30,6 +28,7 @@ import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-er
 import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
+import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
@@ -87,6 +86,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   private readonly mirrorPermissionStateInMainCard = false;
   private larkModulePromise: Promise<LarkModule> | null = null;
   private readonly emptyRenderLogWindows = new Map<string, number>();
+  private readonly inboundAttachmentStore = new FileSystemInboundAttachmentStore();
   readonly platform = 'lark';
 
   constructor(options: LocalCoreLarkGatewayOptions) {
@@ -790,6 +790,10 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       displayName,
       messageId,
     } = normalized.message;
+    const mayMaterializeAttachments = Boolean(
+      runtimeState?.autoApprove
+      || this.options.store.getAuthorizedUser(workspaceId, platformUserId, platformKey),
+    );
     const contentParts: ChannelInboundContentPart[] = [];
     if (text) {
       contentParts.push({ type: 'text', text });
@@ -797,30 +801,39 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     if (messageType === 'image') {
       const imageKey = String(parsedContent.image_key || parsedContent.file_key || '').trim();
       if (imageKey) {
-        try {
-          contentParts.push(await this.downloadMessageImage(workspaceId, String(message.message_id || ''), imageKey, instanceId));
-        } catch (error) {
-          const errorText = `[Image download failed: ${error instanceof Error ? error.message : String(error)}]`;
-          contentParts.push({ type: 'text', text: errorText });
-          this.options.log?.(`localcore-lark image download failed for ${workspaceId}: message=${String(message.message_id || '')} imageKey=${imageKey} error=${error instanceof Error ? error.message : String(error)}`);
+        if (!mayMaterializeAttachments) {
+          contentParts.push({ type: 'text', text: '[Image]' });
+        } else {
+          try {
+            contentParts.push(await this.downloadMessageImage(workspaceId, String(message.message_id || ''), imageKey, instanceId));
+          } catch (error) {
+            const errorText = `[Image download failed: ${error instanceof Error ? error.message : String(error)}]`;
+            contentParts.push({ type: 'text', text: errorText });
+            this.options.log?.(`localcore-lark image download failed for ${workspaceId}: message=${String(message.message_id || '')} imageKey=${imageKey} error=${error instanceof Error ? error.message : String(error)}`);
+          }
         }
       }
     }
     if (messageType === 'file') {
       const fileKey = String(parsedContent.file_key || '').trim();
       if (fileKey) {
-        try {
-          contentParts.push(await this.downloadMessageFile(
-            workspaceId,
-            String(message.message_id || ''),
-            fileKey,
-            String(parsedContent.file_name || parsedContent.name || '').trim(),
-            instanceId,
-          ));
-        } catch (error) {
-          const errorText = `[File download failed: ${error instanceof Error ? error.message : String(error)}]`;
-          contentParts.push({ type: 'text', text: errorText });
-          this.options.log?.(`localcore-lark file download failed for ${workspaceId}: message=${String(message.message_id || '')} fileKey=${fileKey} error=${error instanceof Error ? error.message : String(error)}`);
+        if (!mayMaterializeAttachments) {
+          const inboundFileName = String(parsedContent.file_name || parsedContent.name || '').trim();
+          contentParts.push({ type: 'text', text: inboundFileName ? `[File: ${inboundFileName}]` : '[File]' });
+        } else {
+          try {
+            contentParts.push(await this.downloadMessageFile(
+              workspaceId,
+              String(message.message_id || ''),
+              fileKey,
+              String(parsedContent.file_name || parsedContent.name || '').trim(),
+              instanceId,
+            ));
+          } catch (error) {
+            const errorText = `[File download failed: ${error instanceof Error ? error.message : String(error)}]`;
+            contentParts.push({ type: 'text', text: errorText });
+            this.options.log?.(`localcore-lark file download failed for ${workspaceId}: message=${String(message.message_id || '')} fileKey=${fileKey} error=${error instanceof Error ? error.message : String(error)}`);
+          }
         }
       }
     }
@@ -851,25 +864,44 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     if (!messageId) {
       throw new Error('Lark image message is missing message_id');
     }
-    const resource = await state.client.im.messageResource.get({
-      path: {
-        message_id: messageId,
-        file_key: imageKey,
-      },
-      params: {
-        type: 'image',
+    const downloadsDir = await this.resolveInboundDownloadsDir(workspaceId, instanceId, state.downloadsDir);
+    const stored = await this.inboundAttachmentStore.save({
+      directory: downloadsDir,
+      storedFileName: `${messageId}-${imageKey}`,
+      displayFileName: imageKey,
+      maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
+      includeBase64: true,
+      finalizeStoredFileName: ({ storedFileName, prefix }) => `${storedFileName}.${this.sniffImageExtension(prefix)}`,
+      source: {
+        open: async () => {
+          const resource = await state.client.im.messageResource.get({
+            path: {
+              message_id: messageId,
+              file_key: imageKey,
+            },
+            params: {
+              type: 'image',
+            },
+          });
+          const stream = resource?.getReadableStream?.();
+          if (!stream || typeof stream.pipe !== 'function') {
+            throw new Error('Lark image resource did not provide a readable stream');
+          }
+          return {
+            stream,
+            mimeType: this.extractHeaderMimeType(resource?.headers),
+          };
+        },
       },
     });
-    const buffer = await this.readLarkResourceBuffer(resource);
-    if (buffer.length === 0) {
-      throw new Error('Lark image resource is empty');
-    }
-    const headerMime = this.extractHeaderMimeType(resource?.headers);
+    const extension = extname(stored.path).slice(1) || 'bin';
+    const uri = await this.resolveInboundAttachmentUri(workspaceId, stored.path, instanceId);
     return {
       type: 'image',
-      data: buffer.toString('base64'),
-      mimeType: headerMime || this.sniffImageMimeType(buffer),
-      fileName: `${imageKey}.${this.sniffImageExtension(buffer)}`,
+      data: stored.data || '',
+      ...(uri ? { uri } : {}),
+      mimeType: stored.mimeType || this.sniffImageMimeType(stored.prefix),
+      fileName: `${imageKey}.${extension}`,
     };
   }
 
@@ -882,41 +914,40 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       throw new Error('Lark file message is missing message_id');
     }
     const downloadsDir = await this.resolveInboundDownloadsDir(workspaceId, instanceId, state.downloadsDir);
-    const storedFileName = `${this.safeInboundFilePart(messageId, 'message')}-${this.safeInboundFilePart(fileName || fileKey, 'file')}`;
-    const filePath = join(downloadsDir, storedFileName);
-    const temporaryPath = `${filePath}.${randomUUID()}.part`;
-    const resource = await state.client.im.messageResource.get({
-      path: {
-        message_id: messageId,
-        file_key: fileKey,
-      },
-      params: {
-        type: 'file',
+    const displayFileName = fileName || fileKey;
+    const stored = await this.inboundAttachmentStore.save({
+      directory: downloadsDir,
+      storedFileName: `${messageId}-${displayFileName}`,
+      displayFileName,
+      maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
+      source: {
+        open: async () => {
+          const resource = await state.client.im.messageResource.get({
+            path: {
+              message_id: messageId,
+              file_key: fileKey,
+            },
+            params: {
+              type: 'file',
+            },
+          });
+          const stream = resource?.getReadableStream?.();
+          if (!stream || typeof stream.pipe !== 'function') {
+            throw new Error('Lark file resource did not provide a readable stream');
+          }
+          return {
+            stream,
+            mimeType: this.extractHeaderMimeType(resource?.headers) || 'application/octet-stream',
+          };
+        },
       },
     });
-    const readable = resource?.getReadableStream?.();
-    if (!readable || typeof readable.pipe !== 'function') {
-      throw new Error('Lark file resource did not provide a readable stream');
-    }
-    await mkdir(downloadsDir, { recursive: true });
-    try {
-      await pipeline(readable, createWriteStream(temporaryPath, { flags: 'wx' }));
-      const temporaryStat = await stat(temporaryPath);
-      if (temporaryStat.size === 0) {
-        throw new Error('Lark file resource is empty');
-      }
-      await rename(temporaryPath, filePath);
-    } catch (error) {
-      await rm(temporaryPath, { force: true }).catch(() => undefined);
-      throw error;
-    }
-    const fileStat = await stat(filePath);
     return {
       type: 'file',
-      path: filePath,
-      mimeType: this.extractHeaderMimeType(resource?.headers) || 'application/octet-stream',
-      fileName: fileName || fileKey,
-      size: fileStat.size,
+      path: stored.path,
+      fileName: stored.fileName,
+      mimeType: stored.mimeType,
+      size: stored.size,
     };
   }
 
@@ -934,10 +965,25 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       : join(workspace.path, '.agentdock', 'channel-uploads', 'lark', instanceId);
   }
 
-  private safeInboundFilePart(value: string, fallback: string) {
-    return String(value || fallback)
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .slice(0, 120) || fallback;
+  private async resolveInboundAttachmentUri(workspaceId: string, filePath: string, instanceId = 'default') {
+    const binding = await this.getBinding(workspaceId, instanceId).catch(() => undefined);
+    if (!binding) {
+      return undefined;
+    }
+    const sandbox = binding.project.agent?.options?.sandbox;
+    if (!sandbox?.enabled) {
+      return resolveInboundAttachmentUri({ filePath });
+    }
+    const workspace = await this.options.getWorkspaceRouter().getWorkspaceRegistryEntry(workspaceId).catch(() => undefined);
+    if (!workspace) {
+      return undefined;
+    }
+    return resolveInboundAttachmentUri({
+      filePath,
+      workspacePath: workspace.path,
+      sandboxEnabled: true,
+      sandboxWorkspacePath: sandbox.workspace_mount_path,
+    });
   }
 
   private summarizeInboundContentParts(parts: ChannelInboundContentPart[]) {
@@ -961,22 +1007,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       .filter(Boolean)
       .join('\n');
     return attachmentSummary;
-  }
-
-  private async readLarkResourceBuffer(resource: any): Promise<Buffer> {
-    const readable = resource?.getReadableStream?.();
-    if (!readable || typeof readable.on !== 'function') {
-      throw new Error('Lark resource did not provide a readable stream');
-    }
-    const chunks: Buffer[] = [];
-    await new Promise<void>((resolve, reject) => {
-      readable.on('data', (chunk: Buffer | Uint8Array | string) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      readable.on('error', reject);
-      readable.on('end', resolve);
-    });
-    return Buffer.concat(chunks);
   }
 
   private extractHeaderMimeType(headers: unknown) {

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 import type {
   ChannelFileSendInput,
   ChannelFileSendResult,
@@ -24,6 +25,7 @@ import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desk
 import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
+import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
@@ -160,6 +162,7 @@ export type WeixinDownloadedMedia = {
   name: string;
   data?: string;
   mimeType?: string;
+  uri?: string;
 };
 
 export function createWeixinAttachmentContentPart(att: WeixinDownloadedMedia): ChannelInboundContentPart | null {
@@ -168,6 +171,7 @@ export function createWeixinAttachmentContentPart(att: WeixinDownloadedMedia): C
     return {
       type: 'image',
       data: att.data,
+      ...(att.uri ? { uri: att.uri } : {}),
       mimeType: att.mimeType,
       fileName: att.name,
     };
@@ -209,6 +213,7 @@ function renderBridgeContentForWeixin(event: DesktopBridgeEvent): string {
 export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeState, WeixinWorkspaceBinding, WeixinThreadRoute, WeixinTurnState> {
   private readonly processedInboundMessages = new Map<string, number>();
   private readonly pollErrorLogWindows = new Map<string, { at: number; count: number; errorKey: string }>();
+  private readonly inboundAttachmentStore = new FileSystemInboundAttachmentStore();
   readonly platform = 'weixin';
 
   constructor(options: LocalCoreWeixinGatewayOptions) {
@@ -877,7 +882,16 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
           const attachmentParts: ChannelInboundContentPart[] = [];
           if (mediaItems.length > 0) {
             const uploadsDir = path.join(binding.stateDir, 'weixin-uploads');
+            const mayMaterializeAttachments = binding.allowFrom === '*'
+              || Boolean(this.options.store.getAuthorizedUser(binding.workspaceId, conversationId, binding.platformKey));
             for (const [idx, item] of mediaItems.entries()) {
+              const itemData = item.image_item ?? item.file_item ?? null;
+              const declaredName = String(itemData?.file_name ?? (item.type === IMAGE_ITEM_TYPE ? 'image' : 'file'));
+              if (!mayMaterializeAttachments) {
+                attachmentText += attachmentText ? '\n' : '';
+                attachmentText += item.type === IMAGE_ITEM_TYPE ? '[Image]' : `[File: ${declaredName}]`;
+                continue;
+              }
               try {
                 const att = await this.downloadMediaItem(item, msgId, idx, uploadsDir, binding);
                 if (att) {
@@ -1088,36 +1102,56 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     }
 
     const cdnUrl = `${binding.cdnBaseUrl}/download?encrypted_query_param=${encodeURIComponent(encryptQueryParam)}`;
-    const resp = await fetch(cdnUrl, { signal: AbortSignal.timeout(30_000) });
-    if (!resp.ok) throw new Error(`CDN HTTP ${resp.status}`);
-    const rawBuf = Buffer.from(await resp.arrayBuffer());
-    if (rawBuf.length === 0) throw new Error('CDN returned empty data');
-
-    let resultBuf: Buffer;
-    if (aesKey) {
-      const decipher = crypto.createDecipheriv('aes-128-ecb', aesKey, null);
-      decipher.setAutoPadding(true);
-      resultBuf = Buffer.concat([decipher.update(rawBuf), decipher.final()]);
-    } else {
-      resultBuf = rawBuf;
-    }
-
-    const { ext, kind } = this.sniffExtAndKind(resultBuf);
     const declaredName = String(itemData?.file_name ?? (item.type === IMAGE_ITEM_TYPE ? 'image' : 'file'));
-    const safeName = declaredName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
-    const safeMsgId = msgId.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48);
-    const fileName = `${safeMsgId}-${idx}-${safeName}${ext}`;
-    const filePath = path.join(uploadsDir, fileName);
-
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    fs.writeFileSync(filePath, resultBuf);
+    const stored = await this.inboundAttachmentStore.save({
+      directory: uploadsDir,
+      storedFileName: `${msgId}-${idx}-${declaredName}`,
+      displayFileName: declaredName,
+      maxBytes: WEIXIN_MAX_UPLOAD_FILE_SIZE,
+      includeBase64: ({ prefix }) => this.sniffExtAndKind(prefix).kind === 'image',
+      finalizeStoredFileName: ({ storedFileName, prefix }) => `${storedFileName}${this.sniffExtAndKind(prefix).ext}`,
+      source: {
+        open: async () => {
+          const resp = await fetch(cdnUrl, { signal: AbortSignal.timeout(30_000) });
+          if (!resp.ok) throw new Error(`CDN HTTP ${resp.status}`);
+          if (!resp.body) throw new Error('CDN returned no response body');
+          const rawStream = Readable.fromWeb(resp.body as any);
+          if (!aesKey) {
+            return { stream: rawStream };
+          }
+          const decipher = crypto.createDecipheriv('aes-128-ecb', aesKey, null);
+          decipher.setAutoPadding(true);
+          return { stream: rawStream.pipe(decipher) };
+        },
+      },
+    });
+    const { ext, kind } = this.sniffExtAndKind(stored.prefix);
+    const uri = await this.resolveInboundAttachmentUri(binding, stored.path);
     return {
-      path: filePath,
+      path: stored.path,
       kind,
       name: declaredName,
-      data: kind === 'image' ? resultBuf.toString('base64') : undefined,
+      data: stored.data,
       mimeType: kind === 'image' ? this.mimeTypeForImageExt(ext) : undefined,
+      ...(uri ? { uri } : {}),
     };
+  }
+
+  private async resolveInboundAttachmentUri(binding: WeixinWorkspaceBinding, filePath: string) {
+    const sandbox = binding.project?.agent?.options?.sandbox;
+    if (!sandbox?.enabled) {
+      return resolveInboundAttachmentUri({ filePath });
+    }
+    const workspace = await this.options.getWorkspaceRouter().getWorkspaceRegistryEntry(binding.workspaceId).catch(() => undefined);
+    if (!workspace) {
+      return undefined;
+    }
+    return resolveInboundAttachmentUri({
+      filePath,
+      workspacePath: workspace.path,
+      sandboxEnabled: true,
+      sandboxWorkspacePath: sandbox.workspace_mount_path,
+    });
   }
 
   private mimeTypeForImageExt(ext: string) {
