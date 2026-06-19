@@ -41,7 +41,8 @@ import {
   renderPendingPairingCard,
   renderPermissionCard,
 } from './cards.js';
-import { channelPlatformKey, collectLarkWorkspaceBindings, runtimeKey } from './config.js';
+import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
+import { collectLarkWorkspaceBindings } from './config.js';
 import {
   DEFAULT_LARK_QR_EXPIRES_IN,
   getLarkOpenBase,

@@ -27,14 +27,13 @@ import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-uti
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
+import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import {
-  channelPlatformKey,
   collectWeixinWorkspaceBindings,
   getWeixinBufPath,
   loadWeixinBuf,
-  runtimeKey,
   saveWeixinBuf,
   saveWeixinCredentials,
 } from './config.js';
