@@ -202,6 +202,7 @@ export function normalizePlatformDraft(platform: DesktopPlatformConfig): Desktop
         instance_id: String(options.instance_id || '').trim(),
         app_id: String(options.app_id || '').trim(),
         app_secret: String(options.app_secret || '').trim(),
+        downloads_dir: String(options.downloads_dir || '').trim(),
         card_actions: options.card_actions === true,
       },
     };

@@ -23,6 +23,7 @@ export type LarkWorkspaceBinding = {
   autoApprove: boolean;
   cardActionsEnabled: boolean;
   groupReplyAll: boolean;
+  downloadsDir?: string;
   botOpenId?: string;
   brand: 'feishu' | 'lark';
   enabled: boolean;
@@ -41,6 +42,7 @@ export type LarkRuntimeState = {
   autoApprove: boolean;
   cardActionsEnabled: boolean;
   groupReplyAll: boolean;
+  downloadsDir?: string;
   botOpenId?: string;
   lastError?: string;
   lastErrorInfo?: LocalCoreErrorInfo;

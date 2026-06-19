@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -1326,6 +1326,7 @@ test('lark image messages are downloaded and forwarded as generic channel image 
 
 test('lark file messages are downloaded and forwarded as generic channel file parts', async () => {
   const sentMessages: any[] = [];
+  const tempDir = mkdtempSync(join(tmpdir(), 'lark-file-receive-'));
   const fileBytes = Buffer.from('file content');
   const client = {
     im: {
@@ -1382,6 +1383,7 @@ test('lark file messages are downloaded and forwarded as generic channel file pa
       }],
     }) as any,
     getWorkspaceRouter: () => ({
+      getWorkspaceRegistryEntry: async () => ({ path: tempDir }),
       getThreadSessionKey: (threadId: string) => `session:${threadId}`,
       sendThreadMessage: async (threadId: string, content: any) => {
         sentMessages.push({ threadId, content });
@@ -1419,8 +1421,14 @@ test('lark file messages are downloaded and forwarded as generic channel file pa
   assert.match(sentMessages[0]?.content?.displayText, /\[User Message\]\n\[File: report\.pdf\]\n\[\/User Message\]/);
   assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'file']);
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'application/pdf');
-  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, fileBytes.toString('base64'));
+  assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, undefined);
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.fileName, 'report.pdf');
+  assert.equal(
+    sentMessages[0]?.content?.contentParts?.[1]?.path,
+    join(tempDir, '.agentdock', 'channel-uploads', 'lark', 'default', 'msg-file-in-1-report.pdf'),
+  );
+  assert.deepEqual(readFileSync(sentMessages[0]?.content?.contentParts?.[1]?.path), fileBytes);
+  rmSync(tempDir, { recursive: true, force: true });
 });
 
 test('lark group text messages strip the bot mention before dispatching', async () => {

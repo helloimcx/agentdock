@@ -784,6 +784,17 @@ export default function DesktopWorkspace() {
                   }
                 />
                 <Input
+                  label="Downloads directory"
+                  value={String(platformDialog.draft.options?.downloads_dir || '')}
+                  onChange={(event) =>
+                    updatePlatformDialogDraft((platform) => ({
+                      ...platform,
+                      options: { ...(platform.options || {}), downloads_dir: event.target.value },
+                    }))
+                  }
+                  placeholder=".agentdock/channel-uploads/lark/<instanceId>"
+                />
+                <Input
                   label="Verification token"
                   value={String(platformDialog.draft.options?.verification_token || '')}
                   onChange={(event) =>

@@ -14,6 +14,8 @@ Channel gateway 负责把平台消息转换成 Local AI Core 的统一 channel c
 
 ## Inbound 消息流程
 
+Lark/Feishu 普通文件使用流式下载，默认落到工作区 `.agentdock/channel-uploads/lark/<instanceId>/`，再通过 `ChannelInboundContentPart.path` 交给 ACP。平台配置的 `downloads_dir` 可覆盖该目录；相对路径以工作区根目录为基准。图片仍保留多模态 Base64 数据形式。
+
 ```mermaid
 flowchart TD
   Platform["Lark / 微信平台事件"] --> Gateway["ChannelRuntime.handleInboundMessage"]

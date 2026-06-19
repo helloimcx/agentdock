@@ -1,7 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { extname } from 'node:path';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { extname, isAbsolute, join, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import type {
   ChannelFileSendInput,
   ChannelFileSendResult,
@@ -680,6 +682,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       autoApprove: binding.autoApprove,
       cardActionsEnabled: binding.cardActionsEnabled,
       groupReplyAll: binding.groupReplyAll,
+      downloadsDir: binding.downloadsDir,
       botOpenId: binding.botOpenId,
     };
     this.runtime.set(key, status);
@@ -878,6 +881,10 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     if (!messageId) {
       throw new Error('Lark file message is missing message_id');
     }
+    const downloadsDir = await this.resolveInboundDownloadsDir(workspaceId, instanceId, state.downloadsDir);
+    const storedFileName = `${this.safeInboundFilePart(messageId, 'message')}-${this.safeInboundFilePart(fileName || fileKey, 'file')}`;
+    const filePath = join(downloadsDir, storedFileName);
+    const temporaryPath = `${filePath}.${randomUUID()}.part`;
     const resource = await state.client.im.messageResource.get({
       path: {
         message_id: messageId,
@@ -887,17 +894,50 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         type: 'file',
       },
     });
-    const buffer = await this.readLarkResourceBuffer(resource);
-    if (buffer.length === 0) {
-      throw new Error('Lark file resource is empty');
+    const readable = resource?.getReadableStream?.();
+    if (!readable || typeof readable.pipe !== 'function') {
+      throw new Error('Lark file resource did not provide a readable stream');
     }
+    await mkdir(downloadsDir, { recursive: true });
+    try {
+      await pipeline(readable, createWriteStream(temporaryPath, { flags: 'wx' }));
+      const temporaryStat = await stat(temporaryPath);
+      if (temporaryStat.size === 0) {
+        throw new Error('Lark file resource is empty');
+      }
+      await rename(temporaryPath, filePath);
+    } catch (error) {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
+    const fileStat = await stat(filePath);
     return {
       type: 'file',
-      data: buffer.toString('base64'),
+      path: filePath,
       mimeType: this.extractHeaderMimeType(resource?.headers) || 'application/octet-stream',
       fileName: fileName || fileKey,
-      size: buffer.length,
+      size: fileStat.size,
     };
+  }
+
+  private async resolveInboundDownloadsDir(workspaceId: string, instanceId = 'default', runtimeDownloadsDir?: string) {
+    const binding = runtimeDownloadsDir === undefined
+      ? await this.getBinding(workspaceId, instanceId)
+      : undefined;
+    const configuredDir = String(runtimeDownloadsDir ?? binding?.downloadsDir ?? '').trim();
+    if (configuredDir && isAbsolute(configuredDir)) {
+      return configuredDir;
+    }
+    const workspace = await this.options.getWorkspaceRouter().getWorkspaceRegistryEntry(workspaceId);
+    return configuredDir
+      ? resolve(workspace.path, configuredDir)
+      : join(workspace.path, '.agentdock', 'channel-uploads', 'lark', instanceId);
+  }
+
+  private safeInboundFilePart(value: string, fallback: string) {
+    return String(value || fallback)
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .slice(0, 120) || fallback;
   }
 
   private summarizeInboundContentParts(parts: ChannelInboundContentPart[]) {
@@ -1079,6 +1119,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       autoApprove: binding.autoApprove,
       cardActionsEnabled: binding.cardActionsEnabled,
       groupReplyAll: binding.groupReplyAll,
+      downloadsDir: binding.downloadsDir,
       botOpenId: binding.botOpenId,
     };
   }

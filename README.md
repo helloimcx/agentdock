@@ -94,6 +94,10 @@ flowchart LR
 
 ## New
 
+### 2026-06-19
+
+- Lark/Feishu 收到的普通文件改为流式下载到工作区 `.agentdock/channel-uploads/lark/<instanceId>/`，并以本地路径传给 Agent，避免整文件读入内存并转换为 Base64；可通过平台选项 `downloads_dir` 覆盖目录。
+
 ### 2026-06-15
 
 - Local AI Core 项目配置从 `runtime/config.toml` 迁移到 `runtime/local-core.db` 的 SQLite 持久化存储；旧 TOML 会在首次读取时导入，但后续不再回写。
