@@ -64,6 +64,21 @@ import type {
   WeixinTurnState,
   WeixinWorkspaceBinding,
 } from './types.js';
+import {
+  consumeWeixinBridgeEvent,
+  createWeixinTurnState,
+  getOrCreateWeixinTurnState,
+  isTerminalWeixinBridgeMessage,
+  renderWeixinTurnText,
+} from './runtime-state.js';
+import {
+  formatWeixinError,
+  splitTextByUtf8Bytes,
+  stripWeixinHtml,
+  truncateTextByUtf8Bytes,
+  utf8ByteLength,
+  waitForWeixinRetry,
+} from './text-utils.js';
 
 // ==================== Constants ====================
 
@@ -82,79 +97,6 @@ const WEIXIN_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 const ERROR_LOG_WINDOW_MS = 5 * 60 * 1000;
 
 // ==================== Utilities ====================
-
-function stripHtml(html: string): string {
-  let result = html;
-  let prev: string;
-  do {
-    prev = result;
-    result = result.replace(/<[^>]*>/g, '');
-  } while (result !== prev);
-  return result.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
-}
-
-function formatError(err: unknown): string {
-  if (err instanceof Error) {
-    const cause = (err as Error & { cause?: unknown }).cause;
-    return cause !== undefined ? `${err.message}: ${String(cause)}` : err.message;
-  }
-  return String(err);
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    const onAbort = () => { clearTimeout(t); reject(new Error('aborted')); };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-function utf8ByteLength(value: string): number {
-  return Buffer.byteLength(value, 'utf-8');
-}
-
-function splitTextByUtf8Bytes(text: string, maxBytes: number): string[] {
-  const normalized = String(text || '').replace(/\r\n/g, '\n').trim();
-  if (!normalized) return [];
-  if (utf8ByteLength(normalized) <= maxBytes) return [normalized];
-
-  const chunks: string[] = [];
-  let current = '';
-  const pushCurrent = () => {
-    const trimmed = current.trim();
-    if (trimmed) chunks.push(trimmed);
-    current = '';
-  };
-  const appendPart = (part: string) => {
-    if (!part.trim()) return;
-    const separator = current ? '\n\n' : '';
-    if (current && utf8ByteLength(`${current}${separator}${part}`) <= maxBytes) {
-      current = `${current}${separator}${part}`;
-      return;
-    }
-    if (current) pushCurrent();
-    if (utf8ByteLength(part) <= maxBytes) {
-      current = part;
-      return;
-    }
-
-    let segment = '';
-    for (const char of Array.from(part)) {
-      if (segment && utf8ByteLength(`${segment}${char}`) > maxBytes) {
-        chunks.push(segment);
-        segment = '';
-      }
-      segment += char;
-    }
-    current = segment;
-  };
-
-  for (const part of normalized.split(/\n{2,}/)) {
-    appendPart(part);
-  }
-  pushCurrent();
-  return chunks;
-}
 
 export type WeixinDownloadedMedia = {
   path: string;
@@ -181,31 +123,6 @@ export function createWeixinAttachmentContentPart(att: WeixinDownloadedMedia): C
     path: att.path,
     fileName: att.name,
   };
-}
-
-function truncateTextByUtf8Bytes(text: string, maxBytes: number): string {
-  const normalized = String(text || '').replace(/\r\n/g, '\n').trim();
-  if (utf8ByteLength(normalized) <= maxBytes) return normalized;
-
-  const suffix = '\n\n（内容过长，已截断以保证微信送达）';
-  const budget = Math.max(0, maxBytes - utf8ByteLength(suffix));
-  let result = '';
-  for (const char of Array.from(normalized)) {
-    if (utf8ByteLength(`${result}${char}`) > budget) break;
-    result += char;
-  }
-  return `${result.trim()}${suffix}`;
-}
-
-function renderBridgeContentForWeixin(event: DesktopBridgeEvent): string {
-  const toolCall = event.toolCall;
-  if (!toolCall) {
-    return String(event.content || '').trim();
-  }
-  const name = String(toolCall.name || '').trim() || 'Tool update';
-  const status = String(toolCall.status || '').trim();
-  if (name === 'Tool update' && status === 'completed') return '';
-  return [name, status].filter(Boolean).join(' - ');
 }
 
 // ==================== Gateway Class ====================
@@ -427,17 +344,17 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
         const bridgeThreadId = route.threadId || binding.thread_id;
         if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
 
-        const turn = this.getOrCreateTurnState(sessionKey);
+        const turn = getOrCreateWeixinTurnState(this.outboundTurns, sessionKey);
         if (event.replyCtx) {
           // WeChat doesn't support reply context; ignore
         }
-        this.consumeBridgeEvent(turn, event);
+        consumeWeixinBridgeEvent(turn, event);
         if (event.type !== 'reply' && event.type !== 'buttons' && event.type !== 'status') return;
 
-        const rendered = this.renderTurnText(turn);
+        const rendered = renderWeixinTurnText(turn);
         if (!rendered) return;
         if (rendered === turn.lastSentText) return;
-        const terminalMessage = this.isTerminalBridgeMessage(event, rendered);
+        const terminalMessage = isTerminalWeixinBridgeMessage(event, rendered);
         if (binding.last_platform_message_id && !terminalMessage && turn.sentCount >= WEIXIN_PROGRESS_SEND_BUDGET) {
           turn.foldedProgressCount += 1;
           this.options.log?.(`localcore-weixin folded progress for sessionKey=${sessionKey}: sent=${turn.sentCount} folded=${turn.foldedProgressCount}`);
@@ -458,7 +375,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
           turn.lastSentText = rendered;
           this.options.log?.(`localcore-weixin sent message for sessionKey=${sessionKey} type=${event.type} sent=${turn.sentCount}/${binding.last_platform_message_id ? WEIXIN_CONTEXT_SEND_LIMIT : 'unlimited'}`);
         } catch (error) {
-          this.options.log?.(`localcore-weixin send failed for sessionKey=${sessionKey}: ${formatError(error)}`);
+          this.options.log?.(`localcore-weixin send failed for sessionKey=${sessionKey}: ${formatWeixinError(error)}`);
         }
       })
       .finally(() => {
@@ -492,7 +409,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     const previousRoute = this.threadRouting.get(input.sessionKey);
     this.threadRouting.set(input.sessionKey, route);
     if (!this.outboundTurns.has(input.sessionKey)) {
-      this.createTurnState(input.sessionKey);
+      this.outboundTurns.set(input.sessionKey, createWeixinTurnState(input.sessionKey));
     }
     return () => {
       if (previousRoute) {
@@ -842,7 +759,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
             state.consecutiveFailures = consecutiveFailures;
             state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
           }
-          await sleep(retryDelayMs, signal);
+          await waitForWeixinRetry(retryDelayMs, signal);
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             consecutiveFailures = MAX_CONSECUTIVE_FAILURES;
           }
@@ -901,7 +818,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
                   if (part) attachmentParts.push(part);
                 }
               } catch (dlErr) {
-                this.options.log?.(`localcore-weixin attachment download failed (${conversationId}#${idx}): ${formatError(dlErr)}`);
+                this.options.log?.(`localcore-weixin attachment download failed (${conversationId}#${idx}): ${formatWeixinError(dlErr)}`);
               }
             }
           }
@@ -938,10 +855,10 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
         }
         this.logPollError(
           binding,
-          formatError(err),
-          `localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}): ${formatError(err)}`,
+          formatWeixinError(err),
+          `localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}): ${formatWeixinError(err)}`,
         );
-        await sleep(retryDelayMs, signal);
+        await waitForWeixinRetry(retryDelayMs, signal);
       }
     }
   }
@@ -956,7 +873,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     options: { clientId?: string; final?: boolean } = {},
   ): Promise<void> {
     const binding = await this.getBinding(state.workspaceId);
-    const stripped = stripHtml(text);
+    const stripped = stripWeixinHtml(text);
     const chunks = contextToken
       ? [truncateTextByUtf8Bytes(stripped, WEIXIN_CONTEXT_REPLY_MAX_BYTES)].filter(Boolean)
       : splitTextByUtf8Bytes(stripped, WEIXIN_TEXT_MESSAGE_MAX_BYTES);
@@ -1159,148 +1076,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     if (ext === '.png') return 'image/png';
     if (ext === '.gif') return 'image/gif';
     return 'application/octet-stream';
-  }
-
-  // ==================== Private: Turn State ====================
-
-  private createTurnState(sessionKey: string): WeixinTurnState {
-    const turn: WeixinTurnState = {
-      sessionKey,
-      sentCount: 0,
-      foldedProgressCount: 0,
-      awaitingPermission: false,
-      processing: false,
-      previewText: '',
-      finalText: '',
-      thinkingSteps: [],
-      pendingThoughtText: undefined,
-      statusLines: [],
-      buttonRows: [],
-      lastSentAt: 0,
-      lastSentText: '',
-    };
-    this.outboundTurns.set(sessionKey, turn);
-    return turn;
-  }
-
-  private getOrCreateTurnState(sessionKey: string): WeixinTurnState {
-    return this.outboundTurns.get(sessionKey) || this.createTurnState(sessionKey);
-  }
-
-  private consumeBridgeEvent(turn: WeixinTurnState, event: DesktopBridgeEvent) {
-    const content = renderBridgeContentForWeixin(event);
-    const bridgeKind = this.resolveBridgeEventKind(event);
-    if (event.type === 'typing_start') {
-      turn.processing = true;
-      turn.previewText = '';
-      turn.finalText = '';
-      turn.thinkingSteps = [];
-      turn.pendingThoughtText = undefined;
-      turn.statusLines = [];
-      turn.buttonRows = [];
-      return;
-    }
-    if (event.type === 'typing_stop') {
-      turn.processing = false;
-      return;
-    }
-    if (event.type === 'preview_start' || event.type === 'update_message') {
-      if (bridgeKind === 'thought') {
-        turn.pendingThoughtText = content;
-        return;
-      }
-      turn.previewText = content;
-      return;
-    }
-    if (bridgeKind !== 'thought') {
-      this.flushPendingThought(turn);
-    }
-    if (event.type === 'status') {
-      if (content) {
-        this.pushUnique(turn.statusLines, content);
-        turn.finalText = content;
-        turn.previewText = content;
-      }
-      return;
-    }
-    if (event.type === 'buttons') {
-      turn.awaitingPermission = true;
-      turn.buttonRows = Array.isArray(event.buttonRows)
-        ? event.buttonRows
-            .map((row) =>
-              Array.isArray(row)
-                ? row.filter((b): b is { text: string; data: string } => Boolean(b?.text && b?.data))
-                    .map((b) => ({ text: b.text, data: b.data }))
-                : [])
-            .filter((row) => row.length > 0)
-        : [];
-      return;
-    }
-    if (!content) return;
-    if (bridgeKind === 'thought' || bridgeKind === 'plan') {
-      this.pushUnique(turn.thinkingSteps, content);
-      return;
-    }
-    if (bridgeKind === 'tool' || bridgeKind === 'status') {
-      this.pushUnique(turn.statusLines, content);
-      return;
-    }
-    turn.finalText = content;
-    turn.previewText = content;
-  }
-
-  private renderTurnText(turn: WeixinTurnState): string {
-    const sections: string[] = [];
-    if (turn.thinkingSteps.length > 0) {
-      sections.push(`**中间过程**\n${turn.thinkingSteps.map((step) => `• ${step.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
-    }
-    if (turn.finalText) {
-      sections.push(turn.finalText);
-    } else if (turn.previewText) {
-      sections.push(turn.previewText);
-    } else if (turn.statusLines.length > 0) {
-      sections.push(`**处理中**\n${turn.statusLines.slice(-3).map((l) => `• ${l.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
-    } else if (turn.processing) {
-      sections.push('**处理中**\n正在思考...');
-    }
-    if (turn.awaitingPermission) {
-      sections.push('\n回复：`allow` / `allow all` / `deny`');
-    }
-    return sections.join('\n\n').trim();
-  }
-
-  private flushPendingThought(turn: WeixinTurnState) {
-    const text = String(turn.pendingThoughtText || '').trim();
-    if (!text) return;
-    this.pushUnique(turn.thinkingSteps, text);
-    turn.pendingThoughtText = undefined;
-  }
-
-  private isTerminalBridgeMessage(event: DesktopBridgeEvent, rendered: string): boolean {
-    if (event.type === 'buttons') return true;
-    if (event.type !== 'reply') return false;
-    const bridgeKind = this.resolveBridgeEventKind(event);
-    if (bridgeKind === 'tool' || bridgeKind === 'thought' || bridgeKind === 'plan' || bridgeKind === 'status') return false;
-    const normalized = rendered.trim();
-    if (!normalized) return false;
-    return true;
-  }
-
-  private resolveBridgeEventKind(event: DesktopBridgeEvent) {
-    if (event.bridgeKind) {
-      return event.bridgeKind;
-    }
-    return event.type === 'status' ? 'status' : 'assistant';
-  }
-
-  // ==================== Private: Helpers ====================
-
-  private pushUnique(target: string[], value: string) {
-    const normalized = value.trim();
-    if (!normalized) return;
-    if (target[target.length - 1] === normalized) return;
-    target.push(normalized);
-    if (target.length > 8) target.splice(0, target.length - 8);
   }
 
   private isDuplicateInboundMessage(input: WeixinInboundMessage): boolean {
