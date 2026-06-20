@@ -94,6 +94,12 @@ flowchart LR
 
 ## New
 
+### 2026-06-20
+
+- 发布 AgentDock 0.1.56。
+- 将 ACP `session/prompt` 超时从 15 分钟提高到 180 分钟，避免长任务（如凌晨定时归档）在 Agent 仍在流式输出时被硬切断。
+- 修复 LocalCoreError 日志泄漏 `[object Object]` 的问题：`LocalCoreError` 构造器、`toLocalCoreErrorInfo`、`formatLogError` 三处入口都对 message 做了字符串化兜底，后续报错能记录到真实文本。
+
 ### 2026-06-19
 
 - Lark/Feishu 与微信 channel 共用流式 inbound 附件存储接口，统一执行安全命名、大小限制、临时文件清理和原子落盘；微信文件下载改为流式 AES 解密，图片同时保留 Agent 可访问的落盘 URI（如适用）与多模态 Base64 数据。
