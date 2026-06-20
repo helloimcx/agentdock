@@ -144,13 +144,14 @@ const DEFAULTS: Record<LocalCoreErrorCode, ErrorDefaults> = {
 export class LocalCoreError extends Error {
   readonly info: LocalCoreErrorInfo;
 
-  constructor(code: LocalCoreErrorCode, message?: string, input: Partial<Omit<LocalCoreErrorInfo, 'code' | 'message'>> = {}) {
+  constructor(code: LocalCoreErrorCode, message?: unknown, input: Partial<Omit<LocalCoreErrorInfo, 'code' | 'message'>> = {}) {
     const defaults = DEFAULTS[code];
-    super(message || defaults.userMessage);
+    const messageStr = coerceErrorMessage(message) || defaults.userMessage;
+    super(messageStr);
     this.name = 'LocalCoreError';
     this.info = {
       code,
-      message: message || defaults.userMessage,
+      message: messageStr,
       userMessage: input.userMessage || defaults.userMessage,
       severity: input.severity || defaults.severity,
       retryable: input.retryable ?? defaults.retryable,
@@ -167,9 +168,9 @@ export function toLocalCoreErrorInfo(error: unknown, fallbackCode: LocalCoreErro
   }
   const maybeInfo = (error as { info?: LocalCoreErrorInfo } | null | undefined)?.info;
   if (maybeInfo?.code && maybeInfo.message) {
-    return mergeDetails(maybeInfo, details);
+    return mergeDetails(ensureInfoMessageString(maybeInfo), details);
   }
-  const message = error instanceof Error ? error.message : String(error || '');
+  const message = coerceErrorMessage(error instanceof Error ? error.message : error);
   const classifiedCode = classifyErrorMessage(message, fallbackCode);
   return new LocalCoreError(classifiedCode, message || DEFAULTS[classifiedCode].userMessage, {
     details: Object.keys(details).length ? details : undefined,
@@ -182,7 +183,8 @@ export function formatUserError(info: LocalCoreErrorInfo) {
 
 export function formatLogError(info: LocalCoreErrorInfo) {
   const suffix = info.cause ? ` cause=${info.cause}` : '';
-  return `${info.code}: ${info.message}${suffix}`;
+  const message = typeof info.message === 'string' ? info.message : safeStringify(info.message);
+  return `${info.code}: ${message}${suffix}`;
 }
 
 export function errorInfoToHttpBody(info: LocalCoreErrorInfo) {
@@ -268,4 +270,32 @@ function mergeDetails(info: LocalCoreErrorInfo, details: Record<string, unknown>
       ...details,
     },
   };
+}
+
+function ensureInfoMessageString(info: LocalCoreErrorInfo): LocalCoreErrorInfo {
+  if (typeof info.message === 'string') {
+    return info;
+  }
+  return { ...info, message: safeStringify(info.message) };
+}
+
+function coerceErrorMessage(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return safeStringify(value);
+}
+
+function safeStringify(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }

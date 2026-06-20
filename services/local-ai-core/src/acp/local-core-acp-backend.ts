@@ -24,7 +24,7 @@ import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 
-const ACP_PROMPT_TIMEOUT_MS = 15 * 60 * 1000;
+const ACP_PROMPT_TIMEOUT_MS = 180 * 60 * 1000;
 
 type SendThreadMessageOptions = {
   permissionMode?: string;
