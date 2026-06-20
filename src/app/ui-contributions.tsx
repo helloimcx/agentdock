@@ -52,7 +52,7 @@ export type UiNavContribution = {
   order: number;
   end?: boolean;
   visible?: (context: UiContributionContext) => boolean;
-  resolveLabelKey?: (context: UiContributionContext & { runtimeProvider: string }) => string;
+  resolveLabelKey?: (context: UiContributionContext) => string;
 };
 
 class RendererUiContributionRegistry {
@@ -220,12 +220,7 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       icon: MessagesSquare,
       order: 20,
       visible: ({ features }) => features.chatRoute,
-      resolveLabelKey: ({ features, runtimeProvider }) =>
-        !features.desktopChat
-          ? 'nav.chatWeb'
-          : runtimeProvider === 'electron'
-            ? 'nav.chatDesktop'
-            : 'nav.chat',
+      resolveLabelKey: ({ features }) => features.desktopChat ? 'nav.chat' : 'nav.chatWeb',
     },
     {
       id: 'workspace',
@@ -287,7 +282,7 @@ registerBuiltinNavItems(rendererUiContributions);
 
 export function resolveRouteTitleKey(
   pathname: string,
-  context: UiContributionContext & { runtimeProvider: string },
+  context: UiContributionContext,
 ) {
   const matchedRoute = rendererUiContributions
     .listRoutes()
@@ -300,11 +295,7 @@ export function resolveRouteTitleKey(
     .sort((a, b) => b.absolutePath.length - a.absolutePath.length)[0]?.route;
 
   if (matchedRoute?.id === 'chat') {
-    return !context.features.desktopChat
-      ? 'nav.chatWeb'
-      : context.runtimeProvider === 'electron'
-        ? 'nav.chatDesktop'
-        : 'nav.chat';
+    return context.features.desktopChat ? 'nav.chat' : 'nav.chatWeb';
   }
   return matchedRoute?.titleKey || 'nav.dashboard';
 }

@@ -2,15 +2,12 @@ import { create } from 'zustand';
 import type { LocalCoreCapabilitySnapshot } from '../../packages/contracts/src';
 
 export type AppMode = 'desktop' | 'web';
-export type RuntimeProvider = 'electron' | 'local_core';
+export type RuntimeProvider = 'local_core';
 
 type RuntimeCapabilityState = {
   snapshot: LocalCoreCapabilitySnapshot | null;
   setSnapshot: (snapshot: LocalCoreCapabilitySnapshot | null) => void;
 };
-
-let runtimeProvider: RuntimeProvider =
-  typeof window !== 'undefined' && Boolean(window.desktop) ? 'electron' : 'local_core';
 
 export const useRuntimeCapabilityStore = create<RuntimeCapabilityState>((set) => ({
   snapshot: null,
@@ -18,11 +15,7 @@ export const useRuntimeCapabilityStore = create<RuntimeCapabilityState>((set) =>
 }));
 
 export function getRuntimeProvider(): RuntimeProvider {
-  return runtimeProvider;
-}
-
-export function setRuntimeProvider(next: RuntimeProvider) {
-  runtimeProvider = next;
+  return 'local_core';
 }
 
 export function getAppMode(): AppMode {
@@ -30,11 +23,11 @@ export function getAppMode(): AppMode {
 }
 
 export function isDesktopApp() {
-  return runtimeProvider === 'electron';
+  return true;
 }
 
 export function isLocalCoreApp() {
-  return runtimeProvider === 'local_core';
+  return true;
 }
 
 export function isWebApp() {
@@ -73,7 +66,7 @@ export function getRuntimeFeatureSupport(snapshot = getRuntimeCapabilitySnapshot
   const managedRuntime = Boolean(snapshot);
   const desktopChat = hasAgent(snapshot, 'localcore-acp');
   return {
-    desktopRuntime: managedRuntime || runtimeProvider === 'electron' || runtimeProvider === 'local_core',
+    desktopRuntime: true,
     desktopChat,
     chatRoute: managedRuntime ? desktopChat : true,
     desktopWorkspace: managedRuntime ? hasAnyAgent(snapshot) : true,

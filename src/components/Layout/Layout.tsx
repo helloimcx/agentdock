@@ -1,15 +1,14 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { cn } from '@/lib/utils';
-import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
+import { useRuntimeFeatureSupport } from '@/app/runtime';
 
 export default function Layout() {
   const { pathname } = useLocation();
   const { desktopChat } = useRuntimeFeatureSupport();
   const isChatRoute = pathname.startsWith('/chat');
   const chatLayout = pathname.startsWith('/chat') && desktopChat;
-  const compactDesktopChatLayout =
-    chatLayout && getRuntimeProvider() === 'electron';
+  const compactDesktopChatLayout = false;
 
   return (
     <div

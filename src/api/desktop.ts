@@ -30,7 +30,6 @@ import type {
 } from '../../packages/contracts/src';
 import {
   approveChannelPairing as approveCoreChannelPairing,
-  detectLocalAiCore,
   disableChannelGateway as disableCoreChannelGateway,
   enableChannelGateway as enableCoreChannelGateway,
   getChannelGatewayStatus as getCoreChannelGatewayStatus,
@@ -80,7 +79,6 @@ import {
   listModelProviders as listCoreModelProviders,
   updateModelProvider as updateCoreModelProvider,
 } from '../../packages/core-sdk/src';
-import { getRuntimeProvider, setRuntimeProvider, type RuntimeProvider } from '@/app/runtime';
 
 type DesktopProvider = {
   getRuntimeStatus: () => Promise<DesktopRuntimeStatus>;
@@ -137,76 +135,6 @@ type DesktopProvider = {
   onRuntimeEvent: (listener: (runtime: DesktopRuntimeStatus) => void) => () => void;
   onRuntimeDetectionEvent: (listener: (event: LocalCoreEvent) => void) => () => void;
   onBridgeEvent: (listener: (event: DesktopBridgeEvent) => void) => () => void;
-};
-
-function requireDesktopBridge() {
-  if (!window.desktop) {
-    throw new Error('Desktop APIs are unavailable in the browser build');
-  }
-  return window.desktop;
-}
-
-const electronProvider: DesktopProvider = {
-  getRuntimeStatus: () => requireDesktopBridge().getRuntimeStatus(),
-  startService: () => requireDesktopBridge().startService(),
-  stopService: () => requireDesktopBridge().stopService(),
-  restartService: () => requireDesktopBridge().restartService(),
-  getLogs: (limit?: number) => requireDesktopBridge().getLogs(limit),
-  listInstalledAgentRuntimes: () => listCoreInstalledAgentRuntimes().then((result) => result.runtimes),
-  refreshInstalledAgentRuntimes: () => refreshCoreRuntimeDetections().then((result) => result.runtimes),
-  readRuntimeConfig: () => requireDesktopBridge().readRuntimeConfig(),
-  saveRuntimeConfig: (config: unknown) => requireDesktopBridge().saveRuntimeConfig(config),
-  listModelProviders: () => listCoreModelProviders(),
-  createModelProvider: (input: DesktopModelProviderInput) => createCoreModelProvider(input),
-  updateModelProvider: (providerId: string, input: DesktopModelProviderInput) => updateCoreModelProvider(providerId, input),
-  deleteModelProvider: (providerId: string) => deleteCoreModelProvider(providerId),
-  getThreadKnowledgeBases: (workspaceId: string, threadId: string) =>
-    requireDesktopBridge().getThreadKnowledgeBases(workspaceId, threadId),
-  updateThreadKnowledgeBases: (workspaceId: string, threadId: string, knowledgeBaseIds: string[]) =>
-    requireDesktopBridge().updateThreadKnowledgeBases(workspaceId, threadId, knowledgeBaseIds),
-  deleteThreadKnowledgeBases: (workspaceId: string, threadId: string) =>
-    requireDesktopBridge().deleteThreadKnowledgeBases(workspaceId, threadId),
-  saveSettings: (input: DesktopSettingsInput) => requireDesktopBridge().saveSettings(input),
-  getCapabilitySnapshot: () => getCoreCapabilitySnapshot(),
-  getPluginDiagnostics: () => getCorePluginDiagnostics(),
-  listDiagnosticErrors: () => listCoreDiagnosticErrors().then((result) => result.errors),
-  runDiagnosticsDoctor: () => runCoreDiagnosticsDoctor(),
-  runDeploymentDiagnostics: () => runCoreDeploymentDiagnostics(),
-  listChannelGateways: (platform: string) => listCoreChannelGateways(platform).then((result) => result.gateways),
-  getChannelGatewayStatus: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelGatewayStatus(platform, workspaceId, instanceId),
-  testChannelConnection: (platform: string, workspaceId: string, instanceId?: string) => testCoreChannelConnection(platform, workspaceId, instanceId),
-  enableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => enableCoreChannelGateway(platform, workspaceId, instanceId),
-  disableChannelGateway: (platform: string, workspaceId: string, instanceId?: string) => disableCoreChannelGateway(platform, workspaceId, instanceId),
-  listChannelPendingPairings: (platform: string, workspaceId?: string) =>
-    listCoreChannelPendingPairings(platform, workspaceId).then((result) => result.pairings),
-  approveChannelPairing: (platform: string, code: string) => approveCoreChannelPairing(platform, code),
-  rejectChannelPairing: (platform: string, code: string) => rejectCoreChannelPairing(platform, code),
-  listChannelAuthorizedUsers: (platform: string, workspaceId?: string) =>
-    listCoreChannelAuthorizedUsers(platform, workspaceId).then((result) => result.users),
-  getChannelQrCode: (platform: string, workspaceId: string, instanceId?: string) => getCoreChannelQrCode(platform, workspaceId, instanceId),
-  checkChannelQrCodeStatus: (platform: string, workspaceId: string, ticket: string, instanceId?: string) =>
-    checkCoreChannelQrCodeStatus(platform, workspaceId, ticket, instanceId),
-  getWeixinQrCode: (workspaceId: string, instanceId?: string) => getCoreWeixinQrCode(workspaceId, instanceId),
-  checkWeixinQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreWeixinQrCodeStatus(workspaceId, ticket, instanceId),
-  getLarkQrCode: (workspaceId: string, instanceId?: string) => getCoreLarkQrCode(workspaceId, instanceId),
-  checkLarkQrCodeStatus: (workspaceId: string, ticket: string, instanceId?: string) => checkCoreLarkQrCodeStatus(workspaceId, ticket, instanceId),
-  listLarkGateways: () => listCoreLarkGateways().then((result) => result.gateways),
-  getLarkGatewayStatus: (workspaceId: string, instanceId?: string) => getCoreLarkGatewayStatus(workspaceId, instanceId),
-  testLarkConnection: (workspaceId: string, instanceId?: string) => testCoreLarkConnection(workspaceId, instanceId),
-  enableLarkGateway: (workspaceId: string, instanceId?: string) => enableCoreLarkGateway(workspaceId, instanceId),
-  disableLarkGateway: (workspaceId: string, instanceId?: string) => disableCoreLarkGateway(workspaceId, instanceId),
-  listLarkPendingPairings: (workspaceId?: string) => listCoreLarkPendingPairings(workspaceId).then((result) => result.pairings),
-  approveLarkPairing: (code: string) => approveCoreLarkPairing(code),
-  rejectLarkPairing: (code: string) => rejectCoreLarkPairing(code),
-  listLarkAuthorizedUsers: (workspaceId?: string) => listCoreLarkAuthorizedUsers(workspaceId).then((result) => result.users),
-  probeWorkspaceStreaming: (workspaceId: string) => requireDesktopBridge().probeWorkspaceStreaming(workspaceId),
-  onRuntimeEvent: (listener) => requireDesktopBridge().onRuntimeEvent(listener),
-  onRuntimeDetectionEvent: (listener) => subscribeEvents((event) => {
-    if (event.type.startsWith('runtime.detect.') || event.type === 'runtime.status.changed') {
-      listener(event);
-    }
-  }),
-  onBridgeEvent: (listener) => onBridgeUpdated(listener),
 };
 
 const localCoreProvider: DesktopProvider = {
@@ -272,42 +200,8 @@ const localCoreProvider: DesktopProvider = {
   onBridgeEvent: (listener) => onBridgeUpdated(listener),
 };
 
-let activeProvider: DesktopProvider | null = null;
-
-function providerFor(kind: RuntimeProvider): DesktopProvider | null {
-  if (kind === 'electron') {
-    return window.desktop ? electronProvider : localCoreProvider;
-  }
-  return localCoreProvider;
-}
-
-async function detectProvider() {
-  if (window.desktop) {
-    setRuntimeProvider('electron');
-    activeProvider = electronProvider;
-    return activeProvider;
-  }
-  if (await detectLocalAiCore()) {
-    setRuntimeProvider('local_core');
-    activeProvider = localCoreProvider;
-    return activeProvider;
-  }
-  setRuntimeProvider('local_core');
-  activeProvider = localCoreProvider;
-  return activeProvider;
-}
-
 function requireProvider() {
-  const provider = activeProvider || providerFor(getRuntimeProvider());
-  if (!provider) {
-    throw new Error('Managed desktop APIs are unavailable in this build');
-  }
-  activeProvider = provider;
-  return provider;
-}
-
-export async function initializeDesktopProvider() {
-  return detectProvider();
+  return localCoreProvider;
 }
 
 export const getRuntimeStatus = (): Promise<DesktopRuntimeStatus> => requireProvider().getRuntimeStatus();
