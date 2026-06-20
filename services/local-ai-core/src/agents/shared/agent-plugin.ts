@@ -1,6 +1,6 @@
-import type { DesktopProjectConfig, RuntimeConfigState } from '../../../../../packages/contracts/src/index.js';
-import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext } from '../../../../../packages/plugin-sdk/src/index.js';
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
+import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
+import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext } from '@cc/plugin-sdk';
+import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
 import { toLocalCoreProjectConfig } from '../../router/workspace-route-config.js';
 import type { AgentRuntimeDefinition } from './definition.js';
 

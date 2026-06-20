@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { getThreadKnowledgeBases } from '@/api/desktop';
 import { listProjects } from '@/api/projects';
 import { getSession, listSessions } from '@/api/sessions';
-import { getThread, listThreads, listWorkspaces, subscribeEvents } from '../../../packages/core-sdk/src';
+import { getThread, listThreads, listWorkspaces, subscribeEvents } from '@cc/core-sdk';
 import type { ThreadGroup } from './thread-chat-model';
 import {
   chatThreadMatchesSearch,

@@ -28,9 +28,9 @@ import {
   onRuntimeEvent,
   refreshInstalledAgentRuntimes,
 } from '@/api/desktop';
-import { listAgentTasks, listAuditEvents, listApprovalRequests, listWorkspaces } from '../../packages/core-sdk/src';
+import { listAgentTasks, listAuditEvents, listApprovalRequests, listWorkspaces } from '@cc/core-sdk';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
-import type { AgentTask, ApprovalRequest, AuditEvent, InstalledAgentRuntime } from '../../packages/contracts/src';
+import type { AgentTask, ApprovalRequest, AuditEvent, InstalledAgentRuntime } from '@cc/superai-contracts';
 
 interface QuickActionProps {
   title: string;

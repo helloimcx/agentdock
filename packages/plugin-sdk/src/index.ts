@@ -95,10 +95,10 @@ export interface AgentRuntime {
   readonly agentType: string;
   readonly transport: string;
   readonly displayName?: string;
-  matchesProject(project: import('../../contracts/src/index.js').DesktopProjectConfig): boolean;
+  matchesProject(project: import('@cc/superai-contracts').DesktopProjectConfig): boolean;
   createRoute(
-    configState: import('../../contracts/src/index.js').RuntimeConfigState,
-    project: import('../../contracts/src/index.js').DesktopProjectConfig,
+    configState: import('@cc/superai-contracts').RuntimeConfigState,
+    project: import('@cc/superai-contracts').DesktopProjectConfig,
   ): AgentRuntimeRoute | null;
 }
 
@@ -112,58 +112,58 @@ export interface ChannelCapability {
 export interface ChannelRuntime {
   readonly platform: string;
   readonly routeType: string;
-  listStatuses(): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus[]>
-    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus[];
-  getStatus(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
-    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
-  testConnection(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelConnectionResult>
-    | import('../../contracts/src/index.js').LocalCoreChannelConnectionResult;
-  enable(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
-    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
-  disable(workspaceId: string, instanceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus>
-    | import('../../contracts/src/index.js').LocalCoreChannelGatewayStatus;
-  listPendingPairings(workspaceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelPairingRequest[]>
-    | import('../../contracts/src/index.js').LocalCoreChannelPairingRequest[];
-  approvePairing(code: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser>
-    | import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser;
+  listStatuses(): Promise<import('@cc/superai-contracts').LocalCoreChannelGatewayStatus[]>
+    | import('@cc/superai-contracts').LocalCoreChannelGatewayStatus[];
+  getStatus(workspaceId: string, instanceId?: string): Promise<import('@cc/superai-contracts').LocalCoreChannelGatewayStatus>
+    | import('@cc/superai-contracts').LocalCoreChannelGatewayStatus;
+  testConnection(workspaceId: string, instanceId?: string): Promise<import('@cc/superai-contracts').LocalCoreChannelConnectionResult>
+    | import('@cc/superai-contracts').LocalCoreChannelConnectionResult;
+  enable(workspaceId: string, instanceId?: string): Promise<import('@cc/superai-contracts').LocalCoreChannelGatewayStatus>
+    | import('@cc/superai-contracts').LocalCoreChannelGatewayStatus;
+  disable(workspaceId: string, instanceId?: string): Promise<import('@cc/superai-contracts').LocalCoreChannelGatewayStatus>
+    | import('@cc/superai-contracts').LocalCoreChannelGatewayStatus;
+  listPendingPairings(workspaceId?: string): Promise<import('@cc/superai-contracts').LocalCoreChannelPairingRequest[]>
+    | import('@cc/superai-contracts').LocalCoreChannelPairingRequest[];
+  approvePairing(code: string): Promise<import('@cc/superai-contracts').LocalCoreChannelAuthorizedUser>
+    | import('@cc/superai-contracts').LocalCoreChannelAuthorizedUser;
   rejectPairing(code: string): Promise<{ rejected: boolean }> | { rejected: boolean };
-  listAuthorizedUsers(workspaceId?: string): Promise<import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser[]>
-    | import('../../contracts/src/index.js').LocalCoreChannelAuthorizedUser[];
+  listAuthorizedUsers(workspaceId?: string): Promise<import('@cc/superai-contracts').LocalCoreChannelAuthorizedUser[]>
+    | import('@cc/superai-contracts').LocalCoreChannelAuthorizedUser[];
   getQrCode?(
     workspaceId: string,
     instanceId?: string,
-  ): Promise<import('../../contracts/src/index.js').LocalCoreChannelQrCode>
-    | import('../../contracts/src/index.js').LocalCoreChannelQrCode;
+  ): Promise<import('@cc/superai-contracts').LocalCoreChannelQrCode>
+    | import('@cc/superai-contracts').LocalCoreChannelQrCode;
   checkQrCodeStatus?(
     workspaceId: string,
     ticket: string,
     instanceId?: string,
-  ): Promise<import('../../contracts/src/index.js').LocalCoreChannelQrCodeStatus>
-    | import('../../contracts/src/index.js').LocalCoreChannelQrCodeStatus;
-  onBridgeEvent?(event: import('../../../shared/desktop.js').DesktopBridgeEvent): Promise<void> | void;
+  ): Promise<import('@cc/superai-contracts').LocalCoreChannelQrCodeStatus>
+    | import('@cc/superai-contracts').LocalCoreChannelQrCodeStatus;
+  onBridgeEvent?(event: import('@cc/superai-contracts').DesktopBridgeEvent): Promise<void> | void;
   refreshBindings?(): Promise<void> | void;
   sendScheduledMessage?(
     workspaceId: string,
-    route: import('../../contracts/src/index.js').ChannelRoute,
+    route: import('@cc/superai-contracts').ChannelRoute,
     text: string,
   ): Promise<string> | string;
   registerScheduledThreadBridge?(input: {
     workspaceId: string;
     platform: string;
-    route: import('../../contracts/src/index.js').ScheduledJobRoute;
+    route: import('@cc/superai-contracts').ScheduledJobRoute;
     threadId: string;
     sessionKey: string;
   }): (() => void) | Promise<() => void>;
   sendOutboundMessage?(
     workspaceId: string,
-    input: import('../../contracts/src/index.js').ChannelOutboundMessageInput,
-  ): Promise<import('../../contracts/src/index.js').ChannelOutboundMessageResult>
-    | import('../../contracts/src/index.js').ChannelOutboundMessageResult;
+    input: import('@cc/superai-contracts').ChannelOutboundMessageInput,
+  ): Promise<import('@cc/superai-contracts').ChannelOutboundMessageResult>
+    | import('@cc/superai-contracts').ChannelOutboundMessageResult;
   sendFile?(
     workspaceId: string,
-    input: import('../../contracts/src/index.js').ChannelFileSendInput,
-  ): Promise<import('../../contracts/src/index.js').ChannelFileSendResult>
-    | import('../../contracts/src/index.js').ChannelFileSendResult;
+    input: import('@cc/superai-contracts').ChannelFileSendInput,
+  ): Promise<import('@cc/superai-contracts').ChannelFileSendResult>
+    | import('@cc/superai-contracts').ChannelFileSendResult;
   muteThreadBridge?(threadId: string): void;
   unmuteThreadBridge?(threadId: string): void;
   close?(): void;
@@ -177,36 +177,36 @@ export interface KnowledgeCapability {
 }
 
 export interface KnowledgeRuntime {
-  listSources(): Promise<import('../../contracts/src/index.js').KnowledgeSource[]>;
-  getConfig(): Promise<import('../../contracts/src/index.js').KnowledgeConfig>;
-  updateConfig(input: Partial<import('../../contracts/src/index.js').KnowledgeConfig>): Promise<import('../../contracts/src/index.js').KnowledgeConfig>;
-  listFolders(): Promise<import('../../contracts/src/index.js').KnowledgeFolder[]>;
-  createFolder(input: import('../../contracts/src/index.js').KnowledgeFolderCreateInput): Promise<import('../../contracts/src/index.js').KnowledgeFolder>;
+  listSources(): Promise<import('@cc/superai-contracts').KnowledgeSource[]>;
+  getConfig(): Promise<import('@cc/superai-contracts').KnowledgeConfig>;
+  updateConfig(input: Partial<import('@cc/superai-contracts').KnowledgeConfig>): Promise<import('@cc/superai-contracts').KnowledgeConfig>;
+  listFolders(): Promise<import('@cc/superai-contracts').KnowledgeFolder[]>;
+  createFolder(input: import('@cc/superai-contracts').KnowledgeFolderCreateInput): Promise<import('@cc/superai-contracts').KnowledgeFolder>;
   updateFolder(
     id: string,
-    input: import('../../contracts/src/index.js').KnowledgeFolderUpdateInput,
-  ): Promise<import('../../contracts/src/index.js').KnowledgeFolder>;
+    input: import('@cc/superai-contracts').KnowledgeFolderUpdateInput,
+  ): Promise<import('@cc/superai-contracts').KnowledgeFolder>;
   deleteFolder(id: string): Promise<{ deleted: boolean }>;
-  listKnowledgeBases(): Promise<import('../../contracts/src/index.js').KnowledgeBase[]>;
-  getKnowledgeBase(id: string): Promise<import('../../contracts/src/index.js').KnowledgeBase>;
+  listKnowledgeBases(): Promise<import('@cc/superai-contracts').KnowledgeBase[]>;
+  getKnowledgeBase(id: string): Promise<import('@cc/superai-contracts').KnowledgeBase>;
   createKnowledgeBase(
-    input: import('../../contracts/src/index.js').KnowledgeBaseCreateInput,
-  ): Promise<import('../../contracts/src/index.js').KnowledgeBase>;
+    input: import('@cc/superai-contracts').KnowledgeBaseCreateInput,
+  ): Promise<import('@cc/superai-contracts').KnowledgeBase>;
   updateKnowledgeBase(
     id: string,
-    input: import('../../contracts/src/index.js').KnowledgeBaseUpdateInput,
-  ): Promise<import('../../contracts/src/index.js').KnowledgeBase>;
+    input: import('@cc/superai-contracts').KnowledgeBaseUpdateInput,
+  ): Promise<import('@cc/superai-contracts').KnowledgeBase>;
   deleteKnowledgeBase(id: string): Promise<{ deleted: boolean }>;
-  listKnowledgeBaseFiles(knowledgeBaseId: string): Promise<import('../../contracts/src/index.js').KnowledgeFile[]>;
+  listKnowledgeBaseFiles(knowledgeBaseId: string): Promise<import('@cc/superai-contracts').KnowledgeFile[]>;
   uploadKnowledgeBaseFiles(
     knowledgeBaseId: string,
     request: { contentType: string; body: Uint8Array },
-  ): Promise<import('../../contracts/src/index.js').KnowledgeUploadResult[]>;
+  ): Promise<import('@cc/superai-contracts').KnowledgeUploadResult[]>;
   deleteKnowledgeBaseFile(knowledgeBaseId: string, fileId: string): Promise<{ deleted: boolean }>;
   searchKnowledgeBase(
     knowledgeBaseId: string,
-    input: import('../../contracts/src/index.js').KnowledgeSearchInput,
-  ): Promise<import('../../contracts/src/index.js').KnowledgeSearchResult[]>;
+    input: import('@cc/superai-contracts').KnowledgeSearchInput,
+  ): Promise<import('@cc/superai-contracts').KnowledgeSearchResult[]>;
 }
 
 export interface ThreadKnowledgeAttachmentStore {
@@ -245,7 +245,7 @@ export interface MonitorCapability {
   displayName?: string;
 }
 
-export type MonitorEvent = import('../../contracts/src/index.js').AutomationMonitorEventSnapshot;
+export type MonitorEvent = import('@cc/superai-contracts').AutomationMonitorEventSnapshot;
 
 export interface MonitorProviderHandle {
   stop(): Promise<void> | void;
@@ -272,7 +272,7 @@ export interface MonitorProviderRuntime {
 }
 
 export interface SchedulerExecutionContext {
-  job: import('../../contracts/src/index.js').ScheduledJob;
+  job: import('@cc/superai-contracts').ScheduledJob;
   triggeredAt: string;
 }
 
@@ -282,8 +282,8 @@ export interface SchedulerExecutionResult {
   replyText?: string;
   platformMessageId?: string;
   platformMessageIds?: string[];
-  deliveryMode?: import('../../contracts/src/index.js').ScheduledJobRun['deliveryMode'];
-  deliveryStatus?: import('../../contracts/src/index.js').ScheduledJobRun['deliveryStatus'];
+  deliveryMode?: import('@cc/superai-contracts').ScheduledJobRun['deliveryMode'];
+  deliveryStatus?: import('@cc/superai-contracts').ScheduledJobRun['deliveryStatus'];
   deliveryError?: string;
   lastBridgeEventAt?: string;
 }
@@ -293,19 +293,19 @@ export interface SchedulerExecutionTarget {
   threadId: string;
   workspaceId: string;
   platform: string;
-  route: import('../../contracts/src/index.js').ScheduledJobRoute;
+  route: import('@cc/superai-contracts').ScheduledJobRoute;
   metadata?: Record<string, unknown>;
 }
 
 export interface SchedulerTriggerRuntime {
   readonly triggerTypes: string[];
-  supports(job: import('../../contracts/src/index.js').ScheduledJob): boolean;
-  isDue(job: import('../../contracts/src/index.js').ScheduledJob, now: Date): boolean;
+  supports(job: import('@cc/superai-contracts').ScheduledJob): boolean;
+  isDue(job: import('@cc/superai-contracts').ScheduledJob, now: Date): boolean;
 }
 
 export interface SchedulerExecutorRuntime {
   readonly deliveryTargets: string[];
-  supports(job: import('../../contracts/src/index.js').ScheduledJob): boolean;
+  supports(job: import('@cc/superai-contracts').ScheduledJob): boolean;
   execute(context: SchedulerExecutionContext): Promise<SchedulerExecutionResult>;
 }
 
@@ -386,7 +386,7 @@ export interface CapabilityRegistry {
 }
 
 export interface DomainEventPayloadMap {
-  'platform.bridge.updated': import('../../../shared/desktop.js').DesktopBridgeEvent;
+  'platform.bridge.updated': import('@cc/superai-contracts').DesktopBridgeEvent;
   'platform.message.received': {
     platform: string;
     workspaceId: string;
@@ -399,9 +399,9 @@ export interface DomainEventPayloadMap {
   'thread.message.accepted': {
     threadId: string;
     workspaceId: string;
-    role: import('../../contracts/src/index.js').ThreadMessage['role'];
+    role: import('@cc/superai-contracts').ThreadMessage['role'];
     content: string;
-    kind?: import('../../contracts/src/index.js').ThreadMessage['kind'];
+    kind?: import('@cc/superai-contracts').ThreadMessage['kind'];
     source: 'user' | 'agent' | 'platform' | 'scheduler' | 'system';
   };
   'thread.session.activated': {
@@ -421,7 +421,7 @@ export interface DomainEventPayloadMap {
     runId: string;
     threadId: string;
     workspaceId: string;
-    stream: import('../../../shared/desktop.js').DesktopBridgeEvent;
+    stream: import('@cc/superai-contracts').DesktopBridgeEvent;
   };
   'run.completed': {
     runId: string;
@@ -434,18 +434,18 @@ export interface DomainEventPayloadMap {
     threadId: string;
     workspaceId: string;
     error: string;
-    errorInfo?: import('../../contracts/src/index.js').LocalCoreErrorInfo;
+    errorInfo?: import('@cc/superai-contracts').LocalCoreErrorInfo;
   };
   'localcore.error': {
     scope: string;
-    errorInfo?: import('../../contracts/src/index.js').LocalCoreErrorInfo;
+    errorInfo?: import('@cc/superai-contracts').LocalCoreErrorInfo;
     error?: string;
     context?: Record<string, unknown>;
   };
-  'scheduler.job.updated': import('../../contracts/src/index.js').ScheduledJob;
-  'scheduler.run.updated': import('../../contracts/src/index.js').ScheduledJobRun;
-  'automation.monitor.updated': import('../../contracts/src/index.js').AutomationMonitor;
-  'automation.monitor.run.updated': import('../../contracts/src/index.js').AutomationMonitorRun;
+  'scheduler.job.updated': import('@cc/superai-contracts').ScheduledJob;
+  'scheduler.run.updated': import('@cc/superai-contracts').ScheduledJobRun;
+  'automation.monitor.updated': import('@cc/superai-contracts').AutomationMonitor;
+  'automation.monitor.run.updated': import('@cc/superai-contracts').AutomationMonitorRun;
   'runtime.state.changed': {
     reason: 'config' | 'settings' | 'channel-bindings' | 'bootstrap' | 'unknown';
   };

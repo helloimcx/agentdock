@@ -2,7 +2,7 @@ import type {
   ChannelRoute,
   DesktopConnectConfig,
   LocalCoreCapabilities,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type {
   AgentPlugin,
   AgentRuntime,
@@ -23,7 +23,7 @@ import type {
   SchedulerRuntimeRegistration,
   SchedulerTriggerRuntime,
   ThreadKnowledgeAttachmentStore,
-} from '../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { LocalCoreCapabilityRegistry } from './capability-registry.js';
 import { LocalCoreDiagnostics } from './diagnostics.js';

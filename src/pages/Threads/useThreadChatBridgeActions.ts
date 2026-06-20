@@ -2,7 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import {
   normalizePermissionResponse,
   type DesktopBridgeButtonOption,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
 import {
   markPermissionMessageSubmitted,

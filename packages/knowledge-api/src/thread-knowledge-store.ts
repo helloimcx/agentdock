@@ -1,4 +1,4 @@
-import type { ThreadKnowledgeAttachmentStore } from '../../plugin-sdk/src/index.js';
+import type { ThreadKnowledgeAttachmentStore } from '@cc/plugin-sdk';
 import { KnowledgeSqliteStore } from './sqlite-store.js';
 
 export class SqliteThreadKnowledgeAttachmentStore implements ThreadKnowledgeAttachmentStore {

@@ -2,11 +2,11 @@ import { constants, existsSync, accessSync } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import type { DesktopConnectConfig, InstalledAgentRuntime } from '../../../../packages/contracts/src/index.js';
+import type { DesktopConnectConfig, InstalledAgentRuntime } from '@cc/superai-contracts';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   LOCALCORE_ACP_AGENT_TYPE,
-} from '../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
 import { resolveAgentRuntimeDefinition } from '../agents/index.js';
 import { getPathEnv } from './env-utils.js';
 

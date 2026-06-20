@@ -1,4 +1,4 @@
-import type { MonitorPlugin, MonitorRuntimeRegistration } from '../../../../../packages/plugin-sdk/src/index.js';
+import type { MonitorPlugin, MonitorRuntimeRegistration } from '@cc/plugin-sdk';
 import { MockStockQuoteProvider } from '../../automation/mock-stock-provider.js';
 
 export function createBuiltinStockMonitorPlugin(): MonitorPlugin {

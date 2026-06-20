@@ -1,11 +1,11 @@
 import { isAbsolute, resolve } from 'node:path';
-import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '../../../../packages/contracts/src/index.js';
-import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
+import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '@cc/superai-contracts';
+import type { AgentLaunchConfig } from '@cc/plugin-sdk';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
   normalizeDesktopPlatformType,
-} from '../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
 import { resolveAgentRuntimeDefinition, type AgentRuntimeDefinition } from '../agents/index.js';
 import { collectProviderEnv as collectSharedProviderEnv } from '../agents/shared/launch-utils.js';
 import { prepareAgentExecutionLaunch } from '../execution/agent-execution-backend.js';

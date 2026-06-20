@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ThreadDetail } from '../../../packages/contracts/src';
+import type { ThreadDetail } from '@cc/superai-contracts';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
   finalizeTurnMessageKinds,

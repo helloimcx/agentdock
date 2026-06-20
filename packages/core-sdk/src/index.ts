@@ -68,7 +68,7 @@ import type {
   DesktopModelProviderInput,
   DesktopModelProviderListResponse,
   RuntimeConfigState,
-} from '../../contracts/src';
+} from '@cc/superai-contracts';
 import { coreClient, LOCAL_AI_CORE_BASE } from './client.js';
 export {
   coreClient,

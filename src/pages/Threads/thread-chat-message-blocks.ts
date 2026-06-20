@@ -1,5 +1,5 @@
 import type { ChatMessage } from './thread-chat-model';
-import type { DesktopBridgeToolCall } from '../../../shared/desktop';
+import type { DesktopBridgeToolCall } from '@cc/superai-contracts';
 import { isStructuredPermissionMessage } from './thread-chat-permission';
 
 export type ToolResultCard = {

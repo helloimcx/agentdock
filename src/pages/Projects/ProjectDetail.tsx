@@ -23,7 +23,7 @@ import {
   type DesktopConnectConfig,
   type DesktopModelProvider,
   type DesktopSandboxOptions,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import {
   getProjectProviderId,
   removeProviderReferences,

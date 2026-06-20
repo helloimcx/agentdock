@@ -1,4 +1,4 @@
-import type { DesktopBridgeEvent } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent } from '@cc/superai-contracts';
 import type { LarkOutboundRender, LarkTurnState } from './types.js';
 
 export function createLarkTurnState(sessionKey: string, sourceMessageId?: string) {

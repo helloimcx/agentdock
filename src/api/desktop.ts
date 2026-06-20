@@ -7,7 +7,7 @@ import type {
   DesktopModelProviderInput,
   DesktopModelProviderListResponse,
   RuntimeConfigState,
-} from '../../shared/desktop';
+} from '@cc/superai-contracts';
 import type {
   LocalCoreAuthorizedUser,
   LocalCoreCapabilitySnapshot,
@@ -27,8 +27,8 @@ import type {
   LocalCorePluginDiagnostics,
   InstalledAgentRuntime,
   WorkspaceStreamingProbeResult,
-} from '../../packages/contracts/src';
-export type { LocalCoreEvent } from '../../packages/contracts/src';
+} from '@cc/superai-contracts';
+export type { LocalCoreEvent } from '@cc/superai-contracts';
 import {
   approveChannelPairing as approveCoreChannelPairing,
   disableChannelGateway as disableCoreChannelGateway,
@@ -79,7 +79,7 @@ import {
   deleteModelProvider as deleteCoreModelProvider,
   listModelProviders as listCoreModelProviders,
   updateModelProvider as updateCoreModelProvider,
-} from '../../packages/core-sdk/src';
+} from '@cc/core-sdk';
 
 type DesktopProvider = {
   getRuntimeStatus: () => Promise<DesktopRuntimeStatus>;

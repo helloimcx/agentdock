@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import type { DesktopProviderConfig } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopProviderConfig } from '@cc/superai-contracts';
 import type { AgentLaunchResolverInput } from '../shared/definition.js';
 import {
   ensurePrivateDir,

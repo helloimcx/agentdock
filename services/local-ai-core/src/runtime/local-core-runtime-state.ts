@@ -4,7 +4,7 @@ import type {
   DesktopSettings,
   DesktopSettingsInput,
   KnowledgeConfig,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { AgentDockRotatingLogger, inferLogLevel, type AgentDockLogEntry, type AgentDockLogFile } from '../kernel/rotating-logger.js';
 
 type RuntimeSettingsFile = {

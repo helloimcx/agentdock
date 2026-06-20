@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
+import type { DesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
   isStructuredPermissionMessage,
   markPermissionMessageSubmitted,
@@ -41,7 +41,7 @@ import {
   toComposerPermissionCard,
   toSelectedKnowledgeBases,
 } from './thread-chat-page-state';
-import type { KnowledgeBase } from '../../../packages/contracts/src';
+import type { KnowledgeBase } from '@cc/superai-contracts';
 
 type TestMessage = PermissionPromptMessage & {
   id: string;

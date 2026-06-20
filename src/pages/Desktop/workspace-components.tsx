@@ -1,6 +1,6 @@
 import { Bot, Cloud, FolderKanban, Plug, Plus, Trash2 } from 'lucide-react';
 import { Button, EmptyState, SectionCard } from '@/components/ui';
-import type { DesktopProjectConfig } from '../../../shared/desktop';
+import type { DesktopProjectConfig } from '@cc/superai-contracts';
 import { workDirLabel, type SandboxForm } from './workspace-model';
 
 type ProjectListPanelProps = {

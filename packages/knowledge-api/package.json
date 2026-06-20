@@ -2,5 +2,12 @@
   "name": "@cc/knowledge-api",
   "private": true,
   "version": "0.1.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@cc/plugin-sdk": "workspace:*",
+    "@cc/superai-contracts": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }

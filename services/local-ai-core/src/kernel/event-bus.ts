@@ -1,4 +1,4 @@
-import type { DomainEventPayloadMap, DomainEventType, EventBus, EventBusEvent } from '../../../../packages/plugin-sdk/src/index.js';
+import type { DomainEventPayloadMap, DomainEventType, EventBus, EventBusEvent } from '@cc/plugin-sdk';
 
 type Listener = (payload: unknown) => void;
 

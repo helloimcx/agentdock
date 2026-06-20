@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import process from 'node:process';
 import readline from 'node:readline';
-import type { AgentSandboxLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
+import type { AgentSandboxLaunchConfig } from '@cc/plugin-sdk';
 import { SandboxManager, type SandboxRun } from './sandbox-manager.js';
 
 async function main() {

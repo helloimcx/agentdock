@@ -9,8 +9,8 @@ import {
   sendAction,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
-} from '../../../packages/core-sdk/src';
-import type { KnowledgeBase } from '../../../packages/contracts/src';
+} from '@cc/core-sdk';
+import type { KnowledgeBase } from '@cc/superai-contracts';
 import {
   type ThreadActionTarget,
   type ThreadGroup,

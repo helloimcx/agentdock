@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LocalCoreCapabilitySnapshot } from '../../packages/contracts/src';
+import type { LocalCoreCapabilitySnapshot } from '@cc/superai-contracts';
 
 export type AppMode = 'desktop' | 'web';
 export type RuntimeProvider = 'local_core';

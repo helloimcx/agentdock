@@ -11,7 +11,7 @@ import {
   type KnowledgeSearchResult,
   type KnowledgeSource,
   type KnowledgeUploadResult,
-} from '../../contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { KnowledgeSqliteStore } from './sqlite-store.js';
 
 interface AiVectorKnowledgeProviderOptions {

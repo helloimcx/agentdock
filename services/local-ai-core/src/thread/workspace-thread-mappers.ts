@@ -1,4 +1,4 @@
-import type { ThreadDetail, ThreadMessage, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { ThreadDetail, ThreadMessage, ThreadSummary } from '@cc/superai-contracts';
 import { encodeThreadId } from './workspace-thread-id.js';
 
 export function normalizeMessageContent(content?: string | null) {

@@ -5,7 +5,7 @@ import {
   renameThread,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
-} from '../../../packages/core-sdk/src';
+} from '@cc/core-sdk';
 import type { ChatThreadSummary, ThreadActionTarget } from './thread-chat-model';
 import type {
   ThreadChatConversationRefs,

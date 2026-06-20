@@ -38,34 +38,6 @@ function readSourceFiles(scope: string) {
   }));
 }
 
-const rendererPackageSourceImportAllowlist = new Set([
-  'src/api/cron.ts',
-  'src/api/desktop.ts',
-  'src/api/knowledge.ts',
-  'src/api/monitors.ts',
-  'src/api/runtime-bootstrap.ts',
-  'src/app/runtime.ts',
-  'src/pages/Automation/MonitorList.tsx',
-  'src/pages/Cron/CronList.tsx',
-  'src/pages/Dashboard.tsx',
-  'src/pages/Knowledge/KnowledgeDetail.tsx',
-  'src/pages/Knowledge/KnowledgeHome.tsx',
-  'src/pages/System/Config.tsx',
-  'src/pages/Threads/thread-chat-action-types.ts',
-  'src/pages/Threads/thread-chat-model.ts',
-  'src/pages/Threads/thread-chat-page-state.ts',
-  'src/pages/Threads/thread-chat-permission.test.ts',
-  'src/pages/Threads/thread-chat-permission.ts',
-  'src/pages/Threads/useThreadChatActions.ts',
-  'src/pages/Threads/useThreadChatController.ts',
-  'src/pages/Threads/useThreadChatConversationState.ts',
-  'src/pages/Threads/useThreadChatSendingActions.ts',
-  'src/pages/Threads/useThreadChatSessionBrowser.ts',
-  'src/pages/Threads/ThreadChatComposer.tsx',
-  'src/pages/Threads/useThreadChatThreadActions.ts',
-  'src/types/window.d.ts',
-]);
-
 test('state ownership docs identify Local AI Core owners for durable chat and channel state', () => {
   const content = readFileSync(join(rootDir, 'docs', 'architecture', 'state-ownership.md'), 'utf8');
 
@@ -133,16 +105,17 @@ test('thread chat renderer state types reuse canonical contracts instead of ad h
   );
 });
 
-test('renderer does not add new direct imports of package source internals', () => {
-  const offenders = readSourceFiles('src')
-    .filter(({ content }) => /from ['"][^'"]*packages\/(?:contracts|core-sdk|plugin-sdk)\/src/.test(content))
-    .map(({ relativePath }) => relativePath)
-    .filter((relativePath) => !rendererPackageSourceImportAllowlist.has(relativePath));
+test('production code imports workspace packages through public package names', () => {
+  const offenders = ['src', 'services', 'packages']
+    .flatMap(readSourceFiles)
+    .filter(({ relativePath }) => !relativePath.startsWith('packages/contracts/src/'))
+    .filter(({ content }) => /(?:packages\/(?:contracts|core-sdk|plugin-sdk|knowledge-api)|(?:contracts|core-sdk|plugin-sdk))\/src/.test(content))
+    .map(({ relativePath }) => relativePath);
 
   assert.deepEqual(
     offenders,
     [],
-    'renderer code should import package APIs through stable public entrypoints; add migrations instead of new packages/*/src imports',
+    'production code must import workspace dependencies through @cc/* public entrypoints',
   );
 });
 
@@ -178,5 +151,23 @@ test('workspace packages declare public package entrypoints', () => {
       './src/index.ts',
       `${packagePath} must expose its public source entrypoint for workspace consumers`,
     );
+  }
+
+  const contracts = JSON.parse(readFileSync(join(rootDir, 'packages/contracts/package.json'), 'utf8')) as {
+    exports?: Record<string, string>;
+  };
+  for (const domain of ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge']) {
+    assert.ok(contracts.exports?.[`./${domain}`], `contracts must expose the ${domain} domain entrypoint`);
+  }
+});
+
+test('chat syntax highlighting stays behind a lazy code-block boundary', () => {
+  const markdown = readFileSync(join(rootDir, 'src/components/chat/ChatMarkdown.tsx'), 'utf8');
+  const highlighted = readFileSync(join(rootDir, 'src/components/chat/HighlightedMarkdown.tsx'), 'utf8');
+
+  assert.doesNotMatch(markdown, /from ['"]rehype-highlight['"]/, 'base chat markdown must not eagerly load highlighting');
+  assert.match(markdown, /lazy\(\(\) =>\s*import\('\.\/HighlightedMarkdown'\)/, 'highlighting must use a lazy chunk');
+  for (const language of ['typescript', 'javascript', 'json', 'bash', 'python', 'xml', 'css', 'sql', 'yaml']) {
+    assert.match(highlighted, new RegExp(`highlight\\.js/lib/languages/${language}`), `${language} must remain in the supported subset`);
   }
 });

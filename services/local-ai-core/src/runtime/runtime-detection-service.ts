@@ -1,8 +1,8 @@
-import type { DesktopConnectConfig, InstalledAgentRuntime, LocalCoreErrorInfo } from '../../../../packages/contracts/src/index.js';
+import type { DesktopConnectConfig, InstalledAgentRuntime, LocalCoreErrorInfo } from '@cc/superai-contracts';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   LOCALCORE_ACP_AGENT_TYPE,
-} from '../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
 import { resolveAgentRuntimeDefinition } from '../agents/index.js';
 import { detectInstalledAgentRuntimes, type AgentRuntimeDetectionOptions } from './agent-runtime-detector.js';
 import { RuntimeDetectionStore } from './runtime-detection-store.js';

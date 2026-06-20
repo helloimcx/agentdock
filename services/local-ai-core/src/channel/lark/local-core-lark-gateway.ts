@@ -22,10 +22,10 @@ import type {
   LocalCoreLarkGatewayStatus,
   LocalCoreLarkQrCodeStatus,
   LocalCorePairingRequest,
-} from '../../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/superai-contracts';
+import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
-import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
+import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';

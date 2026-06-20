@@ -1,6 +1,6 @@
 import type { RouteHandler } from '../server-helpers.js';
 import type { RuntimeDetectionService } from '../runtime-detection-service.js';
-import type { RuntimeDetectionListResponse } from '../../../../../packages/contracts/src/index.js';
+import type { RuntimeDetectionListResponse } from '@cc/superai-contracts';
 import { json } from '../server-helpers.js';
 
 async function runtimeDetectionResponse(runtimeDetection: RuntimeDetectionService): Promise<RuntimeDetectionListResponse> {

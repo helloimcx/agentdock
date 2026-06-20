@@ -4,4 +4,4 @@ export type {
   SchedulerExecutionTarget as ScheduledExecutionTarget,
   SchedulerExecutorRuntime,
   SchedulerTriggerRuntime,
-} from '../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';

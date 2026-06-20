@@ -1,4 +1,4 @@
-import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob } from '@cc/superai-contracts';
 import type { ScheduledExecutionTarget } from './adapters.js';
 
 export interface ScheduledExecutionPolicy {

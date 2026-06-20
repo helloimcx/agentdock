@@ -1,5 +1,5 @@
-import type { AutomationMonitorCondition } from '../../../../packages/contracts/src/index.js';
-import { normalizeAutomationMonitorConditionOperator } from '../../../../packages/contracts/src/index.js';
+import type { AutomationMonitorCondition } from '@cc/superai-contracts';
+import { normalizeAutomationMonitorConditionOperator } from '@cc/superai-contracts';
 
 export function parseMonitorCondition(value: string): AutomationMonitorCondition {
   const expression = String(value || '').trim();

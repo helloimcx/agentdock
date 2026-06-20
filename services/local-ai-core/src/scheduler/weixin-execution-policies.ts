@@ -1,4 +1,4 @@
-import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob } from '@cc/superai-contracts';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 import { createChannelExecutionPolicy, type ChannelExecutionPolicyOptions } from './channel-execution-policy.js';
 

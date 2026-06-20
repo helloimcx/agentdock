@@ -1,5 +1,5 @@
-import type { DesktopConnectConfig } from '../../../../../packages/contracts/src/index.js';
-import type { ChannelPlugin } from '../../../../../packages/plugin-sdk/src/index.js';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
+import type { ChannelPlugin } from '@cc/plugin-sdk';
 import { LocalCoreLarkGateway } from '../../channel/lark/local-core-lark-gateway.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';

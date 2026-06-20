@@ -5,7 +5,7 @@ import type {
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type { LocalWorkspaceRegistryRow } from '../../router/workspace-router-types.js';
 import { parseJson } from './utils.js';
 

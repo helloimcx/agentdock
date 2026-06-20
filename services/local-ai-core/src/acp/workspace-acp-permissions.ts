@@ -1,5 +1,5 @@
 import type { RunningPermissionRequest } from '../router/workspace-router-types.js';
-import { normalizePermissionResponse } from '../../../../shared/desktop.js';
+import { normalizePermissionResponse } from '@cc/superai-contracts';
 
 type DesktopBridgeButtonNormalizer = (input: { text: string; data: string }) => { text: string; data: string } | null;
 

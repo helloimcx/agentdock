@@ -1,7 +1,7 @@
 import {
   DESKTOP_PI_ACP_PACKAGE,
   DESKTOP_PI_CODING_AGENT_PACKAGE,
-} from '../../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
 import type { AgentLaunchResolverInput, AgentLaunchDefaults, AgentModelResolverInput } from '../shared/definition.js';
 import {
   getFirstProviderModelId,

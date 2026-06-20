@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { LocalAiCoreRoute } from './server-routes.js';
-import type { LocalCoreEvent } from '../../../../packages/contracts/src/index.js';
-import type { OpenAiChatCompletionChunk } from '../../../../packages/contracts/src/index.js';
+import type { LocalCoreEvent } from '@cc/superai-contracts';
+import type { OpenAiChatCompletionChunk } from '@cc/superai-contracts';
 import { toLocalCoreErrorInfo, errorInfoToHttpBody } from '../kernel/local-core-errors.js';
 
 export type RouteHandler = (route: LocalAiCoreRoute, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;

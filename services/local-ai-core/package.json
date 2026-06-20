@@ -2,5 +2,10 @@
   "name": "@cc/local-ai-core",
   "private": true,
   "version": "0.1.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@cc/knowledge-api": "workspace:*",
+    "@cc/plugin-sdk": "workspace:*",
+    "@cc/superai-contracts": "workspace:*"
+  }
 }

@@ -1,6 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { RuntimeProvider } from '@/app/runtime';
-import type { ThreadDetail } from '../../../packages/contracts/src';
+import type { ThreadDetail } from '@cc/superai-contracts';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget, ThreadGroup } from './thread-chat-model';
 import type { PendingPermissionRequest } from './thread-chat-permission';
 

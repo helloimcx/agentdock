@@ -5,7 +5,7 @@ import type {
   ChannelRuntimeRegistration,
   PluginContext,
   PluginManifest,
-} from '../../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 
 export function createBuiltinChannelPlugin(options: {
   manifest: PluginManifest & { kind: 'channel' };

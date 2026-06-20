@@ -1,4 +1,4 @@
-import type { ChannelInboundContentPart } from '../../../../../packages/contracts/src/index.js';
+import type { ChannelInboundContentPart } from '@cc/superai-contracts';
 
 export function summarizeLarkInboundContentParts(parts: ChannelInboundContentPart[]) {
   const text = parts

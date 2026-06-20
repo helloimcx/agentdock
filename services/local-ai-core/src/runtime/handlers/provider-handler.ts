@@ -11,7 +11,7 @@ export function registerProviderHandlers(
   });
   map.set('providers.create', async (_route, req, res) => {
     const body = await readJsonBody(req);
-    json(res, 200, await store.upsertModelProvider(body as unknown as import('../../../../../packages/contracts/src/index.js').DesktopModelProviderInput));
+    json(res, 200, await store.upsertModelProvider(body as unknown as import('@cc/superai-contracts').DesktopModelProviderInput));
   });
   map.set('provider.update', async (route, req, res) => {
     const body = await readJsonBody(req);
@@ -19,7 +19,7 @@ export function registerProviderHandlers(
     if (!existing) {
       throw new Error(`Provider not found: ${(route as { providerId: string }).providerId}`);
     }
-    json(res, 200, store.upsertModelProvider({ ...(body as unknown as import('../../../../../packages/contracts/src/index.js').DesktopModelProviderInput), id: (route as { providerId: string }).providerId }));
+    json(res, 200, store.upsertModelProvider({ ...(body as unknown as import('@cc/superai-contracts').DesktopModelProviderInput), id: (route as { providerId: string }).providerId }));
   });
   map.set('provider.delete', async (route, _req, res) => {
     json(res, 200, store.deleteModelProvider((route as { providerId: string }).providerId));

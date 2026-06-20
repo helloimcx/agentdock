@@ -1,5 +1,5 @@
-import type { ChannelInboundContentPart, ChannelInboundMessageContent } from '../../../../packages/contracts/src/index.js';
-import { normalizeChannelContentPartType } from '../../../../packages/contracts/src/index.js';
+import type { ChannelInboundContentPart, ChannelInboundMessageContent } from '@cc/superai-contracts';
+import { normalizeChannelContentPartType } from '@cc/superai-contracts';
 
 export type ThreadMessageInput = string | ChannelInboundMessageContent;
 

@@ -3,6 +3,16 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "baseUrl": ".",
+    "paths": {
+      "@cc/superai-contracts": ["packages/contracts/src/index.ts"],
+      "@cc/superai-contracts/*": ["packages/contracts/src/*"],
+      "@cc/core-sdk": ["packages/core-sdk/src/index.ts"],
+      "@cc/core-sdk/*": ["packages/core-sdk/src/*"],
+      "@cc/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],
+      "@cc/plugin-sdk/*": ["packages/plugin-sdk/src/*"],
+      "@cc/knowledge-api": ["packages/knowledge-api/src/index.ts"]
+    },
     "outDir": "dist-electron",
     "rootDir": ".",
     "strict": true,
@@ -10,6 +20,13 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node"]
+  },
+  "tsc-alias": {
+    "replacers": {
+      "base-url": {
+        "enabled": false
+      }
+    }
   },
   "include": [
     "electron/**/*.ts",

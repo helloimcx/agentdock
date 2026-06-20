@@ -1,4 +1,4 @@
-import type { RuntimePlugin } from '../../../../packages/plugin-sdk/src/index.js';
+import type { RuntimePlugin } from '@cc/plugin-sdk';
 
 export class LocalCorePluginRegistry {
   private readonly plugins = new Map<string, RuntimePlugin>();

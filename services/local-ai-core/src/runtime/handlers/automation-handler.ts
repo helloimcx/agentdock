@@ -12,7 +12,7 @@ export function registerAutomationHandlers(
   });
   map.set('automation.monitors.create', async (_route, req, res) => {
     const body = await readJsonBody(req);
-    json(res, 200, await automationMonitors.createMonitor(body as unknown as import('../../../../../packages/contracts/src/index.js').AutomationMonitorCreateInput));
+    json(res, 200, await automationMonitors.createMonitor(body as unknown as import('@cc/superai-contracts').AutomationMonitorCreateInput));
   });
   map.set('automation.monitor.get', async (route, _req, res) => {
     const monitor = automationMonitors.getMonitor((route as { monitorId: string }).monitorId);
@@ -29,7 +29,7 @@ export function registerAutomationHandlers(
   });
   map.set('automation.monitor.update', async (route, req, res) => {
     const body = await readJsonBody(req);
-    json(res, 200, await automationMonitors.updateMonitor((route as { monitorId: string }).monitorId, body as unknown as import('../../../../../packages/contracts/src/index.js').AutomationMonitorUpdateInput));
+    json(res, 200, await automationMonitors.updateMonitor((route as { monitorId: string }).monitorId, body as unknown as import('@cc/superai-contracts').AutomationMonitorUpdateInput));
   });
   map.set('automation.monitor.delete', async (route, _req, res) => {
     json(res, 200, await automationMonitors.deleteMonitor((route as { monitorId: string }).monitorId));

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { LocalCoreError } from '../kernel/local-core-errors.js';
-import type { AgentSandboxLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
+import type { AgentSandboxLaunchConfig } from '@cc/plugin-sdk';
 import { cleanupRunScopedState, materializeSandboxLaunchConfig, sanitizePathSegment } from './sandbox-config.js';
 import { OpenSandboxClient, type OpenSandboxCreateInput } from './opensandbox-client.js';
 

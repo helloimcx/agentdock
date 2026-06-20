@@ -9,8 +9,8 @@ import type {
   ChannelFileSendResult,
   ChannelOutboundMessageInput,
   ChannelOutboundMessageResult,
-} from '../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/superai-contracts';
+import type { ChannelRuntime } from '@cc/plugin-sdk';
 
 export class ChannelService {
   constructor(private readonly runtimes: Map<string, ChannelRuntime>) {}

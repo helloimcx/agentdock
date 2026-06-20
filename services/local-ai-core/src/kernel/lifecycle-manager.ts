@@ -1,4 +1,4 @@
-import type { PluginContext, PluginHealth, RuntimePlugin } from '../../../../packages/plugin-sdk/src/index.js';
+import type { PluginContext, PluginHealth, RuntimePlugin } from '@cc/plugin-sdk';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 
 export class LocalCoreLifecycleManager {

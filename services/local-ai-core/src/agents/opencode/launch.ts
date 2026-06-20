@@ -1,5 +1,5 @@
-import type { DesktopProviderConfig } from '../../../../../packages/contracts/src/index.js';
-import { DEFAULT_DESKTOP_OPENCODE_MODEL } from '../../../../../shared/desktop.js';
+import type { DesktopProviderConfig } from '@cc/superai-contracts';
+import { DEFAULT_DESKTOP_OPENCODE_MODEL } from '@cc/superai-contracts';
 import type { AgentLaunchDefaults, AgentModelResolverInput } from '../shared/definition.js';
 import { getProviderDefaultModelId } from '../shared/launch-utils.js';
 

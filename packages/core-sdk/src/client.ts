@@ -1,4 +1,4 @@
-import type { DesktopBridgeEvent, LocalCoreEvent } from '../../contracts/src/index.js';
+import type { DesktopBridgeEvent, LocalCoreEvent } from '@cc/superai-contracts';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
 

@@ -20,9 +20,9 @@ import type {
   ScheduledJobRun,
   ExternalRunSnapshot,
   RuntimeConfigState,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
-import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { KnowledgeRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreKernel } from '../kernel/bootstrap.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';

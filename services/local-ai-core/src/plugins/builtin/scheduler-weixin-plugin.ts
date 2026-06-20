@@ -2,7 +2,7 @@ import type {
   ChannelRuntime,
   SchedulerPlugin,
   SchedulerRuntimeRegistration,
-} from '../../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import { WeixinScheduleAdapter } from '../../scheduler/weixin-schedule-adapter.js';

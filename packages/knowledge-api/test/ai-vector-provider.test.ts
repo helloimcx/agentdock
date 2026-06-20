@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { KnowledgeConfig } from '../../contracts/src/index.js';
+import type { KnowledgeConfig } from '@cc/superai-contracts';
 import {
   AiVectorKnowledgeProvider,
   SqliteThreadKnowledgeAttachmentStore,

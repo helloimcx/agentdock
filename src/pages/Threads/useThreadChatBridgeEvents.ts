@@ -5,7 +5,7 @@ import {
   isAcpAgentType,
   supportsInteractivePermission,
   type DesktopBridgeEvent,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import { toPendingPermissionRequest } from './thread-chat-permission';
 import {
   taskStateAfterTypingStop,

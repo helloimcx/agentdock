@@ -1,5 +1,5 @@
-import { createAiVectorKnowledgePlugin } from '../../../../../packages/knowledge-api/src/index.js';
-import type { KnowledgeConfig } from '../../../../../packages/contracts/src/index.js';
+import { createAiVectorKnowledgePlugin } from '@cc/knowledge-api';
+import type { KnowledgeConfig } from '@cc/superai-contracts';
 
 export function createBuiltinAiVectorKnowledgePlugin(options: {
   userDataPath: string;

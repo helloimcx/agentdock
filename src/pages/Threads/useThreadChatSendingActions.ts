@@ -6,9 +6,9 @@ import {
   sendMessage as sendThreadMessage,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
-} from '../../../packages/core-sdk/src';
-import type { KnowledgeBase } from '../../../packages/contracts/src';
-import { wrapUserMessageWithSchedulerProtocol } from '../../../shared/desktop';
+} from '@cc/core-sdk';
+import type { KnowledgeBase } from '@cc/superai-contracts';
+import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import type { ChatTaskState } from './thread-chat-model';
 import type {
   ThreadChatIdentitySetters,

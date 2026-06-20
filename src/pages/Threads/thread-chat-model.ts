@@ -1,5 +1,5 @@
 import type { Session } from '../../api/sessions';
-import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
+import type { ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
 import type {
   DesktopBridgeEvent,
   DesktopBridgeEventKind,
@@ -7,11 +7,11 @@ import type {
   DesktopBridgeButtonOption,
   DesktopBridgeToolCall,
   DesktopRuntimeStatus,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import {
   isPermissionButtonOption,
   normalizeDesktopBridgeButtonOption,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import { sessionLabel } from '../../lib/session-utils';
 import type { ChatTranscriptMessage } from '../../components/chat/chat-message-state';
 

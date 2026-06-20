@@ -5,7 +5,7 @@ import * as TOML from '@iarna/toml';
 import type {
   DesktopConnectConfig,
   RuntimeConfigState,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { migrateDesktopConnectConfig } from '../../runtime/config-migration.js';
 import { parseJson } from './utils.js';
 

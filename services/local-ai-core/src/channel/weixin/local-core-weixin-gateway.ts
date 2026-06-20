@@ -19,9 +19,9 @@ import type {
   LocalCoreChannelGatewayStatus,
   LocalCoreErrorInfo,
   LocalCorePairingRequest,
-} from '../../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime } from '../../../../../packages/plugin-sdk/src/index.js';
-import { wrapUserMessageWithSchedulerProtocol } from '../../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
+import type { ChannelRuntime } from '@cc/plugin-sdk';
+import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';

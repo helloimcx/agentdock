@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { KnowledgeBase, KnowledgeFile, KnowledgeFolder } from '../../contracts/src/index.js';
+import type { KnowledgeBase, KnowledgeFile, KnowledgeFolder } from '@cc/superai-contracts';
 
 const SCHEMA_VERSION = '2';
 

@@ -3,10 +3,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import type {
   ThreadDetail,
   ThreadSummary,
-} from '../../../../../packages/contracts/src/index.js';
-import { normalizeRunStatus } from '../../../../../packages/contracts/src/index.js';
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
-import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '../../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
+import { normalizeRunStatus } from '@cc/superai-contracts';
+import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
+import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
 import type {
   LocalMessageRow,
   LocalRunRow,

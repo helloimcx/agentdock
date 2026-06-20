@@ -3,7 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "dependencies": {
+    "@cc/superai-contracts": "workspace:*"
+  },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./agents": "./src/agents.ts",
+    "./channels": "./src/channels.ts",
+    "./scheduler": "./src/scheduler.ts",
+    "./automation": "./src/automation.ts",
+    "./knowledge": "./src/knowledge.ts"
   }
 }

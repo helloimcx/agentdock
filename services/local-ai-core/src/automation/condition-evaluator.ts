@@ -1,4 +1,4 @@
-import type { AutomationMonitorCondition, AutomationMonitorEventSnapshot } from '../../../../packages/contracts/src/index.js';
+import type { AutomationMonitorCondition, AutomationMonitorEventSnapshot } from '@cc/superai-contracts';
 
 export function evaluateMonitorCondition(condition: AutomationMonitorCondition, event: AutomationMonitorEventSnapshot) {
   if (condition.expression) {

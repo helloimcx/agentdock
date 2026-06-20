@@ -21,7 +21,7 @@ import type {
   OpenAiChatCompletionMessage,
   OpenAiChatCompletionRequest,
   OpenAiChatCompletionResponse,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 
 type OpenAiProgressMode = 'extension' | 'content';
 

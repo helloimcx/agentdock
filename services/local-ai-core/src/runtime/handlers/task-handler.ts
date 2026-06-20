@@ -1,7 +1,7 @@
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
-import type { AgentTaskListQuery, AgentTaskCreateInput, AgentTaskUpdateInput } from '../../../../../packages/contracts/src/index.js';
+import type { AgentTaskListQuery, AgentTaskCreateInput, AgentTaskUpdateInput } from '@cc/superai-contracts';
 
 export function registerTaskHandlers(
   map: Map<string, RouteHandler>,

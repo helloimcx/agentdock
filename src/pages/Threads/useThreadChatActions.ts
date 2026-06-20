@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { KnowledgeBase, ThreadDetail } from '../../../packages/contracts/src';
+import type { KnowledgeBase, ThreadDetail } from '@cc/superai-contracts';
 import type { RuntimeProvider } from '@/app/runtime';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget } from './thread-chat-model';
 import type {

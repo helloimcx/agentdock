@@ -4,7 +4,7 @@ import type {
   AutomationMonitorRun,
   AutomationMonitorStatus,
   AutomationMonitorUpdateInput,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 export type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {

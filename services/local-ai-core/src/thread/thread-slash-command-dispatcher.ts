@@ -1,4 +1,4 @@
-import type { AuditEvent } from '../../../../packages/contracts/src/index.js';
+import type { AuditEvent } from '@cc/superai-contracts';
 import type { LocalRunRow, LocalThreadRow } from '../router/workspace-router-types.js';
 import { parseSlashCommand } from '../acp/local-core-slash-commands.js';
 import { SessionCommandService, type SessionCommandOperations, type SessionCommandResult } from './session-command-service.js';

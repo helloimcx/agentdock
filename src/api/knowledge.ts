@@ -15,7 +15,7 @@ import {
   updateKnowledgeBase,
   updateKnowledgeFolder,
   uploadKnowledgeBaseFiles,
-} from '../../packages/core-sdk/src';
+} from '@cc/core-sdk';
 import type {
   KnowledgeBaseCreateInput,
   KnowledgeBaseUpdateInput,
@@ -23,7 +23,7 @@ import type {
   KnowledgeFolderCreateInput,
   KnowledgeFolderUpdateInput,
   KnowledgeSearchInput,
-} from '../../packages/contracts/src';
+} from '@cc/superai-contracts';
 
 export {
   createKnowledgeBase,

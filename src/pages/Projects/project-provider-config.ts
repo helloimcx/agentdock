@@ -1,4 +1,4 @@
-import type { DesktopConnectConfig } from '../../../shared/desktop';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
 
 function cloneConfig(config: DesktopConnectConfig): DesktopConnectConfig {
   return JSON.parse(JSON.stringify(config || {})) as DesktopConnectConfig;

@@ -1,5 +1,5 @@
-import type { AgentLaunchConfig } from '../../../../packages/plugin-sdk/src/index.js';
-import type { DesktopProjectConfig, RuntimeConfigState } from '../../../../packages/contracts/src/index.js';
+import type { AgentLaunchConfig } from '@cc/plugin-sdk';
+import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
 import {
   isProjectSandboxEnabled,
   normalizeSandboxLaunchConfig,

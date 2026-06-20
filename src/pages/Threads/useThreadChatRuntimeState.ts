@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { getRuntimeProvider } from '@/app/runtime';
 import { getRuntimeStatus, onRuntimeEvent } from '@/api/desktop';
-import type { DesktopRuntimeStatus } from '../../../shared/desktop';
+import type { DesktopRuntimeStatus } from '@cc/superai-contracts';
 import type { ChatTaskState } from './thread-chat-model';
 
 type UseThreadChatRuntimeStateInput = {

@@ -13,8 +13,8 @@ import type {
   AuditEventType,
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
-} from '../../../../../packages/contracts/src/index.js';
-import { normalizeApprovalRequestStatus } from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
+import { normalizeApprovalRequestStatus } from '@cc/superai-contracts';
 import type {
   LocalApprovalRequestRow,
   LocalAuditEventRow,

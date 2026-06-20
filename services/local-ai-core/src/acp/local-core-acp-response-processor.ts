@@ -1,4 +1,4 @@
-import type { ScheduledJob, ScheduledJobRoute } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob, ScheduledJobRoute } from '@cc/superai-contracts';
 import { detectCronCommands, stripCronCommands, type CronCommand } from '../scheduler/cron-command-detector.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { withoutThreadRoute } from '../scheduler/scheduled-job-route.js';

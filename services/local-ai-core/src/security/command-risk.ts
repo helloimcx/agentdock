@@ -1,4 +1,4 @@
-import type { CommandRiskClassification, SecurityPermissionScope } from '../../../../packages/contracts/src/index.js';
+import type { CommandRiskClassification, SecurityPermissionScope } from '@cc/superai-contracts';
 
 export function classifyCommandRisk(command: string): CommandRiskClassification {
   const normalized = command.trim();

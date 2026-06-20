@@ -1,7 +1,7 @@
 import { delimiter, win32 } from 'node:path';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import type { DesktopBridgeEvent } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent } from '@cc/superai-contracts';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import type { AcpSessionState, LocalCoreProjectConfig } from '../router/workspace-router-types.js';

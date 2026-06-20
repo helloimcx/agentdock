@@ -2,8 +2,8 @@ import type {
   SchedulerPlugin,
   SchedulerRuntimeRegistration,
   SchedulerTriggerRuntime,
-} from '../../../../../packages/plugin-sdk/src/index.js';
-import type { ScheduledJob } from '../../../../../packages/contracts/src/index.js';
+} from '@cc/plugin-sdk';
+import type { ScheduledJob } from '@cc/superai-contracts';
 import { cronMatchesDate, floorToMinute } from '../../scheduler/cron.js';
 
 class CronSchedulerTriggerRuntime implements SchedulerTriggerRuntime {

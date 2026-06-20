@@ -1,4 +1,4 @@
-import type { MonitorEvent, MonitorProviderRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { MonitorEvent, MonitorProviderRuntime } from '@cc/plugin-sdk';
 
 export class MockStockQuoteProvider implements MonitorProviderRuntime {
   readonly sourceType = 'stock.quote';

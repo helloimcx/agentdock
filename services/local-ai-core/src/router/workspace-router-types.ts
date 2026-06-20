@@ -6,7 +6,7 @@ import type {
   ThreadDetail,
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type {
   AgentRuntime,
   AgentLaunchConfig,
@@ -14,7 +14,7 @@ import type {
   EventBus,
   KnowledgeRuntime,
   ThreadKnowledgeAttachmentStore,
-} from '../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { AgentAcpProgressRecord } from '../agents/shared/acp-behavior.js';
 

@@ -3,7 +3,7 @@ import type {
   AutomationMonitorCreateInput,
   AutomationMonitorRun,
   AutomationMonitorUpdateInput,
-} from '../../packages/contracts/src';
+} from '@cc/superai-contracts';
 import {
   createAutomationMonitor,
   deleteAutomationMonitor,
@@ -12,7 +12,7 @@ import {
   listWorkspaces,
   runAutomationMonitor,
   updateAutomationMonitor,
-} from '../../packages/core-sdk/src';
+} from '@cc/core-sdk';
 
 export type Monitor = AutomationMonitor;
 export type MonitorRun = AutomationMonitorRun;

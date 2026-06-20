@@ -3,7 +3,7 @@ import type {
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopProviderConfig,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type { LocalModelProviderRow } from '../../router/workspace-router-types.js';
 import { parseJson } from './utils.js';
 

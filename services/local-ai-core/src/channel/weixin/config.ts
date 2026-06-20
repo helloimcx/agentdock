@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { DesktopConnectConfig } from '../../../../../packages/contracts/src/index.js';
-import { normalizeDesktopPlatformType } from '../../../../../shared/desktop.js';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
+import { normalizeDesktopPlatformType } from '@cc/superai-contracts';
 import { channelPlatformKey, normalizeChannelInstanceId } from '../shared/channel-keys.js';
 import type { WeixinCredentials, WeixinWorkspaceBinding } from './types.js';
 

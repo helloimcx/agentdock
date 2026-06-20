@@ -5,8 +5,8 @@ import type {
   AutomationMonitorRun,
   AutomationMonitorUpdateInput,
   ScheduledJobRoute,
-} from '../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime, EventBus, MonitorProviderRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/superai-contracts';
+import type { ChannelRuntime, EventBus, MonitorProviderRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import {

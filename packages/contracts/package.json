@@ -4,6 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts",
+    "./threads": "./src/threads.ts",
+    "./channels": "./src/channels.ts",
+    "./scheduler": "./src/scheduler.ts",
+    "./automation": "./src/automation.ts",
+    "./knowledge": "./src/knowledge.ts"
   }
 }

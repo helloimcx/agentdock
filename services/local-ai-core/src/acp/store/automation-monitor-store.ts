@@ -7,13 +7,13 @@ import type {
   AutomationMonitorRun,
   AutomationMonitorStatus,
   AutomationMonitorUpdateInput,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import {
   normalizeAutomationMonitorConditionOperator,
   normalizeAutomationMonitorStatus,
   normalizeChannelPlatform,
   normalizeScheduledJobExecutionMode,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type {
   LocalAutomationMonitorRow,
   LocalAutomationMonitorRunRow,
