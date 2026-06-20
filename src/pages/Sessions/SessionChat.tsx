@@ -6,6 +6,10 @@ import { Badge, Button, Textarea } from '@/components/ui';
 import { getSession, sendMessage, type SessionDetail } from '@/api/sessions';
 import { cn } from '@/lib/utils';
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
+import { useSessionEventRefresh } from '@/components/chat/useSessionEventRefresh';
+import { api } from '@/api/client';
+import { LOCAL_AI_CORE_BASE } from '@/api/runtime-bootstrap';
+import { projectChatHistory } from '@/components/chat/chat-message-state';
 
 export default function SessionChat() {
   const { t } = useTranslation();
@@ -26,6 +30,13 @@ export default function SessionChat() {
       setLoading(false);
     }
   }, [project, id]);
+  const usesLocalCoreEvents = api.getBaseUrl().replace(/\/+$/, '') === LOCAL_AI_CORE_BASE;
+
+  useSessionEventRefresh(
+    { sessionId: id || '', sessionKey: session?.session_key },
+    fetchSession,
+    Boolean(project && id && usesLocalCoreEvents),
+  );
 
   useEffect(() => {
     fetchSession();
@@ -42,7 +53,9 @@ export default function SessionChat() {
     setSending(true);
     try {
       await sendMessage(project, { session_key: session.session_key, message: msg });
-      setTimeout(fetchSession, 1500);
+      if (!usesLocalCoreEvents) {
+        window.setTimeout(fetchSession, 1500);
+      }
     } finally {
       setSending(false);
     }
@@ -98,10 +111,10 @@ export default function SessionChat() {
           <p className="text-center text-sm text-muted-foreground py-12">{t('sessions.noMessages')}</p>
         )}
         <div className="mx-auto max-w-4xl space-y-5">
-          {session?.history?.map((msg, i) => {
+          {projectChatHistory(session?.history).map((msg) => {
             const isUser = msg.role === 'user';
             return (
-              <div key={i} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
+              <div key={msg.id} className={cn('flex gap-3', isUser ? 'justify-end' : 'justify-start')}>
                 {!isUser && (
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 dark:bg-white/[0.06]">
                     <Bot size={16} className="text-primary" />

@@ -28,6 +28,7 @@ import type {
   InstalledAgentRuntime,
   WorkspaceStreamingProbeResult,
 } from '../../packages/contracts/src';
+export type { LocalCoreEvent } from '../../packages/contracts/src';
 import {
   approveChannelPairing as approveCoreChannelPairing,
   disableChannelGateway as disableCoreChannelGateway,
@@ -287,3 +288,4 @@ export const onRuntimeEvent = (listener: (runtime: DesktopRuntimeStatus) => void
 export const onRuntimeDetectionEvent = (listener: (event: LocalCoreEvent) => void) =>
   requireProvider().onRuntimeDetectionEvent(listener);
 export const onBridgeEvent = (listener: (event: DesktopBridgeEvent) => void) => requireProvider().onBridgeEvent(listener);
+export const onCoreEvent = (listener: (event: LocalCoreEvent) => void) => subscribeEvents(listener);
