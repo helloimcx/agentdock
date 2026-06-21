@@ -401,14 +401,11 @@ export class LocalCoreAcpBackend {
         runId,
       });
       this.options.log?.(`[acp.run:${runId}] session ready in ${Date.now() - runStartedAt}ms`);
-      const priorAssistantFinalMessages = this.options.store
-        .getThread(threadId, [])
-        .messages
+      const priorThreadMessages = this.options.store.getThread(threadId, []).messages;
+      const priorAssistantFinalMessages = priorThreadMessages
         .filter((entry) => entry.role === 'assistant' && entry.kind === 'final')
         .map((entry) => entry.content);
-      const priorAssistantProgressMessages = this.options.store
-        .getThread(threadId, [])
-        .messages
+      const priorAssistantProgressMessages = priorThreadMessages
         .filter((entry) => entry.role === 'assistant' && entry.kind === 'progress')
         .map((entry) => ({
           kind: entry.bridgeKind,
