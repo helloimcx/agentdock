@@ -156,9 +156,66 @@ test('workspace packages declare public package entrypoints', () => {
   const contracts = JSON.parse(readFileSync(join(rootDir, 'packages/contracts/package.json'), 'utf8')) as {
     exports?: Record<string, string>;
   };
-  for (const domain of ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge']) {
+  const domains = ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge'];
+  for (const domain of domains) {
     assert.ok(contracts.exports?.[`./${domain}`], `contracts must expose the ${domain} domain entrypoint`);
   }
+
+  for (const packageName of ['contracts', 'core-sdk', 'plugin-sdk']) {
+    const packageJson = JSON.parse(readFileSync(join(rootDir, `packages/${packageName}/package.json`), 'utf8')) as {
+      exports?: Record<string, string>;
+    };
+    for (const domain of domains) {
+      assert.equal(
+        packageJson.exports?.[`./${domain}`],
+        `./src/${domain}.ts`,
+        `${packageName} must expose the ${domain} domain through its dedicated entrypoint`,
+      );
+    }
+  }
+});
+
+test('core sdk domain entrypoints do not re-export the top-level sdk', () => {
+  for (const domain of ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge']) {
+    const source = readFileSync(join(rootDir, `packages/core-sdk/src/${domain}.ts`), 'utf8');
+    assert.doesNotMatch(
+      source,
+      /(?:from|import\s*\()\s*['"]\.\/index\.js['"]/,
+      `core-sdk/${domain} must own its implementation without depending on the aggregate entrypoint`,
+    );
+    assert.match(source, /coreRequest|coreClient/, `core-sdk/${domain} must own executable domain behavior`);
+  }
+});
+
+test('package domain modules do not depend on aggregate entrypoints', () => {
+  for (const packageName of ['contracts', 'core-sdk', 'plugin-sdk']) {
+    for (const domain of ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge']) {
+      const source = readFileSync(join(rootDir, `packages/${packageName}/src/${domain}.ts`), 'utf8');
+      assert.doesNotMatch(
+        source,
+        /(?:from|import\s*\()\s*['"]\.\/index(?:\.js)?['"]/,
+        `${packageName}/${domain} must not reach back through its aggregate entrypoint`,
+      );
+    }
+  }
+});
+
+test('desktop contracts are consumed through the contracts package outside their owner', () => {
+  const offenders = ['src', 'services', 'packages']
+    .flatMap(readSourceFiles)
+    .filter(({ relativePath }) => !relativePath.startsWith('packages/contracts/src/'))
+    .filter(({ content }) => /shared\/desktop/.test(content))
+    .map(({ relativePath }) => relativePath);
+
+  assert.deepEqual(offenders, [], 'business code must consume shared desktop contracts through @cc/superai-contracts');
+});
+
+test('renderer does not branch features through the retired runtime provider string', () => {
+  const offenders = readSourceFiles('src')
+    .filter(({ content }) => /RuntimeProvider|getRuntimeProvider|runtimeProvider\s*(?:===|!==)/.test(content))
+    .map(({ relativePath }) => relativePath);
+
+  assert.deepEqual(offenders, [], 'renderer features must use capabilities or the Local Core contract directly');
 });
 
 test('chat syntax highlighting stays behind a lazy code-block boundary', () => {

@@ -27,6 +27,11 @@ export interface SessionDetail extends Session {
   history: { role: string; content: string; kind?: string; timestamp: string }[];
 }
 
+export interface SessionSendResult {
+  runId?: string;
+  run_id?: string;
+}
+
 export const listSessions = (project: string) =>
   api.get<{ sessions: Session[]; active_keys: Record<string, string> }>(`/projects/${project}/sessions`);
 export const getSession = (project: string, id: string, historyLimit?: number) =>
@@ -39,4 +44,4 @@ export const deleteSession = (project: string, id: string) => api.delete(`/proje
 export const switchSession = (project: string, body: { session_key: string; session_id: string }) =>
   api.post(`/projects/${project}/sessions/switch`, body);
 export const sendMessage = (project: string, body: { session_key: string; message: string }) =>
-  api.post(`/projects/${project}/send`, body);
+  api.post<SessionSendResult>(`/projects/${project}/send`, body);

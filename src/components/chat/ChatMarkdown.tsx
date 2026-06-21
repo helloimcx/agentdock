@@ -2,16 +2,28 @@ import { lazy, Suspense } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
+import { hasMarkdownCodeBlock } from './markdown-code-block';
+
+export { hasMarkdownCodeBlock } from './markdown-code-block';
 
 const HighlightedMarkdown = lazy(() =>
   import('./HighlightedMarkdown').then((module) => ({ default: module.HighlightedMarkdown })),
 );
 
 export function ChatMarkdown({ content, isUser }: { content: string; isUser: boolean }) {
+  const hasCodeBlock = hasMarkdownCodeBlock(content);
+  const markdown = hasCodeBlock ? (
+    <Suspense fallback={<Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>}>
+      <HighlightedMarkdown content={content} />
+    </Suspense>
+  ) : (
+    <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+  );
+
   if (isUser) {
     return (
       <div className="prose prose-sm max-w-none text-inherit [&_*]:text-inherit [&_a]:underline [&_code]:border [&_code]:border-black/10 [&_code]:bg-black/10 [&_code]:text-inherit dark:[&_code]:border-white/10 dark:[&_code]:bg-white/12 [&>p]:my-0.5 [&_li]:my-0">
-        <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+        {markdown}
       </div>
     );
   }
@@ -35,13 +47,7 @@ export function ChatMarkdown({ content, isUser }: { content: string; isUser: boo
         'prose-img:rounded-lg prose-img:shadow-sm',
       )}
     >
-      {/```/.test(content) ? (
-        <Suspense fallback={<Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>}>
-          <HighlightedMarkdown content={content} />
-        </Suspense>
-      ) : (
-        <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
-      )}
+      {markdown}
     </div>
   );
 }

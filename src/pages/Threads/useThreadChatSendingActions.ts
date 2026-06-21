@@ -6,7 +6,7 @@ import {
   sendMessage as sendThreadMessage,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
-} from '@cc/core-sdk';
+} from '@cc/core-sdk/threads';
 import type { KnowledgeBase } from '@cc/superai-contracts';
 import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import type { ChatTaskState } from './thread-chat-model';
@@ -32,11 +32,11 @@ type UseThreadChatSendingActionsInput = {
   settlePreviewMessages: (turnKey?: string) => void;
   setDraft: Dispatch<SetStateAction<string>>;
   setSending: Dispatch<SetStateAction<boolean>>;
-} & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
+} & Pick<ThreadChatSharedActionContext, 'selectedProject' | 'updateTaskState'> &
   Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
-  Pick<ThreadChatSendingRefs, 'holdBlankComposerRef' | 'lastSessionByProjectRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
+  Pick<ThreadChatSendingRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
 
 export function useThreadChatSendingActions({
   activeRunId,
@@ -48,7 +48,6 @@ export function useThreadChatSendingActions({
   draft,
   loadActiveThread,
   selectedKnowledgeBaseIds,
-  runtimeProvider,
   selectedProject,
   taskState,
   updateTaskState,
@@ -69,13 +68,11 @@ export function useThreadChatSendingActions({
   setSending,
   setTyping,
   holdBlankComposerRef,
-  lastSessionByProjectRef,
   nextMessageOrderRef,
   pendingTurnRef,
   progressSequenceByTurnRef,
   taskStateRef,
 }: UseThreadChatSendingActionsInput) {
-  const usesManagedThreadApi = true;
   const buildMessageContent = useCallback((content: string) => {
     if (content.trim().startsWith('/')) {
       return content;
@@ -104,10 +101,6 @@ export function useThreadChatSendingActions({
       return { id: activeThreadId, sessionKey: activeBridgeSessionKey };
     }
 
-    if (!usesManagedThreadApi) {
-      throw new Error('Managed desktop thread transport is unavailable.');
-    }
-
     let detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
     if (activeAgentMode && activeAgentMode !== 'default') {
       detail = await updateThreadMode(detail.id, activeAgentMode);
@@ -123,7 +116,6 @@ export function useThreadChatSendingActions({
     brandingNewThreadLabel,
     refreshSessionsForProject,
     selectedProject,
-    usesManagedThreadApi,
   ]);
 
   const handleSend = useCallback(async () => {
@@ -139,13 +131,6 @@ export function useThreadChatSendingActions({
 
     try {
       const ensured = await ensureSession();
-      console.info('[desktop-chat] send', {
-        runtimeProvider,
-        selectedProject,
-        threadId: ensured.id,
-        sessionKey: ensured.sessionKey,
-        selectedKnowledgeBaseIds,
-      });
       pendingTurnRef.current = {
         sessionKey: ensured.sessionKey,
         userOrder,
@@ -158,13 +143,13 @@ export function useThreadChatSendingActions({
         { id: `${crypto.randomUUID()}-user`, role: 'user', content, order: userOrder, timestamp: new Date().toISOString() },
       ]);
       updateTaskState('running', 'send-started');
-      setTyping(usesManagedThreadApi);
+      setTyping(true);
       setBridgeError('');
-      if (usesManagedThreadApi && ensured.id) {
+      if (ensured.id) {
         await updateCoreThreadKnowledgeBases(ensured.id, selectedKnowledgeBaseIds);
       }
       armReplyTimeout();
-      if (usesManagedThreadApi && ensured.id) {
+      if (ensured.id) {
         const result = isAwaitingReply
           ? await sendThreadAction(ensured.id, payloadContent)
           : await sendThreadMessage(ensured.id, payloadContent);
@@ -179,8 +164,6 @@ export function useThreadChatSendingActions({
             runId: result.runId,
           };
         }
-      } else {
-        throw new Error('Managed desktop thread transport is unavailable.');
       }
     } catch (error) {
       clearReplyTimeout();
@@ -214,7 +197,6 @@ export function useThreadChatSendingActions({
     settlePreviewMessages,
     setTyping,
     updateTaskState,
-    usesManagedThreadApi,
   ]);
 
   const handleStopTask = useCallback(async () => {
@@ -228,7 +210,7 @@ export function useThreadChatSendingActions({
     setTyping(false);
     updateTaskState('stopping', 'stop-requested');
     try {
-      if (usesManagedThreadApi && activeRunId) {
+      if (activeRunId) {
         await interruptRun(activeRunId);
       } else {
         throw new Error('No active run to stop.');
@@ -253,7 +235,6 @@ export function useThreadChatSendingActions({
     taskState,
     taskStateRef,
     updateTaskState,
-    usesManagedThreadApi,
   ]);
 
   return {

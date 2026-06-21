@@ -28,7 +28,8 @@ import {
   onRuntimeEvent,
   refreshInstalledAgentRuntimes,
 } from '@/api/desktop';
-import { listAgentTasks, listAuditEvents, listApprovalRequests, listWorkspaces } from '@cc/core-sdk';
+import { listAgentTasks, listAuditEvents, listApprovalRequests } from '@cc/core-sdk/runtime';
+import { listWorkspaces } from '@cc/core-sdk/threads';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
 import type { AgentTask, ApprovalRequest, AuditEvent, InstalledAgentRuntime } from '@cc/superai-contracts';
 

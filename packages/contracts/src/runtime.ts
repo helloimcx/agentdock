@@ -7,7 +7,6 @@ export type {
   LocalCoreErrorSummary,
   LocalCoreEvent,
   LocalCorePluginDiagnostics,
-  RuntimeConfigState,
   RuntimeDetectionListResponse,
-} from './index.js';
-export type { DesktopRuntimeStatus } from '../../../shared/desktop.js';
+} from './local-core.js';
+export type { DesktopRuntimeStatus, RuntimeConfigState } from '../../../shared/desktop.js';

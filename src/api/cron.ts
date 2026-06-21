@@ -9,10 +9,10 @@ import {
   deleteScheduledJob,
   listScheduledJobRuns,
   listScheduledJobs,
-  listWorkspaces,
   runScheduledJob,
   updateScheduledJob,
-} from '@cc/core-sdk';
+} from '@cc/core-sdk/scheduler';
+import { listWorkspaces } from '@cc/core-sdk/threads';
 
 export type CronJob = ScheduledJob;
 export type CronJobRun = ScheduledJobRun;

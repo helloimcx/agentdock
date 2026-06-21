@@ -10,15 +10,26 @@ import { useSessionEventRefresh } from '@/components/chat/useSessionEventRefresh
 import { api } from '@/api/client';
 import { LOCAL_AI_CORE_BASE } from '@/api/runtime-bootstrap';
 import { projectChatHistory } from '@/components/chat/chat-message-state';
+import { createSessionRefreshFallback, type SessionRefreshFallback } from '@/lib/session-refresh-fallback';
+import { useChatTurnController } from '@/components/chat/useChatTurnController';
+import { countTerminalAssistantMessages, shouldUseSessionPolling } from '@/lib/session-chat-events';
 
 export default function SessionChat() {
   const { t } = useTranslation();
   const { project, id } = useParams<{ project: string; id: string }>();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const refreshFallbackRef = useRef<SessionRefreshFallback | null>(null);
+  const turn = useChatTurnController({
+    history: session?.history,
+    resetKey: `${project}:${id}`,
+    onSettle: () => refreshFallbackRef.current?.settle(),
+    failedMessage: t('sessions.sendFailed'),
+    timeoutMessage: t('sessions.pollTimeout'),
+  });
+  const { sending, inputLocked } = turn;
 
   const fetchSession = useCallback(async () => {
     if (!project || !id) return;
@@ -26,16 +37,43 @@ export default function SessionChat() {
       setLoading(true);
       const data = await getSession(project, id, 200);
       setSession(data);
+      return data;
     } finally {
       setLoading(false);
     }
   }, [project, id]);
-  const usesLocalCoreEvents = api.getBaseUrl().replace(/\/+$/, '') === LOCAL_AI_CORE_BASE;
+  const usesLocalCoreEvents = !shouldUseSessionPolling(api.getBaseUrl(), LOCAL_AI_CORE_BASE);
+
+  useEffect(() => {
+    const fallback = createSessionRefreshFallback(fetchSession, {
+      shouldSettle: (result) => {
+        const refreshed = result as SessionDetail | undefined;
+        return Boolean(
+          refreshed &&
+          countTerminalAssistantMessages(refreshed.history) > turn.terminalAssistantCountBeforeSendRef.current
+        );
+      },
+      onSettled: () => {
+        turn.settle();
+      },
+      // The turn controller's watchdog owns the timeout for both transports, so a
+      // sustained run of transient refresh failures no longer surfaces a misleading
+      // "poll timeout" — it simply stops polling and lets the watchdog time the turn.
+    });
+    refreshFallbackRef.current = fallback;
+    return () => {
+      fallback.cancel();
+      if (refreshFallbackRef.current === fallback) {
+        refreshFallbackRef.current = null;
+      }
+    };
+  }, [fetchSession, turn]);
 
   useSessionEventRefresh(
-    { sessionId: id || '', sessionKey: session?.session_key },
+    { sessionId: id || '', sessionKey: session?.session_key, runId: turn.activeRunId, supersededRunId: turn.supersededRunId },
     fetchSession,
     Boolean(project && id && usesLocalCoreEvents),
+    turn.handleMatchedEvent,
   );
 
   useEffect(() => {
@@ -47,17 +85,19 @@ export default function SessionChat() {
   }, [session?.history]);
 
   const handleSend = async () => {
-    if (!input.trim() || !project || !session) return;
+    if (!input.trim() || !project || !session || inputLocked) return;
     const msg = input.trim();
+    const sendGeneration = turn.beginSend();
+    turn.terminalAssistantCountBeforeSendRef.current = countTerminalAssistantMessages(session.history);
     setInput('');
-    setSending(true);
     try {
-      await sendMessage(project, { session_key: session.session_key, message: msg });
+      const result = await sendMessage(project, { session_key: session.session_key, message: msg });
+      turn.acceptSend(sendGeneration, result);
       if (!usesLocalCoreEvents) {
-        window.setTimeout(fetchSession, 1500);
+        refreshFallbackRef.current?.start();
       }
-    } finally {
-      setSending(false);
+    } catch (error) {
+      turn.failSend(error instanceof Error ? error.message : t('sessions.sendFailed'));
     }
   };
 
@@ -142,6 +182,9 @@ export default function SessionChat() {
 
       {/* Input */}
       <div className="border-t pt-4">
+        {turn.controllerState.error && (
+          <p className="mx-auto mb-2 max-w-4xl text-sm text-destructive">{turn.controllerState.error}</p>
+        )}
         {session?.live ? (
           <div className="mx-auto max-w-4xl">
             <div className="relative">
@@ -152,11 +195,11 @@ export default function SessionChat() {
               placeholder={t('sessions.messageInput')}
               rows={2}
               className="min-h-[88px] rounded-[22px] border-gray-200 bg-[#fbfbfd] px-4 pb-14 pt-3 text-[15px] leading-6 dark:border-white/[0.08] dark:bg-[rgba(255,255,255,0.04)] sm:min-h-[96px] sm:px-5 sm:pt-4"
-              disabled={sending}
+              disabled={inputLocked}
             />
             <Button
               onClick={handleSend}
-              disabled={sending || !input.trim()}
+              disabled={inputLocked || !input.trim()}
               size="icon"
               aria-label={t('sessions.messageInput')}
               className="absolute bottom-3 right-3 h-10 w-10 rounded-full bg-primary px-0 text-white shadow-none hover:bg-[#0071e3] disabled:bg-slate-300 disabled:text-white disabled:opacity-100 dark:bg-primary dark:text-white dark:hover:bg-[#2997ff] dark:disabled:bg-white/20 dark:disabled:text-white/55 sm:h-11 sm:w-11"

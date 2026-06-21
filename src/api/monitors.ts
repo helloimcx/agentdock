@@ -9,10 +9,10 @@ import {
   deleteAutomationMonitor,
   listAutomationMonitorRuns,
   listAutomationMonitors,
-  listWorkspaces,
   runAutomationMonitor,
   updateAutomationMonitor,
-} from '@cc/core-sdk';
+} from '@cc/core-sdk/automation';
+import { listWorkspaces } from '@cc/core-sdk/threads';
 
 export type Monitor = AutomationMonitor;
 export type MonitorRun = AutomationMonitorRun;
@@ -26,4 +26,3 @@ export const deleteMonitor = (id: string) => deleteAutomationMonitor(id);
 export const runMonitorNow = (id: string) => runAutomationMonitor(id);
 export const listMonitorRuns = (id: string) => listAutomationMonitorRuns(id);
 export const listMonitorWorkspaces = () => listWorkspaces().then((data) => data.workspaces);
-

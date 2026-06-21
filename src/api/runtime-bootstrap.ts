@@ -6,7 +6,7 @@ import {
   getCoreRuntime,
   LOCAL_AI_CORE_BASE,
   onRuntimeUpdated,
-} from '@cc/core-sdk';
+} from '@cc/core-sdk/runtime';
 
 export { LOCAL_AI_CORE_BASE };
 

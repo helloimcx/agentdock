@@ -31,14 +31,18 @@ import { useSessionEventRefresh } from '@/components/chat/useSessionEventRefresh
 import { api } from '@/api/client';
 import { LOCAL_AI_CORE_BASE } from '@/api/runtime-bootstrap';
 import {
-  assistantMessageCount,
   chatHistorySignature,
   projectChatHistory,
   type ChatTranscriptMessage,
 } from '@/components/chat/chat-message-state';
+import { useChatTurnController } from '@/components/chat/useChatTurnController';
+import type { ChatControllerStatus } from '@/components/chat/chat-controller-state';
+import {
+  countTerminalAssistantMessages,
+  shouldUseSessionPolling,
+} from '@/lib/session-chat-events';
 
 const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 90000;
 
 interface ActiveWebChatSession {
   id: string;
@@ -50,7 +54,7 @@ interface ActiveWebChatSession {
   detail: SessionDetail | null;
 }
 
-type PollingTaskState = 'idle' | 'activating' | 'sending' | 'polling' | 'timed_out';
+type PollingTaskState = Extract<ChatControllerStatus, 'idle' | 'activating' | 'sending' | 'polling' | 'timed_out'>;
 
 interface SessionActionTarget {
   id: string;
@@ -108,8 +112,6 @@ export default function WebChat() {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingActiveSession, setLoadingActiveSession] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [pollingState, setPollingState] = useState<PollingTaskState>('idle');
   const [error, setError] = useState('');
   const [renameTarget, setRenameTarget] = useState<SessionActionTarget | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -120,9 +122,41 @@ export default function WebChat() {
   const pollTimerRef = useRef<number | null>(null);
   const pollContextRef = useRef<PollingContext | null>(null);
 
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    pollContextRef.current = null;
+  }, []);
+
+  const turn = useChatTurnController({
+    history: activeSession?.detail?.history,
+    onSettle: clearPollTimer,
+    onFailed: (message) => setError(message),
+    failedMessage: t('sessions.sendFailed'),
+    timeoutMessage: t('sessions.pollTimeout'),
+  });
+  const {
+    controllerState,
+    activeRunId,
+    supersededRunId,
+    sending,
+    inputLocked,
+    handleMatchedEvent,
+    beginSend,
+    acceptSend,
+    failSend,
+    settle: settleTurn,
+    setControllerStatus: setPollingState,
+    terminalAssistantCountBeforeSendRef,
+  } = turn;
+  const pollingState = controllerState.status;
+
   const requestedProject = searchParams.get('project') || '';
   const requestedSessionId = searchParams.get('session') || '';
   const activeSessionIds = useMemo(() => new Set(Object.values(activeKeys)), [activeKeys]);
+  const usesLocalCoreEvents = !shouldUseSessionPolling(api.getBaseUrl(), LOCAL_AI_CORE_BASE);
 
   const filteredSessions = useMemo(() => {
     const query = sessionSearch.trim().toLowerCase();
@@ -141,10 +175,7 @@ export default function WebChat() {
     selectedProject &&
     activeSessionReady &&
     draft.trim() &&
-    !sending &&
-    pollingState !== 'sending' &&
-    pollingState !== 'activating' &&
-    pollingState !== 'polling',
+    !inputLocked,
   );
 
   const updateSearch = useCallback((project: string, sessionId?: string) => {
@@ -159,13 +190,9 @@ export default function WebChat() {
   }, [setSearchParams]);
 
   const stopPolling = useCallback((nextState: PollingTaskState = 'idle') => {
-    if (pollTimerRef.current) {
-      window.clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    pollContextRef.current = null;
+    clearPollTimer();
     setPollingState(nextState);
-  }, []);
+  }, [clearPollTimer, setPollingState]);
 
   const syncSessionSummary = useCallback((detail: SessionDetail) => {
     setSessions((current) => {
@@ -260,9 +287,12 @@ export default function WebChat() {
     {
       sessionId: activeSession?.id || '',
       sessionKey: activeSession?.sessionKey,
+      runId: activeRunId,
+      supersededRunId,
     },
     refreshActiveSessionFromEvent,
-    api.getBaseUrl().replace(/\/+$/, '') === LOCAL_AI_CORE_BASE,
+    usesLocalCoreEvents,
+    handleMatchedEvent,
   );
 
   const schedulePoll = useCallback((context: PollingContext) => {
@@ -272,26 +302,20 @@ export default function WebChat() {
       if (!currentContext) {
         return;
       }
-      if (Date.now() - currentContext.startedAt >= POLL_TIMEOUT_MS) {
-        stopPolling('timed_out');
-        setError(t('sessions.pollTimeout'));
-        await refreshSessions(currentContext.project);
-        return;
-      }
 
       const detail = await loadActiveSession(currentContext.project, currentContext.sessionId, { silent: true });
       if (!detail || !pollContextRef.current) {
-        stopPolling();
+        clearPollTimer();
         await refreshSessions(currentContext.project);
         return;
       }
       if (activeRef.current.project !== currentContext.project || activeRef.current.sessionId !== currentContext.sessionId) {
-        stopPolling();
+        clearPollTimer();
         return;
       }
 
       const signature = chatHistorySignature(detail.history);
-      const hasAssistantReply = assistantMessageCount(detail.history) > currentContext.assistantCountBefore;
+      const hasAssistantReply = countTerminalAssistantMessages(detail.history) > currentContext.assistantCountBefore;
       const nextStableCount = hasAssistantReply && signature === currentContext.lastSignature
         ? currentContext.stableCount + 1
         : 0;
@@ -302,7 +326,7 @@ export default function WebChat() {
       };
 
       if (hasAssistantReply && nextStableCount >= 2) {
-        stopPolling();
+        settleTurn();
         await refreshSessions(currentContext.project);
         return;
       }
@@ -310,7 +334,8 @@ export default function WebChat() {
       setPollingState('polling');
       schedulePoll(nextContext);
     }, POLL_INTERVAL_MS);
-  }, [loadActiveSession, refreshSessions, stopPolling, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearPollTimer, loadActiveSession, refreshSessions, settleTurn, setPollingState]);
 
   const startPolling = useCallback((project: string, sessionId: string, assistantCountBefore: number) => {
     stopPolling();
@@ -326,7 +351,7 @@ export default function WebChat() {
   }, [schedulePoll, stopPolling]);
 
   const handleProjectChange = useCallback(async (project: string) => {
-    stopPolling();
+    settleTurn();
     setSelectedProject(project);
     setSessionSearch('');
     setError('');
@@ -344,7 +369,7 @@ export default function WebChat() {
     setMessages([]);
     updateSearch(project);
     await refreshSessions(project);
-  }, [refreshSessions, stopPolling, updateSearch]);
+  }, [refreshSessions, settleTurn, updateSearch]);
 
   const activateSessionIfNeeded = useCallback(async (session: ActiveWebChatSession) => {
     if (session.isDraft || session.live || !session.id) {
@@ -374,7 +399,7 @@ export default function WebChat() {
   }, [loadActiveSession, refreshSessions]);
 
   const openSession = useCallback(async (project: string, session: Session) => {
-    stopPolling();
+    settleTurn();
     setError('');
     activeRef.current = { project, sessionId: session.id };
     setSelectedProject(project);
@@ -400,7 +425,7 @@ export default function WebChat() {
         detail,
       });
     }
-  }, [activateSessionIfNeeded, loadActiveSession, stopPolling, updateSearch]);
+  }, [activateSessionIfNeeded, loadActiveSession, settleTurn, updateSearch]);
 
   const handleRefresh = useCallback(async () => {
     stopPolling();
@@ -415,7 +440,7 @@ export default function WebChat() {
   }, [activeSession?.id, loadActiveSession, refreshSessions, selectedProject, stopPolling]);
 
   const handleSend = useCallback(async () => {
-    if (!draft.trim() || !selectedProject) {
+    if (!draft.trim() || !selectedProject || inputLocked) {
       return;
     }
     if (!activeSessionReady) {
@@ -424,6 +449,7 @@ export default function WebChat() {
     }
 
     const content = draft.trim();
+    const sendGeneration = beginSend();
     const optimisticMessageId = `${crypto.randomUUID()}-user`;
     const optimisticMessage: ChatTranscriptMessage = {
       id: optimisticMessageId,
@@ -433,8 +459,6 @@ export default function WebChat() {
     };
 
     setDraft('');
-    setSending(true);
-    setPollingState('sending');
     setError('');
 
     try {
@@ -460,8 +484,9 @@ export default function WebChat() {
       }
       ensuredSession = await activateSessionIfNeeded(ensuredSession);
       setMessages((current) => [...current, optimisticMessage]);
+      let sendResult;
       try {
-        await sendMessage(selectedProject, {
+        sendResult = await sendMessage(selectedProject, {
           session_key: ensuredSession.sessionKey,
           message: content,
         });
@@ -470,7 +495,7 @@ export default function WebChat() {
           throw sendError;
         }
         ensuredSession = await activateSessionIfNeeded({ ...ensuredSession, live: false });
-        await sendMessage(selectedProject, {
+        sendResult = await sendMessage(selectedProject, {
           session_key: ensuredSession.sessionKey,
           message: content,
         });
@@ -481,21 +506,23 @@ export default function WebChat() {
         throw new Error(t('sessions.createFailed'));
       }
 
-      const assistantCountBefore = messages.filter((message) => message.role !== 'user').length;
+      terminalAssistantCountBeforeSendRef.current = countTerminalAssistantMessages(ensuredSession.detail?.history);
+      acceptSend(sendGeneration, sendResult);
       activeRef.current = { project: selectedProject, sessionId };
       setActiveSession((current) => current ? { ...current, id: sessionId, isDraft: false } : current);
       updateSearch(selectedProject, sessionId);
-      startPolling(selectedProject, sessionId, assistantCountBefore);
+      if (!usesLocalCoreEvents) {
+        startPolling(selectedProject, sessionId, terminalAssistantCountBeforeSendRef.current);
+      }
       await refreshSessions(selectedProject);
     } catch (sendError) {
       stopPolling();
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
       const nextError = normalizeSessionError(sendError, t);
+      failSend(nextError);
       setError(nextError);
-    } finally {
-      setSending(false);
     }
-  }, [activeSession, activeSessionReady, activateSessionIfNeeded, draft, filteredSessions, messages, refreshSessions, selectedProject, startPolling, stopPolling, t, updateSearch]);
+  }, [activeSession, activeSessionReady, activateSessionIfNeeded, acceptSend, beginSend, draft, failSend, filteredSessions, inputLocked, messages, refreshSessions, selectedProject, startPolling, stopPolling, t, terminalAssistantCountBeforeSendRef, updateSearch, usesLocalCoreEvents]);
 
   const handleRename = useCallback(async () => {
     if (!renameTarget || !selectedProject || !renameDraft.trim()) {
@@ -594,7 +621,7 @@ export default function WebChat() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  useEffect(() => () => clearPollTimer(), [clearPollTimer]);
 
   const activeTitle = activeSession?.name || t('sessions.activeChat');
 
@@ -828,7 +855,7 @@ export default function WebChat() {
               }}
               rows={3}
               placeholder={selectedProject ? t('sessions.messageInput') : t('sessions.projectRequired')}
-              disabled={!selectedProject || !activeSessionReady || sending || pollingState === 'polling' || pollingState === 'activating'}
+              disabled={!selectedProject || !activeSessionReady || inputLocked}
               className="min-h-[104px] rounded-[22px] border-gray-200 bg-[#fbfbfd] px-4 pb-16 pt-3 text-[15px] leading-6 dark:border-white/[0.08] dark:bg-[rgba(255,255,255,0.04)] sm:min-h-[112px] sm:px-5 sm:pt-4"
               data-testid="web-chat-input"
             />

@@ -5,7 +5,7 @@ import {
   renameThread,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
-} from '@cc/core-sdk';
+} from '@cc/core-sdk/threads';
 import type { ChatThreadSummary, ThreadActionTarget } from './thread-chat-model';
 import type {
   ThreadChatConversationRefs,
@@ -25,7 +25,7 @@ type UseThreadChatThreadActionsInput = {
   selectedKnowledgeBaseIds: string[];
   activeAgentMode: string;
   setSearchParams: ThreadChatSearchParamsSetter;
-} & Pick<ThreadChatSharedActionContext, 'runtimeProvider' | 'selectedProject' | 'updateTaskState'> &
+} & Pick<ThreadChatSharedActionContext, 'selectedProject' | 'updateTaskState'> &
   Pick<ThreadChatSharedActionContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedActionContext, 'refreshSessionsForProject' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatIdentitySetters, 'setActiveRunId' | 'setActiveSessionAgentType' | 'setActiveSessionId' | 'setActiveSessionKey' | 'setActiveSessionName'> &
@@ -38,7 +38,6 @@ export function useThreadChatThreadActions({
   deleteTarget,
   renameDraft,
   renameTarget,
-  runtimeProvider,
   searchParams,
   selectedKnowledgeBaseIds,
   activeAgentMode,
@@ -66,8 +65,6 @@ export function useThreadChatThreadActions({
   pendingTurnRef,
   progressSequenceByTurnRef,
 }: UseThreadChatThreadActionsInput) {
-  const usesManagedThreadApi = true;
-  const shouldCreateThreadImmediately = runtimeProvider === 'local_core';
   const resetBlankConversation = useCallback(() => {
     holdBlankComposerRef.current = true;
     setActiveSessionId('');
@@ -106,44 +103,37 @@ export function useThreadChatThreadActions({
     if (!selectedProject) {
       return;
     }
-    if (usesManagedThreadApi && shouldCreateThreadImmediately) {
-      setPendingSessionAction('rename');
-      try {
-        let detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
-        if (activeAgentMode && activeAgentMode !== 'default') {
-          detail = await updateThreadMode(detail.id, activeAgentMode);
-        }
-        if (selectedKnowledgeBaseIds.length > 0) {
-          const persistedIds = (await updateCoreThreadKnowledgeBases(detail.id, selectedKnowledgeBaseIds)).knowledgeBaseIds;
-          detail.selectedKnowledgeBaseIds = persistedIds;
-        } else {
-          detail.selectedKnowledgeBaseIds = [];
-        }
-        await refreshSessionsForProject(selectedProject);
-        applyLocalCoreThreadDetail(detail);
-        const next = new URLSearchParams(searchParams);
-        next.set('project', selectedProject);
-        next.set('session', detail.id);
-        setSearchParams(next, { replace: true });
-      } finally {
-        setPendingSessionAction(null);
+    setPendingSessionAction('rename');
+    try {
+      let detail = await createThread(selectedProject, `${brandingNewThreadLabel} ${new Date().toLocaleTimeString()}`);
+      if (activeAgentMode && activeAgentMode !== 'default') {
+        detail = await updateThreadMode(detail.id, activeAgentMode);
       }
-      return;
+      if (selectedKnowledgeBaseIds.length > 0) {
+        const persistedIds = (await updateCoreThreadKnowledgeBases(detail.id, selectedKnowledgeBaseIds)).knowledgeBaseIds;
+        detail.selectedKnowledgeBaseIds = persistedIds;
+      } else {
+        detail.selectedKnowledgeBaseIds = [];
+      }
+      await refreshSessionsForProject(selectedProject);
+      applyLocalCoreThreadDetail(detail);
+      const next = new URLSearchParams(searchParams);
+      next.set('project', selectedProject);
+      next.set('session', detail.id);
+      setSearchParams(next, { replace: true });
+    } finally {
+      setPendingSessionAction(null);
     }
-    resetBlankConversation();
   }, [
     applyLocalCoreThreadDetail,
     activeAgentMode,
     brandingNewThreadLabel,
     refreshSessionsForProject,
-    resetBlankConversation,
     searchParams,
     selectedKnowledgeBaseIds,
     selectedProject,
     setPendingSessionAction,
     setSearchParams,
-    shouldCreateThreadImmediately,
-    usesManagedThreadApi,
   ]);
 
   const openRenameModal = useCallback((project: string, session: ChatThreadSummary) => {
@@ -158,11 +148,7 @@ export function useThreadChatThreadActions({
     setPendingSessionAction('rename');
     try {
       const name = renameDraft.trim();
-      if (usesManagedThreadApi) {
-        await renameThread(renameTarget.id, name);
-      } else {
-        throw new Error('Managed desktop thread transport is unavailable.');
-      }
+      await renameThread(renameTarget.id, name);
       if (renameTarget.id === activeThreadId) {
         setActiveSessionName(name);
       }
@@ -181,7 +167,6 @@ export function useThreadChatThreadActions({
     setPendingSessionAction,
     setRenameDraft,
     setRenameTarget,
-    usesManagedThreadApi,
   ]);
 
   const handleDeleteSession = useCallback(async () => {
@@ -190,11 +175,7 @@ export function useThreadChatThreadActions({
     }
     setPendingSessionAction('delete');
     try {
-      if (usesManagedThreadApi) {
-        await deleteCoreThread(deleteTarget.id);
-      } else {
-        throw new Error('Managed desktop thread transport is unavailable.');
-      }
+      await deleteCoreThread(deleteTarget.id);
       if (deleteTarget.id === activeThreadId) {
         resetBlankConversation();
       }
@@ -210,7 +191,6 @@ export function useThreadChatThreadActions({
     resetBlankConversation,
     setDeleteTarget,
     setPendingSessionAction,
-    usesManagedThreadApi,
   ]);
 
   return {

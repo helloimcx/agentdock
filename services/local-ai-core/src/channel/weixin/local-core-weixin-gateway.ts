@@ -1,13 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type {
   ChannelFileSendInput,
   ChannelFileSendResult,
-  ChannelInboundContentPart,
   ChannelOutboundMessageInput,
   ChannelOutboundMessagePart,
   ChannelOutboundMessageResult,
@@ -29,28 +27,23 @@ import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '.
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
+import { resolveInboundChannelAuthorization } from '../shared/inbound-authorization.js';
 import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import {
   collectWeixinWorkspaceBindings,
   getWeixinBufPath,
-  loadWeixinBuf,
-  saveWeixinBuf,
   saveWeixinCredentials,
 } from './config.js';
 import {
   API_TIMEOUT_MS,
-  FILE_ITEM_TYPE,
-  getWeixinUpdates,
   getWeixinUploadUrl,
   IMAGE_ITEM_TYPE,
   isWeixinApiError,
   sendWeixinFileMessage,
   sendWeixinTextMessageChunk,
-  TEXT_ITEM_TYPE,
   uploadEncryptedBufferToWeixinCdn,
-  VOICE_ITEM_TYPE,
   weixinApiGet,
 } from './transport.js';
 import type {
@@ -77,15 +70,14 @@ import {
   stripWeixinHtml,
   truncateTextByUtf8Bytes,
   utf8ByteLength,
-  waitForWeixinRetry,
 } from './text-utils.js';
+import { runWeixinInboundPoller } from './inbound-poller.js';
+import type { WeixinDownloadedMedia } from './inbound-media.js';
+export { createWeixinAttachmentContentPart } from './inbound-media.js';
+export type { WeixinDownloadedMedia } from './inbound-media.js';
 
 // ==================== Constants ====================
 
-const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
-const RETRY_DELAY_MS = 2_000;
-const BACKOFF_DELAY_MS = 30_000;
-const MAX_CONSECUTIVE_FAILURES = 3;
 const PROCESSED_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const WEIXIN_TEXT_MESSAGE_MAX_BYTES = 900;
 const WEIXIN_CONTEXT_REPLY_MAX_BYTES = 3500;
@@ -94,42 +86,11 @@ const WEIXIN_RESERVED_TERMINAL_SENDS = 1;
 const WEIXIN_PROGRESS_SEND_BUDGET = WEIXIN_CONTEXT_SEND_LIMIT - WEIXIN_RESERVED_TERMINAL_SENDS;
 const RESPONSE_TIMEOUT_MS = 5 * 60 * 1000;
 const WEIXIN_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
-const ERROR_LOG_WINDOW_MS = 5 * 60 * 1000;
-
-// ==================== Utilities ====================
-
-export type WeixinDownloadedMedia = {
-  path: string;
-  kind: 'image' | 'file';
-  name: string;
-  data?: string;
-  mimeType?: string;
-  uri?: string;
-};
-
-export function createWeixinAttachmentContentPart(att: WeixinDownloadedMedia): ChannelInboundContentPart | null {
-  if (att.kind === 'image') {
-    if (!att.data) return null;
-    return {
-      type: 'image',
-      data: att.data,
-      ...(att.uri ? { uri: att.uri } : {}),
-      mimeType: att.mimeType,
-      fileName: att.name,
-    };
-  }
-  return {
-    type: 'file',
-    path: att.path,
-    fileName: att.name,
-  };
-}
 
 // ==================== Gateway Class ====================
 
 export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeState, WeixinWorkspaceBinding, WeixinThreadRoute, WeixinTurnState> {
   private readonly processedInboundMessages = new Map<string, number>();
-  private readonly pollErrorLogWindows = new Map<string, { at: number; count: number; errorKey: string }>();
   private readonly inboundAttachmentStore = new FileSystemInboundAttachmentStore();
   readonly platform = 'weixin';
 
@@ -517,58 +478,35 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       },
     });
 
-    this.options.store.expirePendingPairings();
     const binding = await this.getBinding(msg.workspaceId, instanceId);
+    const authorization = resolveInboundChannelAuthorization({
+      store: this.options.store,
+      identity: {
+        workspaceId: msg.workspaceId,
+        platformKey,
+        platformUserId: msg.platformUserId,
+        chatId: msg.chatId,
+        displayName: msg.displayName,
+      },
+      autoApprove: binding.allowFrom === '*',
+      authorizedUserIdPrefix: 'wx-user',
+      generatePairingCode: () => String(randomInt(100000, 1000000)),
+      onStateChanged: () => this.notifyRuntimeStateChanged(),
+    });
 
-    let authorized = this.options.store.getAuthorizedUser(msg.workspaceId, msg.platformUserId, platformKey);
-    if (!authorized) {
-      if (binding.allowFrom === '*') {
-        const authorizedAt = new Date().toISOString();
-        this.options.store.createAuthorizedUser({
-          id: `wx-user-${randomUUID()}`,
-          workspace_id: msg.workspaceId,
-          platform: platformKey,
-          platform_user_id: msg.platformUserId,
-          chat_id: msg.chatId,
-          display_name: msg.displayName,
-          thread_id: null,
-          authorized_at: authorizedAt,
-        });
-        authorized = this.options.store.getAuthorizedUser(msg.workspaceId, msg.platformUserId, platformKey);
-        this.options.log?.(`localcore-weixin auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
-        this.notifyRuntimeStateChanged();
-      }
-    }
-
-    if (!authorized) {
-      const existingPending = this.options.store.listPendingPairings(msg.workspaceId).find((item) =>
-        item.platform === platformKey && item.platform_user_id === msg.platformUserId && item.chat_id === msg.chatId && item.status === 'pending',
-      );
-      let pairingCode = existingPending?.code || '';
-      if (!existingPending) {
-        const now = new Date();
-        pairingCode = String(randomInt(100000, 1000000));
-        this.options.store.createPairingRequest({
-          code: pairingCode,
-          workspace_id: msg.workspaceId,
-          platform: platformKey,
-          platform_user_id: msg.platformUserId,
-          chat_id: msg.chatId,
-          display_name: msg.displayName,
-          requested_at: now.toISOString(),
-          expires_at: new Date(now.getTime() + PAIRING_EXPIRY_MS).toISOString(),
-          status: 'pending',
-        });
-        this.notifyRuntimeStateChanged();
-      }
+    if (authorization.status === 'pending') {
       const state = this.runtime.get(runtimeKey(msg.workspaceId, instanceId));
       if (state?.connected) {
         await this.sendTextMessage(state, msg.chatId,
-          `**已收到消息**\n\n当前账号还未授权接入这个工作区。\n请在桌面端完成审批后再次发送消息。\n\n配对码：\`${pairingCode}\``,
+          `**已收到消息**\n\n当前账号还未授权接入这个工作区。\n请在桌面端完成审批后再次发送消息。\n\n配对码：\`${authorization.pairingCode}\``,
           msg.contextToken);
       }
       return;
     }
+    if (authorization.autoApproved) {
+      this.options.log?.(`localcore-weixin auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
+    }
+    const authorized = authorization.authorized;
 
     const router = this.options.getWorkspaceRouter();
     let { threadId } = await resolveChannelThreadRoute({
@@ -696,7 +634,20 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       this.clearRuntimeError(status);
 
       // Start long-poll loop in background
-      this.runMonitorLoop(binding, abortController.signal).catch((err) => {
+      runWeixinInboundPoller({
+        binding,
+        signal: abortController.signal,
+        getRuntimeState: () => this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId)),
+        getAuthorizedUser: (workspaceId, platformUserId, platformKey) =>
+          this.options.store.getAuthorizedUser(workspaceId, platformUserId, platformKey),
+        clearRuntimeError: (runtimeState) => this.clearRuntimeError(runtimeState),
+        setRuntimeError: (runtimeState, errorInfo) => this.setRuntimeError(runtimeState, errorInfo),
+        notifyRuntimeStateChanged: () => this.notifyRuntimeStateChanged(),
+        downloadMediaItem: (item, messageId, index, uploadsDir, workspaceBinding) =>
+          this.downloadMediaItem(item, messageId, index, uploadsDir, workspaceBinding),
+        handleInboundMessage: (message) => this.handleInboundMessage(message),
+        log: this.options.log,
+      }).catch((err) => {
         if (!abortController.signal.aborted) {
           status.status = 'error';
           status.connected = false;
@@ -722,145 +673,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     if (normalized === 'confirmed') return 'confirmed';
     if (normalized === 'expired') return 'expired';
     return 'wait';
-  }
-
-  private async runMonitorLoop(
-    binding: WeixinWorkspaceBinding,
-    signal: AbortSignal,
-  ): Promise<void> {
-    let buf = loadWeixinBuf(binding);
-    let consecutiveFailures = 0;
-
-    while (!signal.aborted) {
-      try {
-        const resp = await getWeixinUpdates(binding, buf, signal);
-        const isApiError = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
-
-        if (isApiError) {
-          consecutiveFailures++;
-          const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
-          const retryDelayMs = this.computeRetryDelay(consecutiveFailures);
-          if (resp.errcode === -14 || resp.ret === -14) {
-            if (state) {
-              state.status = 'error';
-              state.connected = false;
-              state.consecutiveFailures = consecutiveFailures;
-              state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
-              this.setRuntimeError(state, toLocalCoreErrorInfo(new LocalCoreError('channel_session_expired', 'WeChat login expired.')));
-              this.notifyRuntimeStateChanged();
-            }
-          }
-          this.logPollError(
-            binding,
-            `ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg || ''}`,
-            `localcore-weixin getUpdates failed for ${binding.workspaceId}: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''} (${consecutiveFailures})`,
-          );
-          if (state && resp.errcode !== -14 && resp.ret !== -14) {
-            state.consecutiveFailures = consecutiveFailures;
-            state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
-          }
-          await waitForWeixinRetry(retryDelayMs, signal);
-          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            consecutiveFailures = MAX_CONSECUTIVE_FAILURES;
-          }
-          continue;
-        }
-
-        consecutiveFailures = 0;
-        const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
-        if (state) {
-          this.clearRuntimeError(state);
-          state.status = 'running';
-          state.connected = true;
-          this.notifyRuntimeStateChanged();
-        }
-
-        if (resp.get_updates_buf) {
-          buf = resp.get_updates_buf;
-          saveWeixinBuf(binding, buf);
-        }
-
-        for (const msg of resp.msgs ?? []) {
-          const items = msg.item_list ?? [];
-          const textItem = items.find((i) => i.type === TEXT_ITEM_TYPE);
-          const voiceTextItems = items.filter((i) => i.type === VOICE_ITEM_TYPE && i.voice_item?.text);
-          const mediaItems = items.filter((i) => i.type === IMAGE_ITEM_TYPE || i.type === FILE_ITEM_TYPE);
-
-          if (!textItem && voiceTextItems.length === 0 && mediaItems.length === 0) continue;
-
-          const conversationId = msg.from_user_id ?? '';
-          const text = [textItem?.text_item?.text?.trim(), ...voiceTextItems.map((i) => i.voice_item?.text?.trim())]
-            .filter((part): part is string => Boolean(part))
-            .join('\n\n');
-          const msgId = msg.msg_id ?? String(Date.now());
-
-          // Handle attachments
-          let attachmentText = '';
-          const attachmentParts: ChannelInboundContentPart[] = [];
-          if (mediaItems.length > 0) {
-            const uploadsDir = path.join(binding.stateDir, 'weixin-uploads');
-            const mayMaterializeAttachments = binding.allowFrom === '*'
-              || Boolean(this.options.store.getAuthorizedUser(binding.workspaceId, conversationId, binding.platformKey));
-            for (const [idx, item] of mediaItems.entries()) {
-              const itemData = item.image_item ?? item.file_item ?? null;
-              const declaredName = String(itemData?.file_name ?? (item.type === IMAGE_ITEM_TYPE ? 'image' : 'file'));
-              if (!mayMaterializeAttachments) {
-                attachmentText += attachmentText ? '\n' : '';
-                attachmentText += item.type === IMAGE_ITEM_TYPE ? '[Image]' : `[File: ${declaredName}]`;
-                continue;
-              }
-              try {
-                const att = await this.downloadMediaItem(item, msgId, idx, uploadsDir, binding);
-                if (att) {
-                  attachmentText += attachmentText ? '\n' : '';
-                  attachmentText += att.kind === 'image' ? `[Image: ${att.path}]` : `[File "${att.name}": ${att.path}]`;
-                  const part = createWeixinAttachmentContentPart(att);
-                  if (part) attachmentParts.push(part);
-                }
-              } catch (dlErr) {
-                this.options.log?.(`localcore-weixin attachment download failed (${conversationId}#${idx}): ${formatWeixinError(dlErr)}`);
-              }
-            }
-          }
-
-          const fullText = [text, attachmentText].filter(Boolean).join('\n\n');
-          if (!fullText) continue;
-
-          await this.handleInboundMessage({
-            workspaceId: binding.workspaceId,
-            instanceId: binding.instanceId,
-            platformKey: binding.platformKey,
-            platformUserId: conversationId,
-            chatId: conversationId,
-            displayName: conversationId.slice(-6),
-            text: fullText,
-            messageId: msgId,
-            contextToken: msg.context_token,
-            contentParts: [
-              ...(text ? [{ type: 'text' as const, text }] : []),
-              ...attachmentParts,
-            ],
-          });
-        }
-      } catch (err) {
-        if (signal.aborted) return;
-        consecutiveFailures++;
-        const retryDelayMs = this.computeRetryDelay(consecutiveFailures);
-        const state = this.runtime.get(runtimeKey(binding.workspaceId, binding.instanceId));
-        if (state) {
-          state.consecutiveFailures = consecutiveFailures;
-          state.nextRetryAt = new Date(Date.now() + retryDelayMs).toISOString();
-          this.setRuntimeError(state, toLocalCoreErrorInfo(err));
-          this.notifyRuntimeStateChanged();
-        }
-        this.logPollError(
-          binding,
-          formatWeixinError(err),
-          `localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}): ${formatWeixinError(err)}`,
-        );
-        await waitForWeixinRetry(retryDelayMs, signal);
-      }
-    }
   }
 
   // ==================== Private: HTTP API ====================
@@ -1113,26 +925,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
 
 
 
-  private computeRetryDelay(failures: number) {
-    if (failures <= 1) return RETRY_DELAY_MS;
-    if (failures === 2) return 5_000;
-    if (failures === 3) return 15_000;
-    if (failures === 4) return 30_000;
-    return 60_000;
-  }
-
-  private logPollError(binding: WeixinWorkspaceBinding, errorKey: string, message: string) {
-    const key = runtimeKey(binding.workspaceId, binding.instanceId);
-    const current = this.pollErrorLogWindows.get(key);
-    const now = Date.now();
-    if (!current || current.errorKey !== errorKey || now - current.at >= ERROR_LOG_WINDOW_MS) {
-      this.pollErrorLogWindows.set(key, { at: now, count: 1, errorKey });
-      this.options.log?.(message);
-      return;
-    }
-    current.count += 1;
-    this.pollErrorLogWindows.set(key, current);
-  }
 }
 
 function getWeixinInstanceId(platform: string) {

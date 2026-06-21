@@ -1,14 +1,11 @@
 import { EventEmitter } from 'node:events';
-import { randomInt, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { extname, isAbsolute, join, resolve } from 'node:path';
+import { randomInt } from 'node:crypto';
 import type {
   ChannelFileSendInput,
   ChannelFileSendResult,
   ChannelInboundContentPart,
   ChannelOutboundMessageInput,
   ChannelOutboundMessageResult,
-  ChannelOutboundMessagePart,
   ChannelRoute,
   DesktopBridgeEvent,
   DesktopConnectConfig,
@@ -27,14 +24,11 @@ import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import { createChannelThreadMessageInput } from '../shared/content.js';
-import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
-import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
+import { resolveInboundChannelAuthorization } from '../shared/inbound-authorization.js';
 import {
-  buildSessionCommandCard,
-  buildInteractiveCard,
   extractCardActionMessageId,
   extractCardActionValue,
   extractSessionCommandActionValue,
@@ -51,8 +45,9 @@ import {
   pollAppRegistration,
   requestAppRegistration,
 } from './registration.js';
-import { renderLarkTextMessage } from './rendering/messages.js';
-import { normalizeLarkInboundMessageEvent, summarizeLarkInboundPayload } from './inbound.js';
+import { summarizeLarkInboundPayload } from './inbound.js';
+import { LarkInboundHandler } from './inbound-handler.js';
+import { LarkOutboundTransport } from './outbound-transport.js';
 import {
   consumeLarkBridgeEvent,
   createLarkTurnState,
@@ -69,19 +64,13 @@ import type {
   LarkWorkspaceBinding,
   LocalCoreLarkGatewayOptions,
 } from './types.js';
-import type { SessionCommandAction, SessionCommandResult } from '../../thread/session-command-service.js';
+import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import {
   attachLarkWsDiagnostics,
-  extractLarkHeaderMimeType,
   maskLarkAppId,
-  sniffLarkImageExtension,
-  sniffLarkImageMimeType,
-  summarizeLarkInboundContentParts,
 } from './gateway-utils.js';
 
-const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
-const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
 const LARK_FINAL_PATCH_INTERVAL_MS = 900;
 const LARK_PROGRESS_PATCH_INTERVAL_MS = 3000;
 const LARK_EMPTY_RENDER_LOG_WINDOW_MS = 5 * 60 * 1000;
@@ -94,11 +83,21 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   private readonly mirrorPermissionStateInMainCard = false;
   private larkModulePromise: Promise<LarkModule> | null = null;
   private readonly emptyRenderLogWindows = new Map<string, number>();
-  private readonly inboundAttachmentStore = new FileSystemInboundAttachmentStore();
+  private readonly inboundHandler: LarkInboundHandler;
+  private readonly outboundTransport: LarkOutboundTransport;
   readonly platform = 'lark';
 
   constructor(options: LocalCoreLarkGatewayOptions) {
     super(options);
+    this.inboundHandler = new LarkInboundHandler({
+      store: options.store,
+      getWorkspaceRouter: options.getWorkspaceRouter,
+      getRuntimeState: (workspaceId, instanceId) => this.resolveRuntimeState(workspaceId, instanceId).state,
+      getBinding: (workspaceId, instanceId) => this.getBinding(workspaceId, instanceId),
+      dispatchInboundMessage: (message) => this.handleInboundMessage(message),
+      log: options.log,
+    });
+    this.outboundTransport = new LarkOutboundTransport(options.log);
   }
 
   // ==================== Lifecycle (platform-specific) ====================
@@ -210,7 +209,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   }, result: SessionCommandResult) {
     const state = this.resolveRuntimeState(input.workspaceId, input.instanceId).state;
     if (state?.client && state.connected && result.card?.actions?.length && state.cardActionsEnabled) {
-      await this.sendSessionCommandCard(
+      await this.outboundTransport.sendSessionCommandCard(
         state,
         input.chatId,
         result.displayText,
@@ -243,7 +242,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         continue;
       }
       if (part.type === 'file') {
-        const sent = await this.sendFilePart(state, channelId, part);
+        const sent = await this.outboundTransport.sendFilePart(state, channelId, part);
         messageIds.push(sent.messageId);
         attachments.push({
           kind: 'file',
@@ -290,61 +289,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       fileSize: attachment?.fileSize || 0,
     };
   }
-
-  private async sendFilePart(
-    state: LarkRuntimeState,
-    channelId: string,
-    part: Extract<ChannelOutboundMessagePart, { type: 'file' }>,
-  ): Promise<{ messageId: string; fileKey: string; file: PreparedChannelFile }> {
-    const file = await prepareChannelFile({
-      path: part.path,
-      fileName: part.fileName,
-      workspacePath: typeof part.metadata?.workspacePath === 'string' ? part.metadata.workspacePath : undefined,
-      maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
-      platformLabel: 'Lark',
-    });
-    const upload = await state.client.im.file.create({
-      data: {
-        file_type: this.resolveLarkUploadFileType(file.fileName),
-        file_name: file.fileName,
-        file: createReadStream(file.path),
-      },
-    });
-    const fileKey = String(upload?.file_key || upload?.data?.file_key || '').trim();
-    if (!fileKey) {
-      throw new Error('Lark file upload did not return a file key');
-    }
-    const response = await state.client.im.message.create({
-      params: {
-        receive_id_type: this.resolveReceiveIdType(channelId),
-      },
-      data: {
-        receive_id: channelId,
-        msg_type: 'file',
-        content: JSON.stringify({ file_key: fileKey }),
-      },
-    });
-    const messageId = String(response?.data?.message_id || '').trim();
-    if (!messageId) {
-      throw new Error('Lark file message did not return a message id');
-    }
-    this.options.log?.(`localcore-lark sent file ${file.fileName} (${file.fileSize} bytes) to ${channelId}`);
-    return {
-      messageId,
-      fileKey,
-      file,
-    };
-  }
-
-
-
-
-
-
-
-
-
-
 
   async onBridgeEvent(event: DesktopBridgeEvent) {
     if (!event.sessionKey) {
@@ -404,7 +348,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
           }
           if (event.type === 'typing_start' && (turn.permissionMessageId || turn.awaitingPermission)) {
             if (turn.permissionMessageId) {
-              await this.patchTextCard(
+              await this.outboundTransport.patchTextCard(
                 state,
                 turn.permissionMessageId,
                 '**工具确认已处理**\n\n继续生成中...',
@@ -424,7 +368,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
             const permissionCard = renderPermissionCard(turn, event, Boolean(state.cardActionsEnabled));
             if (permissionCard.text || permissionCard.buttonRows.length > 0) {
               if (!turn.permissionMessageId) {
-                const createdId = await this.sendTextAsCard(
+                const createdId = await this.outboundTransport.sendTextAsCard(
                   state,
                   route.chatId,
                   permissionCard.text,
@@ -437,7 +381,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
                   this.options.log?.(`localcore-lark sent permission card ${createdId} for sessionKey=${sessionKey}`);
                 }
               } else {
-                await this.patchTextCard(
+                await this.outboundTransport.patchTextCard(
                   state,
                   turn.permissionMessageId,
                   permissionCard.text,
@@ -476,7 +420,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
               const sentMessage = sendAsPlainMessage
                 ? await this.sendTextAsMessage(state, route.chatId, renderedMessage.text)
                 : {
-                    messageId: await this.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId),
+                    messageId: await this.outboundTransport.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId),
                     renderKind: 'card',
                   };
               const createdId = sentMessage.messageId;
@@ -492,7 +436,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
             if (renderedMessage.delivery === 'message') {
               continue;
             }
-            await this.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
+            await this.outboundTransport.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
             turn.lastPatchedAt = Date.now();
             turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
             this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
@@ -526,7 +470,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         messageId: msg.messageId,
       },
     });
-    this.options.store.expirePendingPairings();
     const runtimeState = this.resolveRuntimeState(msg.workspaceId, instanceId).state;
     let binding: LarkWorkspaceBinding | undefined;
     try {
@@ -537,49 +480,33 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       }
       this.options.log?.(`localcore-lark using active runtime binding snapshot for ${msg.workspaceId}/${instanceId}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    let authorized = this.options.store.getAuthorizedUser(msg.workspaceId, msg.platformUserId, platformKey);
-    if (!authorized) {
-      if (binding?.autoApprove || runtimeState?.autoApprove) {
-        const authorizedAt = new Date().toISOString();
-        this.options.store.createAuthorizedUser({
-          id: `lark-user-${randomUUID()}`,
-          workspace_id: msg.workspaceId,
-          platform: platformKey,
-          platform_user_id: msg.platformUserId,
-          chat_id: msg.chatId,
-          display_name: msg.displayName,
-          thread_id: null,
-          authorized_at: authorizedAt,
-        });
-        authorized = this.options.store.getAuthorizedUser(msg.workspaceId, msg.platformUserId, platformKey);
-        this.options.log?.(`localcore-lark auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
-        this.notifyRuntimeStateChanged();
-      }
-    }
-    if (!authorized) {
-      const existingPending = this.options.store.listPendingPairings(msg.workspaceId).find((item) =>
-        item.platform === platformKey && item.platform_user_id === msg.platformUserId && item.chat_id === msg.chatId && item.status === 'pending',
+    const authorization = resolveInboundChannelAuthorization({
+      store: this.options.store,
+      identity: {
+        workspaceId: msg.workspaceId,
+        platformKey,
+        platformUserId: msg.platformUserId,
+        chatId: msg.chatId,
+        displayName: msg.displayName,
+      },
+      autoApprove: Boolean(binding?.autoApprove || runtimeState?.autoApprove),
+      authorizedUserIdPrefix: 'lark-user',
+      generatePairingCode: () => this.generatePairingCode(),
+      onStateChanged: () => this.notifyRuntimeStateChanged(),
+    });
+    if (authorization.status === 'pending') {
+      await this.sendImmediateCard(
+        msg.workspaceId,
+        msg.chatId,
+        renderPendingPairingCard(authorization.pairingCode),
+        instanceId,
       );
-      let pairingCode = existingPending?.code || '';
-      if (!existingPending) {
-        const now = new Date();
-        pairingCode = this.generatePairingCode();
-        this.options.store.createPairingRequest({
-          code: pairingCode,
-          workspace_id: msg.workspaceId,
-          platform: platformKey,
-          platform_user_id: msg.platformUserId,
-          chat_id: msg.chatId,
-          display_name: msg.displayName,
-          requested_at: now.toISOString(),
-          expires_at: new Date(now.getTime() + PAIRING_EXPIRY_MS).toISOString(),
-          status: 'pending',
-        });
-        this.notifyRuntimeStateChanged();
-      }
-      await this.sendImmediateCard(msg.workspaceId, msg.chatId, renderPendingPairingCard(pairingCode), instanceId);
       return; // { paired: false };
     }
+    if (authorization.autoApproved) {
+      this.options.log?.(`localcore-lark auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
+    }
+    const authorized = authorization.authorized;
     const router = this.options.getWorkspaceRouter();
     let { threadId } = await resolveChannelThreadRoute({
       store: this.options.store,
@@ -772,226 +699,15 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
 
 
   private async handleMessageEvent(workspaceId: string, instanceIdOrData: string | Record<string, unknown>, platformKeyOrData?: string | Record<string, unknown>, maybeData?: Record<string, unknown>) {
-    const legacyCall = typeof instanceIdOrData === 'object';
-    const instanceId = legacyCall ? 'default' : instanceIdOrData;
-    const platformKey = legacyCall ? 'lark' : String(platformKeyOrData || channelPlatformKey('lark', instanceId));
-    const data = (legacyCall ? instanceIdOrData : maybeData) || {};
-    const runtimeState = this.resolveRuntimeState(workspaceId, instanceId).state;
-    const normalized = normalizeLarkInboundMessageEvent(data, {
-      botOpenId: runtimeState?.botOpenId,
-      groupReplyAll: runtimeState?.groupReplyAll,
-    });
-    this.options.log?.(`localcore-lark handling message event for ${workspaceId}: ${summarizeLarkInboundPayload(data)}`);
-    if (!normalized.ok) {
-      this.options.log?.(`localcore-lark ignored message event for ${workspaceId}: reason=${normalized.reason}${normalized.detail ? ` ${normalized.detail}` : ''}`);
-      return;
-    }
-    const {
-      message,
-      parsedContent,
-      messageType,
-      chatType,
-      mentions,
-      text,
-      platformUserId,
-      chatId,
-      displayName,
-      messageId,
-    } = normalized.message;
-    const mayMaterializeAttachments = Boolean(
-      runtimeState?.autoApprove
-      || this.options.store.getAuthorizedUser(workspaceId, platformUserId, platformKey),
-    );
-    const contentParts: ChannelInboundContentPart[] = [];
-    if (text) {
-      contentParts.push({ type: 'text', text });
-    }
-    if (messageType === 'image') {
-      const imageKey = String(parsedContent.image_key || parsedContent.file_key || '').trim();
-      if (imageKey) {
-        if (!mayMaterializeAttachments) {
-          contentParts.push({ type: 'text', text: '[Image]' });
-        } else {
-          try {
-            contentParts.push(await this.downloadMessageImage(workspaceId, String(message.message_id || ''), imageKey, instanceId));
-          } catch (error) {
-            const errorText = `[Image download failed: ${error instanceof Error ? error.message : String(error)}]`;
-            contentParts.push({ type: 'text', text: errorText });
-            this.options.log?.(`localcore-lark image download failed for ${workspaceId}: message=${String(message.message_id || '')} imageKey=${imageKey} error=${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      }
-    }
-    if (messageType === 'file') {
-      const fileKey = String(parsedContent.file_key || '').trim();
-      if (fileKey) {
-        if (!mayMaterializeAttachments) {
-          const inboundFileName = String(parsedContent.file_name || parsedContent.name || '').trim();
-          contentParts.push({ type: 'text', text: inboundFileName ? `[File: ${inboundFileName}]` : '[File]' });
-        } else {
-          try {
-            contentParts.push(await this.downloadMessageFile(
-              workspaceId,
-              String(message.message_id || ''),
-              fileKey,
-              String(parsedContent.file_name || parsedContent.name || '').trim(),
-              instanceId,
-            ));
-          } catch (error) {
-            const errorText = `[File download failed: ${error instanceof Error ? error.message : String(error)}]`;
-            contentParts.push({ type: 'text', text: errorText });
-            this.options.log?.(`localcore-lark file download failed for ${workspaceId}: message=${String(message.message_id || '')} fileKey=${fileKey} error=${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      }
-    }
-    if (contentParts.length === 0) {
-      this.options.log?.(`localcore-lark ignored unsupported message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
-      return;
-    }
-    const displayText = text || summarizeLarkInboundContentParts(contentParts);
-    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} chatType=${chatType || 'unknown'} mentions=${mentions.length} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
-    await this.handleInboundMessage({
-      workspaceId,
-      instanceId,
-      platformKey,
-      platformUserId,
-      chatId,
-      displayName,
-      text: displayText,
-      messageId,
-      contentParts,
-    });
+    await this.inboundHandler.handleMessageEvent(workspaceId, instanceIdOrData, platformKeyOrData, maybeData);
   }
 
   private async downloadMessageImage(workspaceId: string, messageId: string, imageKey: string, instanceId?: string): Promise<ChannelInboundContentPart> {
-    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
-    if (!state?.client) {
-      throw new Error('Lark client is not connected');
-    }
-    if (!messageId) {
-      throw new Error('Lark image message is missing message_id');
-    }
-    const downloadsDir = await this.resolveInboundDownloadsDir(workspaceId, instanceId, state.downloadsDir);
-    const stored = await this.inboundAttachmentStore.save({
-      directory: downloadsDir,
-      storedFileName: `${messageId}-${imageKey}`,
-      displayFileName: imageKey,
-      maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
-      includeBase64: true,
-      finalizeStoredFileName: ({ storedFileName, prefix }) => `${storedFileName}.${sniffLarkImageExtension(prefix)}`,
-      source: {
-        open: async () => {
-          const resource = await state.client.im.messageResource.get({
-            path: {
-              message_id: messageId,
-              file_key: imageKey,
-            },
-            params: {
-              type: 'image',
-            },
-          });
-          const stream = resource?.getReadableStream?.();
-          if (!stream || typeof stream.pipe !== 'function') {
-            throw new Error('Lark image resource did not provide a readable stream');
-          }
-          return {
-            stream,
-            mimeType: extractLarkHeaderMimeType(resource?.headers),
-          };
-        },
-      },
-    });
-    const extension = extname(stored.path).slice(1) || 'bin';
-    const uri = await this.resolveInboundAttachmentUri(workspaceId, stored.path, instanceId);
-    return {
-      type: 'image',
-      data: stored.data || '',
-      ...(uri ? { uri } : {}),
-      mimeType: stored.mimeType || sniffLarkImageMimeType(stored.prefix),
-      fileName: `${imageKey}.${extension}`,
-    };
+    return this.inboundHandler.downloadMessageImage(workspaceId, messageId, imageKey, instanceId);
   }
 
   private async downloadMessageFile(workspaceId: string, messageId: string, fileKey: string, fileName: string, instanceId?: string): Promise<ChannelInboundContentPart> {
-    const state = this.resolveRuntimeState(workspaceId, instanceId).state;
-    if (!state?.client) {
-      throw new Error('Lark client is not connected');
-    }
-    if (!messageId) {
-      throw new Error('Lark file message is missing message_id');
-    }
-    const downloadsDir = await this.resolveInboundDownloadsDir(workspaceId, instanceId, state.downloadsDir);
-    const displayFileName = fileName || fileKey;
-    const stored = await this.inboundAttachmentStore.save({
-      directory: downloadsDir,
-      storedFileName: `${messageId}-${displayFileName}`,
-      displayFileName,
-      maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
-      source: {
-        open: async () => {
-          const resource = await state.client.im.messageResource.get({
-            path: {
-              message_id: messageId,
-              file_key: fileKey,
-            },
-            params: {
-              type: 'file',
-            },
-          });
-          const stream = resource?.getReadableStream?.();
-          if (!stream || typeof stream.pipe !== 'function') {
-            throw new Error('Lark file resource did not provide a readable stream');
-          }
-          return {
-            stream,
-            mimeType: extractLarkHeaderMimeType(resource?.headers) || 'application/octet-stream',
-          };
-        },
-      },
-    });
-    return {
-      type: 'file',
-      path: stored.path,
-      fileName: stored.fileName,
-      mimeType: stored.mimeType,
-      size: stored.size,
-    };
-  }
-
-  private async resolveInboundDownloadsDir(workspaceId: string, instanceId = 'default', runtimeDownloadsDir?: string) {
-    const binding = runtimeDownloadsDir === undefined
-      ? await this.getBinding(workspaceId, instanceId)
-      : undefined;
-    const configuredDir = String(runtimeDownloadsDir ?? binding?.downloadsDir ?? '').trim();
-    if (configuredDir && isAbsolute(configuredDir)) {
-      return configuredDir;
-    }
-    const workspace = await this.options.getWorkspaceRouter().getWorkspaceRegistryEntry(workspaceId);
-    return configuredDir
-      ? resolve(workspace.path, configuredDir)
-      : join(workspace.path, '.agentdock', 'channel-uploads', 'lark', instanceId);
-  }
-
-  private async resolveInboundAttachmentUri(workspaceId: string, filePath: string, instanceId = 'default') {
-    const binding = await this.getBinding(workspaceId, instanceId).catch(() => undefined);
-    if (!binding) {
-      return undefined;
-    }
-    const sandbox = binding.project.agent?.options?.sandbox;
-    if (!sandbox?.enabled) {
-      return resolveInboundAttachmentUri({ filePath });
-    }
-    const workspace = await this.options.getWorkspaceRouter().getWorkspaceRegistryEntry(workspaceId).catch(() => undefined);
-    if (!workspace) {
-      return undefined;
-    }
-    return resolveInboundAttachmentUri({
-      filePath,
-      workspacePath: workspace.path,
-      sandboxEnabled: true,
-      sandboxWorkspacePath: sandbox.workspace_mount_path,
-    });
+    return this.inboundHandler.downloadMessageFile(workspaceId, messageId, fileKey, fileName, instanceId);
   }
 
   private async fetchBotOpenId(state: LarkRuntimeState) {
@@ -1102,124 +818,12 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     return this.larkModulePromise;
   }
 
-  private async sendTextAsCard(
-    state: LarkRuntimeState,
-    chatId: string,
-    text: string,
-    buttonRows: Array<Array<{ text: string; data: string }>> = [],
-    sessionKey?: string,
-    threadId?: string,
-  ) {
-    const startedAt = Date.now();
-    const response = await state.client.im.message.create({
-      params: {
-        receive_id_type: this.resolveReceiveIdType(chatId),
-      },
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
-      },
-    });
-    this.options.log?.(`localcore-lark card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
-    return String(response?.data?.message_id || '').trim();
-  }
-
-  private async sendSessionCommandCard(
-    state: LarkRuntimeState,
-    chatId: string,
-    text: string,
-    actionRows: SessionCommandAction[][],
-    sessionKey?: string,
-    threadId?: string,
-  ) {
-    const startedAt = Date.now();
-    const response = await state.client.im.message.create({
-      params: {
-        receive_id_type: this.resolveReceiveIdType(chatId),
-      },
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: JSON.stringify(buildSessionCommandCard(text, actionRows, sessionKey, threadId)),
-      },
-    });
-    this.options.log?.(`localcore-lark session card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
-    return String(response?.data?.message_id || '').trim();
-  }
-
   private async sendTextAsMessage(
     state: LarkRuntimeState,
     chatId: string,
     text: string,
   ) {
-    const startedAt = Date.now();
-    const rendered = renderLarkTextMessage(text);
-    const response = await state.client.im.message.create({
-      params: {
-        receive_id_type: this.resolveReceiveIdType(chatId),
-      },
-      data: {
-        receive_id: chatId,
-        msg_type: rendered.msgType,
-        content: JSON.stringify(rendered.content),
-      },
-    });
-    this.options.log?.(`localcore-lark ${rendered.renderKind} create took ${Date.now() - startedAt}ms msgType=${rendered.msgType} reason=${rendered.reason} tableCount=${rendered.tableCount} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
-    return {
-      messageId: String(response?.data?.message_id || '').trim(),
-      renderKind: rendered.renderKind,
-      msgType: rendered.msgType,
-    };
-  }
-
-  private resolveReceiveIdType(receiveId: string) {
-    return receiveId.startsWith('oc_') ? 'chat_id' : receiveId.startsWith('ou_') ? 'open_id' : 'user_id';
-  }
-
-  private resolveLarkUploadFileType(fileName: string): 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream' {
-    switch (extname(fileName).toLowerCase()) {
-      case '.opus':
-        return 'opus';
-      case '.mp4':
-      case '.mov':
-      case '.m4v':
-        return 'mp4';
-      case '.pdf':
-        return 'pdf';
-      case '.doc':
-      case '.docx':
-        return 'doc';
-      case '.xls':
-      case '.xlsx':
-      case '.csv':
-        return 'xls';
-      case '.ppt':
-      case '.pptx':
-        return 'ppt';
-      default:
-        return 'stream';
-    }
-  }
-
-  private async patchTextCard(
-    state: LarkRuntimeState,
-    messageId: string,
-    text: string,
-    buttonRows: Array<Array<{ text: string; data: string }>> = [],
-    sessionKey?: string,
-    threadId?: string,
-  ) {
-    const startedAt = Date.now();
-    await state.client.im.message.patch({
-      path: {
-        message_id: messageId,
-      },
-      data: {
-        content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
-      },
-    });
-    this.options.log?.(`localcore-lark card patch took ${Date.now() - startedAt}ms message=${messageId} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    return this.outboundTransport.sendTextAsMessage(state, chatId, text);
   }
 
   private generatePairingCode() {
@@ -1366,7 +970,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       return;
     }
     try {
-      await this.patchTextCard(
+      await this.outboundTransport.patchTextCard(
         state,
         messageId,
         [
@@ -1394,7 +998,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       return '';
     }
     try {
-      return await this.sendTextAsCard(state, chatId, text);
+      return await this.outboundTransport.sendTextAsCard(state, chatId, text);
     } catch (error) {
       this.options.log?.(`localcore-lark immediate card failed for ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
       return '';

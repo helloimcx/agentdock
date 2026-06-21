@@ -15,7 +15,7 @@ import {
   updateKnowledgeBase,
   updateKnowledgeFolder,
   uploadKnowledgeBaseFiles,
-} from '@cc/core-sdk';
+} from '@cc/core-sdk/knowledge';
 import type {
   KnowledgeBaseCreateInput,
   KnowledgeBaseUpdateInput,
