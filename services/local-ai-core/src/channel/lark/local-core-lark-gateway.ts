@@ -71,6 +71,14 @@ import type {
 } from './types.js';
 import type { SessionCommandAction, SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
+import {
+  attachLarkWsDiagnostics,
+  extractLarkHeaderMimeType,
+  maskLarkAppId,
+  sniffLarkImageExtension,
+  sniffLarkImageMimeType,
+  summarizeLarkInboundContentParts,
+} from './gateway-utils.js';
 
 const PAIRING_EXPIRY_MS = 10 * 60 * 1000;
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
@@ -688,7 +696,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     this.runtime.set(key, status);
     this.notifyRuntimeStateChanged();
     try {
-      this.options.log?.(`localcore-lark starting workspace=${binding.workspaceId} app=${this.maskLarkAppId(binding.appId)} cardActions=${binding.cardActionsEnabled}`);
+      this.options.log?.(`localcore-lark starting workspace=${binding.workspaceId} app=${maskLarkAppId(binding.appId)} cardActions=${binding.cardActionsEnabled}`);
       const mod = await this.getLarkModule();
       status.client = new mod.Client({
         appId: binding.appId,
@@ -710,7 +718,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       });
       status.eventDispatcher.register({
         'im.message.receive_v1': async (data: Record<string, unknown>) => {
-          this.options.log?.(`localcore-lark received im.message.receive_v1 for ${binding.workspaceId}/${binding.instanceId}: ${this.summarizeLarkEvent(data)}`);
+          this.options.log?.(`localcore-lark received im.message.receive_v1 for ${binding.workspaceId}/${binding.instanceId}: ${summarizeLarkInboundPayload(data)}`);
           void this.handleMessageEvent(binding.workspaceId, binding.instanceId, binding.platformKey, data).catch((error) => {
             this.options.log?.(`localcore-lark inbound message failed for ${binding.workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
           });
@@ -729,7 +737,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         domain: mod.Domain.Feishu,
         loggerLevel: mod.LoggerLevel.info,
       });
-      this.attachWsDiagnostics(binding.workspaceId, status.wsClient);
+      attachLarkWsDiagnostics(binding.workspaceId, status.wsClient, this.options.log);
       this.options.log?.(`localcore-lark ws starting for ${binding.workspaceId}`);
       await status.wsClient.start({
         eventDispatcher: status.eventDispatcher,
@@ -841,7 +849,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       this.options.log?.(`localcore-lark ignored unsupported message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
       return;
     }
-    const displayText = text || this.summarizeInboundContentParts(contentParts);
+    const displayText = text || summarizeLarkInboundContentParts(contentParts);
     this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} chatType=${chatType || 'unknown'} mentions=${mentions.length} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
     await this.handleInboundMessage({
       workspaceId,
@@ -871,7 +879,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       displayFileName: imageKey,
       maxBytes: LARK_MAX_UPLOAD_FILE_SIZE,
       includeBase64: true,
-      finalizeStoredFileName: ({ storedFileName, prefix }) => `${storedFileName}.${this.sniffImageExtension(prefix)}`,
+      finalizeStoredFileName: ({ storedFileName, prefix }) => `${storedFileName}.${sniffLarkImageExtension(prefix)}`,
       source: {
         open: async () => {
           const resource = await state.client.im.messageResource.get({
@@ -889,7 +897,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
           }
           return {
             stream,
-            mimeType: this.extractHeaderMimeType(resource?.headers),
+            mimeType: extractLarkHeaderMimeType(resource?.headers),
           };
         },
       },
@@ -900,7 +908,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       type: 'image',
       data: stored.data || '',
       ...(uri ? { uri } : {}),
-      mimeType: stored.mimeType || this.sniffImageMimeType(stored.prefix),
+      mimeType: stored.mimeType || sniffLarkImageMimeType(stored.prefix),
       fileName: `${imageKey}.${extension}`,
     };
   }
@@ -937,7 +945,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
           }
           return {
             stream,
-            mimeType: this.extractHeaderMimeType(resource?.headers) || 'application/octet-stream',
+            mimeType: extractLarkHeaderMimeType(resource?.headers) || 'application/octet-stream',
           };
         },
       },
@@ -986,74 +994,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     });
   }
 
-  private summarizeInboundContentParts(parts: ChannelInboundContentPart[]) {
-    const text = parts
-      .filter((part): part is Extract<ChannelInboundContentPart, { type: 'text' }> => part.type === 'text')
-      .map((part) => part.text)
-      .filter(Boolean)
-      .join('\n\n')
-      .trim();
-    if (text) return text;
-    const attachmentSummary = parts
-      .map((part) => {
-        if (part.type === 'image') {
-          return '[Image]';
-        }
-        if (part.type === 'file') {
-          return part.fileName ? `[File: ${part.fileName}]` : '[File]';
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-    return attachmentSummary;
-  }
-
-  private extractHeaderMimeType(headers: unknown) {
-    const value = headers && typeof headers === 'object'
-      ? (headers as Record<string, unknown>)['content-type'] || (headers as Record<string, unknown>)['Content-Type']
-      : '';
-    return String(value || '').split(';')[0]?.trim() || '';
-  }
-
-  private sniffImageMimeType(buffer: Buffer) {
-    if (buffer[0] === 0xff && buffer[1] === 0xd8) return 'image/jpeg';
-    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
-    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif';
-    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) return 'image/webp';
-    return 'application/octet-stream';
-  }
-
-  private sniffImageExtension(buffer: Buffer) {
-    const mimeType = this.sniffImageMimeType(buffer);
-    if (mimeType === 'image/jpeg') return 'jpg';
-    if (mimeType === 'image/png') return 'png';
-    if (mimeType === 'image/gif') return 'gif';
-    if (mimeType === 'image/webp') return 'webp';
-    return 'bin';
-  }
-
-  private attachWsDiagnostics(workspaceId: string, wsClient: any) {
-    const on = typeof wsClient?.on === 'function' ? wsClient.on.bind(wsClient) : null;
-    if (!on) {
-      this.options.log?.(`localcore-lark ws diagnostics unavailable for ${workspaceId}: client has no on()`);
-      return;
-    }
-    for (const eventName of ['open', 'connect', 'connected', 'ready', 'close', 'closed', 'disconnect', 'error', 'reconnect']) {
-      try {
-        on(eventName, (...args: unknown[]) => {
-          this.options.log?.(`localcore-lark ws event ${eventName} for ${workspaceId}: ${this.summarizeWsArgs(args)}`);
-        });
-      } catch (error) {
-        this.options.log?.(`localcore-lark ws diagnostic hook failed for ${workspaceId} event=${eventName}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
-
-  private summarizeLarkEvent(data: Record<string, unknown>) {
-    return summarizeLarkInboundPayload(data);
-  }
-
   private async fetchBotOpenId(state: LarkRuntimeState) {
     const response = await state.client.request({
       url: '/open-apis/bot/v3/info',
@@ -1065,32 +1005,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       throw new Error('Lark bot info response did not include bot.open_id');
     }
     return openId;
-  }
-
-  private summarizeWsArgs(args: unknown[]) {
-    if (args.length === 0) {
-      return 'no-args';
-    }
-    return args.map((arg) => {
-      if (arg instanceof Error) {
-        return `${arg.name}: ${arg.message}`;
-      }
-      if (typeof arg === 'string') {
-        return arg.slice(0, 200);
-      }
-      if (arg && typeof arg === 'object') {
-        return JSON.stringify(Object.keys(arg as Record<string, unknown>));
-      }
-      return String(arg);
-    }).join(' ');
-  }
-
-  private maskLarkAppId(appId: string) {
-    const value = String(appId || '').trim();
-    if (value.length <= 8) {
-      return value ? '***' : '';
-    }
-    return `${value.slice(0, 6)}...${value.slice(-4)}`;
   }
 
   protected makeThreadRoute(input: ChannelSessionCommandInput, threadId: string): LarkThreadRoute {
