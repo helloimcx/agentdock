@@ -1,5 +1,5 @@
-import type { ThreadPendingPermissionRequest } from '../../../packages/contracts/src';
-import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
+import type { ThreadPendingPermissionRequest } from '@cc/superai-contracts';
+import type { DesktopBridgeButtonOption } from '@cc/superai-contracts';
 
 export type PermissionPromptMessage = {
   id?: string;

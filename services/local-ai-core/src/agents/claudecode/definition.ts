@@ -1,4 +1,4 @@
-import { DESKTOP_CLAUDECODE_ACP_PACKAGE } from '../../../../../shared/desktop.js';
+import { DESKTOP_CLAUDECODE_ACP_PACKAGE } from '@cc/superai-contracts';
 import type { AgentRuntimeDefinition } from '../shared/definition.js';
 import { resolveBundledAcpCommand } from '../shared/launch-utils.js';
 import { claudeCodeAcpBehavior } from './behavior.js';

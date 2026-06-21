@@ -3,13 +3,13 @@ import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
   defaultSandboxRuntimeImage,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type {
   DesktopConnectConfig,
   DesktopProjectConfig,
   DesktopProviderConfig,
   DesktopSandboxOptions,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 
 export const CURRENT_DESKTOP_CONFIG_VERSION = 2;
 

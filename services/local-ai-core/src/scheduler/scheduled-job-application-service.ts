@@ -4,7 +4,7 @@ import type {
   ScheduledJobRoute,
   ScheduledJobRun,
   ScheduledJobUpdateInput,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { SchedulerService } from './scheduler-service.js';
 import {

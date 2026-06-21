@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { getRuntimeProvider } from '@/app/runtime';
 import { getRuntimeStatus, onRuntimeEvent } from '@/api/desktop';
-import type { DesktopRuntimeStatus } from '../../../shared/desktop';
+import type { DesktopRuntimeStatus } from '@cc/superai-contracts';
 import type { ChatTaskState } from './thread-chat-model';
 
 type UseThreadChatRuntimeStateInput = {
@@ -23,7 +22,6 @@ export function useThreadChatRuntimeState({
 }: UseThreadChatRuntimeStateInput) {
   const [runtime, setRuntime] = useState<DesktopRuntimeStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const runtimeProvider = getRuntimeProvider();
   const showSessionKey = false;
 
   const serviceRunning = runtime?.phase === 'api_ready';
@@ -62,7 +60,6 @@ export function useThreadChatRuntimeState({
     loading,
     refreshRuntime,
     runtime,
-    runtimeProvider,
     serviceRunning,
     showSessionKey,
     transportReady,
@@ -70,7 +67,6 @@ export function useThreadChatRuntimeState({
     loading,
     refreshRuntime,
     runtime,
-    runtimeProvider,
     serviceRunning,
     showSessionKey,
     transportReady,

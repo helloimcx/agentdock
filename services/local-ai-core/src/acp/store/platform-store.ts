@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type {
   LocalCoreAuthorizedUser,
   LocalCorePairingRequest,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type {
   LocalPlatformPairingRow,
   LocalPlatformThreadBindingRow,

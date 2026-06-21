@@ -3,16 +3,16 @@ import type {
   ScheduledJobCreateInput,
   ScheduledJobRun,
   ScheduledJobUpdateInput,
-} from '../../packages/contracts/src';
+} from '@cc/superai-contracts';
 import {
   createScheduledJob,
   deleteScheduledJob,
   listScheduledJobRuns,
   listScheduledJobs,
-  listWorkspaces,
   runScheduledJob,
   updateScheduledJob,
-} from '../../packages/core-sdk/src';
+} from '@cc/core-sdk/scheduler';
+import { listWorkspaces } from '@cc/core-sdk/threads';
 
 export type CronJob = ScheduledJob;
 export type CronJobRun = ScheduledJobRun;

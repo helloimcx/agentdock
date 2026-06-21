@@ -7,8 +7,8 @@ import type {
   ScheduledJob,
   ScheduledJobRun,
   ScheduledJobUpdateInput,
-} from '../../../../packages/contracts/src/index.js';
-import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
+import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '@cc/superai-contracts';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';

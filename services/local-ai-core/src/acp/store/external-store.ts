@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type {
   ExternalProject,
   ExternalThread,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { parseJson } from './utils.js';
 
 type ExternalProjectRow = {

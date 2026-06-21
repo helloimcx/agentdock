@@ -1,4 +1,4 @@
-import { createNoopKnowledgePlugin } from '../../../../../packages/knowledge-api/src/index.js';
+import { createNoopKnowledgePlugin } from '@cc/knowledge-api';
 
 export function createBuiltinNoopKnowledgePlugin() {
   return createNoopKnowledgePlugin();

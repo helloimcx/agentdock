@@ -11,14 +11,14 @@ import type {
   KnowledgeSearchResult,
   KnowledgeSource,
   KnowledgeUploadResult,
-} from '../../contracts/src/index.js';
+} from '@cc/superai-contracts';
 import type {
   KnowledgePlugin,
   KnowledgeRuntime,
   KnowledgeRuntimeRegistration,
   PluginContext,
   ThreadKnowledgeAttachmentStore,
-} from '../../plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 import { AiVectorKnowledgeProvider, defaultKnowledgeConfig } from './ai-vector-provider.js';
 import { SqliteThreadKnowledgeAttachmentStore } from './thread-knowledge-store.js';
 

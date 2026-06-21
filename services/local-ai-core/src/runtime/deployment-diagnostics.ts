@@ -5,7 +5,7 @@ import {
   type DesktopConnectConfig,
   type LocalCoreDoctorCheck,
   type LocalCoreDoctorResult,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { defaultOpenSandboxServerUrl } from '../sandbox/sandbox-config.js';
 
 export async function runDeploymentDiagnostics(input: {

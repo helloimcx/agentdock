@@ -56,12 +56,12 @@ export function registerChannelHandlers(
   map.set('platform.file.send', async (route, req, res) => {
     const body = await readJsonBody(req);
     const p = (route as { platform: string }).platform;
-    json(res, 200, await channelService.sendFile(p, (route as { workspaceId: string }).workspaceId, body as unknown as import('../../../../../packages/contracts/src/index.js').ChannelFileSendInput));
+    json(res, 200, await channelService.sendFile(p, (route as { workspaceId: string }).workspaceId, body as unknown as import('@cc/superai-contracts').ChannelFileSendInput));
   });
   map.set('platform.message.send', async (route, req, res) => {
     const body = await readJsonBody(req);
     const p = (route as { platform: string }).platform;
-    json(res, 200, await channelService.sendMessage(p, (route as { workspaceId: string }).workspaceId, body as unknown as import('../../../../../packages/contracts/src/index.js').ChannelOutboundMessageInput));
+    json(res, 200, await channelService.sendMessage(p, (route as { workspaceId: string }).workspaceId, body as unknown as import('@cc/superai-contracts').ChannelOutboundMessageInput));
   });
   map.set('platform.qrcode.create', async (route, _req, res, url) => {
     const p = (route as { platform: string }).platform;

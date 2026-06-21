@@ -1,4 +1,4 @@
-import type { RuntimePlugin } from '../../../../packages/plugin-sdk/src/index.js';
+import type { RuntimePlugin } from '@cc/plugin-sdk';
 import type { AgentAcpBehavior } from './shared/acp-behavior.js';
 import { standardAcpBehavior } from './shared/acp-behavior.js';
 import type { AgentRuntimeDefinition } from './shared/definition.js';

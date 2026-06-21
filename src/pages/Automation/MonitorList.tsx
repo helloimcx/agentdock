@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, Pencil, Play, Plus, Trash2 } from 'lucide-react';
-import { subscribeEvents } from '../../../packages/core-sdk/src';
+import { subscribeEvents } from '@cc/core-sdk/runtime';
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import {
   createMonitor,

@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  updateThreadKnowledgeBases as updateDesktopThreadKnowledgeBases,
-} from '@/api/desktop';
 import { listKnowledgeBases } from '@/api/knowledge';
 import { getRuntimeBranding } from '@/lib/runtime-branding';
 import {
   sendAction,
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
-} from '../../../packages/core-sdk/src';
-import type { KnowledgeBase } from '../../../packages/contracts/src';
+} from '@cc/core-sdk/threads';
+import type { KnowledgeBase } from '@cc/superai-contracts';
 import {
   type ThreadActionTarget,
   type ThreadGroup,
@@ -95,7 +92,6 @@ export function useThreadChatController() {
     loading,
     refreshRuntime,
     runtime,
-    runtimeProvider,
     serviceRunning,
     showSessionKey,
     transportReady,
@@ -117,7 +113,6 @@ export function useThreadChatController() {
     requestedWorkspaceId,
     requestedThreadId,
     runtimeDefaultWorkspaceId: runtime?.settings.defaultProject,
-    runtimeProvider,
     searchParams,
     selectedWorkspaceId,
     serviceRunning,
@@ -160,7 +155,7 @@ export function useThreadChatController() {
     } catch {
       setAvailableKnowledgeBases([]);
     }
-  }, [runtimeProvider]);
+  }, []);
 
   useEffect(() => {
     void refreshKnowledgeBases();
@@ -177,9 +172,7 @@ export function useThreadChatController() {
       return;
     }
     try {
-      const persistedIds = runtimeProvider === 'local_core'
-        ? (await updateCoreThreadKnowledgeBases(activeThreadId, normalizedIds)).knowledgeBaseIds
-        : await updateDesktopThreadKnowledgeBases(selectedWorkspaceId, activeThreadId, normalizedIds);
+      const persistedIds = (await updateCoreThreadKnowledgeBases(activeThreadId, normalizedIds)).knowledgeBaseIds;
       if (knowledgeBaseSelectionRequestRef.current === requestId) {
         setSelectedKnowledgeBaseIds(persistedIds);
       }
@@ -188,7 +181,7 @@ export function useThreadChatController() {
         setBridgeError(error instanceof Error ? error.message : 'Failed to save selected knowledge bases.');
       }
     }
-  }, [activeThreadId, runtimeProvider, selectedWorkspaceId, setBridgeError]);
+  }, [activeThreadId, selectedWorkspaceId, setBridgeError]);
 
   const handleAgentModeChange = useCallback(async (nextMode: string) => {
     const normalizedMode = ['default', 'bypassPermissions'].includes(nextMode) ? nextMode : 'default';
@@ -222,7 +215,6 @@ export function useThreadChatController() {
     activeThreadId,
     activeRunId,
     activeBridgeSessionKey,
-    runtimeProvider,
     selectedWorkspaceId,
     clearActionStatuses,
     clearReplyTimeout,
@@ -265,7 +257,6 @@ export function useThreadChatController() {
     loadActiveThread,
     renameDraft,
     renameTarget,
-    runtimeProvider,
     searchParams,
     selectedKnowledgeBaseIds,
     selectedWorkspaceId,
@@ -295,7 +286,6 @@ export function useThreadChatController() {
     setSending,
     setTyping,
     holdBlankComposerRef,
-    lastSessionByProjectRef,
     nextMessageOrderRef,
     pendingTurnRef,
     progressSequenceByTurnRef,

@@ -8,7 +8,7 @@ import type {
   MonitorCapability,
   SchedulerCapability,
   UiCapability,
-} from '../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 
 export class LocalCoreCapabilityRegistry implements CapabilityRegistry {
   private readonly agents = new Map<string, AgentCapability>();

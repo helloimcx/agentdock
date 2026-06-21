@@ -1,4 +1,4 @@
-import type { DesktopConnectConfig, DesktopProjectConfig, RuntimeConfigState } from '../../../../packages/contracts/src/index.js';
+import type { DesktopConnectConfig, DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { normalizeDesktopProviderForStorage } from './config-migration.js';
 

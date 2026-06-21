@@ -1,23 +1,20 @@
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
 import process from 'node:process';
 import net from 'node:net';
 import { writeElectronPackageMetadata } from './write-electron-package.mjs';
 import { getElectronBinaryPath } from './electron-bin.mjs';
 
 const rootDir = process.cwd();
-const distElectronDir = path.join(rootDir, 'dist-electron');
 const devServerUrl = process.env.AI_WORKSTATION_DEV_SERVER_URL ?? 'http://127.0.0.1:5173';
 const isWindows = process.platform === 'win32';
 const electronBinary = getElectronBinaryPath();
 
 let electronProcess = null;
+let aliasProcess = null;
+let aliasRewritePending = false;
 let shuttingDown = false;
-let restartTimer = null;
 let electronReady = false;
 let serverReady = false;
-let watchStarted = false;
 
 writeElectronPackageMetadata(rootDir);
 
@@ -128,56 +125,53 @@ function restartElectron() {
   current.kill('SIGTERM');
 }
 
-function scheduleElectronRestart() {
-  if (!electronReady) {
+function rewriteElectronAliases() {
+  if (shuttingDown) {
     return;
   }
-  if (!watchStarted) {
-    watchElectronOutput();
-  }
-  if (restartTimer) {
-    clearTimeout(restartTimer);
-  }
-  restartTimer = setTimeout(() => {
-    restartTimer = null;
-    restartElectron();
-  }, 250);
-}
-
-function watchElectronOutput() {
-  if (watchStarted) {
+  if (aliasProcess) {
+    aliasRewritePending = true;
     return;
   }
-  watchStarted = true;
 
-  const watchTarget = fs.existsSync(distElectronDir) ? distElectronDir : rootDir;
-  fs.watch(watchTarget, { recursive: true }, (_eventType, filename) => {
-    if (!filename) {
+  electronReady = false;
+  aliasProcess = spawn('pnpm', ['exec', 'tsc-alias', '-p', 'tsconfig.electron.json'], {
+    cwd: rootDir,
+    stdio: 'inherit',
+    env: process.env,
+    shell: isWindows,
+  });
+
+  aliasProcess.on('exit', (code, signal) => {
+    aliasProcess = null;
+    if (shuttingDown) {
       return;
     }
-    const normalized = filename.replace(/\\/g, '/');
-    if (!normalized.startsWith('electron/') && !normalized.startsWith('shared/')) {
+    if (code !== 0) {
+      console.error(`[dev] tsc-alias exited with code ${code ?? 'null'} signal ${signal ?? 'null'}`);
+      shutdown(code ?? 1);
       return;
     }
-    if (!normalized.endsWith('.js')) {
+    if (aliasRewritePending) {
+      aliasRewritePending = false;
+      rewriteElectronAliases();
       return;
     }
-    if (electronReady && fs.existsSync(path.join(distElectronDir, 'electron', 'main.js'))) {
-      scheduleElectronRestart();
+
+    electronReady = true;
+    if (electronProcess) {
+      restartElectron();
+    } else {
+      maybeLaunchElectron();
     }
   });
-}
-
-function waitForElectronBuild() {
-  watchElectronOutput();
 }
 
 function handleElectronCompilerOutput(chunk, stream) {
   const text = chunk.toString();
   stream.write(chunk);
   if (/Found 0 errors?\. Watching for file changes\./.test(text)) {
-    electronReady = true;
-    maybeLaunchElectron();
+    rewriteElectronAliases();
   }
 }
 
@@ -187,13 +181,11 @@ function shutdown(code = 0) {
   }
   shuttingDown = true;
 
-  if (restartTimer) {
-    clearTimeout(restartTimer);
-    restartTimer = null;
-  }
-
   if (electronProcess) {
     electronProcess.kill('SIGTERM');
+  }
+  if (aliasProcess) {
+    aliasProcess.kill('SIGTERM');
   }
   tscProcess.kill('SIGTERM');
   viteProcess.kill('SIGTERM');
@@ -206,5 +198,4 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-waitForElectronBuild();
 void waitForDevServer();

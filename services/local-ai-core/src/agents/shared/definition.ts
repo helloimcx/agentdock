@@ -1,4 +1,4 @@
-import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '@cc/superai-contracts';
 import type { AgentAcpBehavior } from './acp-behavior.js';
 
 export type AgentBundledRuntime = {

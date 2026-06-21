@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { InstalledAgentRuntime } from '../../../../packages/contracts/src/index.js';
+import type { InstalledAgentRuntime } from '@cc/superai-contracts';
 
 interface RuntimeDetectionStoreFile {
   version: 1;

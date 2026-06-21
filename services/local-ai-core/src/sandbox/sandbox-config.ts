@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
-import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxLifecycle, AgentSandboxStateScope } from '../../../../packages/plugin-sdk/src/index.js';
+import type { AgentLaunchConfig, AgentSandboxLaunchConfig, AgentSandboxLifecycle, AgentSandboxStateScope } from '@cc/plugin-sdk';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxProviderForProfile,
@@ -11,7 +11,7 @@ import {
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
   type RuntimeConfigState,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 
 export const DEFAULT_OPENSANDBOX_SERVER_URL = 'http://127.0.0.1:8080';
 export const DEFAULT_OPENSANDBOX_SERVER_URL_ENV = 'AGENTDOCK_OPENSANDBOX_SERVER_URL';

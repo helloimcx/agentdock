@@ -24,13 +24,13 @@ import {
   defaultSandboxRuntimeImage,
   getDesktopDeploymentProfile,
   getDefaultDesktopAgentModel,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import type {
   DesktopConnectConfig,
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopProjectConfig,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import {
   clone,
   createPlatformDraft,

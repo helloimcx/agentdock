@@ -1,11 +1,12 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { onBridgeEvent } from '@/api/desktop';
+import { createChatEventGate } from '@/components/chat/chat-event-gate';
 import { getRuntimeBranding } from '@/lib/runtime-branding';
 import {
   isAcpAgentType,
   supportsInteractivePermission,
   type DesktopBridgeEvent,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import { toPendingPermissionRequest } from './thread-chat-permission';
 import {
   taskStateAfterTypingStop,
@@ -20,7 +21,6 @@ import {
   isPermissionActionRow,
   normalizeBridgeActionRows,
   sessionProjectFromKey,
-  shouldAcceptLiveBridgeEvent,
   shouldReplacePreviewWithReply,
   type ChatMessage,
 } from './thread-chat-model';
@@ -80,6 +80,12 @@ export function useThreadChatBridgeEvents({
   updateTaskState,
 }: UseThreadChatBridgeEventsInput) {
   const acpStreamingPreview = isAcpAgentType(activeAgentType);
+  const eventGateRef = useRef(createChatEventGate());
+
+  useEffect(() => {
+    eventGateRef.current.reset();
+  }, [activeBridgeSessionKey]);
+
   const promoteStreamingState = useCallback((reason: string) => {
     if (canStreamingPromoteTaskState(taskStateRef.current)) {
       updateTaskState('running', reason);
@@ -95,8 +101,7 @@ export function useThreadChatBridgeEvents({
     if (!event.sessionKey || event.sessionKey !== activeBridgeSessionKey) {
       return;
     }
-    if (!shouldAcceptLiveBridgeEvent({
-      event,
+    if (!eventGateRef.current.acceptBridgeEvent(event, {
       activeRunId,
       pendingTurn: pendingTurnRef.current,
     })) {

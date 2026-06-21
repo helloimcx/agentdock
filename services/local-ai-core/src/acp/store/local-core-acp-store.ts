@@ -42,9 +42,9 @@ import type {
   DesktopConnectConfig,
   ExternalProject,
   ExternalThread,
-} from '../../../../../packages/contracts/src/index.js';
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
-import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '../../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
+import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
+import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
 import type {
   LocalMessageRow,
   LocalPlatformPairingRow,

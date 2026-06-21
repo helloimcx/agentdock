@@ -14,7 +14,7 @@ import {
   type DesktopProviderConfig,
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import {
   applyProviderPreset,
   CUSTOM_SELECT_VALUE,

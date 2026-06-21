@@ -1,4 +1,4 @@
-import type { KnowledgeBase } from '../../../packages/contracts/src';
+import type { KnowledgeBase } from '@cc/superai-contracts';
 import type { PendingPermissionRequest } from './thread-chat-permission';
 import {
   isHiddenProgressMessage,

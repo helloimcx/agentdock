@@ -25,7 +25,7 @@ import {
   updateKnowledgeFolder,
 } from '@/api/knowledge';
 import { cn, formatTime } from '@/lib/utils';
-import type { KnowledgeBase, KnowledgeFolder } from '../../../packages/contracts/src';
+import type { KnowledgeBase, KnowledgeFolder } from '@cc/superai-contracts';
 
 type NoticeTone = 'success' | 'error' | 'warning';
 

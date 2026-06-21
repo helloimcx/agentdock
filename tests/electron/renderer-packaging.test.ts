@@ -44,6 +44,17 @@ test('release validation scripts keep local and candidate gates intact', () => {
   assert.ok(smokeIndex > buildIndex, 'pnpm e2e:smoke must run smoke checks after the production build');
 });
 
+test('development startup rewrites workspace aliases before launching Electron', () => {
+  const devScript = readFileSync(join(rootDir, 'scripts', 'dev.mjs'), 'utf8');
+  const aliasCommandIndex = devScript.indexOf("['exec', 'tsc-alias', '-p', 'tsconfig.electron.json']");
+  const readyAssignmentIndex = devScript.indexOf('electronReady = true', aliasCommandIndex);
+  const launchIndex = devScript.indexOf('maybeLaunchElectron()', readyAssignmentIndex);
+
+  assert.ok(aliasCommandIndex >= 0, 'pnpm dev must rewrite emitted @cc/* aliases');
+  assert.ok(readyAssignmentIndex > aliasCommandIndex, 'Electron must become ready only after alias rewriting is configured');
+  assert.ok(launchIndex > readyAssignmentIndex, 'Electron must launch only after alias rewriting completes');
+});
+
 test('production renderer build has a loadable entry document and assets', () => {
   const rendererDir = join(rootDir, 'dist', 'renderer');
   const indexPath = join(rendererDir, 'index.html');

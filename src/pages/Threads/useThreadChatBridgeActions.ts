@@ -2,7 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import {
   normalizePermissionResponse,
   type DesktopBridgeButtonOption,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import type { ChatMessage, ChatTaskState } from './thread-chat-model';
 import {
   markPermissionMessageSubmitted,
@@ -22,7 +22,7 @@ type UseThreadChatBridgeActionsInput = {
   settlePreviewMessages: (turnKey?: string) => void;
   setPendingBridgeActionId: Dispatch<SetStateAction<string | null>>;
   sendAction: (threadId: string, action: string) => Promise<{ runId: string }>;
-} & Pick<ThreadChatSharedHookContext, 'runtimeProvider' | 'selectedWorkspaceId' | 'updateTaskState'> &
+} & Pick<ThreadChatSharedHookContext, 'selectedWorkspaceId' | 'updateTaskState'> &
   Pick<ThreadChatSharedHookContext, 'clearReplyTimeout' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatActiveThreadIdentity, 'activeThreadId' | 'activeBridgeSessionKey'> &
   Pick<ThreadChatSendingRefs, 'taskStateRef'> &
@@ -37,7 +37,6 @@ export function useThreadChatBridgeActions({
   clearActionStatuses,
   clearReplyTimeout,
   reserveNextMessageOrder,
-  runtimeProvider: _runtimeProvider,
   selectedWorkspaceId: _selectedWorkspaceId,
   sendAction,
   settlePreviewMessages,
@@ -49,17 +48,11 @@ export function useThreadChatBridgeActions({
   setTyping,
   updateTaskState,
 }: UseThreadChatBridgeActionsInput & Pick<ThreadChatActiveThreadIdentity, 'activeRunId'> & { setActiveRunId: Dispatch<SetStateAction<string>> }) {
-  const usesManagedThreadApi = true;
   const handleBridgeAction = useCallback(async (
     message: Pick<ChatMessage, 'id' | 'actionReplyCtx' | 'actionMode' | 'actionInteractive'> | PendingPermissionRequest,
     action: DesktopBridgeButtonOption,
   ) => {
     if (!activeThreadId) {
-      return;
-    }
-    if (!usesManagedThreadApi) {
-      setBridgeError('Managed desktop thread action transport is unavailable.');
-      updateTaskState('error', 'bridge-action-unavailable');
       return;
     }
     const actionContent = normalizePermissionResponse(action.data) || action.data;
@@ -160,7 +153,6 @@ export function useThreadChatBridgeActions({
     setPendingBridgeActionId,
     setTyping,
     updateTaskState,
-    usesManagedThreadApi,
   ]);
 
   return {

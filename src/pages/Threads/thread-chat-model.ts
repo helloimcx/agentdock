@@ -1,5 +1,5 @@
 import type { Session } from '../../api/sessions';
-import type { ThreadDetail, ThreadSummary } from '../../../packages/contracts/src';
+import type { ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
 import type {
   DesktopBridgeEvent,
   DesktopBridgeEventKind,
@@ -7,13 +7,15 @@ import type {
   DesktopBridgeButtonOption,
   DesktopBridgeToolCall,
   DesktopRuntimeStatus,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
+import { shouldAcceptRunScopedEvent } from '../../components/chat/chat-event-gate';
 import {
   isPermissionButtonOption,
   normalizeDesktopBridgeButtonOption,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import { sessionLabel } from '../../lib/session-utils';
 import type { ChatTranscriptMessage } from '../../components/chat/chat-message-state';
+import type { ChatControllerAction, ChatControllerStatus } from '../../components/chat/chat-controller-state';
 
 export const ASSISTANT_REPLY_TIMEOUT_MS = 90000;
 
@@ -34,14 +36,57 @@ export interface ChatMessage extends ChatTranscriptMessage {
   previewPlainText?: boolean;
 }
 
-export type ChatTaskState =
+export type ChatTaskState = Extract<ChatControllerStatus,
   | 'idle'
   | 'running'
   | 'awaiting_input'
   | 'awaiting_permission'
   | 'permission_submitted'
   | 'error'
-  | 'stopping';
+  | 'stopping'>;
+
+// Threads drives the shared chat controller through these mappers instead of the
+// reducer's `transition` escape hatch so its task state stays inside ChatTaskState
+// and the reducer's named-action guards remain meaningful.
+
+export function chatControllerActionForTaskState(next: ChatTaskState): ChatControllerAction {
+  switch (next) {
+    case 'idle':
+      return { type: 'settled' };
+    case 'running':
+      return { type: 'stream_started' };
+    case 'awaiting_input':
+      return { type: 'input_requested' };
+    case 'awaiting_permission':
+      return { type: 'permission_requested' };
+    case 'permission_submitted':
+      return { type: 'permission_submitted' };
+    case 'stopping':
+      return { type: 'stop_started' };
+    case 'error':
+      return { type: 'failed' };
+  }
+}
+
+export function taskStateFromControllerStatus(status: ChatControllerStatus): ChatTaskState {
+  switch (status) {
+    case 'idle':
+    case 'running':
+    case 'awaiting_input':
+    case 'awaiting_permission':
+    case 'permission_submitted':
+    case 'error':
+    case 'stopping':
+      return status;
+    case 'failed':
+    case 'timed_out':
+      return 'error';
+    default:
+      // sending/waiting/polling/activating are Session/Web-only statuses the
+      // Threads surface never holds; map them defensively to 'running'.
+      return 'running';
+  }
+}
 
 export interface ThreadGroup {
   project: string;
@@ -126,23 +171,10 @@ export function shouldAcceptLiveBridgeEvent(input: {
     supersededRunId?: string;
   } | null;
 }) {
-  const replyCtx = String(input.event.replyCtx || '').trim();
-  if (!replyCtx) {
-    return true;
-  }
-  const activeRunId = String(input.activeRunId || '').trim();
-  const pendingTurn = input.pendingTurn;
-  if (pendingTurn && pendingTurn.sessionKey === input.event.sessionKey) {
-    const pendingRunId = String(pendingTurn.runId || '').trim();
-    if (pendingRunId) {
-      return replyCtx === pendingRunId;
-    }
-    const supersededRunId = String(pendingTurn.supersededRunId || '').trim();
-    if (supersededRunId && replyCtx === supersededRunId) {
-      return false;
-    }
-  }
-  return !activeRunId || replyCtx === activeRunId;
+  return shouldAcceptRunScopedEvent(input.event, {
+    activeRunId: input.activeRunId,
+    pendingTurn: input.pendingTurn,
+  });
 }
 
 export function settlePreviewMessages(messages: ChatMessage[], turnKey?: string) {

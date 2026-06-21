@@ -18,7 +18,14 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@cc/superai-contracts": ["packages/contracts/src/index.ts"],
+      "@cc/superai-contracts/*": ["packages/contracts/src/*"],
+      "@cc/core-sdk": ["packages/core-sdk/src/index.ts"],
+      "@cc/core-sdk/*": ["packages/core-sdk/src/*"],
+      "@cc/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],
+      "@cc/plugin-sdk/*": ["packages/plugin-sdk/src/*"],
+      "@cc/knowledge-api": ["packages/knowledge-api/src/index.ts"]
     }
   },
   "include": ["src", "shared", "packages", "services", "vite-env.d.ts"]

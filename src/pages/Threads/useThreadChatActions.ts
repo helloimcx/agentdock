@@ -1,12 +1,10 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { KnowledgeBase, ThreadDetail } from '../../../packages/contracts/src';
-import type { RuntimeProvider } from '@/app/runtime';
+import type { KnowledgeBase, ThreadDetail } from '@cc/superai-contracts';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget } from './thread-chat-model';
 import type {
   ThreadChatCoreSetters,
   ThreadChatIdentitySetters,
   ThreadChatModalSetters,
-  ThreadChatSendingRefs,
   ThreadChatSharedActionContext,
 } from './thread-chat-action-types';
 import { useThreadChatSendingActions } from './useThreadChatSendingActions';
@@ -23,7 +21,6 @@ type UseThreadChatActionsInput = {
   loadActiveThread: (workspaceId: string, threadId: string) => Promise<void>;
   renameDraft: string;
   renameTarget: ThreadActionTarget | null;
-  runtimeProvider: RuntimeProvider;
   searchParams: URLSearchParams;
   selectedKnowledgeBaseIds: string[];
   activeAgentMode: string;
@@ -54,7 +51,6 @@ type UseThreadChatActionsInput = {
   setSending: Dispatch<SetStateAction<boolean>>;
   setTyping: Dispatch<SetStateAction<boolean>>;
   holdBlankComposerRef: MutableRefObject<boolean>;
-  lastSessionByProjectRef: MutableRefObject<Record<string, string>>;
   nextMessageOrderRef: MutableRefObject<number>;
   pendingTurnRef: MutableRefObject<{ sessionKey: string; userOrder: number } | null>;
   progressSequenceByTurnRef: MutableRefObject<Record<string, number>>;
@@ -72,7 +68,6 @@ export function useThreadChatActions({
   loadActiveThread,
   renameDraft,
   renameTarget,
-  runtimeProvider,
   searchParams,
   selectedKnowledgeBaseIds,
   activeAgentMode,
@@ -103,14 +98,12 @@ export function useThreadChatActions({
   setSending,
   setTyping,
   holdBlankComposerRef,
-  lastSessionByProjectRef,
   nextMessageOrderRef,
   pendingTurnRef,
   progressSequenceByTurnRef,
   taskStateRef,
 }: UseThreadChatActionsInput) {
   const sharedContext: ThreadChatSharedActionContext = {
-    runtimeProvider,
     selectedProject: selectedWorkspaceId,
     updateTaskState,
     applyLocalCoreThreadDetail,
@@ -143,9 +136,8 @@ export function useThreadChatActions({
     setRenameTarget,
   };
 
-  const sendingRefs: ThreadChatSendingRefs = {
+  const sendingRefs = {
     holdBlankComposerRef,
-    lastSessionByProjectRef,
     nextMessageOrderRef,
     pendingTurnRef,
     progressSequenceByTurnRef,

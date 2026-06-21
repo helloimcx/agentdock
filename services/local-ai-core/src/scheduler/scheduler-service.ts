@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
-import type { ScheduledJob, ScheduledJobRun } from '../../../../packages/contracts/src/index.js';
-import type { EventBus } from '../../../../packages/plugin-sdk/src/index.js';
+import type { ScheduledJob, ScheduledJobRun } from '@cc/superai-contracts';
+import type { EventBus } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { SchedulerExecutorRuntime, SchedulerTriggerRuntime } from './adapters.js';
 import { toPublicScheduledJobId } from './job-id.js';

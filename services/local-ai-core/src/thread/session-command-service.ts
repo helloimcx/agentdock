@@ -1,4 +1,4 @@
-import type { ThreadDetail, ThreadMessage, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { ThreadDetail, ThreadMessage, ThreadSummary } from '@cc/superai-contracts';
 import { SlashCommandRegistry } from './slash-command-registry.js';
 
 const PAGE_SIZE = 8;

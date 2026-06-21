@@ -3,7 +3,7 @@ import type {
   LocalCoreErrorInfo,
   LocalCoreErrorSeverity,
   LocalCoreErrorSummary,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 
 type ErrorDefaults = {
   severity: LocalCoreErrorSeverity;

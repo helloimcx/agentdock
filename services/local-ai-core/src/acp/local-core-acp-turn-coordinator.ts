@@ -1,5 +1,5 @@
-import type { DesktopBridgeEvent, DesktopBridgeToolCall, ThreadDetail, ThreadPendingPermissionRequest } from '../../../../packages/contracts/src/index.js';
-import { normalizeDesktopBridgeButtonOption } from '../../../../shared/desktop.js';
+import type { DesktopBridgeEvent, DesktopBridgeToolCall, ThreadDetail, ThreadPendingPermissionRequest } from '@cc/superai-contracts';
+import { normalizeDesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,

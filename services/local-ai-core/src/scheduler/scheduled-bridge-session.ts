@@ -1,5 +1,5 @@
-import type { ScheduledJob, ScheduledJobRoute } from '../../../../packages/contracts/src/index.js';
-import type { ChannelRuntime } from '../../../../packages/plugin-sdk/src/index.js';
+import type { ScheduledJob, ScheduledJobRoute } from '@cc/superai-contracts';
+import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 
 export type ScheduledDeliveryMode = 'thread-only' | 'bridge-stream' | 'final-message';

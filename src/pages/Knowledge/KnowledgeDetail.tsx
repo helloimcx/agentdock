@@ -20,7 +20,7 @@ import {
   uploadKnowledgeBaseFiles,
 } from '@/api/knowledge';
 import { cn, formatTime } from '@/lib/utils';
-import type { KnowledgeBase, KnowledgeFile, KnowledgeFolder, KnowledgeSearchResult } from '../../../packages/contracts/src';
+import type { KnowledgeBase, KnowledgeFile, KnowledgeFolder, KnowledgeSearchResult } from '@cc/superai-contracts';
 
 type NoticeTone = 'success' | 'error' | 'warning';
 

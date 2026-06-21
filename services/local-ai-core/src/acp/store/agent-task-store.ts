@@ -7,8 +7,8 @@ import type {
   AgentTaskListResponse,
   AgentTaskStatus,
   AgentTaskUpdateInput,
-} from '../../../../../packages/contracts/src/index.js';
-import { normalizeAgentTaskStatus } from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
+import { normalizeAgentTaskStatus } from '@cc/superai-contracts';
 import type { LocalAgentTaskRow } from '../../router/workspace-router-types.js';
 import { parseJson, redactSecrets } from './utils.js';
 import type { AuditEventCreateInput } from './security-store.js';

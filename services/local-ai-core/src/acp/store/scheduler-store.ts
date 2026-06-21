@@ -5,13 +5,13 @@ import type {
   ScheduledJobCreateInput,
   ScheduledJobRun,
   ScheduledJobUpdateInput,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import {
   normalizeChannelPlatform,
   normalizeScheduledJobExecutionMode,
   normalizeScheduledJobRunStatus,
   normalizeScheduledJobTriggerType,
-} from '../../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { createScheduledJobId } from '../../scheduler/job-id.js';
 import type {
   LocalScheduledJobRow,

@@ -1,4 +1,4 @@
-import { LOCALCORE_ACP_AGENT_TYPE } from '../../../../../shared/desktop.js';
+import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
 import type { AgentRuntimeDefinition } from '../shared/definition.js';
 import { localCoreAcpBehavior } from './behavior.js';
 

@@ -1,6 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { RuntimeProvider } from '@/app/runtime';
-import type { ThreadDetail } from '../../../packages/contracts/src';
+import type { ThreadDetail } from '@cc/superai-contracts';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget, ThreadGroup } from './thread-chat-model';
 import type { PendingPermissionRequest } from './thread-chat-permission';
 
@@ -62,7 +61,6 @@ export type ThreadChatModalSetters = {
 };
 
 export type ThreadChatSharedActionContext = {
-  runtimeProvider: RuntimeProvider;
   selectedProject: string;
   updateTaskState: (next: ChatTaskState, reason?: string) => void;
   applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;
@@ -72,7 +70,6 @@ export type ThreadChatSharedActionContext = {
   ThreadChatConversationRefs;
 
 export type ThreadChatSharedHookContext = {
-  runtimeProvider: RuntimeProvider;
   selectedWorkspaceId: string;
   updateTaskState: (next: ChatTaskState, reason?: string) => void;
   applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;

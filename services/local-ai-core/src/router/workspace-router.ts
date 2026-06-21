@@ -29,7 +29,7 @@ import type {
   WorkspaceRegistryUpdateInput,
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
-} from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import { DEFAULT_AGENT_MODE, normalizeAgentMode } from '../acp/local-core-slash-commands.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';

@@ -10,7 +10,6 @@ type UseThreadChatBridgeInput = {
   activeBridgeSessionKey: string;
   activeThreadId: string;
   activeRunId: string;
-  runtimeProvider: 'local_core';
   selectedWorkspaceId: string;
   clearActionStatuses: () => void;
   clearReplyTimeout: () => void;
@@ -71,7 +70,6 @@ export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
     clearActionStatuses: input.clearActionStatuses,
     clearReplyTimeout: input.clearReplyTimeout,
     reserveNextMessageOrder: input.reserveNextMessageOrder,
-    runtimeProvider: input.runtimeProvider,
     selectedWorkspaceId: input.selectedWorkspaceId,
     sendAction: input.sendAction,
     settlePreviewMessages: input.settlePreviewMessages,

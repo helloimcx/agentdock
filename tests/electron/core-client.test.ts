@@ -5,6 +5,7 @@ import { createCoreClient, type CoreEventSource } from '../../packages/core-sdk/
 class FakeEventSource implements CoreEventSource {
   readonly listeners = new Map<string, Set<(event: { data: string }) => void>>();
   onerror: (() => void) | null = null;
+  onopen: (() => void) | null = null;
   closed = false;
 
   addEventListener(type: string, listener: (event: { data: string }) => void) {
@@ -46,6 +47,41 @@ test('core client shares one event source across subscribers and closes it after
   assert.equal(sources[0].closed, true);
 });
 
+test('core clients with the same base URL share one event source across instances', () => {
+  const sources: FakeEventSource[] = [];
+  const firstClient = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9831/api/local/v1/',
+    eventSourceFactory: () => {
+      const source = new FakeEventSource();
+      sources.push(source);
+      return source;
+    },
+  });
+  const secondClient = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9831/api/local/v1',
+    eventSourceFactory: () => {
+      const source = new FakeEventSource();
+      sources.push(source);
+      return source;
+    },
+  });
+
+  const firstEventTypes: string[] = [];
+  const secondEventTypes: string[] = [];
+  const stopFirst = firstClient.events.subscribe((event) => firstEventTypes.push(event.type));
+  const stopSecond = secondClient.events.subscribe((event) => secondEventTypes.push(event.type));
+
+  assert.equal(sources.length, 1);
+  sources[0].emit('presence.updated', { type: 'presence.updated', live: true });
+  assert.deepEqual(firstEventTypes, ['presence.updated']);
+  assert.deepEqual(secondEventTypes, ['presence.updated']);
+
+  stopFirst();
+  assert.equal(sources[0].closed, false);
+  stopSecond();
+  assert.equal(sources[0].closed, true);
+});
+
 test('core client ignores malformed events and maps stream events to bridge subscribers', () => {
   const source = new FakeEventSource();
   const events: string[] = [];
@@ -67,6 +103,93 @@ test('core client ignores malformed events and maps stream events to bridge subs
   assert.deepEqual(bridgeContents, ['done']);
   stopBridge();
   stopEvents();
+});
+
+test('core client ignores valid JSON events that do not match the event contract', () => {
+  const source = new FakeEventSource();
+  const events: string[] = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9841/api/local/v1',
+    eventSourceFactory: () => source,
+  });
+  const stop = client.events.subscribe((event) => events.push(event.type));
+
+  source.emit('runtime.updated', { type: 'runtime.updated' });
+  source.emit('presence.updated', { type: 'presence.updated', live: 'yes' });
+  source.emit('stream.updated', { type: 'stream.updated', stream: { content: 'missing bridge type' } });
+  source.emit('presence.updated', { type: 'presence.updated', live: false });
+
+  assert.deepEqual(events, ['presence.updated']);
+  stop();
+});
+
+test('core client rejects events whose nested payload misses required contract fields', () => {
+  const source = new FakeEventSource();
+  const events: string[] = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9831/api/local/v1',
+    eventSourceFactory: () => source,
+  });
+  const stop = client.events.subscribe((event) => events.push(event.type));
+
+  source.emit('run.updated', { type: 'run.updated', run: {} });
+  source.emit('message.created', { type: 'message.created', threadId: 'thread-1', message: {} });
+  source.emit('scheduler.run.updated', { type: 'scheduler.run.updated', run: { id: 'run-1' } });
+  source.emit('run.updated', {
+    type: 'run.updated',
+    run: {
+      id: 'run-1',
+      threadId: 'thread-1',
+      status: 'running',
+      startedAt: '2026-06-21T00:00:00.000Z',
+      updatedAt: '2026-06-21T00:00:01.000Z',
+    },
+  });
+
+  assert.deepEqual(events, ['run.updated']);
+  stop();
+});
+
+test('identical listener functions retain independent subscriptions', () => {
+  const source = new FakeEventSource();
+  let calls = 0;
+  const listener = () => {
+    calls += 1;
+  };
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9831/api/local/v1',
+    eventSourceFactory: () => source,
+  });
+
+  const stopFirst = client.events.subscribe(listener);
+  const stopSecond = client.events.subscribe(listener);
+  stopFirst();
+
+  assert.equal(source.closed, false);
+  source.emit('presence.updated', { type: 'presence.updated', live: true });
+  assert.equal(calls, 1);
+
+  stopSecond();
+  assert.equal(source.closed, true);
+});
+
+test('one failing event listener does not prevent other subscribers from receiving the event', () => {
+  const source = new FakeEventSource();
+  const events: string[] = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9844/api/local/v1',
+    eventSourceFactory: () => source,
+  });
+  const stopFailing = client.events.subscribe(() => {
+    throw new Error('listener failed');
+  });
+  const stopHealthy = client.events.subscribe((event) => events.push(event.type));
+
+  source.emit('presence.updated', { type: 'presence.updated', live: true });
+
+  assert.deepEqual(events, ['presence.updated']);
+  stopFailing();
+  stopHealthy();
 });
 
 test('core client schedules only one reconnect while an error is outstanding', () => {
@@ -93,5 +216,103 @@ test('core client schedules only one reconnect while an error is outstanding', (
   reconnects[0]();
   assert.equal(sources.length, 2);
 
+  stop();
+});
+
+test('an obsolete event source cannot schedule another reconnect after replacement', () => {
+  const sources: FakeEventSource[] = [];
+  const reconnects: Array<() => void> = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9842/api/local/v1',
+    eventSourceFactory: () => {
+      const source = new FakeEventSource();
+      sources.push(source);
+      return source;
+    },
+    scheduleReconnect: (callback) => {
+      reconnects.push(callback);
+      return reconnects.length;
+    },
+    cancelReconnect: () => {},
+  });
+  const stop = client.events.subscribe(() => {});
+
+  sources[0].onerror?.();
+  reconnects[0]();
+  sources[0].onerror?.();
+
+  assert.equal(reconnects.length, 1);
+  stop();
+});
+
+test('core client reports reconnect so consumers can recover missed state', () => {
+  const sources: FakeEventSource[] = [];
+  const reconnects: Array<() => void> = [];
+  const states: string[] = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9845/api/local/v1',
+    eventSourceFactory: () => {
+      const source = new FakeEventSource();
+      sources.push(source);
+      return source;
+    },
+    scheduleReconnect: (callback) => {
+      reconnects.push(callback);
+      return reconnects.length;
+    },
+    cancelReconnect: () => {},
+  });
+  const stop = client.events.subscribeConnectionState((state) => states.push(state));
+
+  sources[0].onopen?.();
+  sources[0].onerror?.();
+  reconnects[0]();
+  sources[1].onopen?.();
+
+  assert.deepEqual(states, ['connected', 'disconnected', 'connected']);
+  stop();
+  assert.equal(sources[1].closed, true);
+});
+
+test('core client rejects partially populated scheduler and automation payloads', () => {
+  const source = new FakeEventSource();
+  const events: string[] = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9843/api/local/v1',
+    eventSourceFactory: () => source,
+  });
+  const stop = client.events.subscribe((event) => events.push(event.type));
+
+  source.emit('scheduler.job.updated', {
+    type: 'scheduler.job.updated',
+    job: {
+      id: 'job-1',
+      workspaceId: 'workspace-1',
+      platform: 'local',
+      triggerType: 'cron',
+      promptTemplate: 'run',
+      enabled: true,
+      createdAt: '',
+      updatedAt: '',
+    },
+  });
+  source.emit('automation.monitor.updated', {
+    type: 'automation.monitor.updated',
+    monitor: {
+      id: 'monitor-1',
+      workspaceId: 'workspace-1',
+      title: 'price',
+      sourceType: 'stock.quote',
+      sourceConfig: {},
+      condition: {},
+      promptTemplate: 'analyze',
+      enabled: true,
+      cooldownMs: 1000,
+      createdAt: '',
+      updatedAt: '',
+    },
+  });
+
+  assert.deepEqual(events, []);
   stop();
 });

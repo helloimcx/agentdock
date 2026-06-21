@@ -3,7 +3,7 @@ import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxRuntimeImage,
   normalizeDesktopAgentModel,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 import type {
   DesktopConnectConfig,
   DesktopModelProvider,
@@ -12,7 +12,7 @@ import type {
   DesktopProjectConfig,
   DesktopProviderConfig,
   DesktopSandboxOptions,
-} from '../../../shared/desktop';
+} from '@cc/superai-contracts';
 
 export const CUSTOM_SELECT_VALUE = '__custom__';
 export const PLATFORM_TYPE_OPTIONS = ['weixin', 'lark'] as const;

@@ -12,7 +12,7 @@ export function registerSchedulerHandlers(
   });
   map.set('scheduler.jobs.create', async (_route, req, res) => {
     const body = await readJsonBody(req);
-    json(res, 200, await scheduledJobs.createJob(body as unknown as import('../../../../../packages/contracts/src/index.js').ScheduledJobCreateInput));
+    json(res, 200, await scheduledJobs.createJob(body as unknown as import('@cc/superai-contracts').ScheduledJobCreateInput));
   });
   map.set('scheduler.job.get', async (route, _req, res) => {
     const job = scheduledJobs.getJob((route as { jobId: string }).jobId);
@@ -29,7 +29,7 @@ export function registerSchedulerHandlers(
   });
   map.set('scheduler.job.update', async (route, req, res) => {
     const body = await readJsonBody(req);
-    json(res, 200, await scheduledJobs.updateJob((route as { jobId: string }).jobId, body as unknown as import('../../../../../packages/contracts/src/index.js').ScheduledJobUpdateInput));
+    json(res, 200, await scheduledJobs.updateJob((route as { jobId: string }).jobId, body as unknown as import('@cc/superai-contracts').ScheduledJobUpdateInput));
   });
   map.set('scheduler.job.delete', async (route, _req, res) => {
     json(res, 200, await scheduledJobs.deleteJob((route as { jobId: string }).jobId));

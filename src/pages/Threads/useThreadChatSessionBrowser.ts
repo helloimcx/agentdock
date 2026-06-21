@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { getThreadKnowledgeBases } from '@/api/desktop';
-import { listProjects } from '@/api/projects';
-import { getSession, listSessions } from '@/api/sessions';
-import { getThread, listThreads, listWorkspaces, subscribeEvents } from '../../../packages/core-sdk/src';
+import { subscribeEvents } from '@cc/core-sdk/runtime';
+import { getThread, listThreads, listWorkspaces } from '@cc/core-sdk/threads';
 import type { ThreadGroup } from './thread-chat-model';
 import {
   chatThreadMatchesSearch,
-  sessionMatchesDesktop,
   sortChatThreadsByLiveAndUpdated,
-  toChatThreadSummary,
   toCoreChatThreadSummary,
-  toMessages,
   upsertThreadGroup,
-  upsertThreadInGroup,
 } from './thread-chat-model';
 import type {
   ThreadChatBrowserSetters,
@@ -57,7 +51,7 @@ type UseThreadChatSessionBrowserInput = {
   threadGroups: ThreadGroup[];
   threadSearch: string;
   setSelectedKnowledgeBaseIds: (ids: string[]) => void;
-} & Pick<ThreadChatSharedHookContext, 'runtimeProvider' | 'updateTaskState'> &
+} & Pick<ThreadChatSharedHookContext, 'updateTaskState'> &
   Pick<ThreadChatSharedHookContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedHookContext, 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatConversationRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef'> &
@@ -70,7 +64,6 @@ export function useThreadChatSessionBrowser({
   requestedWorkspaceId,
   requestedThreadId,
   runtimeDefaultWorkspaceId,
-  runtimeProvider,
   searchParams,
   serviceRunning,
   selectedWorkspaceId,
@@ -101,7 +94,6 @@ export function useThreadChatSessionBrowser({
   pendingTurnRef,
   progressSequenceByTurnRef,
 }: UseThreadChatSessionBrowserInput) {
-  const usesManagedThreadApi = true;
   const threadsForSelectedWorkspace = useMemo(
     () => threadGroups.find((group) => group.project === selectedWorkspaceId)?.sessions || [],
     [selectedWorkspaceId, threadGroups],
@@ -123,13 +115,9 @@ export function useThreadChatSessionBrowser({
     if (!workspaceId || !serviceRunning) {
       return [];
     }
-    const nextThreads = usesManagedThreadApi
-      ? sortChatThreadsByLiveAndUpdated((await listThreads(workspaceId)).threads.map((thread) => toCoreChatThreadSummary(thread)))
-      : sortChatThreadsByLiveAndUpdated(
-          ((await listSessions(workspaceId)).sessions || [])
-            .filter(sessionMatchesDesktop)
-            .map((session) => toChatThreadSummary(workspaceId, session)),
-        );
+    const nextThreads = sortChatThreadsByLiveAndUpdated(
+      (await listThreads(workspaceId)).threads.map((thread) => toCoreChatThreadSummary(thread)),
+    );
     const activeThread = nextThreads.find((thread) => thread.id === activeThreadId);
     if (activeThread?.agentType) {
       setActiveSessionAgentType(activeThread.agentType);
@@ -139,7 +127,7 @@ export function useThreadChatSessionBrowser({
     }
     setThreadGroups((current) => upsertThreadGroup(current, workspaceId, nextThreads));
     return nextThreads;
-  }, [activeThreadId, serviceRunning, setActiveAgentMode, setActiveSessionAgentType, setThreadGroups, usesManagedThreadApi]);
+  }, [activeThreadId, serviceRunning, setActiveAgentMode, setActiveSessionAgentType, setThreadGroups]);
 
   const loadActiveThread = useCallback(async (workspaceId: string, threadId: string) => {
     if (!workspaceId || !threadId || !serviceRunning) {
@@ -149,33 +137,11 @@ export function useThreadChatSessionBrowser({
     updateTaskState('idle');
     setPendingPermissionRequest(null);
     setTyping(false);
-    if (usesManagedThreadApi) {
-      const detail = await getThread(threadId);
-      applyLocalCoreThreadDetail(detail);
-      return;
-    }
-    const detail = await getSession(workspaceId, threadId, 200);
-    const selectedKnowledgeBaseIds = await getThreadKnowledgeBases(workspaceId, threadId).catch(() => []);
-    lastSessionByProjectRef.current[workspaceId] = detail.id;
-    setSelectedProject(workspaceId);
-    setActiveSessionId(detail.id);
-    setActiveSessionKey(detail.session_key);
-    setActiveSessionName(toChatThreadSummary(workspaceId, detail).name);
-    setActiveSessionAgentType(detail.agent_type || '');
-    setActiveAgentMode('default');
-    setSelectedKnowledgeBaseIds(selectedKnowledgeBaseIds);
-    setActiveRunId('');
-    setThreadGroups((current) => upsertThreadInGroup(current, workspaceId, toChatThreadSummary(workspaceId, detail)));
-    holdBlankComposerRef.current = false;
-    progressSequenceByTurnRef.current = {};
-    const nextMessages = toMessages(detail.history || []);
-    nextMessageOrderRef.current = nextMessages.length;
-    pendingTurnRef.current = null;
-    setMessages(nextMessages);
+    const detail = await getThread(threadId);
+    applyLocalCoreThreadDetail(detail);
   }, [
     applyLocalCoreThreadDetail,
     holdBlankComposerRef,
-    lastSessionByProjectRef,
     nextMessageOrderRef,
     pendingTurnRef,
     progressSequenceByTurnRef,
@@ -193,7 +159,6 @@ export function useThreadChatSessionBrowser({
     setThreadGroups,
     setTyping,
     updateTaskState,
-    usesManagedThreadApi,
   ]);
 
   const refreshWorkspacesAndThreads = useCallback(async () => {
@@ -203,9 +168,7 @@ export function useThreadChatSessionBrowser({
       setSelectedKnowledgeBaseIds([]);
       return [];
     }
-    const nextWorkspaceIds = usesManagedThreadApi
-      ? (await listWorkspaces()).workspaces.map((workspace) => workspace.id)
-      : (await listProjects()).projects.map((project) => project.name);
+    const nextWorkspaceIds = (await listWorkspaces()).workspaces.map((workspace) => workspace.id);
     setProjects(nextWorkspaceIds);
     const nextSelectedWorkspaceId = chooseWorkspaceId({
       current: selectedWorkspaceId,
@@ -234,11 +197,10 @@ export function useThreadChatSessionBrowser({
     setSelectedKnowledgeBaseIds,
     setSelectedProject,
     setThreadGroups,
-    usesManagedThreadApi,
   ]);
 
   useEffect(() => {
-    if (!serviceRunning || runtimeProvider !== 'local_core') {
+    if (!serviceRunning) {
       return;
     }
     return subscribeEvents((event) => {
@@ -251,7 +213,7 @@ export function useThreadChatSessionBrowser({
       void refreshThreadsForWorkspace(event.workspaceId)
         .then(() => loadActiveThread(event.workspaceId, event.threadId));
     });
-  }, [activeThreadId, loadActiveThread, refreshThreadsForWorkspace, runtimeProvider, serviceRunning]);
+  }, [activeThreadId, loadActiveThread, refreshThreadsForWorkspace, serviceRunning]);
 
   useEffect(() => {
     if (!serviceRunning) {

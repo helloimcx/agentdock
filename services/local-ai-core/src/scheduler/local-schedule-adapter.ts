@@ -1,4 +1,4 @@
-import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';

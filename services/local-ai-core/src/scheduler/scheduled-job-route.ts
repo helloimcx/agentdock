@@ -1,4 +1,4 @@
-import type { ScheduledJob, ScheduledJobRoute } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob, ScheduledJobRoute } from '@cc/superai-contracts';
 
 type PlatformThreadBindingLike = {
   workspace_id: string;

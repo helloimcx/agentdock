@@ -1,5 +1,5 @@
-import type { DesktopConnectConfig } from '../../../../../packages/contracts/src/index.js';
-import { normalizeDesktopPlatformType } from '../../../../../shared/desktop.js';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
+import { normalizeDesktopPlatformType } from '@cc/superai-contracts';
 import { channelPlatformKey, normalizeChannelInstanceId } from '../shared/channel-keys.js';
 import type { LarkWorkspaceBinding } from './types.js';
 

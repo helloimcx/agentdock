@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import type { DesktopBridgeEvent, ScheduledJobRoute, ThreadDetail, ThreadSummary } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, ScheduledJobRoute, ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
-} from '../../../../shared/desktop.js';
-import type { ScheduledJob } from '../../../../packages/contracts/src/index.js';
+} from '@cc/superai-contracts';
+import type { ScheduledJob } from '@cc/superai-contracts';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
-import type { EventBus } from '../../../../packages/plugin-sdk/src/index.js';
+import type { EventBus } from '@cc/plugin-sdk';
 import type {
   AcpSessionState,
   LocalCoreProjectConfig,

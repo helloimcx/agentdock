@@ -1,6 +1,6 @@
 import {
   DESKTOP_PI_CODING_AGENT_PACKAGE,
-} from '../../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
 import type { AgentRuntimeDefinition } from '../shared/definition.js';
 import { piAcpBehavior } from './behavior.js';
 import { buildPiLaunchConfig, resolvePiModel } from './launch.js';

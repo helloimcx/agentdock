@@ -1,4 +1,4 @@
-import type { DesktopConnectConfig, KnowledgeConfig } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopConnectConfig, KnowledgeConfig } from '@cc/superai-contracts';
 import type {
   AgentPlugin,
   ChannelPlugin,
@@ -7,7 +7,7 @@ import type {
   MonitorPlugin,
   RuntimePlugin,
   SchedulerPlugin,
-} from '../../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import {

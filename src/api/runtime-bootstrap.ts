@@ -1,12 +1,12 @@
-import type { DesktopRuntimeStatus } from '../../shared/desktop';
-import type { LocalCoreCapabilitySnapshot } from '../../packages/contracts/src';
+import type { DesktopRuntimeStatus } from '@cc/superai-contracts';
+import type { LocalCoreCapabilitySnapshot } from '@cc/superai-contracts';
 import {
   getCapabilitySnapshot,
   getCoreLogs,
   getCoreRuntime,
   LOCAL_AI_CORE_BASE,
   onRuntimeUpdated,
-} from '../../packages/core-sdk/src';
+} from '@cc/core-sdk/runtime';
 
 export { LOCAL_AI_CORE_BASE };
 

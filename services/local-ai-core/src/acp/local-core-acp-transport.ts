@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import type { DesktopBridgeEvent, LocalCoreErrorCode } from '../../../../packages/contracts/src/index.js';
+import type { DesktopBridgeEvent, LocalCoreErrorCode } from '@cc/superai-contracts';
 import { LocalCoreError } from '../kernel/local-core-errors.js';
 import type {
   AcpSessionState,

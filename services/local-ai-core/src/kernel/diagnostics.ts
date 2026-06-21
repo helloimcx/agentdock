@@ -1,4 +1,4 @@
-import type { LocalCorePluginDiagnostics } from '../../../../packages/contracts/src/index.js';
+import type { LocalCorePluginDiagnostics } from '@cc/superai-contracts';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 

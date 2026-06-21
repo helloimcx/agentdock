@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import type { LocalCoreCapabilitySnapshot } from '../../packages/contracts/src';
+import type { LocalCoreCapabilitySnapshot } from '@cc/superai-contracts';
 
 export type AppMode = 'desktop' | 'web';
-export type RuntimeProvider = 'local_core';
 
 type RuntimeCapabilityState = {
   snapshot: LocalCoreCapabilitySnapshot | null;
@@ -13,10 +12,6 @@ export const useRuntimeCapabilityStore = create<RuntimeCapabilityState>((set) =>
   snapshot: null,
   setSnapshot: (snapshot) => set({ snapshot }),
 }));
-
-export function getRuntimeProvider(): RuntimeProvider {
-  return 'local_core';
-}
 
 export function getAppMode(): AppMode {
   return 'desktop';

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import type { DesktopProviderConfig, RuntimeConfigState } from '../../../../../packages/contracts/src/index.js';
+import type { DesktopProviderConfig, RuntimeConfigState } from '@cc/superai-contracts';
 
 export function getProviderDefaultModelId(provider: DesktopProviderConfig) {
   const directModel = String(provider.model || '').trim();

@@ -2,7 +2,7 @@ import type {
   SchedulerExecutorRuntime,
   SchedulerPlugin,
   SchedulerRuntimeRegistration,
-} from '../../../../../packages/plugin-sdk/src/index.js';
+} from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import { LocalScheduleAdapter } from '../../scheduler/local-schedule-adapter.js';

@@ -1,5 +1,5 @@
-import type { DesktopBridgeEvent } from '../../../../../packages/contracts/src/index.js';
-import { normalizePermissionResponse } from '../../../../../shared/desktop.js';
+import type { DesktopBridgeEvent } from '@cc/superai-contracts';
+import { normalizePermissionResponse } from '@cc/superai-contracts';
 import type { SessionCommandAction } from '../../thread/session-command-service.js';
 import type { LarkButtonRow, LarkTurnState } from './types.js';
 

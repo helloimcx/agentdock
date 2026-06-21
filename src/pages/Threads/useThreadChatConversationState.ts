@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import type { ThreadDetail } from '../../../packages/contracts/src';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { ThreadDetail } from '@cc/superai-contracts';
+import { chatControllerReducer, initialChatControllerState } from '@/components/chat/chat-controller-state';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
+  chatControllerActionForTaskState,
   finalizeTurnMessageKinds,
   formatTaskHint,
   isTaskInputLocked,
   isTaskRunningState,
   settlePreviewMessages as settlePreviewMessageList,
   sortChatMessages,
+  taskStateFromControllerStatus,
   toCoreChatThreadSummary,
   toMessagesFromThread,
   upsertThreadInGroup,
@@ -49,7 +52,8 @@ export function useThreadChatConversationState({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pendingPermissionRequest, setPendingPermissionRequest] = useState<PendingPermissionRequest | null>(null);
   const [typing, setTyping] = useState(false);
-  const [taskState, setTaskState] = useState<ChatTaskState>('idle');
+  const [controllerState, dispatchController] = useReducer(chatControllerReducer, initialChatControllerState);
+  const taskState = taskStateFromControllerStatus(controllerState.status);
   const replyTimeoutRef = useRef<number | null>(null);
   const replyTimeoutModeRef = useRef<'reply' | 'permission_continue'>('reply');
   const lastSessionByProjectRef = useRef<Record<string, string>>({});
@@ -72,7 +76,7 @@ export function useThreadChatConversationState({
   const updateTaskState = useCallback((next: ChatTaskState, reason = 'unspecified') => {
     const previous = taskStateRef.current;
     taskStateRef.current = next;
-    setTaskState(next);
+    dispatchController(chatControllerActionForTaskState(next));
     if (previous !== next) {
       console.info('[desktop-chat] task_state', {
         from: previous,

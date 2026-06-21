@@ -11,8 +11,8 @@ import {
   saveDesktopSettings,
 } from '@/api/desktop';
 import { Badge, Button, Input, PageHeader, SectionCard, StatusPill } from '@/components/ui';
-import type { DesktopRuntimeStatus } from '../../../shared/desktop';
-import type { LocalCoreDoctorResult, LocalCoreErrorSummary, LocalCorePluginDiagnostics } from '../../../packages/contracts/src';
+import type { DesktopRuntimeStatus } from '@cc/superai-contracts';
+import type { LocalCoreDoctorResult, LocalCoreErrorSummary, LocalCorePluginDiagnostics } from '@cc/superai-contracts';
 
 function runtimeTone(phase?: string) {
   if (phase === 'api_ready') return 'success';

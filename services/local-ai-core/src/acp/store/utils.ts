@@ -1,8 +1,8 @@
 import type {
   SecurityPermissionLevel,
   SecurityPermissionScope,
-} from '../../../../../packages/contracts/src/index.js';
-import type { DesktopBridgeEvent, DesktopBridgeEventKind } from '../../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
+import type { DesktopBridgeEvent, DesktopBridgeEventKind } from '@cc/superai-contracts';
 
 export function parseJson<T>(value: string, fallback: T): T {
   try {

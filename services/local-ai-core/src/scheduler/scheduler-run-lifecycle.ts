@@ -1,4 +1,4 @@
-import type { ScheduledJob, ScheduledJobRun } from '../../../../packages/contracts/src/index.js';
+import type { ScheduledJob, ScheduledJobRun } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 
 type SchedulerRunLifecycleOptions = {

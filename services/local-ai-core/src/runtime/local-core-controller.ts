@@ -8,9 +8,9 @@ import type {
   LocalCoreDoctorResult,
   LocalCorePluginDiagnostics,
   RuntimeConfigState,
-} from '../../../../packages/contracts/src/index.js';
-import type { KnowledgeRuntime } from '../../../../packages/plugin-sdk/src/index.js';
-import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '../../../../shared/desktop.js';
+} from '@cc/superai-contracts';
+import type { KnowledgeRuntime } from '@cc/plugin-sdk';
+import { deriveDesktopRuntimeRoles, type DesktopBridgeEvent } from '@cc/superai-contracts';
 import { bootstrapLocalCoreRuntime, type LocalCoreKernel, type LocalCoreRuntimeBootstrap } from '../kernel/bootstrap.js';
 import { LocalCoreError, LocalCoreErrorReporter, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';

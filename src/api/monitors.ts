@@ -3,16 +3,16 @@ import type {
   AutomationMonitorCreateInput,
   AutomationMonitorRun,
   AutomationMonitorUpdateInput,
-} from '../../packages/contracts/src';
+} from '@cc/superai-contracts';
 import {
   createAutomationMonitor,
   deleteAutomationMonitor,
   listAutomationMonitorRuns,
   listAutomationMonitors,
-  listWorkspaces,
   runAutomationMonitor,
   updateAutomationMonitor,
-} from '../../packages/core-sdk/src';
+} from '@cc/core-sdk/automation';
+import { listWorkspaces } from '@cc/core-sdk/threads';
 
 export type Monitor = AutomationMonitor;
 export type MonitorRun = AutomationMonitorRun;
@@ -26,4 +26,3 @@ export const deleteMonitor = (id: string) => deleteAutomationMonitor(id);
 export const runMonitorNow = (id: string) => runAutomationMonitor(id);
 export const listMonitorRuns = (id: string) => listAutomationMonitorRuns(id);
 export const listMonitorWorkspaces = () => listWorkspaces().then((data) => data.workspaces);
-
