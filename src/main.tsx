@@ -13,12 +13,12 @@ import {
   getDesktopLogs,
   getRuntimeCapabilitySnapshot,
   getRuntimeStatus,
-  initializeDesktopProvider,
+  initializeLocalCoreRuntime,
   LOCAL_AI_CORE_BASE,
   onRuntimeEvent,
 } from './api/runtime-bootstrap';
 import { api } from './api/client';
-import { getRuntimeProvider, setRuntimeCapabilitySnapshot } from './app/runtime';
+import { setRuntimeCapabilitySnapshot } from './app/runtime';
 
 type BootstrapState =
   | { status: 'loading' }
@@ -113,8 +113,7 @@ function BootstrapApp() {
 
   const bootstrap = useCallback(async () => {
     setState({ status: 'loading' });
-    const provider = await initializeDesktopProvider();
-    const hasManagedRuntime = Boolean(provider);
+    const hasManagedRuntime = await initializeLocalCoreRuntime();
     setManagedRuntime(hasManagedRuntime);
     if (hasManagedRuntime) {
       try {
@@ -140,7 +139,7 @@ function BootstrapApp() {
         useAuthStore.getState().setManagedSession(
           '',
           LOCAL_AI_CORE_BASE,
-          getRuntimeProvider() === 'local_core' ? 'local_core' : 'electron',
+          'local_core',
         );
       } catch (error) {
         let logs: string[] = [];
@@ -181,7 +180,7 @@ function BootstrapApp() {
       useAuthStore.getState().setManagedSession(
         '',
         LOCAL_AI_CORE_BASE,
-        getRuntimeProvider() === 'local_core' ? 'local_core' : 'electron',
+        'local_core',
       );
     });
   }, [managedRuntime]);

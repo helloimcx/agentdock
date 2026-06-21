@@ -24,7 +24,7 @@ export function useThreadChatRuntimeState({
   const [runtime, setRuntime] = useState<DesktopRuntimeStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const runtimeProvider = getRuntimeProvider();
-  const showSessionKey = runtimeProvider === 'electron';
+  const showSessionKey = false;
 
   const serviceRunning = runtime?.phase === 'api_ready';
   const transportReady = serviceRunning;

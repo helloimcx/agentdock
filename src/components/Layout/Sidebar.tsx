@@ -10,7 +10,7 @@ import {
   Languages,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getRuntimeProvider, useRuntimeFeatureSupport } from '@/app/runtime';
+import { useRuntimeFeatureSupport } from '@/app/runtime';
 import { useThemeStore } from '@/store/theme';
 import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
@@ -39,7 +39,6 @@ export default function Sidebar() {
   const logout = useAuthStore((s) => s.logout);
   const desktopManaged = useAuthStore((s) => s.desktopManaged);
   const features = useRuntimeFeatureSupport();
-  const runtimeProvider = getRuntimeProvider();
   const [collapsed, setCollapsed] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 
@@ -58,7 +57,7 @@ export default function Sidebar() {
 
   const navItemNodes = visibleNavItems.map((item) => {
     const Icon = item.icon;
-    const labelKey = item.resolveLabelKey?.({ desktopManaged, features, runtimeProvider }) || item.labelKey;
+    const labelKey = item.resolveLabelKey?.({ desktopManaged, features }) || item.labelKey;
     return { ...item, Icon, labelKey };
   });
   const hideMobileNav = pathname.startsWith('/chat');
@@ -98,7 +97,7 @@ export default function Sidebar() {
               )}
               {items.map((item) => {
                 const Icon = item.icon;
-                const labelKey = item.resolveLabelKey?.({ desktopManaged, features, runtimeProvider }) || item.labelKey;
+                const labelKey = item.resolveLabelKey?.({ desktopManaged, features }) || item.labelKey;
                 return (
                   <NavLink
                     key={item.id}

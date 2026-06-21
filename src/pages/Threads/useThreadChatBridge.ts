@@ -10,7 +10,7 @@ type UseThreadChatBridgeInput = {
   activeBridgeSessionKey: string;
   activeThreadId: string;
   activeRunId: string;
-  runtimeProvider: 'electron' | 'local_core';
+  runtimeProvider: 'local_core';
   selectedWorkspaceId: string;
   clearActionStatuses: () => void;
   clearReplyTimeout: () => void;

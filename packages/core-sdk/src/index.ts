@@ -69,26 +69,18 @@ import type {
   DesktopModelProviderListResponse,
   RuntimeConfigState,
 } from '../../contracts/src';
-
-declare const __LOCAL_AI_CORE_BASE__: string | undefined;
-
-const DEFAULT_LOCAL_AI_CORE_ORIGIN = 'http://127.0.0.1:9831';
-const DEFAULT_LOCAL_AI_CORE_BASE = `${DEFAULT_LOCAL_AI_CORE_ORIGIN}/api/local/v1`;
-
-function normalizeLocalAiCoreBase(baseUrl: string) {
-  const trimmed = baseUrl.trim();
-  if (!trimmed) {
-    return DEFAULT_LOCAL_AI_CORE_BASE;
-  }
-  return trimmed.replace(/\/+$/, '');
-}
-
-export const LOCAL_AI_CORE_BASE = normalizeLocalAiCoreBase(
-  typeof __LOCAL_AI_CORE_BASE__ !== 'undefined' ? __LOCAL_AI_CORE_BASE__ : '',
-);
-export const LOCAL_AI_CORE_ORIGIN = LOCAL_AI_CORE_BASE.endsWith('/api/local/v1')
-  ? LOCAL_AI_CORE_BASE.slice(0, -'/api/local/v1'.length) || DEFAULT_LOCAL_AI_CORE_ORIGIN
-  : DEFAULT_LOCAL_AI_CORE_ORIGIN;
+import { coreClient, LOCAL_AI_CORE_BASE } from './client.js';
+export {
+  coreClient,
+  createCoreClient,
+  LOCAL_AI_CORE_BASE,
+  LOCAL_AI_CORE_ORIGIN,
+  LOCAL_CORE_EVENT_NAMES,
+  normalizeLocalAiCoreBase,
+  type CoreClient,
+  type CoreClientOptions,
+  type CoreEventSource,
+} from './client.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -96,94 +88,16 @@ type JsonEnvelope<T> = {
   error?: string;
 };
 
-const listeners = new Set<(event: LocalCoreEvent) => void>();
-let eventSource: EventSource | null = null;
-
 async function coreRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${LOCAL_AI_CORE_BASE}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const json = await response.json() as JsonEnvelope<T>;
-  if (!response.ok || !json.ok) {
-    throw new Error(json.error || `Local AI Core request failed: ${response.status}`);
-  }
-  return json.data;
-}
-
-function ensureEventSource() {
-  if (eventSource || typeof window === 'undefined') {
-    return;
-  }
-  eventSource = new EventSource(`${LOCAL_AI_CORE_BASE}/events`);
-  const forward = (event: MessageEvent<string>) => {
-    try {
-      const payload = JSON.parse(event.data) as LocalCoreEvent;
-      listeners.forEach((listener) => listener(payload));
-    } catch {
-      // Ignore malformed payloads from a local dev server.
-    }
-  };
-  [
-    'runtime.updated',
-    'runtime.detect.started',
-    'runtime.detect.completed',
-    'runtime.detect.failed',
-    'runtime.status.changed',
-    'thread.updated',
-    'thread.session.activated',
-    'message.created',
-    'message.updated',
-    'run.updated',
-    'scheduler.job.updated',
-    'scheduler.run.updated',
-    'automation.monitor.updated',
-    'automation.monitor.run.updated',
-    'presence.updated',
-    'stream.updated',
-  ].forEach((eventName) => {
-    eventSource?.addEventListener(eventName, forward as EventListener);
-  });
-  eventSource.onerror = () => {
-    eventSource?.close();
-    eventSource = null;
-    if (listeners.size > 0) {
-      window.setTimeout(() => ensureEventSource(), 1000);
-    }
-  };
-}
-
-function maybeCloseEventSource() {
-  if (listeners.size === 0 && eventSource) {
-    eventSource.close();
-    eventSource = null;
-  }
+  return coreClient.request<T>(method, path, body);
 }
 
 export async function detectLocalAiCore(timeoutMs = 350) {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`${LOCAL_AI_CORE_BASE}/health`, { signal: controller.signal });
-    const json = await response.json() as JsonEnvelope<{ name: string }>;
-    return response.ok && json.ok && json.data?.name === 'local-ai-core';
-  } catch {
-    return false;
-  } finally {
-    window.clearTimeout(timer);
-  }
+  return coreClient.detect(timeoutMs);
 }
 
 export function subscribeEvents(listener: (event: LocalCoreEvent) => void) {
-  listeners.add(listener);
-  ensureEventSource();
-  return () => {
-    listeners.delete(listener);
-    maybeCloseEventSource();
-  };
+  return coreClient.events.subscribe(listener);
 }
 
 export async function getCoreRuntime() {
