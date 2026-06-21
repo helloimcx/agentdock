@@ -3,6 +3,7 @@ import type { LocalAiCoreRoute } from './server-routes.js';
 import type { LocalCoreEvent } from '@cc/superai-contracts';
 import type { OpenAiChatCompletionChunk } from '@cc/superai-contracts';
 import { toLocalCoreErrorInfo, errorInfoToHttpBody } from '../kernel/local-core-errors.js';
+import { assertJsonObject, RequestValidationError } from './request-validation.js';
 
 export type RouteHandler = (route: LocalAiCoreRoute, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
@@ -40,7 +41,14 @@ export async function readJsonBody(req: IncomingMessage) {
   if (!body.length) {
     return {};
   }
-  return JSON.parse(Buffer.from(body).toString('utf8')) as Record<string, unknown>;
+  try {
+    return assertJsonObject(JSON.parse(Buffer.from(body).toString('utf8')));
+  } catch (error) {
+    if (error instanceof RequestValidationError) {
+      throw error;
+    }
+    throw new RequestValidationError('Request body must contain valid JSON.');
+  }
 }
 
 export async function readRawBody(req: IncomingMessage) {

@@ -37,7 +37,6 @@
     "src/pages/Threads/thread-chat-message-blocks.ts",
     "src/pages/Threads/thread-chat-permission.ts",
     "src/pages/Threads/thread-chat-permission.test.ts",
-    "src/lib/session-chat-events.ts",
-    "src/components/chat/chat-message-state.ts"
+    "src/components/chat/chat-controller-state.ts"
   ]
 }

@@ -34,7 +34,7 @@ export function writePiProviderRuntimeConfig(input: AgentLaunchResolverInput): R
     return {};
   }
   const { providerId, modelId } = resolvePiProviderModel(input.providers, input.model);
-  const agentDir = projectLocalStateDir(input.configState, '.pi-agent', input.project.name);
+  const agentDir = projectLocalStateDir(input.configState, '.pi-agent', input.project.workspace_id || input.project.name);
   ensurePrivateDir(agentDir);
 
   const auth: Record<string, { type: 'api_key'; key: string }> = {};

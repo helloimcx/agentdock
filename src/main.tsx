@@ -7,17 +7,13 @@ import AppErrorBoundary from './components/AppErrorBoundary';
 import { Button } from './components/ui';
 import './index.css';
 import { initializeI18n } from './i18n';
-import { useAuthStore } from './store/auth';
 import { useThemeStore } from './store/theme';
 import {
-  getDesktopLogs,
-  getRuntimeCapabilitySnapshot,
-  getRuntimeStatus,
-  initializeLocalCoreRuntime,
-  LOCAL_AI_CORE_BASE,
-  onRuntimeEvent,
-} from './api/runtime-bootstrap';
-import { api } from './api/client';
+  getCapabilitySnapshot,
+  getCoreLogs,
+  getCoreRuntime,
+  onRuntimeUpdated,
+} from '@cc/core-sdk/runtime';
 import { setRuntimeCapabilitySnapshot } from './app/runtime';
 
 type BootstrapState =
@@ -109,18 +105,13 @@ function BootstrapFailureScreen({
 
 function BootstrapApp() {
   const [state, setState] = useState<BootstrapState>({ status: 'loading' });
-  const [managedRuntime, setManagedRuntime] = useState(false);
-
   const bootstrap = useCallback(async () => {
     setState({ status: 'loading' });
-    const hasManagedRuntime = await initializeLocalCoreRuntime();
-    setManagedRuntime(hasManagedRuntime);
-    if (hasManagedRuntime) {
-      try {
+    try {
         let lastError: unknown = null;
         for (let attempt = 0; attempt < BOOTSTRAP_RETRY_ATTEMPTS; attempt += 1) {
           try {
-            await getRuntimeStatus();
+            await getCoreRuntime();
             lastError = null;
             break;
           } catch (error) {
@@ -133,18 +124,11 @@ function BootstrapApp() {
         if (lastError) {
           throw lastError;
         }
-        setRuntimeCapabilitySnapshot(await getRuntimeCapabilitySnapshot());
-        api.setBaseUrl(LOCAL_AI_CORE_BASE);
-        api.setToken('');
-        useAuthStore.getState().setManagedSession(
-          '',
-          LOCAL_AI_CORE_BASE,
-          'local_core',
-        );
+        setRuntimeCapabilitySnapshot(await getCapabilitySnapshot());
       } catch (error) {
         let logs: string[] = [];
         try {
-          logs = await getDesktopLogs(80);
+          logs = await getCoreLogs(80);
         } catch {
           logs = [];
         }
@@ -153,11 +137,7 @@ function BootstrapApp() {
           message: error instanceof Error ? error.message : String(error),
           logs,
         });
-        return;
-      }
-    }
-    if (!hasManagedRuntime) {
-      setRuntimeCapabilitySnapshot(null);
+      return;
     }
 
     setState({ status: 'ready' });
@@ -168,22 +148,12 @@ function BootstrapApp() {
   }, [bootstrap]);
 
   useEffect(() => {
-    if (!managedRuntime) {
-      return;
-    }
-    return onRuntimeEvent((runtime) => {
-      api.setBaseUrl(LOCAL_AI_CORE_BASE);
-      api.setToken('');
-      void getRuntimeCapabilitySnapshot()
+    return onRuntimeUpdated(() => {
+      void getCapabilitySnapshot()
         .then((snapshot) => setRuntimeCapabilitySnapshot(snapshot))
         .catch(() => {});
-      useAuthStore.getState().setManagedSession(
-        '',
-        LOCAL_AI_CORE_BASE,
-        'local_core',
-      );
     });
-  }, [managedRuntime]);
+  }, []);
 
   if (state.status === 'loading') {
     return <LoadingScreen />;
@@ -202,7 +172,6 @@ function BootstrapApp() {
 async function start() {
   applyPlatformClass();
   await initializeI18n();
-  useAuthStore.getState().init();
   useThemeStore.getState().init();
 
   ReactDOM.createRoot(document.getElementById('root')!).render(

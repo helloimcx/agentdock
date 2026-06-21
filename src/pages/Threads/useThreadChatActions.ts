@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { KnowledgeBase, ThreadDetail } from '@cc/superai-contracts';
+import type { ThreadDetail } from '@cc/superai-contracts';
 import type { ChatMessage, ChatTaskState, ThreadActionTarget } from './thread-chat-model';
 import type {
   ThreadChatCoreSetters,
@@ -14,7 +14,6 @@ type UseThreadChatActionsInput = {
   activeRunId: string;
   activeThreadId: string;
   activeBridgeSessionKey: string;
-  availableKnowledgeBases: KnowledgeBase[];
   brandingNewThreadLabel: string;
   deleteTarget: ThreadActionTarget | null;
   draft: string;
@@ -61,7 +60,6 @@ export function useThreadChatActions({
   activeRunId,
   activeThreadId,
   activeBridgeSessionKey,
-  availableKnowledgeBases,
   brandingNewThreadLabel,
   deleteTarget,
   draft,
@@ -155,7 +153,6 @@ export function useThreadChatActions({
     activeRunId,
     activeThreadId,
     activeBridgeSessionKey,
-    availableKnowledgeBases,
     brandingNewThreadLabel,
     draft,
     loadActiveThread,

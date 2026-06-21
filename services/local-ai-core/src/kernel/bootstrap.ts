@@ -7,19 +7,15 @@ import type {
   AgentPlugin,
   AgentRuntime,
   AgentRuntimeRegistration,
-  ChannelPlugin,
   ChannelRuntime,
   ChannelRuntimeRegistration,
-  KnowledgePlugin,
   KnowledgeRuntime,
   KnowledgeRuntimeRegistration,
-  MonitorPlugin,
   MonitorProviderRuntime,
   MonitorRuntimeRegistration,
   PluginContext,
   RuntimePlugin,
   SchedulerExecutorRuntime,
-  SchedulerPlugin,
   SchedulerRuntimeRegistration,
   SchedulerTriggerRuntime,
   ThreadKnowledgeAttachmentStore,
@@ -91,16 +87,7 @@ export function bootstrapLocalCoreKernel(options?: {
   const lifecycle = new LocalCoreLifecycleManager(plugins, context);
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
-  for (const plugin of createKernelBuiltinPlugins()) {
-    plugins.register(plugin);
-    options?.log?.(`[plugin:${plugin.manifest.id}] registered`);
-    if (plugin.capabilities && plugins.isEnabled(plugin.manifest.id)) {
-      logCapabilityContributions(plugin, options?.log);
-      capabilities.registerContributions(plugin.capabilities);
-    } else if (!plugins.isEnabled(plugin.manifest.id)) {
-      options?.log?.(`[plugin:${plugin.manifest.id}] disabled by runtime settings`);
-    }
-  }
+  registerPluginSet(plugins, capabilities, context, createKernelBuiltinPlugins());
 
   return {
     context,
@@ -143,13 +130,24 @@ export function bootstrapLocalCoreKernel(options?: {
 }
 
 function registerPlugin(kernel: LocalCoreKernel, plugin: RuntimePlugin) {
-  kernel.plugins.register(plugin);
-  kernel.context.logger.log(`[plugin:${plugin.manifest.id}] registered`);
-  if (plugin.capabilities && kernel.plugins.isEnabled(plugin.manifest.id)) {
-    logCapabilityContributions(plugin, kernel.context.logger.log);
-    kernel.capabilities.registerContributions(plugin.capabilities);
-  } else if (!kernel.plugins.isEnabled(plugin.manifest.id)) {
-    kernel.context.logger.log(`[plugin:${plugin.manifest.id}] disabled by runtime settings`);
+  registerPluginSet(kernel.plugins, kernel.capabilities, kernel.context, [plugin]);
+}
+
+function registerPluginSet(
+  plugins: LocalCorePluginRegistry,
+  capabilities: LocalCoreCapabilityRegistry,
+  context: PluginContext,
+  pluginSet: RuntimePlugin[],
+) {
+  for (const plugin of pluginSet) {
+    plugins.register(plugin);
+    context.logger.log(`[plugin:${plugin.manifest.id}] registered`);
+    if (plugin.capabilities && plugins.isEnabled(plugin.manifest.id)) {
+      logCapabilityContributions(plugin, context.logger.log);
+      capabilities.registerContributions(plugin.capabilities);
+    } else if (!plugins.isEnabled(plugin.manifest.id)) {
+      context.logger.log(`[plugin:${plugin.manifest.id}] disabled by runtime settings`);
+    }
   }
 }
 
@@ -170,59 +168,23 @@ function logCapabilityContributions(plugin: RuntimePlugin, log?: (message: strin
   }
 }
 
-function resolveKnowledgeRuntime(plugin: KnowledgePlugin, context: PluginContext): KnowledgeRuntimeRegistration {
+type SyncRuntimePlugin<T> = RuntimePlugin & {
+  createRuntime?: (context: PluginContext) => T | Promise<T>;
+};
+
+function resolveRuntime<T>(plugin: SyncRuntimePlugin<T>, context: PluginContext): T {
   if (!plugin.createRuntime) {
-    throw new Error(`Knowledge plugin ${plugin.manifest.id} does not provide a runtime factory.`);
+    throw new Error(`Plugin ${plugin.manifest.id} does not provide a runtime factory.`);
   }
   const runtime = plugin.createRuntime(context);
   if (runtime instanceof Promise) {
-    throw new Error(`Knowledge plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
+    throw new Error(`Plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
   }
   return runtime;
 }
 
-function resolveChannelRuntime(plugin: ChannelPlugin, context: PluginContext): ChannelRuntimeRegistration {
-  if (!plugin.createRuntime) {
-    throw new Error(`Channel plugin ${plugin.manifest.id} does not provide a runtime factory.`);
-  }
-  const runtime = plugin.createRuntime(context);
-  if (runtime instanceof Promise) {
-    throw new Error(`Channel plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
-  }
-  return runtime;
-}
-
-function resolveAgentRuntime(plugin: AgentPlugin, context: PluginContext): AgentRuntimeRegistration {
-  if (!plugin.createRuntime) {
-    throw new Error(`Agent plugin ${plugin.manifest.id} does not provide a runtime factory.`);
-  }
-  const runtime = plugin.createRuntime(context);
-  if (runtime instanceof Promise) {
-    throw new Error(`Agent plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
-  }
-  return runtime;
-}
-
-function resolveSchedulerRuntime(plugin: SchedulerPlugin, context: PluginContext): SchedulerRuntimeRegistration {
-  if (!plugin.createRuntime) {
-    throw new Error(`Scheduler plugin ${plugin.manifest.id} does not provide a runtime factory.`);
-  }
-  const runtime = plugin.createRuntime(context);
-  if (runtime instanceof Promise) {
-    throw new Error(`Scheduler plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
-  }
-  return runtime;
-}
-
-function resolveMonitorRuntime(plugin: MonitorPlugin, context: PluginContext): MonitorRuntimeRegistration {
-  if (!plugin.createRuntime) {
-    throw new Error(`Monitor plugin ${plugin.manifest.id} does not provide a runtime factory.`);
-  }
-  const runtime = plugin.createRuntime(context);
-  if (runtime instanceof Promise) {
-    throw new Error(`Monitor plugin ${plugin.manifest.id} returned an async runtime factory during synchronous bootstrap.`);
-  }
-  return runtime;
+function isAgentPlugin(plugin: RuntimePlugin | null): plugin is AgentPlugin {
+  return Boolean(plugin && (plugin.manifest.kind === 'agent' || plugin.manifest.kind === 'composite'));
 }
 
 export function bootstrapLocalCoreRuntime(options: {
@@ -243,8 +205,8 @@ export function bootstrapLocalCoreRuntime(options: {
     disabledPluginIds,
   });
   const store = new LocalCoreAcpStore(options.userDataPath);
-  const localCoreAgentPlugin = kernel.plugins.get('builtin.agent-localcore-acp') as AgentPlugin | null;
-  if (!localCoreAgentPlugin) {
+  const localCoreAgentPlugin = kernel.plugins.get('builtin.agent-localcore-acp');
+  if (!isAgentPlugin(localCoreAgentPlugin)) {
     throw new Error('Missing built-in LocalCore ACP agent plugin.');
   }
   const agentPlugins = createRuntimeAgentPlugins(localCoreAgentPlugin);
@@ -286,30 +248,30 @@ export function bootstrapLocalCoreRuntime(options: {
   }
   const agentRuntimes = agentPlugins
     .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
-    .map((plugin) => resolveAgentRuntime(plugin, kernel.context).runtime);
-  const channelRuntime = resolveChannelRuntime(channelPlugin, kernel.context).channel;
-  weixinChannelRuntime = resolveChannelRuntime(weixinChannelPlugin, kernel.context).channel;
+    .map((plugin) => resolveRuntime<AgentRuntimeRegistration>(plugin, kernel.context).runtime);
+  const channelRuntime = resolveRuntime<ChannelRuntimeRegistration>(channelPlugin, kernel.context).channel;
+  weixinChannelRuntime = resolveRuntime<ChannelRuntimeRegistration>(weixinChannelPlugin, kernel.context).channel;
   const channelRuntimes = [
     channelRuntime,
     weixinChannelRuntime,
   ];
   const knowledgeRuntime = kernel.plugins.isEnabled(knowledgePlugin.manifest.id)
-    ? resolveKnowledgeRuntime(knowledgePlugin, kernel.context)
-    : resolveKnowledgeRuntime(createBuiltinNoopKnowledgePlugin(), kernel.context);
+    ? resolveRuntime<KnowledgeRuntimeRegistration>(knowledgePlugin, kernel.context)
+    : resolveRuntime<KnowledgeRuntimeRegistration>(createBuiltinNoopKnowledgePlugin(), kernel.context);
   const cronSchedulerPlugin = createBuiltinCronSchedulerPlugin();
   const schedulerRuntimes = [
     ...(kernel.plugins.isEnabled(cronSchedulerPlugin.manifest.id)
-      ? [resolveSchedulerRuntime(cronSchedulerPlugin, kernel.context)]
+      ? [resolveRuntime<SchedulerRuntimeRegistration>(cronSchedulerPlugin, kernel.context)]
       : []),
     ...schedulerPlugins
       .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
-      .map((plugin) => resolveSchedulerRuntime(plugin, kernel.context)),
+      .map((plugin) => resolveRuntime<SchedulerRuntimeRegistration>(plugin, kernel.context)),
   ];
   const schedulerTriggers = schedulerRuntimes.flatMap((runtime) => runtime.triggers || []) as SchedulerTriggerRuntime[];
   const schedulerExecutors = schedulerRuntimes.flatMap((runtime) => runtime.executors || []) as SchedulerExecutorRuntime[];
   const monitorRuntimes = monitorPlugins
     .filter((plugin) => kernel.plugins.isEnabled(plugin.manifest.id))
-    .map((plugin) => resolveMonitorRuntime(plugin, kernel.context));
+    .map((plugin) => resolveRuntime<MonitorRuntimeRegistration>(plugin, kernel.context));
   const monitorProviders = monitorRuntimes.flatMap((runtime) => runtime.providers || []) as MonitorProviderRuntime[];
   const knowledgeProvider = knowledgeRuntime.provider as KnowledgeRuntime;
   const knowledgeAttachments = knowledgeRuntime.attachments as ThreadKnowledgeAttachmentStore;

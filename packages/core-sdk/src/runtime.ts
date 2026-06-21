@@ -80,6 +80,19 @@ export function getCoreLogs(limit?: number) {
   return coreRequest<string[]>('GET', `/runtime/logs${suffix}`);
 }
 
+export interface CoreLogEntry {
+  time: string;
+  level: string;
+  scope: string;
+  message: string;
+  meta?: Record<string, unknown>;
+}
+
+export function listCoreLogEntries(level = 'sys', limit = 200) {
+  const suffix = buildQuery({ level, limit });
+  return coreRequest<{ entries: CoreLogEntry[] }>('GET', `/logs${suffix}`);
+}
+
 export function listInstalledAgentRuntimes() {
   return coreRequest<RuntimeDetectionListResponse>('GET', '/runtime/agent-runtimes');
 }

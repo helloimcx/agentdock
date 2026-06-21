@@ -70,7 +70,7 @@ export function toLocalCoreProjectConfig(configState: RuntimeConfigState, projec
   }
   const defaultArgs = launchDefaults.args || [];
   const launchConfig: AgentLaunchConfig = {
-    workspaceId: project.name,
+    workspaceId: project.workspace_id || project.name,
     agentType,
     workDir,
     command,

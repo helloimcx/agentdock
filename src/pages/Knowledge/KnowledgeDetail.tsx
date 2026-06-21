@@ -18,7 +18,7 @@ import {
   listKnowledgeFolders,
   searchKnowledgeBase,
   uploadKnowledgeBaseFiles,
-} from '@/api/knowledge';
+} from '@cc/core-sdk/knowledge';
 import { cn, formatTime } from '@/lib/utils';
 import type { KnowledgeBase, KnowledgeFile, KnowledgeFolder, KnowledgeSearchResult } from '@cc/superai-contracts';
 

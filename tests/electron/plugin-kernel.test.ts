@@ -1062,6 +1062,69 @@ test('server unknown routes return structured error responses', async () => {
   assert.equal(response.body.errorInfo?.severity, 'error');
 });
 
+test('server rejects malformed endpoint input with a 400 response before domain dispatch', async () => {
+  let dispatched = false;
+  const controller = new EventEmitter() as any;
+  const workspaceRouter = {
+    createThread: async () => {
+      dispatched = true;
+      return {};
+    },
+  };
+  const server = new LocalAiCoreServer({ controller, workspaceRouter } as any, { port: 0 });
+  const response = await invokeServer(server, 'POST', '/api/local/v1/threads', { workspaceId: 42 });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.ok, false);
+  assert.match(response.body.error, /workspaceId/);
+  assert.equal(dispatched, false);
+
+  const emptyResponse = await invokeServer(server, 'POST', '/api/local/v1/threads', { workspaceId: '   ' });
+  assert.equal(emptyResponse.statusCode, 400);
+  assert.match(emptyResponse.body.error, /workspaceId/);
+  assert.equal(dispatched, false);
+});
+
+test('server validates the actual desktop settings contract before dispatch', async () => {
+  let dispatched = false;
+  const controller = new EventEmitter() as any;
+  controller.saveSettings = async () => {
+    dispatched = true;
+    return {};
+  };
+  const server = new LocalAiCoreServer({ controller } as any, { port: 0 });
+
+  const invalidKnowledge = await invokeServer(server, 'POST', '/api/local/v1/runtime/settings', { knowledge: 42 });
+  assert.equal(invalidKnowledge.statusCode, 400);
+  assert.match(invalidKnowledge.body.error, /knowledge/);
+
+  const invalidPlugins = await invokeServer(server, 'POST', '/api/local/v1/runtime/settings', { plugins: [] });
+  assert.equal(invalidPlugins.statusCode, 400);
+  assert.match(invalidPlugins.body.error, /plugins/);
+
+  const invalidPluginSettings = await invokeServer(server, 'POST', '/api/local/v1/runtime/settings', {
+    plugins: { 'channel.lark': { enabled: 'yes' } },
+  });
+  assert.equal(invalidPluginSettings.statusCode, 400);
+  assert.match(invalidPluginSettings.body.error, /plugins\.channel\.lark\.enabled/);
+
+  const invalidAuthMode = await invokeServer(server, 'POST', '/api/local/v1/runtime/settings', {
+    knowledge: { authMode: 'cookie' },
+  });
+  assert.equal(invalidAuthMode.statusCode, 400);
+  assert.match(invalidAuthMode.body.error, /knowledge\.authMode/);
+  assert.equal(dispatched, false);
+
+  const valid = await invokeServer(server, 'POST', '/api/local/v1/runtime/settings', {
+    autoStartService: true,
+    defaultProject: 'workspace-stable',
+    knowledge: { authMode: 'bearer', token: 'secret' },
+    plugins: { 'channel.lark': { enabled: true, config: { appId: 'app-id' } } },
+  });
+  assert.equal(valid.statusCode, 200);
+  assert.equal(dispatched, true);
+});
+
 test('server diagnostics routes dispatch through generic bindings', async () => {
   const calls: string[] = [];
   const controller = Object.assign(new EventEmitter(), {

@@ -20,18 +20,19 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/ui';
-import { listProjects, type ProjectSummary } from '@/api/projects';
 import { cn } from '@/lib/utils';
 import {
   listInstalledAgentRuntimes,
-  onRuntimeDetectionEvent,
-  onRuntimeEvent,
-  refreshInstalledAgentRuntimes,
-} from '@/api/desktop';
-import { listAgentTasks, listAuditEvents, listApprovalRequests } from '@cc/core-sdk/runtime';
+  listAgentTasks,
+  listAuditEvents,
+  listApprovalRequests,
+  onRuntimeUpdated,
+  refreshRuntimeDetections,
+  subscribeEvents,
+} from '@cc/core-sdk/runtime';
 import { listWorkspaces } from '@cc/core-sdk/threads';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
-import type { AgentTask, ApprovalRequest, AuditEvent, InstalledAgentRuntime } from '@cc/superai-contracts';
+import type { AgentTask, ApprovalRequest, AuditEvent, InstalledAgentRuntime, WorkspaceSummary } from '@cc/superai-contracts';
 
 interface QuickActionProps {
   title: string;
@@ -223,7 +224,7 @@ function AuditPanel({ events }: { events: AuditEvent[] }) {
 
 export default function Dashboard() {
   const { t } = useTranslation();
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projects, setProjects] = useState<WorkspaceSummary[]>([]);
   const [agentRuntimes, setAgentRuntimes] = useState<InstalledAgentRuntime[]>([]);
   const [activeTasks, setActiveTasks] = useState<AgentTask[]>([]);
   const [waitingTasks, setWaitingTasks] = useState<AgentTask[]>([]);
@@ -248,8 +249,8 @@ export default function Dashboard() {
     {
       title: '工作区',
       description: '管理项目、平台、模型和本地运行配置。',
-      to: desktopWorkspace ? '/workspace' : '/projects',
-      icon: desktopWorkspace ? Wrench : FolderKanban,
+      to: '/workspace',
+      icon: Wrench,
     },
   ];
 
@@ -289,7 +290,7 @@ export default function Dashboard() {
         const [workspaceData, runtimeResult] = await Promise.all([
           listWorkspaces(),
           listInstalledAgentRuntimes().then(
-            (runtimes) => ({ status: 'fulfilled' as const, runtimes }),
+            (result) => ({ status: 'fulfilled' as const, runtimes: result.runtimes }),
             (err: any) => ({ status: 'rejected' as const, error: err }),
           ),
         ]);
@@ -307,13 +308,7 @@ export default function Dashboard() {
         setRecentTasks(recentTaskData.tasks || []);
         setPendingApprovals(approvalData.approvals || []);
         setAuditEvents(auditData.events || []);
-        setProjects((workspaceData.workspaces || []).map((workspace) => ({
-          name: workspace.name,
-          agent_type: workspace.agentType,
-          platforms: workspace.platforms,
-          sessions_count: workspace.sessionsCount,
-          heartbeat_enabled: workspace.heartbeatEnabled,
-        })));
+        setProjects(workspaceData.workspaces || []);
         if (runtimeResult.status === 'fulfilled') {
           setAgentRuntimes(runtimeResult.runtimes);
         } else {
@@ -323,14 +318,6 @@ export default function Dashboard() {
         return;
       }
 
-      const projectData = await listProjects();
-      setProjects(projectData.projects || []);
-      setAgentRuntimes([]);
-      setActiveTasks([]);
-      setWaitingTasks([]);
-      setRecentTasks([]);
-      setPendingApprovals([]);
-      setAuditEvents([]);
     } catch (err: any) {
       setError(err.message || String(err));
     } finally {
@@ -343,7 +330,7 @@ export default function Dashboard() {
     setRuntimeDetectionRunning(true);
     setRuntimeError('');
     try {
-      setAgentRuntimes(await refreshInstalledAgentRuntimes());
+      setAgentRuntimes((await refreshRuntimeDetections()).runtimes);
     } catch (err: any) {
       setRuntimeError(err.message || String(err));
     } finally {
@@ -356,10 +343,10 @@ export default function Dashboard() {
     void fetchData();
     const handler = () => fetchData();
     window.addEventListener('cc:refresh', handler);
-    const stopRuntime = desktopRuntime ? onRuntimeEvent(() => {
+    const stopRuntime = onRuntimeUpdated(() => {
       void fetchData();
-    }) : () => {};
-    const stopRuntimeDetection = desktopRuntime ? onRuntimeDetectionEvent((event) => {
+    });
+    const stopRuntimeDetection = subscribeEvents((event) => {
       if (event.type === 'runtime.detect.started') {
         setRuntimeDetectionRunning(true);
         return;
@@ -379,7 +366,7 @@ export default function Dashboard() {
           runtime.runtimeId === event.runtime.runtimeId ? event.runtime : runtime
         ));
       }
-    }) : () => {};
+    });
     return () => {
       window.removeEventListener('cc:refresh', handler);
       stopRuntime();
@@ -574,7 +561,7 @@ export default function Dashboard() {
             <p className="mt-1 text-sm text-muted-foreground">最近配置和会话概览。</p>
           </div>
           <Link
-            to={desktopRuntime ? '/workspace' : '/projects'}
+            to="/workspace"
             className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
           >
             {t('common.viewAll')}
@@ -589,7 +576,7 @@ export default function Dashboard() {
             {projects.slice(0, 6).map((project) => (
               <Link
                 key={project.name}
-                to={desktopRuntime ? `/workspace?project=${encodeURIComponent(project.name)}` : `/projects/${project.name}`}
+                to={`/workspace?project=${encodeURIComponent(project.name)}`}
                 className="group flex items-center justify-between gap-3 px-5 py-4 transition-colors duration-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
               >
                 <div className="flex min-w-0 items-center gap-3">
@@ -599,12 +586,12 @@ export default function Dashboard() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {project.agent_type} · {project.platforms?.join(', ') || 'no platform'} · {project.sessions_count} sessions
+                      {project.agentType} · {project.platforms?.join(', ') || 'no platform'} · {project.sessionsCount} sessions
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {project.heartbeat_enabled ? <Badge variant="success">heartbeat</Badge> : null}
+                  {project.heartbeatEnabled ? <Badge variant="success">heartbeat</Badge> : null}
                   <ArrowRight size={16} className="text-muted-foreground/45 transition-colors group-hover:text-foreground" />
                 </div>
               </Link>

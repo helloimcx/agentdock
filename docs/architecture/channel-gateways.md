@@ -24,10 +24,10 @@ flowchart TD
   Normalize --> Binding["查找或创建 platform_thread_bindings"]
   Binding --> Thread["复用或创建 Local Core thread"]
   Thread --> Routing["记录 sessionKey 到 channel route"]
-  Routing --> Wrap["wrapUserMessageWithSchedulerProtocol"]
-  Wrap --> Input["createChannelThreadMessageInput"]
+  Routing --> Input["createChannelThreadMessageInput"]
   Input --> Router["WorkspaceRouter.sendThreadMessage"]
-  Router --> ACP["LocalCoreAcpBackend"]
+  Router --> Policy["Core agent-message policy + knowledge context"]
+  Policy --> ACP["LocalCoreAcpBackend"]
 ```
 
 ## Outbound 回传流程

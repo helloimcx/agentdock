@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
-import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import {
-  createCronJob,
-  deleteCronJob,
-  listCronJobs,
-  listCronWorkspaces,
-  runCronJobNow,
-  updateCronJob,
-  type CronJob,
-  type CronJobCreateInput,
-} from '@/api/cron';
+  createScheduledJob as createCronJob,
+  deleteScheduledJob as deleteCronJob,
+  listScheduledJobs as listCronJobs,
+  runScheduledJob as runCronJobNow,
+  updateScheduledJob as updateCronJob,
+} from '@cc/core-sdk/scheduler';
+import { listWorkspaces } from '@cc/core-sdk/threads';
+import type { ScheduledJob as CronJob, ScheduledJobCreateInput as CronJobCreateInput } from '@cc/superai-contracts';
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import { formatTime } from '@/lib/utils';
 
 type SchedulerFormState = {
@@ -100,7 +99,7 @@ export default function CronList() {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const [jobData, workspaceData] = await Promise.all([listCronJobs(), listCronWorkspaces()]);
+      const [jobData, workspaceData] = await Promise.all([listCronJobs(), listWorkspaces().then((data) => data.workspaces)]);
       setJobs(jobData.jobs || []);
       setWorkspaces(workspaceData);
       setForm((current) => {

@@ -50,6 +50,7 @@ import {
   OpenAiChatCompletionStreamAdapter,
   type OpenAiStreamRegistration,
 } from './handlers/openai-handler.js';
+import { RequestValidationError } from './request-validation.js';
 
 export interface LocalAiCoreServerBindings {
   readonly controller: EventEmitter & {
@@ -253,7 +254,7 @@ export class LocalAiCoreServer {
       }
       jsonError(res, 404, new Error(`Unknown route: ${path}`));
     } catch (error) {
-      jsonError(res, 500, error);
+      jsonError(res, error instanceof RequestValidationError ? 400 : 500, error);
     }
   }
 

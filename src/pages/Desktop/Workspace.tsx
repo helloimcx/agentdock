@@ -6,17 +6,19 @@ import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, Stat
 import {
   checkLarkQrCodeStatus,
   checkWeixinQrCodeStatus,
-  createModelProvider,
-  deleteModelProvider,
   enableLarkGateway,
   getLarkQrCode,
   getWeixinQrCode,
-  listModelProviders,
-  readRuntimeConfig,
-  saveRuntimeConfig,
   testLarkConnection,
+} from '@cc/core-sdk/channels';
+import {
+  createModelProvider,
+  deleteModelProvider,
+  listModelProviders,
+  readCoreRuntimeConfig as readRuntimeConfig,
+  saveCoreRuntimeConfig as saveRuntimeConfig,
   updateModelProvider,
-} from '@/api/desktop';
+} from '@cc/core-sdk/runtime';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   DESKTOP_PLATFORM_TYPE_OPTIONS,
@@ -29,6 +31,7 @@ import type {
   DesktopConnectConfig,
   DesktopModelProvider,
   DesktopModelProviderInput,
+  DesktopPlatformConfig,
   DesktopProjectConfig,
 } from '@cc/superai-contracts';
 import {
@@ -36,6 +39,7 @@ import {
   createPlatformDraft,
   createProjectDialogDraft,
   CUSTOM_SELECT_VALUE,
+  desktopProjectWorkspaceId,
   ensureProjects,
   fromSandboxForm,
   getPlatformInstanceId,
@@ -78,7 +82,7 @@ export default function DesktopWorkspace() {
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
   const platformDialogRef = useRef<PlatformDialogState | null>(null);
   const selectedIndexRef = useRef(selectedIndex);
-  const selectedProjectNameRef = useRef('');
+  const selectedProjectWorkspaceIdRef = useRef('');
 
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
@@ -128,8 +132,8 @@ export default function DesktopWorkspace() {
 
   useEffect(() => {
     selectedIndexRef.current = selectedIndex;
-    selectedProjectNameRef.current = selectedProject?.name || '';
-  }, [selectedIndex, selectedProject?.name]);
+    selectedProjectWorkspaceIdRef.current = selectedProject ? desktopProjectWorkspaceId(selectedProject) : '';
+  }, [selectedIndex, selectedProject?.name, selectedProject?.workspace_id]);
 
   useEffect(() => {
     if (!configDraft || !requestedProject) return;
@@ -351,7 +355,7 @@ export default function DesktopWorkspace() {
     setWeixinQrLoading(true);
     try {
       await persistPlatformDialogDraft();
-      const result = await getWeixinQrCode(selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
+      const result = await getWeixinQrCode(selectedProject.workspace_id || selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
       setWeixinQr({ ...result, status: 'wait', createdAt: Date.now() });
       setNotice(null);
     } catch (err) {
@@ -366,7 +370,7 @@ export default function DesktopWorkspace() {
     setLarkQrLoading(true);
     try {
       await persistPlatformDialogDraft();
-      const result = await getLarkQrCode(selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
+      const result = await getLarkQrCode(selectedProject.workspace_id || selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
       setLarkQr({ ...result, status: 'wait', createdAt: Date.now() });
       setNotice(null);
     } catch (err) {
@@ -380,7 +384,7 @@ export default function DesktopWorkspace() {
     if (!selectedProject?.name || !weixinQr?.ticket) return;
     setWeixinQrLoading(true);
     try {
-      const result = await checkWeixinQrCodeStatus(selectedProject.name, weixinQr.ticket, getPlatformInstanceId(platformDialog?.draft));
+      const result = await checkWeixinQrCodeStatus(selectedProject.workspace_id || selectedProject.name, weixinQr.ticket, getPlatformInstanceId(platformDialog?.draft));
       setWeixinQr((current) => current ? { ...current, status: result.status } : current);
       if (result.status === 'confirmed') {
         setNotice({ tone: 'success', message: 'WeChat QR code confirmed.' });
@@ -410,7 +414,7 @@ export default function DesktopWorkspace() {
     encryptKey?: string;
     botName?: string;
   }) => {
-    const workspaceId = selectedProjectNameRef.current;
+    const workspaceId = selectedProjectWorkspaceIdRef.current;
     const targetInstanceId = getPlatformInstanceId(platformDialogRef.current?.draft);
     const currentConfig = configDraftRef.current;
     if (!currentConfig) return;
@@ -453,14 +457,14 @@ export default function DesktopWorkspace() {
     setPlatformDialog((current) => current ? { ...current, index: current.index ?? (currentIndex >= 0 ? currentIndex : platforms.length - 1), draft: nextPlatform } : current);
     await activateLarkGatewayAfterBind(workspaceId, targetInstanceId);
     setNotice({ tone: 'success', message: 'Lark bot bound, saved, and ready to send messages.' });
-    await loadAll(workspaceId);
+    await loadAll(project.name);
   }, [activateLarkGatewayAfterBind, loadAll]);
 
   const handleCheckLarkQr = async () => {
     if (!selectedProject?.name || !larkQr?.ticket || !configDraft) return;
     setLarkQrLoading(true);
     try {
-      const result = await checkLarkQrCodeStatus(selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialog?.draft));
+      const result = await checkLarkQrCodeStatus(selectedProject.workspace_id || selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialog?.draft));
       setLarkQr((current) => current ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
       if (result.status === 'confirmed' && result.credentials) {
         await saveLarkCredentialsFromQr(result.credentials);
@@ -498,7 +502,7 @@ export default function DesktopWorkspace() {
         return;
       }
       try {
-        const result = await checkLarkQrCodeStatus(selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialogRef.current?.draft));
+        const result = await checkLarkQrCodeStatus(selectedProject.workspace_id || selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialogRef.current?.draft));
         if (cancelled) return;
         setLarkQr((current) => current?.ticket === larkQr.ticket ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
         if (result.status === 'confirmed' && result.credentials) {

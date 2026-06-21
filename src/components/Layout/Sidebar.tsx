@@ -4,7 +4,6 @@ import {
   Sun,
   Moon,
   Monitor,
-  LogOut,
   ChevronLeft,
   ChevronRight,
   Languages,
@@ -12,7 +11,6 @@ import {
 import { cn } from '@/lib/utils';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
 import { useThemeStore } from '@/store/theme';
-import { useAuthStore } from '@/store/auth';
 import { useState } from 'react';
 import { rendererUiContributions } from '@/app/ui-contributions';
 import { BrandLogo } from '@/components/BrandLogo';
@@ -36,8 +34,6 @@ export default function Sidebar() {
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useThemeStore();
-  const logout = useAuthStore((s) => s.logout);
-  const desktopManaged = useAuthStore((s) => s.desktopManaged);
   const features = useRuntimeFeatureSupport();
   const [collapsed, setCollapsed] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -53,11 +49,11 @@ export default function Sidebar() {
 
   const visibleNavItems = rendererUiContributions
     .listNavItems()
-    .filter((item) => item.visible?.({ desktopManaged, features }) ?? true);
+    .filter((item) => item.visible?.({ features }) ?? true);
 
   const navItemNodes = visibleNavItems.map((item) => {
     const Icon = item.icon;
-    const labelKey = item.resolveLabelKey?.({ desktopManaged, features }) || item.labelKey;
+    const labelKey = item.resolveLabelKey?.({ features }) || item.labelKey;
     return { ...item, Icon, labelKey };
   });
   const hideMobileNav = pathname.startsWith('/chat');
@@ -97,7 +93,7 @@ export default function Sidebar() {
               )}
               {items.map((item) => {
                 const Icon = item.icon;
-                const labelKey = item.resolveLabelKey?.({ desktopManaged, features }) || item.labelKey;
+                const labelKey = item.resolveLabelKey?.({ features }) || item.labelKey;
                 return (
                   <NavLink
                     key={item.id}
@@ -189,21 +185,6 @@ export default function Sidebar() {
           <ThemeIcon size={18} className="shrink-0" />
           {!collapsed && <span>{t(`theme.${theme}`)}</span>}
         </button>
-
-        {!desktopManaged && (
-          <button
-            type="button"
-            onClick={logout}
-            className={cn(
-              'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors duration-200',
-              'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-            )}
-          >
-            <LogOut size={18} className="shrink-0" />
-            {!collapsed && <span>{t('login.logout')}</span>}
-          </button>
-        )}
 
         <button
           type="button"

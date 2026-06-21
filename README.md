@@ -94,6 +94,13 @@ flowchart LR
 
 ## New
 
+### 2026-06-21
+
+- 桌面端统一通过 Core SDK 访问 Local AI Core，移除旧登录、项目、会话和 renderer API 双轨实现。
+- Workspace Registry 成为项目配置权威数据源，并使用不随显示名称变化的稳定 workspace ID。
+- Local AI Core HTTP API 增加统一请求校验与 400 错误语义；Agent 工具策略和知识库上下文统一由 Core 注入。
+- 简化插件 capability/runtime 装配，拆分 bridge event stream 与知识库 domain contracts，并将类型检查纳入测试门禁。
+
 ### 2026-06-20
 
 - 发布 AgentDock 0.1.56。

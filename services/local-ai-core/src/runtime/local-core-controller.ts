@@ -18,11 +18,16 @@ import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
-import { applyLegacyProviderMigration, migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
+import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { ChannelService } from './channel-service.js';
 import { ExternalService } from './external-service.js';
 import { runDeploymentDiagnostics } from './deployment-diagnostics.js';
+import {
+  listRegistryProjects,
+  persistProjectsInRegistry,
+  withoutRuntimeProjects,
+} from './workspace-project-registry.js';
 
 export class LocalCoreController extends EventEmitter {
   readonly store: LocalCoreAcpStore;
@@ -149,12 +154,13 @@ export class LocalCoreController extends EventEmitter {
     const settings = this.state.getSettings();
     const workspaceIds = Array.isArray(runtimeConfig.config?.projects)
       ? runtimeConfig.config.projects
-          .map((project) => String(project?.name || '').trim())
+          .map((project) => String(project?.workspace_id || '').trim())
           .filter(Boolean)
       : [];
-    const defaultProject = workspaceIds.includes(settings.defaultProject)
-      ? settings.defaultProject
-      : workspaceIds[0] || '';
+    const configuredDefault = runtimeConfig.config.projects?.find((project) =>
+      project.workspace_id === settings.defaultProject || project.name === settings.defaultProject
+    )?.workspace_id;
+    const defaultProject = configuredDefault || workspaceIds[0] || '';
     return {
       mode: 'desktop',
       phase: 'api_ready',
@@ -199,11 +205,19 @@ export class LocalCoreController extends EventEmitter {
 
   async saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState> {
     const migrated = migrateLegacyProjectProvidersToStore(config, this.store);
-    const next = this.store.saveRuntimeConfig(migrated.config);
+    if (typeof this.store.listWorkspaceRegistry !== 'function') {
+      const next = this.store.saveRuntimeConfig(migrated.config);
+      await this.channelService.refreshBindings();
+      await this.emitRuntime();
+      return { ...next, warnings: [...(next.warnings || []), ...migrated.warnings] };
+    }
+    const projects = persistProjectsInRegistry(this.store, migrated.config.projects || []);
+    const next = this.store.saveRuntimeConfig(withoutRuntimeProjects(migrated.config));
     await this.channelService.refreshBindings();
     await this.emitRuntime();
     return {
       ...next,
+      config: { ...next.config, projects },
       warnings: [
         ...(next.warnings || []),
         ...migrated.warnings,
@@ -339,10 +353,25 @@ export class LocalCoreController extends EventEmitter {
   }
 
   private async readAndMigrateRuntimeConfig(): Promise<RuntimeConfigState> {
-    return applyLegacyProviderMigration(
-      this.store.readRuntimeConfig(),
-      this.store,
-      (config) => this.store.saveRuntimeConfig(config),
-    );
+    const current = this.store.readRuntimeConfig();
+    const migrated = migrateLegacyProjectProvidersToStore(current.config, this.store);
+    if (typeof this.store.listWorkspaceRegistry !== 'function') {
+      return { ...current, config: migrated.config, warnings: [...(current.warnings || []), ...migrated.warnings] };
+    }
+    const legacyProjects = migrated.config.projects || [];
+    let warnings = [...(current.warnings || []), ...migrated.warnings];
+    if (legacyProjects.length > 0) {
+      persistProjectsInRegistry(this.store, legacyProjects, { preserveLegacyIds: true });
+      const saved = this.store.saveRuntimeConfig(withoutRuntimeProjects(migrated.config));
+      warnings = [...warnings, ...(saved.warnings || []), 'Migrated runtime projects into the workspace registry.'];
+    }
+    return {
+      ...this.store.readRuntimeConfig(),
+      config: {
+        ...this.store.readRuntimeConfig().config,
+        projects: listRegistryProjects(this.store),
+      },
+      warnings: [...new Set(warnings)],
+    };
   }
 }

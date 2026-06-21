@@ -1321,7 +1321,7 @@ test('lark image messages are downloaded and forwarded as generic channel image 
 
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0]?.threadId, 'thread-1');
-  assert.match(sentMessages[0]?.content?.displayText, /\[User Message\]\n\[Image\]\n\[\/User Message\]/);
+  assert.equal(sentMessages[0]?.content?.displayText, '[Image]');
   assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'image']);
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'image/png');
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, pngBytes.toString('base64'));
@@ -1425,7 +1425,7 @@ test('lark file messages are downloaded and forwarded as generic channel file pa
 
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0]?.threadId, 'thread-1');
-  assert.match(sentMessages[0]?.content?.displayText, /\[User Message\]\n\[File: report\.pdf\]\n\[\/User Message\]/);
+  assert.equal(sentMessages[0]?.content?.displayText, '[File: report.pdf]');
   assert.deepEqual(sentMessages[0]?.content?.contentParts?.map((part: any) => part.type), ['text', 'file']);
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.mimeType, 'application/pdf');
   assert.equal(sentMessages[0]?.content?.contentParts?.[1]?.data, undefined);
@@ -1562,7 +1562,7 @@ test('lark group text messages strip the bot mention before dispatching', async 
 
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0]?.threadId, 'thread-1');
-  assert.match(sentMessages[0]?.content, /\[User Message\]\nask @张三 to review\n\[\/User Message\]/);
+  assert.equal(sentMessages[0]?.content, 'ask @张三 to review');
 });
 
 test('lark group text messages ignore non-mentioned bot messages by default', async () => {
@@ -1694,7 +1694,7 @@ test('lark post messages from numbered lists are delivered as text', async () =>
 
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0]?.threadId, 'thread-1');
-  assert.match(sentMessages[0]?.content, /\[User Message\]\n1\. hi\n2\. hello\n\[\/User Message\]/);
+  assert.equal(sentMessages[0]?.content, '1. hi\n2. hello');
 });
 
 test('lark inbound messages create a chat binding when an authorized user has an old direct thread', async () => {

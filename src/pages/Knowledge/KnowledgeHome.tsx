@@ -23,7 +23,7 @@ import {
   listKnowledgeFolders,
   updateKnowledgeBase,
   updateKnowledgeFolder,
-} from '@/api/knowledge';
+} from '@cc/core-sdk/knowledge';
 import { cn, formatTime } from '@/lib/utils';
 import type { KnowledgeBase, KnowledgeFolder } from '@cc/superai-contracts';
 

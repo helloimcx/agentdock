@@ -2,14 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, FileCode, Plug, RefreshCw, RotateCcw, Save, ScrollText, ShieldCheck, Stethoscope } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { restartSystem, reloadConfig } from '@/api/status';
 import {
-  getRuntimeDiagnosticErrors,
-  getRuntimePluginDiagnostics,
-  getRuntimeStatus,
-  runRuntimeDiagnosticsDoctor,
-  saveDesktopSettings,
-} from '@/api/desktop';
+  getCoreRuntime,
+  getPluginDiagnostics,
+  listDiagnosticErrors,
+  restartCoreService,
+  runDiagnosticsDoctor,
+  saveCoreSettings,
+} from '@cc/core-sdk/runtime';
 import { Badge, Button, Input, PageHeader, SectionCard, StatusPill } from '@/components/ui';
 import type { DesktopRuntimeStatus } from '@cc/superai-contracts';
 import type { LocalCoreDoctorResult, LocalCoreErrorSummary, LocalCorePluginDiagnostics } from '@cc/superai-contracts';
@@ -38,9 +38,9 @@ export default function SystemConfig() {
     setLoading(true);
     try {
       const [runtimeResult, pluginResult, errorResult] = await Promise.allSettled([
-        getRuntimeStatus(),
-        getRuntimePluginDiagnostics(),
-        getRuntimeDiagnosticErrors(),
+        getCoreRuntime(),
+        getPluginDiagnostics(),
+        listDiagnosticErrors().then((result) => result.errors),
       ]);
       if (runtimeResult.status === 'fulfilled') {
         setRuntime(runtimeResult.value);
@@ -61,7 +61,7 @@ export default function SystemConfig() {
   const handleRestart = async () => {
     if (!confirm(t('system.restartConfirm'))) return;
     try {
-      await restartSystem();
+      await restartCoreService();
       setActionMsg(t('common.success'));
       await fetchData();
     } catch (e: any) {
@@ -72,7 +72,7 @@ export default function SystemConfig() {
   const handleReload = async () => {
     if (!confirm(t('system.reloadConfirm'))) return;
     try {
-      await reloadConfig();
+      await restartCoreService();
       setActionMsg(t('common.success'));
       await fetchData();
     } catch (e: any) {
@@ -83,7 +83,7 @@ export default function SystemConfig() {
   const handleSaveKnowledge = async () => {
     setSavingKnowledge(true);
     try {
-      const settings = await saveDesktopSettings({
+      const settings = await saveCoreSettings({
         knowledge: {
           baseUrl: knowledgeBaseUrl,
           authMode: runtime?.settings.knowledge.authMode || 'none',
@@ -105,9 +105,9 @@ export default function SystemConfig() {
   const handleRunDoctor = async () => {
     setRunningDoctor(true);
     try {
-      const result = await runRuntimeDiagnosticsDoctor();
+      const result = await runDiagnosticsDoctor();
       setDoctorResult(result);
-      setDiagnosticErrors(await getRuntimeDiagnosticErrors());
+      setDiagnosticErrors((await listDiagnosticErrors()).errors);
       setActionMsg(`Diagnostics completed with ${result.status} status.`);
     } catch (e: any) {
       setActionMsg(e.message);

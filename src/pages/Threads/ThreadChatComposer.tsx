@@ -19,6 +19,7 @@ import {
   toSelectedKnowledgeBases,
 } from './thread-chat-page-state';
 import type { SelectedKnowledgeBaseSummary } from './thread-chat-page-state';
+import type { PermissionCard } from './thread-chat-message-blocks';
 import type { ChatTaskState } from './thread-chat-model';
 
 type KnowledgeBase = Parameters<typeof filterKnowledgeBases>[0][number];
@@ -50,7 +51,7 @@ interface ThreadChatComposerProps {
   taskRunning: boolean;
   taskState: ChatTaskState;
   transportReady: boolean;
-  onBridgeAction: (message: typeof composerPermissionCard, action: NonNullable<typeof composerPermissionCard>['actions'][number][number]) => void;
+  onBridgeAction: (message: PermissionCard, action: PermissionCard['actions'][number][number]) => void;
   onSend: () => void;
   onStopTask: () => void;
   setActiveAgentMode: (mode: string) => void;

@@ -19,7 +19,6 @@ import type {
   LocalCorePairingRequest,
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
-import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
@@ -573,10 +572,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       msg.contextToken || msg.messageId,
       platformKey,
     );
-    const wrappedText = slashCommand
-      ? msg.text
-      : wrapUserMessageWithSchedulerProtocol(msg.text);
-    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, msg.contentParts));
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts));
       return;
   }
 

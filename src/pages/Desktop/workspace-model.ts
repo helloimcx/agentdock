@@ -17,6 +17,10 @@ import type {
 export const CUSTOM_SELECT_VALUE = '__custom__';
 export const PLATFORM_TYPE_OPTIONS = ['weixin', 'lark'] as const;
 
+export function desktopProjectWorkspaceId(project: DesktopProjectConfig) {
+  return String(project.workspace_id || project.name || '').trim();
+}
+
 export type Notice = {
   tone: 'success' | 'warning' | 'error';
   message: string;

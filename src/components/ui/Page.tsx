@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getDesktopLogs, getRuntimePluginDiagnostics, getRuntimeStatus } from '@/api/desktop';
+import { getCoreLogs, getCoreRuntime, getPluginDiagnostics } from '@cc/core-sdk/runtime';
 import { cn } from '@/lib/utils';
 import { Badge } from './Badge';
 import { Button } from './Button';
@@ -95,9 +95,9 @@ export function AdvancedDrawer({ open, onClose }: { open: boolean; onClose: () =
     setError('');
     try {
       const [runtimeResult, logResult, pluginResult] = await Promise.allSettled([
-        getRuntimeStatus(),
-        getDesktopLogs(40),
-        getRuntimePluginDiagnostics(),
+        getCoreRuntime(),
+        getCoreLogs(40),
+        getPluginDiagnostics(),
       ]);
       if (runtimeResult.status === 'fulfilled') setRuntime(runtimeResult.value);
       if (logResult.status === 'fulfilled') setLogs(logResult.value || []);

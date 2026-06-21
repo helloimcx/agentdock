@@ -7,8 +7,6 @@ import {
   updateThreadKnowledgeBases as updateCoreThreadKnowledgeBases,
   updateThreadMode,
 } from '@cc/core-sdk/threads';
-import type { KnowledgeBase } from '@cc/superai-contracts';
-import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import type { ChatTaskState } from './thread-chat-model';
 import type {
   ThreadChatIdentitySetters,
@@ -21,7 +19,6 @@ type UseThreadChatSendingActionsInput = {
   activeThreadId: string;
   activeBridgeSessionKey: string;
   activeAgentMode: string;
-  availableKnowledgeBases: KnowledgeBase[];
   brandingNewThreadLabel: string;
   draft: string;
   loadActiveThread: (workspaceId: string, threadId: string) => Promise<void>;
@@ -43,7 +40,6 @@ export function useThreadChatSendingActions({
   activeThreadId,
   activeBridgeSessionKey,
   activeAgentMode,
-  availableKnowledgeBases,
   brandingNewThreadLabel,
   draft,
   loadActiveThread,
@@ -73,26 +69,6 @@ export function useThreadChatSendingActions({
   progressSequenceByTurnRef,
   taskStateRef,
 }: UseThreadChatSendingActionsInput) {
-  const buildMessageContent = useCallback((content: string) => {
-    if (content.trim().startsWith('/')) {
-      return content;
-    }
-    if (selectedKnowledgeBaseIds.length === 0) {
-      return wrapUserMessageWithSchedulerProtocol(content);
-    }
-    const selectedBases = selectedKnowledgeBaseIds
-      .map((knowledgeBaseId) => availableKnowledgeBases.find((base) => base.id === knowledgeBaseId))
-      .filter((base): base is KnowledgeBase => Boolean(base));
-    if (selectedBases.length === 0) {
-      return wrapUserMessageWithSchedulerProtocol(content);
-    }
-    return wrapUserMessageWithSchedulerProtocol(content, [[
-      '[Selected Knowledge Bases]',
-      ...selectedBases.map((base) => `- id: ${base.id} | name: ${base.name}`),
-      '[/Selected Knowledge Bases]',
-    ].join('\n')]);
-  }, [availableKnowledgeBases, selectedKnowledgeBaseIds]);
-
   const ensureSession = useCallback(async () => {
     if (!selectedProject) {
       throw new Error('Choose a project first');
@@ -124,7 +100,7 @@ export function useThreadChatSendingActions({
     }
     const content = draft.trim();
     const isAwaitingReply = taskState === 'awaiting_input';
-    const payloadContent = isAwaitingReply ? content : buildMessageContent(content);
+    const payloadContent = content;
     const userOrder = reserveNextMessageOrder();
     setDraft('');
     setSending(true);
@@ -179,7 +155,6 @@ export function useThreadChatSendingActions({
   }, [
     activeRunId,
     armReplyTimeout,
-    buildMessageContent,
     clearReplyTimeout,
     draft,
     ensureSession,

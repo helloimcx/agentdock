@@ -5,18 +5,16 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useRuntimeFeatureSupport } from '@/app/runtime';
 import { resolveRouteTitleKey } from '@/app/ui-contributions';
-import { useAuthStore } from '@/store/auth';
 
 export default function Header({ onOpenAdvanced }: { onOpenAdvanced?: () => void }) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const [spinning, setSpinning] = useState(false);
-  const desktopManaged = useAuthStore((s) => s.desktopManaged);
   const features = useRuntimeFeatureSupport();
   const { desktopChat } = features;
   const compactDesktopChatHeader = false;
 
-  const titleKey = resolveRouteTitleKey(pathname, { desktopManaged, features });
+  const titleKey = resolveRouteTitleKey(pathname, { features });
 
   const handleRefresh = () => {
     setSpinning(true);

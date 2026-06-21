@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { listKnowledgeBases } from '@/api/knowledge';
+import { listKnowledgeBases } from '@cc/core-sdk/knowledge';
 import { getRuntimeBranding } from '@/lib/runtime-branding';
 import {
   sendAction,
@@ -249,7 +249,6 @@ export function useThreadChatController() {
     activeRunId,
     activeThreadId,
     activeBridgeSessionKey,
-    availableKnowledgeBases,
     activeAgentMode,
     brandingNewThreadLabel: branding.newThreadLabel,
     deleteTarget,

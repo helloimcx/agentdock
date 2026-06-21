@@ -8,9 +8,9 @@ import {
   X,
 } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
-import { startDesktopService } from '@/api/desktop';
+import { startCoreService } from '@cc/core-sdk/runtime';
 import { cn } from '@/lib/utils';
-import { timeAgo } from '@/lib/session-utils';
+import { timeAgo } from '@/lib/utils';
 import type { ChatThreadSummary, ThreadGroup, ThreadActionTarget } from './thread-chat-model';
 
 interface ThreadChatSidebarProps {
@@ -144,7 +144,7 @@ export function ThreadChatSidebar({
             {!serviceRunning || isRuntimeStarting ? (
               <Button
                 size="md"
-                onClick={() => void startDesktopService().then(onRefreshRuntime)}
+                onClick={() => void startCoreService().then(onRefreshRuntime)}
                 disabled={isRuntimeStarting || serviceRunning}
                 data-testid="desktop-chat-start-service"
                 className="h-11 shrink-0 rounded-2xl px-3.5"

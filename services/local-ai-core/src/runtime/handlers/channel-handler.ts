@@ -1,6 +1,8 @@
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody, jsonError } from '../server-helpers.js';
 import type { ChannelService } from '../channel-service.js';
+import type { ChannelFileSendInput, ChannelOutboundMessageInput } from '@cc/superai-contracts';
+import { validateBody } from '../request-validation.js';
 
 export function registerChannelHandlers(
   map: Map<string, RouteHandler>,
@@ -34,12 +36,12 @@ export function registerChannelHandlers(
     json(res, 200, await channelService.checkQrCodeStatus(p, (route as { workspaceId: string }).workspaceId, ticket, cid(url)));
   });
   map.set('platform.pairing.approve', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await channelService.approvePairing((route as { platform: string }).platform, String(body.code || '')));
+    const body = validateBody<{ code: string }>(await readJsonBody(req), { code: { kind: 'string', required: true } });
+    json(res, 200, await channelService.approvePairing((route as { platform: string }).platform, body.code));
   });
   map.set('platform.pairing.reject', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await channelService.rejectPairing((route as { platform: string }).platform, String(body.code || '')));
+    const body = validateBody<{ code: string }>(await readJsonBody(req), { code: { kind: 'string', required: true } });
+    json(res, 200, await channelService.rejectPairing((route as { platform: string }).platform, body.code));
   });
   map.set('platform.gateway.test', async (route, _req, res, url) => {
     const p = (route as { platform: string }).platform;
@@ -54,14 +56,19 @@ export function registerChannelHandlers(
     json(res, 200, await channelService.disable(p, (route as { workspaceId: string }).workspaceId, cid(url)));
   });
   map.set('platform.file.send', async (route, req, res) => {
-    const body = await readJsonBody(req);
+    const body = validateBody<ChannelFileSendInput>(await readJsonBody(req), {
+      path: { kind: 'string', required: true }, channelId: { kind: 'string', required: true }, participantId: 'string',
+      fileName: 'string', workspacePath: 'string',
+    });
     const p = (route as { platform: string }).platform;
-    json(res, 200, await channelService.sendFile(p, (route as { workspaceId: string }).workspaceId, body as unknown as import('@cc/superai-contracts').ChannelFileSendInput));
+    json(res, 200, await channelService.sendFile(p, (route as { workspaceId: string }).workspaceId, body));
   });
   map.set('platform.message.send', async (route, req, res) => {
-    const body = await readJsonBody(req);
+    const body = validateBody<ChannelOutboundMessageInput>(await readJsonBody(req), {
+      route: { kind: 'object', required: true }, parts: { kind: 'array', required: true }, metadata: 'object',
+    });
     const p = (route as { platform: string }).platform;
-    json(res, 200, await channelService.sendMessage(p, (route as { workspaceId: string }).workspaceId, body as unknown as import('@cc/superai-contracts').ChannelOutboundMessageInput));
+    json(res, 200, await channelService.sendMessage(p, (route as { workspaceId: string }).workspaceId, body));
   });
   map.set('platform.qrcode.create', async (route, _req, res, url) => {
     const p = (route as { platform: string }).platform;

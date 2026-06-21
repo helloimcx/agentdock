@@ -2,6 +2,7 @@ import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import type { AgentTaskListQuery, AgentTaskCreateInput, AgentTaskUpdateInput } from '@cc/superai-contracts';
+import { validateBody } from '../request-validation.js';
 
 export function registerTaskHandlers(
   map: Map<string, RouteHandler>,
@@ -18,14 +19,25 @@ export function registerTaskHandlers(
     }));
   });
   map.set('tasks.create', async (_route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await workspaceRouter.createAgentTask(body as unknown as AgentTaskCreateInput));
+    const body = validateBody<AgentTaskCreateInput>(await readJsonBody(req), {
+      workspaceId: { kind: 'string', required: true },
+      runtimeId: { kind: 'string', required: true },
+      threadId: 'string',
+      title: { kind: 'string', required: true },
+      prompt: 'string',
+      metadata: 'object',
+    });
+    json(res, 200, await workspaceRouter.createAgentTask(body));
   });
   map.set('task.get', async (route, _req, res) => {
     json(res, 200, await workspaceRouter.getAgentTask((route as { taskId: string }).taskId));
   });
   map.set('task.update', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await workspaceRouter.updateAgentTask((route as { taskId: string }).taskId, body as unknown as AgentTaskUpdateInput));
+    const body = validateBody<AgentTaskUpdateInput>(await readJsonBody(req), {
+      status: 'string', threadId: 'string', runId: 'string', title: 'string', summary: 'string',
+      error: { kind: 'string', nullable: true }, timelineItem: 'object', log: 'object', artifact: 'object',
+      approvalId: 'string', metadata: 'object',
+    });
+    json(res, 200, await workspaceRouter.updateAgentTask((route as { taskId: string }).taskId, body));
   });
 }

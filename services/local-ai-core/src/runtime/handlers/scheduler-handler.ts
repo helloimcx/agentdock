@@ -1,6 +1,8 @@
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
 import type { ScheduledJobApplicationService } from '../../scheduler/scheduled-job-application-service.js';
+import type { ScheduledJobCreateInput, ScheduledJobUpdateInput } from '@cc/superai-contracts';
+import { validateBody } from '../request-validation.js';
 
 export function registerSchedulerHandlers(
   map: Map<string, RouteHandler>,
@@ -11,8 +13,12 @@ export function registerSchedulerHandlers(
     json(res, 200, { jobs: await scheduledJobs.listJobs(workspaceId || undefined) });
   });
   map.set('scheduler.jobs.create', async (_route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await scheduledJobs.createJob(body as unknown as import('@cc/superai-contracts').ScheduledJobCreateInput));
+    const body = validateBody<ScheduledJobCreateInput>(await readJsonBody(req), {
+      workspaceId: { kind: 'string', required: true }, platform: 'string', route: 'object', threadId: 'string',
+      executionMode: 'string', triggerType: { kind: 'string', required: true }, cronExpr: 'string', runAt: 'string',
+      promptTemplate: { kind: 'string', required: true }, description: 'string', enabled: 'boolean',
+    });
+    json(res, 200, await scheduledJobs.createJob(body));
   });
   map.set('scheduler.job.get', async (route, _req, res) => {
     const job = scheduledJobs.getJob((route as { jobId: string }).jobId);
@@ -28,8 +34,11 @@ export function registerSchedulerHandlers(
     json(res, 200, await scheduledJobs.runJobNow((route as { jobId: string }).jobId));
   });
   map.set('scheduler.job.update', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await scheduledJobs.updateJob((route as { jobId: string }).jobId, body as unknown as import('@cc/superai-contracts').ScheduledJobUpdateInput));
+    const body = validateBody<ScheduledJobUpdateInput>(await readJsonBody(req), {
+      route: 'object', executionMode: 'string', triggerType: 'string', cronExpr: 'string', runAt: 'string',
+      promptTemplate: 'string', description: 'string', enabled: 'boolean',
+    });
+    json(res, 200, await scheduledJobs.updateJob((route as { jobId: string }).jobId, body));
   });
   map.set('scheduler.job.delete', async (route, _req, res) => {
     json(res, 200, await scheduledJobs.deleteJob((route as { jobId: string }).jobId));

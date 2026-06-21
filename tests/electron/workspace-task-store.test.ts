@@ -39,6 +39,39 @@ test('workspace registry entries persist in LocalCoreAcpStore', () => {
   }
 });
 
+test('runtime project migration makes workspace registry authoritative and preserves identity across rename', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-project-migration-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({ userDataPath, enableKnowledge: false, log: () => {} });
+    const controller = new LocalCoreController(userDataPath, runtime);
+    await controller.saveRuntimeConfig({
+      projects: [{
+        name: 'Workspace A',
+        agent: { type: 'pi', options: { work_dir: '/tmp/workspace-a' } },
+        platforms: [],
+      }],
+    });
+
+    const first = await controller.readRuntimeConfig();
+    const workspaceId = first.config.projects?.[0]?.workspace_id;
+    assert.ok(workspaceId);
+    assert.equal(controller.store.getWorkspaceRegistryEntry(workspaceId)?.displayName, 'Workspace A');
+    assert.equal(controller.store.readRuntimeConfig().config.projects, undefined);
+
+    await controller.saveRuntimeConfig({
+      ...first.config,
+      projects: [{ ...first.config.projects![0]!, name: 'Workspace B' }],
+    });
+    const renamed = await controller.readRuntimeConfig();
+    assert.equal(renamed.config.projects?.[0]?.workspace_id, workspaceId);
+    assert.equal(controller.store.getWorkspaceRegistryEntry(workspaceId)?.displayName, 'Workspace B');
+    assert.equal((await controller.workspaceRouter.listWorkspaces())[0]?.id, workspaceId);
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('model providers persist independently from workspace config', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'model-provider-store-'));
   try {

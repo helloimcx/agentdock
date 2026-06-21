@@ -1,6 +1,11 @@
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody, readRawBody } from '../server-helpers.js';
 import type { KnowledgeRuntime } from '@cc/plugin-sdk';
+import type {
+  KnowledgeBaseCreateInput, KnowledgeBaseUpdateInput, KnowledgeConfig,
+  KnowledgeFolderCreateInput, KnowledgeFolderUpdateInput, KnowledgeSearchInput,
+} from '@cc/superai-contracts';
+import { validateBody } from '../request-validation.js';
 
 export function registerKnowledgeHandlers(
   map: Map<string, RouteHandler>,
@@ -13,19 +18,23 @@ export function registerKnowledgeHandlers(
     json(res, 200, await knowledgeProvider.getConfig());
   });
   map.set('knowledge.config.update', async (_route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await knowledgeProvider.updateConfig(body as Partial<import('@cc/superai-contracts').KnowledgeConfig>));
+    const body = validateBody<Partial<KnowledgeConfig>>(await readJsonBody(req), {
+      baseUrl: 'string', authMode: 'string', token: 'string', headerName: 'string', defaultCollection: 'string',
+    });
+    json(res, 200, await knowledgeProvider.updateConfig(body));
   });
   map.set('knowledge.folders.list', async (_route, _req, res) => {
     json(res, 200, { folders: await knowledgeProvider.listFolders() });
   });
   map.set('knowledge.folders.create', async (_route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await knowledgeProvider.createFolder(body as unknown as import('@cc/superai-contracts').KnowledgeFolderCreateInput));
+    const body = validateBody<KnowledgeFolderCreateInput>(await readJsonBody(req), {
+      name: { kind: 'string', required: true }, parentId: { kind: 'string', nullable: true },
+    });
+    json(res, 200, await knowledgeProvider.createFolder(body));
   });
   map.set('knowledge.folder.update', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await knowledgeProvider.updateFolder((route as { folderId: string }).folderId, body as unknown as import('@cc/superai-contracts').KnowledgeFolderUpdateInput));
+    const body = validateBody<KnowledgeFolderUpdateInput>(await readJsonBody(req), { name: { kind: 'string', required: true } });
+    json(res, 200, await knowledgeProvider.updateFolder((route as { folderId: string }).folderId, body));
   });
   map.set('knowledge.folder.delete', async (route, _req, res) => {
     json(res, 200, await knowledgeProvider.deleteFolder((route as { folderId: string }).folderId));
@@ -34,15 +43,20 @@ export function registerKnowledgeHandlers(
     json(res, 200, { bases: await knowledgeProvider.listKnowledgeBases() });
   });
   map.set('knowledge.bases.create', async (_route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await knowledgeProvider.createKnowledgeBase(body as unknown as import('@cc/superai-contracts').KnowledgeBaseCreateInput));
+    const body = validateBody<KnowledgeBaseCreateInput>(await readJsonBody(req), {
+      name: { kind: 'string', required: true }, description: 'string', folderId: { kind: 'string', nullable: true },
+      creatorName: 'string', icon: 'string',
+    });
+    json(res, 200, await knowledgeProvider.createKnowledgeBase(body));
   });
   map.set('knowledge.base.get', async (route, _req, res) => {
     json(res, 200, await knowledgeProvider.getKnowledgeBase((route as { knowledgeBaseId: string }).knowledgeBaseId));
   });
   map.set('knowledge.base.update', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, await knowledgeProvider.updateKnowledgeBase((route as { knowledgeBaseId: string }).knowledgeBaseId, body as import('@cc/superai-contracts').KnowledgeBaseUpdateInput));
+    const body = validateBody<KnowledgeBaseUpdateInput>(await readJsonBody(req), {
+      name: 'string', description: 'string', folderId: { kind: 'string', nullable: true }, creatorName: 'string', icon: 'string',
+    });
+    json(res, 200, await knowledgeProvider.updateKnowledgeBase((route as { knowledgeBaseId: string }).knowledgeBaseId, body));
   });
   map.set('knowledge.base.delete', async (route, _req, res) => {
     json(res, 200, await knowledgeProvider.deleteKnowledgeBase((route as { knowledgeBaseId: string }).knowledgeBaseId));
@@ -62,7 +76,9 @@ export function registerKnowledgeHandlers(
     json(res, 200, await knowledgeProvider.deleteKnowledgeBaseFile((route as { knowledgeBaseId: string }).knowledgeBaseId, (route as { fileId: string }).fileId));
   });
   map.set('knowledge.base.search', async (route, req, res) => {
-    const body = await readJsonBody(req);
-    json(res, 200, { results: await knowledgeProvider.searchKnowledgeBase((route as { knowledgeBaseId: string }).knowledgeBaseId, body as unknown as import('@cc/superai-contracts').KnowledgeSearchInput) });
+    const body = validateBody<KnowledgeSearchInput>(await readJsonBody(req), {
+      query: { kind: 'string', required: true }, limit: 'number',
+    });
+    json(res, 200, { results: await knowledgeProvider.searchKnowledgeBase((route as { knowledgeBaseId: string }).knowledgeBaseId, body) });
   });
 }

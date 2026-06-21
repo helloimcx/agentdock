@@ -1,8 +1,6 @@
 import { create } from 'zustand';
 import type { LocalCoreCapabilitySnapshot } from '@cc/superai-contracts';
 
-export type AppMode = 'desktop' | 'web';
-
 type RuntimeCapabilityState = {
   snapshot: LocalCoreCapabilitySnapshot | null;
   setSnapshot: (snapshot: LocalCoreCapabilitySnapshot | null) => void;
@@ -12,22 +10,6 @@ export const useRuntimeCapabilityStore = create<RuntimeCapabilityState>((set) =>
   snapshot: null,
   setSnapshot: (snapshot) => set({ snapshot }),
 }));
-
-export function getAppMode(): AppMode {
-  return 'desktop';
-}
-
-export function isDesktopApp() {
-  return true;
-}
-
-export function isLocalCoreApp() {
-  return true;
-}
-
-export function isWebApp() {
-  return false;
-}
 
 export function setRuntimeCapabilitySnapshot(snapshot: LocalCoreCapabilitySnapshot | null) {
   useRuntimeCapabilityStore.getState().setSnapshot(snapshot);
@@ -49,17 +31,13 @@ function hasEnabledMonitor(snapshot: LocalCoreCapabilitySnapshot | null) {
   return Boolean(snapshot?.monitors?.some((capability) => capability.enabled !== false));
 }
 
-function hasAgent(snapshot: LocalCoreCapabilitySnapshot | null, agentType: string) {
-  return Boolean(snapshot?.agents.some((capability) => capability.agentType === agentType));
-}
-
 function hasAnyAgent(snapshot: LocalCoreCapabilitySnapshot | null) {
   return Boolean(snapshot?.agents.some((capability) => capability.agentType));
 }
 
 export function getRuntimeFeatureSupport(snapshot = getRuntimeCapabilitySnapshot()) {
   const managedRuntime = Boolean(snapshot);
-  const desktopChat = hasAgent(snapshot, 'localcore-acp');
+  const desktopChat = managedRuntime ? hasAnyAgent(snapshot) : true;
   return {
     desktopRuntime: true,
     desktopChat,

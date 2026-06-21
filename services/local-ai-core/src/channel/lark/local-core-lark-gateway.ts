@@ -22,7 +22,6 @@ import type {
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
-import { wrapUserMessageWithSchedulerProtocol } from '@cc/superai-contracts';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
@@ -563,10 +562,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       return; // { paired: true, threadId };
     }
     this.options.store.clearPlatformThreadMessageId(msg.workspaceId, msg.chatId, msg.platformUserId);
-    const wrappedText = slashCommand
-      ? msg.text
-      : wrapUserMessageWithSchedulerProtocol(msg.text);
-    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(wrappedText, msg.contentParts));
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts));
     return; // { paired: true, threadId };
   }
 

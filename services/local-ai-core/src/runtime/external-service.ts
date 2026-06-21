@@ -62,6 +62,7 @@ export class ExternalService {
       defaultRuntimeId: project.agentType,
       health: { status: 'healthy', summary: 'External workspace is available.', issues: [], checkedAt: now },
       metadata: {
+        ...(this.store.getWorkspaceRegistryEntry(project.workspaceId)?.metadata || {}),
         external: true,
         userId: project.userId,
         externalProjectId: project.externalProjectId,
@@ -128,7 +129,9 @@ export class ExternalService {
       ...(current.config || {}),
       projects: Array.isArray(current.config?.projects) ? [...current.config.projects] : [],
     };
-    const existingIndex = config.projects!.findIndex((item) => item?.name === project.workspaceId);
+    const existingIndex = config.projects!.findIndex((item) =>
+      item?.workspace_id === project.workspaceId || item?.name === project.workspaceId
+    );
     const existing = existingIndex >= 0 ? config.projects![existingIndex] : undefined;
     const defaultRuntimeImageId = Array.isArray(config.sandbox_runtime_images)
       ? config.sandbox_runtime_images.find((image) => image?.agent_type === project.agentType)?.id
@@ -148,6 +151,7 @@ export class ExternalService {
       },
     };
     const nextProject: DesktopProjectConfig = {
+      workspace_id: project.workspaceId,
       name: project.workspaceId,
       agent: {
         ...(existing?.agent || {}),

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { onBridgeEvent } from '@/api/desktop';
+import { onBridgeUpdated } from '@cc/core-sdk/channels';
 import { createChatEventGate } from '@/components/chat/chat-event-gate';
 import { getRuntimeBranding } from '@/lib/runtime-branding';
 import {
@@ -463,7 +463,7 @@ export function useThreadChatBridgeEvents({
   ]);
 
   useEffect(() => {
-    const stopBridge = onBridgeEvent((event) => {
+    const stopBridge = onBridgeUpdated((event) => {
       handleBridgeEvent(event);
     });
     return () => {

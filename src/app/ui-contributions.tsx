@@ -1,5 +1,5 @@
 import { lazy, type ReactNode } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import {
   Clock,
   Bell,
@@ -12,17 +12,11 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { useAuthStore } from '@/store/auth';
 import type { RuntimeFeatureSupport } from '@/app/runtime';
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const ThreadChat = lazy(() => import('@/pages/Threads/ThreadChat'));
-const WebChat = lazy(() => import('@/pages/Web/Chat'));
 const DesktopWorkspace = lazy(() => import('@/pages/Desktop/Workspace'));
-const ProjectList = lazy(() => import('@/pages/Projects/ProjectList'));
-const ProjectDetail = lazy(() => import('@/pages/Projects/ProjectDetail'));
-const SessionList = lazy(() => import('@/pages/Sessions/SessionList'));
-const SessionChat = lazy(() => import('@/pages/Sessions/SessionChat'));
 const CronList = lazy(() => import('@/pages/Cron/CronList'));
 const MonitorList = lazy(() => import('@/pages/Automation/MonitorList'));
 const SystemConfig = lazy(() => import('@/pages/System/Config'));
@@ -31,7 +25,6 @@ const KnowledgeHome = lazy(() => import('@/pages/Knowledge/KnowledgeHome'));
 const KnowledgeDetail = lazy(() => import('@/pages/Knowledge/KnowledgeDetail'));
 
 export type UiContributionContext = {
-  desktopManaged: boolean;
   features: RuntimeFeatureSupport;
 };
 
@@ -81,22 +74,13 @@ function guarded(allowed: boolean, element: ReactNode, redirect = '/') {
   return allowed ? element : <Navigate to={redirect} replace />;
 }
 
-function DesktopProjectRedirect() {
+function WorkspaceRedirect() {
   const { name } = useParams<{ name: string }>();
-  const desktopManaged = useAuthStore((s) => s.desktopManaged);
-  if (!desktopManaged) {
-    return <ProjectDetail />;
-  }
   return <Navigate to={name ? `/workspace?project=${encodeURIComponent(name)}` : '/workspace'} replace />;
 }
 
 function DesktopSessionsRedirect() {
   const { project, id } = useParams<{ project?: string; id?: string }>();
-  const desktopManaged = useAuthStore((s) => s.desktopManaged);
-  if (!desktopManaged) {
-    return id && project ? <SessionChat /> : <SessionList />;
-  }
-
   const query = new URLSearchParams();
   if (project) {
     query.set('project', project);
@@ -123,7 +107,7 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       order: 20,
       element: ({ features }) => guarded(
         features.chatRoute,
-        features.desktopChat ? <ThreadChat /> : <WebChat />,
+        <ThreadChat />,
       ),
     },
     {
@@ -152,17 +136,14 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       path: 'projects',
       titleKey: 'nav.projects',
       order: 50,
-      element: ({ desktopManaged, features }) =>
-        desktopManaged && features.desktopWorkspace
-          ? <Navigate to="/workspace" replace />
-          : <ProjectList />,
+      element: ({ features }) => guarded(features.desktopWorkspace, <Navigate to="/workspace" replace />),
     },
     {
       id: 'project-detail',
       path: 'projects/:name',
       titleKey: 'nav.projects',
       order: 51,
-      element: () => <DesktopProjectRedirect />,
+      element: () => <WorkspaceRedirect />,
     },
     {
       id: 'sessions',
@@ -244,7 +225,7 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       labelKey: 'nav.projects',
       icon: FolderKanban,
       order: 50,
-      visible: ({ desktopManaged }) => !desktopManaged,
+      visible: () => false,
     },
     {
       id: 'sessions',
@@ -252,7 +233,7 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       labelKey: 'nav.sessions',
       icon: MessageSquare,
       order: 60,
-      visible: ({ desktopManaged }) => !desktopManaged,
+      visible: () => false,
     },
     {
       id: 'cron',

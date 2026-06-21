@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Filter, Search } from 'lucide-react';
 import { Card, Button, Badge, PageHeader, Select, Input } from '@/components/ui';
-import { getLogs } from '@/api/status';
+import { listCoreLogEntries, type CoreLogEntry } from '@cc/core-sdk/runtime';
 
 const levelColors: Record<string, string> = {
   sys: 'text-gray-300',
@@ -23,7 +23,7 @@ const levelBadge: Record<string, 'default' | 'info' | 'warning' | 'danger'> = {
 
 export default function SystemLogs() {
   const { t } = useTranslation();
-  const [entries, setEntries] = useState<any[]>([]);
+  const [entries, setEntries] = useState<CoreLogEntry[]>([]);
   const [level, setLevel] = useState('sys');
   const [limit, setLimit] = useState('100');
   const [query, setQuery] = useState('');
@@ -33,7 +33,7 @@ export default function SystemLogs() {
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getLogs({ level, limit });
+      const data = await listCoreLogEntries(level, Number(limit));
       setEntries(data.entries || []);
     } finally {
       setLoading(false);

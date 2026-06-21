@@ -37,6 +37,15 @@ import { decodeThreadId } from '../thread/workspace-thread-id.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
 import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions, WorkspaceThreadMessageOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
+import {
+  listRegistryProjects,
+  persistProjectsInRegistry,
+  projectWorkspaceId,
+  withoutRuntimeProjects,
+} from '../runtime/workspace-project-registry.js';
+import { composeAgentMessage } from '../thread/agent-message-policy.js';
+import { createChannelThreadMessageInput } from '../channel/shared/content.js';
+import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
 
 export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
 
@@ -44,7 +53,7 @@ export class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
   private readonly localCoreAcp: LocalCoreAcpBackend;
   private readonly runThreadMap = new Map<string, string>();
-  private readonly bridgeSubscribers = new Set<(event: DesktopBridgeEvent) => void>();
+  private readonly bridgeEvents: WorkspaceBridgeEventStream;
   private schedulerBridge: {
     createJob: (input: {
       workspaceId: string;
@@ -61,12 +70,13 @@ export class WorkspaceRouter {
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = options.store;
+    this.bridgeEvents = new WorkspaceBridgeEventStream(options.eventBus);
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
       runThreadMap: this.runThreadMap,
       cliBinDir: options.cliBinDir,
       localCoreBase: options.localCoreBase,
-      emitBridge: (event) => this.emitBridgeEvent(event),
+      emitBridge: (event) => this.bridgeEvents.emit(event),
       eventBus: options.eventBus,
       scheduler: {
         createJob: async (input) => {
@@ -95,7 +105,7 @@ export class WorkspaceRouter {
 
   close() {
     this.localCoreAcp.close();
-    this.bridgeSubscribers.clear();
+    this.bridgeEvents.clear();
     this.store.close();
   }
 
@@ -117,12 +127,13 @@ export class WorkspaceRouter {
       if (!route) {
         continue;
       }
-      workspaceMap.set(project.name, {
-        id: project.name,
+      const workspaceId = projectWorkspaceId(project);
+      workspaceMap.set(workspaceId, {
+        id: workspaceId,
         name: project.name,
         agentType: route.agentType,
         platforms: normalizePlatformTypes(project),
-        sessionsCount: this.store.countThreads(project.name),
+        sessionsCount: this.store.countThreads(workspaceId),
         heartbeatEnabled: false,
       });
     }
@@ -130,12 +141,10 @@ export class WorkspaceRouter {
   }
 
   async listWorkspaceRegistry(): Promise<WorkspaceRegistryEntry[]> {
-    await this.syncConfiguredWorkspaces();
     return this.store.listWorkspaceRegistry();
   }
 
   async getWorkspaceRegistryEntry(workspaceId: string): Promise<WorkspaceRegistryEntry> {
-    await this.syncConfiguredWorkspaces();
     const workspace = this.store.getWorkspaceRegistryEntry(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${workspaceId}`);
@@ -284,7 +293,8 @@ export class WorkspaceRouter {
     const route = isLocalSlashCommand(content)
       ? await this.getWorkspaceRoute(workspaceId)
       : await this.getThreadWorkspaceRoute(threadId, workspaceId);
-    return this.localCoreAcp.sendThreadMessage(threadId, content, route.config, options);
+    const preparedContent = await this.prepareAgentMessage(threadId, content);
+    return this.localCoreAcp.sendThreadMessage(threadId, preparedContent, route.config, options);
   }
 
   async sendThreadAction(threadId: string, content: string) {
@@ -347,25 +357,25 @@ export class WorkspaceRouter {
     };
   }
 
-  private emitBridgeEvent(event: DesktopBridgeEvent) {
-    this.options.eventBus.emit({
-      type: 'platform.bridge.updated',
-      payload: event,
-    });
-    this.notifyBridgeSubscribers(event);
-  }
-
-  private notifyBridgeSubscribers(event: DesktopBridgeEvent) {
-    for (const listener of this.bridgeSubscribers) {
-      listener(event);
+  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent) {
+    const displayText = typeof content === 'string' ? content : content.displayText;
+    if (displayText.trim().startsWith('/')) {
+      return content;
     }
+    const selectedIds = new Set(await this.options.knowledgeAttachments.listThreadKnowledgeBaseIds(threadId));
+    const knowledgeBases = selectedIds.size
+      ? (await this.options.knowledgeProvider.listKnowledgeBases())
+          .filter((base) => selectedIds.has(base.id))
+          .map(({ id, name }) => ({ id, name }))
+      : [];
+    const wrapped = composeAgentMessage(displayText, knowledgeBases);
+    return typeof content === 'string'
+      ? wrapped
+      : createChannelThreadMessageInput(wrapped, content.contentParts);
   }
 
   private subscribeBridge(listener: (event: DesktopBridgeEvent) => void) {
-    this.bridgeSubscribers.add(listener);
-    return () => {
-      this.bridgeSubscribers.delete(listener);
-    };
+    return this.bridgeEvents.subscribe(listener);
   }
 
   subscribeBridgeEvents(listener: (event: DesktopBridgeEvent) => void) {
@@ -584,10 +594,20 @@ export class WorkspaceRouter {
 
   private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
     const configState = await this.options.readRuntimeConfig();
-    const projects = Array.isArray(configState.config?.projects) ? configState.config.projects! : [];
-    const matched = projects.find((project) => String(project?.name || '').trim() === workspaceId);
+    const embeddedProjects = Array.isArray(configState.config?.projects) ? configState.config.projects! : [];
+    const projects = embeddedProjects.length
+      ? persistProjectsInRegistry(this.store, embeddedProjects, { preserveLegacyIds: true })
+      : listRegistryProjects(this.store);
+    if (embeddedProjects.length) {
+      this.store.saveRuntimeConfig(withoutRuntimeProjects(configState.config));
+    }
+    const projectedConfigState = {
+      ...configState,
+      config: { ...configState.config, projects },
+    };
+    const matched = projects.find((project) => projectWorkspaceId(project) === workspaceId);
     const project = matched && agentTypeOverride ? withAgentTypeOverride(matched, agentTypeOverride) : matched;
-    const route = project ? this.resolveProjectRoute(configState, project) : null;
+    const route = project ? this.resolveProjectRoute(projectedConfigState, project) : null;
     if (!matched || !route) {
       throw new Error(`Workspace "${workspaceId}" is not configured as a Local AI Core ACP workspace.`);
     }
@@ -596,32 +616,12 @@ export class WorkspaceRouter {
 
   private async listLocalCoreProjects() {
     const configState = await this.options.readRuntimeConfig();
-    const projects = Array.isArray(configState.config?.projects) ? configState.config.projects! : [];
-    return projects.filter((project) => this.resolveProjectRoute(configState, project));
-  }
-
-  private async syncConfiguredWorkspaces() {
-    const config = await this.options.readRuntimeConfig();
-    const projects = Array.isArray(config.config?.projects) ? config.config.projects : [];
-    for (const project of projects) {
-      const route = this.resolveProjectRoute(config, project);
-      if (!route) {
-        continue;
-      }
-      const path = inferWorkspacePath(project);
-      this.store.upsertWorkspaceRegistryEntry({
-        workspaceId: project.name,
-        displayName: project.name,
-        path,
-        deviceId: 'local',
-        defaultRuntimeId: route.agentType,
-        git: detectGitSummary(path),
-        health: workspaceHealth(path),
-        metadata: {
-          platforms: normalizePlatformTypes(project),
-        },
-      });
+    let projects = listRegistryProjects(this.store);
+    if (projects.length === 0 && configState.config.projects?.length) {
+      projects = persistProjectsInRegistry(this.store, configState.config.projects, { preserveLegacyIds: true });
+      this.store.saveRuntimeConfig(withoutRuntimeProjects(configState.config));
     }
+    return projects.filter((project) => this.resolveProjectRoute(configState, project));
   }
 
   private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readRuntimeConfig']>>, project: DesktopProjectConfig) {
@@ -681,17 +681,6 @@ export class WorkspaceRouter {
 
 export function createWorkspaceRouter(options: WorkspaceRouterOptions) {
   return new WorkspaceRouter(options);
-}
-
-function inferWorkspacePath(project: DesktopProjectConfig) {
-  const options = project.agent?.options || {};
-  for (const key of ['cwd', 'path', 'workspacePath', 'root']) {
-    const value = options[key];
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-  }
-  return '';
 }
 
 function withAgentTypeOverride(project: DesktopProjectConfig, agentType: string): DesktopProjectConfig {

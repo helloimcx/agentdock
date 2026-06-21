@@ -1,4 +1,3 @@
-import type { Session } from '../../api/sessions';
 import type { ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
 import type {
   DesktopBridgeEvent,
@@ -13,13 +12,15 @@ import {
   isPermissionButtonOption,
   normalizeDesktopBridgeButtonOption,
 } from '@cc/superai-contracts';
-import { sessionLabel } from '../../lib/session-utils';
-import type { ChatTranscriptMessage } from '../../components/chat/chat-message-state';
 import type { ChatControllerAction, ChatControllerStatus } from '../../components/chat/chat-controller-state';
 
 export const ASSISTANT_REPLY_TIMEOUT_MS = 90000;
 
-export interface ChatMessage extends ChatTranscriptMessage {
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: string;
   toolCall?: DesktopBridgeToolCall;
   kind?: 'final' | 'progress' | 'system';
   bridgeKind?: DesktopBridgeEventKind;
@@ -196,7 +197,7 @@ export function settlePreviewMessages(messages: ChatMessage[], turnKey?: string)
   return changed ? next : messages;
 }
 
-export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: string) {
+export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: string): ChatMessage[] {
   if (!turnKey) {
     return messages;
   }
@@ -214,7 +215,7 @@ export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: stri
     }
     return {
       ...message,
-      kind: finalId && message.id === finalId ? 'final' : 'progress',
+      kind: finalId && message.id === finalId ? 'final' as const : 'progress' as const,
     };
   });
 }
@@ -228,21 +229,6 @@ export function extractVisibleMessageContent(content?: string) {
     return content;
   }
   return match[1] || '';
-}
-
-export function sessionMatchesDesktop(session: Session) {
-  return session.platform === 'desktop' || session.session_key.startsWith('desktop:');
-}
-
-export function toMessages(history: { role: string; content: string; kind?: string; timestamp: string }[]): ChatMessage[] {
-  return history.map((message, index) => ({
-    id: `${index}-${message.timestamp || message.role}`,
-    role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
-    content: message.role === 'user' ? extractVisibleMessageContent(message.content) : message.content,
-    kind: message.kind === 'progress' ? 'progress' : 'final',
-    order: index,
-    timestamp: message.timestamp,
-  }));
 }
 
 export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMessage[] {
@@ -262,21 +248,6 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
     order: index,
     timestamp: message.timestamp,
   }));
-}
-
-export function toChatThreadSummary(project: string, session: Session): ChatThreadSummary {
-  return {
-    id: session.id,
-    project,
-    name: sessionLabel(session),
-    live: session.live,
-    createdAt: session.created_at,
-    updatedAt: session.updated_at,
-    excerpt: extractVisibleMessageContent(session.last_message?.content || ''),
-    agentType: session.agent_type,
-    agentMode: undefined,
-    bridgeSessionKey: session.session_key,
-  };
 }
 
 export function toCoreChatThreadSummary(thread: ThreadSummary): ChatThreadSummary {

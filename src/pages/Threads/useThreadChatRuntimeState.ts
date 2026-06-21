@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { getRuntimeStatus, onRuntimeEvent } from '@/api/desktop';
+import { getCoreRuntime, onRuntimeUpdated } from '@cc/core-sdk/runtime';
 import type { DesktopRuntimeStatus } from '@cc/superai-contracts';
 import type { ChatTaskState } from './thread-chat-model';
 
@@ -28,7 +28,7 @@ export function useThreadChatRuntimeState({
   const transportReady = serviceRunning;
 
   const refreshRuntime = useCallback(async () => {
-    const nextRuntime = await getRuntimeStatus();
+    const nextRuntime = await getCoreRuntime();
     setRuntime(nextRuntime);
     if (!nextRuntime.roles.conversation.lastError && !selectedProject && !requestedProject && nextRuntime.settings.defaultProject) {
       setSelectedProject(nextRuntime.settings.defaultProject);
@@ -37,7 +37,7 @@ export function useThreadChatRuntimeState({
 
   useEffect(() => {
     void refreshRuntime().finally(() => setLoading(false));
-    const stopRuntime = onRuntimeEvent((nextRuntime) => {
+    const stopRuntime = onRuntimeUpdated((nextRuntime) => {
       setRuntime(nextRuntime);
       if (nextRuntime.phase === 'stopped' || nextRuntime.phase === 'error') {
         setTyping(false);

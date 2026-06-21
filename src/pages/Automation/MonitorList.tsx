@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
-import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import {
-  createMonitor,
-  deleteMonitor,
-  listMonitors,
-  listMonitorWorkspaces,
-  runMonitorNow,
-  updateMonitor,
-  type Monitor,
-  type MonitorCreateInput,
-} from '@/api/monitors';
+  createAutomationMonitor as createMonitor,
+  deleteAutomationMonitor as deleteMonitor,
+  listAutomationMonitors as listMonitors,
+  runAutomationMonitor as runMonitorNow,
+  updateAutomationMonitor as updateMonitor,
+} from '@cc/core-sdk/automation';
+import { listWorkspaces } from '@cc/core-sdk/threads';
+import type { AutomationMonitor as Monitor, AutomationMonitorCreateInput as MonitorCreateInput } from '@cc/superai-contracts';
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import { formatTime } from '@/lib/utils';
 
 type MonitorFormState = {
@@ -122,7 +121,7 @@ export default function MonitorList() {
   const fetchMonitors = useCallback(async () => {
     setLoading(true);
     try {
-      const [monitorData, workspaceData] = await Promise.all([listMonitors(), listMonitorWorkspaces()]);
+      const [monitorData, workspaceData] = await Promise.all([listMonitors(), listWorkspaces().then((data) => data.workspaces)]);
       setMonitors(monitorData.monitors || []);
       setWorkspaces(workspaceData);
       setForm((current) => current.workspaceId || workspaceData.length === 0
