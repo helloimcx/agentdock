@@ -27,17 +27,18 @@ import {
 } from '@/api/sessions';
 import { sessionLabel, sessionMatchesSearch, sortSessionsByLiveAndUpdated, timeAgo } from '@/lib/session-utils';
 import { cn } from '@/lib/utils';
+import { useSessionEventRefresh } from '@/components/chat/useSessionEventRefresh';
+import { api } from '@/api/client';
+import { LOCAL_AI_CORE_BASE } from '@/api/runtime-bootstrap';
+import {
+  assistantMessageCount,
+  chatHistorySignature,
+  projectChatHistory,
+  type ChatTranscriptMessage,
+} from '@/components/chat/chat-message-state';
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 90000;
-
-interface WebChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp?: string;
-  kind?: string;
-}
 
 interface ActiveWebChatSession {
   id: string;
@@ -67,24 +68,6 @@ interface PollingContext {
 
 function isVirtualWebSession(sessionKey?: string) {
   return String(sessionKey || '').startsWith('web:');
-}
-
-function toMessages(history: SessionDetail['history'] | undefined): WebChatMessage[] {
-  return (history || []).map((message, index) => ({
-    id: `${message.timestamp || index}-${message.role}-${index}`,
-    role: message.role === 'user' ? 'user' : 'assistant',
-    content: message.content,
-    timestamp: message.timestamp,
-    kind: message.kind,
-  }));
-}
-
-function messageSignature(history: SessionDetail['history']) {
-  return history.map((message) => `${message.role}:${message.kind || 'final'}:${message.timestamp || ''}:${message.content}`).join('\n');
-}
-
-function assistantMessageCount(history: SessionDetail['history']) {
-  return history.filter((message) => message.role !== 'user').length;
 }
 
 function formatSessionPreview(session: Session, t: (key: string) => string) {
@@ -119,7 +102,7 @@ export default function WebChat() {
   const [selectedProject, setSelectedProject] = useState(searchParams.get('project') || '');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<ActiveWebChatSession | null>(null);
-  const [messages, setMessages] = useState<WebChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatTranscriptMessage[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -247,7 +230,7 @@ export default function WebChat() {
         isDraft: false,
         detail,
       });
-      setMessages(toMessages(detail.history));
+      setMessages(projectChatHistory(detail.history));
       setError('');
       return detail;
     } catch (loadError) {
@@ -261,6 +244,26 @@ export default function WebChat() {
       }
     }
   }, [syncSessionSummary, t]);
+
+  const refreshActiveSessionFromEvent = useCallback(async () => {
+    const { project, sessionId } = activeRef.current;
+    if (!project || !sessionId) {
+      return;
+    }
+    await Promise.all([
+      loadActiveSession(project, sessionId, { silent: true }),
+      refreshSessions(project),
+    ]);
+  }, [loadActiveSession, refreshSessions]);
+
+  useSessionEventRefresh(
+    {
+      sessionId: activeSession?.id || '',
+      sessionKey: activeSession?.sessionKey,
+    },
+    refreshActiveSessionFromEvent,
+    api.getBaseUrl().replace(/\/+$/, '') === LOCAL_AI_CORE_BASE,
+  );
 
   const schedulePoll = useCallback((context: PollingContext) => {
     pollContextRef.current = context;
@@ -287,7 +290,7 @@ export default function WebChat() {
         return;
       }
 
-      const signature = messageSignature(detail.history);
+      const signature = chatHistorySignature(detail.history);
       const hasAssistantReply = assistantMessageCount(detail.history) > currentContext.assistantCountBefore;
       const nextStableCount = hasAssistantReply && signature === currentContext.lastSignature
         ? currentContext.stableCount + 1
@@ -422,7 +425,7 @@ export default function WebChat() {
 
     const content = draft.trim();
     const optimisticMessageId = `${crypto.randomUUID()}-user`;
-    const optimisticMessage: WebChatMessage = {
+    const optimisticMessage: ChatTranscriptMessage = {
       id: optimisticMessageId,
       role: 'user',
       content,

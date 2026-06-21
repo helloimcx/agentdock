@@ -13,19 +13,16 @@ import {
   normalizeDesktopBridgeButtonOption,
 } from '../../../shared/desktop';
 import { sessionLabel } from '../../lib/session-utils';
+import type { ChatTranscriptMessage } from '../../components/chat/chat-message-state';
 
 export const ASSISTANT_REPLY_TIMEOUT_MS = 90000;
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+export interface ChatMessage extends ChatTranscriptMessage {
   toolCall?: DesktopBridgeToolCall;
-  kind?: 'final' | 'progress';
+  kind?: 'final' | 'progress' | 'system';
   bridgeKind?: DesktopBridgeEventKind;
   bridgeStatus?: DesktopBridgeStatus;
   order: number;
-  timestamp?: string;
   turnKey?: string;
   actions?: DesktopBridgeButtonOption[][];
   actionReplyCtx?: string;
