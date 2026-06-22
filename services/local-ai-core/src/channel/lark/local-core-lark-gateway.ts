@@ -737,7 +737,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   }
 
   protected buildStatusObject(state: LarkRuntimeState, _resolved: { instanceId: string }): LocalCoreLarkGatewayStatus {
-    this.options.store.expirePendingPairings();
     const resolved = this.resolveRuntimeState(state.workspaceId, state.instanceId);
     const binding = resolved.state;
     const platformKey = binding?.platformKey || channelPlatformKey('lark', resolved.instanceId);
