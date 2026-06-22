@@ -179,7 +179,9 @@ export function extractSessionCommandActionValue(payload: Record<string, unknown
   };
 }
 
-function readLarkCardAction(payload: Record<string, unknown>, expectedAction: string): { event: Record<string, unknown>; value: Record<string, unknown> } | null {
+type LarkCardActionKind = 'permission_response' | 'session_command';
+
+function readLarkCardAction(payload: Record<string, unknown>, expectedAction: LarkCardActionKind): { event: Record<string, unknown>; value: Record<string, unknown> } | null {
   const eventCandidate = (payload as Record<string, unknown>).event;
   const event = eventCandidate && typeof eventCandidate === 'object'
     ? eventCandidate as Record<string, unknown>
