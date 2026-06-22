@@ -115,7 +115,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
   }
 
   protected buildStatusObject(state: WeixinRuntimeState, resolved: { instanceId: string }): LocalCoreChannelGatewayStatus {
-    this.options.store.expirePendingPairings();
     const platformKey = state.platformKey || channelPlatformKey('weixin', resolved.instanceId);
     const pairings = this.options.store.listPendingPairings(state.workspaceId)
       .filter((row) => row.platform === platformKey && row.expires_at >= new Date().toISOString());
