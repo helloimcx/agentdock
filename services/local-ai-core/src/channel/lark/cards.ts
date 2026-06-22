@@ -138,13 +138,11 @@ export function extractCardActionMessageId(...payloads: Array<Record<string, unk
 }
 
 export function extractCardActionValue(payload: Record<string, unknown>) {
-  const event = ((payload as any)?.event && typeof (payload as any).event === 'object')
-    ? (payload as any).event as Record<string, unknown>
-    : payload;
-  const value = (event as any)?.action?.value;
-  if (!value || value.action !== 'permission_response') {
+  const action = readLarkCardAction(payload, 'permission_response');
+  if (!action) {
     return null;
   }
+  const { event, value } = action;
   const response = normalizePermissionResponse(String(value.response || '').trim()) || String(value.response || '').trim();
   const threadId = String(value.thread_id || '').trim();
   const sessionKey = String(value.session_key || '').trim();
@@ -153,7 +151,7 @@ export function extractCardActionValue(payload: Record<string, unknown>) {
   }
   return {
     event,
-    value: value as Record<string, unknown>,
+    value,
     response,
     threadId,
     sessionKey,
@@ -161,13 +159,11 @@ export function extractCardActionValue(payload: Record<string, unknown>) {
 }
 
 export function extractSessionCommandActionValue(payload: Record<string, unknown>) {
-  const event = ((payload as any)?.event && typeof (payload as any).event === 'object')
-    ? (payload as any).event as Record<string, unknown>
-    : payload;
-  const value = (event as any)?.action?.value;
-  if (!value || value.action !== 'session_command') {
+  const action = readLarkCardAction(payload, 'session_command');
+  if (!action) {
     return null;
   }
+  const { event, value } = action;
   const command = String(value.command || '').trim();
   const threadId = String(value.thread_id || '').trim();
   const sessionKey = String(value.session_key || '').trim();
@@ -176,11 +172,31 @@ export function extractSessionCommandActionValue(payload: Record<string, unknown
   }
   return {
     event,
-    value: value as Record<string, unknown>,
+    value,
     command,
     threadId,
     sessionKey,
   };
+}
+
+function readLarkCardAction(payload: Record<string, unknown>, expectedAction: string): { event: Record<string, unknown>; value: Record<string, unknown> } | null {
+  const eventCandidate = (payload as Record<string, unknown>).event;
+  const event = eventCandidate && typeof eventCandidate === 'object'
+    ? eventCandidate as Record<string, unknown>
+    : payload;
+  const actionCandidate = (event as Record<string, unknown>).action;
+  if (!actionCandidate || typeof actionCandidate !== 'object') {
+    return null;
+  }
+  const valueCandidate = (actionCandidate as Record<string, unknown>).value;
+  if (!valueCandidate || typeof valueCandidate !== 'object') {
+    return null;
+  }
+  const value = valueCandidate as Record<string, unknown>;
+  if (value.action !== expectedAction) {
+    return null;
+  }
+  return { event, value };
 }
 
 export function formatPermissionButtonLabel(button: { text: string; data: string }) {
