@@ -30,6 +30,7 @@ import { resolveInboundChannelAuthorization } from '../shared/inbound-authorizat
 import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
+import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
 import {
   collectWeixinWorkspaceBindings,
   getWeixinBufPath,
@@ -522,7 +523,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     const normalizedText = String(msg.text || '').trim().toLowerCase();
     const permissionThreadId = (
       normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
-    ) ? this.findAwaitingPermissionThreadId(msg.workspaceId, msg.chatId, msg.platformUserId, msg.platformKey) : '';
+    ) ? this.findAwaitingPermissionThreadId(msg.workspaceId, msg.chatId, msg.platformUserId, msg.platformKey || 'weixin') : '';
     if (permissionThreadId && permissionThreadId !== threadId) {
       threadId = permissionThreadId;
     }
@@ -538,7 +539,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     });
 
     // Handle slash commands
-    const slashCommand = this.parseSlashCommand(msg.text);
+    const slashCommand = parseSlashCommand(msg.text);
     const sessionCommand = await this.executeSessionCommand({
       workspaceId: msg.workspaceId,
       currentThreadId: threadId,
@@ -898,23 +899,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     if (this.processedInboundMessages.has(key)) return true;
     this.processedInboundMessages.set(key, now + PROCESSED_MESSAGE_TTL_MS);
     return false;
-  }
-
-  private findAwaitingPermissionThreadId(workspaceId: string, chatId: string, platformUserId: string, platformKey = 'weixin'): string {
-    for (const [sessionKey, route] of this.threadRouting.entries()) {
-      if (route.workspaceId !== workspaceId || route.platformKey !== platformKey || route.chatId !== chatId || route.platformUserId !== platformUserId) continue;
-      const turn = this.outboundTurns.get(sessionKey);
-      if (turn?.awaitingPermission && route.threadId) return route.threadId;
-    }
-    return '';
-  }
-
-  private parseSlashCommand(text: string): { name: string; args: string[] } | null {
-    const normalized = String(text || '').trim();
-    if (!normalized.startsWith('/')) return null;
-    const [name = '', ...args] = normalized.slice(1).split(/\s+/);
-    if (!name) return null;
-    return { name: name.trim().toLowerCase(), args };
   }
 
 
