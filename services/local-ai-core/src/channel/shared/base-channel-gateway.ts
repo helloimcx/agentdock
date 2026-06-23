@@ -66,6 +66,10 @@ export interface GatewayThreadRoute {
   threadId: string;
 }
 
+export interface GatewayTurnState {
+  awaitingPermission?: boolean;
+}
+
 function resolveRuntimeKey(workspaceId: string, instanceId?: string): string {
   return instanceId ? `${workspaceId}::${instanceId}` : workspaceId;
 }
@@ -74,7 +78,7 @@ export abstract class BaseChannelGateway<
   TRuntimeState extends GatewayRuntimeState,
   TBinding extends GatewayBinding,
   TThreadRoute extends GatewayThreadRoute,
-  TTurnState = unknown,
+  TTurnState extends GatewayTurnState = GatewayTurnState,
 > extends EventEmitter implements ChannelRuntime {
   /** Platform identifier (e.g. 'lark', 'weixin'). */
   abstract readonly platform: string;
@@ -374,6 +378,31 @@ export abstract class BaseChannelGateway<
 
   protected async executeSessionCommand(input: ChannelSessionCommandInput) {
     return this.sessionCommandRuntime.execute(input);
+  }
+
+  protected findAwaitingPermissionThreadId(
+    workspaceId: string,
+    chatId: string,
+    platformUserId: string,
+    platformKey?: string,
+  ) {
+    for (const [sessionKey, route] of this.threadRouting.entries()) {
+      if (
+        route.workspaceId !== workspaceId
+        || route.chatId !== chatId
+        || route.platformUserId !== platformUserId
+      ) {
+        continue;
+      }
+      if (platformKey !== undefined && route.platformKey !== platformKey) {
+        continue;
+      }
+      const turn = this.outboundTurns.get(sessionKey);
+      if (turn?.awaitingPermission && route.threadId) {
+        return route.threadId;
+      }
+    }
+    return '';
   }
 
   // ==================== Runtime Management ====================

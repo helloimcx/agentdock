@@ -65,6 +65,7 @@ import type {
 } from './types.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
+import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
 import {
   attachLarkWsDiagnostics,
   maskLarkAppId,
@@ -538,7 +539,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     });
     const acknowledgement = this.createTurnState(effectiveSessionKey, msg.messageId);
     await this.addAcknowledgementReaction(msg.workspaceId, msg.messageId, acknowledgement, instanceId);
-    const slashCommand = this.parseSlashCommand(msg.text);
+    const slashCommand = parseSlashCommand(msg.text);
     const sessionCommand = await this.executeSessionCommand({
       workspaceId: msg.workspaceId,
       currentThreadId: threadId,
@@ -823,38 +824,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
 
   private generatePairingCode() {
     return String(randomInt(100000, 1000000));
-  }
-
-  private findAwaitingPermissionThreadId(workspaceId: string, chatId: string, platformUserId: string) {
-    for (const [sessionKey, route] of this.threadRouting.entries()) {
-      if (
-        route.workspaceId !== workspaceId
-        || route.chatId !== chatId
-        || route.platformUserId !== platformUserId
-      ) {
-        continue;
-      }
-      const turn = this.outboundTurns.get(sessionKey);
-      if (turn?.awaitingPermission && route.threadId) {
-        return route.threadId;
-      }
-    }
-    return '';
-  }
-
-  private parseSlashCommand(text: string) {
-    const normalized = String(text || '').trim();
-    if (!normalized.startsWith('/')) {
-      return null;
-    }
-    const [name = '', ...args] = normalized.slice(1).split(/\s+/);
-    if (!name) {
-      return null;
-    }
-    return {
-      name: name.trim().toLowerCase(),
-      args,
-    };
   }
 
   private createTurnState(sessionKey: string, sourceMessageId?: string) {
