@@ -578,14 +578,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
 
 
 
-  private async resolveDefaultAgentType(workspaceId: string, threadId: string) {
-    const router = this.options.getWorkspaceRouter();
-    if (typeof router.getWorkspaceDefaultAgentType === 'function') {
-      return router.getWorkspaceDefaultAgentType(workspaceId);
-    }
-    return this.options.store.getThreadRow(threadId)?.agent_type || 'codex';
-  }
-
   // ==================== Private: Bindings ====================
 
 

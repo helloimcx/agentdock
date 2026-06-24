@@ -380,6 +380,14 @@ export abstract class BaseChannelGateway<
     return this.sessionCommandRuntime.execute(input);
   }
 
+  protected async resolveDefaultAgentType(workspaceId: string, threadId: string) {
+    const router = this.options.getWorkspaceRouter();
+    if (typeof router.getWorkspaceDefaultAgentType === 'function') {
+      return router.getWorkspaceDefaultAgentType(workspaceId);
+    }
+    return this.options.store.getThreadRow(threadId)?.agent_type || 'codex';
+  }
+
   protected findAwaitingPermissionThreadId(
     workspaceId: string,
     chatId: string,
