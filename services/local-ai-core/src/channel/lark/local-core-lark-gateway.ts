@@ -905,14 +905,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     };
   }
 
-  private async resolveDefaultAgentType(workspaceId: string, threadId: string) {
-    const router = this.options.getWorkspaceRouter();
-    if (typeof router.getWorkspaceDefaultAgentType === 'function') {
-      return router.getWorkspaceDefaultAgentType(workspaceId);
-    }
-    return this.options.store.getThreadRow(threadId)?.agent_type || 'codex';
-  }
-
   private async markPermissionCardActionHandled(
     workspaceId: string,
     instanceId: string,
