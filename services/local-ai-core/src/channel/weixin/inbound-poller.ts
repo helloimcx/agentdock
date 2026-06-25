@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { ChannelInboundContentPart } from '@cc/superai-contracts';
-import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
+import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { loadWeixinBuf, saveWeixinBuf } from './config.js';
 import {
   FILE_ITEM_TYPE,
@@ -9,7 +9,7 @@ import {
   TEXT_ITEM_TYPE,
   VOICE_ITEM_TYPE,
 } from './transport.js';
-import { formatWeixinError, waitForWeixinRetry } from './text-utils.js';
+import { waitForWeixinRetry } from './text-utils.js';
 import { createWeixinAttachmentContentPart, type WeixinDownloadedMedia } from './inbound-media.js';
 import type { WeixinRawItem, WeixinRuntimeState, WeixinWorkspaceBinding } from './types.js';
 
@@ -138,7 +138,7 @@ export async function runWeixinInboundPoller(input: {
               try {
                 return await input.downloadMediaItem(item, msgId, index, uploadsDir, binding);
               } catch (error) {
-                input.log?.(`localcore-weixin attachment download failed (${conversationId}#${index}): ${formatWeixinError(error)}`);
+                input.log?.(`localcore-weixin attachment download failed (${conversationId}#${index}): ${formatSafeError(error)}`);
                 return null;
               }
             }));
@@ -186,8 +186,8 @@ export async function runWeixinInboundPoller(input: {
         input.notifyRuntimeStateChanged();
       }
       logPollError(
-        formatWeixinError(error),
-        `localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}): ${formatWeixinError(error)}`,
+        formatSafeError(error),
+        `localcore-weixin getUpdates error for ${binding.workspaceId} (${consecutiveFailures}): ${formatSafeError(error)}`,
       );
       await waitForWeixinRetry(retryDelayMs, signal);
     }

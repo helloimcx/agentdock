@@ -14,14 +14,6 @@ export function stripWeixinHtml(html: string): string {
     .replace(/&nbsp;/g, ' ');
 }
 
-export function formatWeixinError(error: unknown): string {
-  if (error instanceof Error) {
-    const cause = (error as Error & { cause?: unknown }).cause;
-    return cause !== undefined ? `${error.message}: ${String(cause)}` : error.message;
-  }
-  return String(error);
-}
-
 export function waitForWeixinRetry(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms);

@@ -19,7 +19,7 @@ import type {
   LocalCorePairingRequest,
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
-import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
+import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
@@ -65,7 +65,6 @@ import {
   renderWeixinTurnText,
 } from './runtime-state.js';
 import {
-  formatWeixinError,
   splitTextByUtf8Bytes,
   stripWeixinHtml,
   truncateTextByUtf8Bytes,
@@ -335,7 +334,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
           turn.lastSentText = rendered;
           this.options.log?.(`localcore-weixin sent message for sessionKey=${sessionKey} type=${event.type} sent=${turn.sentCount}/${binding.last_platform_message_id ? WEIXIN_CONTEXT_SEND_LIMIT : 'unlimited'}`);
         } catch (error) {
-          this.options.log?.(`localcore-weixin send failed for sessionKey=${sessionKey}: ${formatWeixinError(error)}`);
+          this.options.log?.(`localcore-weixin send failed for sessionKey=${sessionKey}: ${formatSafeError(error)}`);
         }
       })
       .finally(() => {
