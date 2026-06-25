@@ -13,6 +13,7 @@ import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
 import { parseDurationMs, parseMonitorCondition } from './monitor-cli-parsers.js';
+import { formatSafeError } from '../kernel/local-core-errors.js';
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -96,7 +97,7 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
         return 2;
     }
   } catch (error) {
-    io.stderr.write(`${formatError(error)}\n`);
+    io.stderr.write(`${formatSafeError(error)}\n`);
     return 1;
   }
 }
@@ -375,7 +376,7 @@ async function request<T>(baseUrl: string, method: string, path: string, body?: 
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (error) {
-    throw new Error(`Local AI Core is unavailable at ${baseUrl}: ${formatError(error)}`);
+    throw new Error(`Local AI Core is unavailable at ${baseUrl}: ${formatSafeError(error)}`);
   }
   const payload = await response.json() as JsonEnvelope<T>;
   if (!response.ok || !payload.ok) {
@@ -586,10 +587,6 @@ function monitorMatchesCliContext(monitor: AutomationMonitor, context: CliContex
     createdAt: monitor.createdAt,
     updatedAt: monitor.updatedAt,
   }, context);
-}
-
-function formatError(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 void (async () => {

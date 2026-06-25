@@ -187,6 +187,14 @@ export function formatLogError(info: LocalCoreErrorInfo) {
   return `${info.code}: ${message}${suffix}`;
 }
 
+export function formatSafeError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = (error as Error & { cause?: unknown }).cause;
+    return cause !== undefined ? `${error.message}: ${cause instanceof Error ? cause.message : coerceErrorMessage(cause)}` : error.message;
+  }
+  return coerceErrorMessage(error);
+}
+
 export function errorInfoToHttpBody(info: LocalCoreErrorInfo) {
   return {
     ok: false,
