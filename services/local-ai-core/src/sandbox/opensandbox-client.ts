@@ -1,4 +1,4 @@
-import { LocalCoreError } from '../kernel/local-core-errors.js';
+import { LocalCoreError, formatSafeError } from '../kernel/local-core-errors.js';
 
 export type OpenSandboxVolume = {
   host: string;
@@ -117,8 +117,9 @@ export class OpenSandboxClient {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
-      throw new LocalCoreError('sandbox_unavailable', `OpenSandbox request failed: ${error instanceof Error ? error.message : String(error)}`, {
-        cause: error instanceof Error ? error.message : String(error),
+      const message = formatSafeError(error);
+      throw new LocalCoreError('sandbox_unavailable', `OpenSandbox request failed: ${message}`, {
+        cause: message,
         details: { method, path, serverUrl: this.options.serverUrl },
       });
     }
