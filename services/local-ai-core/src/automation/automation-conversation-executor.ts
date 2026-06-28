@@ -3,9 +3,9 @@ import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
-import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
+import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
+import { waitForRunCompletion } from '../scheduler/run-polling.js';
 
-const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'interrupted']);
 const MONITOR_RUN_PERMISSION_MODE = 'bypassPermissions';
 
 export type AutomationConversationExecutionResult = {
@@ -52,9 +52,9 @@ export class AutomationConversationExecutor {
     try {
       const sendResult = await workspaceRouter.sendThreadMessage(threadId, prompt, {
         permissionMode: MONITOR_RUN_PERMISSION_MODE,
-        runtimeEnv: this.buildRuntimeEnv(monitor),
+        runtimeEnv: buildPlatformRuntimeEnv(monitor.platform, monitor.route),
       });
-      await this.waitForRun(sendResult.runId, timeoutMs);
+      await waitForRunCompletion(this.options.store, sendResult.runId, timeoutMs, 'Monitor');
       const thread = await workspaceRouter.getThread(threadId);
       const replyText = [...thread.messages]
         .reverse()
@@ -108,41 +108,6 @@ export class AutomationConversationExecutor {
     } catch {
       return false;
     }
-  }
-
-  private buildRuntimeEnv(monitor: AutomationMonitor) {
-    const basePlatform = getChannelPlatformBase(monitor.platform);
-    const env: Record<string, string> = {};
-    if (basePlatform && basePlatform !== 'local') {
-      env.LOCAL_AI_PLATFORM = basePlatform;
-      env.LOCAL_AI_ROUTE_TYPE = routeTypeForPlatform(monitor.platform);
-    }
-    const instanceId = monitor.route.instanceId || getChannelPlatformInstanceId(monitor.platform);
-    if (instanceId) {
-      env.LOCAL_AI_PLATFORM_INSTANCE_ID = instanceId;
-    }
-    if (monitor.route.channelId) {
-      env.LOCAL_AI_CHAT_ID = monitor.route.channelId;
-    }
-    if (monitor.route.participantId) {
-      env.LOCAL_AI_PLATFORM_USER_ID = monitor.route.participantId;
-    }
-    return env;
-  }
-
-  private async waitForRun(runId: string, timeoutMs: number) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
-      const run = this.options.store.getRun(runId);
-      if (run && TERMINAL_RUN_STATES.has(run.status)) {
-        if (run.status !== 'completed') {
-          throw new Error(`Monitor run finished with status ${run.status}`);
-        }
-        return run;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    throw new Error(`Timed out waiting for monitor run ${runId}`);
   }
 
 }
