@@ -43,6 +43,26 @@ export function routeTypeForPlatform(platform: string) {
   return base === 'lark' || base === 'weixin' ? 'channel.chat' : base;
 }
 
+export function buildPlatformRuntimeEnv(platform: string, route: { instanceId?: string; channelId?: string; participantId?: string }) {
+  const basePlatform = getChannelPlatformBase(platform);
+  const env: Record<string, string> = {};
+  if (basePlatform && basePlatform !== 'local') {
+    env.LOCAL_AI_PLATFORM = basePlatform;
+    env.LOCAL_AI_ROUTE_TYPE = routeTypeForPlatform(platform);
+  }
+  const instanceId = route.instanceId || getChannelPlatformInstanceId(platform);
+  if (instanceId) {
+    env.LOCAL_AI_PLATFORM_INSTANCE_ID = instanceId;
+  }
+  if (route.channelId) {
+    env.LOCAL_AI_CHAT_ID = route.channelId;
+  }
+  if (route.participantId) {
+    env.LOCAL_AI_PLATFORM_USER_ID = route.participantId;
+  }
+  return env;
+}
+
 export function routeFromPlatformThreadBinding(binding: PlatformThreadBindingLike): ScheduledJobRoute {
   return {
     type: routeTypeForPlatform(binding.platform),
