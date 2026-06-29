@@ -25,7 +25,7 @@ export abstract class BaseChannelScheduleAdapter implements SchedulerExecutorRun
     });
   }
 
-  abstract get deliveryTargets(): string[];
+  abstract readonly deliveryTargets: string[];
   protected abstract readonly platformBase: string;
   protected abstract readonly supportedRouteTypes: readonly string[];
 

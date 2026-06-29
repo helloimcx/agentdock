@@ -7,10 +7,7 @@ import { createLarkExecutionPolicy } from './lark-execution-policies.js';
 export class LarkScheduleAdapter extends BaseChannelScheduleAdapter {
   protected readonly platformBase = 'lark';
   protected readonly supportedRouteTypes = ['channel.chat', 'lark_chat'] as const;
-
-  get deliveryTargets() {
-    return ['lark'];
-  }
+  readonly deliveryTargets = ['lark'];
 
   protected createPolicy(
     job: ScheduledJob,

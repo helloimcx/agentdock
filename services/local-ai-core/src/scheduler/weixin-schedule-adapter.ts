@@ -7,10 +7,7 @@ import { createWeixinExecutionPolicy } from './weixin-execution-policies.js';
 export class WeixinScheduleAdapter extends BaseChannelScheduleAdapter {
   protected readonly platformBase = 'weixin';
   protected readonly supportedRouteTypes = ['channel.chat', 'weixin_chat'] as const;
-
-  get deliveryTargets() {
-    return ['weixin'];
-  }
+  readonly deliveryTargets = ['weixin'];
 
   protected createPolicy(
     job: ScheduledJob,
