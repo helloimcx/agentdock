@@ -1,5 +1,6 @@
 import type { DesktopBridgeEvent } from '@cc/superai-contracts';
 import type { WeixinTurnState } from './types.js';
+import { pushUniqueLine, resolveBridgeEventKind } from '../shared/bridge-event-helpers.js';
 
 function renderBridgeContent(event: DesktopBridgeEvent): string {
   const toolCall = event.toolCall;
@@ -12,15 +13,8 @@ function renderBridgeContent(event: DesktopBridgeEvent): string {
   return [name, status].filter(Boolean).join(' - ');
 }
 
-function bridgeEventKind(event: DesktopBridgeEvent) {
-  return event.bridgeKind || (event.type === 'status' ? 'status' : 'assistant');
-}
-
 function pushUnique(target: string[], value: string) {
-  const normalized = value.trim();
-  if (!normalized || target[target.length - 1] === normalized) return;
-  target.push(normalized);
-  if (target.length > 8) target.splice(0, target.length - 8);
+  pushUniqueLine(target, value, 8);
 }
 
 function flushPendingThought(turn: WeixinTurnState) {
@@ -58,7 +52,7 @@ export function getOrCreateWeixinTurnState(turns: Map<string, WeixinTurnState>, 
 
 export function consumeWeixinBridgeEvent(turn: WeixinTurnState, event: DesktopBridgeEvent) {
   const content = renderBridgeContent(event);
-  const bridgeKind = bridgeEventKind(event);
+  const bridgeKind = resolveBridgeEventKind(event);
   if (event.type === 'typing_start') {
     Object.assign(turn, {
       processing: true,
@@ -138,7 +132,7 @@ export function renderWeixinTurnText(turn: WeixinTurnState): string {
 export function isTerminalWeixinBridgeMessage(event: DesktopBridgeEvent, rendered: string): boolean {
   if (event.type === 'buttons') return true;
   if (event.type !== 'reply') return false;
-  const kind = bridgeEventKind(event);
+  const kind = resolveBridgeEventKind(event);
   if (kind === 'tool' || kind === 'thought' || kind === 'plan' || kind === 'status') return false;
   return Boolean(rendered.trim());
 }
