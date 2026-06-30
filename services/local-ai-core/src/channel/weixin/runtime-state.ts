@@ -13,10 +13,6 @@ function renderBridgeContent(event: DesktopBridgeEvent): string {
   return [name, status].filter(Boolean).join(' - ');
 }
 
-function bridgeEventKind(event: DesktopBridgeEvent) {
-  return resolveBridgeEventKind(event);
-}
-
 function pushUnique(target: string[], value: string) {
   pushUniqueLine(target, value, 8);
 }
@@ -56,7 +52,7 @@ export function getOrCreateWeixinTurnState(turns: Map<string, WeixinTurnState>, 
 
 export function consumeWeixinBridgeEvent(turn: WeixinTurnState, event: DesktopBridgeEvent) {
   const content = renderBridgeContent(event);
-  const bridgeKind = bridgeEventKind(event);
+  const bridgeKind = resolveBridgeEventKind(event);
   if (event.type === 'typing_start') {
     Object.assign(turn, {
       processing: true,
@@ -136,7 +132,7 @@ export function renderWeixinTurnText(turn: WeixinTurnState): string {
 export function isTerminalWeixinBridgeMessage(event: DesktopBridgeEvent, rendered: string): boolean {
   if (event.type === 'buttons') return true;
   if (event.type !== 'reply') return false;
-  const kind = bridgeEventKind(event);
+  const kind = resolveBridgeEventKind(event);
   if (kind === 'tool' || kind === 'thought' || kind === 'plan' || kind === 'status') return false;
   return Boolean(rendered.trim());
 }
