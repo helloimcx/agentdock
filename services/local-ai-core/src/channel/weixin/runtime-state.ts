@@ -1,5 +1,6 @@
 import type { DesktopBridgeEvent } from '@cc/superai-contracts';
 import type { WeixinTurnState } from './types.js';
+import { pushUniqueLine, resolveBridgeEventKind } from '../shared/bridge-event-helpers.js';
 
 function renderBridgeContent(event: DesktopBridgeEvent): string {
   const toolCall = event.toolCall;
@@ -13,14 +14,11 @@ function renderBridgeContent(event: DesktopBridgeEvent): string {
 }
 
 function bridgeEventKind(event: DesktopBridgeEvent) {
-  return event.bridgeKind || (event.type === 'status' ? 'status' : 'assistant');
+  return resolveBridgeEventKind(event);
 }
 
 function pushUnique(target: string[], value: string) {
-  const normalized = value.trim();
-  if (!normalized || target[target.length - 1] === normalized) return;
-  target.push(normalized);
-  if (target.length > 8) target.splice(0, target.length - 8);
+  pushUniqueLine(target, value, 8);
 }
 
 function flushPendingThought(turn: WeixinTurnState) {

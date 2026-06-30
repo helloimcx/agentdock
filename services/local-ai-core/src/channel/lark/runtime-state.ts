@@ -1,5 +1,6 @@
 import type { DesktopBridgeEvent } from '@cc/superai-contracts';
 import type { LarkOutboundRender, LarkTurnState } from './types.js';
+import { pushUniqueLine, resolveBridgeEventKind } from '../shared/bridge-event-helpers.js';
 
 export function createLarkTurnState(sessionKey: string, sourceMessageId?: string) {
   const turn: LarkTurnState = {
@@ -250,13 +251,6 @@ function isThoughtBridgeEvent(event: DesktopBridgeEvent) {
   return kind === 'thought' || kind === 'plan';
 }
 
-function resolveBridgeEventKind(event: DesktopBridgeEvent) {
-  if (event.bridgeKind) {
-    return event.bridgeKind;
-  }
-  return event.type === 'status' ? 'status' : 'assistant';
-}
-
 function renderProcessText(kind: 'thought' | 'plan', content: string) {
   const text = content.trim();
   return kind === 'plan' ? `计划\n${text}` : text;
@@ -290,15 +284,5 @@ function fencedCode(value: string, language = '') {
 }
 
 function pushUniqueLarkTurnLine(target: string[], value: string) {
-  const normalized = value.trim();
-  if (!normalized) {
-    return;
-  }
-  if (target[target.length - 1] === normalized) {
-    return;
-  }
-  target.push(normalized);
-  if (target.length > 6) {
-    target.splice(0, target.length - 6);
-  }
+  pushUniqueLine(target, value, 6);
 }
