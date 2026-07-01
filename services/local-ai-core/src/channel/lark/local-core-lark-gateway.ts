@@ -21,7 +21,7 @@ import type {
   LocalCorePairingRequest,
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
-import { LocalCoreError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
+import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
@@ -324,133 +324,124 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       this.options.log?.(`localcore-lark bridge event ignored type=${event.type}`);
       return;
     }
-    const previous = this.outboundEventChains.get(sessionKey) || Promise.resolve();
-    const current = previous
-      .catch(() => undefined)
-      .then(async () => {
-        const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
-        if (!binding) {
-          this.options.log?.(`localcore-lark bridge binding disappeared for sessionKey=${sessionKey}`);
-          return;
+    const current = this.scheduleOutboundChain(sessionKey, async () => {
+      const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
+      if (!binding) {
+        this.options.log?.(`localcore-lark bridge binding disappeared for sessionKey=${sessionKey}`);
+        return;
+      }
+      const bridgeThreadId = route.threadId || binding.thread_id;
+      if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) {
+        this.options.log?.(`localcore-lark bridge muted for thread=${bridgeThreadId} type=${event.type}`);
+        return;
+      }
+      const turn = this.getOrCreateTurnState(sessionKey, binding.last_platform_message_id || undefined);
+      if (event.replyCtx) {
+        turn.replyCtx = event.replyCtx;
+      }
+      try {
+        if (event.type === 'typing_start') {
+          turn.messageId = undefined;
         }
-        const bridgeThreadId = route.threadId || binding.thread_id;
-        if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) {
-          this.options.log?.(`localcore-lark bridge muted for thread=${bridgeThreadId} type=${event.type}`);
-          return;
-        }
-        const turn = this.getOrCreateTurnState(sessionKey, binding.last_platform_message_id || undefined);
-        if (event.replyCtx) {
-          turn.replyCtx = event.replyCtx;
-        }
-        try {
-          if (event.type === 'typing_start') {
-            turn.messageId = undefined;
+        if (event.type === 'typing_start' && (turn.permissionMessageId || turn.awaitingPermission)) {
+          if (turn.permissionMessageId) {
+            await this.outboundTransport.patchTextCard(
+              state,
+              turn.permissionMessageId,
+              '**工具确认已处理**\n\n继续生成中...',
+              [],
+              sessionKey,
+              bridgeThreadId,
+            );
           }
-          if (event.type === 'typing_start' && (turn.permissionMessageId || turn.awaitingPermission)) {
-            if (turn.permissionMessageId) {
-              await this.outboundTransport.patchTextCard(
+          turn.permissionMessageId = undefined;
+          turn.awaitingPermission = false;
+          // Start a fresh assistant message after permission approval so the
+          // final answer appears after the confirmation flow in chat order.
+          turn.messageId = undefined;
+          this.options.store.clearPlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId);
+        }
+        if (event.type === 'buttons') {
+          const permissionCard = renderPermissionCard(turn, event, Boolean(state.cardActionsEnabled));
+          if (permissionCard.text || permissionCard.buttonRows.length > 0) {
+            if (!turn.permissionMessageId) {
+              const createdId = await this.outboundTransport.sendTextAsCard(
                 state,
-                turn.permissionMessageId,
-                '**工具确认已处理**\n\n继续生成中...',
-                [],
+                route.chatId,
+                permissionCard.text,
+                permissionCard.buttonRows,
                 sessionKey,
                 bridgeThreadId,
               );
-            }
-            turn.permissionMessageId = undefined;
-            turn.awaitingPermission = false;
-            // Start a fresh assistant message after permission approval so the
-            // final answer appears after the confirmation flow in chat order.
-            turn.messageId = undefined;
-            this.options.store.clearPlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId);
-          }
-          if (event.type === 'buttons') {
-            const permissionCard = renderPermissionCard(turn, event, Boolean(state.cardActionsEnabled));
-            if (permissionCard.text || permissionCard.buttonRows.length > 0) {
-              if (!turn.permissionMessageId) {
-                const createdId = await this.outboundTransport.sendTextAsCard(
-                  state,
-                  route.chatId,
-                  permissionCard.text,
-                  permissionCard.buttonRows,
-                  sessionKey,
-                  bridgeThreadId,
-                );
-                if (createdId) {
-                  turn.permissionMessageId = createdId;
-                  this.options.log?.(`localcore-lark sent permission card ${createdId} for sessionKey=${sessionKey}`);
-                }
-              } else {
-                await this.outboundTransport.patchTextCard(
-                  state,
-                  turn.permissionMessageId,
-                  permissionCard.text,
-                  permissionCard.buttonRows,
-                  sessionKey,
-                  bridgeThreadId,
-                );
-                this.options.log?.(`localcore-lark patched permission card ${turn.permissionMessageId} for sessionKey=${sessionKey}`);
+              if (createdId) {
+                turn.permissionMessageId = createdId;
+                this.options.log?.(`localcore-lark sent permission card ${createdId} for sessionKey=${sessionKey}`);
               }
+            } else {
+              await this.outboundTransport.patchTextCard(
+                state,
+                turn.permissionMessageId,
+                permissionCard.text,
+                permissionCard.buttonRows,
+                sessionKey,
+                bridgeThreadId,
+              );
+              this.options.log?.(`localcore-lark patched permission card ${turn.permissionMessageId} for sessionKey=${sessionKey}`);
             }
-            this.consumeBridgeEvent(turn, event);
-            return;
           }
           this.consumeBridgeEvent(turn, event);
-          const renderedMessages = renderLarkBridgeEventMessages(turn, event);
-          for (const renderedMessage of renderedMessages) {
-            if (!renderedMessage.text && renderedMessage.buttonRows.length === 0) {
-              this.logEmptyRender(sessionKey, event.type);
-              continue;
-            }
-            const existingMessageId = getLarkRenderedMessageId(turn, renderedMessage);
-            const shouldThrottle =
-              event.type === 'update_message' &&
-              existingMessageId &&
-              Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
-                renderedMessage.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
-              );
-            if (shouldThrottle) {
-              continue;
-            }
-            if (existingMessageId && renderedMessage.updatePolicy === 'create-only') {
-              continue;
-            }
-            if (!existingMessageId) {
-              const sendAsPlainMessage = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0;
-              const sentMessage = sendAsPlainMessage
-                ? await this.sendTextAsMessage(state, route.chatId, renderedMessage.text)
-                : {
-                    messageId: await this.outboundTransport.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId),
-                    renderKind: 'card',
-                  };
-              const createdId = sentMessage.messageId;
-              if (createdId) {
-                setLarkRenderedMessageId(turn, renderedMessage, createdId);
-                if (renderedMessage.isFinal) {
-                  this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
-                }
-                this.options.log?.(`localcore-lark sent new ${sentMessage.renderKind} message ${createdId} for sessionKey=${sessionKey}`);
-              }
-              continue;
-            }
-            if (renderedMessage.delivery === 'message') {
-              continue;
-            }
-            await this.outboundTransport.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
-            turn.lastPatchedAt = Date.now();
-            turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
-            this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
+          return;
+        }
+        this.consumeBridgeEvent(turn, event);
+        const renderedMessages = renderLarkBridgeEventMessages(turn, event);
+        for (const renderedMessage of renderedMessages) {
+          if (!renderedMessage.text && renderedMessage.buttonRows.length === 0) {
+            this.logEmptyRender(sessionKey, event.type);
+            continue;
           }
-        } catch (error) {
-          this.options.log?.(`localcore-lark bridge send failed for sessionKey=${sessionKey}: ${error instanceof Error ? error.message : String(error)}`);
+          const existingMessageId = getLarkRenderedMessageId(turn, renderedMessage);
+          const shouldThrottle =
+            event.type === 'update_message' &&
+            existingMessageId &&
+            Date.now() - (turn.lastPatchedAtByMessageId[existingMessageId] || 0) < (
+              renderedMessage.isFinal ? LARK_FINAL_PATCH_INTERVAL_MS : LARK_PROGRESS_PATCH_INTERVAL_MS
+            );
+          if (shouldThrottle) {
+            continue;
+          }
+          if (existingMessageId && renderedMessage.updatePolicy === 'create-only') {
+            continue;
+          }
+          if (!existingMessageId) {
+            const sendAsPlainMessage = renderedMessage.delivery === 'message' && renderedMessage.buttonRows.length === 0;
+            const sentMessage = sendAsPlainMessage
+              ? await this.sendTextAsMessage(state, route.chatId, renderedMessage.text)
+              : {
+                  messageId: await this.outboundTransport.sendTextAsCard(state, route.chatId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId),
+                  renderKind: 'card',
+                };
+            const createdId = sentMessage.messageId;
+            if (createdId) {
+              setLarkRenderedMessageId(turn, renderedMessage, createdId);
+              if (renderedMessage.isFinal) {
+                this.options.store.updatePlatformThreadMessageId(route.workspaceId, route.chatId, route.platformUserId, createdId, routePlatformKey);
+              }
+              this.options.log?.(`localcore-lark sent new ${sentMessage.renderKind} message ${createdId} for sessionKey=${sessionKey}`);
+            }
+            continue;
+          }
+          if (renderedMessage.delivery === 'message') {
+            continue;
+          }
+          await this.outboundTransport.patchTextCard(state, existingMessageId, renderedMessage.text, renderedMessage.buttonRows, sessionKey, bridgeThreadId);
+          turn.lastPatchedAt = Date.now();
+          turn.lastPatchedAtByMessageId[existingMessageId] = turn.lastPatchedAt;
+          this.options.log?.(`localcore-lark patched card message ${existingMessageId} for sessionKey=${sessionKey}`);
         }
-      })
-      .finally(() => {
-        if (this.outboundEventChains.get(sessionKey) === current) {
-          this.outboundEventChains.delete(sessionKey);
-        }
-      });
-    this.outboundEventChains.set(sessionKey, current);
+      } catch (error) {
+        this.options.log?.(`localcore-lark bridge send failed for sessionKey=${sessionKey}: ${formatSafeError(error)}`);
+      }
+    });
     await current;
   }
 

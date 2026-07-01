@@ -466,6 +466,20 @@ export abstract class BaseChannelGateway<
     });
   }
 
+  protected scheduleOutboundChain(sessionKey: string, work: () => Promise<void>): Promise<void> {
+    const previous = this.outboundEventChains.get(sessionKey) || Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(work)
+      .finally(() => {
+        if (this.outboundEventChains.get(sessionKey) === current) {
+          this.outboundEventChains.delete(sessionKey);
+        }
+      });
+    this.outboundEventChains.set(sessionKey, current);
+    return current;
+  }
+
   protected clearRuntimeError(state: TRuntimeState) {
     state.lastError = undefined;
     state.lastErrorInfo = undefined;
