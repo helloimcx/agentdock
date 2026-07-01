@@ -294,55 +294,46 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       return;
     }
 
-    const previous = this.outboundEventChains.get(sessionKey) || Promise.resolve();
-    const current = previous
-      .catch(() => undefined)
-      .then(async () => {
-        const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
-        if (!binding) return;
-        const bridgeThreadId = route.threadId || binding.thread_id;
-        if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
+    const current = this.scheduleOutboundChain(sessionKey, async () => {
+      const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
+      if (!binding) return;
+      const bridgeThreadId = route.threadId || binding.thread_id;
+      if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
 
-        const turn = getOrCreateWeixinTurnState(this.outboundTurns, sessionKey);
-        if (event.replyCtx) {
-          // WeChat doesn't support reply context; ignore
-        }
-        consumeWeixinBridgeEvent(turn, event);
-        if (event.type !== 'reply' && event.type !== 'buttons' && event.type !== 'status') return;
+      const turn = getOrCreateWeixinTurnState(this.outboundTurns, sessionKey);
+      if (event.replyCtx) {
+        // WeChat doesn't support reply context; ignore
+      }
+      consumeWeixinBridgeEvent(turn, event);
+      if (event.type !== 'reply' && event.type !== 'buttons' && event.type !== 'status') return;
 
-        const rendered = renderWeixinTurnText(turn);
-        if (!rendered) return;
-        if (rendered === turn.lastSentText) return;
-        const terminalMessage = isTerminalWeixinBridgeMessage(event, rendered);
-        if (binding.last_platform_message_id && !terminalMessage && turn.sentCount >= WEIXIN_PROGRESS_SEND_BUDGET) {
-          turn.foldedProgressCount += 1;
-          this.options.log?.(`localcore-weixin folded progress for sessionKey=${sessionKey}: sent=${turn.sentCount} folded=${turn.foldedProgressCount}`);
-          return;
-        }
-        if (binding.last_platform_message_id && terminalMessage && turn.sentCount >= WEIXIN_CONTEXT_SEND_LIMIT) {
-          this.options.log?.(`localcore-weixin skipped terminal message after context budget exhausted for sessionKey=${sessionKey}: sent=${turn.sentCount}`);
-          return;
-        }
-        const outbound = terminalMessage && turn.foldedProgressCount > 0
-          ? `（已省略 ${turn.foldedProgressCount} 条过程消息，避免超过微信每轮 10 条限制）\n\n${rendered}`
-          : rendered;
-        try {
-          await this.sendTextMessage(state, route.chatId, outbound, binding.last_platform_message_id || undefined);
-          turn.sentCount += 1;
-          if (terminalMessage) turn.foldedProgressCount = 0;
-          turn.lastSentAt = Date.now();
-          turn.lastSentText = rendered;
-          this.options.log?.(`localcore-weixin sent message for sessionKey=${sessionKey} type=${event.type} sent=${turn.sentCount}/${binding.last_platform_message_id ? WEIXIN_CONTEXT_SEND_LIMIT : 'unlimited'}`);
-        } catch (error) {
-          this.options.log?.(`localcore-weixin send failed for sessionKey=${sessionKey}: ${formatSafeError(error)}`);
-        }
-      })
-      .finally(() => {
-        if (this.outboundEventChains.get(sessionKey) === current) {
-          this.outboundEventChains.delete(sessionKey);
-        }
-      });
-    this.outboundEventChains.set(sessionKey, current);
+      const rendered = renderWeixinTurnText(turn);
+      if (!rendered) return;
+      if (rendered === turn.lastSentText) return;
+      const terminalMessage = isTerminalWeixinBridgeMessage(event, rendered);
+      if (binding.last_platform_message_id && !terminalMessage && turn.sentCount >= WEIXIN_PROGRESS_SEND_BUDGET) {
+        turn.foldedProgressCount += 1;
+        this.options.log?.(`localcore-weixin folded progress for sessionKey=${sessionKey}: sent=${turn.sentCount} folded=${turn.foldedProgressCount}`);
+        return;
+      }
+      if (binding.last_platform_message_id && terminalMessage && turn.sentCount >= WEIXIN_CONTEXT_SEND_LIMIT) {
+        this.options.log?.(`localcore-weixin skipped terminal message after context budget exhausted for sessionKey=${sessionKey}: sent=${turn.sentCount}`);
+        return;
+      }
+      const outbound = terminalMessage && turn.foldedProgressCount > 0
+        ? `（已省略 ${turn.foldedProgressCount} 条过程消息，避免超过微信每轮 10 条限制）\n\n${rendered}`
+        : rendered;
+      try {
+        await this.sendTextMessage(state, route.chatId, outbound, binding.last_platform_message_id || undefined);
+        turn.sentCount += 1;
+        if (terminalMessage) turn.foldedProgressCount = 0;
+        turn.lastSentAt = Date.now();
+        turn.lastSentText = rendered;
+        this.options.log?.(`localcore-weixin sent message for sessionKey=${sessionKey} type=${event.type} sent=${turn.sentCount}/${binding.last_platform_message_id ? WEIXIN_CONTEXT_SEND_LIMIT : 'unlimited'}`);
+      } catch (error) {
+        this.options.log?.(`localcore-weixin send failed for sessionKey=${sessionKey}: ${formatSafeError(error)}`);
+      }
+    });
     await current;
   }
 
