@@ -5,6 +5,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
 import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
 import { waitForRunCompletion } from '../scheduler/run-polling.js';
+import { threadExists } from '../scheduler/thread-resolution.js';
 
 const MONITOR_RUN_PERMISSION_MODE = 'bypassPermissions';
 
@@ -82,10 +83,10 @@ export class AutomationConversationExecutor {
         monitor.route.participantId || '',
         monitor.platform,
       );
-      if (binding?.thread_id && await this.threadExists(binding.thread_id)) {
+      if (binding?.thread_id && await threadExists(workspaceRouter, binding.thread_id)) {
         return binding.thread_id;
       }
-      if (monitor.route.threadId && await this.threadExists(monitor.route.threadId)) {
+      if (monitor.route.threadId && await threadExists(workspaceRouter, monitor.route.threadId)) {
         return monitor.route.threadId;
       }
     }
@@ -99,15 +100,6 @@ export class AutomationConversationExecutor {
     }
     const created = await workspaceRouter.createThread(monitor.workspaceId, title);
     return created.id;
-  }
-
-  private async threadExists(threadId: string) {
-    try {
-      await this.options.getWorkspaceRouter().getThread(threadId);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
 }

@@ -4,6 +4,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
+import { threadExists } from './thread-resolution.js';
 
 type LocalScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -51,7 +52,7 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
 
   private async resolveThread(job: ScheduledJob) {
     const workspaceRouter = this.options.getWorkspaceRouter();
-    if (job.route.threadId && await this.threadExists(job.route.threadId)) {
+    if (job.route.threadId && await threadExists(workspaceRouter, job.route.threadId)) {
       return job.route.threadId;
     }
     const title = `[Scheduled] ${job.description || job.id}`;
@@ -62,15 +63,6 @@ export class LocalScheduleAdapter implements SchedulerExecutorRuntime {
     }
     const created = await workspaceRouter.createThread(job.workspaceId, title);
     return created.id;
-  }
-
-  private async threadExists(threadId: string) {
-    try {
-      await this.options.getWorkspaceRouter().getThread(threadId);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
 }
