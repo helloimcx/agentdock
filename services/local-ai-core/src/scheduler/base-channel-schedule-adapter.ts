@@ -7,6 +7,7 @@ import type { ChannelExecutionPolicyOptions } from './channel-execution-policy.j
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 import { platformMatches } from './scheduled-job-route.js';
+import { threadExists } from './thread-resolution.js';
 
 export type BaseChannelScheduleAdapterOptions = {
   store: LocalCoreAcpStore;
@@ -69,10 +70,10 @@ export abstract class BaseChannelScheduleAdapter implements SchedulerExecutorRun
     const channelId = route.channelId;
     const participantId = route.participantId || '';
     const binding = this.options.store.getPlatformThreadBinding(job.workspaceId, channelId, participantId, job.platform);
-    if (binding?.thread_id && await this.threadExists(binding.thread_id)) {
+    if (binding?.thread_id && await threadExists(workspaceRouter, binding.thread_id)) {
       return binding.thread_id;
     }
-    if (route.threadId && await this.threadExists(route.threadId)) {
+    if (route.threadId && await threadExists(workspaceRouter, route.threadId)) {
       return route.threadId;
     }
     const thread = await workspaceRouter.createThread(
@@ -95,15 +96,6 @@ export abstract class BaseChannelScheduleAdapter implements SchedulerExecutorRun
       this.options.store.updateAuthorizedUserThread(job.workspaceId, participantId, thread.id, job.platform);
     }
     return thread.id;
-  }
-
-  private async threadExists(threadId: string) {
-    try {
-      await this.options.getWorkspaceRouter().getThread(threadId);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   protected preferredAgentFor(job: ScheduledJob): string {
