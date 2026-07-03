@@ -61,17 +61,9 @@ export class LarkOutboundTransport {
     sessionKey?: string,
     threadId?: string,
   ) {
-    const startedAt = Date.now();
-    const response = await state.client.im.message.create({
-      params: { receive_id_type: resolveReceiveIdType(chatId) },
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
-      },
-    });
-    this.log?.(`localcore-lark card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
-    return String(response?.data?.message_id || '').trim();
+    return this.timed('card create', '', text, () =>
+      this.createMessage(state, chatId, 'interactive', buildInteractiveCard(text, buttonRows, sessionKey, threadId)),
+    );
   }
 
   async sendSessionCommandCard(
@@ -82,33 +74,21 @@ export class LarkOutboundTransport {
     sessionKey?: string,
     threadId?: string,
   ) {
-    const startedAt = Date.now();
-    const response = await state.client.im.message.create({
-      params: { receive_id_type: resolveReceiveIdType(chatId) },
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: JSON.stringify(buildSessionCommandCard(text, actionRows, sessionKey, threadId)),
-      },
-    });
-    this.log?.(`localcore-lark session card create took ${Date.now() - startedAt}ms textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
-    return String(response?.data?.message_id || '').trim();
+    return this.timed('session card create', '', text, () =>
+      this.createMessage(state, chatId, 'interactive', buildSessionCommandCard(text, actionRows, sessionKey, threadId)),
+    );
   }
 
   async sendTextAsMessage(state: LarkRuntimeState, chatId: string, text: string) {
-    const startedAt = Date.now();
     const rendered = renderLarkTextMessage(text);
-    const response = await state.client.im.message.create({
-      params: { receive_id_type: resolveReceiveIdType(chatId) },
-      data: {
-        receive_id: chatId,
-        msg_type: rendered.msgType,
-        content: JSON.stringify(rendered.content),
-      },
-    });
-    this.log?.(`localcore-lark ${rendered.renderKind} create took ${Date.now() - startedAt}ms msgType=${rendered.msgType} reason=${rendered.reason} tableCount=${rendered.tableCount} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    const messageId = await this.timed(
+      `${rendered.renderKind} create`,
+      `msgType=${rendered.msgType} reason=${rendered.reason} tableCount=${rendered.tableCount}`,
+      text,
+      () => this.createMessage(state, chatId, rendered.msgType, rendered.content),
+    );
     return {
-      messageId: String(response?.data?.message_id || '').trim(),
+      messageId,
       renderKind: rendered.renderKind,
       msgType: rendered.msgType,
     };
@@ -122,12 +102,31 @@ export class LarkOutboundTransport {
     sessionKey?: string,
     threadId?: string,
   ) {
-    const startedAt = Date.now();
-    await state.client.im.message.patch({
-      path: { message_id: messageId },
-      data: { content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)) },
+    await this.timed('card patch', `message=${messageId}`, text, async () => {
+      await state.client.im.message.patch({
+        path: { message_id: messageId },
+        data: { content: JSON.stringify(buildInteractiveCard(text, buttonRows, sessionKey, threadId)) },
+      });
     });
-    this.log?.(`localcore-lark card patch took ${Date.now() - startedAt}ms message=${messageId} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+  }
+
+  private async createMessage(state: LarkRuntimeState, chatId: string, msgType: string, content: unknown) {
+    const response = await state.client.im.message.create({
+      params: { receive_id_type: resolveReceiveIdType(chatId) },
+      data: {
+        receive_id: chatId,
+        msg_type: msgType,
+        content: JSON.stringify(content),
+      },
+    });
+    return String(response?.data?.message_id || '').trim();
+  }
+
+  private async timed<T>(label: string, fields: string, text: string, action: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+    const result = await action();
+    this.log?.(`localcore-lark ${label} took ${Date.now() - startedAt}ms${fields ? ` ${fields}` : ''} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
+    return result;
   }
 }
 
