@@ -26,9 +26,19 @@ export class SchedulerService extends EventEmitter {
     super();
     this.runLifecycle = new SchedulerRunLifecycle({
       store: options.store,
-      emitRun: (run) => this.emit('run', run),
-      emitJob: (job) => this.emit('job', job),
+      emitRun: (run) => this.emitRun(run),
+      emitJob: (job) => this.emitJob(job),
     });
+  }
+
+  private emitJob(job: ScheduledJob) {
+    this.emit('job', job);
+    this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: job });
+  }
+
+  private emitRun(run: ScheduledJobRun) {
+    this.emit('run', run);
+    this.options.eventBus.emit({ type: 'scheduler.run.updated', payload: run });
   }
 
   async start() {
@@ -56,15 +66,13 @@ export class SchedulerService extends EventEmitter {
 
   createJob(input: Parameters<LocalCoreAcpStore['createScheduledJob']>[0]) {
     const job = this.options.store.createScheduledJob(input);
-    this.emit('job', job);
-    this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: job });
+    this.emitJob(job);
     return job;
   }
 
   updateJob(jobId: string, input: Parameters<LocalCoreAcpStore['updateScheduledJob']>[1]) {
     const job = this.options.store.updateScheduledJob(this.resolveRequiredJobId(jobId), input);
-    this.emit('job', job);
-    this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: job });
+    this.emitJob(job);
     return job;
   }
 
@@ -138,38 +146,20 @@ export class SchedulerService extends EventEmitter {
 
   private async executeJob(job: ScheduledJob, triggeredAt: string, manual: boolean) {
     if (this.runningJobs.has(job.id)) {
-      const skipped = this.runLifecycle.markSkipped(job, triggeredAt, 'Skipped because the previous run is still active.');
-      this.options.eventBus.emit({ type: 'scheduler.run.updated', payload: skipped });
-      return skipped;
+      return this.runLifecycle.markSkipped(job, triggeredAt, 'Skipped because the previous run is still active.');
     }
     this.runningJobs.add(job.id);
     const run = this.runLifecycle.markQueued(job, triggeredAt);
-    this.options.eventBus.emit({ type: 'scheduler.run.updated', payload: run });
     try {
       const executor = this.options.executors.find((candidate) => candidate.supports(job));
       if (!executor) {
         throw new Error(`No scheduler executor is available for delivery target "${job.platform}"`);
       }
       this.runLifecycle.markRunning(run.id);
-      const running = this.options.store.getScheduledJobRun(run.id);
-      if (running) {
-        this.options.eventBus.emit({ type: 'scheduler.run.updated', payload: running });
-      }
       const result = await executor.execute({ job, triggeredAt });
-      const succeeded = this.runLifecycle.markSucceeded(job, run.id, result, !manual && job.triggerType === 'once');
-      this.options.eventBus.emit({ type: 'scheduler.run.updated', payload: succeeded });
-      const nextJob = this.options.store.getScheduledJob(job.id);
-      if (nextJob) {
-        this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: nextJob });
-      }
-      return succeeded;
+      return this.runLifecycle.markSucceeded(job, run.id, result, !manual && job.triggerType === 'once');
     } catch (error) {
       const failed = this.runLifecycle.markFailed(job.id, run.id, error instanceof Error ? error.message : String(error));
-      this.options.eventBus.emit({ type: 'scheduler.run.updated', payload: failed });
-      const nextJob = this.options.store.getScheduledJob(job.id);
-      if (nextJob) {
-        this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: nextJob });
-      }
       this.options.log?.(`scheduler job failed ${job.id}: ${failed.error || 'unknown error'}`);
       this.maybeAutoDisableAfterFailure(job.id);
       return failed;
@@ -194,8 +184,7 @@ export class SchedulerService extends EventEmitter {
     this.options.store.updateScheduledJobStatus(jobId, { enabled: false });
     const disabled = this.options.store.getScheduledJob(jobId);
     if (disabled) {
-      this.emit('job', disabled);
-      this.options.eventBus.emit({ type: 'scheduler.job.updated', payload: disabled });
+      this.emitJob(disabled);
     }
     this.options.log?.(
       `scheduler auto-disabled job ${jobId} after ${consecutiveFailures} consecutive failures`,
