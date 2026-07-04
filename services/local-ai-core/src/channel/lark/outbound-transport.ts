@@ -110,7 +110,7 @@ export class LarkOutboundTransport {
     });
   }
 
-  private async createMessage(state: LarkRuntimeState, chatId: string, msgType: string, content: unknown) {
+  private async createMessage(state: LarkRuntimeState, chatId: string, msgType: string, content: Record<string, unknown>) {
     const response = await state.client.im.message.create({
       params: { receive_id_type: resolveReceiveIdType(chatId) },
       data: {
