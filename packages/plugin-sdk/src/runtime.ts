@@ -118,6 +118,10 @@ export interface DomainEventPayloadMap {
   'scheduler.run.updated': import('@cc/superai-contracts').ScheduledJobRun;
   'automation.monitor.updated': import('@cc/superai-contracts').AutomationMonitor;
   'automation.monitor.run.updated': import('@cc/superai-contracts').AutomationMonitorRun;
+  'automation.definition.updated': import('@cc/superai-contracts').AutomationDefinition;
+  'automation.evaluation.updated': import('@cc/superai-contracts').AutomationEvaluation;
+  'automation.run.updated': import('@cc/superai-contracts').AutomationRun;
+  'automation.script-version.updated': import('@cc/superai-contracts').AutomationScriptVersion;
   'runtime.state.changed': { reason: 'config' | 'settings' | 'channel-bindings' | 'bootstrap' | 'unknown' };
 }
 

@@ -10,6 +10,7 @@
     "./channels": "./src/channels.ts",
     "./scheduler": "./src/scheduler.ts",
     "./automation": "./src/automation.ts",
+    "./automations": "./src/automations.ts",
     "./knowledge": "./src/knowledge.ts"
   }
 }
