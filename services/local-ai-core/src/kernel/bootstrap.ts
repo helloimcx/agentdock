@@ -291,26 +291,6 @@ export function bootstrapLocalCoreRuntime(options: {
     knowledgeAttachments,
     log: options.log,
   });
-  const scheduler = new SchedulerService({
-    store,
-    triggers: schedulerTriggers,
-    executors: schedulerExecutors,
-    eventBus: kernel.context.bus,
-    log: options.log,
-  });
-  const scheduledJobs = new ScheduledJobApplicationService({
-    store,
-    scheduler,
-  });
-  const automationMonitors = new AutomationMonitorService({
-    store,
-    providers: monitorProviders,
-    getWorkspaceRouter: () => workspaceRouter,
-    getChannelRuntime: (platform) =>
-      channelRuntimes.find((runtime) => runtime.platform === platform || platform.startsWith(`${runtime.platform}:`)),
-    eventBus: kernel.context.bus,
-    log: options.log,
-  });
   const automationActionExecutor = new AutomationActionExecutor({
     store,
     getWorkspaceRouter: () => workspaceRouter,
@@ -320,6 +300,30 @@ export function bootstrapLocalCoreRuntime(options: {
   const automations = new AutomationService({
     store,
     actionExecutor: automationActionExecutor,
+    eventBus: kernel.context.bus,
+    log: options.log,
+  });
+  const scheduler = new SchedulerService({
+    store,
+    automations,
+    triggers: schedulerTriggers,
+    executors: schedulerExecutors,
+    eventBus: kernel.context.bus,
+    log: options.log,
+  });
+  const scheduledJobs = new ScheduledJobApplicationService({
+    store,
+    scheduler,
+    automations,
+    eventBus: kernel.context.bus,
+  });
+  const automationMonitors = new AutomationMonitorService({
+    store,
+    automations,
+    providers: monitorProviders,
+    getWorkspaceRouter: () => workspaceRouter,
+    getChannelRuntime: (platform) =>
+      channelRuntimes.find((runtime) => runtime.platform === platform || platform.startsWith(`${runtime.platform}:`)),
     eventBus: kernel.context.bus,
     log: options.log,
   });
@@ -351,13 +355,13 @@ export function bootstrapLocalCoreRuntime(options: {
     automations,
     async start() {
       await kernel.lifecycle.startAll();
+      await automations.start();
       await scheduler.start();
       await automationMonitors.start();
-      await automations.start();
     },
     async stop() {
-      await automations.stop();
       await automationMonitors.stop();
+      await automations.stop();
       await scheduler.stop();
       await kernel.lifecycle.stopAll();
       workspaceRouter.close();

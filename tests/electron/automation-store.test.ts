@@ -319,11 +319,13 @@ test('ignores extra runtime keys that attempt to overwrite protected persisted f
       id: 'attacker-automation',
       health: 'blocked',
       originKind: 'automation-monitor',
+      legacyMetadata: { scheduledDescription: 'attacker' },
       createdAt: '2020-01-01T00:00:00.000Z',
     } as never);
     assert.notEqual(automation.id, 'attacker-automation');
     assert.equal(automation.health, 'healthy');
     assert.equal(automation.originKind, 'native');
+    assert.equal(automation.legacyMetadata, undefined);
 
     const updated = context.store.update(automation.id, {
       title: 'Safe update',
@@ -331,11 +333,13 @@ test('ignores extra runtime keys that attempt to overwrite protected persisted f
       workspaceId: 'attacker-workspace',
       health: 'blocked',
       createdAt: '2020-01-01T00:00:00.000Z',
+      legacyMetadata: { scheduledDescription: 'attacker-update' },
     } as never);
     assert.equal(updated.id, automation.id);
     assert.equal(updated.workspaceId, 'workspace-1');
     assert.equal(updated.health, 'healthy');
     assert.equal(updated.createdAt, automation.createdAt);
+    assert.equal(updated.legacyMetadata, undefined);
 
     const evaluation = context.store.createEvaluation(automation.id, {
       activationKind: 'cron',
@@ -613,6 +617,7 @@ test('imports legacy scheduled jobs and monitors once while preserving IDs and o
     assert.deepEqual(context.store.importLegacyRecords(), { scheduled: 1, monitors: 1 });
     assert.deepEqual(context.store.importLegacyRecords(), { scheduled: 0, monitors: 0 });
     assert.equal(context.store.get(scheduled.id)?.originKind, 'scheduled-job');
+    assert.deepEqual(context.store.get(scheduled.id)?.legacyMetadata, { scheduledDescription: 'Hourly summary' });
     assert.equal(context.store.get(scheduled.id)?.activation.kind, 'cron');
     assert.equal(context.store.get(monitor.id)?.originKind, 'automation-monitor');
     assert.equal(context.store.get(monitor.id)?.activation.kind, 'provider-event');

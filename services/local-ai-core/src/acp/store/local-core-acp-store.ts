@@ -422,8 +422,63 @@ export class LocalCoreAcpStore {
     return this.automations.create(input);
   }
 
+  createTrustedAutomation(input: import('./automation-store.js').TrustedAutomationCreateInput): AutomationDefinition {
+    return this.automations.createTrusted(input);
+  }
+
+  createAutomationAtomically(
+    input: AutomationCreateInput,
+    initialize: (automation: AutomationDefinition) => AutomationStateUpdateInput,
+  ): AutomationDefinition {
+    return this.automationTransaction(() => {
+      const created = this.automations.create(input);
+      return this.automations.updateState(created.id, initialize(created));
+    });
+  }
+
+  createTrustedAutomationAtomically(
+    input: import('./automation-store.js').TrustedAutomationCreateInput,
+    initialize: (automation: AutomationDefinition) => AutomationStateUpdateInput,
+  ): AutomationDefinition {
+    return this.automationTransaction(() => {
+      const created = this.automations.createTrusted(input);
+      return this.automations.updateState(created.id, initialize(created));
+    });
+  }
+
   updateAutomation(automationId: string, input: AutomationUpdateInput): AutomationDefinition {
     return this.automations.update(automationId, input);
+  }
+
+  updateTrustedAutomation(
+    automationId: string,
+    input: import('./automation-store.js').TrustedAutomationUpdateInput,
+  ): AutomationDefinition {
+    return this.automations.updateTrusted(automationId, input);
+  }
+
+  updateAutomationAtomically(
+    automationId: string,
+    input: AutomationUpdateInput,
+    initialize?: (automation: AutomationDefinition) => AutomationStateUpdateInput | undefined,
+  ): AutomationDefinition {
+    return this.automationTransaction(() => {
+      const updated = this.automations.update(automationId, input);
+      const state = initialize?.(updated);
+      return state ? this.automations.updateState(automationId, state) : updated;
+    });
+  }
+
+  updateTrustedAutomationAtomically(
+    automationId: string,
+    input: import('./automation-store.js').TrustedAutomationUpdateInput,
+    initialize?: (automation: AutomationDefinition) => AutomationStateUpdateInput | undefined,
+  ): AutomationDefinition {
+    return this.automationTransaction(() => {
+      const updated = this.automations.updateTrusted(automationId, input);
+      const state = initialize?.(updated);
+      return state ? this.automations.updateState(automationId, state) : updated;
+    });
   }
 
   updateAutomationState(automationId: string, input: AutomationStateUpdateInput): AutomationDefinition {
@@ -450,6 +505,10 @@ export class LocalCoreAcpStore {
 
   listAutomationEvaluations(automationId: string): AutomationEvaluation[] {
     return this.automations.listEvaluations(automationId);
+  }
+
+  getLatestAutomationEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
+    return this.automations.getLatestEvaluationWithState(automationId);
   }
 
   createAutomationRun(
@@ -572,6 +631,18 @@ export class LocalCoreAcpStore {
 
   listPairingRequests(workspaceId?: string, platform?: string): LocalCorePairingRequest[] {
     return this.platform.listPairingRequests(workspaceId, platform);
+  }
+
+  private automationTransaction<T>(work: () => T): T {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = work();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 }
 

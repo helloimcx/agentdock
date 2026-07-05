@@ -6,7 +6,15 @@ import type {
   ScheduledJobUpdateInput,
 } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { AutomationService } from '../automation/automation-service.js';
+import {
+  automationToScheduledJob,
+  automationToScheduledJobRun,
+  latestAutomationRun,
+  scheduledJobToAutomationInput,
+} from '../automation/legacy-automation-mappers.js';
 import type { SchedulerService } from './scheduler-service.js';
+import { toPublicScheduledJobId } from './job-id.js';
 import {
   routeFromPlatformThreadBinding,
   routeWithPlatformInstance,
@@ -32,25 +40,38 @@ type ResolvedScheduledJobCreateInput = ScheduledJobCreateInput & {
 type ScheduledJobApplicationServiceOptions = {
   store: LocalCoreAcpStore;
   scheduler: SchedulerService;
+  automations: AutomationService;
+  eventBus?: import('@cc/plugin-sdk').EventBus;
 };
 
 export class ScheduledJobApplicationService {
   constructor(private readonly options: ScheduledJobApplicationServiceOptions) {}
 
   listJobs(workspaceId?: string): ScheduledJob[] {
-    return this.options.scheduler.listJobs(workspaceId);
+    return this.options.automations.list(workspaceId)
+      .filter((automation) => automation.originKind === 'scheduled-job')
+      .map((automation) => automationToScheduledJob(
+        automation,
+        latestAutomationRun(this.options.automations.listRuns(automation.id)),
+      ));
   }
 
   getJob(jobId: string): ScheduledJob | undefined {
-    return this.options.scheduler.getJob(jobId);
+    const resolved = this.resolveJobId(jobId);
+    const automation = resolved ? this.options.automations.get(resolved) : undefined;
+    return automation?.originKind === 'scheduled-job'
+      ? automationToScheduledJob(automation, latestAutomationRun(this.options.automations.listRuns(automation.id)))
+      : undefined;
   }
 
   createJob(input: ScheduledJobCreateInput): ScheduledJob {
-    return this.options.scheduler.createJob(this.resolveCreateInput(input));
+    return automationToScheduledJob(this.options.automations.createFromLegacy(
+      scheduledJobToAutomationInput(this.resolveCreateInput(input)),
+    ));
   }
 
   createCronJob(input: ScheduledCronCreateInput): ScheduledJob {
-    return this.options.scheduler.createJob({
+    return this.createJob({
       workspaceId: input.workspaceId,
       platform: input.platform,
       route: this.resolveExplicitRoute(input.platform, input.route),
@@ -63,27 +84,51 @@ export class ScheduledJobApplicationService {
   }
 
   updateJob(jobId: string, input: ScheduledJobUpdateInput): ScheduledJob {
-    return this.options.scheduler.updateJob(jobId, {
-      ...input,
-      ...(input.route ? { route: withoutThreadRoute(input.route) } : {}),
+    this.options.automations.assertLegacyFacadesAvailable();
+    const existing = this.getRequiredJob(jobId);
+    const resolved = this.resolveRequiredJobId(jobId);
+    const merged = this.resolveCreateInput({
+      workspaceId: existing.workspaceId,
+      platform: existing.platform,
+      route: input.route ? withoutThreadRoute(input.route) : existing.route,
+      executionMode: input.executionMode ?? existing.executionMode,
+      triggerType: input.triggerType ?? existing.triggerType,
+      cronExpr: input.cronExpr ?? existing.cronExpr,
+      runAt: input.runAt ?? existing.runAt,
+      promptTemplate: input.promptTemplate ?? existing.promptTemplate,
+      description: input.description ?? existing.description,
+      enabled: input.enabled ?? existing.enabled,
     });
+    const mapped = scheduledJobToAutomationInput(merged);
+    const { workspaceId: _workspaceId, originKind: _originKind, ...update } = mapped;
+    return automationToScheduledJob(this.options.automations.updateFromLegacy(resolved, update));
   }
 
   deleteJob(jobId: string): { deleted: boolean } {
-    return this.options.scheduler.deleteJob(jobId);
+    this.options.automations.assertLegacyFacadesAvailable();
+    return this.options.automations.delete(this.resolveRequiredJobId(jobId));
   }
 
-  runJobNow(jobId: string): Promise<ScheduledJobRun> {
-    return this.options.scheduler.runJobNow(jobId);
+  async runJobNow(jobId: string): Promise<ScheduledJobRun> {
+    this.options.automations.assertLegacyFacadesAvailable();
+    const resolved = this.resolveRequiredJobId(jobId);
+    const evaluation = await this.options.automations.checkNow(resolved);
+    const run = this.options.automations.listRuns(resolved).find((candidate) => candidate.evaluationId === evaluation.id);
+    return automationToScheduledJobRun(evaluation, run);
   }
 
   listJobRuns(jobId: string): ScheduledJobRun[] {
-    return this.options.scheduler.listJobRuns(jobId);
+    const resolved = this.resolveRequiredJobId(jobId);
+    const runs = this.options.automations.listRuns(resolved);
+    const runsByEvaluationId = new Map(runs.map((run) => [run.evaluationId, run]));
+    return this.options.automations.listEvaluations(resolved).map((evaluation) =>
+      automationToScheduledJobRun(evaluation, runsByEvaluationId.get(evaluation.id))
+    );
   }
 
   listJobsForThread(threadId: string): ScheduledJob[] {
     const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
-    return this.options.scheduler
+    return this
       .listJobs()
       .filter((job) =>
         job.route.threadId === threadId ||
@@ -121,5 +166,26 @@ export class ScheduledJobApplicationService {
 
   private resolveExplicitRoute(platform: string, route: ScheduledJobRoute): ScheduledJobRoute {
     return routeWithPlatformInstance(withoutThreadRoute(route), platform);
+  }
+
+  private resolveJobId(jobId: string): string {
+    const direct = this.options.automations.get(jobId);
+    if (direct?.originKind === 'scheduled-job') return direct.id;
+    const matches = this.options.automations.list()
+      .filter((automation) => automation.originKind === 'scheduled-job' && toPublicScheduledJobId(automation.id) === jobId);
+    if (matches.length > 1) throw new Error(`Scheduled job id is ambiguous: ${jobId}`);
+    return matches[0]?.id || '';
+  }
+
+  private resolveRequiredJobId(jobId: string): string {
+    const resolved = this.resolveJobId(jobId);
+    if (!resolved) throw new Error(`Scheduled job not found: ${jobId}`);
+    return resolved;
+  }
+
+  private getRequiredJob(jobId: string): ScheduledJob {
+    const job = this.getJob(jobId);
+    if (!job) throw new Error(`Scheduled job not found: ${jobId}`);
+    return job;
   }
 }

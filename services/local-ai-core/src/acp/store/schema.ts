@@ -179,6 +179,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       consecutive_evaluation_failures INTEGER NOT NULL DEFAULT 0,
       next_check_at TEXT,
       origin_kind TEXT NOT NULL DEFAULT 'native',
+      legacy_metadata_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -367,6 +368,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
   ensureColumn(db, 'scheduled_job_runs', 'delivery_error', 'TEXT');
   ensureColumn(db, 'scheduled_job_runs', 'last_bridge_event_at', 'TEXT');
   ensureColumn(db, 'threads', 'agent_mode', "TEXT NOT NULL DEFAULT 'default'");
+  ensureColumn(db, 'automations', 'legacy_metadata_json', 'TEXT');
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {

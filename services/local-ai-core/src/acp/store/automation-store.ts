@@ -34,11 +34,18 @@ export type AutomationRunCreateInput = Partial<
 export type AutomationRunUpdateInput = Partial<
   Omit<AutomationRun, 'id' | 'automationId' | 'evaluationId' | 'executionMode' | 'createdAt'>
 >;
+export type TrustedAutomationCreateInput = AutomationCreateInput & {
+  originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>;
+  legacyMetadata?: AutomationDefinition['legacyMetadata'];
+};
+export type TrustedAutomationUpdateInput = AutomationUpdateInput & {
+  legacyMetadata?: AutomationDefinition['legacyMetadata'];
+};
 
 const AUTOMATION_COLUMNS = `
   id, workspace_id, title, enabled, health, blocked_reason, activation_json, condition_json, action_json,
   delivery_json, policies_json, last_successful_match, last_evaluation_at, last_triggered_at,
-  consecutive_evaluation_failures, next_check_at, origin_kind, created_at, updated_at
+  consecutive_evaluation_failures, next_check_at, origin_kind, created_at, updated_at, legacy_metadata_json
 `;
 const EVALUATION_COLUMNS = `
   id, automation_id, status, activation_kind, script_version_id, started_at, finished_at, evaluation_json
@@ -65,9 +72,27 @@ export class LocalAutomationStore {
   }
 
   create(input: AutomationCreateInput): AutomationDefinition {
+    return this.createWithOrigin(input, 'native');
+  }
+
+  createTrusted(input: TrustedAutomationCreateInput): AutomationDefinition {
+    return this.createWithOrigin(input, input.originKind, input.legacyMetadata);
+  }
+
+  private createWithOrigin(
+    input: AutomationCreateInput,
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    legacyMetadata?: AutomationDefinition['legacyMetadata'],
+  ): AutomationDefinition {
     const now = new Date().toISOString();
+    const uuid = randomUUID();
+    const id = originKind === 'scheduled-job'
+      ? uuid.split('-')[0] || uuid
+      : originKind === 'automation-monitor'
+        ? `monitor:${uuid}`
+        : `automation:${uuid}`;
     const definition = normalizeDefinition({
-      id: `automation:${randomUUID()}`,
+      id,
       workspaceId: input.workspaceId,
       title: input.title,
       enabled: input.enabled,
@@ -78,7 +103,8 @@ export class LocalAutomationStore {
       delivery: input.delivery,
       policies: input.policies,
       consecutiveEvaluationFailures: 0,
-      originKind: 'native',
+      originKind,
+      ...(legacyMetadata ? { legacyMetadata } : {}),
       createdAt: now,
       updatedAt: now,
     });
@@ -87,6 +113,18 @@ export class LocalAutomationStore {
   }
 
   update(id: string, input: AutomationUpdateInput): AutomationDefinition {
+    return this.updateWithMetadata(id, input);
+  }
+
+  updateTrusted(id: string, input: TrustedAutomationUpdateInput): AutomationDefinition {
+    return this.updateWithMetadata(id, input, input.legacyMetadata);
+  }
+
+  private updateWithMetadata(
+    id: string,
+    input: AutomationUpdateInput,
+    legacyMetadata?: AutomationDefinition['legacyMetadata'],
+  ): AutomationDefinition {
     const existing = this.requireDefinition(id);
     const candidate = { ...existing };
     if (input.title !== undefined) candidate.title = input.title;
@@ -96,6 +134,7 @@ export class LocalAutomationStore {
     if (input.action !== undefined) candidate.action = input.action;
     if (input.delivery !== undefined) candidate.delivery = input.delivery;
     if (input.policies !== undefined) candidate.policies = input.policies;
+    if (legacyMetadata !== undefined) candidate.legacyMetadata = legacyMetadata;
     candidate.updatedAt = new Date().toISOString();
     const definition = normalizeDefinition(candidate);
     this.writeDefinition(definition);
@@ -181,6 +220,19 @@ export class LocalAutomationStore {
       ORDER BY started_at DESC, id DESC
     `).all(automationId) as LocalAutomationEvaluationRow[];
     return rows.map((row) => this.toEvaluation(row));
+  }
+
+  getLatestEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
+    const row = this.db.prepare(`
+      SELECT ${EVALUATION_COLUMNS}
+      FROM automation_evaluations
+      WHERE automation_id = ?
+        AND status = 'finished'
+        AND json_type(evaluation_json, '$.nextState') = 'object'
+      ORDER BY started_at DESC, id DESC
+      LIMIT 1
+    `).get(automationId) as LocalAutomationEvaluationRow | undefined;
+    return row ? this.toEvaluation(row) : undefined;
   }
 
   createRun(
@@ -366,8 +418,8 @@ export class LocalAutomationStore {
       INSERT INTO automations (
         id, workspace_id, title, enabled, health, blocked_reason, activation_json, condition_json, action_json,
         delivery_json, policies_json, last_successful_match, last_evaluation_at, last_triggered_at,
-        consecutive_evaluation_failures, next_check_at, origin_kind, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        consecutive_evaluation_failures, next_check_at, origin_kind, created_at, updated_at, legacy_metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ignoreConflict ? 'ON CONFLICT(id) DO NOTHING' : ''}
     `).run(...this.definitionValues(canonicalDefinition, canonicalNextCheckAt));
     return Number(result.changes);
@@ -403,7 +455,7 @@ export class LocalAutomationStore {
         workspace_id = ?, title = ?, enabled = ?, health = ?, blocked_reason = ?, activation_json = ?,
         condition_json = ?, action_json = ?, delivery_json = ?, policies_json = ?, last_successful_match = ?,
         last_evaluation_at = ?, last_triggered_at = ?, consecutive_evaluation_failures = ?, next_check_at = ?,
-        origin_kind = ?, created_at = ?, updated_at = ?
+        origin_kind = ?, created_at = ?, updated_at = ?, legacy_metadata_json = ?
       WHERE id = ?
     `).run(...this.definitionValues(canonicalDefinition, canonicalNextCheckAt).slice(1), canonicalDefinition.id);
   }
@@ -429,6 +481,7 @@ export class LocalAutomationStore {
       definition.originKind ?? 'native',
       definition.createdAt,
       definition.updatedAt,
+      definition.legacyMetadata ? JSON.stringify(definition.legacyMetadata) : null,
     ];
   }
 
@@ -458,6 +511,9 @@ export class LocalAutomationStore {
         ...(row.last_triggered_at ? { lastTriggeredAt: row.last_triggered_at } : {}),
         consecutiveEvaluationFailures: row.consecutive_evaluation_failures,
         originKind: row.origin_kind,
+        ...(row.legacy_metadata_json
+          ? { legacyMetadata: parseStoredJson(row.legacy_metadata_json, `Automation ${row.id} legacy metadata`) }
+          : {}),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       });
@@ -498,6 +554,7 @@ export class LocalAutomationStore {
   }
 
   private importScheduledJob(row: LocalScheduledJobRow): number {
+    const consumedOnce = row.trigger_type === 'once' && Boolean(row.last_run_at || row.last_status);
     const activation = row.trigger_type === 'once'
       ? { kind: 'once' as const, runAt: row.run_at }
       : { kind: 'cron' as const, expression: row.cron_expr, timezone: 'UTC' };
@@ -505,7 +562,7 @@ export class LocalAutomationStore {
       id: row.id,
       workspaceId: row.workspace_id,
       title: row.description.trim() || row.prompt_template.trim(),
-      enabled: row.enabled === 1,
+      enabled: consumedOnce ? false : row.enabled === 1,
       health: 'healthy',
       activation,
       condition: { kind: 'always' },
@@ -516,13 +573,21 @@ export class LocalAutomationStore {
       },
       policies: { concurrency: 'skip-if-running', cooldownMs: 0 },
       ...(row.last_status ? { lastSuccessfulMatch: row.last_status === 'succeeded' } : {}),
-      ...(row.last_run_at ? { lastEvaluationAt: row.last_run_at, lastTriggeredAt: row.last_run_at } : {}),
+      ...(row.last_run_at || row.last_status
+        ? { lastEvaluationAt: row.last_run_at || row.updated_at }
+        : {}),
+      ...(row.last_run_at ? { lastTriggeredAt: row.last_run_at } : {}),
       consecutiveEvaluationFailures: row.last_status === 'failed' ? 1 : 0,
       originKind: 'scheduled-job',
+      legacyMetadata: { scheduledDescription: row.description },
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
-    return this.insertDefinition(definition, row.trigger_type === 'once' ? row.run_at : null, true);
+    return this.insertDefinition(
+      definition,
+      row.trigger_type === 'once' && !consumedOnce ? row.run_at : null,
+      true,
+    );
   }
 
   private importMonitor(row: LocalAutomationMonitorRow): number {

@@ -2,25 +2,40 @@ import type {
   AutomationCreateInput,
   AutomationDefinition,
   AutomationEvaluation,
+  AutomationMonitorEventSnapshot,
   AutomationEvaluationFinishInput,
   AutomationRun,
   AutomationUpdateInput,
 } from '@cc/superai-contracts';
-import type { EventBus } from '@cc/plugin-sdk';
+import type { DomainEventType, EventBus, EventBusEvent } from '@cc/plugin-sdk';
 import { redactSecrets, type LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import {
   decideCondition,
   evaluateCondition,
 } from './automation-condition-engine.js';
+import { evaluateExpression } from './condition-evaluator.js';
 import { missedActivationAt, nextActivationAt } from './automation-trigger-engine.js';
 import type {
   AutomationActionExecutionResult,
   AutomationActionExecutor,
 } from './automation-action-executor.js';
+import {
+  automationToMonitor,
+  automationToMonitorRun,
+  automationToScheduledJob,
+  automationToScheduledJobRun,
+  latestAutomationRun,
+  latestFinishedEvaluation,
+  type LegacyAutomationCreateInput,
+} from './legacy-automation-mappers.js';
 
 const DUE_LOOP_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_CONCURRENCY = 4;
 export const AUTOMATION_ERROR_MAX_LENGTH = 2_000;
+export const PROVIDER_LIFECYCLE_BLOCK_PREFIX = 'Automation monitor provider lifecycle blocked: ';
+const PROVIDER_JSON_MAX_DEPTH = 64;
+const PROVIDER_JSON_MAX_SIZE = 100_000;
+const PROVIDER_EVENT_STRING_MAX_LENGTH = 16_384;
 const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
 
@@ -29,11 +44,16 @@ export interface AutomationOwnershipPolicy {
 }
 
 export const NATIVE_AUTOMATION_OWNERSHIP: AutomationOwnershipPolicy = {
-  executes: (automation) => (automation.originKind || 'native') === 'native',
+  executes: () => true,
 };
 
 type TimerHandle = unknown;
 type ActionExecutor = Pick<AutomationActionExecutor, 'execute'>;
+type EvaluationContext = {
+  payload: Record<string, unknown>;
+  nextState: Record<string, unknown>;
+  occurredAt: string;
+};
 
 export interface AutomationServiceOptions {
   store: LocalCoreAcpStore;
@@ -78,26 +98,61 @@ export class AutomationService {
   }
 
   create(input: AutomationCreateInput): AutomationDefinition {
-    const automation = this.options.store.createAutomation(input);
-    const updated = this.persistInitialNextCheck(automation);
+    const updated = this.options.store.createAutomationAtomically(input, (automation) => ({
+      nextCheckAt: this.initialNextCheckAt(automation),
+    }));
     this.emitDefinition(updated);
     return updated;
   }
 
+  createFromLegacy(input: LegacyAutomationCreateInput): AutomationDefinition {
+    this.assertLegacyFacadesAvailable();
+    const updated = this.options.store.createTrustedAutomationAtomically(input, (automation) => ({
+      nextCheckAt: this.initialNextCheckAt(automation),
+    }));
+    this.emitDefinition(updated);
+    return updated;
+  }
+
+  assertLegacyFacadesAvailable(): void {
+    if (this.runtimeStatus.status === 'degraded') {
+      throw new Error(`Unified automation migration is unavailable: ${this.runtimeStatus.reason}`);
+    }
+  }
+
   update(automationId: string, input: AutomationUpdateInput): AutomationDefinition {
+    return this.updateInternal(automationId, input);
+  }
+
+  updateFromLegacy(
+    automationId: string,
+    input: AutomationUpdateInput & { legacyMetadata?: AutomationDefinition['legacyMetadata'] },
+  ): AutomationDefinition {
+    this.assertLegacyFacadesAvailable();
+    return this.updateInternal(automationId, input, true);
+  }
+
+  private updateInternal(
+    automationId: string,
+    input: AutomationUpdateInput,
+    trustedLegacy = false,
+  ): AutomationDefinition {
     const existing = this.requireAutomation(automationId);
-    const automation = this.options.store.updateAutomation(automationId, input);
-    let updated = automation;
-    if (input.activation !== undefined) {
-      updated = this.persistInitialNextCheck(automation, true, true);
-    } else if (
+    const initialize = (automation: AutomationDefinition) => {
+      if (input.activation !== undefined) {
+        return { nextCheckAt: this.initialNextCheckAt(automation, true) };
+      }
+      if (
       input.enabled === true
       && existing.enabled === false
       && this.options.store.getAutomationNextCheckAt(automation.id) === null
       && !this.isConsumedOnce(automation)
-    ) {
-      updated = this.persistInitialNextCheck(automation);
-    }
+      ) return { nextCheckAt: this.initialNextCheckAt(automation) };
+      return undefined;
+    };
+    const updated = trustedLegacy
+      ? this.options.store.updateTrustedAutomationAtomically(automationId, input, initialize)
+      : this.options.store.updateAutomationAtomically(automationId, input, initialize);
     this.emitDefinition(updated);
     return updated;
   }
@@ -108,6 +163,10 @@ export class AutomationService {
 
   listEvaluations(automationId: string): AutomationEvaluation[] {
     return this.options.store.listAutomationEvaluations(automationId);
+  }
+
+  getLatestEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
+    return this.options.store.getLatestAutomationEvaluationWithState(automationId);
   }
 
   listRuns(automationId: string): AutomationRun[] {
@@ -201,7 +260,89 @@ export class AutomationService {
 
   async checkNow(automationId: string): Promise<AutomationEvaluation> {
     const automation = this.requireAutomation(automationId);
-    return this.checkAutomation(automation);
+    if (automation.activation.kind === 'provider-event') {
+      throw new Error(`Provider-event automation requires an event snapshot: ${automationId}`);
+    }
+    return this.checkAutomation(automation, undefined, true);
+  }
+
+  async evaluateProviderEvent(
+    automationId: string,
+    event: AutomationMonitorEventSnapshot,
+  ): Promise<AutomationEvaluation> {
+    this.assertLegacyFacadesAvailable();
+    const automation = this.requireAutomation(automationId);
+    if (automation.activation.kind !== 'provider-event') {
+      throw new Error(`Automation is not provider-event activated: ${automationId}`);
+    }
+    const snapshot = normalizeProviderEventSnapshot(event);
+    if (snapshot.sourceType !== automation.activation.sourceType) {
+      throw new Error(normalizeAutomationError(`Provider event source "${snapshot.sourceType}" does not match automation source "${automation.activation.sourceType}".`));
+    }
+    return this.checkAutomation(automation, this.providerEventContext(automation, snapshot));
+  }
+
+  recordUnavailableProviderEvent(automationId: string, reason: string): AutomationEvaluation {
+    this.assertLegacyFacadesAvailable();
+    const automation = this.requireAutomation(automationId);
+    if (automation.activation.kind !== 'provider-event') {
+      throw new Error(`Automation is not provider-event activated: ${automationId}`);
+    }
+    const startedAt = this.now();
+    const running = this.createEvaluation(automation, startedAt);
+    const finishedAt = this.now();
+    const finished = this.finishEvaluation(running.id, {
+      conditionOutcome: 'skipped',
+      triggerDecision: 'not_evaluated',
+      finishedAt: finishedAt.toISOString(),
+      durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
+      resultSummary: normalizeAutomationError(reason),
+    });
+    this.updateDefinitionAfterEvaluation(automation, finishedAt, {
+      nextMatch: automation.lastSuccessfulMatch,
+      failureCount: automation.consecutiveEvaluationFailures,
+    });
+    this.emitCompatibilityEvaluationRun(automation, finished);
+    return finished;
+  }
+
+  failClosedLegacyAutomation(automationId: string, reason: string): AutomationDefinition {
+    const automation = this.requireAutomation(automationId);
+    if (automation.originKind === 'native') {
+      throw new Error(`Automation is not owned by a legacy facade: ${automationId}`);
+    }
+    const blocked = this.options.store.updateAutomationAtomically(automationId, { enabled: false }, () => ({
+      health: 'blocked',
+      blockedReason: providerLifecycleBlockReason(reason),
+    }));
+    this.emitDefinition(blocked);
+    return blocked;
+  }
+
+  markLegacyProviderLifecycleBlocked(automationId: string, reason: string): AutomationDefinition {
+    const automation = this.requireAutomation(automationId);
+    if (automation.originKind !== 'automation-monitor') {
+      throw new Error(`Automation is not owned by the legacy monitor facade: ${automationId}`);
+    }
+    const blocked = this.options.store.updateAutomationState(automationId, {
+      health: 'blocked',
+      blockedReason: providerLifecycleBlockReason(reason),
+    });
+    this.emitDefinition(blocked);
+    return blocked;
+  }
+
+  clearLegacyProviderLifecycleBlocked(automationId: string, expectedReason: string): AutomationDefinition {
+    const automation = this.requireAutomation(automationId);
+    if (automation.originKind !== 'automation-monitor') {
+      throw new Error(`Automation is not owned by the legacy monitor facade: ${automationId}`);
+    }
+    if (automation.health !== 'blocked' || automation.blockedReason !== normalizeAutomationError(expectedReason)) {
+      return automation;
+    }
+    const healthy = this.options.store.updateAutomationState(automationId, { health: 'healthy' });
+    this.emitDefinition(healthy);
+    return healthy;
   }
 
   private async runTick(generation: number): Promise<void> {
@@ -230,10 +371,14 @@ export class AutomationService {
     }
   }
 
-  private async checkAutomation(automation: AutomationDefinition): Promise<AutomationEvaluation> {
+  private async checkAutomation(
+    automation: AutomationDefinition,
+    context?: EvaluationContext,
+    manual = false,
+  ): Promise<AutomationEvaluation> {
     const existing = this.inFlight.get(automation.id);
-    if (existing) return this.recordConcurrentSkip(automation);
-    const work = this.evaluateAndMaybeRun(automation);
+    if (existing) return this.recordConcurrentSkip(automation, context);
+    const work = this.evaluateAndMaybeRun(automation, context, manual);
     this.inFlight.set(automation.id, work);
     try {
       return await work;
@@ -242,8 +387,11 @@ export class AutomationService {
     }
   }
 
-  private async recordConcurrentSkip(automation: AutomationDefinition): Promise<AutomationEvaluation> {
-    const now = this.now();
+  private async recordConcurrentSkip(
+    automation: AutomationDefinition,
+    context?: EvaluationContext,
+  ): Promise<AutomationEvaluation> {
+    const now = context ? new Date(context.occurredAt) : this.now();
     const running = this.createEvaluation(automation, now);
     const finished = this.finishEvaluation(running.id, {
       conditionOutcome: 'skipped',
@@ -251,31 +399,47 @@ export class AutomationService {
       finishedAt: now.toISOString(),
       durationMs: 0,
       resultSummary: 'Skipped because another evaluation is still running.',
+      ...(context ? { payload: context.payload, nextState: context.nextState } : {}),
     });
     this.updateDefinitionAfterEvaluation(automation, now, {
       nextMatch: automation.lastSuccessfulMatch,
       failureCount: automation.consecutiveEvaluationFailures,
     });
+    this.emitCompatibilityEvaluationRun(automation, finished);
     return finished;
   }
 
-  private async evaluateAndMaybeRun(automation: AutomationDefinition): Promise<AutomationEvaluation> {
-    const startedAt = this.now();
+  private async evaluateAndMaybeRun(
+    automation: AutomationDefinition,
+    context?: EvaluationContext,
+    manual = false,
+  ): Promise<AutomationEvaluation> {
+    const startedAt = context ? new Date(context.occurredAt) : this.now();
     const running = this.createEvaluation(automation, startedAt);
     const actionRunning = this.listRuns(automation.id)
       .some((run) => run.status === 'queued' || run.status === 'running');
     const coolingDown = automation.lastTriggeredAt !== undefined
       && startedAt.getTime() < Date.parse(automation.lastTriggeredAt) + automation.policies.cooldownMs;
-    const payload: Record<string, unknown> = {};
+    const payload = context?.payload || {};
     let decision: ReturnType<typeof decideCondition>;
     try {
+      const legacySnapshot = automation.originKind === 'automation-monitor'
+        && automation.condition.kind === 'expression'
+        && isPlainRecord(payload.eventSnapshot)
+        ? payload.eventSnapshot as unknown as AutomationMonitorEventSnapshot
+        : undefined;
+      const evaluator = this.options.conditionEvaluator || (legacySnapshot
+        ? ((condition: AutomationDefinition['condition']) => condition.kind === 'expression'
+          ? { kind: 'evaluated' as const, matched: evaluateExpression(condition.expression, legacySnapshot) }
+          : evaluateCondition(condition, payload))
+        : evaluateCondition);
       decision = decideCondition({
         condition: automation.condition,
         payload,
-        previous: automation.lastSuccessfulMatch,
+        previous: automation.condition.kind === 'always' ? undefined : automation.lastSuccessfulMatch,
         coolingDown,
         actionRunning,
-      }, this.options.conditionEvaluator || evaluateCondition);
+      }, evaluator);
     } catch (error) {
       const finishedAt = this.now();
       return this.finishError(
@@ -284,12 +448,13 @@ export class AutomationService {
         startedAt,
         finishedAt,
         normalizeAutomationError(error),
+        context,
       );
     }
     const finishedAt = this.now();
     if (decision.kind === 'script-delegation') {
       const message = normalizeAutomationError(`Approved-script evaluation is unavailable until the script runtime is installed (script ${decision.request.scriptId}, version ${decision.request.approvedVersionId}).`);
-      return this.finishError(automation, running, startedAt, finishedAt, message);
+      return this.finishError(automation, running, startedAt, finishedAt, message, context);
     }
     if (decision.conditionOutcome === 'error') {
       return this.finishError(
@@ -298,13 +463,15 @@ export class AutomationService {
         startedAt,
         finishedAt,
         normalizeAutomationError(decision.error || 'Condition evaluation failed.'),
+        context,
       );
     }
     const finishDetails = {
       finishedAt: finishedAt.toISOString(),
       durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
-      ...(decision.triggerDecision === 'triggered' ? { triggeredAt: finishedAt.toISOString() } : {}),
+      ...(decision.triggerDecision === 'triggered' ? { triggeredAt: startedAt.toISOString() } : {}),
       payload,
+      ...(context ? { nextState: context.nextState } : {}),
     };
     let finishInput: AutomationEvaluationFinishInput;
     if (decision.conditionOutcome === 'matched') {
@@ -315,12 +482,20 @@ export class AutomationService {
       finishInput = { ...finishDetails, conditionOutcome: 'skipped', triggerDecision: decision.triggerDecision };
     }
     const finished = this.finishEvaluation(running.id, finishInput);
-    const updated = this.updateDefinitionAfterEvaluation(automation, finishedAt, {
+    const updated = this.updateDefinitionAfterEvaluation(automation, startedAt, {
       nextMatch: decision.nextMatch,
       failureCount: 0,
       triggered: decision.triggerDecision === 'triggered',
     });
-    if (decision.triggerDecision === 'triggered') await this.executeAction(updated, finished, payload);
+    if (decision.triggerDecision === 'triggered') {
+      const run = await this.executeAction(updated, finished, payload);
+      if (!manual && updated.originKind === 'scheduled-job' && updated.activation.kind === 'once' && run.status === 'succeeded') {
+        const disabled = this.options.store.updateAutomation(updated.id, { enabled: false });
+        this.emitDefinition(disabled);
+      }
+    } else {
+      this.emitCompatibilityEvaluationRun(updated, finished);
+    }
     return finished;
   }
 
@@ -330,6 +505,7 @@ export class AutomationService {
     startedAt: Date,
     finishedAt: Date,
     error: string,
+    context?: EvaluationContext,
   ): AutomationEvaluation {
     const finished = this.finishEvaluation(running.id, {
       conditionOutcome: 'error',
@@ -338,14 +514,16 @@ export class AutomationService {
       durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
       errorCategory: 'condition_evaluation',
       resultSummary: error,
+      ...(context ? { payload: context.payload, nextState: context.nextState } : {}),
     });
     const count = automation.consecutiveEvaluationFailures + 1;
-    const updated = this.updateDefinitionAfterEvaluation(automation, finishedAt, {
+    const updated = this.updateDefinitionAfterEvaluation(automation, context ? startedAt : finishedAt, {
       nextMatch: automation.lastSuccessfulMatch,
       failureCount: count,
     });
     this.options.log?.(normalizeAutomationError(error, `automation evaluation failed ${automation.id} (${count}): `));
     if (FAILURE_ALERT_COUNTS.has(count)) this.options.alert?.({ automation: updated, count, error });
+    this.emitCompatibilityEvaluationRun(updated, finished);
     return finished;
   }
 
@@ -353,7 +531,7 @@ export class AutomationService {
     automation: AutomationDefinition,
     evaluation: AutomationEvaluation,
     payload: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<AutomationRun> {
     let run = this.options.store.createAutomationRun(automation.id, evaluation.id);
     this.emitRun(run);
     const startedAt = this.now().toISOString();
@@ -379,9 +557,14 @@ export class AutomationService {
       this.options.log?.(normalizeAutomationError(run.error, `automation action failed ${automation.id}: `));
     }
     this.emitRun(run);
+    return run;
   }
 
   private successfulRunUpdate(result: AutomationActionExecutionResult) {
+    const bridgeActivity = {
+      ...(result.deliveryMode ? { deliveryMode: result.deliveryMode } : {}),
+      ...(result.lastBridgeEventAt ? { lastBridgeEventAt: result.lastBridgeEventAt } : {}),
+    };
     return {
       status: 'succeeded' as const,
       threadId: result.threadId,
@@ -389,7 +572,7 @@ export class AutomationService {
       finishedAt: this.now().toISOString(),
       deliveryStatus: result.deliveryStatus === 'failed' ? 'failed' as const : 'delivered' as const,
       ...(result.deliveryError ? { error: normalizeAutomationError(result.deliveryError) } : {}),
-      ...(result.lastBridgeEventAt ? { bridgeActivity: { lastBridgeEventAt: result.lastBridgeEventAt } } : {}),
+      ...(Object.keys(bridgeActivity).length > 0 ? { bridgeActivity } : {}),
     };
   }
 
@@ -437,6 +620,12 @@ export class AutomationService {
     activationReplaced = false,
   ): AutomationDefinition {
     if (!replace && this.options.store.getAutomationNextCheckAt(automation.id) !== null) return automation;
+    return this.options.store.updateAutomationState(automation.id, {
+      nextCheckAt: this.initialNextCheckAt(automation, activationReplaced),
+    });
+  }
+
+  private initialNextCheckAt(automation: AutomationDefinition, activationReplaced = false): string | null {
     const now = this.now();
     let next: Date | null;
     if ((!automation.enabled && !activationReplaced) || automation.activation.kind === 'provider-event') {
@@ -453,7 +642,7 @@ export class AutomationService {
       next = missedActivationAt(automation.activation, baseline.toISOString(), now)
         || nextActivationAt(automation.activation, now);
     }
-    return this.options.store.updateAutomationState(automation.id, { nextCheckAt: next?.toISOString() || null });
+    return next?.toISOString() || null;
   }
 
   private shouldPoll(automation: AutomationDefinition): boolean {
@@ -482,15 +671,109 @@ export class AutomationService {
   }
 
   private emitDefinition(automation: AutomationDefinition): void {
-    this.options.eventBus.emit({ type: 'automation.definition.updated', payload: automation });
+    this.emitEvent({ type: 'automation.definition.updated', payload: automation });
+    try {
+      if (automation.originKind === 'scheduled-job') {
+        this.emitEvent({
+          type: 'scheduler.job.updated',
+          payload: automationToScheduledJob(automation, latestAutomationRun(this.listRuns(automation.id))),
+        });
+      } else if (automation.originKind === 'automation-monitor') {
+        const latest = latestFinishedEvaluation(this.listEvaluations(automation.id));
+        this.emitEvent({
+          type: 'automation.monitor.updated',
+          payload: automationToMonitor(
+            automation,
+            latest,
+            latestAutomationRun(this.listRuns(automation.id)),
+            this.getLatestEvaluationWithState(automation.id),
+          ),
+        });
+      }
+    } catch (error) {
+      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
+    }
   }
 
   private emitEvaluation(evaluation: AutomationEvaluation): void {
-    this.options.eventBus.emit({ type: 'automation.evaluation.updated', payload: evaluation });
+    this.emitEvent({ type: 'automation.evaluation.updated', payload: evaluation });
   }
 
   private emitRun(run: AutomationRun): void {
-    this.options.eventBus.emit({ type: 'automation.run.updated', payload: run });
+    this.emitEvent({ type: 'automation.run.updated', payload: run });
+    try {
+      const automation = this.get(run.automationId);
+      const evaluation = this.listEvaluations(run.automationId).find((candidate) => candidate.id === run.evaluationId);
+      if (!automation || !evaluation) return;
+      if (automation.originKind === 'scheduled-job') {
+        this.emitEvent({ type: 'scheduler.run.updated', payload: automationToScheduledJobRun(evaluation, run) });
+      } else if (automation.originKind === 'automation-monitor') {
+        this.emitEvent({ type: 'automation.monitor.run.updated', payload: automationToMonitorRun(evaluation, run) });
+      }
+    } catch (error) {
+      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
+    }
+  }
+
+  private emitCompatibilityEvaluationRun(
+    automation: AutomationDefinition,
+    evaluation: AutomationEvaluation,
+  ): void {
+    try {
+      if (automation.originKind === 'scheduled-job') {
+        this.emitEvent({
+          type: 'scheduler.run.updated',
+          payload: automationToScheduledJobRun(evaluation),
+        });
+      } else if (automation.originKind === 'automation-monitor') {
+        this.emitEvent({
+          type: 'automation.monitor.run.updated',
+          payload: automationToMonitorRun(evaluation),
+        });
+      }
+    } catch (error) {
+      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
+    }
+  }
+
+  private providerEventContext(
+    automation: AutomationDefinition,
+    event: AutomationMonitorEventSnapshot,
+  ): EvaluationContext {
+    const occurredAt = normalizeProviderEventTimestamp(event.occurredAt);
+    const previousEvaluation = this.getLatestEvaluationWithState(automation.id);
+    const previous = previousEvaluation?.status === 'finished' ? previousEvaluation.nextState : undefined;
+    const nextState = {
+      ...(previous || {}),
+      ...event.payload,
+      payload: event.payload,
+      lastEventId: event.id,
+      lastEventAt: occurredAt,
+    };
+    return {
+      payload: {
+        ...event.payload,
+        ...(!Object.prototype.hasOwnProperty.call(event.payload, 'subject') ? { subject: event.subject } : {}),
+        ...(!Object.prototype.hasOwnProperty.call(event.payload, 'sourceType') ? { sourceType: event.sourceType } : {}),
+        eventSubject: event.subject,
+        eventSourceType: event.sourceType,
+        occurredAt,
+        timestamp: occurredAt,
+        summary: event.summary || '',
+        eventSnapshot: event,
+        previous: previous || {},
+      },
+      nextState,
+      occurredAt,
+    };
+  }
+
+  private emitEvent<TType extends DomainEventType>(event: EventBusEvent<TType>): void {
+    try {
+      this.options.eventBus.emit(event);
+    } catch (error) {
+      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
+    }
   }
 
   private clearTimer(): void {
@@ -557,4 +840,197 @@ export function normalizeAutomationError(error: unknown, prefix = ''): string {
   return redactSecrets(withoutControls)
     .replace(/\b(password|api[-_]?key)\s*[:=]\s*[^\s]+/gi, '$1=[REDACTED_SECRET]')
     .slice(0, AUTOMATION_ERROR_MAX_LENGTH);
+}
+
+export function providerLifecycleBlockReason(error: unknown): string {
+  const normalized = normalizeAutomationError(error);
+  return normalized.startsWith(PROVIDER_LIFECYCLE_BLOCK_PREFIX)
+    ? normalized
+    : normalizeAutomationError(normalized, PROVIDER_LIFECYCLE_BLOCK_PREFIX);
+}
+
+function normalizeProviderEventTimestamp(value: unknown): string {
+  if (
+    typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value.trim())
+  ) {
+    throw new Error('Provider event occurredAt must be a valid ISO timestamp.');
+  }
+  const timestamp = new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) {
+    throw new Error('Provider event occurredAt must be a valid ISO timestamp.');
+  }
+  return timestamp.toISOString();
+}
+
+export function normalizeProviderEventSnapshot(value: unknown): AutomationMonitorEventSnapshot {
+  if (!isPlainRecord(value)) throw new Error('Provider event must be a plain object.');
+  assertOwnDataProperties(value, 'Provider event');
+  for (const field of ['id', 'sourceType', 'subject'] as const) {
+    const fieldValue = ownDataProperty(value, field);
+    if (typeof fieldValue !== 'string' || !fieldValue.trim()) {
+      throw new Error(`Provider event ${field} must be a non-empty string.`);
+    }
+  }
+  const summary = ownDataProperty(value, 'summary');
+  if (summary !== undefined && typeof summary !== 'string') {
+    throw new Error('Provider event summary must be a string when provided.');
+  }
+  const occurredAt = ownDataProperty(value, 'occurredAt');
+  const normalizedOccurredAt = normalizeProviderEventTimestampStrict(occurredAt);
+  const topLevelStrings = [
+    ownDataProperty(value, 'id'),
+    ownDataProperty(value, 'sourceType'),
+    ownDataProperty(value, 'subject'),
+    occurredAt,
+    ...(summary === undefined ? [] : [summary]),
+  ] as string[];
+  if (topLevelStrings.some((field) => field.length > PROVIDER_EVENT_STRING_MAX_LENGTH)) {
+    throw new Error('Provider event string field exceeds the maximum length.');
+  }
+  const topLevelSize = topLevelStrings.reduce((total, field) => total + field.length, 0);
+  if (topLevelSize > PROVIDER_JSON_MAX_SIZE) throw new Error('Provider event exceeds the maximum total size.');
+  const payloadValue = ownDataProperty(value, 'payload');
+  if (!isPlainRecord(payloadValue)) throw new Error('Provider event payload must be a plain object.');
+  let payload: Record<string, unknown>;
+  try {
+    payload = cloneProviderJsonValue(payloadValue, '$', {
+      ancestors: new WeakSet<object>(),
+      size: topLevelSize,
+    }, 0) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(normalizeAutomationError(error, 'Invalid provider event payload: '));
+  }
+  return {
+    id: ownDataProperty(value, 'id') as string,
+    sourceType: ownDataProperty(value, 'sourceType') as string,
+    subject: ownDataProperty(value, 'subject') as string,
+    occurredAt: normalizedOccurredAt,
+    ...(summary === undefined ? {} : { summary }),
+    payload,
+  };
+}
+
+type ProviderJsonCloneState = {
+  ancestors: WeakSet<object>;
+  size: number;
+};
+
+function cloneProviderJsonValue(
+  value: unknown,
+  path: string,
+  state: ProviderJsonCloneState,
+  depth: number,
+): unknown {
+  if (depth > PROVIDER_JSON_MAX_DEPTH) throw new Error(`${path} exceeds the maximum nesting depth.`);
+  state.size += typeof value === 'string' ? value.length + 1 : 1;
+  if (state.size > PROVIDER_JSON_MAX_SIZE) throw new Error(`${path} exceeds the maximum payload size.`);
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error(`${path} must contain only finite numbers.`);
+    return value;
+  }
+  if (typeof value !== 'object') throw new Error(`${path} contains a non-JSON value.`);
+  if (state.ancestors.has(value)) throw new Error(`${path} contains a cycle.`);
+  state.ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error(`${path} must be a plain array.`);
+      if (Object.getOwnPropertySymbols(value).length > 0) throw new Error(`${path} contains a symbol property.`);
+      const keys = Object.getOwnPropertyNames(value);
+      for (const key of keys) {
+        if (key !== 'length' && !isArrayIndex(key, value.length)) {
+          throw new Error(`${path} contains a non-index array property.`);
+        }
+      }
+      const clone: unknown[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor) throw new Error(`${path}[${index}] must not be sparse.`);
+        if (!('value' in descriptor)) throw new Error(`${path}[${index}] must be a data property.`);
+        clone.push(cloneProviderJsonValue(descriptor.value, `${path}[${index}]`, state, depth + 1));
+      }
+      return clone;
+    }
+    if (!isPlainRecord(value)) throw new Error(`${path} must contain only plain objects and arrays.`);
+    if (Object.getOwnPropertySymbols(value).length > 0) throw new Error(`${path} contains a symbol property.`);
+    const clone: Record<string, unknown> = {};
+    for (const key of Object.getOwnPropertyNames(value)) {
+      state.size += key.length;
+      if (state.size > PROVIDER_JSON_MAX_SIZE) throw new Error(`${path} exceeds the maximum payload size.`);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+      const propertyPath = providerJsonPropertyPath(path, key);
+      if (!('value' in descriptor)) throw new Error(`${propertyPath} must be a data property.`);
+      Object.defineProperty(clone, key, {
+        value: cloneProviderJsonValue(descriptor.value, propertyPath, state, depth + 1),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return clone;
+  } finally {
+    state.ancestors.delete(value);
+  }
+}
+
+function assertOwnDataProperties(value: Record<string, unknown>, context: string): void {
+  if (Object.getOwnPropertySymbols(value).length > 0) throw new Error(`${context} must not contain symbol properties.`);
+  for (const key of Object.getOwnPropertyNames(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (!('value' in descriptor)) throw new Error(`${context} ${key} must be a data property.`);
+  }
+}
+
+function ownDataProperty(value: Record<string, unknown>, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+}
+
+function isArrayIndex(key: string, length: number): boolean {
+  if (!/^(0|[1-9]\d*)$/.test(key)) return false;
+  const index = Number(key);
+  return Number.isSafeInteger(index) && index >= 0 && index < length;
+}
+
+function providerJsonPropertyPath(path: string, key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key)
+    ? `${path}.${key}`
+    : `${path}[${JSON.stringify(key.slice(0, 80))}${key.length > 80 ? '…' : ''}]`;
+}
+
+function normalizeProviderEventTimestampStrict(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/);
+  if (!match) throw new Error('Provider event occurredAt must be a valid ISO timestamp.');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const fraction = String(match[7] || '').padEnd(3, '0').slice(0, 3);
+  const local = new Date(0);
+  local.setUTCFullYear(year, month - 1, day);
+  local.setUTCHours(hour, minute, second, Number(fraction));
+  if (
+    local.getUTCFullYear() !== year || local.getUTCMonth() !== month - 1 || local.getUTCDate() !== day
+    || local.getUTCHours() !== hour || local.getUTCMinutes() !== minute || local.getUTCSeconds() !== second
+  ) throw new Error('Provider event occurredAt must be a valid ISO timestamp.');
+  const zone = String(match[8]);
+  let offsetMinutes = 0;
+  if (zone !== 'Z') {
+    const zoneMatch = zone.match(/^([+-])(\d{2}):(\d{2})$/)!;
+    const offsetHour = Number(zoneMatch[2]);
+    const offsetMinute = Number(zoneMatch[3]);
+    if (offsetHour > 23 || offsetMinute > 59) throw new Error('Provider event occurredAt must be a valid ISO timestamp.');
+    offsetMinutes = (offsetHour * 60 + offsetMinute) * (zoneMatch[1] === '+' ? 1 : -1);
+  }
+  return new Date(local.getTime() - offsetMinutes * 60_000).toISOString();
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }

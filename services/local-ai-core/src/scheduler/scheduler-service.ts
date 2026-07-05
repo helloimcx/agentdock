@@ -2,6 +2,13 @@ import { EventEmitter } from 'node:events';
 import type { ScheduledJob, ScheduledJobRun } from '@cc/superai-contracts';
 import type { EventBus } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { AutomationService } from '../automation/automation-service.js';
+import {
+  automationToScheduledJob,
+  automationToScheduledJobRun,
+  latestAutomationRun,
+  scheduledJobToAutomationInput,
+} from '../automation/legacy-automation-mappers.js';
 import type { SchedulerExecutorRuntime, SchedulerTriggerRuntime } from './adapters.js';
 import { toPublicScheduledJobId } from './job-id.js';
 import { SchedulerRunLifecycle } from './scheduler-run-lifecycle.js';
@@ -13,6 +20,7 @@ type SchedulerServiceOptions = {
   triggers: SchedulerTriggerRuntime[];
   executors: SchedulerExecutorRuntime[];
   eventBus: EventBus;
+  automations?: AutomationService;
   log?: (message: string) => void;
 };
 
@@ -42,10 +50,7 @@ export class SchedulerService extends EventEmitter {
   }
 
   async start() {
-    await this.tick();
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, 1000);
+    // Unified AutomationService owns scheduled-job execution after migration.
   }
 
   async stop() {
@@ -56,35 +61,97 @@ export class SchedulerService extends EventEmitter {
   }
 
   listJobs(workspaceId?: string) {
+    const automations = this.options.automations;
+    if (automations) {
+      return automations.list(workspaceId)
+        .filter((automation) => automation.originKind === 'scheduled-job')
+        .map((automation) => automationToScheduledJob(
+          automation,
+          latestAutomationRun(automations.listRuns(automation.id)),
+        ));
+    }
     return this.options.store.listScheduledJobs(workspaceId);
   }
 
   getJob(jobId: string) {
+    if (this.options.automations) {
+      const resolved = this.resolveJobId(jobId);
+      const automation = resolved ? this.options.automations.get(resolved) : undefined;
+      return automation?.originKind === 'scheduled-job'
+        ? automationToScheduledJob(automation, latestAutomationRun(this.options.automations.listRuns(automation.id)))
+        : undefined;
+    }
     const resolvedJobId = this.resolveJobId(jobId);
     return resolvedJobId ? this.options.store.getScheduledJob(resolvedJobId) : undefined;
   }
 
   createJob(input: Parameters<LocalCoreAcpStore['createScheduledJob']>[0]) {
+    if (this.options.automations) {
+      if (!input.platform || !input.route) throw new Error('Scheduled job creation requires a resolved platform and route.');
+      return automationToScheduledJob(this.options.automations.createFromLegacy(scheduledJobToAutomationInput({
+        ...input,
+        platform: input.platform,
+        route: input.route,
+      })));
+    }
     const job = this.options.store.createScheduledJob(input);
     this.emitJob(job);
     return job;
   }
 
   updateJob(jobId: string, input: Parameters<LocalCoreAcpStore['updateScheduledJob']>[1]) {
+    if (this.options.automations) {
+      this.options.automations.assertLegacyFacadesAvailable();
+      const existing = this.getJob(jobId);
+      if (!existing) throw new Error(`Scheduled job not found: ${jobId}`);
+      const mapped = scheduledJobToAutomationInput({
+        workspaceId: existing.workspaceId,
+        platform: existing.platform,
+        route: input.route ?? existing.route,
+        executionMode: input.executionMode ?? existing.executionMode,
+        triggerType: input.triggerType ?? existing.triggerType,
+        cronExpr: input.cronExpr ?? existing.cronExpr,
+        runAt: input.runAt ?? existing.runAt,
+        promptTemplate: input.promptTemplate ?? existing.promptTemplate,
+        description: input.description ?? existing.description,
+        enabled: input.enabled ?? existing.enabled,
+      });
+      const { workspaceId: _workspaceId, originKind: _originKind, ...update } = mapped;
+      return automationToScheduledJob(this.options.automations.updateFromLegacy(this.resolveRequiredJobId(jobId), update));
+    }
     const job = this.options.store.updateScheduledJob(this.resolveRequiredJobId(jobId), input);
     this.emitJob(job);
     return job;
   }
 
   deleteJob(jobId: string) {
+    if (this.options.automations) {
+      this.options.automations.assertLegacyFacadesAvailable();
+      return this.options.automations.delete(this.resolveRequiredJobId(jobId));
+    }
     return this.options.store.deleteScheduledJob(this.resolveRequiredJobId(jobId));
   }
 
   listJobRuns(jobId: string) {
+    if (this.options.automations) {
+      const resolved = this.resolveRequiredJobId(jobId);
+      const runs = this.options.automations.listRuns(resolved);
+      const runsByEvaluationId = new Map(runs.map((run) => [run.evaluationId, run]));
+      return this.options.automations.listEvaluations(resolved).map((evaluation) =>
+        automationToScheduledJobRun(evaluation, runsByEvaluationId.get(evaluation.id))
+      );
+    }
     return this.options.store.listScheduledJobRuns(this.resolveRequiredJobId(jobId));
   }
 
   async runJobNow(jobId: string) {
+    if (this.options.automations) {
+      this.options.automations.assertLegacyFacadesAvailable();
+      const resolved = this.resolveRequiredJobId(jobId);
+      const evaluation = await this.options.automations.checkNow(resolved);
+      const run = this.options.automations.listRuns(resolved).find((candidate) => candidate.evaluationId === evaluation.id);
+      return automationToScheduledJobRun(evaluation, run);
+    }
     const resolvedJobId = this.resolveRequiredJobId(jobId);
     const job = this.options.store.getScheduledJob(resolvedJobId);
     if (!job) {
@@ -94,6 +161,14 @@ export class SchedulerService extends EventEmitter {
   }
 
   private resolveJobId(jobId: string) {
+    if (this.options.automations) {
+      const direct = this.options.automations.get(jobId);
+      if (direct?.originKind === 'scheduled-job') return direct.id;
+      const matches = this.options.automations.list()
+        .filter((automation) => automation.originKind === 'scheduled-job' && toPublicScheduledJobId(automation.id) === jobId);
+      if (matches.length > 1) throw new Error(`Scheduled job id is ambiguous: ${jobId}`);
+      return matches[0]?.id || '';
+    }
     if (this.options.store.getScheduledJob(jobId)) {
       return jobId;
     }

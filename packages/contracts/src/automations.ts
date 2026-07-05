@@ -30,6 +30,10 @@ export interface AutomationPolicies {
   cooldownMs: number;
 }
 
+export interface AutomationLegacyMetadata {
+  scheduledDescription?: string;
+}
+
 export interface AutomationDefinition {
   id: string;
   workspaceId: string;
@@ -49,6 +53,7 @@ export interface AutomationDefinition {
   createdAt: string;
   updatedAt: string;
   originKind?: 'native' | 'scheduled-job' | 'automation-monitor';
+  legacyMetadata?: AutomationLegacyMetadata;
 }
 
 type AutomationWritableFields = Pick<
@@ -384,6 +389,19 @@ export function normalizeAutomationDefinition(value: unknown): AutomationDefinit
     normalized.originKind = input.originKind;
   } else if (input.originKind !== undefined) {
     throw new Error('Automation originKind is invalid.');
+  }
+  if (input.legacyMetadata !== undefined) {
+    if (input.originKind !== 'scheduled-job') {
+      throw new Error('Automation legacyMetadata requires scheduled-job origin.');
+    }
+    const legacyMetadata = asRecord(input.legacyMetadata, 'Automation legacyMetadata');
+    const scheduledDescription = legacyMetadata.scheduledDescription;
+    if (scheduledDescription !== undefined && typeof scheduledDescription !== 'string') {
+      throw new Error('Automation legacy scheduledDescription must be a string.');
+    }
+    normalized.legacyMetadata = {
+      ...(scheduledDescription !== undefined ? { scheduledDescription } : {}),
+    };
   }
   return normalized;
 }

@@ -32,25 +32,55 @@ export function evaluateRestrictedExpression(
   expression: string,
   contextOrResolver: Record<string, unknown> | ((metric: string) => unknown),
 ): boolean {
+  const compiled = compileRestrictedExpression(expression);
   const resolveMetric = typeof contextOrResolver === 'function'
     ? contextOrResolver
     : (metric: string) => readContextMetric(contextOrResolver, metric);
-  const orParts = splitExpression(expression, '||');
-  return orParts.some((orPart) =>
-    splitExpression(orPart, '&&').every((andPart) => evaluateRestrictedComparison(andPart.trim(), resolveMetric))
+  return compiled.some((orPart) =>
+    orPart.every((comparison) => evaluateRestrictedComparison(comparison, resolveMetric))
   );
 }
 
-function evaluateRestrictedComparison(expression: string, resolveMetric: (metric: string) => unknown) {
-  const match = expression.match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
-  if (!match) {
-    throw new Error(`Unsupported monitor condition expression: ${expression}`);
-  }
-  const rawValue = String(match[3] || '').trim().replace(/^["']|["']$/g, '');
+export type RestrictedExpressionComparison = {
+  metric: string;
+  operator: AutomationMonitorCondition['operator'];
+  rawValue: string;
+};
+
+export type CompiledRestrictedExpression = RestrictedExpressionComparison[][];
+
+export function validateRestrictedExpression(expression: string): void {
+  compileRestrictedExpression(expression);
+}
+
+export function compileRestrictedExpression(expression: string): CompiledRestrictedExpression {
+  const source = String(expression || '').trim();
+  if (!source) throw new Error(`Unsupported monitor condition expression: ${expression}`);
+  return source.split('||').map((orPart) => {
+    if (!orPart.trim()) throw new Error(`Unsupported monitor condition expression: ${expression}`);
+    return orPart.split('&&').map((andPart) => compileRestrictedComparison(andPart.trim(), expression));
+  });
+}
+
+function compileRestrictedComparison(expression: string, original: string): RestrictedExpressionComparison {
+  const match = expression.match(/^([a-zA-Z0-9_.-]+)\s*(>=|<=|==|!=|>|<)\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s&|<>=!]+)$/);
+  if (!match) throw new Error(`Unsupported monitor condition expression: ${original}`);
+  return {
+    metric: String(match[1]),
+    operator: match[2] as AutomationMonitorCondition['operator'],
+    rawValue: String(match[3]),
+  };
+}
+
+function evaluateRestrictedComparison(
+  comparison: RestrictedExpressionComparison,
+  resolveMetric: (metric: string) => unknown,
+) {
+  const rawValue = comparison.rawValue.replace(/^["']|["']$/g, '');
   const numeric = Number(rawValue);
-  const actual = resolveMetric(String(match[1] || '').trim());
+  const actual = resolveMetric(comparison.metric);
   const expected = Number.isFinite(numeric) && rawValue !== '' ? numeric : rawValue;
-  switch (match[2] as AutomationMonitorCondition['operator']) {
+  switch (comparison.operator) {
     case '>': return Number(actual) > Number(expected);
     case '>=': return Number(actual) >= Number(expected);
     case '<': return Number(actual) < Number(expected);
@@ -59,13 +89,6 @@ function evaluateRestrictedComparison(expression: string, resolveMetric: (metric
     case '!=': return String(actual) !== String(expected);
     default: return false;
   }
-}
-
-function splitExpression(expression: string, operator: '&&' | '||') {
-  return expression
-    .split(operator)
-    .map((part) => part.trim())
-    .filter(Boolean);
 }
 
 export function readMetric(event: AutomationMonitorEventSnapshot, metric: string): unknown {

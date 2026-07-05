@@ -195,7 +195,7 @@ test('overlap, cooldown, and running action decisions do not create runs', async
   }
 });
 
-test('start catches up once, skips legacy/provider origins, and stop drains in-flight work', async () => {
+test('start catches up native and scheduled-job origins, skips provider events, and stop drains in-flight work', async () => {
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => { release = resolve; });
   const context = fixture({
@@ -212,7 +212,7 @@ test('start catches up once, skips legacy/provider origins, and stop drains in-f
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(context.service.listEvaluations(native.id).length, 1);
     assert.equal(context.service.listEvaluations(provider.id).length, 0);
-    assert.equal(context.service.listEvaluations(legacy.id).length, 0);
+    assert.equal(context.service.listEvaluations(legacy.id).length, 1);
     release();
     await start;
     await context.service.tick();
@@ -409,6 +409,38 @@ test('overdue never-evaluated once catches up once and remains consumed after re
     assert.equal(restarted.listRuns(automation.id).length, 1);
     assert.equal(context.store.getAutomationNextCheckAt(automation.id), null);
   } finally {
+    context.close();
+  }
+});
+
+test('legacy consumed once import stays terminal while never-run overdue once catches up once', async () => {
+  const context = fixture();
+  try {
+    const consumed = context.store.createScheduledJob({
+      workspaceId: 'workspace-1', platform: 'local', route: { type: 'local.thread', channelId: 'workspace-1' },
+      executionMode: 'same-thread', triggerType: 'once', runAt: '2026-07-05T07:00:00.000Z',
+      promptTemplate: 'already ran', description: '', enabled: true,
+    });
+    context.store.updateScheduledJobStatus(consumed.id, {
+      lastRunAt: '2026-07-05T07:00:00.000Z', lastStatus: 'succeeded',
+    });
+    const overdue = context.store.createScheduledJob({
+      workspaceId: 'workspace-1', platform: 'local', route: { type: 'local.thread', channelId: 'workspace-1' },
+      executionMode: 'same-thread', triggerType: 'once', runAt: '2026-07-05T07:30:00.000Z',
+      promptTemplate: 'run once', description: '', enabled: true,
+    });
+
+    await context.service.start();
+
+    assert.equal(context.service.listEvaluations(consumed.id).length, 0);
+    assert.equal(context.store.getAutomationNextCheckAt(consumed.id), null);
+    assert.equal(context.service.get(consumed.id)?.enabled, false);
+    assert.equal(context.service.listEvaluations(overdue.id).length, 1);
+    assert.equal(context.service.listRuns(overdue.id).length, 1);
+    assert.equal(context.service.get(overdue.id)?.enabled, false);
+    assert.equal(context.actions.length, 1);
+  } finally {
+    await context.service.stop();
     context.close();
   }
 });
@@ -893,4 +925,61 @@ test('non-throwing action delivery errors are sanitized before run persistence',
   } finally {
     context.close();
   }
+});
+
+test('definition CRUD remains successful when an event projection listener throws', () => {
+  const context = fixture();
+  context.eventBus.on('automation.definition.updated', () => { throw new Error('projection listener failed'); });
+  try {
+    const created = context.service.create(input({ title: 'committed despite listener' }));
+    assert.equal(context.service.get(created.id)?.title, 'committed despite listener');
+    const updated = context.service.update(created.id, { title: 'updated despite listener' });
+    assert.equal(updated.title, 'updated despite listener');
+  } finally { context.close(); }
+});
+
+test('definition and initial schedule writes roll back atomically when schedule calculation fails', () => {
+  const context = fixture({ clock: () => new Date(Number.NaN) });
+  try {
+    assert.throws(() => context.service.create(input()), /invalid date/);
+    assert.equal(context.service.list().length, 0);
+  } finally { context.close(); }
+});
+
+test('activation update rolls back atomically when replacement schedule calculation fails', () => {
+  let invalid = false;
+  const context = fixture({ clock: () => invalid ? new Date(Number.NaN) : new Date(NOW) });
+  try {
+    const created = context.service.create(input());
+    invalid = true;
+    assert.throws(() => context.service.update(created.id, {
+      activation: { kind: 'interval', intervalMs: 60_000 },
+    }), /invalid date/);
+    assert.deepEqual(context.service.get(created.id)?.activation, created.activation);
+  } finally { context.close(); }
+});
+
+test('fail-closed definition and provider health changes roll back atomically on database rejection', () => {
+  const context = fixture();
+  try {
+    const automation = context.store.createTrustedAutomation({
+      ...input({ activation: { kind: 'provider-event', sourceType: 'stock.quote', sourceConfig: {} } }),
+      originKind: 'automation-monitor',
+    });
+    const db = (context.store as unknown as { db: { exec(sql: string): void } }).db;
+    db.exec(`
+      CREATE TRIGGER reject_provider_block
+      BEFORE UPDATE ON automations
+      WHEN NEW.health = 'blocked'
+      BEGIN
+        SELECT RAISE(ABORT, 'provider block rejected');
+      END
+    `);
+    assert.throws(
+      () => context.service.failClosedLegacyAutomation(automation.id, 'provider failed'),
+      /provider block rejected/,
+    );
+    assert.equal(context.service.get(automation.id)?.enabled, true);
+    assert.equal(context.service.get(automation.id)?.health, 'healthy');
+  } finally { context.close(); }
 });

@@ -168,6 +168,7 @@ export type LocalAutomationRow = {
   consecutive_evaluation_failures: number;
   next_check_at: string | null;
   origin_kind: NonNullable<AutomationDefinition['originKind']>;
+  legacy_metadata_json: string | null;
   created_at: string;
   updated_at: string;
 };
