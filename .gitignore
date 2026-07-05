@@ -22,6 +22,7 @@ Thumbs.db
 .claude/settings.local.json
 .codex/config.toml
 .codex-shims/
+.worktrees/
 
 # Local AI Core runtime config/state.
 .local-ai-core/runtime/
