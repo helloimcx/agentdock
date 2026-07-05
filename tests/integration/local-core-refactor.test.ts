@@ -7,7 +7,20 @@ import { LocalCoreAcpResponseProcessor } from '../../services/local-ai-core/src/
 import { agentHelpText, formatAgentMode, modeHelpText, normalizeAgentCommandTarget, normalizeAgentMode, parseSlashCommand } from '../../services/local-ai-core/src/acp/local-core-slash-commands.js';
 import { ScheduledConversationExecutor } from '../../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
 import { SchedulerRunLifecycle } from '../../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
-import { createLarkExecutionPolicy } from '../../services/local-ai-core/src/scheduler/lark-execution-policies.js';
+import { createChannelExecutionPolicy } from '../../services/local-ai-core/src/scheduler/channel-execution-policy.js';
+
+const createLarkExecutionPolicy = (
+  job: Parameters<typeof createChannelExecutionPolicy>[0],
+  options: Parameters<typeof createChannelExecutionPolicy>[1],
+  resolveSameThread: (job: Parameters<typeof createChannelExecutionPolicy>[0]) => Promise<string>,
+  preferredAgentType?: (job: Parameters<typeof createChannelExecutionPolicy>[0]) => string,
+) => createChannelExecutionPolicy(job, options, {
+  platformBase: 'lark',
+  resolveSameThread,
+  sideThreadTitle: (nextJob: { description?: string; id: string }) => `[Scheduled:Lark] ${nextJob.description || nextJob.id}`,
+  legacySideThreadTitles: (nextJob: { description?: string; id: string }) => [`[Scheduled] ${nextJob.description || nextJob.id}`],
+  preferredAgentType,
+});
 import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
 import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../services/local-ai-core/src/channel/lark/cards.js';
 import { ChannelSessionCommandRuntime } from '../../services/local-ai-core/src/channel/shared/session-command-runtime.js';
