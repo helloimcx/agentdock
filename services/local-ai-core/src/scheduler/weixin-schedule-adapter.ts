@@ -15,10 +15,11 @@ export class WeixinScheduleAdapter extends BaseChannelScheduleAdapter {
     resolveSameThread: (job: ScheduledJob) => Promise<string>,
     preferredAgentType: (job: ScheduledJob) => string,
   ): ScheduledExecutionPolicy {
+    const label = this.platformBase.charAt(0).toUpperCase() + this.platformBase.slice(1);
     return createChannelExecutionPolicy(job, options, {
       platformBase: this.platformBase,
       resolveSameThread,
-      sideThreadTitle: (nextJob) => `[Scheduled:Weixin] ${nextJob.description || nextJob.id}`,
+      sideThreadTitle: (nextJob) => `[Scheduled:${label}] ${nextJob.description || nextJob.id}`,
       legacySideThreadTitles: (nextJob) => [`[Scheduled] ${nextJob.description || nextJob.id}`],
       preferredAgentType,
     });
