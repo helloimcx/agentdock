@@ -1,0 +1,168 @@
+import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-contracts';
+import type { ChannelRuntime } from '@cc/plugin-sdk';
+import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { WorkspaceRouter } from '../router/workspace-router.js';
+import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
+import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
+import { waitForRunCompletion } from '../scheduler/run-polling.js';
+import { threadExists } from '../scheduler/thread-resolution.js';
+
+const AUTOMATION_RUN_PERMISSION_MODE = 'bypassPermissions';
+const UNSAFE_PROMPT_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString']);
+
+export interface AutomationActionExecutionInput {
+  automation: AutomationDefinition;
+  evaluation: AutomationEvaluation;
+  promptVariables: Record<string, unknown>;
+}
+
+export interface AutomationActionExecutionResult {
+  threadId: string;
+  acpRunId: string;
+  replyText?: string;
+  deliveryMode?: 'thread-only' | 'bridge-stream';
+  deliveryStatus?: 'succeeded' | 'failed';
+  deliveryError?: string;
+  lastBridgeEventAt?: string;
+}
+
+export type AutomationActionExecutorOptions = {
+  store: LocalCoreAcpStore;
+  getWorkspaceRouter: () => WorkspaceRouter;
+  getChannelRuntime: (platform: string) => ChannelRuntime | undefined;
+};
+
+export class AutomationActionExecutor {
+  constructor(private readonly options: AutomationActionExecutorOptions) {}
+
+  async execute(
+    input: AutomationActionExecutionInput,
+    timeoutMs = 15 * 60 * 1_000,
+  ): Promise<AutomationActionExecutionResult> {
+    const { automation } = input;
+    const workspaceRouter = this.options.getWorkspaceRouter();
+    const threadId = await this.resolveThread(automation);
+    const prompt = renderAutomationPrompt(automation.action.promptTemplate, input.promptVariables);
+    const channelRuntime = automation.delivery.platform === 'local'
+      ? undefined
+      : this.options.getChannelRuntime(automation.delivery.platform);
+    const bridge = channelRuntime
+      ? await ScheduledBridgeSession.open({
+          target: {
+            id: automation.id,
+            workspaceId: automation.workspaceId,
+            platform: automation.delivery.platform,
+            route: automation.delivery.route,
+            title: automation.title,
+            promptTemplate: automation.action.promptTemplate,
+          },
+          threadId,
+          workspaceRouter,
+          getChannelRuntime: () => channelRuntime,
+          noticeIcon: automation.originKind === 'automation-monitor'
+            && input.promptVariables.sourceType === 'stock.quote' ? '📈' : '🔔',
+          noticeTitle: automation.title,
+        })
+      : undefined;
+    try {
+      const sendResult = await workspaceRouter.sendThreadMessage(threadId, prompt, {
+        permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
+        runtimeEnv: buildPlatformRuntimeEnv(automation.delivery.platform, automation.delivery.route),
+      });
+      await waitForRunCompletion(
+        this.options.store,
+        sendResult.runId,
+        timeoutMs,
+        automation.originKind === 'automation-monitor' ? 'Monitor' : 'Automation',
+      );
+      const thread = await workspaceRouter.getThread(threadId);
+      const replyText = [...thread.messages]
+        .reverse()
+        .find((message) => message.role === 'assistant' && message.kind === 'final')
+        ?.content;
+      return {
+        threadId,
+        acpRunId: sendResult.runId,
+        replyText,
+        deliveryMode: bridge ? 'bridge-stream' : 'thread-only',
+        deliveryStatus: 'succeeded',
+        lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
+      };
+    } finally {
+      await bridge?.close();
+    }
+  }
+
+  private async resolveThread(automation: AutomationDefinition): Promise<string> {
+    const workspaceRouter = this.options.getWorkspaceRouter();
+    const route = automation.delivery.route;
+    const platform = automation.delivery.platform;
+    if (automation.action.executionMode === 'same-thread') {
+      const binding = this.options.store.getPlatformThreadBinding(
+        automation.workspaceId,
+        route.channelId,
+        route.participantId || '',
+        platform,
+      );
+      if (binding?.thread_id && await threadExists(workspaceRouter, binding.thread_id)) return binding.thread_id;
+      if (route.threadId && await threadExists(workspaceRouter, route.threadId)) return route.threadId;
+    }
+    const label = automation.originKind === 'automation-monitor' ? 'Monitor' : 'Automation';
+    const title = platform === 'local'
+      ? `[${label}] ${automation.title}`
+      : `[${label}:${getChannelPlatformBase(platform) || platform}] ${automation.title}`;
+    const existing = (await workspaceRouter.listThreads(automation.workspaceId))
+      .find((thread) => thread.title === title);
+    if (existing) return existing.id;
+    return (await workspaceRouter.createThread(automation.workspaceId, title)).id;
+  }
+}
+
+export function renderAutomationPrompt(template: string, values: Record<string, unknown>): string {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) => {
+    if (UNSAFE_PROMPT_KEYS.has(key)) return '';
+    const descriptor = Object.getOwnPropertyDescriptor(values, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return '';
+    return serializePromptValue(descriptor.value);
+  });
+}
+
+function serializePromptValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'object') return String(value);
+  try {
+    return JSON.stringify(toSafeJsonValue(value, new Set<object>())) ?? '';
+  } catch {
+    return '[Unserializable]';
+  }
+}
+
+function toSafeJsonValue(value: unknown, seen: Set<object>): unknown {
+  if (value === null || typeof value !== 'object') {
+    return typeof value === 'bigint' ? String(value) : value;
+  }
+  if (seen.has(value)) throw new Error('Circular prompt value.');
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((_entry, index) => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        return descriptor && Object.prototype.hasOwnProperty.call(descriptor, 'value')
+          ? toSafeJsonValue(descriptor.value, seen)
+          : null;
+      });
+    }
+    const result = Object.create(null) as Record<string, unknown>;
+    for (const key of Object.keys(value)) {
+      if (UNSAFE_PROMPT_KEYS.has(key)) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) continue;
+      const nested = descriptor.value;
+      if (typeof nested === 'function' || typeof nested === 'symbol' || nested === undefined) continue;
+      result[key] = toSafeJsonValue(nested, seen);
+    }
+    return result;
+  } finally {
+    seen.delete(value);
+  }
+}

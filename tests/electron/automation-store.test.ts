@@ -67,6 +67,42 @@ test('creates, reads, updates, and persists trusted automation state', () => {
       next_check_at: string;
     };
     assert.equal(row.next_check_at, '2026-07-05T01:05:00.000Z');
+    assert.equal(context.store.getNextCheckAt(created.id), '2026-07-05T01:05:00.000Z');
+    assert.equal(context.facade.getAutomationNextCheckAt(created.id), '2026-07-05T01:05:00.000Z');
+  } finally {
+    context.close();
+  }
+});
+
+test('reconciles queued and running action runs as interrupted after restart', () => {
+  const context = fixture();
+  try {
+    const createdRuns = (['queued', 'running'] as const).map((status, index) => {
+      const automation = context.store.create(createInput({ title: `Automation ${index}` }));
+      const evaluation = context.store.createEvaluation(automation.id, {
+        activationKind: 'once',
+        startedAt: `2026-07-05T07:0${index}:00.000Z`,
+      });
+      context.store.finishEvaluation(evaluation.id, {
+        conditionOutcome: 'matched',
+        triggerDecision: 'triggered',
+        finishedAt: `2026-07-05T07:0${index}:01.000Z`,
+      });
+      return context.store.createRun(automation.id, evaluation.id, { status });
+    });
+
+    const recovered = context.store.reconcileInterruptedRuns(
+      'Automation action interrupted by Local AI Core restart.',
+      '2026-07-05T08:00:00.000Z',
+    );
+    assert.deepEqual(new Set(recovered.map((run) => run.id)), new Set(createdRuns.map((run) => run.id)));
+    for (const run of recovered) {
+      assert.equal(run.status, 'failed');
+      assert.equal(run.deliveryStatus, 'failed');
+      assert.equal(run.finishedAt, '2026-07-05T08:00:00.000Z');
+      assert.match(run.error || '', /interrupted.*restart/i);
+    }
+    assert.equal(context.facade.reconcileInterruptedAutomationRuns('again', '2026-07-05T08:01:00.000Z').length, 0);
   } finally {
     context.close();
   }

@@ -238,6 +238,22 @@ export class LocalAutomationStore {
     return rows.map((row) => this.toRun(row));
   }
 
+  reconcileInterruptedRuns(reason: string, finishedAt: string): AutomationRun[] {
+    const interruptedAt = assertIsoTimestamp(finishedAt, 'Automation interrupted run finishedAt');
+    const rows = this.db.prepare(`
+      SELECT ${RUN_COLUMNS}
+      FROM automation_runs
+      WHERE status IN ('queued', 'running')
+      ORDER BY created_at, id
+    `).all() as LocalAutomationRunRow[];
+    return rows.map((row) => this.updateRun(row.id, {
+      status: 'failed',
+      deliveryStatus: 'failed',
+      error: reason,
+      finishedAt: interruptedAt,
+    }));
+  }
+
   importLegacyRecords(): { scheduled: number; monitors: number } {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -416,7 +432,7 @@ export class LocalAutomationStore {
     ];
   }
 
-  private getNextCheckAt(id: string): string | null {
+  getNextCheckAt(id: string): string | null {
     const row = this.db.prepare('SELECT next_check_at FROM automations WHERE id = ?').get(id) as
       | { next_check_at: string | null }
       | undefined;

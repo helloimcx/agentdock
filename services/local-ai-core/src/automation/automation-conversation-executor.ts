@@ -2,12 +2,7 @@ import type { AutomationMonitor, AutomationMonitorEventSnapshot } from '@cc/supe
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
-import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
-import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
-import { waitForRunCompletion } from '../scheduler/run-polling.js';
-import { threadExists } from '../scheduler/thread-resolution.js';
-
-const MONITOR_RUN_PERMISSION_MODE = 'bypassPermissions';
+import { AutomationActionExecutor } from './automation-action-executor.js';
 
 export type AutomationConversationExecutionResult = {
   threadId: string;
@@ -26,86 +21,62 @@ type AutomationConversationExecutorOptions = {
 };
 
 export class AutomationConversationExecutor {
-  constructor(private readonly options: AutomationConversationExecutorOptions) {}
+  private readonly executor: AutomationActionExecutor;
 
-  async execute(monitor: AutomationMonitor, event: AutomationMonitorEventSnapshot, timeoutMs = 15 * 60 * 1000): Promise<AutomationConversationExecutionResult> {
-    const workspaceRouter = this.options.getWorkspaceRouter();
-    const threadId = await this.resolveThread(monitor);
-    const prompt = renderMonitorPrompt(monitor.promptTemplate, event, monitor);
-    const channelRuntime = monitor.platform === 'local' ? undefined : this.options.getChannelRuntime(monitor.platform);
-    const bridge = channelRuntime
-      ? await ScheduledBridgeSession.open({
-          target: {
-            id: monitor.id,
-            workspaceId: monitor.workspaceId,
-            platform: monitor.platform,
-            route: monitor.route,
-            title: monitor.title,
-            promptTemplate: monitor.promptTemplate,
-          },
-          threadId,
-          workspaceRouter,
-          getChannelRuntime: () => channelRuntime,
-          noticeIcon: monitor.sourceType === 'stock.quote' ? '📈' : '🔔',
-          noticeTitle: monitor.title,
-        })
-      : undefined;
-    try {
-      const sendResult = await workspaceRouter.sendThreadMessage(threadId, prompt, {
-        permissionMode: MONITOR_RUN_PERMISSION_MODE,
-        runtimeEnv: buildPlatformRuntimeEnv(monitor.platform, monitor.route),
-      });
-      await waitForRunCompletion(this.options.store, sendResult.runId, timeoutMs, 'Monitor');
-      const thread = await workspaceRouter.getThread(threadId);
-      const replyText = [...thread.messages]
-        .reverse()
-        .find((message) => message.role === 'assistant' && message.kind === 'final')
-        ?.content;
-      return {
-        threadId,
-        runId: sendResult.runId,
-        replyText,
-        deliveryMode: bridge ? 'bridge-stream' : 'thread-only',
-        deliveryStatus: 'succeeded',
-        lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
-      };
-    } finally {
-      await bridge?.close();
-    }
+  constructor(options: AutomationConversationExecutorOptions) {
+    this.executor = new AutomationActionExecutor(options);
   }
 
-  private async resolveThread(monitor: AutomationMonitor) {
-    const workspaceRouter = this.options.getWorkspaceRouter();
-    if (monitor.executionMode === 'same-thread') {
-      const binding = this.options.store.getPlatformThreadBinding(
-        monitor.workspaceId,
-        monitor.route.channelId,
-        monitor.route.participantId || '',
-        monitor.platform,
-      );
-      if (binding?.thread_id && await threadExists(workspaceRouter, binding.thread_id)) {
-        return binding.thread_id;
-      }
-      if (monitor.route.threadId && await threadExists(workspaceRouter, monitor.route.threadId)) {
-        return monitor.route.threadId;
-      }
-    }
-    const title = monitor.platform === 'local'
-      ? `[Monitor] ${monitor.title}`
-      : `[Monitor:${getChannelPlatformBase(monitor.platform) || monitor.platform}] ${monitor.title}`;
-    const existing = (await workspaceRouter.listThreads(monitor.workspaceId))
-      .find((thread) => thread.title === title);
-    if (existing) {
-      return existing.id;
-    }
-    const created = await workspaceRouter.createThread(monitor.workspaceId, title);
-    return created.id;
+  async execute(monitor: AutomationMonitor, event: AutomationMonitorEventSnapshot, timeoutMs = 15 * 60 * 1000): Promise<AutomationConversationExecutionResult> {
+    const result = await this.executor.execute({
+      automation: {
+        id: monitor.id,
+        workspaceId: monitor.workspaceId,
+        title: monitor.title,
+        enabled: monitor.enabled,
+        health: 'healthy',
+        activation: { kind: 'provider-event', sourceType: monitor.sourceType, sourceConfig: monitor.sourceConfig },
+        condition: { kind: 'always' },
+        action: {
+          kind: 'agent-prompt',
+          promptTemplate: monitor.promptTemplate,
+          executionMode: monitor.executionMode === 'same-thread' ? 'same-thread' : 'side-thread',
+        },
+        delivery: { platform: monitor.platform, route: monitor.route },
+        policies: { concurrency: 'skip-if-running', cooldownMs: monitor.cooldownMs },
+        consecutiveEvaluationFailures: 0,
+        createdAt: monitor.createdAt,
+        updatedAt: monitor.updatedAt,
+        originKind: 'automation-monitor',
+      },
+      evaluation: {
+        id: `legacy-monitor-event:${monitor.id}`,
+        automationId: monitor.id,
+        status: 'finished',
+        activationKind: 'provider-event',
+        startedAt: event.occurredAt,
+        finishedAt: event.occurredAt,
+        conditionOutcome: 'matched',
+        triggerDecision: 'triggered',
+      },
+      promptVariables: monitorPromptVariables(event, monitor),
+    }, timeoutMs);
+    return { ...result, runId: result.acpRunId };
   }
 
 }
 
 export function renderMonitorPrompt(template: string, event: AutomationMonitorEventSnapshot, monitor: AutomationMonitor) {
-  const values: Record<string, unknown> = {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) =>
+    String(monitorPromptVariables(event, monitor)[key] ?? '')
+  );
+}
+
+function monitorPromptVariables(
+  event: AutomationMonitorEventSnapshot,
+  monitor: AutomationMonitor,
+): Record<string, unknown> {
+  return {
     title: monitor.title,
     sourceType: event.sourceType,
     subject: event.subject,
@@ -113,7 +84,4 @@ export function renderMonitorPrompt(template: string, event: AutomationMonitorEv
     timestamp: event.occurredAt,
     ...event.payload,
   };
-  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) =>
-    String(values[key] ?? '')
-  );
 }

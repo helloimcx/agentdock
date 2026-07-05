@@ -414,6 +414,10 @@ export class LocalCoreAcpStore {
     return this.automations.get(automationId);
   }
 
+  getAutomationNextCheckAt(automationId: string): string | null {
+    return this.automations.getNextCheckAt(automationId);
+  }
+
   createAutomation(input: AutomationCreateInput): AutomationDefinition {
     return this.automations.create(input);
   }
@@ -462,6 +466,10 @@ export class LocalCoreAcpStore {
 
   listAutomationRuns(automationId: string): AutomationRun[] {
     return this.automations.listRuns(automationId);
+  }
+
+  reconcileInterruptedAutomationRuns(reason: string, finishedAt: string): AutomationRun[] {
+    return this.automations.reconcileInterruptedRuns(reason, finishedAt);
   }
 
   importLegacyAutomations() {

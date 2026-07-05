@@ -17,6 +17,8 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { LocalCoreRuntimeState } from './local-core-runtime-state.js';
 import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
+import type { AutomationService } from '../automation/automation-service.js';
+import type { AutomationActionExecutor } from '../automation/automation-action-executor.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
@@ -37,6 +39,8 @@ export class LocalCoreController extends EventEmitter {
   readonly externalService: ExternalService;
   readonly scheduledJobs: ScheduledJobApplicationService;
   readonly automationMonitors: AutomationMonitorService;
+  readonly automations: AutomationService;
+  readonly automationActionExecutor?: AutomationActionExecutor;
   readonly runtimeDetection: RuntimeDetectionService;
   readonly kernel: LocalCoreKernel;
   readonly errorReporter: LocalCoreErrorReporter;
@@ -86,6 +90,18 @@ export class LocalCoreController extends EventEmitter {
       runMonitorNow: async () => { throw new Error('Automation monitor service is not available.'); },
       listRuns: () => [],
     } as unknown as AutomationMonitorService;
+    this.automations = this.runtime.automations || {
+      list: () => [],
+      get: () => undefined,
+      create: () => { throw new Error('Automation service is not available.'); },
+      update: () => { throw new Error('Automation service is not available.'); },
+      delete: () => ({ deleted: false }),
+      checkNow: async () => { throw new Error('Automation service is not available.'); },
+      listEvaluations: () => [],
+      listRuns: () => [],
+      getRuntimeStatus: () => ({ status: 'stopped' }),
+    } as unknown as AutomationService;
+    this.automationActionExecutor = this.runtime.automationActionExecutor;
     this.errorReporter = new LocalCoreErrorReporter((message) => this.handleLog(message));
     this.runtimeDetection = new RuntimeDetectionService({
       userDataPath,
@@ -112,6 +128,15 @@ export class LocalCoreController extends EventEmitter {
       }),
       this.kernel.context.bus.on('automation.monitor.run.updated', (run) => {
         this.emit('automation-monitor-run', run);
+      }),
+      this.kernel.context.bus.on('automation.definition.updated', (automation) => {
+        this.emit('automation-definition', automation);
+      }),
+      this.kernel.context.bus.on('automation.evaluation.updated', (evaluation) => {
+        this.emit('automation-evaluation', evaluation);
+      }),
+      this.kernel.context.bus.on('automation.run.updated', (run) => {
+        this.emit('automation-run', run);
       }),
       this.kernel.context.bus.on('runtime.state.changed', () => {
         void this.emitRuntime();

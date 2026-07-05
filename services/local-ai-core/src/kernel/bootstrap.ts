@@ -41,6 +41,8 @@ import { createLocalCoreRuntimeState, type LocalCoreRuntimeState } from '../runt
 import { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import { SchedulerService } from '../scheduler/scheduler-service.js';
 import { AutomationMonitorService } from '../automation/automation-monitor-service.js';
+import { AutomationActionExecutor } from '../automation/automation-action-executor.js';
+import { AutomationService } from '../automation/automation-service.js';
 
 export interface LocalCoreKernel {
   context: PluginContext;
@@ -65,6 +67,8 @@ export interface LocalCoreRuntimeBootstrap {
   scheduler: SchedulerService;
   scheduledJobs: ScheduledJobApplicationService;
   automationMonitors?: AutomationMonitorService;
+  automationActionExecutor?: AutomationActionExecutor;
+  automations?: AutomationService;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -307,6 +311,18 @@ export function bootstrapLocalCoreRuntime(options: {
     eventBus: kernel.context.bus,
     log: options.log,
   });
+  const automationActionExecutor = new AutomationActionExecutor({
+    store,
+    getWorkspaceRouter: () => workspaceRouter,
+    getChannelRuntime: (platform) =>
+      channelRuntimes.find((runtime) => runtime.platform === platform || platform.startsWith(`${runtime.platform}:`)),
+  });
+  const automations = new AutomationService({
+    store,
+    actionExecutor: automationActionExecutor,
+    eventBus: kernel.context.bus,
+    log: options.log,
+  });
 
   workspaceRouter.setSchedulerBridge({
     createJob: async ({ workspaceId, platform, route, name, schedule, scheduleDescription, message }) =>
@@ -331,12 +347,16 @@ export function bootstrapLocalCoreRuntime(options: {
     scheduler,
     scheduledJobs,
     automationMonitors,
+    automationActionExecutor,
+    automations,
     async start() {
       await kernel.lifecycle.startAll();
       await scheduler.start();
       await automationMonitors.start();
+      await automations.start();
     },
     async stop() {
+      await automations.stop();
       await automationMonitors.stop();
       await scheduler.stop();
       await kernel.lifecycle.stopAll();
