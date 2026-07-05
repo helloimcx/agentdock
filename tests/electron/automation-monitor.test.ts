@@ -36,3 +36,26 @@ test('monitor condition evaluator supports simple comparisons and safe boolean e
   }, event), true);
 });
 
+test('monitor expressions preserve payload nesting and top-level metric semantics', () => {
+  const nestedEvent = {
+    ...event,
+    subject: 'AAPL',
+    sourceType: 'stock.quote',
+    payload: {
+      subject: { market: 'NASDAQ' },
+      sourceType: { vendor: 'IEX' },
+    },
+  };
+  assert.equal(evaluateMonitorCondition({
+    metric: 'expression',
+    operator: '==',
+    value: true,
+    expression: 'subject.market == NASDAQ && sourceType.vendor == IEX',
+  }, nestedEvent), true);
+  assert.equal(evaluateMonitorCondition({
+    metric: 'expression',
+    operator: '==',
+    value: true,
+    expression: 'subject == AAPL && sourceType == stock.quote',
+  }, nestedEvent), true);
+});

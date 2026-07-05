@@ -1046,6 +1046,35 @@ test('scheduler dispatches due jobs without waiting for long-running jobs', asyn
   }
 });
 
+test('scheduler ignores malformed enabled legacy cron jobs during startup and ticks', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-malformed-cron-'));
+  const runtime = bootstrapLocalCoreRuntime({ userDataPath, enableKnowledge: false, log: () => {} });
+  try {
+    const job = runtime.store.createScheduledJob({
+      workspaceId: 'workspace-a',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-a', threadId: 'thread-1' },
+      executionMode: 'side-thread',
+      triggerType: 'cron',
+      cronExpr: '* * * * *',
+      promptTemplate: 'legacy',
+      description: 'malformed legacy job',
+      enabled: true,
+    });
+    (runtime.store as any).db.prepare('UPDATE scheduled_jobs SET cron_expr = ? WHERE id = ?').run(
+      '*/0 * * * *',
+      job.id,
+    );
+
+    await runtime.scheduler.start();
+    await (runtime.scheduler as any).tick();
+    assert.equal(runtime.store.listScheduledJobRuns(job.id).length, 0);
+  } finally {
+    await runtime.stop();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('scheduler auto-disables a job after 5 consecutive failures', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'scheduler-autodisable-'));
   try {
