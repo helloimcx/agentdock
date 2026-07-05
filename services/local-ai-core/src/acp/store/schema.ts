@@ -161,6 +161,57 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       FOREIGN KEY (monitor_id) REFERENCES automation_monitors(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_automation_monitor_runs_monitor_triggered ON automation_monitor_runs (monitor_id, triggered_at DESC);
+    CREATE TABLE IF NOT EXISTS automations (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      enabled INTEGER NOT NULL,
+      health TEXT NOT NULL,
+      blocked_reason TEXT,
+      activation_json TEXT NOT NULL,
+      condition_json TEXT NOT NULL,
+      action_json TEXT NOT NULL,
+      delivery_json TEXT NOT NULL,
+      policies_json TEXT NOT NULL,
+      last_successful_match INTEGER,
+      last_evaluation_at TEXT,
+      last_triggered_at TEXT,
+      consecutive_evaluation_failures INTEGER NOT NULL DEFAULT 0,
+      next_check_at TEXT,
+      origin_kind TEXT NOT NULL DEFAULT 'native',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_automations_workspace_updated ON automations (workspace_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_automations_enabled_next_check ON automations (enabled, next_check_at);
+    CREATE INDEX IF NOT EXISTS idx_automations_health ON automations (health);
+    CREATE INDEX IF NOT EXISTS idx_automations_origin ON automations (origin_kind);
+    CREATE TABLE IF NOT EXISTS automation_evaluations (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      activation_kind TEXT NOT NULL,
+      script_version_id TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      evaluation_json TEXT NOT NULL,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_evaluations_automation_started
+      ON automation_evaluations (automation_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS automation_runs (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL,
+      evaluation_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      run_json TEXT NOT NULL,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
+      FOREIGN KEY (evaluation_id) REFERENCES automation_evaluations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_created
+      ON automation_runs (automation_id, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_runs_evaluation_unique ON automation_runs (evaluation_id);
     CREATE TABLE IF NOT EXISTS workspace_registry (
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL,

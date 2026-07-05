@@ -1,5 +1,8 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type {
+  AutomationDefinition,
+  AutomationEvaluation,
+  AutomationRun,
   ChannelInboundMessageContent,
   RuntimeConfigState,
   LocalCoreCapabilities,
@@ -145,6 +148,48 @@ export type LocalAutomationMonitorRunRow = {
   delivery_status: string | null;
   delivery_error: string | null;
   last_bridge_event_at: string | null;
+};
+
+export type LocalAutomationRow = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  enabled: number;
+  health: AutomationDefinition['health'];
+  blocked_reason: string | null;
+  activation_json: string;
+  condition_json: string;
+  action_json: string;
+  delivery_json: string;
+  policies_json: string;
+  last_successful_match: number | null;
+  last_evaluation_at: string | null;
+  last_triggered_at: string | null;
+  consecutive_evaluation_failures: number;
+  next_check_at: string | null;
+  origin_kind: NonNullable<AutomationDefinition['originKind']>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LocalAutomationEvaluationRow = {
+  id: string;
+  automation_id: string;
+  status: AutomationEvaluation['status'];
+  activation_kind: AutomationEvaluation['activationKind'];
+  script_version_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  evaluation_json: string;
+};
+
+export type LocalAutomationRunRow = {
+  id: string;
+  automation_id: string;
+  evaluation_id: string;
+  status: AutomationRun['status'];
+  created_at: string;
+  run_json: string;
 };
 
 export type LocalModelProviderRow = {

@@ -4,11 +4,18 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type {
   LocalCoreAuthorizedUser,
   LocalCorePairingRequest,
+  AutomationCreateInput,
+  AutomationDefinition,
+  AutomationEvaluation,
+  AutomationEvaluationCreateInput,
+  AutomationEvaluationFinishInput,
   AutomationMonitor,
   AutomationMonitorCreateInput,
   AutomationMonitorRun,
   AutomationMonitorStatus,
   AutomationMonitorUpdateInput,
+  AutomationRun,
+  AutomationUpdateInput,
   ScheduledJob,
   ScheduledJobCreateInput,
   ScheduledJobRun,
@@ -54,6 +61,12 @@ import type {
 } from '../../router/workspace-router-types.js';
 import { LocalAgentTaskStore } from './agent-task-store.js';
 import { LocalAutomationMonitorStore } from './automation-monitor-store.js';
+import {
+  LocalAutomationStore,
+  type AutomationRunCreateInput,
+  type AutomationRunUpdateInput,
+  type AutomationStateUpdateInput,
+} from './automation-store.js';
 import { ensureLocalCoreAcpSchema } from './schema.js';
 import { LocalPlatformStore } from './platform-store.js';
 import { LocalSchedulerStore } from './scheduler-store.js';
@@ -72,6 +85,7 @@ export class LocalCoreAcpStore {
   private readonly agentTasks: LocalAgentTaskStore;
   private readonly scheduler: LocalSchedulerStore;
   private readonly automationMonitors: LocalAutomationMonitorStore;
+  private readonly automations: LocalAutomationStore;
   private readonly platform: LocalPlatformStore;
   private readonly modelProviders: LocalModelProviderStore;
   private readonly external: LocalExternalStore;
@@ -92,6 +106,7 @@ export class LocalCoreAcpStore {
     });
     this.scheduler = new LocalSchedulerStore(this.db);
     this.automationMonitors = new LocalAutomationMonitorStore(this.db);
+    this.automations = new LocalAutomationStore(this.db);
     this.platform = new LocalPlatformStore(this.db);
     this.modelProviders = new LocalModelProviderStore(this.db);
     this.external = new LocalExternalStore(this.db);
@@ -389,6 +404,72 @@ export class LocalCoreAcpStore {
 
   updateAutomationMonitorRun(runId: string, input: Partial<AutomationMonitorRun>): AutomationMonitorRun {
     return this.automationMonitors.updateRun(runId, input);
+  }
+
+  listAutomations(workspaceId?: string): AutomationDefinition[] {
+    return this.automations.list(workspaceId);
+  }
+
+  getAutomation(automationId: string): AutomationDefinition | undefined {
+    return this.automations.get(automationId);
+  }
+
+  createAutomation(input: AutomationCreateInput): AutomationDefinition {
+    return this.automations.create(input);
+  }
+
+  updateAutomation(automationId: string, input: AutomationUpdateInput): AutomationDefinition {
+    return this.automations.update(automationId, input);
+  }
+
+  updateAutomationState(automationId: string, input: AutomationStateUpdateInput): AutomationDefinition {
+    return this.automations.updateState(automationId, input);
+  }
+
+  deleteAutomation(automationId: string) {
+    return this.automations.delete(automationId);
+  }
+
+  createAutomationEvaluation(
+    automationId: string,
+    input: AutomationEvaluationCreateInput,
+  ): AutomationEvaluation {
+    return this.automations.createEvaluation(automationId, input);
+  }
+
+  finishAutomationEvaluation(
+    evaluationId: string,
+    input: AutomationEvaluationFinishInput,
+  ): AutomationEvaluation {
+    return this.automations.finishEvaluation(evaluationId, input);
+  }
+
+  listAutomationEvaluations(automationId: string): AutomationEvaluation[] {
+    return this.automations.listEvaluations(automationId);
+  }
+
+  createAutomationRun(
+    automationId: string,
+    evaluationId: string,
+    input: AutomationRunCreateInput = {},
+  ): AutomationRun {
+    return this.automations.createRun(automationId, evaluationId, input);
+  }
+
+  updateAutomationRun(runId: string, input: AutomationRunUpdateInput): AutomationRun {
+    return this.automations.updateRun(runId, input);
+  }
+
+  listAutomationRuns(automationId: string): AutomationRun[] {
+    return this.automations.listRuns(automationId);
+  }
+
+  importLegacyAutomations() {
+    return this.automations.importLegacyRecords();
+  }
+
+  pruneAutomationEvaluations(now: Date): number {
+    return this.automations.pruneEvaluations(now);
   }
 
   getThreadRow(threadId: string) {
