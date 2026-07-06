@@ -8,6 +8,12 @@ export function channelPlatformKey(platform: string, instanceId: string) {
   return instanceId === 'default' ? platform : `${platform}:${instanceId}`;
 }
 
+export function extractChannelInstanceId(platform: string, prefix: string): string {
+  const normalized = String(platform || '').trim();
+  const tag = `${prefix}:`;
+  return normalized.startsWith(tag) ? normalized.slice(tag.length).trim() : '';
+}
+
 export function runtimeKey(workspaceId: string, instanceId: string) {
   return `${workspaceId}::${instanceId}`;
 }

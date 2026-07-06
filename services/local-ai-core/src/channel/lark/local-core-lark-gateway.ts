@@ -35,7 +35,7 @@ import {
   renderPendingPairingCard,
   renderPermissionCard,
 } from './cards.js';
-import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
+import { channelPlatformKey, extractChannelInstanceId, runtimeKey } from '../shared/channel-keys.js';
 import { collectLarkWorkspaceBindings } from './config.js';
 import {
   DEFAULT_LARK_QR_EXPIRES_IN,
@@ -176,7 +176,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     threadId: string;
     sessionKey: string;
   }) {
-    const instanceId = input.route.instanceId || getLarkInstanceId(input.platform) || 'default';
+    const instanceId = input.route.instanceId || extractChannelInstanceId(input.platform, 'lark') || 'default';
     const platformKey = channelPlatformKey('lark', instanceId);
     const route: LarkThreadRoute = {
       workspaceId: input.workspaceId,
@@ -885,7 +885,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     if (!binding || (binding.platform !== 'lark' && !binding.platform.startsWith('lark:'))) {
       return undefined;
     }
-    const bindingInstanceId = getLarkInstanceId(binding.platform) || instanceId || 'default';
+    const bindingInstanceId = extractChannelInstanceId(binding.platform, 'lark') || instanceId || 'default';
     return {
       workspaceId: binding.workspace_id,
       instanceId: bindingInstanceId,
@@ -992,9 +992,4 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${type}`);
   }
 
-}
-
-function getLarkInstanceId(platform: string) {
-  const normalized = String(platform || '').trim();
-  return normalized.startsWith('lark:') ? normalized.slice('lark:'.length).trim() : '';
 }

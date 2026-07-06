@@ -27,7 +27,7 @@ import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '.
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
 import { resolveInboundChannelAuthorization } from '../shared/inbound-authorization.js';
-import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
+import { channelPlatformKey, extractChannelInstanceId, runtimeKey } from '../shared/channel-keys.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
@@ -346,7 +346,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     threadId: string;
     sessionKey: string;
   }) {
-    const instanceId = input.route.instanceId || getWeixinInstanceId(input.platform) || 'default';
+    const instanceId = input.route.instanceId || extractChannelInstanceId(input.platform, 'weixin') || 'default';
     const platformKey = channelPlatformKey('weixin', instanceId);
     const route: WeixinThreadRoute = {
       workspaceId: input.workspaceId,
@@ -886,9 +886,4 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
 
 
 
-}
-
-function getWeixinInstanceId(platform: string) {
-  const normalized = String(platform || '').trim();
-  return normalized.startsWith('weixin:') ? normalized.slice('weixin:'.length).trim() : '';
 }
