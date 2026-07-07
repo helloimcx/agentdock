@@ -9,6 +9,10 @@ import type {
   AutomationEvaluation,
   AutomationEvaluationCreateInput,
   AutomationEvaluationFinishInput,
+  AutomationScript,
+  AutomationScriptCreateInput,
+  AutomationScriptUpdateInput,
+  AutomationScriptVersion,
   AutomationMonitor,
   AutomationMonitorCreateInput,
   AutomationMonitorRun,
@@ -62,6 +66,10 @@ import type {
 import { LocalAgentTaskStore } from './agent-task-store.js';
 import { LocalAutomationMonitorStore } from './automation-monitor-store.js';
 import {
+  LocalAutomationScriptStore,
+  type AutomationScriptVersionPackageInput,
+} from './automation-script-store.js';
+import {
   LocalAutomationStore,
   type AutomationRunCreateInput,
   type AutomationRunUpdateInput,
@@ -85,6 +93,7 @@ export class LocalCoreAcpStore {
   private readonly agentTasks: LocalAgentTaskStore;
   private readonly scheduler: LocalSchedulerStore;
   private readonly automationMonitors: LocalAutomationMonitorStore;
+  private readonly automationScripts: LocalAutomationScriptStore;
   private readonly automations: LocalAutomationStore;
   private readonly platform: LocalPlatformStore;
   private readonly modelProviders: LocalModelProviderStore;
@@ -106,6 +115,7 @@ export class LocalCoreAcpStore {
     });
     this.scheduler = new LocalSchedulerStore(this.db);
     this.automationMonitors = new LocalAutomationMonitorStore(this.db);
+    this.automationScripts = new LocalAutomationScriptStore(this.db, userDataPath);
     this.automations = new LocalAutomationStore(this.db);
     this.platform = new LocalPlatformStore(this.db);
     this.modelProviders = new LocalModelProviderStore(this.db);
@@ -487,6 +497,30 @@ export class LocalCoreAcpStore {
 
   deleteAutomation(automationId: string) {
     return this.automations.delete(automationId);
+  }
+
+  listAutomationScripts(workspaceId?: string): AutomationScript[] {
+    return this.automationScripts.listScripts(workspaceId);
+  }
+
+  getAutomationScript(scriptId: string): AutomationScript | undefined {
+    return this.automationScripts.getScript(scriptId);
+  }
+
+  createAutomationScript(input: AutomationScriptCreateInput): AutomationScript {
+    return this.automationScripts.createScript(input);
+  }
+
+  updateAutomationScript(scriptId: string, input: AutomationScriptUpdateInput): AutomationScript {
+    return this.automationScripts.updateScript(scriptId, input);
+  }
+
+  createAutomationScriptVersionFromPackage(input: AutomationScriptVersionPackageInput): AutomationScriptVersion {
+    return this.automationScripts.createVersionFromPackage(input);
+  }
+
+  listAutomationScriptVersions(scriptId: string): AutomationScriptVersion[] {
+    return this.automationScripts.listVersions(scriptId);
   }
 
   createAutomationEvaluation(

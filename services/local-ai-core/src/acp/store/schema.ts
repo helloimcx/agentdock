@@ -213,6 +213,34 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_created
       ON automation_runs (automation_id, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_runs_evaluation_unique ON automation_runs (evaluation_id);
+    CREATE TABLE IF NOT EXISTS automation_scripts (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_scripts_workspace_updated
+      ON automation_scripts (workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS automation_script_versions (
+      id TEXT PRIMARY KEY,
+      script_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      package_sha256 TEXT NOT NULL,
+      package_path TEXT NOT NULL,
+      shebang TEXT NOT NULL,
+      interpreter_path TEXT NOT NULL,
+      interpreter_version TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      version_json TEXT NOT NULL,
+      FOREIGN KEY (script_id) REFERENCES automation_scripts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_script_versions_script_created
+      ON automation_script_versions (script_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_automation_script_versions_hash
+      ON automation_script_versions (script_id, package_sha256);
     CREATE TABLE IF NOT EXISTS workspace_registry (
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL,
