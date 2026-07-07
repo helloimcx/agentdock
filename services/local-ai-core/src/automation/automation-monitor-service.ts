@@ -18,6 +18,7 @@ import {
 import { evaluateMonitorCondition } from './condition-evaluator.js';
 import { AutomationConversationExecutor } from './automation-conversation-executor.js';
 import { AutomationMonitorRepository, type ResolvedAutomationMonitorCreateInput } from './automation-monitor-repository.js';
+import { toPublicAutomationMonitorId } from './monitor-id.js';
 
 type AutomationMonitorServiceOptions = {
   store: LocalCoreAcpStore;
@@ -316,7 +317,7 @@ export class AutomationMonitorService {
     }
     const matches = this.repository
       .list()
-      .filter((monitor) => publicMonitorId(monitor.id) === monitorId);
+      .filter((monitor) => toPublicAutomationMonitorId(monitor.id) === monitorId);
     if (matches.length === 0) {
       return '';
     }
@@ -393,7 +394,3 @@ export class AutomationMonitorService {
   }
 }
 
-function publicMonitorId(monitorId: string) {
-  const normalized = monitorId.startsWith('monitor:') ? monitorId.slice('monitor:'.length) : monitorId;
-  return normalized.includes('-') ? normalized.split('-')[0] || normalized : normalized;
-}
