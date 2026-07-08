@@ -134,7 +134,17 @@ export function normalizeApprovalRequestStatus(value: unknown, fallback: Approva
   throw new Error('Approval request status must be pending, approved, rejected, cancelled, or expired.');
 }
 
-export type ApprovalRequestKind = 'command' | 'file_change' | 'network' | 'secret' | 'git' | 'runtime_install' | 'plugin_permission' | 'other';
+export type ApprovalRequestKind =
+  | 'command'
+  | 'file_change'
+  | 'network'
+  | 'secret'
+  | 'git'
+  | 'runtime_install'
+  | 'plugin_permission'
+  | 'automation_script_test'
+  | 'automation_script_enable'
+  | 'other';
 
 export interface ApprovalRequest {
   approvalId: string;
@@ -210,6 +220,9 @@ export type AuditEventType =
   | 'approval.requested'
   | 'approval.resolved'
   | 'approval.rejected'
+  | 'automation.script.test_authorized'
+  | 'automation.script.approved'
+  | 'automation.script.revoked'
   | 'permission.changed'
   | 'agent.changed';
 

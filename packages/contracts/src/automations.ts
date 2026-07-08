@@ -167,6 +167,12 @@ export interface AutomationScriptAuditActor {
   approvalId?: string;
 }
 
+export interface AutomationScriptTestReport extends Record<string, unknown> {
+  status: 'passed' | 'failed';
+  finishedAt: string;
+  summary?: string;
+}
+
 export interface AutomationScriptVersion {
   id: string;
   scriptId: string;
