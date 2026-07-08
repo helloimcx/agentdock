@@ -200,6 +200,8 @@ export interface AutomationScriptVersion {
   staticCheck: Record<string, unknown>;
   testPlan: Record<string, unknown>;
   testReport?: Record<string, unknown>;
+  pendingTestApprovalId?: string;
+  pendingApprovalId?: string;
   testAuthorization?: AutomationScriptAuditActor;
   approval?: AutomationScriptAuditActor;
   rejection?: AutomationScriptAuditActor;

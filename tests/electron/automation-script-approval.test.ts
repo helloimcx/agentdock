@@ -168,6 +168,17 @@ function mutateVersion(harness: Harness, mutate: (version: AutomationScriptVersi
   `).run(next.status, next.packageSha256, next.updatedAt, JSON.stringify(next), next.id);
 }
 
+function mutateApprovalMetadata(
+  harness: Harness,
+  approvalId: string,
+  mutate: (metadata: Record<string, unknown>) => Record<string, unknown>,
+) {
+  const approval = harness.store.getApprovalRequest(approvalId);
+  assert.ok(approval, 'approval must exist before mutation');
+  harness.db.prepare('UPDATE approval_requests SET metadata_json = ? WHERE id = ?')
+    .run(JSON.stringify(mutate({ ...(approval.metadata || {}) })), approvalId);
+}
+
 test('requires test approval before recording results and enable approval before approval', () => {
   const h = createHarness({
     capabilities: { network: 'public', allowedReadDirs: ['/tmp/inbox'] },
@@ -374,5 +385,207 @@ test('approval snapshots guard package hash, permissions, and env secret referen
     );
   } finally {
     secretHarness.cleanup();
+  }
+});
+
+test('test authorization rejects stale permissions, secret env refs, and digests', () => {
+  const permissionHarness = createHarness();
+  try {
+    const approval = permissionHarness.service.requestTestApproval(permissionHarness.version.id, 'author');
+    mutateVersion(permissionHarness, (version) => ({
+      ...version,
+      internalAccess: true,
+      capabilities: { ...version.capabilities, internalAccess: true },
+    }));
+    permissionHarness.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'authorize stale permissions',
+    });
+    assert.throws(
+      () => permissionHarness.service.authorizeTest(permissionHarness.version.id, approval.approvalId, 'security'),
+      /permission/i,
+    );
+  } finally {
+    permissionHarness.cleanup();
+  }
+
+  const secretHarness = createHarness({ secretRefs: ['env://OLD_TOKEN'] });
+  try {
+    const approval = secretHarness.service.requestTestApproval(secretHarness.version.id, 'author');
+    mutateVersion(secretHarness, (version) => ({
+      ...version,
+      secretRefs: ['env://NEW_TOKEN'],
+    }));
+    secretHarness.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'authorize stale secret env refs',
+    });
+    assert.throws(
+      () => secretHarness.service.authorizeTest(secretHarness.version.id, approval.approvalId, 'security'),
+      /secret env/i,
+    );
+  } finally {
+    secretHarness.cleanup();
+  }
+
+  const testPlanHarness = createHarness();
+  try {
+    const approval = testPlanHarness.service.requestTestApproval(testPlanHarness.version.id, 'author');
+    mutateVersion(testPlanHarness, (version) => ({
+      ...version,
+      testPlan: { command: 'manual', cases: ['changed-case'] },
+    }));
+    testPlanHarness.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'authorize stale test plan',
+    });
+    assert.throws(
+      () => testPlanHarness.service.authorizeTest(testPlanHarness.version.id, approval.approvalId, 'security'),
+      /test plan digest/i,
+    );
+  } finally {
+    testPlanHarness.cleanup();
+  }
+
+  const manifestHarness = createHarness();
+  try {
+    const approval = manifestHarness.service.requestTestApproval(manifestHarness.version.id, 'author');
+    mutateVersion(manifestHarness, (version) => ({
+      ...version,
+      config: { changed: true },
+    }));
+    manifestHarness.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'authorize stale manifest',
+    });
+    assert.throws(
+      () => manifestHarness.service.authorizeTest(manifestHarness.version.id, approval.approvalId, 'security'),
+      /manifest digest/i,
+    );
+  } finally {
+    manifestHarness.cleanup();
+  }
+});
+
+test('approval metadata must contain required digest snapshots', () => {
+  const testHarness = createHarness();
+  try {
+    const approval = testHarness.service.requestTestApproval(testHarness.version.id, 'author');
+    mutateApprovalMetadata(testHarness, approval.approvalId, (metadata) => {
+      delete metadata.manifestDigest;
+      return metadata;
+    });
+    testHarness.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'authorize malformed metadata',
+    });
+    assert.throws(
+      () => testHarness.service.authorizeTest(testHarness.version.id, approval.approvalId, 'security'),
+      /manifest digest/i,
+    );
+  } finally {
+    testHarness.cleanup();
+  }
+
+  const enableHarness = createHarness();
+  try {
+    advanceToTested(enableHarness);
+    const approval = enableHarness.service.requestEnableApproval(enableHarness.version.id, 'author');
+    mutateApprovalMetadata(enableHarness, approval.approvalId, (metadata) => ({
+      ...metadata,
+      permissionSnapshotDigest: '0'.repeat(64),
+    }));
+    enableHarness.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved',
+      resolvedBy: 'owner',
+      resolution: 'approve tampered metadata',
+    });
+    assert.throws(
+      () => enableHarness.service.approveVersion(enableHarness.version.id, approval.approvalId, 'owner'),
+      /permission snapshot digest/i,
+    );
+  } finally {
+    enableHarness.cleanup();
+  }
+});
+
+test('approval transitions reject wrong approval ids and cross-workspace approvals', () => {
+  const wrongIdHarness = createHarness();
+  try {
+    const expected = wrongIdHarness.service.requestTestApproval(wrongIdHarness.version.id, 'author');
+    const wrong = wrongIdHarness.store.createApprovalRequest({
+      workspaceId: wrongIdHarness.script.workspaceId,
+      kind: 'automation_script_test',
+      riskLevel: 'low',
+      title: 'Wrong test approval',
+      description: 'Wrong approval for same version',
+      requestedAction: 'Run wrong test approval',
+      requestedBy: 'author',
+      metadata: expected.metadata,
+    });
+    wrongIdHarness.store.resolveApprovalRequest(wrong.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'approve wrong id',
+    });
+    assert.throws(
+      () => wrongIdHarness.service.authorizeTest(wrongIdHarness.version.id, wrong.approvalId, 'security'),
+      /approval id/i,
+    );
+  } finally {
+    wrongIdHarness.cleanup();
+  }
+
+  const workspaceHarness = createHarness();
+  try {
+    const expected = workspaceHarness.service.requestTestApproval(workspaceHarness.version.id, 'author');
+    const crossWorkspace = workspaceHarness.store.createApprovalRequest({
+      workspaceId: 'workspace-other',
+      kind: 'automation_script_test',
+      riskLevel: 'low',
+      title: 'Cross workspace test approval',
+      description: 'Cross workspace approval for same version',
+      requestedAction: 'Run cross workspace test approval',
+      requestedBy: 'author',
+      metadata: expected.metadata,
+    });
+    mutateVersion(workspaceHarness, (version) => ({
+      ...version,
+      pendingTestApprovalId: crossWorkspace.approvalId,
+    }));
+    workspaceHarness.store.resolveApprovalRequest(crossWorkspace.approvalId, {
+      status: 'approved',
+      resolvedBy: 'security',
+      resolution: 'approve cross workspace id',
+    });
+    assert.throws(
+      () => workspaceHarness.service.authorizeTest(workspaceHarness.version.id, crossWorkspace.approvalId, 'security'),
+      /workspace/i,
+    );
+  } finally {
+    workspaceHarness.cleanup();
+  }
+});
+
+test('approval service rejects mismatched duplicated version row data', () => {
+  const h = createHarness();
+  try {
+    const corrupted = {
+      ...h.version,
+      packageSha256: 'e'.repeat(64),
+    };
+    h.db.prepare('UPDATE automation_script_versions SET version_json = ? WHERE id = ?')
+      .run(JSON.stringify(corrupted), h.version.id);
+    assert.throws(
+      () => h.service.requestTestApproval(h.version.id, 'author'),
+      /mismatch between duplicated columns|invalid persisted data/i,
+    );
+  } finally {
+    h.cleanup();
   }
 });

@@ -28,7 +28,7 @@ type AutomationScriptRow = {
   updated_at: string;
 };
 
-type AutomationScriptVersionRow = {
+export type AutomationScriptVersionRow = {
   id: string;
   script_id: string;
   status: AutomationScriptVersionStatus;
@@ -185,22 +185,26 @@ export class LocalAutomationScriptStore {
   }
 
   private toVersion(row: AutomationScriptVersionRow): AutomationScriptVersion {
-    try {
-      const version = parseVersion(row.version_json);
-      assertDuplicatedField('id', row.id, version.id);
-      assertDuplicatedField('scriptId', row.script_id, version.scriptId);
-      assertDuplicatedField('status', row.status, version.status);
-      assertDuplicatedField('packageSha256', row.package_sha256, version.packageSha256);
-      assertDuplicatedField('packagePath', row.package_path, version.packagePath);
-      assertDuplicatedField('shebang', row.shebang, version.shebang);
-      assertDuplicatedField('interpreterPath', row.interpreter_path, version.interpreterPath);
-      assertDuplicatedField('interpreterVersion', row.interpreter_version, version.interpreterVersion);
-      assertDuplicatedField('createdAt', row.created_at, version.createdAt);
-      assertDuplicatedField('updatedAt', row.updated_at, version.updatedAt);
-      return version;
-    } catch (error) {
-      throw new Error(`Automation script version ${row.id} contains invalid persisted data: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    return parseAutomationScriptVersionRow(row);
+  }
+}
+
+export function parseAutomationScriptVersionRow(row: AutomationScriptVersionRow): AutomationScriptVersion {
+  try {
+    const version = parseVersion(row.version_json);
+    assertDuplicatedField('id', row.id, version.id);
+    assertDuplicatedField('scriptId', row.script_id, version.scriptId);
+    assertDuplicatedField('status', row.status, version.status);
+    assertDuplicatedField('packageSha256', row.package_sha256, version.packageSha256);
+    assertDuplicatedField('packagePath', row.package_path, version.packagePath);
+    assertDuplicatedField('shebang', row.shebang, version.shebang);
+    assertDuplicatedField('interpreterPath', row.interpreter_path, version.interpreterPath);
+    assertDuplicatedField('interpreterVersion', row.interpreter_version, version.interpreterVersion);
+    assertDuplicatedField('createdAt', row.created_at, version.createdAt);
+    assertDuplicatedField('updatedAt', row.updated_at, version.updatedAt);
+    return version;
+  } catch (error) {
+    throw new Error(`Automation script version ${row.id} contains invalid persisted data: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -266,6 +270,8 @@ function parseVersion(value: string): AutomationScriptVersion {
     staticCheck: parseStaticCheck(parsed.staticCheck, 'Automation script version staticCheck'),
     testPlan: asRecord(parsed.testPlan, 'Automation script version testPlan'),
     ...(parsed.testReport === undefined ? {} : { testReport: asRecord(parsed.testReport, 'Automation script version testReport') }),
+    ...(parsed.pendingTestApprovalId === undefined ? {} : { pendingTestApprovalId: optionalString(parsed.pendingTestApprovalId, 'Automation script version pendingTestApprovalId') }),
+    ...(parsed.pendingApprovalId === undefined ? {} : { pendingApprovalId: optionalString(parsed.pendingApprovalId, 'Automation script version pendingApprovalId') }),
     ...(parsed.testAuthorization === undefined ? {} : { testAuthorization: parseAuditActor(parsed.testAuthorization, 'Automation script version testAuthorization') }),
     ...(parsed.approval === undefined ? {} : { approval: parseAuditActor(parsed.approval, 'Automation script version approval') }),
     ...(parsed.rejection === undefined ? {} : { rejection: parseAuditActor(parsed.rejection, 'Automation script version rejection') }),

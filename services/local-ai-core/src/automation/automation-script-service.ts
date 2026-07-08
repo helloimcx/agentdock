@@ -4,27 +4,22 @@ import type {
   ApprovalRequest,
   AutomationScriptTestReport,
   AutomationScriptVersion,
-  AutomationScriptVersionStatus,
   SecurityPermissionScope,
   SecurityRiskLevel,
 } from '@cc/superai-contracts';
 import type { LocalSecurityStore } from '../acp/store/security-store.js';
+import {
+  parseAutomationScriptVersionRow,
+  type AutomationScriptVersionRow,
+} from '../acp/store/automation-script-store.js';
 
 const DEFAULT_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
-type AutomationScriptVersionRow = {
-  id: string;
-  script_id: string;
-  status: AutomationScriptVersionStatus;
-  package_sha256: string;
-  package_path: string;
-  shebang: string;
-  interpreter_path: string;
-  interpreter_version: string;
-  created_at: string;
-  updated_at: string;
-  version_json: string;
-};
+class ExpiredAutomationScriptApprovalError extends Error {
+  constructor(readonly approvalId: string) {
+    super(`Automation script approval expired: ${approvalId}`);
+  }
+}
 
 type AutomationScriptRow = {
   id: string;
@@ -67,64 +62,71 @@ export class AutomationScriptService {
   }
 
   requestTestApproval(versionId: string, actor: string): ApprovalRequest {
-    const version = this.requireVersion(versionId);
-    if (version.status !== 'draft') {
-      throw new Error(`Automation script test approval requires draft status, got ${version.status}.`);
-    }
-    const script = this.requireScript(version.scriptId);
-    const metadata = buildApprovalMetadata(version);
-    const approval = this.options.security.createApprovalRequest({
-      workspaceId: script.workspace_id,
-      kind: 'automation_script_test',
-      riskLevel: riskLevelFor(metadata.permissionSnapshot),
-      title: `Authorize automation script test: ${script.title}`,
-      description: `Authorize one test run for automation script version ${version.id}.`,
-      requestedAction: `Run one isolated test for automation script version ${version.id}.`,
-      scopes: metadata.permissionSnapshot.scopes,
-      requestedBy: actor,
-      expiresAt: this.expiresAt(),
-      metadata,
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status !== 'draft') {
+        throw new Error(`Automation script test approval requires draft status, got ${version.status}.`);
+      }
+      const script = this.requireScript(version.scriptId);
+      const metadata = buildApprovalMetadata(version);
+      const approval = this.options.security.createApprovalRequest({
+        workspaceId: script.workspace_id,
+        kind: 'automation_script_test',
+        riskLevel: riskLevelFor(metadata.permissionSnapshot),
+        title: `Authorize automation script test: ${script.title}`,
+        description: `Authorize one test run for automation script version ${version.id}.`,
+        requestedAction: `Run one isolated test for automation script version ${version.id}.`,
+        scopes: metadata.permissionSnapshot.scopes,
+        requestedBy: actor,
+        expiresAt: this.expiresAt(),
+        metadata,
+      });
+      this.saveVersion({
+        ...version,
+        status: 'pending_test_approval',
+        pendingTestApprovalId: approval.approvalId,
+        updatedAt: this.nowIso(),
+      });
+      return approval;
     });
-    this.saveVersion({
-      ...version,
-      status: 'pending_test_approval',
-      updatedAt: this.nowIso(),
-    });
-    return approval;
   }
 
   authorizeTest(versionId: string, approvalId: string, actor: string): AutomationScriptVersion {
-    const version = this.requireVersion(versionId);
-    if (version.status === 'test_authorized') {
-      throw new Error('Automation script test authorization is one-shot and already authorized.');
-    }
-    if (version.status !== 'pending_test_approval') {
-      throw new Error(`Automation script test authorization requires pending_test_approval status, got ${version.status}.`);
-    }
-    const approval = this.requireApproval(approvalId, 'automation_script_test', version.id);
-    if (approval.status === 'rejected') {
-      return this.rejectVersion(version, approval, actor);
-    }
-    this.requireApprovedApproval(approval);
-    this.assertApprovalSnapshotMatches(version, approval, { guardPermissions: false });
-    const now = this.nowIso();
-    const authorized = this.saveVersion({
-      ...version,
-      status: 'test_authorized',
-      testAuthorization: { actor, at: now, approvalId },
-      updatedAt: now,
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status === 'test_authorized') {
+        throw new Error('Automation script test authorization is one-shot and already authorized.');
+      }
+      if (version.status !== 'pending_test_approval') {
+        throw new Error(`Automation script test authorization requires pending_test_approval status, got ${version.status}.`);
+      }
+      this.requirePendingApprovalId(version.pendingTestApprovalId, approvalId);
+      const script = this.requireScript(version.scriptId);
+      const approval = this.requireApproval(approvalId, 'automation_script_test', version.id, script.workspace_id);
+      if (approval.status === 'rejected') {
+        return this.rejectVersion(version, approval, actor);
+      }
+      this.requireApprovedApproval(approval);
+      this.assertApprovalSnapshotMatches(version, approval);
+      const now = this.nowIso();
+      const authorized = this.saveVersion({
+        ...version,
+        status: 'test_authorized',
+        pendingTestApprovalId: undefined,
+        testAuthorization: { actor, at: now, approvalId },
+        updatedAt: now,
+      });
+      this.options.security.createAuditEvent({
+        type: 'automation.script.test_authorized',
+        workspaceId: script.workspace_id,
+        approvalId,
+        actor,
+        summary: `Automation script test authorized for version ${version.id}.`,
+        riskLevel: approval.riskLevel,
+        metadata: { versionId: version.id, scriptId: version.scriptId },
+      });
+      return authorized;
     });
-    const script = this.requireScript(version.scriptId);
-    this.options.security.createAuditEvent({
-      type: 'automation.script.test_authorized',
-      workspaceId: script.workspace_id,
-      approvalId,
-      actor,
-      summary: `Automation script test authorized for version ${version.id}.`,
-      riskLevel: approval.riskLevel,
-      metadata: { versionId: version.id, scriptId: version.scriptId },
-    });
-    return authorized;
   }
 
   recordTestResult(versionId: string, result: AutomationScriptTestReport): AutomationScriptVersion {
@@ -145,84 +147,93 @@ export class AutomationScriptService {
   }
 
   requestEnableApproval(versionId: string, actor: string): ApprovalRequest {
-    const version = this.requireVersion(versionId);
-    if (version.status !== 'tested') {
-      throw new Error(`Automation script enable approval requires tested status, got ${version.status}.`);
-    }
-    const script = this.requireScript(version.scriptId);
-    const metadata = buildApprovalMetadata(version);
-    const approval = this.options.security.createApprovalRequest({
-      workspaceId: script.workspace_id,
-      kind: 'automation_script_enable',
-      riskLevel: riskLevelFor(metadata.permissionSnapshot),
-      title: `Approve automation script: ${script.title}`,
-      description: `Approve automation script version ${version.id} for automation use.`,
-      requestedAction: `Enable automation script version ${version.id}.`,
-      scopes: metadata.permissionSnapshot.scopes,
-      requestedBy: actor,
-      expiresAt: this.expiresAt(),
-      metadata,
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status !== 'tested') {
+        throw new Error(`Automation script enable approval requires tested status, got ${version.status}.`);
+      }
+      const script = this.requireScript(version.scriptId);
+      const metadata = buildApprovalMetadata(version);
+      const approval = this.options.security.createApprovalRequest({
+        workspaceId: script.workspace_id,
+        kind: 'automation_script_enable',
+        riskLevel: riskLevelFor(metadata.permissionSnapshot),
+        title: `Approve automation script: ${script.title}`,
+        description: `Approve automation script version ${version.id} for automation use.`,
+        requestedAction: `Enable automation script version ${version.id}.`,
+        scopes: metadata.permissionSnapshot.scopes,
+        requestedBy: actor,
+        expiresAt: this.expiresAt(),
+        metadata,
+      });
+      this.saveVersion({
+        ...version,
+        status: 'pending_approval',
+        pendingApprovalId: approval.approvalId,
+        updatedAt: this.nowIso(),
+      });
+      return approval;
     });
-    this.saveVersion({
-      ...version,
-      status: 'pending_approval',
-      updatedAt: this.nowIso(),
-    });
-    return approval;
   }
 
   approveVersion(versionId: string, approvalId: string, actor: string): AutomationScriptVersion {
-    const version = this.requireVersion(versionId);
-    if (version.status !== 'pending_approval') {
-      throw new Error(`Automation script approval requires pending_approval status, got ${version.status}.`);
-    }
-    const approval = this.requireApproval(approvalId, 'automation_script_enable', version.id);
-    if (approval.status === 'rejected') {
-      return this.rejectVersion(version, approval, actor);
-    }
-    this.requireApprovedApproval(approval);
-    this.assertApprovalSnapshotMatches(version, approval, { guardPermissions: true });
-    const now = this.nowIso();
-    const approved = this.saveVersion({
-      ...version,
-      status: 'approved',
-      approval: { actor, at: now, approvalId },
-      updatedAt: now,
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status !== 'pending_approval') {
+        throw new Error(`Automation script approval requires pending_approval status, got ${version.status}.`);
+      }
+      this.requirePendingApprovalId(version.pendingApprovalId, approvalId);
+      const script = this.requireScript(version.scriptId);
+      const approval = this.requireApproval(approvalId, 'automation_script_enable', version.id, script.workspace_id);
+      if (approval.status === 'rejected') {
+        return this.rejectVersion(version, approval, actor);
+      }
+      this.requireApprovedApproval(approval);
+      this.assertApprovalSnapshotMatches(version, approval);
+      const now = this.nowIso();
+      const approved = this.saveVersion({
+        ...version,
+        status: 'approved',
+        pendingApprovalId: undefined,
+        approval: { actor, at: now, approvalId },
+        updatedAt: now,
+      });
+      this.options.security.createAuditEvent({
+        type: 'automation.script.approved',
+        workspaceId: script.workspace_id,
+        approvalId,
+        actor,
+        summary: `Automation script version ${version.id} approved.`,
+        riskLevel: approval.riskLevel,
+        metadata: { versionId: version.id, scriptId: version.scriptId },
+      });
+      return approved;
     });
-    const script = this.requireScript(version.scriptId);
-    this.options.security.createAuditEvent({
-      type: 'automation.script.approved',
-      workspaceId: script.workspace_id,
-      approvalId,
-      actor,
-      summary: `Automation script version ${version.id} approved.`,
-      riskLevel: approval.riskLevel,
-      metadata: { versionId: version.id, scriptId: version.scriptId },
-    });
-    return approved;
   }
 
   revokeVersion(versionId: string, actor: string): AutomationScriptVersion {
-    const version = this.requireVersion(versionId);
-    if (version.status !== 'approved') {
-      throw new Error(`Automation script revocation requires approved status, got ${version.status}.`);
-    }
-    const now = this.nowIso();
-    const revoked = this.saveVersion({
-      ...version,
-      status: 'revoked',
-      revocation: { actor, at: now },
-      updatedAt: now,
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status !== 'approved') {
+        throw new Error(`Automation script revocation requires approved status, got ${version.status}.`);
+      }
+      const now = this.nowIso();
+      const revoked = this.saveVersion({
+        ...version,
+        status: 'revoked',
+        revocation: { actor, at: now },
+        updatedAt: now,
+      });
+      const script = this.requireScript(version.scriptId);
+      this.options.security.createAuditEvent({
+        type: 'automation.script.revoked',
+        workspaceId: script.workspace_id,
+        actor,
+        summary: `Automation script version ${version.id} revoked.`,
+        metadata: { versionId: version.id, scriptId: version.scriptId },
+      });
+      return revoked;
     });
-    const script = this.requireScript(version.scriptId);
-    this.options.security.createAuditEvent({
-      type: 'automation.script.revoked',
-      workspaceId: script.workspace_id,
-      actor,
-      summary: `Automation script version ${version.id} revoked.`,
-      metadata: { versionId: version.id, scriptId: version.scriptId },
-    });
-    return revoked;
   }
 
   private rejectVersion(
@@ -234,6 +245,8 @@ export class AutomationScriptService {
     return this.saveVersion({
       ...version,
       status: 'rejected',
+      pendingTestApprovalId: undefined,
+      pendingApprovalId: undefined,
       rejection: { actor: approval.resolvedBy || actor, at: now, approvalId: approval.approvalId },
       updatedAt: now,
     });
@@ -241,34 +254,36 @@ export class AutomationScriptService {
 
   private requireApprovedApproval(approval: ApprovalRequest) {
     if (isExpired(approval, this.clock())) {
-      this.markApprovalExpired(approval.approvalId);
-      throw new Error(`Automation script approval expired: ${approval.approvalId}`);
+      throw new ExpiredAutomationScriptApprovalError(approval.approvalId);
     }
     if (approval.status !== 'approved') {
       throw new Error(`Automation script approval must be approved, got ${approval.status}.`);
     }
   }
 
-  private assertApprovalSnapshotMatches(
-    version: AutomationScriptVersion,
-    approval: ApprovalRequest,
-    options: { guardPermissions: boolean },
-  ) {
+  private assertApprovalSnapshotMatches(version: AutomationScriptVersion, approval: ApprovalRequest) {
     const metadata = parseApprovalMetadata(approval.metadata);
+    const current = buildApprovalMetadata(version);
     if (metadata.versionId !== version.id) {
       throw new Error('Automation script approval metadata version ID mismatch.');
     }
     if (metadata.packageSha256 !== version.packageSha256) {
       throw new Error('Automation script package hash changed since approval request.');
     }
-    if (!options.guardPermissions) return;
-
-    const current = buildPermissionSnapshot(version);
-    if (!stringArraysEqual(metadata.permissionSnapshot.secretEnvRefs, current.secretEnvRefs)) {
+    if (metadata.testPlanDigest !== current.testPlanDigest) {
+      throw new Error('Automation script test plan digest changed since approval request.');
+    }
+    if (!stringArraysEqual(metadata.permissionSnapshot.secretEnvRefs, current.permissionSnapshot.secretEnvRefs)) {
       throw new Error('Automation script secret env references changed since approval request.');
     }
-    if (stableStringify(metadata.permissionSnapshot) !== stableStringify(current)) {
+    if (stableStringify(metadata.permissionSnapshot) !== stableStringify(current.permissionSnapshot)) {
       throw new Error('Automation script permission snapshot changed since approval request.');
+    }
+    if (metadata.permissionSnapshotDigest !== digest(metadata.permissionSnapshot)) {
+      throw new Error('Automation script permission snapshot digest mismatch.');
+    }
+    if (metadata.manifestDigest !== current.manifestDigest) {
+      throw new Error('Automation script manifest digest changed since approval request.');
     }
   }
 
@@ -276,6 +291,7 @@ export class AutomationScriptService {
     approvalId: string,
     kind: ApprovalRequest['kind'],
     versionId: string,
+    workspaceId: string,
   ): ApprovalRequest {
     const approval = this.options.security.getApprovalRequest(approvalId);
     if (!approval) throw new Error(`Approval not found: ${approvalId}`);
@@ -285,7 +301,19 @@ export class AutomationScriptService {
     if (approval.metadata?.versionId !== versionId) {
       throw new Error('Automation script approval does not belong to this version.');
     }
+    if (approval.workspaceId !== workspaceId) {
+      throw new Error('Automation script approval workspace does not match the script workspace.');
+    }
     return approval;
+  }
+
+  private requirePendingApprovalId(expectedApprovalId: string | undefined, actualApprovalId: string) {
+    if (!expectedApprovalId) {
+      throw new Error('Automation script pending approval ID is missing.');
+    }
+    if (expectedApprovalId !== actualApprovalId) {
+      throw new Error('Automation script approval ID does not match the pending approval ID.');
+    }
   }
 
   private requireVersion(versionId: string): AutomationScriptVersion {
@@ -302,19 +330,7 @@ export class AutomationScriptService {
       WHERE id = ?
     `).get(versionId) as AutomationScriptVersionRow | undefined;
     if (!row) return undefined;
-    return {
-      ...(JSON.parse(row.version_json) as AutomationScriptVersion),
-      id: row.id,
-      scriptId: row.script_id,
-      status: row.status,
-      packageSha256: row.package_sha256,
-      packagePath: row.package_path,
-      shebang: row.shebang,
-      interpreterPath: row.interpreter_path,
-      interpreterVersion: row.interpreter_version,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
+    return parseAutomationScriptVersionRow(row);
   }
 
   private requireScript(scriptId: string): AutomationScriptRow {
@@ -363,6 +379,21 @@ export class AutomationScriptService {
   private expiresAt() {
     return new Date(this.clock().getTime() + this.approvalTtlMs).toISOString();
   }
+
+  private withTransaction<T>(work: () => T): T {
+    this.options.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = work();
+      this.options.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.options.db.exec('ROLLBACK');
+      if (error instanceof ExpiredAutomationScriptApprovalError) {
+        this.markApprovalExpired(error.approvalId);
+      }
+      throw error;
+    }
+  }
 }
 
 function buildApprovalMetadata(version: AutomationScriptVersion): AutomationScriptApprovalMetadata {
@@ -377,7 +408,6 @@ function buildApprovalMetadata(version: AutomationScriptVersion): AutomationScri
       env: version.env,
       limits: version.limits,
       secretRefs: version.secretRefs,
-      testPlan: version.testPlan,
     }),
     permissionSnapshot,
     permissionSnapshotDigest: digest(permissionSnapshot),
@@ -432,17 +462,27 @@ function parseApprovalMetadata(metadata: ApprovalRequest['metadata']): Automatio
   const input = metadata as Partial<AutomationScriptApprovalMetadata>;
   if (typeof input.versionId !== 'string') throw new Error('Automation script approval metadata version ID is missing.');
   if (typeof input.packageSha256 !== 'string') throw new Error('Automation script approval metadata package hash is missing.');
+  const manifestDigest = requiredDigest(input.manifestDigest, 'manifest digest');
+  const permissionSnapshotDigest = requiredDigest(input.permissionSnapshotDigest, 'permission snapshot digest');
+  const testPlanDigest = requiredDigest(input.testPlanDigest, 'test plan digest');
   if (!input.permissionSnapshot || typeof input.permissionSnapshot !== 'object') {
     throw new Error('Automation script approval metadata permission snapshot is missing.');
   }
   return {
     versionId: input.versionId,
     packageSha256: input.packageSha256,
-    manifestDigest: typeof input.manifestDigest === 'string' ? input.manifestDigest : '',
+    manifestDigest,
     permissionSnapshot: normalizePermissionSnapshot(input.permissionSnapshot),
-    permissionSnapshotDigest: typeof input.permissionSnapshotDigest === 'string' ? input.permissionSnapshotDigest : '',
-    testPlanDigest: typeof input.testPlanDigest === 'string' ? input.testPlanDigest : '',
+    permissionSnapshotDigest,
+    testPlanDigest,
   };
+}
+
+function requiredDigest(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error(`Automation script approval metadata ${label} must be a SHA-256 digest.`);
+  }
+  return value;
 }
 
 function normalizePermissionSnapshot(value: unknown): AutomationScriptApprovalPermissionSnapshot {
