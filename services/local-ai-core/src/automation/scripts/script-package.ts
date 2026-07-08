@@ -77,6 +77,8 @@ type DirectorySnapshot = {
 
 type ScriptPackageTestHooks = {
   beforeDirectoryRead?: (directory: string) => void;
+  beforeFileRead?: (filePath: string) => void;
+  beforeChmod?: (path: string) => void;
 };
 
 export function stageImmutableScriptPackage(input: StageImmutableScriptPackageInput): StagedScriptPackage {
@@ -150,7 +152,7 @@ function collectPackageEntries(sourceDir: string): PackageEntry[] {
       }
       assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package file');
       const packagePath = normalizeFilesystemPackagePath(sourceDir, absolutePath);
-      const content = readRegularFileNoFollow(absolutePath, packagePath);
+      const content = readRegularFileNoFollow(absolutePath, packagePath, rootRealPath);
       if (content.includes(0)) {
         throw new Error(`Automation script package file must be text, not binary: ${packagePath}`);
       }
@@ -298,11 +300,12 @@ function hashEntries(entries: PackageEntry[] | StagedScriptPackageEntry[], root?
 
 function copyEntriesReadOnly(entries: PackageEntry[], destination: string) {
   mkdirSync(destination, { recursive: true });
+  const destinationRealPath = realpathSync(destination);
   for (const entry of entries) {
     const target = join(destination, entry.path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, entry.content, { mode: 0o444 });
-    chmodSync(target, 0o444);
+    chmodPathWithStableParent(target, 0o444, destinationRealPath, 'Automation script package file');
   }
 }
 
@@ -346,7 +349,18 @@ function assertRealDirectory(path: string, label: string) {
   }
 }
 
-function readRegularFileNoFollow(path: string, packagePath: string): Buffer {
+function readRegularFileNoFollow(path: string, packagePath: string, rootRealPath?: string): Buffer {
+  const parentDirectory = dirname(path);
+  const before = rootRealPath
+    ? assertDirectorySnapshot(parentDirectory, rootRealPath, 'Automation script package file parent directory')
+    : undefined;
+  if (rootRealPath) {
+    assertContainedRealPath(path, rootRealPath, 'Automation script package file');
+  }
+  const fileBefore = rootRealPath
+    ? assertPackagePathSnapshot(path, rootRealPath, 'Automation script package file')
+    : undefined;
+  runBeforeFileReadHook(path);
   const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;
   const fd = openSync(path, constants.O_RDONLY | noFollow);
   try {
@@ -354,7 +368,20 @@ function readRegularFileNoFollow(path: string, packagePath: string): Buffer {
     if (!stat.isFile()) {
       throw new Error(`Automation script packages can only contain regular files: ${packagePath}`);
     }
-    return readFileSync(fd);
+    if (fileBefore) {
+      assertSameDeviceInode(fileBefore, stat, `Automation script package file changed before open: ${path}`);
+    }
+    const content = readFileSync(fd);
+    if (rootRealPath && before) {
+      const after = assertDirectorySnapshot(parentDirectory, rootRealPath, 'Automation script package file parent directory');
+      assertSameDirectorySnapshot(before, after, `Automation script package file parent directory changed during read: ${parentDirectory}`);
+      const fileAfter = assertPackagePathSnapshot(path, rootRealPath, 'Automation script package file');
+      if (fileBefore) {
+        assertSameDirectorySnapshot(fileBefore, fileAfter, `Automation script package file changed during read: ${path}`);
+      }
+      assertContainedRealPath(path, rootRealPath, 'Automation script package file');
+    }
+    return content;
   } finally {
     closeSync(fd);
   }
@@ -381,12 +408,12 @@ function chmodPackageTreeReadOnly(packagePath: string) {
         throw new Error(`Automation script packages can only contain regular files: ${item.name}`);
       }
       assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package file');
-      chmodSync(absolutePath, 0o444);
+      chmodPathWithStableParent(absolutePath, 0o444, rootRealPath, 'Automation script package file');
     }
   };
   visit(packagePath);
   for (const directory of directories.reverse()) {
-    chmodSync(directory, 0o555);
+    chmodPathWithStableParent(directory, 0o555, rootRealPath, 'Automation script package directory');
   }
 }
 
@@ -421,9 +448,7 @@ function readDirectoryEntriesStable(directory: string, rootRealPath: string) {
   runBeforeDirectoryReadHook(directory);
   const entries = readdirSync(directory, { withFileTypes: true });
   const after = assertDirectorySnapshot(directory, rootRealPath, 'Automation script package directory');
-  if (before.dev !== after.dev || before.ino !== after.ino || before.realPath !== after.realPath) {
-    throw new Error(`Automation script package directory changed during traversal: ${directory}`);
-  }
+  assertSameDirectorySnapshot(before, after, `Automation script package directory changed during traversal: ${directory}`);
   return entries;
 }
 
@@ -454,7 +479,52 @@ function readPackageFileFromRoot(root: string, rootRealPath: string | undefined,
   if (rootRealPath) {
     assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package file');
   }
-  return readRegularFileNoFollow(absolutePath, entryPath);
+  return readRegularFileNoFollow(absolutePath, entryPath, rootRealPath);
+}
+
+function chmodPathWithStableParent(path: string, mode: number, rootRealPath: string, label: string) {
+  const pathRealBefore = assertContainedRealPath(path, rootRealPath, label);
+  const protectsRootItself = pathRealBefore === rootRealPath;
+  const snapshotPath = protectsRootItself ? path : dirname(path);
+  const snapshotLabel = protectsRootItself ? label : `${label} parent directory`;
+  const before = assertDirectorySnapshot(snapshotPath, rootRealPath, snapshotLabel);
+  const targetBefore = assertPackagePathSnapshot(path, rootRealPath, label);
+  runBeforeChmodHook(path);
+  chmodSync(path, mode);
+  const after = assertDirectorySnapshot(snapshotPath, rootRealPath, snapshotLabel);
+  assertSameDirectorySnapshot(before, after, `${snapshotLabel} changed during chmod: ${snapshotPath}`);
+  const targetAfter = assertPackagePathSnapshot(path, rootRealPath, label);
+  assertSameDirectorySnapshot(targetBefore, targetAfter, `${label} changed during chmod: ${path}`);
+  assertContainedRealPath(path, rootRealPath, label);
+}
+
+function assertSameDirectorySnapshot(before: DirectorySnapshot, after: DirectorySnapshot, message: string) {
+  if (before.dev !== after.dev || before.ino !== after.ino || before.realPath !== after.realPath) {
+    throw new Error(message);
+  }
+}
+
+function assertSameDeviceInode(
+  before: Pick<DirectorySnapshot, 'dev' | 'ino'>,
+  after: Pick<DirectorySnapshot, 'dev' | 'ino'>,
+  message: string,
+) {
+  if (before.dev !== after.dev || before.ino !== after.ino) {
+    throw new Error(message);
+  }
+}
+
+function assertPackagePathSnapshot(path: string, rootRealPath: string, label: string): DirectorySnapshot {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink()) {
+    throw new Error(`${label} must not be a symlink.`);
+  }
+  const realPath = assertContainedRealPath(path, rootRealPath, label);
+  return {
+    dev: stat.dev,
+    ino: stat.ino,
+    realPath,
+  };
 }
 
 function runBeforeDirectoryReadHook(directory: string) {
@@ -462,4 +532,18 @@ function runBeforeDirectoryReadHook(directory: string) {
     __automationScriptPackageTestHooks?: ScriptPackageTestHooks;
   }).__automationScriptPackageTestHooks;
   hooks?.beforeDirectoryRead?.(directory);
+}
+
+function runBeforeFileReadHook(path: string) {
+  const hooks = (globalThis as typeof globalThis & {
+    __automationScriptPackageTestHooks?: ScriptPackageTestHooks;
+  }).__automationScriptPackageTestHooks;
+  hooks?.beforeFileRead?.(path);
+}
+
+function runBeforeChmodHook(path: string) {
+  const hooks = (globalThis as typeof globalThis & {
+    __automationScriptPackageTestHooks?: ScriptPackageTestHooks;
+  }).__automationScriptPackageTestHooks;
+  hooks?.beforeChmod?.(path);
 }

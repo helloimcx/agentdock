@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import { stageImmutableScriptPackage } from '../../services/local-ai-core/src/automation/scripts/script-package.js';
@@ -9,6 +9,8 @@ import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-co
 
 type ScriptPackageTestHooks = {
   beforeDirectoryRead?: (directory: string) => void;
+  beforeFileRead?: (filePath: string) => void;
+  beforeChmod?: (path: string) => void;
 };
 
 const globalTestHooks = globalThis as typeof globalThis & {
@@ -207,6 +209,107 @@ test('rejects existing package nested directories that redirect during verificat
       assert.throws(
         () => stageImmutableScriptPackage({ userDataPath, scriptId: 'script:existing-race', sourceDir }),
         /changed|redirect|outside|symlink|real directory/i,
+      );
+    });
+    assert.equal(swapped, true);
+  } finally {
+    removeTempTree(userDataPath);
+    removeTempTree(sourceDir);
+    removeTempTree(outsideDir);
+  }
+});
+
+test('rejects source file reads when the parent directory redirects during open', () => {
+  const userDataPath = tempDir('automation-script-user-data-');
+  const sourceDir = tempDir('automation-script-file-read-source-');
+  const outsideDir = tempDir('automation-script-file-read-outside-');
+  try {
+    writeBundleWithNestedDir(sourceDir);
+    writeFileSync(join(outsideDir, 'keep.js'), 'console.log("outside");\n');
+    const nestedFile = join(sourceDir, 'nested', 'keep.js');
+    let swapped = false;
+
+    withDirectoryReadHook({
+      beforeFileRead(filePath) {
+        if (swapped || filePath !== nestedFile) return;
+        swapped = true;
+        rmSync(dirname(filePath), { recursive: true, force: true });
+        symlinkSync(outsideDir, dirname(filePath));
+      },
+    }, () => {
+      assert.throws(
+        () => stageImmutableScriptPackage({ userDataPath, scriptId: 'script:file-read-source', sourceDir }),
+        /changed|redirect|outside|symlink|real directory|package root/i,
+      );
+    });
+    assert.equal(swapped, true);
+  } finally {
+    removeTempTree(userDataPath);
+    removeTempTree(sourceDir);
+    removeTempTree(outsideDir);
+  }
+});
+
+test('rejects existing package file reads when the parent directory redirects during verification', () => {
+  const userDataPath = tempDir('automation-script-user-data-');
+  const sourceDir = tempDir('automation-script-file-read-existing-');
+  const outsideDir = tempDir('automation-script-file-read-outside-');
+  try {
+    writeBundleWithNestedDir(sourceDir);
+    writeFileSync(join(outsideDir, 'keep.js'), 'console.log("outside");\n');
+    const staged = stageImmutableScriptPackage({ userDataPath, scriptId: 'script:file-read-existing', sourceDir });
+    const nestedFile = join(staged.packagePath, 'nested', 'keep.js');
+    let swapped = false;
+
+    withDirectoryReadHook({
+      beforeFileRead(filePath) {
+        if (swapped || filePath !== nestedFile) return;
+        swapped = true;
+        chmodSync(dirname(dirname(filePath)), 0o755);
+        chmodSync(dirname(filePath), 0o755);
+        rmSync(dirname(filePath), { recursive: true, force: true });
+        symlinkSync(outsideDir, dirname(filePath));
+      },
+    }, () => {
+      assert.throws(
+        () => stageImmutableScriptPackage({ userDataPath, scriptId: 'script:file-read-existing', sourceDir }),
+        /changed|redirect|outside|symlink|real directory|package root/i,
+      );
+    });
+    assert.equal(swapped, true);
+  } finally {
+    removeTempTree(userDataPath);
+    removeTempTree(sourceDir);
+    removeTempTree(outsideDir);
+  }
+});
+
+test('rejects chmod when the parent directory redirects before chmod applies', () => {
+  const userDataPath = tempDir('automation-script-user-data-');
+  const sourceDir = tempDir('automation-script-chmod-source-');
+  const outsideDir = tempDir('automation-script-chmod-outside-');
+  try {
+    writeBundleWithNestedDir(sourceDir);
+    writeFileSync(join(outsideDir, 'keep.js'), 'console.log("outside");\n');
+    let swapped = false;
+
+    withDirectoryReadHook({
+      beforeChmod(filePath) {
+        if (
+          swapped ||
+          !filePath.includes(join('automations', 'scripts', 'script:chmod-race')) ||
+          !filePath.endsWith(join('nested', 'keep.js'))
+        ) {
+          return;
+        }
+        swapped = true;
+        rmSync(dirname(filePath), { recursive: true, force: true });
+        symlinkSync(outsideDir, dirname(filePath));
+      },
+    }, () => {
+      assert.throws(
+        () => stageImmutableScriptPackage({ userDataPath, scriptId: 'script:chmod-race', sourceDir }),
+        /changed|redirect|outside|symlink|real directory|package root/i,
       );
     });
     assert.equal(swapped, true);
