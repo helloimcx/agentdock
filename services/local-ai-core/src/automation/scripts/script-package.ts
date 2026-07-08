@@ -9,6 +9,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   renameSync,
   writeFileSync,
@@ -68,6 +69,16 @@ type PackageEntry = StagedScriptPackageEntry & {
   content: Buffer;
 };
 
+type DirectorySnapshot = {
+  dev: number;
+  ino: number;
+  realPath: string;
+};
+
+type ScriptPackageTestHooks = {
+  beforeDirectoryRead?: (directory: string) => void;
+};
+
 export function stageImmutableScriptPackage(input: StageImmutableScriptPackageInput): StagedScriptPackage {
   const scriptId = validatePathToken(input.scriptId, 'Automation script id');
   const sourceDir = resolve(input.sourceDir);
@@ -120,22 +131,24 @@ export function stageImmutableScriptPackage(input: StageImmutableScriptPackageIn
 
 function collectPackageEntries(sourceDir: string): PackageEntry[] {
   assertRealDirectory(sourceDir, 'Automation script package source');
+  const rootRealPath = realpathSync(sourceDir);
   const entries: PackageEntry[] = [];
   const visit = (directory: string) => {
-    assertRealDirectory(directory, 'Automation script package directory');
-    for (const item of readdirSync(directory, { withFileTypes: true })) {
+    for (const item of readDirectoryEntriesStable(directory, rootRealPath)) {
       const absolutePath = join(directory, item.name);
       const stat = lstatSync(absolutePath);
       if (stat.isSymbolicLink()) {
         throw new Error(`Automation script packages cannot contain symlinks: ${item.name}`);
       }
       if (stat.isDirectory()) {
+        assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package directory');
         visit(absolutePath);
         continue;
       }
       if (!stat.isFile()) {
         throw new Error(`Automation script packages can only contain regular files: ${item.name}`);
       }
+      assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package file');
       const packagePath = normalizeFilesystemPackagePath(sourceDir, absolutePath);
       const content = readRegularFileNoFollow(absolutePath, packagePath);
       if (content.includes(0)) {
@@ -268,10 +281,11 @@ function validateTextEntrypoint(content: Buffer): string {
 
 function hashEntries(entries: PackageEntry[] | StagedScriptPackageEntry[], root?: string) {
   const hash = createHash('sha256');
+  const rootRealPath = root ? realpathSync(root) : undefined;
   for (const entry of [...entries].sort(compareEntries)) {
     const content = 'content' in entry
       ? entry.content
-      : readRegularFileNoFollow(join(root || '', entry.path), entry.path);
+      : readPackageFileFromRoot(root || '', rootRealPath, entry.path);
     hash.update(entry.path, 'utf8');
     hash.update('\0');
     hash.update(createHash('sha256').update(content).digest('hex'), 'utf8');
@@ -347,23 +361,26 @@ function readRegularFileNoFollow(path: string, packagePath: string): Buffer {
 }
 
 function chmodPackageTreeReadOnly(packagePath: string) {
+  const rootRealPath = realpathSync(packagePath);
   const directories: string[] = [];
   const visit = (directory: string) => {
-    assertRealDirectory(directory, 'Automation script package directory');
+    assertDirectorySnapshot(directory, rootRealPath, 'Automation script package directory');
     directories.push(directory);
-    for (const item of readdirSync(directory, { withFileTypes: true })) {
+    for (const item of readDirectoryEntriesStable(directory, rootRealPath)) {
       const absolutePath = join(directory, item.name);
       const stat = lstatSync(absolutePath);
       if (stat.isSymbolicLink()) {
         throw new Error(`Automation script packages cannot contain symlinks: ${item.name}`);
       }
       if (stat.isDirectory()) {
+        assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package directory');
         visit(absolutePath);
         continue;
       }
       if (!stat.isFile()) {
         throw new Error(`Automation script packages can only contain regular files: ${item.name}`);
       }
+      assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package file');
       chmodSync(absolutePath, 0o444);
     }
   };
@@ -397,4 +414,52 @@ function positiveSafeInteger(value: unknown, label: string): number {
     throw new Error(`${label} must be a positive integer.`);
   }
   return value;
+}
+
+function readDirectoryEntriesStable(directory: string, rootRealPath: string) {
+  const before = assertDirectorySnapshot(directory, rootRealPath, 'Automation script package directory');
+  runBeforeDirectoryReadHook(directory);
+  const entries = readdirSync(directory, { withFileTypes: true });
+  const after = assertDirectorySnapshot(directory, rootRealPath, 'Automation script package directory');
+  if (before.dev !== after.dev || before.ino !== after.ino || before.realPath !== after.realPath) {
+    throw new Error(`Automation script package directory changed during traversal: ${directory}`);
+  }
+  return entries;
+}
+
+function assertDirectorySnapshot(directory: string, rootRealPath: string, label: string): DirectorySnapshot {
+  const stat = lstatSync(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(`${label} must be a real directory.`);
+  }
+  const realPath = assertContainedRealPath(directory, rootRealPath, label);
+  return {
+    dev: stat.dev,
+    ino: stat.ino,
+    realPath,
+  };
+}
+
+function assertContainedRealPath(path: string, rootRealPath: string, label: string): string {
+  const realPath = realpathSync(path);
+  const relativePath = relative(rootRealPath, realPath);
+  if (relativePath && (relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath))) {
+    throw new Error(`${label} must stay within the automation script package root.`);
+  }
+  return realPath;
+}
+
+function readPackageFileFromRoot(root: string, rootRealPath: string | undefined, entryPath: string): Buffer {
+  const absolutePath = join(root, entryPath);
+  if (rootRealPath) {
+    assertContainedRealPath(absolutePath, rootRealPath, 'Automation script package file');
+  }
+  return readRegularFileNoFollow(absolutePath, entryPath);
+}
+
+function runBeforeDirectoryReadHook(directory: string) {
+  const hooks = (globalThis as typeof globalThis & {
+    __automationScriptPackageTestHooks?: ScriptPackageTestHooks;
+  }).__automationScriptPackageTestHooks;
+  hooks?.beforeDirectoryRead?.(directory);
 }

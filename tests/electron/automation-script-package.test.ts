@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
-import { chmodSync, lstatSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { stageImmutableScriptPackage } from '../../services/local-ai-core/src/automation/scripts/script-package.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+
+type ScriptPackageTestHooks = {
+  beforeDirectoryRead?: (directory: string) => void;
+};
+
+const globalTestHooks = globalThis as typeof globalThis & {
+  __automationScriptPackageTestHooks?: ScriptPackageTestHooks;
+};
 
 function tempDir(prefix: string) {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -59,6 +67,26 @@ function writeBundle(
   writeFileSync(join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   writeFileSync(join(root, 'run.sh'), overrides.entry ?? '#!/bin/sh\nnode helper.js\n');
   writeFileSync(join(root, 'helper.js'), overrides.helper ?? 'console.log("ok");\n');
+}
+
+function writeBundleWithNestedDir(root: string) {
+  writeBundle(root);
+  mkdirSync(join(root, 'nested'));
+  writeFileSync(join(root, 'nested', 'keep.js'), 'console.log("nested");\n');
+}
+
+function withDirectoryReadHook(hooks: ScriptPackageTestHooks, run: () => void) {
+  const previousHooks = globalTestHooks.__automationScriptPackageTestHooks;
+  globalTestHooks.__automationScriptPackageTestHooks = hooks;
+  try {
+    run();
+  } finally {
+    if (previousHooks) {
+      globalTestHooks.__automationScriptPackageTestHooks = previousHooks;
+    } else {
+      delete globalTestHooks.__automationScriptPackageTestHooks;
+    }
+  }
 }
 
 test('stages immutable script packages with deterministic whole-package hashes and read-only files', () => {
@@ -122,6 +150,70 @@ test('sorts package paths by deterministic UTF-8 byte order rather than locale c
   } finally {
     removeTempTree(userDataPath);
     removeTempTree(sourceDir);
+  }
+});
+
+test('rejects source nested directories that redirect during traversal', () => {
+  const userDataPath = tempDir('automation-script-user-data-');
+  const sourceDir = tempDir('automation-script-race-source-');
+  const outsideDir = tempDir('automation-script-race-outside-');
+  try {
+    writeBundleWithNestedDir(sourceDir);
+    writeFileSync(join(outsideDir, 'escape.js'), 'console.log("outside");\n');
+    let swapped = false;
+
+    withDirectoryReadHook({
+      beforeDirectoryRead(directory) {
+        if (swapped || directory !== join(sourceDir, 'nested')) return;
+        swapped = true;
+        rmSync(directory, { recursive: true, force: true });
+        symlinkSync(outsideDir, directory);
+      },
+    }, () => {
+      assert.throws(
+        () => stageImmutableScriptPackage({ userDataPath, scriptId: 'script:source-race', sourceDir }),
+        /changed|redirect|outside|symlink|real directory/i,
+      );
+    });
+    assert.equal(swapped, true);
+  } finally {
+    removeTempTree(userDataPath);
+    removeTempTree(sourceDir);
+    removeTempTree(outsideDir);
+  }
+});
+
+test('rejects existing package nested directories that redirect during verification', () => {
+  const userDataPath = tempDir('automation-script-user-data-');
+  const sourceDir = tempDir('automation-script-race-existing-');
+  const outsideDir = tempDir('automation-script-race-outside-');
+  try {
+    writeBundleWithNestedDir(sourceDir);
+    writeFileSync(join(outsideDir, 'escape.js'), 'console.log("outside");\n');
+    const staged = stageImmutableScriptPackage({ userDataPath, scriptId: 'script:existing-race', sourceDir });
+    const nestedPackageDir = join(staged.packagePath, 'nested');
+    let swapped = false;
+
+    withDirectoryReadHook({
+      beforeDirectoryRead(directory) {
+        if (swapped || directory !== nestedPackageDir) return;
+        swapped = true;
+        chmodSync(staged.packagePath, 0o755);
+        chmodSync(nestedPackageDir, 0o755);
+        rmSync(nestedPackageDir, { recursive: true, force: true });
+        symlinkSync(outsideDir, nestedPackageDir);
+      },
+    }, () => {
+      assert.throws(
+        () => stageImmutableScriptPackage({ userDataPath, scriptId: 'script:existing-race', sourceDir }),
+        /changed|redirect|outside|symlink|real directory/i,
+      );
+    });
+    assert.equal(swapped, true);
+  } finally {
+    removeTempTree(userDataPath);
+    removeTempTree(sourceDir);
+    removeTempTree(outsideDir);
   }
 });
 
