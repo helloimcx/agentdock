@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   AutomationScript,
+  AutomationScriptAuditActor,
   AutomationScriptCreateInput,
   AutomationScriptUpdateInput,
   AutomationScriptVersion,
@@ -224,8 +225,14 @@ function toVersion(input: {
     interpreterPath: input.interpreterPath,
     interpreterVersion: input.interpreterVersion,
     capabilities: asRecord(manifest.capabilities ?? {}, 'Automation script capabilities'),
-    configSchema: asRecord(manifest.configSchema ?? {}, 'Automation script configSchema'),
-    secretRefs: stringArray(manifest.secretRefs ?? [], 'Automation script secretRefs'),
+    config: asRecord(manifest.config, 'Automation script config'),
+    configSchema: asRecord(manifest.configSchema, 'Automation script configSchema'),
+    networkMode: manifest.capabilities.network,
+    internalAccess: manifest.capabilities.internalAccess,
+    allowedReadDirs: stringArray(manifest.capabilities.allowedReadDirs, 'Automation script allowedReadDirs'),
+    secretRefs: stringArray(manifest.secretRefs, 'Automation script secretRefs'),
+    env: stringArray(manifest.env, 'Automation script env'),
+    limits: parseLimits(manifest.limits, 'Automation script limits'),
     staticCheck: {
       packageSha256: input.staged.packageSha256,
       entries: input.staged.entries,
@@ -248,15 +255,21 @@ function parseVersion(value: string): AutomationScriptVersion {
     interpreterPath: requiredString(parsed.interpreterPath, 'Automation script version interpreterPath'),
     interpreterVersion: requiredString(parsed.interpreterVersion, 'Automation script version interpreterVersion'),
     capabilities: asRecord(parsed.capabilities, 'Automation script version capabilities'),
+    config: asRecord(parsed.config, 'Automation script version config'),
     configSchema: asRecord(parsed.configSchema, 'Automation script version configSchema'),
+    networkMode: parseNetworkMode(parsed.networkMode, 'Automation script version networkMode'),
+    internalAccess: booleanValue(parsed.internalAccess, 'Automation script version internalAccess'),
+    allowedReadDirs: stringArray(parsed.allowedReadDirs, 'Automation script version allowedReadDirs'),
     secretRefs: stringArray(parsed.secretRefs, 'Automation script version secretRefs'),
-    staticCheck: asRecord(parsed.staticCheck, 'Automation script version staticCheck'),
+    env: stringArray(parsed.env, 'Automation script version env'),
+    limits: parseLimits(parsed.limits, 'Automation script version limits'),
+    staticCheck: parseStaticCheck(parsed.staticCheck, 'Automation script version staticCheck'),
     testPlan: asRecord(parsed.testPlan, 'Automation script version testPlan'),
     ...(parsed.testReport === undefined ? {} : { testReport: asRecord(parsed.testReport, 'Automation script version testReport') }),
-    ...(parsed.testAuthorization === undefined ? {} : { testAuthorization: parsed.testAuthorization as AutomationScriptVersion['testAuthorization'] }),
-    ...(parsed.approval === undefined ? {} : { approval: parsed.approval as AutomationScriptVersion['approval'] }),
-    ...(parsed.rejection === undefined ? {} : { rejection: parsed.rejection as AutomationScriptVersion['rejection'] }),
-    ...(parsed.revocation === undefined ? {} : { revocation: parsed.revocation as AutomationScriptVersion['revocation'] }),
+    ...(parsed.testAuthorization === undefined ? {} : { testAuthorization: parseAuditActor(parsed.testAuthorization, 'Automation script version testAuthorization') }),
+    ...(parsed.approval === undefined ? {} : { approval: parseAuditActor(parsed.approval, 'Automation script version approval') }),
+    ...(parsed.rejection === undefined ? {} : { rejection: parseAuditActor(parsed.rejection, 'Automation script version rejection') }),
+    ...(parsed.revocation === undefined ? {} : { revocation: parseAuditActor(parsed.revocation, 'Automation script version revocation') }),
     createdAt: requiredString(parsed.createdAt, 'Automation script version createdAt'),
     updatedAt: requiredString(parsed.updatedAt, 'Automation script version updatedAt'),
   };
@@ -283,6 +296,11 @@ function requiredString(value: unknown, label: string): string {
   return value.trim();
 }
 
+function optionalString(value: unknown, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requiredString(value, label);
+}
+
 function optionalDescription(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') throw new Error('Automation script description must be a string.');
@@ -300,6 +318,87 @@ function stringArray(value: unknown, label: string): string[] {
     throw new Error(`${label} must be an array of strings.`);
   }
   return value.map((item) => item.trim());
+}
+
+function booleanValue(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${label} must be a boolean.`);
+  return value;
+}
+
+function parseNetworkMode(value: unknown, label: string): AutomationScriptVersion['networkMode'] {
+  if (value === 'none' || value === 'public') return value;
+  throw new Error(`${label} must be none or public.`);
+}
+
+function parseLimits(value: unknown, label: string): AutomationScriptVersion['limits'] {
+  const limits = asRecord(value, label);
+  return {
+    timeoutMs: positiveSafeInteger(limits.timeoutMs, `${label}.timeoutMs`),
+    stdoutBytes: positiveSafeInteger(limits.stdoutBytes, `${label}.stdoutBytes`),
+    stderrBytes: positiveSafeInteger(limits.stderrBytes, `${label}.stderrBytes`),
+    payloadBytes: positiveSafeInteger(limits.payloadBytes, `${label}.payloadBytes`),
+    stateBytes: positiveSafeInteger(limits.stateBytes, `${label}.stateBytes`),
+  };
+}
+
+function positiveSafeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return value;
+}
+
+function parseStaticCheck(value: unknown, label: string): Record<string, unknown> {
+  const staticCheck = asRecord(value, label);
+  requiredString(staticCheck.packageSha256, `${label}.packageSha256`);
+  if (!Array.isArray(staticCheck.entries)) throw new Error(`${label}.entries must be an array.`);
+  for (const [index, entry] of staticCheck.entries.entries()) {
+    const entryRecord = asRecord(entry, `${label}.entries[${index}]`);
+    requiredString(entryRecord.path, `${label}.entries[${index}].path`);
+    requiredString(entryRecord.sha256, `${label}.entries[${index}].sha256`);
+    nonNegativeSafeInteger(entryRecord.size, `${label}.entries[${index}].size`);
+  }
+  return staticCheck;
+}
+
+function nonNegativeSafeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function parseAuditActor(value: unknown, label: string): AutomationScriptAuditActor {
+  const actor = asRecord(value, label);
+  return {
+    actor: requiredString(actor.actor, `${label}.actor`),
+    at: isoTimestamp(actor.at, `${label}.at`),
+    ...(actor.approvalId === undefined ? {} : { approvalId: optionalString(actor.approvalId, `${label}.approvalId`) }),
+  };
+}
+
+function isoTimestamp(value: unknown, label: string): string {
+  const normalized = requiredString(value, label);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.exec(normalized);
+  if (!match || Number.isNaN(Date.parse(normalized))) {
+    throw new Error(`${label} must be a valid ISO timestamp.`);
+  }
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    calendarDate.getUTCFullYear() !== year ||
+    calendarDate.getUTCMonth() !== month - 1 ||
+    calendarDate.getUTCDate() !== day ||
+    Number(hourText) > 23 ||
+    Number(minuteText) > 59 ||
+    Number(secondText) > 59
+  ) {
+    throw new Error(`${label} must be a valid ISO timestamp.`);
+  }
+  return normalized;
 }
 
 function assertDuplicatedField(field: string, stored: unknown, json: unknown) {

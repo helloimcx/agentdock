@@ -177,8 +177,20 @@ export interface AutomationScriptVersion {
   interpreterPath: string;
   interpreterVersion: string;
   capabilities: Record<string, unknown>;
+  config: Record<string, unknown>;
   configSchema: Record<string, unknown>;
+  networkMode: 'none' | 'public';
+  internalAccess: boolean;
+  allowedReadDirs: string[];
   secretRefs: string[];
+  env: string[];
+  limits: {
+    timeoutMs: number;
+    stdoutBytes: number;
+    stderrBytes: number;
+    payloadBytes: number;
+    stateBytes: number;
+  };
   staticCheck: Record<string, unknown>;
   testPlan: Record<string, unknown>;
   testReport?: Record<string, unknown>;
@@ -194,7 +206,7 @@ export type AutomationScriptCreateInput = Omit<AutomationScript, 'id' | 'created
 export type AutomationScriptUpdateInput = Partial<Pick<AutomationScript, 'title' | 'description'>>;
 export type AutomationScriptVersionCreateInput = Pick<
   AutomationScriptVersion,
-  'scriptId' | 'shebang' | 'capabilities' | 'configSchema' | 'secretRefs' | 'testPlan'
+  'scriptId' | 'shebang' | 'capabilities' | 'config' | 'configSchema' | 'secretRefs' | 'testPlan'
 >;
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {
