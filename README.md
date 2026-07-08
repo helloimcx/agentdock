@@ -94,7 +94,7 @@ flowchart LR
 
 ## New
 
-### 2026-07-07
+### 2026-07-08
 
 - Automation script packages are staged immutably with manifest-declared permissions, limits, and package-hash validation before approval workflows use them.
 
