@@ -290,7 +290,10 @@ test('rejects chmod when the parent directory redirects before chmod applies', (
   const outsideDir = tempDir('automation-script-chmod-outside-');
   try {
     writeBundleWithNestedDir(sourceDir);
-    writeFileSync(join(outsideDir, 'keep.js'), 'console.log("outside");\n');
+    const outsideFile = join(outsideDir, 'keep.js');
+    writeFileSync(outsideFile, 'console.log("outside");\n');
+    chmodSync(outsideFile, 0o600);
+    const outsideModeBefore = lstatSync(outsideFile).mode & 0o777;
     let swapped = false;
 
     withDirectoryReadHook({
@@ -313,6 +316,7 @@ test('rejects chmod when the parent directory redirects before chmod applies', (
       );
     });
     assert.equal(swapped, true);
+    assert.equal(lstatSync(outsideFile).mode & 0o777, outsideModeBefore);
   } finally {
     removeTempTree(userDataPath);
     removeTempTree(sourceDir);

@@ -3,6 +3,7 @@ import {
   closeSync,
   constants,
   existsSync,
+  fchmodSync,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -13,7 +14,6 @@ import {
   rmSync,
   renameSync,
   writeFileSync,
-  chmodSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path';
 
@@ -73,6 +73,10 @@ type DirectorySnapshot = {
   dev: number;
   ino: number;
   realPath: string;
+};
+
+type PackagePathSnapshot = DirectorySnapshot & {
+  kind: 'directory' | 'file';
 };
 
 type ScriptPackageTestHooks = {
@@ -489,8 +493,23 @@ function chmodPathWithStableParent(path: string, mode: number, rootRealPath: str
   const snapshotLabel = protectsRootItself ? label : `${label} parent directory`;
   const before = assertDirectorySnapshot(snapshotPath, rootRealPath, snapshotLabel);
   const targetBefore = assertPackagePathSnapshot(path, rootRealPath, label);
-  runBeforeChmodHook(path);
-  chmodSync(path, mode);
+  const fd = openSync(path, chmodOpenFlags(targetBefore.kind));
+  try {
+    const fdStat = fstatSync(fd);
+    if (targetBefore.kind === 'directory' && !fdStat.isDirectory()) {
+      throw new Error(`${label} changed before chmod: ${path}`);
+    }
+    if (targetBefore.kind === 'file' && !fdStat.isFile()) {
+      throw new Error(`${label} changed before chmod: ${path}`);
+    }
+    assertSameDeviceInode(targetBefore, fdStat, `${label} changed before chmod: ${path}`);
+    runBeforeChmodHook(path);
+    fchmodSync(fd, mode);
+  } catch (error) {
+    throw withContext(`${label} could not be chmodded safely`, error);
+  } finally {
+    closeSync(fd);
+  }
   const after = assertDirectorySnapshot(snapshotPath, rootRealPath, snapshotLabel);
   assertSameDirectorySnapshot(before, after, `${snapshotLabel} changed during chmod: ${snapshotPath}`);
   const targetAfter = assertPackagePathSnapshot(path, rootRealPath, label);
@@ -514,17 +533,35 @@ function assertSameDeviceInode(
   }
 }
 
-function assertPackagePathSnapshot(path: string, rootRealPath: string, label: string): DirectorySnapshot {
+function assertPackagePathSnapshot(path: string, rootRealPath: string, label: string): PackagePathSnapshot {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink()) {
     throw new Error(`${label} must not be a symlink.`);
+  }
+  let kind: PackagePathSnapshot['kind'];
+  if (stat.isDirectory()) {
+    kind = 'directory';
+  } else if (stat.isFile()) {
+    kind = 'file';
+  } else {
+    throw new Error(`${label} must be a regular file or directory.`);
   }
   const realPath = assertContainedRealPath(path, rootRealPath, label);
   return {
     dev: stat.dev,
     ino: stat.ino,
     realPath,
+    kind,
   };
+}
+
+function chmodOpenFlags(kind: PackagePathSnapshot['kind']): number {
+  const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;
+  if (kind === 'file') return constants.O_RDONLY | noFollow;
+  if (typeof constants.O_DIRECTORY !== 'number') {
+    throw new Error('Directory chmod requires O_DIRECTORY support.');
+  }
+  return constants.O_RDONLY | constants.O_DIRECTORY | noFollow;
 }
 
 function runBeforeDirectoryReadHook(directory: string) {
