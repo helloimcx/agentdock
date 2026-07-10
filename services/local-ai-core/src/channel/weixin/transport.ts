@@ -226,6 +226,6 @@ export async function uploadEncryptedBufferToWeixinCdn(
   return encryptedQueryParam;
 }
 
-export function isWeixinApiError(resp: SendMessageResp | GetUploadUrlResp): boolean {
+export function isWeixinApiError(resp: { ret?: number; errcode?: number }): boolean {
   return (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
 }

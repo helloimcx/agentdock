@@ -6,6 +6,7 @@ import {
   FILE_ITEM_TYPE,
   getWeixinUpdates,
   IMAGE_ITEM_TYPE,
+  isWeixinApiError,
   TEXT_ITEM_TYPE,
   VOICE_ITEM_TYPE,
 } from './transport.js';
@@ -64,8 +65,7 @@ export async function runWeixinInboundPoller(input: {
   while (!signal.aborted) {
     try {
       const resp = await getWeixinUpdates(binding, buf, signal);
-      const isApiError = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
-      if (isApiError) {
+      if (isWeixinApiError(resp)) {
         consecutiveFailures += 1;
         const state = input.getRuntimeState();
         const retryDelayMs = computeRetryDelay(consecutiveFailures);
