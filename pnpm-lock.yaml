@@ -11,6 +11,15 @@ importers:
       '@agentclientprotocol/claude-agent-acp':
         specifier: ^0.30.0
         version: 0.30.0
+      '@cc/core-sdk':
+        specifier: workspace:*
+        version: link:packages/core-sdk
+      '@cc/plugin-sdk':
+        specifier: workspace:*
+        version: link:packages/plugin-sdk
+      '@cc/superai-contracts':
+        specifier: workspace:*
+        version: link:packages/contracts
       '@iarna/toml':
         specifier: ^2.2.5
         version: 2.2.5
