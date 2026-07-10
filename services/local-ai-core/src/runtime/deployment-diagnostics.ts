@@ -7,6 +7,7 @@ import {
   type LocalCoreDoctorResult,
 } from '@cc/superai-contracts';
 import { defaultOpenSandboxServerUrl } from '../sandbox/sandbox-config.js';
+import { AnthropicSandboxRunner } from '../automation/scripts/anthropic-sandbox-runner.js';
 
 export async function runDeploymentDiagnostics(input: {
   config: DesktopConnectConfig | null | undefined;
@@ -40,6 +41,7 @@ export async function runDeploymentDiagnostics(input: {
     workspacePathCheck(config, profile.id),
     allowlistCheck(config, env),
     sandboxImageCheck(config),
+    await automationSandboxCheck(),
     await opensandboxHealthCheck(opensandboxUrl, sandboxProvider.api_key_env, env),
   ];
   return {
@@ -47,6 +49,27 @@ export async function runDeploymentDiagnostics(input: {
     checkedAt,
     checks,
   };
+}
+
+async function automationSandboxCheck(): Promise<LocalCoreDoctorCheck> {
+  try {
+    const capability = await new AnthropicSandboxRunner().probe();
+    return {
+      id: 'automation.sandbox',
+      label: 'Automation script sandbox',
+      status: capability.available ? 'pass' : 'fail',
+      summary: capability.available
+        ? `Anthropic Sandbox Runtime is available on ${capability.platform}.`
+        : `Automation scripts are blocked on ${capability.platform}; missing ${capability.missing.join(', ')}.`,
+    };
+  } catch (error) {
+    return {
+      id: 'automation.sandbox',
+      label: 'Automation script sandbox',
+      status: 'fail',
+      summary: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function dockerSocketCheck(profileId: string): LocalCoreDoctorCheck {

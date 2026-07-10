@@ -98,6 +98,10 @@ flowchart LR
 
 - Automation script packages are staged immutably with manifest-declared permissions, limits, and package-hash validation before approval workflows use them.
 
+### 2026-07-10
+
+- Approved automation scripts now run through a fail-closed macOS/Linux Sandbox Runtime adapter with Windows capability diagnostics and temp-only filesystem policy.
+
 ### 2026-06-21
 
 - 桌面端统一通过 Core SDK 访问 Local AI Core，移除旧登录、项目、会话和 renderer API 双轨实现。

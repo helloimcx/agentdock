@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.30.0",
+    "@anthropic-ai/sandbox-runtime": "0.0.63",
     "@cc/core-sdk": "workspace:*",
     "@cc/plugin-sdk": "workspace:*",
     "@cc/superai-contracts": "workspace:*",
