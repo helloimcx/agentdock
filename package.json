@@ -1,6 +1,6 @@
 {
   "name": "@kafca/agentdock",
-  "version": "0.1.58",
+  "version": "0.1.59",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "dist-electron/electron/main.js",
@@ -46,9 +46,6 @@
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.30.0",
-    "@cc/core-sdk": "workspace:*",
-    "@cc/plugin-sdk": "workspace:*",
-    "@cc/superai-contracts": "workspace:*",
     "@iarna/toml": "^2.2.5",
     "@larksuiteoapi/node-sdk": "^1.58.0",
     "@mariozechner/pi-coding-agent": "^0.72.1",
