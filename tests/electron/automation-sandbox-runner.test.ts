@@ -214,3 +214,22 @@ test('sanitizes loader/startup/proxy environment variables while preserving appr
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('keeps an explicit empty environment allowlist empty', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-empty-env-'));
+  try {
+    const manager = new FakeManager();
+    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager, tempRoot: root });
+    const result = await runner.run({
+      ...input(root),
+      command: 'printf "%s" "$TOKEN"',
+      env: { TOKEN: 'must-not-pass' },
+      allowedEnv: [],
+      manifest: { env: ['TOKEN'] },
+    });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.stdout, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

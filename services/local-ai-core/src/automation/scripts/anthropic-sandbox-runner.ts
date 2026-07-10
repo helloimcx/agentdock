@@ -464,7 +464,7 @@ async function spawnWrappedCommand(wrapped: { argv: string[]; env: NodeJS.Proces
     throw new SandboxUnavailableError(['sandbox_runtime']);
   }
   const runtimePath = wrapped.env.PATH || '/usr/bin:/bin';
-  const allowedEnv = input.allowedEnv || input.manifest?.env || [];
+  const allowedEnv = input.allowedEnv ?? input.manifest?.env ?? [];
   const inputEnv = Object.fromEntries(
     Object.entries(input.env || {}).filter(([key]) => allowedEnv.includes(key) && !isProxyEnvKey(key)),
   );
