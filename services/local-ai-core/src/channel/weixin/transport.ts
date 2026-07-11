@@ -28,6 +28,13 @@ export function createIlinkHeaders(): Record<string, string> {
   };
 }
 
+export function applyWeixinAuthHeaders(headers: Record<string, string>, binding: WeixinWorkspaceBinding) {
+  if (binding.token) {
+    headers.AuthorizationType = 'ilink_bot_token';
+    headers.Authorization = `Bearer ${binding.token}`;
+  }
+}
+
 export async function weixinApiPost<T>(
   binding: WeixinWorkspaceBinding,
   endpoint: string,
@@ -50,10 +57,7 @@ export async function weixinApiPost<T>(
       'X-WECHAT-UIN': createWechatUin(),
       ...createIlinkHeaders(),
     };
-    if (binding.token) {
-      headers.AuthorizationType = 'ilink_bot_token';
-      headers.Authorization = `Bearer ${binding.token}`;
-    }
+    applyWeixinAuthHeaders(headers, binding);
     const res = await fetch(url, {
       method: 'POST',
       headers,
@@ -78,10 +82,7 @@ export async function weixinApiGet<T>(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers: Record<string, string> = createIlinkHeaders();
-    if (binding.token) {
-      headers.AuthorizationType = 'ilink_bot_token';
-      headers.Authorization = `Bearer ${binding.token}`;
-    }
+    applyWeixinAuthHeaders(headers, binding);
     const res = await fetch(url, {
       method: 'GET',
       headers,
