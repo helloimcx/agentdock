@@ -523,6 +523,10 @@ export class LocalCoreAcpStore {
     return this.automationScripts.listVersions(scriptId);
   }
 
+  getAutomationScriptVersion(versionId: string): AutomationScriptVersion | undefined {
+    return this.automationScripts.getVersion(versionId);
+  }
+
   createAutomationEvaluation(
     automationId: string,
     input: AutomationEvaluationCreateInput,

@@ -482,9 +482,14 @@ async function spawnWrappedCommand(wrapped: { argv: string[]; env: NodeJS.Proces
       CLAUDE_TMPDIR: tempPath,
     },
     shell: false,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    // A new process group lets timeout/overflow termination include shell
+    // descendants rather than leaving a detached child running in the sandbox.
+    detached: process.platform !== 'win32',
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
-  return collectChildResult(child, input.timeoutMs, input.signal);
+  if (input.stdin !== undefined) child.stdin?.end(input.stdin, 'utf8');
+  else child.stdin?.end();
+  return collectChildResult(child, input.timeoutMs, input.signal, input);
 }
 
 function sanitizeRuntimeEnv(runtimeEnv: NodeJS.ProcessEnv, allowedDataKeys: string[] = []): NodeJS.ProcessEnv {
@@ -522,24 +527,48 @@ function isProxyEnvKey(key: string) {
     key === 'NO_PROXY' || key === 'no_proxy';
 }
 
-function collectChildResult(child: ChildProcess, timeoutMs = 30_000, signal?: AbortSignal): Promise<SandboxRunResult> {
+function collectChildResult(child: ChildProcess, timeoutMs = 30_000, signal?: AbortSignal, input?: Pick<SandboxRunInput, 'stdoutBytes' | 'stderrBytes'>): Promise<SandboxRunResult> {
   return new Promise((resolveResult) => {
     let stdout = '';
     let stderr = '';
     let settled = false;
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
-    const abort = () => child.kill('SIGKILL');
+    let outputLimitExceeded: 'stdout' | 'stderr' | undefined;
+    const terminateTree = () => {
+      if (child.pid && process.platform !== 'win32') {
+        try { process.kill(-child.pid, 'SIGKILL'); return; } catch { /* child may have already exited */ }
+      }
+      child.kill('SIGKILL');
+    };
+    const timer = setTimeout(terminateTree, timeoutMs);
+    const abort = () => terminateTree();
     signal?.addEventListener('abort', abort, { once: true });
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => { stdout += chunk; });
-    child.stderr?.on('data', (chunk: string) => { stderr += chunk; });
+    const append = (stream: 'stdout' | 'stderr', chunk: string) => {
+      const limit = stream === 'stdout' ? input?.stdoutBytes : input?.stderrBytes;
+      const current = stream === 'stdout' ? stdout : stderr;
+      const remaining = limit === undefined ? undefined : limit - Buffer.byteLength(current, 'utf8');
+      if (remaining === undefined || remaining >= Buffer.byteLength(chunk, 'utf8')) {
+        if (stream === 'stdout') stdout += chunk;
+        else stderr += chunk;
+        return;
+      }
+      const truncated = Buffer.from(chunk, 'utf8').subarray(0, Math.max(0, remaining)).toString('utf8');
+      if (stream === 'stdout') stdout += truncated;
+      else stderr += truncated;
+      if (!outputLimitExceeded) {
+        outputLimitExceeded = stream;
+        terminateTree();
+      }
+    };
+    child.stdout?.on('data', (chunk: string) => append('stdout', chunk));
+    child.stderr?.on('data', (chunk: string) => append('stderr', chunk));
     const finish = (exitCode: number | null, childSignal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
-      resolveResult({ exitCode, signal: childSignal, stdout, stderr });
+      resolveResult({ exitCode, signal: childSignal, stdout, stderr, ...(outputLimitExceeded ? { outputLimitExceeded } : {}) });
     };
     child.once('error', (error) => {
       stderr += error instanceof Error ? error.message : String(error);

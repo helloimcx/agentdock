@@ -135,6 +135,11 @@ export function stageImmutableScriptPackage(input: StageImmutableScriptPackageIn
   }
 }
 
+/** Re-check immutable package contents immediately before every execution. */
+export function verifyStagedScriptPackage(packagePath: string, expectedSha256: string): void {
+  verifyPackageHash(packagePath, expectedSha256);
+}
+
 function collectPackageEntries(sourceDir: string): PackageEntry[] {
   assertRealDirectory(sourceDir, 'Automation script package source');
   const rootRealPath = realpathSync(sourceDir);

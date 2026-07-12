@@ -35,6 +35,11 @@ export interface SandboxRunInput {
   allowedReadDirs?: string[];
   env?: NodeJS.ProcessEnv;
   allowedEnv?: string[];
+  /** UTF-8 protocol request written once to the child standard input. */
+  stdin?: string;
+  /** Streaming output ceilings; the adapter terminates the process tree on overflow. */
+  stdoutBytes?: number;
+  stderrBytes?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
   /** Compatibility aliases for integrations that call the fields by name. */
@@ -53,6 +58,7 @@ export interface SandboxRunResult {
   signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
+  outputLimitExceeded?: 'stdout' | 'stderr';
 }
 
 export interface SandboxCapabilityProbe {

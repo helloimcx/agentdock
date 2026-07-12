@@ -94,6 +94,10 @@ flowchart LR
 
 ## New
 
+### 2026-07-12
+
+- Approved automation scripts now use a strict JSON condition protocol with environment-only secret injection, bounded streaming output, and fail-closed approval/interpreter checks.
+
 ### 2026-07-08
 
 - Automation script packages are staged immutably with manifest-declared permissions, limits, and package-hash validation before approval workflows use them.

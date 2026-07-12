@@ -10,9 +10,15 @@ import type {
 import type { DomainEventType, EventBus, EventBusEvent } from '@cc/plugin-sdk';
 import { redactSecrets, type LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import {
+  decideTrigger,
   decideCondition,
   evaluateCondition,
 } from './automation-condition-engine.js';
+import {
+  ScriptProtocolError,
+  ScriptProtocolRunner,
+} from './scripts/script-protocol-runner.js';
+import { createAnthropicSandboxRunner } from './scripts/anthropic-sandbox-runner.js';
 import { evaluateExpression } from './condition-evaluator.js';
 import { missedActivationAt, nextActivationAt } from './automation-trigger-engine.js';
 import type {
@@ -63,6 +69,7 @@ export interface AutomationServiceOptions {
   setInterval?: (handler: () => void, delayMs: number) => TimerHandle;
   clearInterval?: (handle: TimerHandle) => void;
   conditionEvaluator?: typeof evaluateCondition;
+  scriptProtocolRunner?: Pick<ScriptProtocolRunner, 'run'>;
   maxConcurrency?: number;
   ownershipPolicy?: AutomationOwnershipPolicy;
   alert?: (input: { automation: AutomationDefinition; count: number; error: string }) => void;
@@ -81,12 +88,14 @@ export class AutomationService {
   private runtimeStatus: AutomationServiceRuntimeStatus = { status: 'stopped' };
   private stopping = false;
   private lifecycleGeneration = 0;
+  private scriptProtocolRunner: Pick<ScriptProtocolRunner, 'run'> | undefined;
 
   constructor(private readonly options: AutomationServiceOptions) {
     const concurrency = options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
     if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
       throw new Error('Automation maxConcurrency must be a positive safe integer.');
     }
+    this.scriptProtocolRunner = options.scriptProtocolRunner;
   }
 
   list(workspaceId?: string): AutomationDefinition[] {
@@ -453,8 +462,58 @@ export class AutomationService {
     }
     const finishedAt = this.now();
     if (decision.kind === 'script-delegation') {
-      const message = normalizeAutomationError(`Approved-script evaluation is unavailable until the script runtime is installed (script ${decision.request.scriptId}, version ${decision.request.approvedVersionId}).`);
-      return this.finishError(automation, running, startedAt, finishedAt, message, context);
+      try {
+        const previousEvaluation = this.listEvaluations(automation.id)
+          .find((evaluation) => evaluation.id !== running.id && evaluation.status === 'finished');
+        const previousState = previousEvaluation?.status === 'finished' && previousEvaluation.nextState
+          ? previousEvaluation.nextState
+          : {};
+        const scriptResult = await this.getScriptProtocolRunner().run({
+          scriptId: decision.request.scriptId,
+          approvedVersionId: decision.request.approvedVersionId,
+          evaluationId: running.id,
+          triggeredAt: startedAt.toISOString(),
+          previousState,
+        });
+        const scriptDecision = decideTrigger({
+          previous: automation.lastSuccessfulMatch,
+          matched: scriptResult.matched,
+          coolingDown,
+          actionRunning,
+        });
+        const scriptFinishedAt = this.now();
+        const scriptPayload = scriptResult.payload || {};
+        const scriptFinishDetails = {
+          finishedAt: scriptFinishedAt.toISOString(),
+          durationMs: Math.max(0, scriptFinishedAt.getTime() - startedAt.getTime()),
+          ...(scriptDecision.triggerDecision === 'triggered' ? { triggeredAt: startedAt.toISOString() } : {}),
+          payload: scriptPayload,
+          ...(scriptResult.nextState === undefined ? {} : { nextState: scriptResult.nextState }),
+          stdout: scriptResult.stdout,
+          stderr: scriptResult.stderr,
+          exitCode: scriptResult.exitCode === null ? undefined : scriptResult.exitCode,
+          outputTruncated: scriptResult.outputTruncated,
+          ...(scriptResult.summary === undefined ? {} : { resultSummary: scriptResult.summary }),
+        };
+        const scriptFinished = this.finishEvaluation(running.id, scriptDecision.conditionOutcome === 'matched'
+          ? { ...scriptFinishDetails, conditionOutcome: 'matched', triggerDecision: scriptDecision.triggerDecision }
+          : { ...scriptFinishDetails, conditionOutcome: 'not_matched', triggerDecision: 'not_rising' });
+        const updated = this.updateDefinitionAfterEvaluation(automation, startedAt, {
+          nextMatch: scriptDecision.nextMatch,
+          failureCount: 0,
+          triggered: scriptDecision.triggerDecision === 'triggered',
+        });
+        if (scriptDecision.triggerDecision === 'triggered') {
+          await this.executeAction(updated, scriptFinished, scriptPayload);
+        } else {
+          this.emitCompatibilityEvaluationRun(updated, scriptFinished);
+        }
+        return scriptFinished;
+      } catch (error) {
+        const message = normalizeAutomationError(error);
+        if (error instanceof ScriptProtocolError && error.blockAutomation) this.blockAutomation(automation, message);
+        return this.finishError(automation, running, startedAt, this.now(), message);
+      }
     }
     if (decision.conditionOutcome === 'error') {
       return this.finishError(
@@ -525,6 +584,24 @@ export class AutomationService {
     if (FAILURE_ALERT_COUNTS.has(count)) this.options.alert?.({ automation: updated, count, error });
     this.emitCompatibilityEvaluationRun(updated, finished);
     return finished;
+  }
+
+  private getScriptProtocolRunner(): Pick<ScriptProtocolRunner, 'run'> {
+    if (!this.scriptProtocolRunner) {
+      this.scriptProtocolRunner = new ScriptProtocolRunner({
+        sandbox: createAnthropicSandboxRunner(),
+        getVersion: (versionId) => this.options.store.getAutomationScriptVersion(versionId),
+      });
+    }
+    return this.scriptProtocolRunner;
+  }
+
+  private blockAutomation(automation: AutomationDefinition, reason: string) {
+    const blocked = this.options.store.updateAutomationState(automation.id, {
+      health: 'blocked',
+      blockedReason: normalizeAutomationError(reason),
+    });
+    this.emitDefinition(blocked);
   }
 
   private async executeAction(

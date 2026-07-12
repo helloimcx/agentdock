@@ -179,6 +179,31 @@ test('keeps wrapped shell command private to adapter and returns only execution 
   }
 });
 
+test('enforces streamed output ceilings before buffering unbounded output', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
+  try {
+    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const result = await runner.run({ ...input(root, { command: 'yes output', stdoutBytes: 64, timeoutMs: 5_000 }) });
+    assert.equal(result.outputLimitExceeded, 'stdout');
+    assert.ok(Buffer.byteLength(result.stdout, 'utf8') <= 64);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('timeout terminates the sandbox command process group', { skip: process.platform === 'win32' }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
+  try {
+    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const started = Date.now();
+    const result = await runner.run({ ...input(root, { command: 'sleep 3 & wait', timeoutMs: 50 }) });
+    assert.ok(Date.now() - started < 2_000);
+    assert.notEqual(result.exitCode, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('serializes process-global SandboxManager operations across runners', async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-lock-'));
   try {

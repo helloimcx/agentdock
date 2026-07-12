@@ -16,6 +16,7 @@ import {
   AutomationService,
   type AutomationServiceOptions,
 } from '../../services/local-ai-core/src/automation/automation-service.js';
+import { ScriptProtocolError } from '../../services/local-ai-core/src/automation/scripts/script-protocol-runner.js';
 
 const NOW = new Date('2026-07-05T08:00:00.000Z');
 
@@ -139,7 +140,7 @@ test('condition errors preserve successful state, alert exponentially, and succe
     assert.deepEqual(context.alerts.map((entry) => entry.count), [1, 3, 7, 15, 31]);
     assert.equal(context.service.get(automation.id)?.lastSuccessfulMatch, true);
     assert.equal(context.service.get(automation.id)?.consecutiveEvaluationFailures, 32);
-    const latest = context.service.listEvaluations(automation.id)[0];
+    const latest = context.service.listEvaluations(automation.id).at(-1);
     assert.equal(latest?.conditionOutcome, 'error');
     assert.equal(latest?.triggerDecision, 'not_evaluated');
     assert.match(latest?.resultSummary || '', /provider unavailable/);
@@ -240,6 +241,55 @@ test('approved script delegation records unavailable error without executing an 
     assert.equal(evaluation?.triggerDecision, 'not_evaluated');
     assert.match(evaluation?.resultSummary || '', /unavailable/i);
     assert.equal(context.actions.length, 0);
+  } finally {
+    context.close();
+  }
+});
+
+test('approved scripts persist nextState only after success and pass it to the next evaluation', async () => {
+  const requests: Array<{ previousState: Record<string, unknown> }> = [];
+  const context = fixture({
+    scriptProtocolRunner: {
+      async run(request) {
+        requests.push({ previousState: request.previousState });
+        return {
+          matched: false, stdout: '{"protocolVersion":1,"matched":false}', stderr: '', exitCode: 0,
+          outputTruncated: false, nextState: { cursor: requests.length },
+        };
+      },
+    },
+  });
+  try {
+    const automation = context.service.create(input({
+      condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'rising' },
+    }));
+    await context.service.checkNow(automation.id);
+    await context.service.checkNow(automation.id);
+    assert.deepEqual(requests.map((request) => request.previousState), [{}, { cursor: 1 }]);
+    assert.ok(context.service.listEvaluations(automation.id)
+      .some((evaluation) => evaluation.status === 'finished' && evaluation.nextState?.cursor === 2));
+  } finally {
+    context.close();
+  }
+});
+
+test('approval or sandbox fact failures block the automation and preserve prior state', async () => {
+  const context = fixture({
+    scriptProtocolRunner: {
+      async run() { throw new ScriptProtocolError('approval_mismatch', 'Approved facts changed.', true); },
+    },
+  });
+  try {
+    const automation = context.service.create(input({
+      condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'rising' },
+    }));
+    context.store.updateAutomationState(automation.id, { lastSuccessfulMatch: true });
+    const evaluation = await context.service.checkNow(automation.id);
+    assert.equal(evaluation.conditionOutcome, 'error');
+    assert.equal(evaluation.status === 'finished' ? evaluation.nextState : undefined, undefined);
+    assert.equal(context.service.get(automation.id)?.health, 'blocked');
+    assert.equal(context.service.get(automation.id)?.lastSuccessfulMatch, true);
+    assert.match(context.service.get(automation.id)?.blockedReason || '', /Approved facts changed/);
   } finally {
     context.close();
   }
