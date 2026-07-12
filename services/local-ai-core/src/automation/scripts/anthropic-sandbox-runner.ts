@@ -590,10 +590,25 @@ function collectChildResult(child: ChildProcess, timeoutMs = 30_000, signal?: Ab
       // wrapper exit instead of allowing an orphan to keep the run open.
       setTimeout(() => {
         if (settled) return;
-        terminateTree();
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        finish(exitCode, childSignal);
+        let groupAlive = false;
+        if (child.pid && process.platform !== 'win32') {
+          try { process.kill(-child.pid, 0); groupAlive = true; } catch { /* group exited; let pipes drain */ }
+        }
+        if (groupAlive) {
+          terminateTree();
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(exitCode, childSignal);
+          return;
+        }
+        // A closed group should normally emit close immediately. Retain tail
+        // output, but still bound a pathological inherited pipe hang.
+        setTimeout(() => {
+          if (settled) return;
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(exitCode, childSignal);
+        }, 1_000);
       }, 50);
     });
     child.once('close', (exitCode, childSignal) => finish(exitCode, childSignal));

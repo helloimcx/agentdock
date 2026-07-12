@@ -39,6 +39,7 @@ export class ScriptProtocolError extends Error {
     readonly code: string,
     message: string,
     readonly blockAutomation = false,
+    readonly networkAudit?: Array<{ host: string; port?: number; allowed: boolean; timestamp: string }>,
   ) {
     super(message);
     this.name = 'ScriptProtocolError';
@@ -134,17 +135,25 @@ export class ScriptProtocolRunner {
     }
     const redacted = redactResult(result.stdout, result.stderr, Object.values(secrets).filter((value): value is string => value !== undefined));
     if (result.outputLimitExceeded) {
-      throw new ScriptProtocolError('output_limit', `${result.outputLimitExceeded} output limit exceeded.`);
+      throw new ScriptProtocolError('output_limit', `${result.outputLimitExceeded} output limit exceeded.`, false, result.networkAudit);
     }
     if (result.exitCode !== 0) {
-      throw new ScriptProtocolError('script_exit', `Script exited with exit code ${result.exitCode ?? 'unknown'}.`);
+      throw new ScriptProtocolError('script_exit', `Script exited with exit code ${result.exitCode ?? 'unknown'}.`, false, result.networkAudit);
     }
-    if (result.signal) throw new ScriptProtocolError('script_signal', `Script terminated by ${result.signal}.`);
-    const response = parseResponse(redacted.stdout);
-    const payload = response.payload === undefined ? undefined : sanitizeRecord(response.payload, Object.values(secrets));
-    const nextState = response.nextState === undefined ? undefined : sanitizeRecord(response.nextState, Object.values(secrets));
-    assertBounded(payload, version.limits.payloadBytes, 'payload');
-    assertBounded(nextState, version.limits.stateBytes, 'nextState');
+    if (result.signal) throw new ScriptProtocolError('script_signal', `Script terminated by ${result.signal}.`, false, result.networkAudit);
+    let response;
+    let payload: Record<string, unknown> | undefined;
+    let nextState: Record<string, unknown> | undefined;
+    try {
+      response = parseResponse(redacted.stdout);
+      payload = response.payload === undefined ? undefined : sanitizeRecord(response.payload, Object.values(secrets));
+      nextState = response.nextState === undefined ? undefined : sanitizeRecord(response.nextState, Object.values(secrets));
+      assertBounded(payload, version.limits.payloadBytes, 'payload');
+      assertBounded(nextState, version.limits.stateBytes, 'nextState');
+    } catch (error) {
+      if (error instanceof ScriptProtocolError) throw new ScriptProtocolError(error.code, error.message, error.blockAutomation, result.networkAudit);
+      throw error;
+    }
     return {
       matched: response.matched,
       ...(response.summary === undefined ? {} : { summary: sanitizeText(response.summary, Object.values(secrets)) }),

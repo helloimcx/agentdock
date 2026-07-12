@@ -512,7 +512,8 @@ export class AutomationService {
       } catch (error) {
         const message = normalizeAutomationError(error);
         if (error instanceof ScriptProtocolError && error.blockAutomation) this.blockAutomation(automation, message);
-        return this.finishError(automation, running, startedAt, this.now(), message);
+        return this.finishError(automation, running, startedAt, this.now(), message, undefined,
+          error instanceof ScriptProtocolError ? { networkAudit: error.networkAudit } : undefined);
       }
     }
     if (decision.conditionOutcome === 'error') {
@@ -565,6 +566,7 @@ export class AutomationService {
     finishedAt: Date,
     error: string,
     context?: EvaluationContext,
+    details?: { networkAudit?: Array<{ host: string; port?: number; allowed: boolean; timestamp: string }> },
   ): AutomationEvaluation {
     const finished = this.finishEvaluation(running.id, {
       conditionOutcome: 'error',
@@ -574,6 +576,7 @@ export class AutomationService {
       errorCategory: 'condition_evaluation',
       resultSummary: error,
       ...(context ? { payload: context.payload, nextState: context.nextState } : {}),
+      ...(details?.networkAudit === undefined ? {} : { networkAudit: details.networkAudit }),
     });
     const count = automation.consecutiveEvaluationFailures + 1;
     const updated = this.updateDefinitionAfterEvaluation(automation, context ? startedAt : finishedAt, {

@@ -335,6 +335,19 @@ test('script network audit persists only bounded destination metadata', async ()
   } finally { context.close(); }
 });
 
+test('failed script evaluations retain their completed sandbox network audit', async () => {
+  const audit = [{ host: 'api.example.test', port: 443, allowed: true, timestamp: NOW.toISOString() }];
+  const context = fixture({ scriptProtocolRunner: { async run() {
+    throw new ScriptProtocolError('script_exit', 'exit 1', false, audit);
+  } } });
+  try {
+    const automation = context.service.create(input({ condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'rising' } }));
+    const evaluation = await context.service.checkNow(automation.id);
+    assert.equal(evaluation.conditionOutcome, 'error');
+    assert.deepEqual(evaluation.status === 'finished' ? evaluation.networkAudit : undefined, audit);
+  } finally { context.close(); }
+});
+
 test('action executor failures persist a failed run and keep evaluation state consistent', async () => {
   const context = fixture({
     actionExecutor: { async execute() { throw new Error('ACP send failed'); } },
