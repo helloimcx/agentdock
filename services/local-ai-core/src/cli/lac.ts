@@ -1,5 +1,5 @@
 import process from 'node:process';
-import { lstatSync, readFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import type {
   AutomationMonitor,
   AutomationMonitorCondition,
@@ -226,10 +226,7 @@ async function handleScriptStage(flags: Map<string, string[]>, env: NodeJS.Proce
   if (Boolean(sourceJson) === Boolean(sourceFile)) throw new Error('script stage requires exactly one of --source-json or --source-file.');
   let source: string;
   if (sourceFile) {
-    const stat = lstatSync(sourceFile);
-    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('script stage --source-file must be a regular file.');
-    if (stat.size > 1_200_000) throw new Error('script stage source bundle exceeds 1,200,000 bytes.');
-    source = readFileSync(sourceFile, 'utf8');
+    source = readStableSourceFile(sourceFile);
   } else {
     source = sourceJson;
   }
@@ -242,6 +239,30 @@ async function handleScriptStage(flags: Map<string, string[]>, env: NodeJS.Proce
   const result = await request<unknown>(context.baseUrl, 'POST', `/automation-scripts/${encodeURIComponent(scriptId)}/versions?workspace_id=${encodeURIComponent(context.workspaceId)}`, { files });
   print(json, io.stdout, result, `Staged script version ${(result as { id?: string }).id || ''}`.trim());
   return 0;
+}
+
+function readStableSourceFile(path: string) {
+  if (!constants.O_NOFOLLOW) throw new Error('script stage --source-file requires O_NOFOLLOW support.');
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = fstatSync(fd);
+    if (!before.isFile()) throw new Error('script stage --source-file must be a regular file.');
+    if (before.size > 1_200_000) throw new Error('script stage source bundle exceeds 1,200,000 bytes.');
+    const buffer = Buffer.allocUnsafe(before.size);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const read = readSync(fd, buffer, offset, buffer.length - offset, null);
+      if (!read) throw new Error('script stage source file changed while reading.');
+      offset += read;
+    }
+    const after = fstatSync(fd);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+      throw new Error('script stage source file changed while reading.');
+    }
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 async function handleScriptStatus(versionId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {

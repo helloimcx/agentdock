@@ -33,8 +33,9 @@ test('condition trigger skill requires the staged two-approval workflow and help
   assert.match(helper, /lac automation add --script-version/);
   assert.match(helper, /--source-file/);
   assert.doesNotMatch(helper, /--source-json/);
-  assert.match(helper, /lstatSync.*realpathSync.*isDirectory/s);
+  assert.match(helper, /openSync.*O_NOFOLLOW.*fstatSync/s);
   assert.match(helper, /MAX_FILES.*MAX_BYTES/s);
+  assert.match(helper, /O_NOFOLLOW.*fstatSync.*readSync/s);
 });
 
 test('managed skill catalog loads exact source and packaged condition-trigger skill layouts', () => {
@@ -79,6 +80,11 @@ test('condition trigger helper creates source-only staging input through a tempo
     const symlink = join(root, 'source-link');
     symlinkSync(source, symlink);
     await assert.rejects(run(['stage', 'script-1', symlink]), /source root must be a non-symlink directory/);
+    mkdirSync(join(source, 'nested'));
+    await assert.rejects(run(['stage', 'script-1', source]), /source bundle must be flat/);
+    rmSync(join(source, 'nested'), { recursive: true, force: true });
+    for (let index = 0; index < 65; index += 1) writeFileSync(join(source, `limit-${index}.txt`), 'x');
+    await assert.rejects(run(['stage', 'script-1', source]), /source bundle exceeds 64 files/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

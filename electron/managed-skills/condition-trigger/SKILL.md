@@ -5,11 +5,13 @@ description: Author an approved, sandboxed script condition for a unified Automa
 
 Use this skill only when the user asks for a condition-based Automation or script-backed trigger.
 
+The policy supplies an absolute helper path in `[Condition Trigger Helper]`. Use that path as `<condition-trigger-helper>` below; do not assume `./scripts` exists in the current workspace.
+
 Follow this sequence exactly:
 
-1. Create the Automation Script record first with `./scripts/register-condition-trigger.sh create "<title>"`; retain the returned script ID.
-2. Create a temporary source bundle outside managed script storage. It must contain `manifest.json`, one executable entrypoint with a valid shebang, fixtures, and tests. Do not write an immutable script package location or managed script directory.
-3. Use `./scripts/register-condition-trigger.sh stage <script-id> <temporary-source-dir>` to stage the source through Local AI Core. The server derives the package hash and interpreter facts.
+1. Create the Automation Script record first with `<condition-trigger-helper> create "<title>"`; retain the returned script ID.
+2. Create a flat temporary source bundle outside managed script storage. It must contain `manifest.json`, one executable entrypoint with a valid shebang, fixtures, and tests (use filename prefixes instead of subdirectories). Do not write an immutable script package location or managed script directory.
+3. Use `<condition-trigger-helper> stage <script-id> <temporary-source-dir>` to stage the source through Local AI Core. The server derives the package hash and interpreter facts.
 4. Request test authorization with the helper, then stop for test authorization: ask the user to approve that one sandbox test. Do not run the test before the authorization is granted.
 5. Once the user resolves the approval, apply that approved decision with `apply-approval <version-id> <approval-id> <actor>` before the sandbox test. Then run the helper's sandbox test command and review the server-recorded result.
 6. Request final enable approval, then stop and ask the user to approve it.

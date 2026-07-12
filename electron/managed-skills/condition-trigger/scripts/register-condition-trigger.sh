@@ -16,30 +16,76 @@ case "$command" in
     source_file=$(mktemp "${TMPDIR:-/tmp}/condition-trigger-source.XXXXXX")
     trap 'rm -f "$source_file"' EXIT HUP INT TERM
     SOURCE_DIR="$source_dir" SOURCE_FILE="$source_file" node <<'NODE'
-const { lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } = require('node:fs');
+const { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } = require('node:fs');
 const { relative, resolve, sep } = require('node:path');
-const MAX_FILES = 256;
-const MAX_BYTES = 1_200_000;
+const MAX_FILES = 64;
+const MAX_BYTES = 1_048_576;
 const sourceDirectory = resolve(process.env.SOURCE_DIR || '');
-const sourceStat = lstatSync(sourceDirectory);
-if (sourceStat.isSymbolicLink() || !sourceStat.isDirectory()) throw new Error('source root must be a non-symlink directory');
+const noFollow = constants.O_NOFOLLOW;
+const directoryOnly = constants.O_DIRECTORY;
+if (!noFollow || !directoryOnly) throw new Error('secure source staging requires O_NOFOLLOW and O_DIRECTORY');
+function sameFile(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+function openDirectory(path, isRoot = false) {
+  let fd;
+  try {
+    fd = openSync(path, constants.O_RDONLY | noFollow | directoryOnly);
+  } catch (error) {
+    if (isRoot) throw new Error('source root must be a non-symlink directory');
+    throw error;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isDirectory()) throw new Error('source root must be a non-symlink directory');
+    return stat;
+  } finally {
+    closeSync(fd);
+  }
+}
+const openedRoot = openDirectory(sourceDirectory, true);
 const root = realpathSync(sourceDirectory);
+function assertRootStable() {
+  if (!sameFile(openedRoot, statSync(root))) throw new Error('source root changed while staging');
+}
+assertRootStable();
 const files = [];
-let bytes = Buffer.byteLength('[]', 'utf8');
+let bytes = 0;
+function readStableRegularFile(path) {
+  assertRootStable();
+  const fd = openSync(path, constants.O_RDONLY | noFollow);
+  try {
+    const before = fstatSync(fd);
+    if (!before.isFile()) throw new Error(`non-regular file is not allowed: ${path}`);
+    if (before.size > MAX_BYTES - bytes) throw new Error(`source bundle exceeds ${MAX_BYTES} content bytes`);
+    const buffer = Buffer.allocUnsafe(before.size);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const read = readSync(fd, buffer, offset, buffer.length - offset, null);
+      if (!read) throw new Error(`source file changed while staging: ${path}`);
+      offset += read;
+    }
+    const after = fstatSync(fd);
+    if (!sameFile(before, after) || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+      throw new Error(`source file changed while staging: ${path}`);
+    }
+    assertRootStable();
+    bytes += buffer.length;
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } finally {
+    closeSync(fd);
+  }
+}
 function walk(directory) {
   for (const name of readdirSync(directory).sort()) {
     const full = resolve(directory, name);
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) throw new Error(`symlink is not allowed: ${full}`);
-    if (stat.isDirectory()) walk(full);
+    if (stat.isDirectory()) throw new Error(`source bundle must be flat; nested directory is not allowed: ${full}`);
     else if (stat.isFile()) {
       if (files.length >= MAX_FILES) throw new Error(`source bundle exceeds ${MAX_FILES} files`);
-      if (stat.size > MAX_BYTES - bytes) throw new Error(`source bundle exceeds ${MAX_BYTES} bytes`);
       const path = relative(root, full).split(sep).join('/');
-      const content = readFileSync(full, 'utf8');
-      const nextBytes = bytes + Buffer.byteLength(JSON.stringify({ path, content }), 'utf8') + 1;
-      if (nextBytes > MAX_BYTES) throw new Error(`source bundle exceeds ${MAX_BYTES} bytes`);
-      bytes = nextBytes;
+      const content = readStableRegularFile(full);
       files.push({ path, content });
     }
   }

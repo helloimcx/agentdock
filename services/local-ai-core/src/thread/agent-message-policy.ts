@@ -66,13 +66,14 @@ export function composeAgentMessage(content: string, knowledgeBases: AgentMessag
       ].join('\n')
     : '';
   const conditionSkill = isConditionAutomationRequest(content) ? catalog.get('condition-trigger')?.content || '' : '';
+  const conditionHelper = conditionSkill ? catalog.getHelperPath('condition-trigger', 'scripts/register-condition-trigger.sh') || '' : '';
   return [
     SCHEDULER_INSTRUCTION,
     '',
     MONITOR_INSTRUCTION,
     '',
     CHANNEL_INSTRUCTION,
-    ...(conditionSkill ? ['', '[Condition Trigger Skill]', conditionSkill, '[/Condition Trigger Skill]'] : []),
+    ...(conditionSkill ? ['', '[Condition Trigger Skill]', conditionSkill, '[/Condition Trigger Skill]', '[Condition Trigger Helper]', conditionHelper, '[/Condition Trigger Helper]'] : []),
     ...(knowledgeBlock ? ['', knowledgeBlock] : []),
     '',
     '[User Message]',
@@ -86,9 +87,10 @@ function isConditionAutomationRequest(content: string) {
   const englishCondition = /\b(?:condition(?:al)?|script[-\s]?(?:based|backed)?)\b/.test(normalized);
   const englishAutomation = /\b(?:automation|monitor|task|schedule)\b/.test(normalized);
   const englishRequest = /\b(?:create|add|set(?:\s+up)?|configure|build|author)\b/.test(normalized);
+  const englishNegation = /\b(?:do not|don't|dont|never|without).{0,24}\b(?:create|add|set(?:\s+up)?|configure|build|author)\b/.test(normalized);
   const chineseCondition = /条件自动化|条件触发|脚本条件/.test(content);
   const chineseRequest = /创建|新建|设置|添加|建立|配置|制作|实现/.test(content);
-  const chineseNegation = /(?:不要|不需要|无需|别|仅|只是).{0,8}(?:创建|新建|设置|添加|建立|配置|制作|实现)/.test(content);
-  return (englishCondition && englishAutomation && englishRequest) || (chineseCondition && chineseRequest && !chineseNegation);
+  const chineseNegation = /(?:不要|不需要|无需|别|仅|只是|不想).{0,8}(?:创建|新建|设置|添加|建立|配置|制作|实现)/.test(content);
+  return (englishCondition && englishAutomation && englishRequest && !englishNegation) || (chineseCondition && chineseRequest && !chineseNegation);
 }
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
