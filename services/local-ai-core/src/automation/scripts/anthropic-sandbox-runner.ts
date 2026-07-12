@@ -101,6 +101,7 @@ const DEFAULT_WRITE_DENY_PATHS = [
   join(homedir(), '.claude/debug'),
 ];
 const CONTROLLED_TEMP_ROOT = join(tmpdir(), 'agentdock-automation-runs');
+const MAX_NETWORK_AUDIT_ENTRIES = 100;
 
 let managerOperation: Promise<void> = Promise.resolve();
 
@@ -259,7 +260,9 @@ export class AnthropicSandboxRunner implements SandboxRunner {
       await manager.initialize(config, async ({ host, port }) => {
         const allowed = mode !== 'none' && !(await isPrivateOrLocalHost(host))
           && (mode !== 'restricted' || allowedDomains.some((pattern) => matchesDomain(host, pattern)));
-        networkAudit.push({ host: host.toLowerCase().replace(/^\[|\]$/g, ''), ...(port === undefined ? {} : { port }), allowed, timestamp: new Date().toISOString() });
+        if (networkAudit.length < MAX_NETWORK_AUDIT_ENTRIES) {
+          networkAudit.push({ host: sanitizeAuditHost(host), ...(port === undefined ? {} : { port }), allowed, timestamp: new Date().toISOString() });
+        }
         return allowed;
       }, false);
       this.initialized = true;
@@ -582,13 +585,16 @@ function collectChildResult(child: ChildProcess, timeoutMs = 30_000, signal?: Ab
       finish(null, null);
     });
     child.once('exit', (exitCode, childSignal) => {
-      // Do not let a grandchild that inherited a pipe keep the evaluation open
-      // after the sandbox command/process group has been terminated.
-      setImmediate(() => {
+      // Retain the normal stdout tail while streams close. If a background
+      // descendant inherited them, tear down the process group shortly after
+      // wrapper exit instead of allowing an orphan to keep the run open.
+      setTimeout(() => {
+        if (settled) return;
+        terminateTree();
         child.stdout?.destroy();
         child.stderr?.destroy();
         finish(exitCode, childSignal);
-      });
+      }, 50);
     });
     child.once('close', (exitCode, childSignal) => finish(exitCode, childSignal));
   });
@@ -596,9 +602,17 @@ function collectChildResult(child: ChildProcess, timeoutMs = 30_000, signal?: Ab
 
 function truncateUtf8(value: Buffer, limit: number): Buffer {
   if (value.byteLength <= limit) return value;
-  // Re-encode only complete decoded code points. This drops a partial final
-  // sequence rather than introducing U+FFFD (which can itself exceed limit).
-  return Buffer.from(value.subarray(0, limit).toString('utf8').replace(/\uFFFD/g, ''), 'utf8');
+  // Keep the longest valid UTF-8 prefix. Only the final code point can be
+  // partial, so four attempts cover UTF-8's maximum sequence width while
+  // preserving legitimate U+FFFD characters already present in the stream.
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  for (let end = limit; end >= Math.max(0, limit - 3); end -= 1) {
+    try {
+      decoder.decode(value.subarray(0, end));
+      return value.subarray(0, end);
+    } catch { /* try a shorter final boundary */ }
+  }
+  return Buffer.alloc(0);
 }
 
 async function isPrivateOrLocalHost(host: string) {
@@ -631,6 +645,11 @@ function matchesDomain(host: string, pattern: string) {
   const normalizedPattern = pattern.toLowerCase().replace(/\.$/, '');
   return normalizedPattern === '*' || normalizedPattern === normalizedHost ||
     (normalizedPattern.startsWith('*.') && normalizedHost.endsWith(`.${normalizedPattern.slice(2)}`));
+}
+
+function sanitizeAuditHost(value: string) {
+  const host = value.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  return /^[a-z0-9.:-]+$/i.test(host) && !host.includes('..') ? host : 'invalid-host';
 }
 
 function isPrivateIpv4(address: string, includeBenchmarkRange = true) {

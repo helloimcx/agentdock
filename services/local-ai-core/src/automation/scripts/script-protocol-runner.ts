@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { AutomationScriptVersion } from '@cc/superai-contracts';
 import { verifyStagedScriptPackage } from './script-package.js';
 import type { SandboxRunner } from './sandbox-runner.js';
+import { SandboxUnavailableError } from './anthropic-sandbox-runner.js';
 import {
   EnvironmentSecretResolver,
   SecretUnavailableError,
@@ -111,7 +112,8 @@ export class ScriptProtocolRunner {
       config: version.config,
       previousState: request.previousState,
     });
-    const result = await this.options.sandbox.run({
+    let result;
+    try { result = await this.options.sandbox.run({
       command: `${quoteShell(version.interpreterPath)} ${quoteShell(join(version.packagePath, entrypoint))}`,
       interpreterPath: version.interpreterPath,
       cwd: version.packagePath,
@@ -124,7 +126,12 @@ export class ScriptProtocolRunner {
       timeoutMs: clampTimeout(version.limits.timeoutMs),
       stdoutBytes: version.limits.stdoutBytes,
       stderrBytes: version.limits.stderrBytes,
-    });
+    }); } catch (error) {
+      if (error instanceof SandboxUnavailableError || (typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'sandbox_unavailable')) {
+        throw new ScriptProtocolError('sandbox_unavailable', 'sandbox_unavailable', true);
+      }
+      throw error;
+    }
     const redacted = redactResult(result.stdout, result.stderr, Object.values(secrets).filter((value): value is string => value !== undefined));
     if (result.outputLimitExceeded) {
       throw new ScriptProtocolError('output_limit', `${result.outputLimitExceeded} output limit exceeded.`);
@@ -205,6 +212,11 @@ function parseResponse(stdout: string): { matched: boolean; summary?: string; pa
   try { parsed = JSON.parse(trimmed); } catch { throw new ScriptProtocolError('protocol_invalid', 'Script stdout must contain exactly one JSON response.'); }
   if (!isRecord(parsed) || parsed.protocolVersion !== 1 || typeof parsed.matched !== 'boolean') {
     throw new ScriptProtocolError('protocol_invalid', 'Script response must be protocolVersion 1 with a boolean matched field.');
+  }
+  for (const key of Object.keys(parsed)) {
+    if (!['protocolVersion', 'matched', 'summary', 'payload', 'nextState'].includes(key)) {
+      throw new ScriptProtocolError('protocol_invalid', `Script response includes unsupported field ${key}.`);
+    }
   }
   if (parsed.summary !== undefined && typeof parsed.summary !== 'string') throw new ScriptProtocolError('protocol_invalid', 'Script response summary must be a string.');
   if (parsed.payload !== undefined && !isRecord(parsed.payload)) throw new ScriptProtocolError('protocol_invalid', 'Script response payload must be an object.');

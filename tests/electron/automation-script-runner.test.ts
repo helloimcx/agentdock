@@ -7,6 +7,7 @@ import {
   ScriptProtocolRunner,
 } from '../../services/local-ai-core/src/automation/scripts/script-protocol-runner.js';
 import type { SandboxRunInput, SandboxRunResult, SandboxRunner } from '../../services/local-ai-core/src/automation/scripts/sandbox-runner.js';
+import { SandboxUnavailableError } from '../../services/local-ai-core/src/automation/scripts/anthropic-sandbox-runner.js';
 
 class FakeSandbox implements SandboxRunner {
   input?: SandboxRunInput;
@@ -64,6 +65,18 @@ test('rejects non-single JSON stdout, failed exits, and oversized response field
   await assert.rejects(subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }), /exit code 1/i);
   sandbox.result = { exitCode: 0, signal: null, stdout: '{"protocolVersion":1,"matched":true,"payload":{"long":"'.concat('x'.repeat(300), '"}}'), stderr: '' };
   await assert.rejects(subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }), /payload exceeds/i);
+  sandbox.result = { exitCode: 0, signal: null, stdout: '{"protocolVersion":1,"matched":true,"extra":1}', stderr: '' };
+  await assert.rejects(subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }), /unsupported field/i);
+});
+
+test('runtime sandbox loss after probing blocks execution fail-closed', async () => {
+  class LostSandbox extends FakeSandbox { override async run(input: SandboxRunInput) {
+    if (input.command.endsWith(' --version')) return { exitCode: 0, signal: null, stdout: 'sh 1.0', stderr: '' };
+    throw new SandboxUnavailableError(['sandbox_runtime']);
+  } }
+  const subject = runner(new LostSandbox()).runner;
+  await assert.rejects(subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }),
+    (error: unknown) => error instanceof ScriptProtocolError && error.code === 'sandbox_unavailable' && error.blockAutomation);
 });
 
 test('fails closed before execution for non-approved, changed package, or interpreter facts', async () => {

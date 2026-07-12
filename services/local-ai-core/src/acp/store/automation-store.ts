@@ -784,16 +784,28 @@ function validateEvaluation(value: unknown): AutomationEvaluation {
     result.networkAudit = input.networkAudit.map((entry, index) => {
       const record = asRecord(entry, `Automation evaluation networkAudit[${index}]`);
       if (typeof record.allowed !== 'boolean') throw new Error('Automation evaluation networkAudit allowed must be a boolean.');
+      if (record.host === undefined) {
+        const legacy = requiredString(record.target, 'Automation evaluation networkAudit target');
+        const parsed = safeLegacyNetworkTarget(legacy);
+        return { host: parsed.host, ...(parsed.port === undefined ? {} : { port: parsed.port }), allowed: record.allowed };
+      }
       const port = record.port === undefined ? undefined : assertInteger(record.port, 'Automation evaluation networkAudit port', true);
       return {
         host: requiredString(record.host, 'Automation evaluation networkAudit host').toLowerCase(),
-        ...(port === undefined ? {} : { port }),
-        allowed: record.allowed,
-        timestamp: requiredString(record.timestamp, 'Automation evaluation networkAudit timestamp'),
+        ...(port === undefined ? {} : { port }), allowed: record.allowed,
+        ...(record.timestamp === undefined ? {} : { timestamp: requiredString(record.timestamp, 'Automation evaluation networkAudit timestamp') }),
       };
     });
   }
   return result as unknown as AutomationEvaluation;
+}
+
+function safeLegacyNetworkTarget(target: string): { host: string; port?: number } {
+  try {
+    const url = new URL(target.includes('://') ? target : `https://${target}`);
+    const port = url.port ? Number(url.port) : undefined;
+    return { host: url.hostname.toLowerCase(), ...(Number.isSafeInteger(port) && port! >= 0 ? { port } : {}) };
+  } catch { return { host: 'legacy-invalid-target' }; }
 }
 
 function validateRun(value: unknown): AutomationRun {

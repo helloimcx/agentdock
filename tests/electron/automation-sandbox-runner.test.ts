@@ -202,6 +202,16 @@ test('stream truncation respects UTF-8 byte limits without replacement character
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('stream truncation preserves a complete replacement character before overflow', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
+  try {
+    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const result = await runner.run({ ...input(root, { command: "printf '�€'", stdoutBytes: 5, timeoutMs: 5_000 }) });
+    assert.equal(result.stdout, '�');
+    assert.equal(Buffer.byteLength(result.stdout, 'utf8'), 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('timeout terminates the sandbox command process group', { skip: process.platform === 'win32' }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {
