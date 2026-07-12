@@ -312,6 +312,27 @@ test('claiming a test execution atomically consumes the test authorization befor
   }
 });
 
+test('a stranded testing claim is recovered to a terminal failed report after its lease', () => {
+  const h = createHarness();
+  try {
+    const approval = h.service.requestTestApproval(h.version.id, 'author');
+    h.store.resolveApprovalRequest(approval.approvalId, { status: 'approved', resolvedBy: 'security', resolution: 'allow one test' });
+    h.service.authorizeTest(h.version.id, approval.approvalId, 'security');
+    h.service.claimTestExecution(h.version.id);
+    const resumed = new AutomationScriptService({
+      db: h.db,
+      security: (h.store as unknown as { security: LocalSecurityStore }).security,
+      clock: () => new Date(Date.parse(NOW) + 11 * 60 * 1000),
+    });
+    assert.throws(() => resumed.claimTestExecution(h.version.id), /lease expired/);
+    const recovered = h.store.getAutomationScriptVersion(h.version.id)!;
+    assert.equal(recovered.status, 'tested');
+    assert.equal(recovered.testReport?.status, 'failed');
+  } finally {
+    h.cleanup();
+  }
+});
+
 test('expired test approvals cannot authorize a test run', () => {
   const h = createHarness();
   try {

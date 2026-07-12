@@ -192,6 +192,7 @@ function isAutomationDefinition(value: unknown) {
     isAutomationDelivery(value.delivery) && isAutomationPolicies(value.policies) &&
     isNonNegativeInteger(value.consecutiveEvaluationFailures) &&
     hasString(value, 'createdAt') && hasString(value, 'updatedAt') &&
+    (value.health !== 'blocked' || hasString(value, 'blockedReason')) &&
     (value.blockedReason === undefined || typeof value.blockedReason === 'string') &&
     (value.lastSuccessfulMatch === undefined || typeof value.lastSuccessfulMatch === 'boolean') &&
     (value.lastEvaluationAt === undefined || typeof value.lastEvaluationAt === 'string') &&
@@ -201,9 +202,14 @@ function isAutomationDefinition(value: unknown) {
 function isAutomationEvaluation(value: unknown) {
   if (!isRecord(value) || !hasString(value, 'id') || !hasString(value, 'automationId') || !hasString(value, 'activationKind') ||
     !['cron', 'once', 'interval', 'provider-event'].includes(String(value.activationKind)) || !hasString(value, 'status') || !hasString(value, 'startedAt')) return false;
-  if (value.status === 'running') return true;
+  if (value.status === 'running') {
+    return value.conditionOutcome === undefined && value.triggerDecision === undefined && value.finishedAt === undefined &&
+      value.durationMs === undefined && value.exitCode === undefined && value.errorCategory === undefined &&
+      value.stdout === undefined && value.stderr === undefined && value.resultSummary === undefined && value.payload === undefined &&
+      value.nextState === undefined && value.sandboxViolations === undefined && value.networkAudit === undefined;
+  }
   if (value.status !== 'finished' || !hasString(value, 'finishedAt')) return false;
-  if (value.conditionOutcome === 'matched') return ['triggered', 'skipped_cooldown', 'skipped_action_running'].includes(String(value.triggerDecision));
+  if (value.conditionOutcome === 'matched') return ['triggered', 'not_rising', 'skipped_cooldown', 'skipped_action_running'].includes(String(value.triggerDecision));
   if (value.conditionOutcome === 'not_matched') return value.triggerDecision === 'not_rising';
   if (value.conditionOutcome === 'error') return value.triggerDecision === 'not_evaluated';
   return value.conditionOutcome === 'skipped' && ['not_evaluated', 'skipped_concurrent', 'skipped_cooldown', 'skipped_action_running'].includes(String(value.triggerDecision));

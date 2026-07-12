@@ -228,6 +228,22 @@ test('only one concurrent request can claim a one-shot script test before sandbo
   await first;
 });
 
+test('source submission rejects an oversized body before JSON parsing or package staging', async () => {
+  const map = new Map<string, any>();
+  registerUnifiedAutomationHandlers(map, {
+    automations: {},
+    store: { getAutomationScript: () => ({ id: 'script-1', workspaceId: 'workspace-a' }) },
+  } as any);
+  await assert.rejects(
+    map.get('automation-script.version.submit')(
+      { name: 'automation-script.version.submit', scriptId: 'script-1' },
+      Readable.from([Buffer.alloc(1_200_001)]), response(),
+      new URL('http://127.0.0.1/automation-scripts/script-1/versions?workspace_id=workspace-a'),
+    ),
+    /exceeds 1200000 bytes/,
+  );
+});
+
 function requestBody(value: unknown) {
   return Readable.from([Buffer.from(JSON.stringify(value))]);
 }

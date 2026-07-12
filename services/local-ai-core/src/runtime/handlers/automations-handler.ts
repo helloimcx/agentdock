@@ -101,15 +101,19 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
     requireScript(store, id, requiredWorkspace(url));
     const body = await strictBody<{ files: AutomationScriptSourceFile[] }>(req, {
       files: { kind: 'array', required: true, elementKind: 'object' },
-    });
-    const staged = store.stageAutomationScriptSource({ scriptId: id, files: validateSourceFiles(body.files) });
-    const interpreter = await resolveServerInterpreter(staged.shebang, staged.packagePath);
-    const version = store.createAutomationScriptVersionFromStaged({
-      scriptId: id,
-      staged,
-      interpreterPath: interpreter.path,
-      interpreterVersion: interpreter.version,
-    });
+    }, MAX_SOURCE_UPLOAD_BODY_BYTES);
+    let staged: ReturnType<LocalCoreAcpStore['stageAutomationScriptSource']> | undefined;
+    let version;
+    try {
+      staged = store.stageAutomationScriptSource({ scriptId: id, files: validateSourceFiles(body.files) });
+      const interpreter = await resolveServerInterpreter(staged.shebang, staged.packagePath);
+      version = store.createAutomationScriptVersionFromStaged({
+        scriptId: id, staged, interpreterPath: interpreter.path, interpreterVersion: interpreter.version,
+      });
+    } catch (error) {
+      if (staged) store.discardUnreferencedAutomationScriptPackage(id, staged);
+      throw error;
+    }
     emitVersion(version);
     json(res, 200, version);
   });
@@ -136,7 +140,13 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
       // result path, and do not expose adapter diagnostics as script output.
       report = { status: 'failed', finishedAt: new Date().toISOString(), summary: 'Sandbox test execution failed.' };
     }
-    const version = store.recordAutomationScriptTestResult(versionId(route), report);
+    let version;
+    try {
+      version = store.recordAutomationScriptTestResult(versionId(route), report);
+    } catch (error) {
+      try { store.failClaimedAutomationScriptTestExecution(versionId(route)); } catch { /* retry/lease recovery remains fail-closed */ }
+      throw error;
+    }
     emitVersion(version);
     json(res, 200, version);
   });
@@ -287,8 +297,10 @@ function quoteShell(value: string) {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-async function strictBody<T>(req: Parameters<RouteHandler>[1], schema: BodySchema): Promise<T> {
-  const body = await readJsonBody(req);
+const MAX_SOURCE_UPLOAD_BODY_BYTES = 1_200_000;
+
+async function strictBody<T>(req: Parameters<RouteHandler>[1], schema: BodySchema, maxBytes?: number): Promise<T> {
+  const body = await readJsonBody(req, maxBytes);
   const allowed = new Set(Object.keys(schema));
   for (const field of Object.keys(body)) {
     if (!allowed.has(field)) throw new RequestValidationError(`Request body.${field} is not writable.`);

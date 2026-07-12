@@ -543,6 +543,10 @@ export class LocalCoreAcpStore {
     );
   }
 
+  discardUnreferencedAutomationScriptPackage(scriptId: string, staged: StagedScriptPackage): void {
+    this.automationScripts.discardUnreferencedPackage(scriptId, staged);
+  }
+
   listAutomationScriptVersions(scriptId: string): AutomationScriptVersion[] {
     return this.automationScripts.listVersions(scriptId);
   }
@@ -565,6 +569,10 @@ export class LocalCoreAcpStore {
 
   claimAutomationScriptTestExecution(versionId: string): AutomationScriptVersion {
     return this.automationScriptLifecycle.claimTestExecution(versionId);
+  }
+
+  failClaimedAutomationScriptTestExecution(versionId: string): AutomationScriptVersion {
+    return this.automationScriptLifecycle.failClaimedTestExecution(versionId);
   }
 
   requestAutomationScriptEnableApproval(versionId: string, actor: string): ApprovalRequest {

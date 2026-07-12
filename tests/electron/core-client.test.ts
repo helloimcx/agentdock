@@ -136,9 +136,20 @@ test('core client accepts all four complete unified automation SSE events and re
     type: 'automation.definition.updated',
     automation: completeAutomation(),
   });
+  source.emit('automation.definition.updated', {
+    type: 'automation.definition.updated', automation: { ...completeAutomation(), health: 'blocked' },
+  });
   source.emit('automation.evaluation.updated', {
     type: 'automation.evaluation.updated',
     evaluation: completeEvaluation(),
+  });
+  source.emit('automation.evaluation.updated', {
+    type: 'automation.evaluation.updated',
+    evaluation: { ...completeEvaluation(), conditionOutcome: 'matched', triggerDecision: 'not_evaluated' },
+  });
+  source.emit('automation.evaluation.updated', {
+    type: 'automation.evaluation.updated',
+    evaluation: { id: 'evaluation-running', automationId: 'automation-1', activationKind: 'interval', status: 'running', startedAt: '2026-07-12T00:00:00.000Z', finishedAt: '2026-07-12T00:00:01.000Z' },
   });
   source.emit('automation.run.updated', {
     type: 'automation.run.updated',
@@ -176,6 +187,7 @@ test('core client accepts all four complete unified automation SSE events and re
     'automation.evaluation.updated',
     'automation.run.updated',
     'automation.script-version.updated',
+    'automation.evaluation.updated',
   ]);
   stop();
 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
@@ -556,6 +556,16 @@ test('stages an API source bundle through a server-owned directory without accep
       () => store.stageAutomationScriptSource({ scriptId: script.id, files: [{ path: '../escape', content: 'nope' }] }),
       /traversal|relative POSIX/i,
     );
+    const discarded = store.stageAutomationScriptSource({
+      scriptId: script.id,
+      files: [
+        { path: 'manifest.json', content: JSON.stringify({ ...manifest, config: { discarded: true } }) },
+        { path: 'run.js', content: '#!/usr/bin/env node\nprocess.exit(0)\n' },
+      ],
+    });
+    assert.equal(existsSync(discarded.packagePath), true);
+    store.discardUnreferencedAutomationScriptPackage(script.id, discarded);
+    assert.equal(existsSync(discarded.packagePath), false);
     store.close();
   } finally {
     removeTempTree(userDataPath);

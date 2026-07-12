@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { dirname, join, posix, resolve, win32 } from 'node:path';
 import type {
@@ -184,6 +184,19 @@ export class LocalAutomationScriptStore {
     return this.getVersion(version.id)!;
   }
 
+  discardUnreferencedPackage(scriptId: string, staged: StagedScriptPackage): void {
+    this.requireScript(scriptId);
+    const referenced = this.db.prepare(`
+      SELECT 1 FROM automation_script_versions WHERE script_id = ? AND package_sha256 = ? LIMIT 1
+    `).get(scriptId, staged.packageSha256);
+    if (referenced) return;
+    const expectedRoot = join(resolve(this.userDataPath), 'automations', 'scripts', scriptId);
+    const expectedPath = join(expectedRoot, staged.packageSha256);
+    if (staged.packagePath !== expectedPath) throw new Error('Refusing to discard an unexpected automation script package path.');
+    makeWritableForDiscard(staged.packagePath);
+    rmSync(staged.packagePath, { recursive: true, force: true, maxRetries: 2 });
+  }
+
   listVersions(scriptId: string): AutomationScriptVersion[] {
     this.requireScript(scriptId);
     const rows = this.db.prepare(`
@@ -257,6 +270,18 @@ function normalizeUploadPath(value: unknown) {
     throw new Error('Automation script source file path must not contain traversal.');
   }
   return path;
+}
+
+function makeWritableForDiscard(path: string): void {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink()) throw new Error('Refusing to discard a symlinked automation script package.');
+  if (stat.isDirectory()) {
+    for (const child of readdirSync(path)) makeWritableForDiscard(join(path, child));
+    chmodSync(path, 0o700);
+    return;
+  }
+  if (!stat.isFile()) throw new Error('Refusing to discard a non-regular automation script package entry.');
+  chmodSync(path, 0o600);
 }
 
 export function parseAutomationScriptVersionRow(row: AutomationScriptVersionRow): AutomationScriptVersion {

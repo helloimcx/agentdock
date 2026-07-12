@@ -36,8 +36,8 @@ export function jsonError(res: ServerResponse, statusCode: number, error: unknow
   res.end(JSON.stringify(errorInfoToHttpBody(info)));
 }
 
-export async function readJsonBody(req: IncomingMessage) {
-  const body = await readRawBody(req);
+export async function readJsonBody(req: IncomingMessage, maxBytes?: number) {
+  const body = await readRawBody(req, maxBytes);
   if (!body.length) {
     return {};
   }
@@ -51,10 +51,20 @@ export async function readJsonBody(req: IncomingMessage) {
   }
 }
 
-export async function readRawBody(req: IncomingMessage) {
+export async function readRawBody(req: IncomingMessage, maxBytes?: number) {
+  const contentLength = Number(req.headers?.['content-length'] || '');
+  if (maxBytes !== undefined && Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new RequestValidationError(`Request body exceeds ${maxBytes} bytes.`);
+  }
   const chunks: Buffer[] = [];
+  let total = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.byteLength;
+    if (maxBytes !== undefined && total > maxBytes) {
+      throw new RequestValidationError(`Request body exceeds ${maxBytes} bytes.`);
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks);
 }

@@ -14,6 +14,7 @@ import {
 } from '../acp/store/automation-script-store.js';
 
 const DEFAULT_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
+const TEST_EXECUTION_LEASE_MS = 10 * 60 * 1000;
 
 class ExpiredAutomationScriptApprovalError extends Error {
   constructor(readonly approvalId: string) {
@@ -148,8 +149,13 @@ export class AutomationScriptService {
 
   /** Atomically consumes the one-shot test authorization before any sandbox work starts. */
   claimTestExecution(versionId: string): AutomationScriptVersion {
-    return this.withTransaction(() => {
+    let recovered = false;
+    const claimed = this.withTransaction(() => {
       const version = this.requireVersion(versionId);
+      if (version.status === 'testing' && this.isExpiredTestExecution(version)) {
+        recovered = true;
+        return this.saveVersion(this.failedTestExecution(version, 'Sandbox test execution did not complete before its lease expired.'));
+      }
       if (version.status !== 'test_authorized') {
         throw new Error(`Automation script test execution requires test_authorized status, got ${version.status}.`);
       }
@@ -158,6 +164,16 @@ export class AutomationScriptService {
         status: 'testing',
         updatedAt: this.nowIso(),
       });
+    });
+    if (recovered) throw new Error('Automation script test execution lease expired and was recorded as failed.');
+    return claimed;
+  }
+
+  failClaimedTestExecution(versionId: string): AutomationScriptVersion {
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status !== 'testing') return version;
+      return this.saveVersion(this.failedTestExecution(version, 'Sandbox test execution could not persist its result.'));
     });
   }
 
@@ -389,6 +405,20 @@ export class AutomationScriptService {
 
   private nowIso() {
     return this.clock().toISOString();
+  }
+
+  private isExpiredTestExecution(version: AutomationScriptVersion) {
+    const startedAt = Date.parse(version.updatedAt);
+    return !Number.isFinite(startedAt) || this.clock().getTime() - startedAt >= TEST_EXECUTION_LEASE_MS;
+  }
+
+  private failedTestExecution(version: AutomationScriptVersion, summary: string): AutomationScriptVersion {
+    return {
+      ...version,
+      status: 'tested',
+      testReport: { status: 'failed', finishedAt: this.nowIso(), summary },
+      updatedAt: this.nowIso(),
+    };
   }
 
   private expiresAt() {
