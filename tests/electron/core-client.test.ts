@@ -123,6 +123,86 @@ test('core client ignores valid JSON events that do not match the event contract
   stop();
 });
 
+test('core client accepts all four complete unified automation SSE events and rejects partial payloads', () => {
+  const source = new FakeEventSource();
+  const events: string[] = [];
+  const client = createCoreClient({
+    baseUrl: 'http://127.0.0.1:9851/api/local/v1',
+    eventSourceFactory: () => source,
+  });
+  const stop = client.events.subscribe((event) => events.push(event.type));
+
+  source.emit('automation.definition.updated', {
+    type: 'automation.definition.updated',
+    automation: completeAutomation(),
+  });
+  source.emit('automation.evaluation.updated', {
+    type: 'automation.evaluation.updated',
+    evaluation: completeEvaluation(),
+  });
+  source.emit('automation.run.updated', {
+    type: 'automation.run.updated',
+    run: completeAutomationRun(),
+  });
+  source.emit('automation.script-version.updated', {
+    type: 'automation.script-version.updated',
+    version: completeScriptVersion(),
+  });
+  source.emit('automation.definition.updated', {
+    type: 'automation.definition.updated',
+    automation: { id: 'automation-1' },
+  });
+  source.emit('automation.script-version.updated', {
+    type: 'automation.script-version.updated',
+    version: { id: 'version-1', scriptId: 'script-1' },
+  });
+
+  assert.deepEqual(events, [
+    'automation.definition.updated',
+    'automation.evaluation.updated',
+    'automation.run.updated',
+    'automation.script-version.updated',
+  ]);
+  stop();
+});
+
+function completeAutomation() {
+  return {
+    id: 'automation-1', workspaceId: 'workspace-1', title: 'Automation', enabled: true, health: 'healthy',
+    activation: { kind: 'interval', intervalMs: 1_000 }, condition: { kind: 'always' },
+    action: { kind: 'agent-prompt', promptTemplate: 'hello', executionMode: 'same-thread' },
+    delivery: { platform: 'lark', route: { type: 'group', channelId: 'channel-1' } },
+    policies: { concurrency: 'skip-if-running', cooldownMs: 0 }, consecutiveEvaluationFailures: 0,
+    createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+  };
+}
+
+function completeEvaluation() {
+  return {
+    id: 'evaluation-1', automationId: 'automation-1', activationKind: 'interval', status: 'finished',
+    startedAt: '2026-07-12T00:00:00.000Z', finishedAt: '2026-07-12T00:00:01.000Z',
+    conditionOutcome: 'not_matched', triggerDecision: 'not_rising',
+  };
+}
+
+function completeAutomationRun() {
+  return {
+    id: 'run-1', automationId: 'automation-1', evaluationId: 'evaluation-1', status: 'succeeded',
+    executionMode: 'same-thread', createdAt: '2026-07-12T00:00:00.000Z',
+  };
+}
+
+function completeScriptVersion() {
+  return {
+    id: 'version-1', scriptId: 'script-1', status: 'approved', packageSha256: 'a'.repeat(64),
+    packagePath: '/managed/a', shebang: '#!/usr/bin/env node', interpreterPath: '/usr/bin/node', interpreterVersion: 'v22',
+    capabilities: {}, config: {}, configSchema: {}, networkMode: 'none', internalAccess: false,
+    allowedReadDirs: [], secretRefs: [], env: [],
+    limits: { timeoutMs: 30_000, stdoutBytes: 1_000, stderrBytes: 1_000, payloadBytes: 1_000, stateBytes: 1_000 },
+    staticCheck: {}, testPlan: {}, createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+  };
+}
+
 test('core client rejects events whose nested payload misses required contract fields', () => {
   const source = new FakeEventSource();
   const events: string[] = [];

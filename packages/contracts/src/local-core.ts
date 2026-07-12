@@ -1361,6 +1361,10 @@ export type LocalCoreEvent =
   | { type: 'scheduler.run.updated'; run: ScheduledJobRun }
   | { type: 'automation.monitor.updated'; monitor: AutomationMonitor }
   | { type: 'automation.monitor.run.updated'; run: AutomationMonitorRun }
+  | { type: 'automation.definition.updated'; automation: import('./automations.js').AutomationDefinition }
+  | { type: 'automation.evaluation.updated'; evaluation: import('./automations.js').AutomationEvaluation }
+  | { type: 'automation.run.updated'; run: import('./automations.js').AutomationRun }
+  | { type: 'automation.script-version.updated'; version: import('./automations.js').AutomationScriptVersion }
   | { type: 'presence.updated'; threadId?: string; live: boolean; stream?: DesktopBridgeEvent }
   | { type: 'stream.updated'; stream: DesktopBridgeEvent }
   | { type: 'external.run.snapshot'; snapshot: ExternalRunSnapshot }

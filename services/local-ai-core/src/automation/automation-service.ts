@@ -5,6 +5,7 @@ import type {
   AutomationMonitorEventSnapshot,
   AutomationEvaluationFinishInput,
   AutomationRun,
+  AutomationScriptTestReport,
   AutomationUpdateInput,
 } from '@cc/superai-contracts';
 import type { DomainEventType, EventBus, EventBusEvent } from '@cc/plugin-sdk';
@@ -69,7 +70,7 @@ export interface AutomationServiceOptions {
   setInterval?: (handler: () => void, delayMs: number) => TimerHandle;
   clearInterval?: (handle: TimerHandle) => void;
   conditionEvaluator?: typeof evaluateCondition;
-  scriptProtocolRunner?: Pick<ScriptProtocolRunner, 'run'>;
+  scriptProtocolRunner?: Pick<ScriptProtocolRunner, 'run'> & Partial<Pick<ScriptProtocolRunner, 'runTest'>>;
   maxConcurrency?: number;
   ownershipPolicy?: AutomationOwnershipPolicy;
   alert?: (input: { automation: AutomationDefinition; count: number; error: string }) => void;
@@ -88,7 +89,7 @@ export class AutomationService {
   private runtimeStatus: AutomationServiceRuntimeStatus = { status: 'stopped' };
   private stopping = false;
   private lifecycleGeneration = 0;
-  private scriptProtocolRunner: Pick<ScriptProtocolRunner, 'run'> | undefined;
+  private scriptProtocolRunner: (Pick<ScriptProtocolRunner, 'run'> & Partial<Pick<ScriptProtocolRunner, 'runTest'>>) | undefined;
 
   constructor(private readonly options: AutomationServiceOptions) {
     const concurrency = options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
@@ -273,6 +274,35 @@ export class AutomationService {
       throw new Error(`Provider-event automation requires an event snapshot: ${automationId}`);
     }
     return this.checkAutomation(automation, undefined, true);
+  }
+
+  /** The HTTP layer calls this only after the approval service grants one test run. */
+  async executeAuthorizedScriptTest(versionId: string): Promise<AutomationScriptTestReport> {
+    const version = this.options.store.getAutomationScriptVersion(versionId);
+    if (!version || version.status !== 'test_authorized') {
+      throw new Error('Automation script test requires an unconsumed test authorization.');
+    }
+    const finishedAt = this.now().toISOString();
+    try {
+      const result = await this.getScriptTestRunner().runTest({
+        scriptId: version.scriptId,
+        approvedVersionId: version.id,
+        evaluationId: `script-test:${version.id}`,
+        triggeredAt: finishedAt,
+        previousState: {},
+      });
+      return {
+        status: 'passed',
+        finishedAt: this.now().toISOString(),
+        ...(result.summary === undefined ? {} : { summary: result.summary }),
+      };
+    } catch (error) {
+      return {
+        status: 'failed',
+        finishedAt: this.now().toISOString(),
+        summary: normalizeAutomationError(error),
+      };
+    }
   }
 
   async evaluateProviderEvent(
@@ -597,6 +627,16 @@ export class AutomationService {
       });
     }
     return this.scriptProtocolRunner;
+  }
+
+  private getScriptTestRunner(): Pick<ScriptProtocolRunner, 'runTest'> {
+    if (!this.scriptProtocolRunner?.runTest) {
+      this.scriptProtocolRunner = new ScriptProtocolRunner({
+        sandbox: createAnthropicSandboxRunner(),
+        getVersion: (versionId) => this.options.store.getAutomationScriptVersion(versionId),
+      });
+    }
+    return this.scriptProtocolRunner as Pick<ScriptProtocolRunner, 'runTest'>;
   }
 
   private blockAutomation(automation: AutomationDefinition, reason: string) {

@@ -17,6 +17,7 @@ async function main() {
     knowledgeProvider: controller.knowledgeProvider,
     scheduledJobs: controller.scheduledJobs,
     automationMonitors: controller.automationMonitors,
+    automations: controller.automations,
     store: controller.store,
     runtimeDetection: controller.runtimeDetection,
     kernel: controller.kernel,

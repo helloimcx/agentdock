@@ -16,6 +16,10 @@ import type {
   LocalCoreEvent,
   AutomationMonitor,
   AutomationMonitorRun,
+  AutomationDefinition,
+  AutomationEvaluation,
+  AutomationRun,
+  AutomationScriptVersion,
   ScheduledJob,
   ScheduledJobRun,
   ExternalRunSnapshot,
@@ -28,6 +32,7 @@ import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-application-service.js';
 import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
+import type { AutomationService } from '../automation/automation-service.js';
 import type { RuntimeDetectionService } from './runtime-detection-service.js';
 import type { LocalCoreErrorReporter } from '../kernel/local-core-errors.js';
 import type { ChannelService } from './channel-service.js';
@@ -40,6 +45,7 @@ import { registerSecurityHandlers } from './handlers/security-handler.js';
 import { registerTaskHandlers } from './handlers/task-handler.js';
 import { registerSchedulerHandlers } from './handlers/scheduler-handler.js';
 import { registerAutomationHandlers } from './handlers/automation-handler.js';
+import { registerUnifiedAutomationHandlers } from './handlers/automations-handler.js';
 import { registerKnowledgeHandlers } from './handlers/knowledge-handler.js';
 import { registerCapabilitiesHandlers } from './handlers/capabilities-handler.js';
 import { registerProviderHandlers } from './handlers/provider-handler.js';
@@ -74,6 +80,7 @@ export interface LocalAiCoreServerBindings {
   readonly knowledgeProvider: KnowledgeRuntime;
   readonly scheduledJobs: ScheduledJobApplicationService;
   readonly automationMonitors: AutomationMonitorService;
+  readonly automations?: AutomationService;
   readonly store: LocalCoreAcpStore;
   readonly runtimeDetection: RuntimeDetectionService;
   readonly kernel: LocalCoreKernel;
@@ -162,6 +169,14 @@ export class LocalAiCoreServer {
     registerTaskHandlers(this.handlers, b.workspaceRouter);
     registerSchedulerHandlers(this.handlers, b.scheduledJobs);
     registerAutomationHandlers(this.handlers, b.automationMonitors);
+    if (b.automations) {
+      registerUnifiedAutomationHandlers(this.handlers, {
+        automations: b.automations,
+        store: b.store,
+        executeScriptTest: (versionId) => b.automations!.executeAuthorizedScriptTest(versionId),
+        emitScriptVersion: (version) => b.controller.emit('automation-script-version', version),
+      });
+    }
     registerKnowledgeHandlers(this.handlers, b.knowledgeProvider);
     registerCapabilitiesHandlers(this.handlers, b.kernel);
     registerProviderHandlers(this.handlers, b.store);
@@ -224,6 +239,18 @@ export class LocalAiCoreServer {
     });
     b.controller.on('automation-monitor-run', (run: AutomationMonitorRun) => {
       this.broadcast({ type: 'automation.monitor.run.updated', run });
+    });
+    b.controller.on('automation-definition', (automation: AutomationDefinition) => {
+      this.broadcast({ type: 'automation.definition.updated', automation });
+    });
+    b.controller.on('automation-evaluation', (evaluation: AutomationEvaluation) => {
+      this.broadcast({ type: 'automation.evaluation.updated', evaluation });
+    });
+    b.controller.on('automation-run', (run: AutomationRun) => {
+      this.broadcast({ type: 'automation.run.updated', run });
+    });
+    b.controller.on('automation-script-version', (version: AutomationScriptVersion) => {
+      this.broadcast({ type: 'automation.script-version.updated', version });
     });
     b.controller.on('runtime-detection', (event: LocalCoreEvent) => {
       this.broadcast(event);

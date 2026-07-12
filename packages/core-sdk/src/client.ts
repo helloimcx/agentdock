@@ -20,6 +20,10 @@ export const LOCAL_CORE_EVENT_NAMES = [
   'scheduler.run.updated',
   'automation.monitor.updated',
   'automation.monitor.run.updated',
+  'automation.definition.updated',
+  'automation.evaluation.updated',
+  'automation.run.updated',
+  'automation.script-version.updated',
   'presence.updated',
   'stream.updated',
 ] as const;
@@ -181,6 +185,40 @@ function isAutomationMonitorRun(value: unknown) {
     hasString(value, 'triggeredAt');
 }
 
+function isAutomationDefinition(value: unknown) {
+  return isRecord(value) && hasString(value, 'id') && hasString(value, 'workspaceId') && hasString(value, 'title') &&
+    hasBoolean(value, 'enabled') && hasString(value, 'health') && isRecord(value.activation) && isRecord(value.condition) &&
+    isRecord(value.action) && hasString(value.action, 'kind') && hasString(value.action, 'promptTemplate') &&
+    hasString(value.action, 'executionMode') && isRecord(value.delivery) && hasString(value.delivery, 'platform') &&
+    isChannelRoute(value.delivery.route) && isRecord(value.policies) && hasString(value.policies, 'concurrency') &&
+    typeof value.policies.cooldownMs === 'number' && typeof value.consecutiveEvaluationFailures === 'number' &&
+    hasString(value, 'createdAt') && hasString(value, 'updatedAt');
+}
+
+function isAutomationEvaluation(value: unknown) {
+  if (!isRecord(value) || !hasString(value, 'id') || !hasString(value, 'automationId') || !hasString(value, 'activationKind') ||
+    !hasString(value, 'status') || !hasString(value, 'startedAt')) return false;
+  if (value.status === 'running') return true;
+  return value.status === 'finished' && hasString(value, 'finishedAt') && hasString(value, 'conditionOutcome') && hasString(value, 'triggerDecision');
+}
+
+function isAutomationRun(value: unknown) {
+  return isRecord(value) && hasString(value, 'id') && hasString(value, 'automationId') && hasString(value, 'evaluationId') &&
+    hasString(value, 'status') && hasString(value, 'executionMode') && hasString(value, 'createdAt');
+}
+
+function isAutomationScriptVersion(value: unknown) {
+  return isRecord(value) && hasString(value, 'id') && hasString(value, 'scriptId') && hasString(value, 'status') &&
+    hasString(value, 'packageSha256') && hasString(value, 'packagePath') && hasString(value, 'shebang') &&
+    hasString(value, 'interpreterPath') && hasString(value, 'interpreterVersion') && isRecord(value.capabilities) &&
+    isRecord(value.config) && isRecord(value.configSchema) && hasString(value, 'networkMode') &&
+    hasBoolean(value, 'internalAccess') && Array.isArray(value.allowedReadDirs) && Array.isArray(value.secretRefs) &&
+    Array.isArray(value.env) && isRecord(value.limits) && typeof value.limits.timeoutMs === 'number' &&
+    typeof value.limits.stdoutBytes === 'number' && typeof value.limits.stderrBytes === 'number' &&
+    typeof value.limits.payloadBytes === 'number' && typeof value.limits.stateBytes === 'number' &&
+    isRecord(value.staticCheck) && isRecord(value.testPlan) && hasString(value, 'createdAt') && hasString(value, 'updatedAt');
+}
+
 function isInstalledAgentRuntime(value: unknown) {
   return isRecord(value) &&
     hasString(value, 'agentType') &&
@@ -257,6 +295,14 @@ function isLocalCoreEvent(value: unknown): value is LocalCoreEvent {
       return isAutomationMonitor(value.monitor);
     case 'automation.monitor.run.updated':
       return isAutomationMonitorRun(value.run);
+    case 'automation.definition.updated':
+      return isAutomationDefinition(value.automation);
+    case 'automation.evaluation.updated':
+      return isAutomationEvaluation(value.evaluation);
+    case 'automation.run.updated':
+      return isAutomationRun(value.run);
+    case 'automation.script-version.updated':
+      return isAutomationScriptVersion(value.version);
     case 'presence.updated':
       return hasBoolean(value, 'live') && (value.stream === undefined || isDesktopBridgeEvent(value.stream));
     case 'stream.updated':

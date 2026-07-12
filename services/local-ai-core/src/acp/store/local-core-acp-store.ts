@@ -11,6 +11,7 @@ import type {
   AutomationEvaluationFinishInput,
   AutomationScript,
   AutomationScriptCreateInput,
+  AutomationScriptTestReport,
   AutomationScriptUpdateInput,
   AutomationScriptVersion,
   AutomationMonitor,
@@ -69,6 +70,7 @@ import {
   LocalAutomationScriptStore,
   type AutomationScriptVersionPackageInput,
 } from './automation-script-store.js';
+import { AutomationScriptService } from '../../automation/automation-script-service.js';
 import {
   LocalAutomationStore,
   type AutomationRunCreateInput,
@@ -94,6 +96,7 @@ export class LocalCoreAcpStore {
   private readonly scheduler: LocalSchedulerStore;
   private readonly automationMonitors: LocalAutomationMonitorStore;
   private readonly automationScripts: LocalAutomationScriptStore;
+  private readonly automationScriptLifecycle: AutomationScriptService;
   private readonly automations: LocalAutomationStore;
   private readonly platform: LocalPlatformStore;
   private readonly modelProviders: LocalModelProviderStore;
@@ -116,6 +119,7 @@ export class LocalCoreAcpStore {
     this.scheduler = new LocalSchedulerStore(this.db);
     this.automationMonitors = new LocalAutomationMonitorStore(this.db);
     this.automationScripts = new LocalAutomationScriptStore(this.db, userDataPath);
+    this.automationScriptLifecycle = new AutomationScriptService({ db: this.db, security: this.security });
     this.automations = new LocalAutomationStore(this.db);
     this.platform = new LocalPlatformStore(this.db);
     this.modelProviders = new LocalModelProviderStore(this.db);
@@ -525,6 +529,30 @@ export class LocalCoreAcpStore {
 
   getAutomationScriptVersion(versionId: string): AutomationScriptVersion | undefined {
     return this.automationScripts.getVersion(versionId);
+  }
+
+  requestAutomationScriptTestApproval(versionId: string, actor: string): ApprovalRequest {
+    return this.automationScriptLifecycle.requestTestApproval(versionId, actor);
+  }
+
+  authorizeAutomationScriptTest(versionId: string, approvalId: string, actor: string): AutomationScriptVersion {
+    return this.automationScriptLifecycle.authorizeTest(versionId, approvalId, actor);
+  }
+
+  recordAutomationScriptTestResult(versionId: string, result: AutomationScriptTestReport): AutomationScriptVersion {
+    return this.automationScriptLifecycle.recordTestResult(versionId, result);
+  }
+
+  requestAutomationScriptEnableApproval(versionId: string, actor: string): ApprovalRequest {
+    return this.automationScriptLifecycle.requestEnableApproval(versionId, actor);
+  }
+
+  approveAutomationScriptVersion(versionId: string, approvalId: string, actor: string): AutomationScriptVersion {
+    return this.automationScriptLifecycle.approveVersion(versionId, approvalId, actor);
+  }
+
+  revokeAutomationScriptVersion(versionId: string, actor: string): AutomationScriptVersion {
+    return this.automationScriptLifecycle.revokeVersion(versionId, actor);
   }
 
   createAutomationEvaluation(

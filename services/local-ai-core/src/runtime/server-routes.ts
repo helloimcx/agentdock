@@ -28,6 +28,25 @@ export type LocalAiCoreRoute =
   | { name: 'automation.monitor.run'; monitorId: string }
   | { name: 'automation.monitor.update'; monitorId: string }
   | { name: 'automation.monitor.delete'; monitorId: string }
+  | { name: 'automations.list' }
+  | { name: 'automations.create' }
+  | { name: 'automation.get'; automationId: string }
+  | { name: 'automation.update'; automationId: string }
+  | { name: 'automation.delete'; automationId: string }
+  | { name: 'automation.check'; automationId: string }
+  | { name: 'automation.evaluations'; automationId: string }
+  | { name: 'automation.runs'; automationId: string }
+  | { name: 'automation-scripts.list' }
+  | { name: 'automation-scripts.create' }
+  | { name: 'automation-script.get'; scriptId: string }
+  | { name: 'automation-script.update'; scriptId: string }
+  | { name: 'automation-script.versions'; scriptId: string }
+  | { name: 'automation-script-version.test-approval'; versionId: string }
+  | { name: 'automation-script-version.test'; versionId: string }
+  | { name: 'automation-script-version.enable-approval'; versionId: string }
+  | { name: 'automation-script-version.approve'; versionId: string }
+  | { name: 'automation-script-version.reject'; versionId: string }
+  | { name: 'automation-script-version.revoke'; versionId: string }
   | { name: 'threads.list' }
   | { name: 'threads.create' }
   | { name: 'thread.get'; threadId: string }
@@ -152,6 +171,12 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   if (segments[0] === 'automation' && segments[1] === 'monitors') {
     return parseAutomationMonitorsRoute(normalizedMethod, segments);
   }
+  if (segments[0] === 'automations') {
+    return parseAutomationsRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'automation-scripts') {
+    return parseAutomationScriptsRoute(normalizedMethod, segments);
+  }
   if (segments[0] === 'threads') {
     return parseThreadsRoute(normalizedMethod, segments);
   }
@@ -207,6 +232,58 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
     return parsePlatformsRoute(normalizedMethod, segments);
   }
 
+  return null;
+}
+
+function parseAutomationsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 1) {
+    if (method === 'GET') return { name: 'automations.list' };
+    if (method === 'POST') return { name: 'automations.create' };
+    return null;
+  }
+  const automationId = decodeURIComponent(segments[1] || '').trim();
+  if (!automationId) return null;
+  if (segments.length === 2) {
+    if (method === 'GET') return { name: 'automation.get', automationId };
+    if (method === 'PATCH') return { name: 'automation.update', automationId };
+    if (method === 'DELETE') return { name: 'automation.delete', automationId };
+    return null;
+  }
+  if (segments.length !== 3) return null;
+  if (method === 'POST' && segments[2] === 'check') return { name: 'automation.check', automationId };
+  if (method === 'GET' && segments[2] === 'evaluations') return { name: 'automation.evaluations', automationId };
+  if (method === 'GET' && segments[2] === 'runs') return { name: 'automation.runs', automationId };
+  return null;
+}
+
+function parseAutomationScriptsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 1) {
+    if (method === 'GET') return { name: 'automation-scripts.list' };
+    if (method === 'POST') return { name: 'automation-scripts.create' };
+    return null;
+  }
+  if (segments[1] === 'versions') {
+    const versionId = decodeURIComponent(segments[2] || '').trim();
+    if (!versionId || segments.length !== 4 || method !== 'POST') return null;
+    switch (segments[3]) {
+      case 'test-approval': return { name: 'automation-script-version.test-approval', versionId };
+      case 'test': return { name: 'automation-script-version.test', versionId };
+      case 'enable-approval': return { name: 'automation-script-version.enable-approval', versionId };
+      case 'approve': return { name: 'automation-script-version.approve', versionId };
+      case 'reject': return { name: 'automation-script-version.reject', versionId };
+      case 'revoke': return { name: 'automation-script-version.revoke', versionId };
+      default: return null;
+    }
+  }
+  const scriptId = decodeURIComponent(segments[1] || '').trim();
+  if (!scriptId) return null;
+  if (segments.length === 2) {
+    if (method === 'GET') return { name: 'automation-script.get', scriptId };
+    if (method === 'PATCH') return { name: 'automation-script.update', scriptId };
+  }
+  if (segments.length === 3 && method === 'GET' && segments[2] === 'versions') {
+    return { name: 'automation-script.versions', scriptId };
+  }
   return null;
 }
 

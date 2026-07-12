@@ -62,7 +62,19 @@ export class ScriptProtocolRunner {
   }
 
   async run(request: ScriptProtocolRequest): Promise<ScriptProtocolResult> {
-    const version = this.requireApprovedVersion(request);
+    return this.runForStatus(request, 'approved');
+  }
+
+  /** Runs the one-shot server-authorized test path without granting enable approval. */
+  async runTest(request: ScriptProtocolRequest): Promise<ScriptProtocolResult> {
+    return this.runForStatus(request, 'test_authorized');
+  }
+
+  private async runForStatus(
+    request: ScriptProtocolRequest,
+    expectedStatus: 'approved' | 'test_authorized',
+  ): Promise<ScriptProtocolResult> {
+    const version = this.requireVersionForStatus(request, expectedStatus);
     let capability;
     try { capability = await this.options.sandbox.probe(); } catch {
       throw new ScriptProtocolError('sandbox_unavailable', 'sandbox_unavailable', true);
@@ -102,7 +114,7 @@ export class ScriptProtocolRunner {
     }
     // Re-read after checks so a concurrently revoked/replaced record cannot run.
     const current = this.options.getVersion(request.approvedVersionId);
-    if (!current || !sameExecutionFacts(version, current)) {
+    if (!current || !sameExecutionFacts(version, current, expectedStatus)) {
       throw new ScriptProtocolError('approval_mismatch', 'Approved script facts changed before execution.', true);
     }
     const entrypoint = (this.options.entrypointFor || entrypointFromManifest)(version);
@@ -170,13 +182,13 @@ export class ScriptProtocolRunner {
     };
   }
 
-  private requireApprovedVersion(request: ScriptProtocolRequest) {
+  private requireVersionForStatus(request: ScriptProtocolRequest, expectedStatus: 'approved' | 'test_authorized') {
     const version = this.options.getVersion(request.approvedVersionId);
     if (!version) {
       throw new ScriptProtocolError('script_unavailable', 'Approved script runtime is unavailable.', true);
     }
-    if (version.scriptId !== request.scriptId || version.status !== 'approved') {
-      throw new ScriptProtocolError('approval_mismatch', 'The requested script version is not approved.', true);
+    if (version.scriptId !== request.scriptId || version.status !== expectedStatus) {
+      throw new ScriptProtocolError('approval_mismatch', `The requested script version is not ${expectedStatus}.`, true);
     }
     return version;
   }
@@ -193,8 +205,12 @@ export class ScriptProtocolRunner {
   }
 }
 
-function sameExecutionFacts(left: AutomationScriptVersion, right: AutomationScriptVersion) {
-  return left.id === right.id && left.scriptId === right.scriptId && left.status === 'approved' && right.status === 'approved'
+function sameExecutionFacts(
+  left: AutomationScriptVersion,
+  right: AutomationScriptVersion,
+  expectedStatus: 'approved' | 'test_authorized',
+) {
+  return left.id === right.id && left.scriptId === right.scriptId && left.status === expectedStatus && right.status === expectedStatus
     && left.packageSha256 === right.packageSha256 && left.packagePath === right.packagePath
     && left.interpreterPath === right.interpreterPath && left.interpreterVersion === right.interpreterVersion;
 }
