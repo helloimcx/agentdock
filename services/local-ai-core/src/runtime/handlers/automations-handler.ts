@@ -31,6 +31,8 @@ export interface UnifiedAutomationHandlersOptions {
  */
 export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>, options: UnifiedAutomationHandlersOptions) {
   const { automations, store } = options;
+  const activeTestClaims = new Set<string>();
+  const stagedPackageUsers = new Map<string, number>();
   const emitVersion = (version: import('@cc/superai-contracts').AutomationScriptVersion) => options.emitScriptVersion?.(version);
 
   map.set('automations.list', async (_route, _req, res, url) => {
@@ -103,16 +105,28 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
       files: { kind: 'array', required: true, elementKind: 'object' },
     }, MAX_SOURCE_UPLOAD_BODY_BYTES);
     let staged: ReturnType<LocalCoreAcpStore['stageAutomationScriptSource']> | undefined;
+    let committed = false;
     let version;
     try {
       staged = store.stageAutomationScriptSource({ scriptId: id, files: validateSourceFiles(body.files) });
+      stagedPackageUsers.set(staged.packagePath, (stagedPackageUsers.get(staged.packagePath) || 0) + 1);
       const interpreter = await resolveServerInterpreter(staged.shebang, staged.packagePath);
       version = store.createAutomationScriptVersionFromStaged({
         scriptId: id, staged, interpreterPath: interpreter.path, interpreterVersion: interpreter.version,
       });
+      committed = true;
     } catch (error) {
-      if (staged) store.discardUnreferencedAutomationScriptPackage(id, staged);
       throw error;
+    } finally {
+      if (staged) {
+        const remaining = (stagedPackageUsers.get(staged.packagePath) || 1) - 1;
+        if (remaining <= 0) {
+          stagedPackageUsers.delete(staged.packagePath);
+          if (!committed) store.discardUnreferencedAutomationScriptPackage(id, staged);
+        } else {
+          stagedPackageUsers.set(staged.packagePath, remaining);
+        }
+      }
     }
     emitVersion(version);
     json(res, 200, version);
@@ -129,26 +143,31 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
     requireVersion(store, versionId(route), requiredWorkspace(url));
     const { actor } = await strictBody<{ actor: string }>(req, { actor: { kind: 'string', required: true } });
     if (!options.executeScriptTest) throw new Error('Automation script test executor is unavailable.');
+    if (activeTestClaims.has(versionId(route))) {
+      throw new RequestValidationError('Automation script test is already executing.');
+    }
     // Claim before awaiting the sandbox. A second request observes `testing` and
     // cannot start a competing one-shot execution.
     store.claimAutomationScriptTestExecution(versionId(route));
-    let report: import('@cc/superai-contracts').AutomationScriptTestReport;
+    activeTestClaims.add(versionId(route));
     try {
-      report = await options.executeScriptTest(versionId(route), actor);
-    } catch {
-      // Do not strand the one-shot claim if an adapter fails outside its normal
-      // result path, and do not expose adapter diagnostics as script output.
-      report = { status: 'failed', finishedAt: new Date().toISOString(), summary: 'Sandbox test execution failed.' };
+      let report: import('@cc/superai-contracts').AutomationScriptTestReport;
+      try {
+        report = await options.executeScriptTest(versionId(route), actor);
+      } catch {
+        report = { status: 'failed', finishedAt: new Date().toISOString(), summary: 'Sandbox test execution failed.' };
+      }
+      try {
+        const version = store.recordAutomationScriptTestResult(versionId(route), report);
+        emitVersion(version);
+        json(res, 200, version);
+      } catch (error) {
+        try { store.failClaimedAutomationScriptTestExecution(versionId(route)); } catch { /* retry/lease recovery remains fail-closed */ }
+        throw error;
+      }
+    } finally {
+      activeTestClaims.delete(versionId(route));
     }
-    let version;
-    try {
-      version = store.recordAutomationScriptTestResult(versionId(route), report);
-    } catch (error) {
-      try { store.failClaimedAutomationScriptTestExecution(versionId(route)); } catch { /* retry/lease recovery remains fail-closed */ }
-      throw error;
-    }
-    emitVersion(version);
-    json(res, 200, version);
   });
   map.set('automation-script-version.enable-approval', async (route, req, res, url) => {
     requireVersion(store, versionId(route), requiredWorkspace(url));

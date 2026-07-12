@@ -183,6 +183,9 @@ export class AutomationScriptService {
       if (version.status !== 'tested') {
         throw new Error(`Automation script enable approval requires tested status, got ${version.status}.`);
       }
+      if (version.testReport?.status !== 'passed') {
+        throw new Error('Automation script enable approval requires a passing server-recorded test result.');
+      }
       const script = this.requireScript(version.scriptId);
       const metadata = buildApprovalMetadata(version);
       const approval = this.options.security.createApprovalRequest({

@@ -328,6 +328,20 @@ test('a stranded testing claim is recovered to a terminal failed report after it
     const recovered = h.store.getAutomationScriptVersion(h.version.id)!;
     assert.equal(recovered.status, 'tested');
     assert.equal(recovered.testReport?.status, 'failed');
+    assert.throws(() => resumed.requestEnableApproval(h.version.id, 'author'), /passing server-recorded test/i);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('a failed server-recorded test cannot request enable approval', () => {
+  const h = createHarness();
+  try {
+    const approval = h.service.requestTestApproval(h.version.id, 'author');
+    h.store.resolveApprovalRequest(approval.approvalId, { status: 'approved', resolvedBy: 'security', resolution: 'allow one test' });
+    h.service.authorizeTest(h.version.id, approval.approvalId, 'security');
+    h.service.recordTestResult(h.version.id, { status: 'failed', finishedAt: NOW, summary: 'fixture failed' });
+    assert.throws(() => h.service.requestEnableApproval(h.version.id, 'author'), /passing server-recorded test/i);
   } finally {
     h.cleanup();
   }

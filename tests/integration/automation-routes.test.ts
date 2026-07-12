@@ -221,7 +221,7 @@ test('only one concurrent request can claim a one-shot script test before sandbo
   await Promise.resolve();
   await assert.rejects(
     map.get('automation-script-version.test')(route, requestBody({ actor: 'user' }), response(), url),
-    /test_authorized/,
+    /already executing/,
   );
   assert.equal(executions, 1);
   resolveExecution();
