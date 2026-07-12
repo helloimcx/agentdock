@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   approvalActionForVersion,
+  approvalResolutionForVersion,
   deriveAutomationDisplayStatus,
   filterAutomationRows,
   formatEvaluation,
@@ -31,6 +32,18 @@ test('renders only server-authorized script approval actions for every stage', (
   assert.deepEqual(statuses.map((status) => approvalActionForVersion({ status, pendingTestApprovalId: 'test', pendingApprovalId: 'enable' })), [
     null, 'authorize-test', 'run-test', null, 'request-enable', 'approve-enable', 'revoke', null, null,
   ]);
+});
+
+test('requires resolving the server-issued pending approval before applying a script decision', () => {
+  assert.deepEqual(
+    approvalResolutionForVersion({ status: 'pending_test_approval', pendingTestApprovalId: 'test:1' }, 'approved'),
+    { approvalId: 'test:1', decision: 'approved' },
+  );
+  assert.deepEqual(
+    approvalResolutionForVersion({ status: 'pending_approval', pendingApprovalId: 'enable:1' }, 'rejected'),
+    { approvalId: 'enable:1', decision: 'rejected' },
+  );
+  assert.equal(approvalResolutionForVersion({ status: 'tested' }, 'approved'), null);
 });
 
 test('groups and filters legacy origins and presents evaluations/runs safely', () => {

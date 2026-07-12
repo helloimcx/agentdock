@@ -3,6 +3,7 @@ import type { AutomationDefinition, AutomationEvaluation, AutomationRun, Automat
 export type AutomationDisplayStatus = 'active' | 'paused' | 'blocked';
 export type AutomationOriginFilter = 'all' | 'native' | 'scheduled-job' | 'automation-monitor';
 export type ScriptApprovalAction = 'authorize-test' | 'run-test' | 'request-enable' | 'approve-enable' | 'revoke';
+export type ApprovalDecision = 'approved' | 'rejected';
 
 export function deriveAutomationDisplayStatus(automation: Pick<AutomationDefinition, 'enabled' | 'health'>): AutomationDisplayStatus {
   if (automation.health === 'blocked') return 'blocked';
@@ -31,6 +32,22 @@ export function approvalActionForVersion(version: Pick<AutomationScriptVersion, 
     case 'approved': return 'revoke';
     default: return null;
   }
+}
+
+/**
+ * An Automation version endpoint applies a decision; it never makes one. Keep
+ * the pending ID selected by the server and resolve that ApprovalRequest first.
+ */
+export function approvalResolutionForVersion(
+  version: Pick<AutomationScriptVersion, 'status' | 'pendingTestApprovalId' | 'pendingApprovalId'>,
+  decision: ApprovalDecision,
+) {
+  const approvalId = version.status === 'pending_test_approval'
+    ? version.pendingTestApprovalId
+    : version.status === 'pending_approval'
+      ? version.pendingApprovalId
+      : undefined;
+  return approvalId ? { approvalId, decision } : null;
 }
 
 export function formatEvaluation(evaluation?: Pick<AutomationEvaluation, 'status'> & Partial<{
