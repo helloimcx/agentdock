@@ -5,7 +5,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
 import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
 import { waitForRunCompletion } from '../scheduler/run-polling.js';
-import { threadExists } from '../scheduler/thread-resolution.js';
+import { getLatestAssistantFinalContent, threadExists } from '../scheduler/thread-resolution.js';
 
 const MONITOR_RUN_PERMISSION_MODE = 'bypassPermissions';
 
@@ -57,10 +57,7 @@ export class AutomationConversationExecutor {
       });
       await waitForRunCompletion(this.options.store, sendResult.runId, timeoutMs, 'Monitor');
       const thread = await workspaceRouter.getThread(threadId);
-      const replyText = [...thread.messages]
-        .reverse()
-        .find((message) => message.role === 'assistant' && message.kind === 'final')
-        ?.content;
+      const replyText = getLatestAssistantFinalContent(thread);
       return {
         threadId,
         runId: sendResult.runId,
