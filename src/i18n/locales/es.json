@@ -9,6 +9,7 @@
     "projects": "Proyectos",
     "sessions": "Sesiones",
     "cron": "Cron",
+    "automations": "Automatizaciones",
     "bridge": "Puente",
     "system": "Sistema"
   },
@@ -176,6 +177,30 @@
     "viewAll": "Ver todo",
     "optional": "opcional",
     "confirmDelete": "¿Seguro que desea eliminar esto?"
+  },
+  "automations": {
+    "title": "Automatizaciones",
+    "description": "Administre automatizaciones programadas, supervisadas y con condiciones de script en un solo lugar.",
+    "refresh": "Actualizar",
+    "all": "Todas las automatizaciones",
+    "native": "Nativa",
+    "cron": "Importaciones de Cron",
+    "monitor": "Importaciones de monitor",
+    "empty": "No se encontraron automatizaciones",
+    "active": "Activa",
+    "paused": "Pausada",
+    "blocked": "Bloqueada",
+    "activation": "Activación",
+    "condition": "Condición",
+    "workspace": "Espacio de trabajo",
+    "lastEvaluation": "Última evaluación",
+    "lastRun": "Última ejecución",
+    "check": "Comprobar ahora",
+    "pause": "Pausar",
+    "enable": "Activar",
+    "detail": "Detalles",
+    "scriptApprovals": "Aprobaciones de scripts",
+    "reviewApproval": "Revisar"
   },
   "theme": {
     "light": "Claro",

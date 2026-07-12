@@ -10,6 +10,7 @@
     "sessions": "Sessions",
     "cron": "Cron",
     "monitors": "Monitors",
+    "automations": "Automations",
     "bridge": "Bridge",
     "system": "System"
   },
@@ -190,6 +191,30 @@
     "viewAll": "View all",
     "optional": "optional",
     "confirmDelete": "Are you sure you want to delete this?"
+  },
+  "automations": {
+    "title": "Automations",
+    "description": "Manage scheduled, monitored, and script-backed automations in one place.",
+    "refresh": "Refresh",
+    "all": "All automations",
+    "native": "Native",
+    "cron": "Cron imports",
+    "monitor": "Monitor imports",
+    "empty": "No automations found",
+    "active": "Active",
+    "paused": "Paused",
+    "blocked": "Blocked",
+    "activation": "Activation",
+    "condition": "Condition",
+    "workspace": "Workspace",
+    "lastEvaluation": "Last evaluation",
+    "lastRun": "Last run",
+    "check": "Check now",
+    "pause": "Pause",
+    "enable": "Enable",
+    "detail": "Details",
+    "scriptApprovals": "Script approvals",
+    "reviewApproval": "Review"
   },
   "theme": {
     "light": "Light",

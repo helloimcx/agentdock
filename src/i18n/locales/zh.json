@@ -10,6 +10,7 @@
     "sessions": "会话",
     "cron": "定时任务",
     "monitors": "监控任务",
+    "automations": "自动化",
     "bridge": "桥接",
     "system": "系统"
   },
@@ -190,6 +191,30 @@
     "viewAll": "查看全部",
     "optional": "可选",
     "confirmDelete": "确定要删除吗？"
+  },
+  "automations": {
+    "title": "自动化",
+    "description": "在同一处管理定时、监控和脚本条件自动化。",
+    "refresh": "刷新",
+    "all": "全部自动化",
+    "native": "原生",
+    "cron": "定时任务导入",
+    "monitor": "监控任务导入",
+    "empty": "没有自动化任务",
+    "active": "运行中",
+    "paused": "已暂停",
+    "blocked": "已阻止",
+    "activation": "触发器",
+    "condition": "条件",
+    "workspace": "工作区",
+    "lastEvaluation": "最近评估",
+    "lastRun": "最近执行",
+    "check": "立即检查",
+    "pause": "暂停",
+    "enable": "启用",
+    "detail": "详情",
+    "scriptApprovals": "脚本审批",
+    "reviewApproval": "审批"
   },
   "theme": {
     "light": "浅色",

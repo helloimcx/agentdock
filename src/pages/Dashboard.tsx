@@ -236,7 +236,7 @@ export default function Dashboard() {
   const [runtimeDetectionRunning, setRuntimeDetectionRunning] = useState(false);
   const [error, setError] = useState('');
   const [runtimeError, setRuntimeError] = useState('');
-  const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule } = useRuntimeFeatureSupport();
+  const { desktopRuntime, desktopWorkspace, knowledgeModule, schedulerModule, monitorModule } = useRuntimeFeatureSupport();
   const installedAgentRuntimes = agentRuntimes.filter((runtime) => runtime.installed);
   const quickActions: QuickActionProps[] = [
     {
@@ -263,16 +263,16 @@ export default function Dashboard() {
     });
   }
 
-  if (schedulerModule) {
+  if (schedulerModule || monitorModule) {
     quickActions.push({
-      title: '定时任务',
-      description: '查看和管理自动执行的计划任务。',
-      to: '/cron',
+      title: '自动化',
+      description: '查看和管理计划、监控和条件触发的自动化。',
+      to: '/automations',
       icon: CalendarClock,
     });
   }
 
-  if (!knowledgeModule || !schedulerModule) {
+  if (!knowledgeModule || (!schedulerModule && !monitorModule)) {
     quickActions.push({
       title: '系统设置',
       description: '查看配置、日志和桌面应用偏好。',

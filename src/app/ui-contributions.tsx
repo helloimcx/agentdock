@@ -1,8 +1,7 @@
 import { lazy, type ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import {
-  Clock,
-  Bell,
+  Activity,
   FolderKanban,
   LayoutDashboard,
   Library,
@@ -17,8 +16,7 @@ import type { RuntimeFeatureSupport } from '@/app/runtime';
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const ThreadChat = lazy(() => import('@/pages/Threads/ThreadChat'));
 const DesktopWorkspace = lazy(() => import('@/pages/Desktop/Workspace'));
-const CronList = lazy(() => import('@/pages/Cron/CronList'));
-const MonitorList = lazy(() => import('@/pages/Automation/MonitorList'));
+const AutomationList = lazy(() => import('@/pages/Automation/AutomationList'));
 const SystemConfig = lazy(() => import('@/pages/System/Config'));
 const SystemLogs = lazy(() => import('@/pages/System/Logs'));
 const KnowledgeHome = lazy(() => import('@/pages/Knowledge/KnowledgeHome'));
@@ -160,18 +158,25 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       element: () => <DesktopSessionsRedirect />,
     },
     {
-      id: 'cron',
-      path: 'cron',
-      titleKey: 'nav.cron',
+      id: 'automations',
+      path: 'automations',
+      titleKey: 'nav.automations',
       order: 70,
-      element: ({ features }) => guarded(features.schedulerModule, <CronList />),
+      element: ({ features }) => guarded(features.schedulerModule || features.monitorModule, <AutomationList />),
     },
     {
-      id: 'monitors',
-      path: 'monitors',
-      titleKey: 'nav.monitors',
+      id: 'cron-legacy',
+      path: 'cron',
+      titleKey: 'nav.automations',
       order: 71,
-      element: ({ features }) => guarded(features.monitorModule, <MonitorList />),
+      element: ({ features }) => guarded(features.schedulerModule || features.monitorModule, <Navigate to="/automations?origin=scheduled-job" replace />),
+    },
+    {
+      id: 'monitors-legacy',
+      path: 'monitors',
+      titleKey: 'nav.automations',
+      order: 72,
+      element: ({ features }) => guarded(features.schedulerModule || features.monitorModule, <Navigate to="/automations?origin=automation-monitor" replace />),
     },
     {
       id: 'system',
@@ -236,20 +241,12 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       visible: () => false,
     },
     {
-      id: 'cron',
-      path: '/cron',
-      labelKey: 'nav.cron',
-      icon: Clock,
+      id: 'automations',
+      path: '/automations',
+      labelKey: 'nav.automations',
+      icon: Activity,
       order: 70,
-      visible: ({ features }) => features.schedulerModule,
-    },
-    {
-      id: 'monitors',
-      path: '/monitors',
-      labelKey: 'nav.monitors',
-      icon: Bell,
-      order: 71,
-      visible: ({ features }) => features.monitorModule,
+      visible: ({ features }) => features.schedulerModule || features.monitorModule,
     },
     { id: 'system', path: '/system', labelKey: 'nav.system', icon: Settings, order: 80 },
   ];

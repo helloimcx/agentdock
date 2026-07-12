@@ -9,6 +9,7 @@
     "projects": "プロジェクト",
     "sessions": "セッション",
     "cron": "Cron",
+    "automations": "自動化",
     "bridge": "ブリッジ",
     "system": "システム"
   },
@@ -176,6 +177,30 @@
     "viewAll": "すべて表示",
     "optional": "任意",
     "confirmDelete": "本当に削除しますか？"
+  },
+  "automations": {
+    "title": "自動化",
+    "description": "スケジュール、監視、スクリプト条件の自動化を一元管理します。",
+    "refresh": "更新",
+    "all": "すべての自動化",
+    "native": "ネイティブ",
+    "cron": "Cron インポート",
+    "monitor": "監視インポート",
+    "empty": "自動化がありません",
+    "active": "有効",
+    "paused": "一時停止",
+    "blocked": "ブロック済み",
+    "activation": "起動",
+    "condition": "条件",
+    "workspace": "ワークスペース",
+    "lastEvaluation": "前回の評価",
+    "lastRun": "前回の実行",
+    "check": "今すぐ確認",
+    "pause": "一時停止",
+    "enable": "有効化",
+    "detail": "詳細",
+    "scriptApprovals": "スクリプト承認",
+    "reviewApproval": "確認"
   },
   "theme": {
     "light": "ライト",

@@ -26,7 +26,7 @@ const languages = [
 
 const navGroups = [
   { label: 'Core', ids: ['dashboard', 'chat', 'workspace', 'projects', 'sessions'] },
-  { label: 'Knowledge', ids: ['knowledge', 'cron', 'monitors'] },
+  { label: 'Knowledge', ids: ['knowledge', 'automations'] },
   { label: 'System', ids: ['system'] },
 ];
 

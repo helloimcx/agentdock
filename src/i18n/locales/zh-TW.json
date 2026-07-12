@@ -9,6 +9,7 @@
     "projects": "專案",
     "sessions": "工作階段",
     "cron": "排程工作",
+    "automations": "自動化",
     "bridge": "橋接",
     "system": "系統"
   },
@@ -176,6 +177,30 @@
     "viewAll": "檢視全部",
     "optional": "選填",
     "confirmDelete": "確定要刪除嗎？"
+  },
+  "automations": {
+    "title": "自動化",
+    "description": "在同一處管理排程、監控與腳本條件自動化。",
+    "refresh": "重新整理",
+    "all": "所有自動化",
+    "native": "原生",
+    "cron": "排程匯入",
+    "monitor": "監控匯入",
+    "empty": "找不到自動化",
+    "active": "啟用中",
+    "paused": "已暫停",
+    "blocked": "已封鎖",
+    "activation": "觸發",
+    "condition": "條件",
+    "workspace": "工作區",
+    "lastEvaluation": "最近評估",
+    "lastRun": "最近執行",
+    "check": "立即檢查",
+    "pause": "暫停",
+    "enable": "啟用",
+    "detail": "詳細資料",
+    "scriptApprovals": "指令碼核准",
+    "reviewApproval": "核准"
   },
   "theme": {
     "light": "淺色",
