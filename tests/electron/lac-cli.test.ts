@@ -749,3 +749,87 @@ test('lac scheduler list --thread filters by current thread context', async () =
     restore();
   }
 });
+
+test('lac automation add verifies an approved script version before creating the automation', async () => {
+  const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+  const { restore } = withFetchMock(async (input, init) => {
+    const url = String(input);
+    requests.push({ url, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (url.includes('/automation-scripts/versions/version-1')) {
+      return new Response(JSON.stringify({ ok: true, data: { id: 'version-1', scriptId: 'script-1', status: 'approved' } }), { headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ ok: true, data: { id: 'automation-1', title: 'Price watch' } }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io } = createIo();
+    const exitCode = await runCli([
+      'automation', 'add', '--title', 'Price watch', '--script-version', 'version-1', '--script-id', 'script-1',
+      '--interval', '1m', '--message', 'Tell me when it matches', '--json',
+    ], {
+      LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+      LOCAL_AI_WORKSPACE_ID: 'workspace-1',
+      LOCAL_AI_THREAD_ID: 'thread-1',
+      LOCAL_AI_PLATFORM: 'lark',
+      LOCAL_AI_CHAT_ID: 'chat-1',
+      LOCAL_AI_PLATFORM_USER_ID: 'user-1',
+    }, io);
+    assert.equal(exitCode, 0);
+    assert.deepEqual(requests, [
+      { url: 'http://127.0.0.1:9831/api/local/v1/automation-scripts/versions/version-1?workspace_id=workspace-1', method: 'GET', body: undefined },
+      {
+        url: 'http://127.0.0.1:9831/api/local/v1/automations', method: 'POST', body: {
+          workspaceId: 'workspace-1', title: 'Price watch', enabled: true,
+          activation: { kind: 'interval', intervalMs: 60_000 },
+          condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'rising' },
+          action: { kind: 'agent-prompt', promptTemplate: 'Tell me when it matches', executionMode: 'side-thread' },
+          delivery: { platform: 'lark', route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' } },
+          policies: { concurrency: 'skip-if-running', cooldownMs: 0 },
+        },
+      },
+    ]);
+  } finally { restore(); }
+});
+
+test('lac script stage uploads only a bounded source bundle and script test requires claimable authorization', async () => {
+  const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+  const { restore } = withFetchMock(async (input, init) => {
+    const url = String(input);
+    requests.push({ url, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (url.includes('/versions/version-1') && !url.endsWith('/test')) {
+      return new Response(JSON.stringify({ ok: true, data: { id: 'version-1', status: 'test_authorized' } }), { headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ ok: true, data: { id: 'version-1', status: 'pending_test_approval' } }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io } = createIo();
+    const env = { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1', LOCAL_AI_WORKSPACE_ID: 'workspace-1', LOCAL_AI_THREAD_ID: 'thread-1' };
+    assert.equal(await runCli(['script', 'stage', '--script', 'script-1', '--source-json', '[{"path":"manifest.json","content":"{}"},{"path":"check.js","content":"#!/usr/bin/env node"}]'], env, io), 0);
+    assert.deepEqual(requests[0], {
+      url: 'http://127.0.0.1:9831/api/local/v1/automation-scripts/script-1/versions?workspace_id=workspace-1', method: 'POST',
+      body: { files: [{ path: 'manifest.json', content: '{}' }, { path: 'check.js', content: '#!/usr/bin/env node' }] },
+    });
+    assert.equal(await runCli(['script', 'test', 'version-1', '--actor', 'agent'], env, io), 0);
+    assert.deepEqual(requests.slice(1), [
+      { url: 'http://127.0.0.1:9831/api/local/v1/automation-scripts/versions/version-1?workspace_id=workspace-1', method: 'GET', body: undefined },
+      { url: 'http://127.0.0.1:9831/api/local/v1/automation-scripts/versions/version-1/test?workspace_id=workspace-1', method: 'POST', body: { actor: 'agent' } },
+    ]);
+  } finally { restore(); }
+});
+
+test('lac script and automation commands fail closed before a server-approved status permits execution', async () => {
+  const requests: string[] = [];
+  const { restore } = withFetchMock(async (input) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify({ ok: true, data: { id: 'version-1', scriptId: 'script-1', status: 'pending_approval' } }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io } = createIo();
+    const env = { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1', LOCAL_AI_WORKSPACE_ID: 'workspace-1' };
+    assert.equal(await runCli(['automation', 'add', '--title', 'blocked', '--script-id', 'script-1', '--script-version', 'version-1', '--message', 'nope'], env, io), 1);
+    assert.equal(await runCli(['script', 'test', 'version-1', '--actor', 'agent'], env, io), 1);
+    assert.deepEqual(requests, [
+      'http://127.0.0.1:9831/api/local/v1/automation-scripts/versions/version-1?workspace_id=workspace-1',
+      'http://127.0.0.1:9831/api/local/v1/automation-scripts/versions/version-1?workspace_id=workspace-1',
+    ]);
+  } finally { restore(); }
+});

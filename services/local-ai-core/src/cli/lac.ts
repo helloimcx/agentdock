@@ -74,6 +74,33 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
           return 2;
       }
     }
+    if (domain === 'automation') {
+      switch (action) {
+        case 'add': return await handleAutomationAdd(flags, env, io, json);
+        case 'list': return await handleAutomationList(flags, env, io, json);
+        case 'info': return await handleAutomationInfo(maybeId, flags, env, io, json);
+        case 'edit': return await handleAutomationEdit(maybeId, flags, env, io, json);
+        case 'del':
+        case 'delete': return await handleAutomationDelete(maybeId, flags, env, io, json);
+        case 'check': return await handleAutomationCheck(maybeId, flags, env, io, json);
+        default: printUsage(io.stderr); return 2;
+      }
+    }
+    if (domain === 'script') {
+      switch (action) {
+        case 'list': return await handleScriptList(flags, env, io, json);
+        case 'create': return await handleScriptCreate(flags, env, io, json);
+        case 'stage': return await handleScriptStage(flags, env, io, json);
+        case 'status': return await handleScriptStatus(maybeId, flags, env, io, json);
+        case 'test-approval': return await handleScriptTransition('test-approval', maybeId, flags, env, io, json);
+        case 'test': return await handleScriptTest(maybeId, flags, env, io, json);
+        case 'enable-approval': return await handleScriptTransition('enable-approval', maybeId, flags, env, io, json);
+        case 'approve': return await handleScriptApprovalDecision('approve', maybeId, flags, env, io, json);
+        case 'reject': return await handleScriptApprovalDecision('reject', maybeId, flags, env, io, json);
+        case 'revoke': return await handleScriptTransition('revoke', maybeId, flags, env, io, json);
+        default: printUsage(io.stderr); return 2;
+      }
+    }
     if (domain !== 'scheduler') {
       printUsage(io.stderr);
       return 2;
@@ -100,6 +127,156 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
     io.stderr.write(`${formatSafeError(error)}\n`);
     return 1;
   }
+}
+
+type ScriptVersionSummary = { id: string; scriptId: string; status: string };
+
+async function handleAutomationAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = requireWorkspaceContext(flags, env, 'automation add');
+  const scriptId = getRequiredFlag(flags, 'script-id');
+  const versionId = getRequiredFlag(flags, 'script-version');
+  const version = await request<ScriptVersionSummary>(context.baseUrl, 'GET', scriptVersionPath(versionId, context));
+  if (version.status !== 'approved') throw new Error(`automation add requires an approved script version, got ${version.status}.`);
+  if (version.scriptId !== scriptId) throw new Error('automation add script id does not match the approved script version.');
+  const intervalMs = parseDurationMs(getFlag(flags, 'interval') || '1m');
+  const platform = context.platform || 'local';
+  const route = context.platform && context.chatId
+    ? { type: context.routeType || 'channel.chat', channelId: context.chatId, ...(context.platformInstanceId ? { instanceId: context.platformInstanceId } : {}), ...(context.platformUserId ? { participantId: context.platformUserId } : {}), ...(context.threadId ? { threadId: context.threadId } : {}) }
+    : { type: 'local.thread', channelId: context.workspaceId, ...(context.threadId ? { threadId: context.threadId } : {}) };
+  const automation = await request<unknown>(context.baseUrl, 'POST', '/automations', {
+    workspaceId: context.workspaceId,
+    title: getRequiredFlag(flags, 'title'),
+    enabled: getBooleanFlag(flags, 'enabled', true),
+    activation: { kind: 'interval', intervalMs },
+    condition: { kind: 'approved-script', scriptId, approvedVersionId: versionId, edge: getFlag(flags, 'edge') || 'rising' },
+    action: { kind: 'agent-prompt', promptTemplate: getRequiredFlag(flags, 'message'), executionMode: getFlag(flags, 'execution-mode') || 'side-thread' },
+    delivery: { platform, route },
+    policies: { concurrency: 'skip-if-running', cooldownMs: getFlag(flags, 'cooldown') ? parseDurationMs(getFlag(flags, 'cooldown')) : 0 },
+  });
+  print(json, io.stdout, automation, `Created automation ${(automation as { id?: string }).id || ''}`.trim());
+  return 0;
+}
+
+async function handleAutomationList(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = requireWorkspaceContext(flags, env, 'automation list');
+  const response = await request<{ automations: unknown[] }>(context.baseUrl, 'GET', `/automations?workspace_id=${encodeURIComponent(context.workspaceId)}`);
+  print(json, io.stdout, response, response.automations.length ? response.automations.map((item) => JSON.stringify(item)).join('\n') : 'No automations.');
+  return 0;
+}
+
+async function handleAutomationInfo(id: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!id) throw new Error('automation info requires an automation id.');
+  const context = requireWorkspaceContext(flags, env, 'automation info');
+  const automation = await request<unknown>(context.baseUrl, 'GET', `/automations/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(context.workspaceId)}`);
+  print(json, io.stdout, automation, JSON.stringify(automation, null, 2));
+  return 0;
+}
+
+async function handleAutomationEdit(id: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!id) throw new Error('automation edit requires an automation id.');
+  const context = requireWorkspaceContext(flags, env, 'automation edit');
+  const body: Record<string, unknown> = {};
+  const title = getFlag(flags, 'title');
+  const enabled = getOptionalBooleanFlag(flags, 'enabled');
+  if (title) body.title = title;
+  if (enabled !== undefined) body.enabled = enabled;
+  if (!Object.keys(body).length) throw new Error('automation edit requires --title or --enabled.');
+  const automation = await request<unknown>(context.baseUrl, 'PATCH', `/automations/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(context.workspaceId)}`, body);
+  print(json, io.stdout, automation, `Updated automation ${id}`);
+  return 0;
+}
+
+async function handleAutomationDelete(id: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!id) throw new Error('automation del requires an automation id.');
+  const context = requireWorkspaceContext(flags, env, 'automation del');
+  const result = await request<unknown>(context.baseUrl, 'DELETE', `/automations/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(context.workspaceId)}`);
+  print(json, io.stdout, result, `Deleted automation ${id}`);
+  return 0;
+}
+
+async function handleAutomationCheck(id: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!id) throw new Error('automation check requires an automation id.');
+  const context = requireWorkspaceContext(flags, env, 'automation check');
+  const result = await request<unknown>(context.baseUrl, 'POST', `/automations/${encodeURIComponent(id)}/check?workspace_id=${encodeURIComponent(context.workspaceId)}`);
+  print(json, io.stdout, result, `Checked automation ${id}`);
+  return 0;
+}
+
+async function handleScriptList(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = requireWorkspaceContext(flags, env, 'script list');
+  const result = await request<unknown>(context.baseUrl, 'GET', `/automation-scripts?workspace_id=${encodeURIComponent(context.workspaceId)}`);
+  print(json, io.stdout, result, JSON.stringify(result, null, 2));
+  return 0;
+}
+
+async function handleScriptCreate(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = requireWorkspaceContext(flags, env, 'script create');
+  const result = await request<unknown>(context.baseUrl, 'POST', '/automation-scripts', { workspaceId: context.workspaceId, title: getRequiredFlag(flags, 'title'), ...(getFlag(flags, 'desc') ? { description: getFlag(flags, 'desc') } : {}) });
+  print(json, io.stdout, result, `Created script ${(result as { id?: string }).id || ''}`.trim());
+  return 0;
+}
+
+async function handleScriptStage(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  const context = requireWorkspaceContext(flags, env, 'script stage');
+  const scriptId = getRequiredFlag(flags, 'script');
+  const source = getRequiredFlag(flags, 'source-json');
+  if (Buffer.byteLength(source, 'utf8') > 1_200_000) throw new Error('script stage source bundle exceeds 1,200,000 bytes.');
+  let files: unknown;
+  try { files = JSON.parse(source); } catch { throw new Error('script stage --source-json must be a JSON array.'); }
+  if (!Array.isArray(files) || files.some((file) => !file || typeof file !== 'object' || Array.isArray(file) || Object.keys(file as object).some((key) => key !== 'path' && key !== 'content'))) {
+    throw new Error('script stage accepts only source file path and content fields.');
+  }
+  const result = await request<unknown>(context.baseUrl, 'POST', `/automation-scripts/${encodeURIComponent(scriptId)}/versions?workspace_id=${encodeURIComponent(context.workspaceId)}`, { files });
+  print(json, io.stdout, result, `Staged script version ${(result as { id?: string }).id || ''}`.trim());
+  return 0;
+}
+
+async function handleScriptStatus(versionId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!versionId) throw new Error('script status requires a version id.');
+  const context = requireWorkspaceContext(flags, env, 'script status');
+  const version = await request<unknown>(context.baseUrl, 'GET', scriptVersionPath(versionId, context));
+  print(json, io.stdout, version, JSON.stringify(version, null, 2));
+  return 0;
+}
+
+async function handleScriptTransition(action: 'test-approval' | 'enable-approval' | 'revoke', versionId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!versionId) throw new Error(`script ${action} requires a version id.`);
+  const context = requireWorkspaceContext(flags, env, `script ${action}`);
+  const result = await request<unknown>(context.baseUrl, 'POST', scriptVersionActionPath(versionId, action, context), { actor: getRequiredFlag(flags, 'actor') });
+  print(json, io.stdout, result, `Requested script ${action} for ${versionId}`);
+  return 0;
+}
+
+async function handleScriptTest(versionId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!versionId) throw new Error('script test requires a version id.');
+  const context = requireWorkspaceContext(flags, env, 'script test');
+  const version = await request<ScriptVersionSummary>(context.baseUrl, 'GET', scriptVersionPath(versionId, context));
+  if (version.status !== 'test_authorized') throw new Error(`script test requires a live unconsumed test authorization, got ${version.status}.`);
+  const result = await request<unknown>(context.baseUrl, 'POST', scriptVersionActionPath(versionId, 'test', context), { actor: getRequiredFlag(flags, 'actor') });
+  print(json, io.stdout, result, `Ran script test for ${versionId}`);
+  return 0;
+}
+
+async function handleScriptApprovalDecision(action: 'approve' | 'reject', versionId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (!versionId) throw new Error(`script ${action} requires a version id.`);
+  const context = requireWorkspaceContext(flags, env, `script ${action}`);
+  const result = await request<unknown>(context.baseUrl, 'POST', scriptVersionActionPath(versionId, action, context), { approvalId: getRequiredFlag(flags, 'approval'), actor: getRequiredFlag(flags, 'actor') });
+  print(json, io.stdout, result, `Applied script ${action} for ${versionId}`);
+  return 0;
+}
+
+function scriptVersionPath(versionId: string, context: CliContext) {
+  return `/automation-scripts/versions/${encodeURIComponent(versionId)}?workspace_id=${encodeURIComponent(context.workspaceId)}`;
+}
+
+function scriptVersionActionPath(versionId: string, action: string, context: CliContext) {
+  return `/automation-scripts/versions/${encodeURIComponent(versionId)}/${action}?workspace_id=${encodeURIComponent(context.workspaceId)}`;
+}
+
+function requireWorkspaceContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, operation: string) {
+  const context = resolveContext(flags, env);
+  if (!context.workspaceId) throw new Error(`${operation} requires a workspace context. Set LOCAL_AI_WORKSPACE_ID or pass --workspace.`);
+  return context;
 }
 
 async function handleMonitorAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
@@ -506,6 +683,11 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac monitor edit <monitor-id> [--title "<title>"] [--condition "<expr>"] [--message "<text>"] [--enabled true|false] [--cooldown 15m] [--execution-mode same-thread|side-thread] [--json]',
     '  lac monitor del <monitor-id> [--json]',
     '  lac monitor run <monitor-id> [--json]',
+    '  lac automation add --title "<title>" --script-id <script-id> --script-version <approved-version-id> --interval <duration> --message "<prompt>" [--json]',
+    '  lac automation list|info <id>|edit <id> [--title "<title>"] [--enabled true|false]|del <id>|check <id> [--json]',
+    '  lac script list|create --title "<title>"|stage --script <script-id> --source-json "<files-json>"|status <version-id> [--json]',
+    '  lac script test-approval|test|enable-approval|revoke <version-id> --actor <actor> [--json]',
+    '  lac script approve|reject <version-id> --approval <approval-id> --actor <actor> [--json]',
     '  lac channel send-file --path "<file>" [--target <chat-or-user-id>] [--workspace <id>] [--workspace-path <path>] [--platform lark] [--name <filename>] [--json]',
   ].join('\n') + '\n');
 }

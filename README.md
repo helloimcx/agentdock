@@ -97,6 +97,7 @@ flowchart LR
 ### 2026-07-12
 
 - Approved automation scripts now use a strict JSON condition protocol with environment-only secret injection, bounded streaming output, and fail-closed approval/interpreter checks.
+- Agents can now author condition-trigger Automations through managed LAC commands and a staged, two-approval sandbox workflow.
 
 ### 2026-07-08
 

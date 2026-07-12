@@ -30,7 +30,7 @@
     "build:npm": "VITE_LOCAL_AI_CORE_BASE=/api/local/v1 pnpm build",
     "build:web": "vite build",
     "build:renderer": "vite build",
-    "build:electron": "node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json",
+    "build:electron": "node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json && node scripts/copy-managed-skills.mjs",
     "build:core": "pnpm build:electron",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm typecheck && pnpm build:renderer && pnpm build:electron && node --test dist-electron/tests/electron/*.test.js dist-electron/tests/contracts/*.test.js dist-electron/tests/integration/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js",

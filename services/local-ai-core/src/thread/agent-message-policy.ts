@@ -54,7 +54,7 @@ export interface AgentMessageKnowledgeBase {
   name: string;
 }
 
-export function composeAgentMessage(content: string, knowledgeBases: AgentMessageKnowledgeBase[] = []) {
+export function composeAgentMessage(content: string, knowledgeBases: AgentMessageKnowledgeBase[] = [], catalog = new ManagedSkillCatalog()) {
   if (content.trim().startsWith('/')) {
     return content;
   }
@@ -65,12 +65,14 @@ export function composeAgentMessage(content: string, knowledgeBases: AgentMessag
         '[/Selected Knowledge Bases]',
       ].join('\n')
     : '';
+  const conditionSkill = isConditionAutomationRequest(content) ? catalog.get('condition-trigger')?.content || '' : '';
   return [
     SCHEDULER_INSTRUCTION,
     '',
     MONITOR_INSTRUCTION,
     '',
     CHANNEL_INSTRUCTION,
+    ...(conditionSkill ? ['', '[Condition Trigger Skill]', conditionSkill, '[/Condition Trigger Skill]'] : []),
     ...(knowledgeBlock ? ['', knowledgeBlock] : []),
     '',
     '[User Message]',
@@ -78,3 +80,10 @@ export function composeAgentMessage(content: string, knowledgeBases: AgentMessag
     '[/User Message]',
   ].join('\n');
 }
+
+function isConditionAutomationRequest(content: string) {
+  const normalized = content.toLowerCase();
+  return /\b(?:condition(?:al)?|script[-\s]?(?:based|backed)?|trigger)\b/.test(normalized)
+    && /\b(?:automation|monitor|task|schedule|trigger)\b/.test(normalized);
+}
+import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
