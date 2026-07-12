@@ -833,3 +833,21 @@ test('lac script and automation commands fail closed before a server-approved st
     ]);
   } finally { restore(); }
 });
+
+test('lac automation add uses local delivery when channel identifiers are incomplete', async () => {
+  let body: Record<string, unknown> | undefined;
+  const { restore } = withFetchMock(async (input, init) => {
+    if (String(input).includes('/versions/version-1')) {
+      return new Response(JSON.stringify({ ok: true, data: { id: 'version-1', scriptId: 'script-1', status: 'approved' } }), { headers: { 'content-type': 'application/json' } });
+    }
+    body = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ ok: true, data: { id: 'automation-1' } }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io } = createIo();
+    assert.equal(await runCli(['automation', 'add', '--title', 'local', '--script-id', 'script-1', '--script-version', 'version-1', '--message', 'check'], {
+      LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1', LOCAL_AI_WORKSPACE_ID: 'workspace-1', LOCAL_AI_PLATFORM: 'lark',
+    }, io), 0);
+    assert.deepEqual(body?.delivery, { platform: 'local', route: { type: 'local.thread', channelId: 'workspace-1' } });
+  } finally { restore(); }
+});

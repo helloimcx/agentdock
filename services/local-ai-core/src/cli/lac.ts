@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { lstatSync, readFileSync } from 'node:fs';
 import type {
   AutomationMonitor,
   AutomationMonitorCondition,
@@ -139,8 +140,9 @@ async function handleAutomationAdd(flags: Map<string, string[]>, env: NodeJS.Pro
   if (version.status !== 'approved') throw new Error(`automation add requires an approved script version, got ${version.status}.`);
   if (version.scriptId !== scriptId) throw new Error('automation add script id does not match the approved script version.');
   const intervalMs = parseDurationMs(getFlag(flags, 'interval') || '1m');
-  const platform = context.platform || 'local';
-  const route = context.platform && context.chatId
+  const hasChannelRoute = Boolean(context.platform && context.chatId);
+  const platform = hasChannelRoute ? context.platform : 'local';
+  const route = hasChannelRoute
     ? { type: context.routeType || 'channel.chat', channelId: context.chatId, ...(context.platformInstanceId ? { instanceId: context.platformInstanceId } : {}), ...(context.platformUserId ? { participantId: context.platformUserId } : {}), ...(context.threadId ? { threadId: context.threadId } : {}) }
     : { type: 'local.thread', channelId: context.workspaceId, ...(context.threadId ? { threadId: context.threadId } : {}) };
   const automation = await request<unknown>(context.baseUrl, 'POST', '/automations', {
@@ -219,7 +221,18 @@ async function handleScriptCreate(flags: Map<string, string[]>, env: NodeJS.Proc
 async function handleScriptStage(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
   const context = requireWorkspaceContext(flags, env, 'script stage');
   const scriptId = getRequiredFlag(flags, 'script');
-  const source = getRequiredFlag(flags, 'source-json');
+  const sourceJson = getFlag(flags, 'source-json');
+  const sourceFile = getFlag(flags, 'source-file');
+  if (Boolean(sourceJson) === Boolean(sourceFile)) throw new Error('script stage requires exactly one of --source-json or --source-file.');
+  let source: string;
+  if (sourceFile) {
+    const stat = lstatSync(sourceFile);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('script stage --source-file must be a regular file.');
+    if (stat.size > 1_200_000) throw new Error('script stage source bundle exceeds 1,200,000 bytes.');
+    source = readFileSync(sourceFile, 'utf8');
+  } else {
+    source = sourceJson;
+  }
   if (Buffer.byteLength(source, 'utf8') > 1_200_000) throw new Error('script stage source bundle exceeds 1,200,000 bytes.');
   let files: unknown;
   try { files = JSON.parse(source); } catch { throw new Error('script stage --source-json must be a JSON array.'); }

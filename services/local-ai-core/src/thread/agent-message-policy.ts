@@ -83,7 +83,12 @@ export function composeAgentMessage(content: string, knowledgeBases: AgentMessag
 
 function isConditionAutomationRequest(content: string) {
   const normalized = content.toLowerCase();
-  return /\b(?:condition(?:al)?|script[-\s]?(?:based|backed)?|trigger)\b/.test(normalized)
-    && /\b(?:automation|monitor|task|schedule|trigger)\b/.test(normalized);
+  const englishCondition = /\b(?:condition(?:al)?|script[-\s]?(?:based|backed)?)\b/.test(normalized);
+  const englishAutomation = /\b(?:automation|monitor|task|schedule)\b/.test(normalized);
+  const englishRequest = /\b(?:create|add|set(?:\s+up)?|configure|build|author)\b/.test(normalized);
+  const chineseCondition = /条件自动化|条件触发|脚本条件/.test(content);
+  const chineseRequest = /创建|新建|设置|添加|建立|配置|制作|实现/.test(content);
+  const chineseNegation = /(?:不要|不需要|无需|别|仅|只是).{0,8}(?:创建|新建|设置|添加|建立|配置|制作|实现)/.test(content);
+  return (englishCondition && englishAutomation && englishRequest) || (chineseCondition && chineseRequest && !chineseNegation);
 }
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';

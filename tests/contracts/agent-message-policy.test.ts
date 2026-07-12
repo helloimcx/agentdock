@@ -30,6 +30,16 @@ test('agent message policy injects the exact managed condition trigger skill onl
   assert.doesNotMatch(nonMatching, /\[Condition Trigger Skill\]/);
 });
 
+test('condition trigger skill is injected for explicit Chinese condition automation requests, not generic trigger words', () => {
+  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  for (const message of ['创建一个条件自动化，在脚本条件满足时触发', '请设置条件触发任务', '为这个脚本条件创建自动化']) {
+    assert.match(composeAgentMessage(message, [], catalog), /\[Condition Trigger Skill\]/);
+  }
+  for (const message of ['触发一次普通任务', 'Please trigger a response now.', '解释条件自动化的概念，但不要创建它']) {
+    assert.doesNotMatch(composeAgentMessage(message, [], catalog), /\[Condition Trigger Skill\]/);
+  }
+});
+
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
