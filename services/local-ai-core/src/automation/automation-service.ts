@@ -463,8 +463,7 @@ export class AutomationService {
     const finishedAt = this.now();
     if (decision.kind === 'script-delegation') {
       try {
-        const previousEvaluation = this.listEvaluations(automation.id)
-          .find((evaluation) => evaluation.id !== running.id && evaluation.status === 'finished');
+        const previousEvaluation = this.getLatestEvaluationWithState(automation.id);
         const previousState = previousEvaluation?.status === 'finished' && previousEvaluation.nextState
           ? previousEvaluation.nextState
           : {};
@@ -493,6 +492,7 @@ export class AutomationService {
           stderr: scriptResult.stderr,
           exitCode: scriptResult.exitCode === null ? undefined : scriptResult.exitCode,
           outputTruncated: scriptResult.outputTruncated,
+          ...(scriptResult.networkAudit === undefined ? {} : { networkAudit: scriptResult.networkAudit }),
           ...(scriptResult.summary === undefined ? {} : { resultSummary: scriptResult.summary }),
         };
         const scriptFinished = this.finishEvaluation(running.id, scriptDecision.conditionOutcome === 'matched'

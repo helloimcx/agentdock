@@ -12,7 +12,11 @@ class FakeSandbox implements SandboxRunner {
   input?: SandboxRunInput;
   result: SandboxRunResult = { exitCode: 0, signal: null, stdout: '{"protocolVersion":1,"matched":true,"summary":"ok","nextState":{"cursor":2}}', stderr: 'diagnostic\u0001' };
   async probe() { return { available: true, platform: 'test', missing: [] }; }
-  async run(input: SandboxRunInput) { this.input = input; return this.result; }
+  async run(input: SandboxRunInput) {
+    this.input = input;
+    if (input.command.endsWith(' --version')) return { exitCode: 0, signal: null, stdout: 'sh 1.0', stderr: '' };
+    return this.result;
+  }
 }
 
 function version(overrides: Partial<AutomationScriptVersion> = {}): AutomationScriptVersion {
@@ -32,7 +36,6 @@ function runner(sandbox = new FakeSandbox(), current = version()) {
     runner: new ScriptProtocolRunner({
       sandbox,
       getVersion: () => current,
-      getInterpreterVersion: async () => 'sh 1.0',
       verifyPackage: () => undefined,
       entrypointFor: () => 'run.sh',
     }),
@@ -70,7 +73,7 @@ test('fails closed before execution for non-approved, changed package, or interp
       subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }),
       (error: unknown) => error instanceof ScriptProtocolError && error.blockAutomation,
     );
-    assert.equal(sandbox.input, undefined);
+    assert.equal(sandbox.input?.stdin, undefined);
   }
 });
 
@@ -80,31 +83,43 @@ test('enforces a 30 second default and five minute maximum', async () => {
   assert.equal(sandbox.input?.timeoutMs, 300_000);
 });
 
+test('validates an interpreter only through the sandbox boundary', async () => {
+  const sandbox = new FakeSandbox();
+  const current = version({ interpreterPath: '/untrusted/side-effect-interpreter', interpreterVersion: 'different' });
+  const subject = new ScriptProtocolRunner({ sandbox, getVersion: () => current, verifyPackage: () => undefined, entrypointFor: () => 'run.sh' });
+  await assert.rejects(
+    subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }),
+    (error: unknown) => error instanceof ScriptProtocolError && error.code === 'interpreter_mismatch',
+  );
+  assert.match(sandbox.input?.command || '', /untrusted\/side-effect-interpreter/);
+  assert.equal(sandbox.input?.stdin, undefined);
+});
+
 test('injects only declared env secrets for one process and redacts them from persisted output', async () => {
   const sandbox = new FakeSandbox();
   sandbox.result = { exitCode: 0, signal: null, stdout: '{"protocolVersion":1,"matched":true,"summary":"token-value"}', stderr: 'token-value\u0002' };
   const current = version({ secretRefs: ['env://API_TOKEN'], env: ['API_TOKEN'] });
   const subject = new ScriptProtocolRunner({
-    sandbox, getVersion: () => current, getInterpreterVersion: async () => 'sh 1.0', verifyPackage: () => undefined, entrypointFor: () => 'run.sh',
+    sandbox, getVersion: () => current, verifyPackage: () => undefined, entrypointFor: () => 'run.sh',
     secretResolver: { get: (name) => name === 'API_TOKEN' ? 'token-value' : undefined },
   });
   const result = await subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} });
   assert.deepEqual(sandbox.input?.env, { API_TOKEN: 'token-value' });
   assert.deepEqual(sandbox.input?.allowedEnv, ['API_TOKEN']);
   assert.equal(result.summary, '[REDACTED]');
-  assert.equal(result.stderr, '[REDACTED]');
+  assert.equal(result.stderr, '');
 });
 
 test('fails with secret_unavailable without running undeclared or unavailable secrets', async () => {
   const sandbox = new FakeSandbox();
   const current = version({ secretRefs: ['env://API_TOKEN'], env: [] });
   const subject = new ScriptProtocolRunner({
-    sandbox, getVersion: () => current, getInterpreterVersion: async () => 'sh 1.0', verifyPackage: () => undefined, entrypointFor: () => 'run.sh',
+    sandbox, getVersion: () => current, verifyPackage: () => undefined, entrypointFor: () => 'run.sh',
     secretResolver: { get: () => 'must-not-read' },
   });
   await assert.rejects(
     subject.run({ scriptId: 'script-1', approvedVersionId: 'version-1', evaluationId: 'e', triggeredAt: '2026-07-12T00:00:00.000Z', previousState: {} }),
     (error: unknown) => error instanceof ScriptProtocolError && error.code === 'secret_unavailable',
   );
-  assert.equal(sandbox.input, undefined);
+  assert.equal(sandbox.input?.stdin, undefined);
 });

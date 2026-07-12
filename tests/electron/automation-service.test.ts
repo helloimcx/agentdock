@@ -295,6 +295,46 @@ test('approval or sandbox fact failures block the automation and preserve prior 
   }
 });
 
+test('a failed script evaluation does not erase the last successful script state', async () => {
+  const previousStates: Record<string, unknown>[] = [];
+  let call = 0;
+  const context = fixture({
+    scriptProtocolRunner: {
+      async run(request) {
+        call += 1;
+        previousStates.push(request.previousState);
+        if (call === 2) throw new ScriptProtocolError('script_exit', 'temporary failure');
+        return { matched: false, stdout: '', stderr: '', exitCode: 0, outputTruncated: false, nextState: { cursor: call } };
+      },
+    },
+  });
+  try {
+    const automation = context.service.create(input({
+      condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'rising' },
+    }));
+    await context.service.checkNow(automation.id);
+    await context.service.checkNow(automation.id);
+    await context.service.checkNow(automation.id);
+    assert.deepEqual(previousStates, [{}, { cursor: 1 }, { cursor: 1 }]);
+  } finally { context.close(); }
+});
+
+test('script network audit persists only bounded destination metadata', async () => {
+  const context = fixture({
+    scriptProtocolRunner: { async run() {
+      return { matched: false, stdout: '', stderr: '', exitCode: 0, outputTruncated: false,
+        networkAudit: [{ host: 'api.example.test', port: 443, allowed: true, timestamp: NOW.toISOString() }],
+      };
+    } },
+  });
+  try {
+    const automation = context.service.create(input({ condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'rising' } }));
+    const evaluation = await context.service.checkNow(automation.id);
+    assert.deepEqual(evaluation.status === 'finished' ? evaluation.networkAudit : undefined,
+      [{ host: 'api.example.test', port: 443, allowed: true, timestamp: NOW.toISOString() }]);
+  } finally { context.close(); }
+});
+
 test('action executor failures persist a failed run and keep evaluation state consistent', async () => {
   const context = fixture({
     actionExecutor: { async execute() { throw new Error('ACP send failed'); } },

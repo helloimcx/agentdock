@@ -1,6 +1,5 @@
 import { basename, join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
 import type { AutomationScriptVersion } from '@cc/superai-contracts';
 import { verifyStagedScriptPackage } from './script-package.js';
 import type { SandboxRunner } from './sandbox-runner.js';
@@ -31,6 +30,7 @@ export interface ScriptProtocolResult {
   stderr: string;
   exitCode: number | null;
   outputTruncated: boolean;
+  networkAudit?: Array<{ host: string; port?: number; allowed: boolean; timestamp: string }>;
 }
 
 export class ScriptProtocolError extends Error {
@@ -49,7 +49,6 @@ export interface ScriptProtocolRunnerOptions {
   getVersion(versionId: string): AutomationScriptVersion | undefined;
   secretResolver?: AutomationSecretResolver;
   verifyPackage?: (version: AutomationScriptVersion) => void;
-  getInterpreterVersion?: (path: string) => Promise<string>;
   entrypointFor?: (version: AutomationScriptVersion) => string;
 }
 
@@ -62,12 +61,33 @@ export class ScriptProtocolRunner {
 
   async run(request: ScriptProtocolRequest): Promise<ScriptProtocolResult> {
     const version = this.requireApprovedVersion(request);
-    const capability = await this.options.sandbox.probe();
+    let capability;
+    try { capability = await this.options.sandbox.probe(); } catch {
+      throw new ScriptProtocolError('sandbox_unavailable', 'sandbox_unavailable', true);
+    }
     if (!capability.available) {
       throw new ScriptProtocolError('sandbox_unavailable', `sandbox_unavailable: ${capability.missing.join(', ') || capability.platform}`, true);
     }
     this.assertVersionFacts(version);
-    const interpreterVersion = await (this.options.getInterpreterVersion || readInterpreterVersion)(version.interpreterPath);
+    let interpreterVersion: string;
+    try {
+      const interpreterCheck = await this.options.sandbox.run({
+        command: `${quoteShell(version.interpreterPath)} --version`,
+        interpreterPath: version.interpreterPath,
+        cwd: version.packagePath,
+        packagePath: version.packagePath,
+        network: 'none',
+        timeoutMs: 5_000,
+        stdoutBytes: 16_384,
+        stderrBytes: 16_384,
+      });
+      if (interpreterCheck.exitCode !== 0 || interpreterCheck.signal || interpreterCheck.outputLimitExceeded) {
+        throw new Error('interpreter check failed');
+      }
+      interpreterVersion = interpreterCheck.stdout.trim();
+    } catch {
+      throw new ScriptProtocolError('interpreter_unavailable', 'Approved interpreter validation is unavailable.', true);
+    }
     if (interpreterVersion !== version.interpreterVersion) {
       throw new ScriptProtocolError('interpreter_mismatch', 'Approved interpreter version does not match the installed interpreter.', true);
     }
@@ -123,10 +143,14 @@ export class ScriptProtocolRunner {
       ...(response.summary === undefined ? {} : { summary: sanitizeText(response.summary, Object.values(secrets)) }),
       ...(payload === undefined ? {} : { payload }),
       ...(nextState === undefined ? {} : { nextState }),
-      stdout: redacted.stdout,
-      stderr: redacted.stderr,
+      // JSON response fields were redacted structurally above. Raw diagnostic
+      // strings can encode a secret (for example with JSON escapes), so do
+      // not persist them for secret-bearing runs.
+      stdout: Object.keys(secrets).length === 0 ? redacted.stdout : '',
+      stderr: Object.keys(secrets).length === 0 ? redacted.stderr : '',
       exitCode: result.exitCode,
       outputTruncated: false,
+      ...(result.networkAudit === undefined ? {} : { networkAudit: result.networkAudit }),
     };
   }
 
@@ -224,15 +248,4 @@ function sanitizeJsonValue(value: unknown, secrets: Array<string | undefined>): 
   if (Array.isArray(value)) return value.map((item) => sanitizeJsonValue(item, secrets));
   if (isRecord(value)) return sanitizeRecord(value, secrets);
   return value;
-}
-
-async function readInterpreterVersion(path: string): Promise<string> {
-  return new Promise((resolveResult, reject) => {
-    const child = spawn(path, ['--version'], { shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
-    let output = '';
-    child.stdout?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => { output += chunk; if (Buffer.byteLength(output, 'utf8') > 16_384) child.kill('SIGKILL'); });
-    child.once('error', reject);
-    child.once('close', (code) => code === 0 ? resolveResult(output.trim()) : reject(new Error('interpreter version check failed')));
-  });
 }

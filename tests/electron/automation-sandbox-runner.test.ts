@@ -191,6 +191,17 @@ test('enforces streamed output ceilings before buffering unbounded output', asyn
   }
 });
 
+test('stream truncation respects UTF-8 byte limits without replacement characters', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
+  try {
+    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const result = await runner.run({ ...input(root, { command: "printf '€€'", stdoutBytes: 4, timeoutMs: 5_000 }) });
+    assert.equal(result.outputLimitExceeded, 'stdout');
+    assert.ok(Buffer.byteLength(result.stdout, 'utf8') <= 4);
+    assert.ok(!result.stdout.includes('\uFFFD'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('timeout terminates the sandbox command process group', { skip: process.platform === 'win32' }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {

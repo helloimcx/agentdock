@@ -92,7 +92,7 @@ interface AutomationEvaluationResultDetails {
   payload?: Record<string, unknown>;
   nextState?: Record<string, unknown>;
   sandboxViolations?: string[];
-  networkAudit?: Array<{ target: string; allowed: boolean }>;
+  networkAudit?: Array<{ host: string; port?: number; allowed: boolean; timestamp: string }>;
 }
 
 type AutomationEvaluationResult = AutomationEvaluationResultDetails & (

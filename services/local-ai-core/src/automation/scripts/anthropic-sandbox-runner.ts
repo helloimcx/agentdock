@@ -249,16 +249,18 @@ export class AnthropicSandboxRunner implements SandboxRunner {
 
     const manager = await this.getManager();
     const config = buildSandboxRuntimeConfig(effectiveInput);
+    const networkAudit: Array<{ host: string; port?: number; allowed: boolean; timestamp: string }> = [];
     // SandboxManager is a process-global singleton. Always tear down any
     // previous owner before applying this invocation's filesystem policy.
     try {
       await manager.reset?.();
       const mode = resolveNetworkMode(effectiveInput);
       const allowedDomains = effectiveInput.allowedDomains ?? effectiveInput.manifest?.capabilities?.allowedDomains ?? [];
-      await manager.initialize(config, async ({ host }) => {
-        if (mode === 'none' || await isPrivateOrLocalHost(host)) return false;
-        if (mode === 'restricted') return allowedDomains.some((pattern) => matchesDomain(host, pattern));
-        return true;
+      await manager.initialize(config, async ({ host, port }) => {
+        const allowed = mode !== 'none' && !(await isPrivateOrLocalHost(host))
+          && (mode !== 'restricted' || allowedDomains.some((pattern) => matchesDomain(host, pattern)));
+        networkAudit.push({ host: host.toLowerCase().replace(/^\[|\]$/g, ''), ...(port === undefined ? {} : { port }), allowed, timestamp: new Date().toISOString() });
+        return allowed;
       }, false);
       this.initialized = true;
     } catch (error) {
@@ -287,7 +289,8 @@ export class AnthropicSandboxRunner implements SandboxRunner {
           else process.env[key] = previousTempEnv[key];
         }
       }
-      return await spawnWrappedCommand(wrapped, effectiveInput);
+      const result = await spawnWrappedCommand(wrapped, effectiveInput);
+      return { ...result, ...(networkAudit.length === 0 ? {} : { networkAudit }) };
     } finally {
       manager.cleanupAfterCommand?.();
       try {
@@ -542,40 +545,60 @@ function collectChildResult(child: ChildProcess, timeoutMs = 30_000, signal?: Ab
     const timer = setTimeout(terminateTree, timeoutMs);
     const abort = () => terminateTree();
     signal?.addEventListener('abort', abort, { once: true });
-    child.stdout?.setEncoding('utf8');
-    child.stderr?.setEncoding('utf8');
-    const append = (stream: 'stdout' | 'stderr', chunk: string) => {
+    const stdoutParts: Buffer[] = [];
+    const stderrParts: Buffer[] = [];
+    let stdoutSize = 0;
+    let stderrSize = 0;
+    const append = (stream: 'stdout' | 'stderr', chunk: Buffer) => {
       const limit = stream === 'stdout' ? input?.stdoutBytes : input?.stderrBytes;
-      const current = stream === 'stdout' ? stdout : stderr;
-      const remaining = limit === undefined ? undefined : limit - Buffer.byteLength(current, 'utf8');
-      if (remaining === undefined || remaining >= Buffer.byteLength(chunk, 'utf8')) {
-        if (stream === 'stdout') stdout += chunk;
-        else stderr += chunk;
+      const current = stream === 'stdout' ? stdoutSize : stderrSize;
+      const remaining = limit === undefined ? undefined : limit - current;
+      if (remaining === undefined || remaining >= chunk.byteLength) {
+        if (stream === 'stdout') { stdoutParts.push(chunk); stdoutSize += chunk.byteLength; }
+        else { stderrParts.push(chunk); stderrSize += chunk.byteLength; }
         return;
       }
-      const truncated = Buffer.from(chunk, 'utf8').subarray(0, Math.max(0, remaining)).toString('utf8');
-      if (stream === 'stdout') stdout += truncated;
-      else stderr += truncated;
+      const truncated = truncateUtf8(chunk, Math.max(0, remaining));
+      if (stream === 'stdout') { stdoutParts.push(truncated); stdoutSize += truncated.byteLength; }
+      else { stderrParts.push(truncated); stderrSize += truncated.byteLength; }
       if (!outputLimitExceeded) {
         outputLimitExceeded = stream;
         terminateTree();
       }
     };
-    child.stdout?.on('data', (chunk: string) => append('stdout', chunk));
-    child.stderr?.on('data', (chunk: string) => append('stderr', chunk));
+    child.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
+    child.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
     const finish = (exitCode: number | null, childSignal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
+      stdout = Buffer.concat(stdoutParts).toString('utf8');
+      stderr = Buffer.concat(stderrParts).toString('utf8');
       resolveResult({ exitCode, signal: childSignal, stdout, stderr, ...(outputLimitExceeded ? { outputLimitExceeded } : {}) });
     };
     child.once('error', (error) => {
-      stderr += error instanceof Error ? error.message : String(error);
+      stderrParts.push(Buffer.from(error instanceof Error ? error.message : String(error), 'utf8'));
       finish(null, null);
+    });
+    child.once('exit', (exitCode, childSignal) => {
+      // Do not let a grandchild that inherited a pipe keep the evaluation open
+      // after the sandbox command/process group has been terminated.
+      setImmediate(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish(exitCode, childSignal);
+      });
     });
     child.once('close', (exitCode, childSignal) => finish(exitCode, childSignal));
   });
+}
+
+function truncateUtf8(value: Buffer, limit: number): Buffer {
+  if (value.byteLength <= limit) return value;
+  // Re-encode only complete decoded code points. This drops a partial final
+  // sequence rather than introducing U+FFFD (which can itself exceed limit).
+  return Buffer.from(value.subarray(0, limit).toString('utf8').replace(/\uFFFD/g, ''), 'utf8');
 }
 
 async function isPrivateOrLocalHost(host: string) {

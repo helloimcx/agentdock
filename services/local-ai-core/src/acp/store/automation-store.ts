@@ -784,7 +784,13 @@ function validateEvaluation(value: unknown): AutomationEvaluation {
     result.networkAudit = input.networkAudit.map((entry, index) => {
       const record = asRecord(entry, `Automation evaluation networkAudit[${index}]`);
       if (typeof record.allowed !== 'boolean') throw new Error('Automation evaluation networkAudit allowed must be a boolean.');
-      return { target: requiredString(record.target, 'Automation evaluation networkAudit target'), allowed: record.allowed };
+      const port = record.port === undefined ? undefined : assertInteger(record.port, 'Automation evaluation networkAudit port', true);
+      return {
+        host: requiredString(record.host, 'Automation evaluation networkAudit host').toLowerCase(),
+        ...(port === undefined ? {} : { port }),
+        allowed: record.allowed,
+        timestamp: requiredString(record.timestamp, 'Automation evaluation networkAudit timestamp'),
+      };
     });
   }
   return result as unknown as AutomationEvaluation;

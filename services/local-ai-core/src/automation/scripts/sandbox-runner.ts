@@ -59,6 +59,7 @@ export interface SandboxRunResult {
   stdout: string;
   stderr: string;
   outputLimitExceeded?: 'stdout' | 'stderr';
+  networkAudit?: Array<{ host: string; port?: number; allowed: boolean; timestamp: string }>;
 }
 
 export interface SandboxCapabilityProbe {
