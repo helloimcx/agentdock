@@ -295,6 +295,23 @@ test('test authorization is one-shot', () => {
   }
 });
 
+test('claiming a test execution atomically consumes the test authorization before sandbox work', () => {
+  const h = createHarness();
+  try {
+    const approval = h.service.requestTestApproval(h.version.id, 'author');
+    h.store.resolveApprovalRequest(approval.approvalId, {
+      status: 'approved', resolvedBy: 'security', resolution: 'allow one test',
+    });
+    h.service.authorizeTest(h.version.id, approval.approvalId, 'security');
+
+    assert.equal(h.service.claimTestExecution(h.version.id).status, 'testing');
+    assert.throws(() => h.service.claimTestExecution(h.version.id), /test_authorized/);
+    assert.equal(h.service.recordTestResult(h.version.id, passedReport).status, 'tested');
+  } finally {
+    h.cleanup();
+  }
+});
+
 test('expired test approvals cannot authorize a test run', () => {
   const h = createHarness();
   try {

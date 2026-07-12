@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
+import { dirname, join, posix, resolve, win32 } from 'node:path';
 import type {
   AutomationScript,
   AutomationScriptAuditActor,
@@ -7,6 +9,7 @@ import type {
   AutomationScriptUpdateInput,
   AutomationScriptVersion,
   AutomationScriptVersionStatus,
+  AutomationScriptSourceFile,
 } from '@cc/superai-contracts';
 import {
   stageImmutableScriptPackage,
@@ -47,6 +50,11 @@ export interface AutomationScriptVersionPackageInput {
   sourceDir: string;
   interpreterPath: string;
   interpreterVersion: string;
+}
+
+export interface AutomationScriptVersionSourceInput {
+  scriptId: string;
+  files: AutomationScriptSourceFile[];
 }
 
 export class LocalAutomationScriptStore {
@@ -118,14 +126,40 @@ export class LocalAutomationScriptStore {
       scriptId: input.scriptId,
       sourceDir: input.sourceDir,
     });
+    return this.createVersionFromStaged(input.scriptId, staged, input.interpreterPath, input.interpreterVersion);
+  }
+
+  /**
+   * Stages an API-uploaded source bundle through a server-owned temporary path.
+   * The public route deliberately never receives a filesystem path or interpreter.
+   */
+  stageSource(input: AutomationScriptVersionSourceInput): StagedScriptPackage {
+    this.requireScript(input.scriptId);
+    const stagingRoot = join(resolve(this.userDataPath), 'automations', 'staging');
+    mkdirSync(stagingRoot, { recursive: true });
+    const sourceDir = mkdtempSync(join(stagingRoot, 'upload-'));
+    try {
+      writeUploadedSource(sourceDir, input.files);
+      return stageImmutableScriptPackage({ userDataPath: this.userDataPath, scriptId: input.scriptId, sourceDir });
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  }
+
+  createVersionFromStaged(
+    scriptId: string,
+    staged: StagedScriptPackage,
+    interpreterPath: string,
+    interpreterVersion: string,
+  ): AutomationScriptVersion {
     const now = new Date().toISOString();
     const version = toVersion({
       id: `script-version:${randomUUID()}`,
-      scriptId: input.scriptId,
+      scriptId,
       status: 'draft',
       staged,
-      interpreterPath: requiredString(input.interpreterPath, 'Automation script interpreterPath'),
-      interpreterVersion: requiredString(input.interpreterVersion, 'Automation script interpreterVersion'),
+      interpreterPath: requiredString(interpreterPath, 'Automation script interpreterPath'),
+      interpreterVersion: requiredString(interpreterVersion, 'Automation script interpreterVersion'),
       createdAt: now,
       updatedAt: now,
     });
@@ -187,6 +221,42 @@ export class LocalAutomationScriptStore {
   private toVersion(row: AutomationScriptVersionRow): AutomationScriptVersion {
     return parseAutomationScriptVersionRow(row);
   }
+}
+
+const MAX_UPLOAD_FILES = 64;
+const MAX_UPLOAD_BYTES = 1024 * 1024;
+
+function writeUploadedSource(sourceDir: string, files: AutomationScriptSourceFile[]) {
+  if (!Array.isArray(files) || files.length === 0 || files.length > MAX_UPLOAD_FILES) {
+    throw new Error(`Automation script source must contain between 1 and ${MAX_UPLOAD_FILES} files.`);
+  }
+  const seen = new Set<string>();
+  let totalBytes = 0;
+  for (const file of files) {
+    const path = normalizeUploadPath(file.path);
+    if (seen.has(path)) throw new Error(`Automation script source has duplicate file path: ${path}`);
+    seen.add(path);
+    if (typeof file.content !== 'string') throw new Error(`Automation script source file ${path} must be text.`);
+    const content = Buffer.from(file.content, 'utf8');
+    totalBytes += content.byteLength;
+    if (totalBytes > MAX_UPLOAD_BYTES) throw new Error(`Automation script source exceeds ${MAX_UPLOAD_BYTES} bytes.`);
+    const target = join(sourceDir, ...path.split('/'));
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  }
+}
+
+function normalizeUploadPath(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Automation script source file path is required.');
+  const path = value.trim();
+  if (path.includes('\\') || path.startsWith('/') || posix.isAbsolute(path) || win32.isAbsolute(path)) {
+    throw new Error('Automation script source file path must be relative POSIX path.');
+  }
+  const normalized = posix.normalize(path);
+  if (normalized !== path || path.split('/').some((part) => !part || part === '.' || part === '..')) {
+    throw new Error('Automation script source file path must not contain traversal.');
+  }
+  return path;
 }
 
 export function parseAutomationScriptVersionRow(row: AutomationScriptVersionRow): AutomationScriptVersion {
@@ -286,6 +356,7 @@ function parseStatus(value: unknown): AutomationScriptVersionStatus {
     value === 'draft' ||
     value === 'pending_test_approval' ||
     value === 'test_authorized' ||
+    value === 'testing' ||
     value === 'tested' ||
     value === 'pending_approval' ||
     value === 'approved' ||

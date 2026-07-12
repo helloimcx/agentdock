@@ -279,8 +279,8 @@ export class AutomationService {
   /** The HTTP layer calls this only after the approval service grants one test run. */
   async executeAuthorizedScriptTest(versionId: string): Promise<AutomationScriptTestReport> {
     const version = this.options.store.getAutomationScriptVersion(versionId);
-    if (!version || version.status !== 'test_authorized') {
-      throw new Error('Automation script test requires an unconsumed test authorization.');
+    if (!version || version.status !== 'testing') {
+      throw new Error('Automation script test requires a claimed test authorization.');
     }
     const finishedAt = this.now().toISOString();
     try {

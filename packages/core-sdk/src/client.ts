@@ -187,36 +187,84 @@ function isAutomationMonitorRun(value: unknown) {
 
 function isAutomationDefinition(value: unknown) {
   return isRecord(value) && hasString(value, 'id') && hasString(value, 'workspaceId') && hasString(value, 'title') &&
-    hasBoolean(value, 'enabled') && hasString(value, 'health') && isRecord(value.activation) && isRecord(value.condition) &&
-    isRecord(value.action) && hasString(value.action, 'kind') && hasString(value.action, 'promptTemplate') &&
-    hasString(value.action, 'executionMode') && isRecord(value.delivery) && hasString(value.delivery, 'platform') &&
-    isChannelRoute(value.delivery.route) && isRecord(value.policies) && hasString(value.policies, 'concurrency') &&
-    typeof value.policies.cooldownMs === 'number' && typeof value.consecutiveEvaluationFailures === 'number' &&
-    hasString(value, 'createdAt') && hasString(value, 'updatedAt');
+    hasBoolean(value, 'enabled') && (value.health === 'healthy' || value.health === 'blocked') &&
+    isAutomationActivation(value.activation) && isAutomationCondition(value.condition) && isAutomationAction(value.action) &&
+    isAutomationDelivery(value.delivery) && isAutomationPolicies(value.policies) &&
+    isNonNegativeInteger(value.consecutiveEvaluationFailures) &&
+    hasString(value, 'createdAt') && hasString(value, 'updatedAt') &&
+    (value.blockedReason === undefined || typeof value.blockedReason === 'string') &&
+    (value.lastSuccessfulMatch === undefined || typeof value.lastSuccessfulMatch === 'boolean') &&
+    (value.lastEvaluationAt === undefined || typeof value.lastEvaluationAt === 'string') &&
+    (value.lastTriggeredAt === undefined || typeof value.lastTriggeredAt === 'string');
 }
 
 function isAutomationEvaluation(value: unknown) {
   if (!isRecord(value) || !hasString(value, 'id') || !hasString(value, 'automationId') || !hasString(value, 'activationKind') ||
-    !hasString(value, 'status') || !hasString(value, 'startedAt')) return false;
+    !['cron', 'once', 'interval', 'provider-event'].includes(String(value.activationKind)) || !hasString(value, 'status') || !hasString(value, 'startedAt')) return false;
   if (value.status === 'running') return true;
-  return value.status === 'finished' && hasString(value, 'finishedAt') && hasString(value, 'conditionOutcome') && hasString(value, 'triggerDecision');
+  if (value.status !== 'finished' || !hasString(value, 'finishedAt')) return false;
+  if (value.conditionOutcome === 'matched') return ['triggered', 'skipped_cooldown', 'skipped_action_running'].includes(String(value.triggerDecision));
+  if (value.conditionOutcome === 'not_matched') return value.triggerDecision === 'not_rising';
+  if (value.conditionOutcome === 'error') return value.triggerDecision === 'not_evaluated';
+  return value.conditionOutcome === 'skipped' && ['not_evaluated', 'skipped_concurrent', 'skipped_cooldown', 'skipped_action_running'].includes(String(value.triggerDecision));
 }
 
 function isAutomationRun(value: unknown) {
   return isRecord(value) && hasString(value, 'id') && hasString(value, 'automationId') && hasString(value, 'evaluationId') &&
-    hasString(value, 'status') && hasString(value, 'executionMode') && hasString(value, 'createdAt');
+    ['queued', 'running', 'succeeded', 'failed', 'skipped'].includes(String(value.status)) &&
+    ['same-thread', 'side-thread'].includes(String(value.executionMode)) && hasString(value, 'createdAt') &&
+    (value.deliveryStatus === undefined || ['pending', 'delivering', 'delivered', 'failed'].includes(String(value.deliveryStatus))) &&
+    (value.threadId === undefined || typeof value.threadId === 'string') && (value.acpRunId === undefined || typeof value.acpRunId === 'string') &&
+    (value.error === undefined || typeof value.error === 'string');
 }
 
 function isAutomationScriptVersion(value: unknown) {
   return isRecord(value) && hasString(value, 'id') && hasString(value, 'scriptId') && hasString(value, 'status') &&
+    ['draft', 'pending_test_approval', 'test_authorized', 'testing', 'tested', 'pending_approval', 'approved', 'rejected', 'revoked'].includes(String(value.status)) &&
     hasString(value, 'packageSha256') && hasString(value, 'packagePath') && hasString(value, 'shebang') &&
     hasString(value, 'interpreterPath') && hasString(value, 'interpreterVersion') && isRecord(value.capabilities) &&
-    isRecord(value.config) && isRecord(value.configSchema) && hasString(value, 'networkMode') &&
-    hasBoolean(value, 'internalAccess') && Array.isArray(value.allowedReadDirs) && Array.isArray(value.secretRefs) &&
-    Array.isArray(value.env) && isRecord(value.limits) && typeof value.limits.timeoutMs === 'number' &&
-    typeof value.limits.stdoutBytes === 'number' && typeof value.limits.stderrBytes === 'number' &&
-    typeof value.limits.payloadBytes === 'number' && typeof value.limits.stateBytes === 'number' &&
+    isRecord(value.config) && isRecord(value.configSchema) && (value.networkMode === 'none' || value.networkMode === 'public') &&
+    hasBoolean(value, 'internalAccess') && isStringArray(value.allowedReadDirs) && isStringArray(value.secretRefs) &&
+    isStringArray(value.env) && isRecord(value.limits) && isNonNegativeInteger(value.limits.timeoutMs) &&
+    isNonNegativeInteger(value.limits.stdoutBytes) && isNonNegativeInteger(value.limits.stderrBytes) &&
+    isNonNegativeInteger(value.limits.payloadBytes) && isNonNegativeInteger(value.limits.stateBytes) &&
     isRecord(value.staticCheck) && isRecord(value.testPlan) && hasString(value, 'createdAt') && hasString(value, 'updatedAt');
+}
+
+function isAutomationActivation(value: unknown) {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'cron') return hasString(value, 'expression') && hasString(value, 'timezone');
+  if (value.kind === 'once') return hasString(value, 'runAt');
+  if (value.kind === 'interval') return typeof value.intervalMs === 'number' && isNonNegativeInteger(value.intervalMs) && value.intervalMs > 0;
+  return value.kind === 'provider-event' && hasString(value, 'sourceType') && isRecord(value.sourceConfig);
+}
+
+function isAutomationCondition(value: unknown) {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'always') return true;
+  if (value.kind === 'expression') return hasString(value, 'expression');
+  return value.kind === 'approved-script' && hasString(value, 'scriptId') && hasString(value, 'approvedVersionId') && value.edge === 'rising';
+}
+
+function isAutomationAction(value: unknown) {
+  return isRecord(value) && value.kind === 'agent-prompt' && hasString(value, 'promptTemplate') &&
+    (value.executionMode === 'same-thread' || value.executionMode === 'side-thread');
+}
+
+function isAutomationDelivery(value: unknown) {
+  return isRecord(value) && hasString(value, 'platform') && isChannelRoute(value.route);
+}
+
+function isAutomationPolicies(value: unknown) {
+  return isRecord(value) && value.concurrency === 'skip-if-running' && isNonNegativeInteger(value.cooldownMs);
+}
+
+function isStringArray(value: unknown) {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isNonNegativeInteger(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isInstalledAgentRuntime(value: unknown) {

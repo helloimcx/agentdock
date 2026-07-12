@@ -41,6 +41,7 @@ export type LocalAiCoreRoute =
   | { name: 'automation-script.get'; scriptId: string }
   | { name: 'automation-script.update'; scriptId: string }
   | { name: 'automation-script.versions'; scriptId: string }
+  | { name: 'automation-script.version.submit'; scriptId: string }
   | { name: 'automation-script-version.test-approval'; versionId: string }
   | { name: 'automation-script-version.test'; versionId: string }
   | { name: 'automation-script-version.enable-approval'; versionId: string }
@@ -281,8 +282,9 @@ function parseAutomationScriptsRoute(method: string, segments: string[]): LocalA
     if (method === 'GET') return { name: 'automation-script.get', scriptId };
     if (method === 'PATCH') return { name: 'automation-script.update', scriptId };
   }
-  if (segments.length === 3 && method === 'GET' && segments[2] === 'versions') {
-    return { name: 'automation-script.versions', scriptId };
+  if (segments.length === 3 && segments[2] === 'versions') {
+    if (method === 'GET') return { name: 'automation-script.versions', scriptId };
+    if (method === 'POST') return { name: 'automation-script.version.submit', scriptId };
   }
   return null;
 }

@@ -155,6 +155,7 @@ export type AutomationScriptVersionStatus =
   | 'draft'
   | 'pending_test_approval'
   | 'test_authorized'
+  | 'testing'
   | 'tested'
   | 'pending_approval'
   | 'approved'
@@ -212,6 +213,12 @@ export interface AutomationScriptVersion {
 
 export type AutomationScriptCreateInput = Omit<AutomationScript, 'id' | 'createdAt' | 'updatedAt'>;
 export type AutomationScriptUpdateInput = Partial<Pick<AutomationScript, 'title' | 'description'>>;
+
+/** Source-only API handoff. The server derives package and interpreter facts. */
+export interface AutomationScriptSourceFile {
+  path: string;
+  content: string;
+}
 export type AutomationScriptVersionCreateInput = Pick<
   AutomationScriptVersion,
   'scriptId' | 'shebang' | 'capabilities' | 'config' | 'configSchema' | 'secretRefs' | 'testPlan'

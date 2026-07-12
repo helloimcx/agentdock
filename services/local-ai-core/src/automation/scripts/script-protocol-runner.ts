@@ -67,12 +67,12 @@ export class ScriptProtocolRunner {
 
   /** Runs the one-shot server-authorized test path without granting enable approval. */
   async runTest(request: ScriptProtocolRequest): Promise<ScriptProtocolResult> {
-    return this.runForStatus(request, 'test_authorized');
+    return this.runForStatus(request, 'testing');
   }
 
   private async runForStatus(
     request: ScriptProtocolRequest,
-    expectedStatus: 'approved' | 'test_authorized',
+    expectedStatus: 'approved' | 'testing',
   ): Promise<ScriptProtocolResult> {
     const version = this.requireVersionForStatus(request, expectedStatus);
     let capability;
@@ -182,7 +182,7 @@ export class ScriptProtocolRunner {
     };
   }
 
-  private requireVersionForStatus(request: ScriptProtocolRequest, expectedStatus: 'approved' | 'test_authorized') {
+  private requireVersionForStatus(request: ScriptProtocolRequest, expectedStatus: 'approved' | 'testing') {
     const version = this.options.getVersion(request.approvedVersionId);
     if (!version) {
       throw new ScriptProtocolError('script_unavailable', 'Approved script runtime is unavailable.', true);
@@ -208,7 +208,7 @@ export class ScriptProtocolRunner {
 function sameExecutionFacts(
   left: AutomationScriptVersion,
   right: AutomationScriptVersion,
-  expectedStatus: 'approved' | 'test_authorized',
+  expectedStatus: 'approved' | 'testing',
 ) {
   return left.id === right.id && left.scriptId === right.scriptId && left.status === expectedStatus && right.status === expectedStatus
     && left.packageSha256 === right.packageSha256 && left.packagePath === right.packagePath

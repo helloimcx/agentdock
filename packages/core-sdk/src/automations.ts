@@ -7,6 +7,7 @@ import type {
   AutomationScriptCreateInput,
   AutomationScriptUpdateInput,
   AutomationScriptVersion,
+  AutomationScriptSourceFile,
   AutomationUpdateInput,
 } from '@cc/superai-contracts/automations';
 import type { ApprovalRequest } from '@cc/superai-contracts';
@@ -66,6 +67,15 @@ export function updateAutomationScript(scriptId: string, workspaceId: string, in
 
 export function listAutomationScriptVersions(scriptId: string, workspaceId: string) {
   return coreRequest<{ versions: AutomationScriptVersion[] }>('GET', scoped(`/automation-scripts/${encodeURIComponent(scriptId)}/versions`, workspaceId));
+}
+
+/** Uploads a bounded source bundle; the server owns staging, hash, and interpreter selection. */
+export function submitAutomationScriptVersion(scriptId: string, workspaceId: string, files: AutomationScriptSourceFile[]) {
+  return coreRequest<AutomationScriptVersion>(
+    'POST',
+    scoped(`/automation-scripts/${encodeURIComponent(scriptId)}/versions`, workspaceId),
+    { files },
+  );
 }
 
 export function requestAutomationScriptTestApproval(versionId: string, workspaceId: string, actor: string) {

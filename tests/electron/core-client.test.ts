@@ -150,6 +150,20 @@ test('core client accepts all four complete unified automation SSE events and re
   });
   source.emit('automation.definition.updated', {
     type: 'automation.definition.updated',
+    automation: { ...completeAutomation(), condition: { kind: 'approved-script', scriptId: 'script-1', approvedVersionId: 'version-1', edge: 'falling' } },
+  });
+  source.emit('automation.evaluation.updated', {
+    type: 'automation.evaluation.updated',
+    evaluation: { ...completeEvaluation(), conditionOutcome: 'matched', triggerDecision: 'not_rising' },
+  });
+  source.emit('automation.run.updated', {
+    type: 'automation.run.updated', run: { ...completeAutomationRun(), status: 'unknown' },
+  });
+  source.emit('automation.script-version.updated', {
+    type: 'automation.script-version.updated', version: { ...completeScriptVersion(), env: ['TOKEN', 1] },
+  });
+  source.emit('automation.definition.updated', {
+    type: 'automation.definition.updated',
     automation: { id: 'automation-1' },
   });
   source.emit('automation.script-version.updated', {

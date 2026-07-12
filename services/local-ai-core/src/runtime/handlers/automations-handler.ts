@@ -4,9 +4,14 @@ import type {
   AutomationScriptTestReport,
   AutomationScriptUpdateInput,
   AutomationUpdateInput,
+  AutomationScriptSourceFile,
 } from '@cc/superai-contracts';
+import { accessSync, constants, existsSync, realpathSync } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
+import process from 'node:process';
 import type { AutomationService } from '../../automation/automation-service.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
+import { createAnthropicSandboxRunner } from '../../automation/scripts/anthropic-sandbox-runner.js';
 import { json, readJsonBody, type RouteHandler } from '../server-helpers.js';
 import { RequestValidationError, validateBody, type BodySchema } from '../request-validation.js';
 
@@ -91,6 +96,23 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
     requireScript(store, scriptId(route), requiredWorkspace(url));
     json(res, 200, { versions: store.listAutomationScriptVersions(scriptId(route)) });
   });
+  map.set('automation-script.version.submit', async (route, req, res, url) => {
+    const id = scriptId(route);
+    requireScript(store, id, requiredWorkspace(url));
+    const body = await strictBody<{ files: AutomationScriptSourceFile[] }>(req, {
+      files: { kind: 'array', required: true, elementKind: 'object' },
+    });
+    const staged = store.stageAutomationScriptSource({ scriptId: id, files: validateSourceFiles(body.files) });
+    const interpreter = await resolveServerInterpreter(staged.shebang, staged.packagePath);
+    const version = store.createAutomationScriptVersionFromStaged({
+      scriptId: id,
+      staged,
+      interpreterPath: interpreter.path,
+      interpreterVersion: interpreter.version,
+    });
+    emitVersion(version);
+    json(res, 200, version);
+  });
 
   map.set('automation-script-version.test-approval', async (route, req, res, url) => {
     requireVersion(store, versionId(route), requiredWorkspace(url));
@@ -103,7 +125,18 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
     requireVersion(store, versionId(route), requiredWorkspace(url));
     const { actor } = await strictBody<{ actor: string }>(req, { actor: { kind: 'string', required: true } });
     if (!options.executeScriptTest) throw new Error('Automation script test executor is unavailable.');
-    const version = store.recordAutomationScriptTestResult(versionId(route), await options.executeScriptTest(versionId(route), actor));
+    // Claim before awaiting the sandbox. A second request observes `testing` and
+    // cannot start a competing one-shot execution.
+    store.claimAutomationScriptTestExecution(versionId(route));
+    let report: import('@cc/superai-contracts').AutomationScriptTestReport;
+    try {
+      report = await options.executeScriptTest(versionId(route), actor);
+    } catch {
+      // Do not strand the one-shot claim if an adapter fails outside its normal
+      // result path, and do not expose adapter diagnostics as script output.
+      report = { status: 'failed', finishedAt: new Date().toISOString(), summary: 'Sandbox test execution failed.' };
+    }
+    const version = store.recordAutomationScriptTestResult(versionId(route), report);
     emitVersion(version);
     json(res, 200, version);
   });
@@ -120,6 +153,11 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
       const { approvalId, actor } = await strictBody<{ approvalId: string; actor: string }>(req, {
         approvalId: { kind: 'string', required: true }, actor: { kind: 'string', required: true },
       });
+      const approval = store.getApprovalRequest(approvalId);
+      const expectedDecision = routeName === 'automation-script-version.approve' ? 'approved' : 'rejected';
+      if (!approval || approval.status !== expectedDecision) {
+        throw new RequestValidationError(`Automation script ${routeName.endsWith('.approve') ? 'approve' : 'reject'} requires a ${expectedDecision} approval decision.`);
+      }
       // Approval status is resolved by /approvals/:id/resolve. This route only
       // applies the existing immutable approval decision to the matching version.
       const current = store.getAutomationScriptVersion(versionId(route))!;
@@ -176,6 +214,77 @@ function scriptId(route: Parameters<RouteHandler>[0]) {
 
 function versionId(route: Parameters<RouteHandler>[0]) {
   return (route as { versionId: string }).versionId;
+}
+
+function validateSourceFiles(value: unknown): AutomationScriptSourceFile[] {
+  if (!Array.isArray(value)) throw new RequestValidationError('Request body.files must be an array.');
+  return value.map((file, index) => {
+    if (!file || typeof file !== 'object' || Array.isArray(file)) {
+      throw new RequestValidationError(`Request body.files[${index}] must be an object.`);
+    }
+    const record = file as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key !== 'path' && key !== 'content') throw new RequestValidationError(`Request body.files[${index}].${key} is not writable.`);
+    }
+    if (typeof record.path !== 'string' || !record.path.trim() || typeof record.content !== 'string') {
+      throw new RequestValidationError(`Request body.files[${index}] requires text path and content.`);
+    }
+    return { path: record.path, content: record.content };
+  });
+}
+
+/** Derives interpreter facts from a staged shebang; no client path or version is trusted. */
+async function resolveServerInterpreter(shebang: string, packagePath: string) {
+  const tokens = shebang.replace(/^#!\s*/, '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length !== 1 && !(tokens.length === 2 && tokens[0] === '/usr/bin/env')) {
+    throw new RequestValidationError('Automation script shebang must name one interpreter (or /usr/bin/env NAME).');
+  }
+  const requested = tokens[0] === '/usr/bin/env' ? resolvePathInterpreter(tokens[1]!) : tokens[0]!;
+  if (!isAbsolute(requested) || !existsSync(requested)) {
+    throw new RequestValidationError('Automation script shebang interpreter is unavailable on this server.');
+  }
+  let interpreterPath: string;
+  try {
+    accessSync(requested, constants.X_OK);
+    interpreterPath = realpathSync(requested);
+  } catch {
+    throw new RequestValidationError('Automation script shebang interpreter is not executable on this server.');
+  }
+  const sandbox = createAnthropicSandboxRunner();
+  const probe = await sandbox.probe();
+  if (!probe.available) throw new Error(`sandbox_unavailable: ${probe.missing.join(', ') || probe.platform}`);
+  const result = await sandbox.run({
+    command: `${quoteShell(interpreterPath)} --version`,
+    interpreterPath,
+    cwd: packagePath,
+    packagePath,
+    network: 'none',
+    timeoutMs: 5_000,
+    stdoutBytes: 16_384,
+    stderrBytes: 16_384,
+  });
+  if (result.exitCode !== 0 || result.signal || result.outputLimitExceeded || !result.stdout.trim()) {
+    throw new RequestValidationError('Automation script interpreter version probe failed in the sandbox.');
+  }
+  return { path: interpreterPath, version: result.stdout.trim() };
+}
+
+function resolvePathInterpreter(name: string) {
+  if (!/^[A-Za-z0-9._+-]+$/.test(name)) throw new RequestValidationError('Automation script env shebang interpreter name is invalid.');
+  for (const directory of String(process.env.PATH || '').split(delimiter).filter(Boolean)) {
+    const candidate = join(directory, name);
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // Only server PATH entries are considered for /usr/bin/env resolution.
+    }
+  }
+  throw new RequestValidationError('Automation script env shebang interpreter is unavailable on this server.');
+}
+
+function quoteShell(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 async function strictBody<T>(req: Parameters<RouteHandler>[1], schema: BodySchema): Promise<T> {

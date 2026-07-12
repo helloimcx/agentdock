@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import process from 'node:process';
 import test from 'node:test';
 
 import { stageImmutableScriptPackage } from '../../services/local-ai-core/src/automation/scripts/script-package.js';
@@ -526,5 +527,37 @@ test('rejects malformed optional automation script version JSON fields', () => {
   } finally {
     removeTempTree(userDataPath);
     removeTempTree(sourceDir);
+  }
+});
+
+test('stages an API source bundle through a server-owned directory without accepting source paths', () => {
+  const userDataPath = tempDir('automation-script-upload-');
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const script = store.createAutomationScript({ workspaceId: 'workspace-1', title: 'Uploaded script' });
+    const manifest = {
+      protocolVersion: 1, entrypoint: 'run.js', config: {}, configSchema: {},
+      capabilities: { network: 'none', internalAccess: false, allowedReadDirs: [] }, secretRefs: [], env: [], testPlan: {},
+      limits: { timeoutMs: 30_000, stdoutBytes: 8192, stderrBytes: 8192, payloadBytes: 8192, stateBytes: 8192 },
+    };
+    const staged = store.stageAutomationScriptSource({
+      scriptId: script.id,
+      files: [
+        { path: 'manifest.json', content: JSON.stringify(manifest) },
+        { path: 'run.js', content: '#!/usr/bin/env node\nprocess.stdout.write("{\\"protocolVersion\\":1,\\"matched\\":false}")\n' },
+      ],
+    });
+    const version = store.createAutomationScriptVersionFromStaged({
+      scriptId: script.id, staged, interpreterPath: process.execPath, interpreterVersion: process.version,
+    });
+    assert.equal(version.status, 'draft');
+    assert.match(version.packagePath, new RegExp(`automations[/\\\\]scripts`));
+    assert.throws(
+      () => store.stageAutomationScriptSource({ scriptId: script.id, files: [{ path: '../escape', content: 'nope' }] }),
+      /traversal|relative POSIX/i,
+    );
+    store.close();
+  } finally {
+    removeTempTree(userDataPath);
   }
 });

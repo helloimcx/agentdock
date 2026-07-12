@@ -69,7 +69,9 @@ import { LocalAutomationMonitorStore } from './automation-monitor-store.js';
 import {
   LocalAutomationScriptStore,
   type AutomationScriptVersionPackageInput,
+  type AutomationScriptVersionSourceInput,
 } from './automation-script-store.js';
+import type { StagedScriptPackage } from '../../automation/scripts/script-package.js';
 import { AutomationScriptService } from '../../automation/automation-script-service.js';
 import {
   LocalAutomationStore,
@@ -523,6 +525,24 @@ export class LocalCoreAcpStore {
     return this.automationScripts.createVersionFromPackage(input);
   }
 
+  stageAutomationScriptSource(input: AutomationScriptVersionSourceInput): StagedScriptPackage {
+    return this.automationScripts.stageSource(input);
+  }
+
+  createAutomationScriptVersionFromStaged(input: {
+    scriptId: string;
+    staged: StagedScriptPackage;
+    interpreterPath: string;
+    interpreterVersion: string;
+  }): AutomationScriptVersion {
+    return this.automationScripts.createVersionFromStaged(
+      input.scriptId,
+      input.staged,
+      input.interpreterPath,
+      input.interpreterVersion,
+    );
+  }
+
   listAutomationScriptVersions(scriptId: string): AutomationScriptVersion[] {
     return this.automationScripts.listVersions(scriptId);
   }
@@ -541,6 +561,10 @@ export class LocalCoreAcpStore {
 
   recordAutomationScriptTestResult(versionId: string, result: AutomationScriptTestReport): AutomationScriptVersion {
     return this.automationScriptLifecycle.recordTestResult(versionId, result);
+  }
+
+  claimAutomationScriptTestExecution(versionId: string): AutomationScriptVersion {
+    return this.automationScriptLifecycle.claimTestExecution(versionId);
   }
 
   requestAutomationScriptEnableApproval(versionId: string, actor: string): ApprovalRequest {

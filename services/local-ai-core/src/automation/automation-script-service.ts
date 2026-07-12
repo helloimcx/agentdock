@@ -134,8 +134,8 @@ export class AutomationScriptService {
     if (version.status === 'tested' || version.testReport) {
       throw new Error('Automation script test result already recorded; test authorization is one-shot.');
     }
-    if (version.status !== 'test_authorized') {
-      throw new Error(`Automation script test result requires test_authorized status, got ${version.status}.`);
+    if (version.status !== 'test_authorized' && version.status !== 'testing') {
+      throw new Error(`Automation script test result requires test_authorized or testing status, got ${version.status}.`);
     }
     const now = this.nowIso();
     return this.saveVersion({
@@ -143,6 +143,21 @@ export class AutomationScriptService {
       status: 'tested',
       testReport: normalizeTestReport(result),
       updatedAt: now,
+    });
+  }
+
+  /** Atomically consumes the one-shot test authorization before any sandbox work starts. */
+  claimTestExecution(versionId: string): AutomationScriptVersion {
+    return this.withTransaction(() => {
+      const version = this.requireVersion(versionId);
+      if (version.status !== 'test_authorized') {
+        throw new Error(`Automation script test execution requires test_authorized status, got ${version.status}.`);
+      }
+      return this.saveVersion({
+        ...version,
+        status: 'testing',
+        updatedAt: this.nowIso(),
+      });
     });
   }
 
