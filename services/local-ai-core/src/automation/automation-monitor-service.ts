@@ -28,6 +28,7 @@ import {
   PROVIDER_LIFECYCLE_BLOCK_PREFIX,
   providerLifecycleBlockReason,
 } from './automation-service.js';
+import { toPublicAutomationMonitorId } from './monitor-id.js';
 
 type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
   platform: NonNullable<AutomationMonitorCreateInput['platform']>;
@@ -840,7 +841,7 @@ export class AutomationMonitorService {
     const direct = this.options.automations.get(monitorId);
     if (direct?.originKind === 'automation-monitor') return direct.id;
     const matches = this.options.automations.list().filter((automation) =>
-      automation.originKind === 'automation-monitor' && publicMonitorId(automation.id) === monitorId
+      automation.originKind === 'automation-monitor' && toPublicAutomationMonitorId(automation.id) === monitorId
     );
     if (matches.length > 1) throw new Error(`Automation monitor id is ambiguous: ${monitorId}`);
     return matches[0]?.id || '';
@@ -851,9 +852,4 @@ export class AutomationMonitorService {
     if (!resolved) throw new Error(`Automation monitor not found: ${monitorId}`);
     return resolved;
   }
-}
-
-function publicMonitorId(monitorId: string): string {
-  const normalized = monitorId.startsWith('monitor:') ? monitorId.slice('monitor:'.length) : monitorId;
-  return normalized.includes('-') ? normalized.split('-')[0] || normalized : normalized;
 }

@@ -5,6 +5,7 @@ import type { ScheduledExecutionTarget } from './adapters.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 import { buildPlatformRuntimeEnv } from './scheduled-job-route.js';
 import { waitForRunCompletion } from './run-polling.js';
+import { getLatestAssistantFinalContent } from './thread-resolution.js';
 
 const SCHEDULED_RUN_PERMISSION_MODE = 'bypassPermissions';
 
@@ -27,10 +28,7 @@ export class ScheduledConversationExecutor {
       });
       await waitForRunCompletion(this.options.store, sendResult.runId, timeoutMs, 'Scheduled');
       const thread = await workspaceRouter.getThread(target.threadId);
-      const replyText = [...thread.messages]
-        .reverse()
-        .find((message) => message.role === 'assistant' && message.kind === 'final')
-        ?.content;
+      const replyText = getLatestAssistantFinalContent(thread);
       return {
         threadId: target.threadId,
         runId: sendResult.runId,

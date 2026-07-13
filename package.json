@@ -1,6 +1,6 @@
 {
   "name": "@kafca/agentdock",
-  "version": "0.1.57",
+  "version": "0.1.61",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "dist-electron/electron/main.js",
@@ -23,6 +23,7 @@
     "access": "public"
   },
   "scripts": {
+    "prepack": "node scripts/strip-workspace-deps.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:web": "pnpm exec vite --host 127.0.0.1 --port 5173",
     "dev:core": "pnpm build:electron && node scripts/launch-core.mjs",
