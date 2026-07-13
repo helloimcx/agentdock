@@ -59,6 +59,18 @@ function input(root: string, overrides: Partial<SandboxRunInput> = {}): SandboxR
   };
 }
 
+function createFakeRunner(root: string, manager = new FakeManager()) {
+  return new AnthropicSandboxRunner({
+    platform: process.platform,
+    manager,
+    tempRoot: root,
+    // These execution-path tests use FakeManager and must not depend on
+    // packages installed on the host runner. Capability-specific behavior is
+    // covered by the explicit macOS/Linux probe tests above.
+    commandExists: () => true,
+  });
+}
+
 test('builds read-only package and temp-only write policy', () => {
   const root = '/workspace/automation';
   const config = buildSandboxRuntimeConfig(input(root, {
@@ -246,7 +258,7 @@ test('keeps wrapped shell command private to adapter and returns only execution 
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {
     const manager = new FakeManager();
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager, tempRoot: root });
+    const runner = createFakeRunner(root, manager);
     const result: SandboxRunResult = await runner.run({ ...input(root), env: { PATH: join(root, 'fake-bin') }, allowedEnv: ['PATH'] });
     assert.equal(result.exitCode, 0);
     assert.equal(result.stdout, 'sandbox-ok');
@@ -260,7 +272,7 @@ test('keeps wrapped shell command private to adapter and returns only execution 
 test('enforces streamed output ceilings before buffering unbounded output', async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const runner = createFakeRunner(root);
     const result = await runner.run({ ...input(root, { command: 'yes output', stdoutBytes: 64, timeoutMs: 5_000 }) });
     assert.equal(result.outputLimitExceeded, 'stdout');
     assert.ok(Buffer.byteLength(result.stdout, 'utf8') <= 64);
@@ -272,7 +284,7 @@ test('enforces streamed output ceilings before buffering unbounded output', asyn
 test('stream truncation respects UTF-8 byte limits without replacement characters', async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const runner = createFakeRunner(root);
     const result = await runner.run({ ...input(root, { command: "printf '€€'", stdoutBytes: 4, timeoutMs: 5_000 }) });
     assert.equal(result.outputLimitExceeded, 'stdout');
     assert.ok(Buffer.byteLength(result.stdout, 'utf8') <= 4);
@@ -283,7 +295,7 @@ test('stream truncation respects UTF-8 byte limits without replacement character
 test('stream truncation preserves a complete replacement character before overflow', async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const runner = createFakeRunner(root);
     const result = await runner.run({ ...input(root, { command: "printf '�€'", stdoutBytes: 5, timeoutMs: 5_000 }) });
     assert.equal(result.stdout, '�');
     assert.equal(Buffer.byteLength(result.stdout, 'utf8'), 3);
@@ -293,7 +305,7 @@ test('stream truncation preserves a complete replacement character before overfl
 test('timeout terminates the sandbox command process group', { skip: process.platform === 'win32' }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runner-'));
   try {
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager: new FakeManager(), tempRoot: root });
+    const runner = createFakeRunner(root);
     const started = Date.now();
     const result = await runner.run({ ...input(root, { command: 'sleep 3 & wait', timeoutMs: 50 }) });
     assert.ok(Date.now() - started < 2_000);
@@ -307,8 +319,8 @@ test('serializes process-global SandboxManager operations across runners', async
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-lock-'));
   try {
     const manager = new FakeManager();
-    const first = new AnthropicSandboxRunner({ platform: process.platform, manager, tempRoot: root });
-    const second = new AnthropicSandboxRunner({ platform: process.platform, manager, tempRoot: root });
+    const first = createFakeRunner(root, manager);
+    const second = createFakeRunner(root, manager);
     const [left, right] = await Promise.all([
       first.run(input(root)),
       second.run(input(root)),
@@ -325,7 +337,7 @@ test('sanitizes loader/startup/proxy environment variables while preserving appr
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-env-'));
   try {
     const manager = new FakeManager();
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager, tempRoot: root });
+    const runner = createFakeRunner(root, manager);
     const result = await runner.run({
       ...input(root),
       command: 'printf "%s-%s" "$TOKEN" "$BASH_ENV"',
@@ -343,7 +355,7 @@ test('keeps an explicit empty environment allowlist empty', async () => {
   const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-empty-env-'));
   try {
     const manager = new FakeManager();
-    const runner = new AnthropicSandboxRunner({ platform: process.platform, manager, tempRoot: root });
+    const runner = createFakeRunner(root, manager);
     const result = await runner.run({
       ...input(root),
       command: 'printf "%s" "$TOKEN"',
