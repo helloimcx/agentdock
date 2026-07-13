@@ -386,9 +386,19 @@ export class LocalCoreController extends EventEmitter {
     const legacyProjects = migrated.config.projects || [];
     let warnings = [...(current.warnings || []), ...migrated.warnings];
     if (legacyProjects.length > 0) {
-      persistProjectsInRegistry(this.store, legacyProjects, { preserveLegacyIds: true });
-      const saved = this.store.saveRuntimeConfig(withoutRuntimeProjects(migrated.config));
-      warnings = [...warnings, ...(saved.warnings || []), 'Migrated runtime projects into the workspace registry.'];
+      // Persist a copy of the projects into the workspace registry as a
+      // crash-recovery backup, but do NOT strip them from runtime_config:
+      // channel bindings still read runtime_config directly, so removing
+      // projects here would silently disable every channel until the next
+      // explicit save.
+      const registryNames = (this.store.listWorkspaceRegistry?.() ?? [])
+        .filter((e) => e.metadata?.source === 'runtime-project')
+        .map((e) => e.displayName);
+      const alreadyBackedUp = legacyProjects.every((p) => registryNames.includes(p.name));
+      if (!alreadyBackedUp) {
+        persistProjectsInRegistry(this.store, legacyProjects, { preserveLegacyIds: true });
+        warnings = [...warnings, 'Backed up runtime projects into the workspace registry.'];
+      }
     }
     return {
       ...this.store.readRuntimeConfig(),
