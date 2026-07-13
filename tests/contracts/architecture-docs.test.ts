@@ -258,5 +258,7 @@ test('deployment docs require a dedicated AppArmor profile without weakening the
   assert.match(content, /dedicated AppArmor profile/i);
   assert.match(content, /kernel\.apparmor_restrict_unprivileged_userns/);
   assert.match(content, /must not|do not|禁止/i);
+  assert.match(content, /behaviorally executes|behavioral/i);
+  assert.match(content, /sysctl is only failure-classification context/i);
   assert.doesNotMatch(content, /sysctl\s+-w\s+kernel\.apparmor_restrict_unprivileged_userns=0/);
 });

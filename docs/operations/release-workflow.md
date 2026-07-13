@@ -79,7 +79,7 @@ Required server setup:
 
 ## Conditional automation sandbox deployment
 
-The Linux Core image installs `bubblewrap`, `socat`, and `ripgrep`. A production host must also permit unprivileged user namespaces, network namespaces, and seccomp for the Core process. Run the deployment Doctor after installation and treat each `automation.linux.*` failure independently; script-backed Automations remain blocked until every required capability passes.
+The Linux Core image installs `bubblewrap`, `socat`, and `ripgrep`. A production host must also permit unprivileged user namespaces, network namespaces, and seccomp for the Core process. Run the deployment Doctor after installation and treat each `automation.linux.*` failure independently; script-backed Automations remain blocked until every required capability passes. Doctor behaviorally executes a wrapped no-network sandbox command. The sysctl is only failure-classification context: a successful command proves that a dedicated profile works even while the global restriction remains enabled. If a missing prerequisite prevents that command, dependent capability rows are failed as unverified.
 
 Ubuntu 24.04+ enables `kernel.apparmor_restrict_unprivileged_userns`. The supported setup is a dedicated AppArmor profile granting `userns` only to the executables that need it. Do not globally disable `kernel.apparmor_restrict_unprivileged_userns`, and do not use `sysctl ...=0` as the default installation workaround.
 

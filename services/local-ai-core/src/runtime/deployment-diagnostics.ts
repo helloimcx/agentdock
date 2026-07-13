@@ -81,15 +81,26 @@ export function automationSandboxDiagnosticChecks(capability: SandboxCapabilityP
   }
 
   const missing = new Set(capability.missing);
+  const unverified = new Set(capability.unverified || []);
   const check = (id: string, label: string, capabilityId: string): LocalCoreDoctorCheck => ({
     id,
     label,
     status: missing.has(capabilityId) ? 'fail' : 'pass',
-    summary: missing.has(capabilityId) ? `${label} is unavailable.` : `${label} is available.`,
+    summary: unverified.has(capabilityId)
+      ? `${label} is blocked and could not be behaviorally verified because an earlier prerequisite failed.`
+      : missing.has(capabilityId) ? `${label} is unavailable.` : `${label} is available.`,
   });
   const runtimeMissing = missing.has('sandbox_runtime') || missing.has('sandbox_unavailable');
-  const runtime: LocalCoreDoctorCheck = {
+  const aggregate: LocalCoreDoctorCheck = {
     id: 'automation.sandbox',
+    label: 'Automation script sandbox',
+    status: capability.available ? 'pass' : 'fail',
+    summary: capability.available
+      ? `Automation script sandbox is available on ${capability.platform}.`
+      : `Automation scripts are blocked on ${capability.platform}; missing ${capability.missing.join(', ')}.`,
+  };
+  const runtime: LocalCoreDoctorCheck = {
+    id: 'automation.runtime',
     label: 'Anthropic Sandbox Runtime',
     status: runtimeMissing ? 'fail' : 'pass',
     summary: runtimeMissing
@@ -99,6 +110,7 @@ export function automationSandboxDiagnosticChecks(capability: SandboxCapabilityP
 
   if (capability.platform === 'linux') {
     return [
+      aggregate,
       runtime,
       check('automation.linux.bwrap', 'Bubblewrap (bwrap)', 'bwrap'),
       check('automation.linux.socat', 'socat proxy bridge', 'socat'),
@@ -110,6 +122,7 @@ export function automationSandboxDiagnosticChecks(capability: SandboxCapabilityP
   }
 
   return [
+    aggregate,
     runtime,
     check('automation.macos.sandbox-exec', 'macOS sandbox-exec', 'sandbox-exec'),
     check('automation.macos.rg', 'ripgrep (rg)', 'rg'),

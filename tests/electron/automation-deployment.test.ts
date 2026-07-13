@@ -10,10 +10,12 @@ test('Linux automation diagnostics report every sandbox prerequisite independent
     available: false,
     platform: 'linux',
     missing: ['bwrap', 'socat', 'rg', 'apparmor.userns', 'network.namespace', 'seccomp'],
+    unverified: ['apparmor.userns', 'network.namespace', 'seccomp'],
   });
 
   assert.deepEqual(checks.map((check) => check.id), [
     'automation.sandbox',
+    'automation.runtime',
     'automation.linux.bwrap',
     'automation.linux.socat',
     'automation.linux.rg',
@@ -21,8 +23,10 @@ test('Linux automation diagnostics report every sandbox prerequisite independent
     'automation.linux.network-namespace',
     'automation.linux.seccomp',
   ]);
-  assert.equal(checks[0]?.status, 'pass', 'the runtime and its host prerequisites are separate checks');
-  assert.ok(checks.slice(1).every((check) => check.status === 'fail'));
+  assert.equal(checks[0]?.status, 'fail', 'the stable aggregate follows capability.available');
+  assert.equal(checks[1]?.status, 'pass', 'package/runtime presence remains independently diagnosable');
+  assert.ok(checks.slice(2).every((check) => check.status === 'fail'));
+  assert.match(checks.find((check) => check.id === 'automation.linux.network-namespace')?.summary || '', /could not be behaviorally verified/);
 });
 
 test('macOS automation diagnostics distinguish runtime, sandbox-exec, and rg', () => {
@@ -34,6 +38,7 @@ test('macOS automation diagnostics distinguish runtime, sandbox-exec, and rg', (
 
   assert.deepEqual(checks.map((check) => check.id), [
     'automation.sandbox',
+    'automation.runtime',
     'automation.macos.sandbox-exec',
     'automation.macos.rg',
   ]);

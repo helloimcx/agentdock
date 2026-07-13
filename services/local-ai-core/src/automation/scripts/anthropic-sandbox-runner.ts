@@ -50,8 +50,8 @@ export interface AnthropicSandboxRunnerOptions {
   platform?: NodeJS.Platform | AnthropicSandboxRunnerPlatform;
   manager?: SandboxManagerLike;
   commandExists?: (command: string) => boolean;
-  /** Set to false when an AppArmor profile grants user namespaces. */
-  appArmorUsernsAvailable?: boolean | (() => boolean);
+  /** Override the Ubuntu userns restriction sysctl context in deterministic tests. */
+  appArmorUsernsRestricted?: boolean | (() => boolean);
   /** Disable the startup initialize/reset probe only for pure policy tests. */
   probeInitialization?: boolean;
   /** Root where this runner creates per-run temporary directories. */
@@ -203,7 +203,7 @@ export class AnthropicSandboxRunner implements SandboxRunner {
   private readonly platform: AnthropicSandboxRunnerPlatform;
   private readonly commandExists: (command: string) => boolean;
   private readonly managerOverride?: SandboxManagerLike;
-  private readonly appArmorUsernsAvailable?: boolean | (() => boolean);
+  private readonly appArmorUsernsRestricted?: boolean | (() => boolean);
   private readonly probeInitialization: boolean;
   private readonly tempRoot: string;
   private managerPromise?: Promise<SandboxManagerLike>;
@@ -214,7 +214,7 @@ export class AnthropicSandboxRunner implements SandboxRunner {
     this.platform = normalizePlatform(options.platform || process.platform);
     this.commandExists = options.commandExists || defaultCommandExists;
     this.managerOverride = options.manager;
-    this.appArmorUsernsAvailable = options.appArmorUsernsAvailable;
+    this.appArmorUsernsRestricted = options.appArmorUsernsRestricted;
     this.probeInitialization = options.probeInitialization !== false;
     this.tempRoot = absolutePath(options.tempRoot || CONTROLLED_TEMP_ROOT);
     assertSafeTempRoot(this.tempRoot);
@@ -307,6 +307,7 @@ export class AnthropicSandboxRunner implements SandboxRunner {
 
   private async probeInternal(): Promise<SandboxCapabilityProbe> {
     const missing = new Set<string>();
+    const unverified = new Set<string>();
     if (this.platform === 'windows') {
       return { available: false, platform: this.platform, missing: ['sandbox_unavailable'] };
     }
@@ -322,36 +323,93 @@ export class AnthropicSandboxRunner implements SandboxRunner {
       } catch {
         missing.add('sandbox_runtime');
       }
-      try {
-        if (!this.isAppArmorUsernsAvailable()) missing.add('apparmor.userns');
-      } catch {
-        missing.add('apparmor.userns');
-      }
     } else {
       if (!this.commandExists('sandbox-exec')) missing.add('sandbox-exec');
       if (!this.commandExists('rg')) missing.add('rg');
     }
 
-    if (missing.size === 0 && manager && this.probeInitialization) {
+    const behaviorBlockers = this.platform === 'linux'
+      ? ['sandbox_runtime', 'sandbox_unavailable', 'bwrap', 'socat', 'rg']
+      : ['sandbox_runtime', 'sandbox_unavailable', 'sandbox-exec'];
+    const behaviorBlocked = behaviorBlockers.some((capability) => missing.has(capability));
+    const markLinuxBehaviorUnverified = () => {
+      // An earlier failure prevents the only authoritative behavior proof.
+      // Keep every unproven isolation capability failed rather than reporting
+      // a misleading green row from absence of evidence.
+      missing.add('apparmor.userns');
+      missing.add('network.namespace');
+      missing.add('seccomp');
+      unverified.add('apparmor.userns');
+      unverified.add('network.namespace');
+      unverified.add('seccomp');
+    };
+    if (this.platform === 'linux' && behaviorBlocked) markLinuxBehaviorUnverified();
+    if (!this.probeInitialization) {
+      missing.add('sandbox_runtime');
+      if (this.platform === 'linux') markLinuxBehaviorUnverified();
+    }
+    if (manager && this.probeInitialization && !behaviorBlocked) {
       let attempted = false;
+      const probeTempPath = join(this.tempRoot, `probe-${randomUUID()}`);
       try {
+        mkdirSync(probeTempPath, { recursive: true });
         const probeConfig = buildSandboxRuntimeConfig({
           command: 'true',
           cwd: process.cwd(),
           packagePath: process.cwd(),
-          tempRoot: CONTROLLED_TEMP_ROOT,
-          tempDir: join(CONTROLLED_TEMP_ROOT, 'probe'),
+          tempRoot: this.tempRoot,
+          tempDir: probeTempPath,
           network: 'none',
         });
         attempted = true;
         await manager.initialize(probeConfig);
         if (manager.waitForNetworkInitialization && !(await manager.waitForNetworkInitialization())) {
           missing.add('sandbox_runtime');
+          if (this.platform === 'linux') markLinuxBehaviorUnverified();
+        } else if (!manager.wrapWithSandboxArgv) {
+          missing.add('sandbox_runtime');
+          if (this.platform === 'linux') markLinuxBehaviorUnverified();
+        } else {
+          const wrapped = await manager.wrapWithSandboxArgv('true');
+          let result: SandboxRunResult;
+          try {
+            result = await spawnWrappedCommand(wrapped, {
+              command: 'true',
+              cwd: process.cwd(),
+              packagePath: process.cwd(),
+              tempRoot: this.tempRoot,
+              tempDir: probeTempPath,
+              network: 'none',
+              timeoutMs: 5_000,
+              stdoutBytes: 16_384,
+              stderrBytes: 16_384,
+            });
+          } finally {
+            manager.cleanupAfterCommand?.();
+          }
+          if (result.exitCode !== 0 || result.signal) {
+            if (this.platform === 'linux') {
+              const failure = classifyLinuxBehaviorFailures(result.stderr, this.isAppArmorUsernsRestricted());
+              for (const capability of failure.missing) {
+                missing.add(capability);
+              }
+              for (const capability of failure.unverified) unverified.add(capability);
+            } else {
+              missing.add('sandbox_runtime');
+            }
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-        if (message.includes('user namespace') || message.includes('apparmor')) missing.add('apparmor.userns');
-        else missing.add('sandbox_runtime');
+        if (this.platform === 'linux') {
+          const failure = classifyLinuxBehaviorFailures(message, this.isAppArmorUsernsRestricted());
+          for (const capability of failure.missing) {
+            missing.add(capability);
+          }
+          for (const capability of failure.unverified) unverified.add(capability);
+        } else {
+          missing.add('sandbox_runtime');
+        }
       } finally {
         if (attempted) {
           try {
@@ -360,26 +418,28 @@ export class AnthropicSandboxRunner implements SandboxRunner {
             missing.add('sandbox_runtime');
           }
         }
+        rmSync(probeTempPath, { recursive: true, force: true });
       }
     }
 
+    const orderedUnverified = orderCapabilities(unverified);
     return {
       available: missing.size === 0,
       platform: this.platform,
       missing: orderCapabilities(missing),
+      ...(orderedUnverified.length === 0 ? {} : { unverified: orderedUnverified }),
     };
   }
 
-  private isAppArmorUsernsAvailable() {
-    if (typeof this.appArmorUsernsAvailable === 'function') return this.appArmorUsernsAvailable();
-    if (typeof this.appArmorUsernsAvailable === 'boolean') return this.appArmorUsernsAvailable;
+  private isAppArmorUsernsRestricted() {
+    if (typeof this.appArmorUsernsRestricted === 'function') return this.appArmorUsernsRestricted();
+    if (typeof this.appArmorUsernsRestricted === 'boolean') return this.appArmorUsernsRestricted;
     try {
-      // Ubuntu's restriction is opt-in.  A missing sysctl means no AppArmor
-      // userns gate is present, so do not report a false negative elsewhere.
-      return readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8').trim() !== '1';
-    } catch (error) {
-      const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
-      if (code === 'ENOENT' && !existsSync('/sys/module/apparmor')) return true;
+      // This value is diagnostic context only. A dedicated AppArmor profile
+      // can grant userns while the global restriction remains enabled, so the
+      // wrapped behavioral probe above is always authoritative.
+      return readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8').trim() === '1';
+    } catch {
       return false;
     }
   }
@@ -452,6 +512,41 @@ function addDependencyNames(missing: Set<string>, errors: string[]) {
     if (lower.includes('unsupported platform')) missing.add('sandbox_unavailable');
     if (lower.includes('sandbox')) missing.add('sandbox_runtime');
   }
+}
+
+function classifyLinuxBehaviorFailures(message: string, appArmorUsernsRestricted: boolean) {
+  const lower = message.toLowerCase();
+  if (lower.includes('seccomp') || lower.includes('apply-seccomp')) {
+    return { missing: ['seccomp'], unverified: [] };
+  }
+  if (lower.includes('unshare-net') || lower.includes('network namespace')) {
+    return { missing: ['network.namespace', 'seccomp'], unverified: ['seccomp'] };
+  }
+  if (lower.includes('apparmor')) {
+    return {
+      missing: ['apparmor.userns', 'network.namespace', 'seccomp'],
+      unverified: ['network.namespace', 'seccomp'],
+    };
+  }
+  if (
+    appArmorUsernsRestricted &&
+    (lower.includes('new namespace') || lower.includes('user namespace') || lower.includes('operation not permitted'))
+  ) {
+    return {
+      missing: ['apparmor.userns', 'network.namespace', 'seccomp'],
+      unverified: ['network.namespace', 'seccomp'],
+    };
+  }
+  if (lower.includes('new namespace') || lower.includes('user namespace') || lower.includes('operation not permitted')) {
+    return {
+      missing: ['apparmor.userns', 'network.namespace', 'seccomp'],
+      unverified: ['network.namespace', 'seccomp'],
+    };
+  }
+  return {
+    missing: ['sandbox_runtime', 'apparmor.userns', 'network.namespace', 'seccomp'],
+    unverified: ['apparmor.userns', 'network.namespace', 'seccomp'],
+  };
 }
 
 function orderCapabilities(values: Set<string>) {

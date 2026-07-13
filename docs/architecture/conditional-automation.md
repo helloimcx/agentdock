@@ -38,7 +38,7 @@ Approved scripts run only through the pinned Anthropic Sandbox Runtime adapter. 
 
 The default network policy permits public egress because condition scripts commonly query external APIs. A private-address deny blocks loopback, RFC 1918, link-local, metadata endpoints, and local Unix sockets. Restricted mode additionally applies approved destination patterns. Audit records contain only sanitized destination host, port, allow/deny decision, and timestamp—never URLs with credentials/query strings, headers, bodies, or secrets.
 
-macOS and Linux share the same protocol, approvals, and policy. macOS requires Sandbox Runtime, `sandbox-exec`, and `rg`. Linux requires Sandbox Runtime, Bubblewrap, `socat`, `rg`, usable user and network namespaces, and seccomp. Windows script execution is unsupported and remains Windows fail-closed; non-script `always` and expression Automations can continue.
+macOS and Linux share the same protocol, approvals, and policy. macOS requires Sandbox Runtime, `sandbox-exec`, and `rg`. Linux requires Sandbox Runtime, Bubblewrap, `socat`, `rg`, usable user and network namespaces, and seccomp. The Linux capability probe executes a wrapped `true` command under the real `network: none` policy; package checks or sysctl values alone are not treated as proof. A successful wrapped command is authoritative even when Ubuntu's global AppArmor userns restriction is enabled and a dedicated profile grants the operation. If an earlier dependency blocks the probe, downstream isolation rows fail as unverified rather than showing a false pass. Windows script execution is unsupported and remains Windows fail-closed; non-script `always` and expression Automations can continue.
 
 ## Compatibility ownership
 

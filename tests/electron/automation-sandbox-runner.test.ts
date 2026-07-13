@@ -22,6 +22,7 @@ class FakeManager implements SandboxManagerLike {
   supported = true;
   initializeError?: Error;
   resetCalls = 0;
+  wrappedCommandOverride?: string;
 
   async initialize(config: unknown): Promise<void> {
     this.initialized += 1;
@@ -36,7 +37,7 @@ class FakeManager implements SandboxManagerLike {
 
   async wrapWithSandboxArgv(command: string): Promise<{ argv: string[]; env: NodeJS.ProcessEnv }> {
     this.wrappedArgv.push(command);
-    return { argv: ['/bin/sh', '-c', command], env: { ...process.env } };
+    return { argv: ['/bin/sh', '-c', this.wrappedCommandOverride || command], env: { ...process.env } };
   }
 
   isSupportedPlatform() { return this.supported; }
@@ -118,28 +119,91 @@ test('private-address policy rejects numeric ranges and mapped IPv6 forms', asyn
   assert.equal(await isPrivateNetworkAddress('127.0.0.3'), true);
 });
 
-test('probe reports named Linux dependencies and AppArmor userns failures', async () => {
+test('probe fails unverified Linux isolation capabilities when dependencies block behavioral proof', async () => {
   const manager = new FakeManager();
   manager.dependencyErrors = [
     'ripgrep (rg) not found',
     'bubblewrap (bwrap) not installed',
     'socat not installed',
   ];
-  manager.dependencyWarnings = [
-    'seccomp not available - unix socket access not restricted',
-    'network namespace not available',
-  ];
+  manager.dependencyWarnings = ['seccomp not available - unix socket access not restricted'];
   const runner = new AnthropicSandboxRunner({
     platform: 'linux',
     manager,
-    appArmorUsernsAvailable: false,
+    appArmorUsernsRestricted: true,
   });
 
   const result = await runner.probe();
   assert.equal(result.available, false);
   assert.equal(result.platform, 'linux');
   assert.deepEqual(result.missing, ['bwrap', 'socat', 'rg', 'seccomp', 'network.namespace', 'apparmor.userns']);
+  assert.deepEqual(result.unverified, ['seccomp', 'network.namespace', 'apparmor.userns']);
   assert.equal(manager.initialized, 0);
+});
+
+test('a successful wrapped Linux probe overrides the restrictive AppArmor sysctl context', async () => {
+  const manager = new FakeManager();
+  const runner = new AnthropicSandboxRunner({
+    platform: 'linux',
+    manager,
+    appArmorUsernsRestricted: true,
+  });
+
+  const result = await runner.probe();
+  assert.equal(result.available, true);
+  assert.deepEqual(result.missing, []);
+  assert.deepEqual(manager.wrappedArgv, ['true']);
+});
+
+test('disabling behavioral initialization cannot produce green Linux isolation capabilities', async () => {
+  const runner = new AnthropicSandboxRunner({
+    platform: 'linux',
+    manager: new FakeManager(),
+    probeInitialization: false,
+  });
+
+  const result = await runner.probe();
+  assert.equal(result.available, false);
+  assert.deepEqual(result.missing, ['seccomp', 'network.namespace', 'sandbox_runtime', 'apparmor.userns']);
+  assert.deepEqual(result.unverified, ['seccomp', 'network.namespace', 'apparmor.userns']);
+});
+
+test('wrapped Linux probe classifies actual AppArmor, network namespace, and seccomp failures independently', async () => {
+  const cases = [
+    {
+      stderr: 'bwrap: Creating new namespace failed: Operation not permitted',
+      restricted: true,
+      expected: ['seccomp', 'network.namespace', 'apparmor.userns'],
+      unverified: ['seccomp', 'network.namespace'],
+    },
+    {
+      stderr: 'bwrap: unshare-net: network namespace operation not permitted',
+      restricted: false,
+      expected: ['seccomp', 'network.namespace'],
+      unverified: ['seccomp'],
+    },
+    {
+      stderr: 'apply-seccomp: seccomp filter installation failed',
+      restricted: false,
+      expected: ['seccomp'],
+      unverified: [],
+    },
+  ] as const;
+
+  for (const item of cases) {
+    const manager = new FakeManager();
+    manager.wrappedCommandOverride = `printf '%s' '${item.stderr}' >&2; exit 1`;
+    const runner = new AnthropicSandboxRunner({
+      platform: 'linux',
+      manager,
+      appArmorUsernsRestricted: item.restricted,
+    });
+    const result = await runner.probe();
+    assert.equal(result.available, false);
+    assert.deepEqual(result.missing, item.expected);
+    assert.deepEqual(result.unverified || [], item.unverified);
+    assert.equal(manager.resetCalls, 1);
+  }
 });
 
 test('probe reports macOS sandbox-exec and ripgrep capabilities', async () => {
@@ -187,7 +251,7 @@ test('keeps wrapped shell command private to adapter and returns only execution 
     assert.equal(result.exitCode, 0);
     assert.equal(result.stdout, 'sandbox-ok');
     assert.deepEqual(Object.keys(result).sort(), ['exitCode', 'signal', 'stderr', 'stdout']);
-    assert.equal(manager.wrappedArgv.length, 1);
+    assert.deepEqual(manager.wrappedArgv, ['true', 'printf sandbox-ok']);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

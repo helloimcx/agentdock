@@ -67,6 +67,8 @@ export interface SandboxCapabilityProbe {
   platform: string;
   /** Stable capability identifiers suitable for diagnostics and skip output. */
   missing: string[];
+  /** Missing capabilities whose behavioral proof could not run because an earlier prerequisite failed. */
+  unverified?: string[];
 }
 
 export interface SandboxRunner {
