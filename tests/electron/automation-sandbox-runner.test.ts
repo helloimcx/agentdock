@@ -125,7 +125,10 @@ test('probe reports named Linux dependencies and AppArmor userns failures', asyn
     'bubblewrap (bwrap) not installed',
     'socat not installed',
   ];
-  manager.dependencyWarnings = ['seccomp not available - unix socket access not restricted'];
+  manager.dependencyWarnings = [
+    'seccomp not available - unix socket access not restricted',
+    'network namespace not available',
+  ];
   const runner = new AnthropicSandboxRunner({
     platform: 'linux',
     manager,
@@ -135,7 +138,7 @@ test('probe reports named Linux dependencies and AppArmor userns failures', asyn
   const result = await runner.probe();
   assert.equal(result.available, false);
   assert.equal(result.platform, 'linux');
-  assert.deepEqual(result.missing, ['bwrap', 'socat', 'rg', 'seccomp', 'apparmor.userns']);
+  assert.deepEqual(result.missing, ['bwrap', 'socat', 'rg', 'seccomp', 'network.namespace', 'apparmor.userns']);
   assert.equal(manager.initialized, 0);
 });
 
@@ -143,11 +146,22 @@ test('probe reports macOS sandbox-exec and ripgrep capabilities', async () => {
   const runner = new AnthropicSandboxRunner({
     platform: 'macos',
     manager: new FakeManager(),
-    commandExists: (command) => command === 'sandbox-exec',
+    commandExists: (command) => command === 'sandbox-exec' || command === 'rg',
   });
   const result = await runner.probe();
   assert.equal(result.available, true);
   assert.deepEqual(result.missing, []);
+});
+
+test('probe reports missing macOS ripgrep independently', async () => {
+  const runner = new AnthropicSandboxRunner({
+    platform: 'macos',
+    manager: new FakeManager(),
+    commandExists: (command) => command === 'sandbox-exec',
+  });
+  const result = await runner.probe();
+  assert.equal(result.available, false);
+  assert.deepEqual(result.missing, ['rg']);
 });
 
 test('Windows probes and runs fail closed with sandbox_unavailable', async () => {

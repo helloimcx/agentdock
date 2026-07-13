@@ -228,3 +228,35 @@ test('chat syntax highlighting stays behind a lazy code-block boundary', () => {
     assert.match(highlighted, new RegExp(`highlight\\.js/lib/languages/${language}`), `${language} must remain in the supported subset`);
   }
 });
+
+test('conditional automation architecture documents its security and ownership invariants', () => {
+  const content = readFileSync(join(rootDir, 'docs', 'architecture', 'conditional-automation.md'), 'utf8');
+
+  for (const invariant of [
+    'Activation → Condition → Action → Delivery',
+    'immutable package',
+    'two-stage approval',
+    'previousState',
+    'public egress',
+    'private-address deny',
+    'Windows fail-closed',
+    '30 days',
+    '1000',
+    'legacy Scheduler and Monitor facades',
+    'DNS rebinding',
+    'detached process',
+  ]) {
+    assert.match(content, new RegExp(invariant, 'i'), `conditional automation docs must cover ${invariant}`);
+  }
+  assert.match(content, /macOS[^\n]+Linux|Linux[^\n]+macOS/i);
+});
+
+test('deployment docs require a dedicated AppArmor profile without weakening the global userns policy', () => {
+  const content = readFileSync(join(rootDir, 'docs', 'operations', 'release-workflow.md'), 'utf8');
+
+  assert.match(content, /Ubuntu 24\.04\+/);
+  assert.match(content, /dedicated AppArmor profile/i);
+  assert.match(content, /kernel\.apparmor_restrict_unprivileged_userns/);
+  assert.match(content, /must not|do not|禁止/i);
+  assert.doesNotMatch(content, /sysctl\s+-w\s+kernel\.apparmor_restrict_unprivileged_userns=0/);
+});

@@ -7,6 +7,10 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=/pnpm:/opt/agentdock/node_modules/.bin:$PATH
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bubblewrap socat ripgrep \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./

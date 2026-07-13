@@ -90,9 +90,14 @@ flowchart LR
 - [ACP 会话运行时](docs/architecture/acp-protocol.md)
 - [Channel Gateway 通道网关](docs/architecture/channel-gateways.md)
 - [Scheduler 定时投递](docs/architecture/scheduled-delivery.md)
+- [Conditional Automation 条件自动化](docs/architecture/conditional-automation.md)
 - [Knowledge Runtime 知识库运行时](docs/architecture/knowledge-runtime.md)
 
 ## New
+
+### 2026-07-13
+
+- 条件自动化现已统一 Scheduler 与 Monitor 的 Activation、Condition、Action 和 Delivery 边界，并提供逐项 macOS/Linux Sandbox 部署诊断、Linux 镜像依赖及 Ubuntu 24.04+ 专用 AppArmor 安全配置指引；Windows 脚本执行保持 fail-closed。
 
 ### 2026-07-12
 

@@ -1,10 +1,12 @@
 # Scheduled Delivery Architecture
 
+> Compatibility status: scheduled jobs are exposed through the unified [Conditional Automation](conditional-automation.md) model. This document remains authoritative for legacy Scheduler routing and bridge delivery; activation, condition, and action state are separate Automation concerns.
+
 This document describes how AgentDock creates, executes, and delivers scheduled jobs through Local AI Core. The goal is to keep scheduling, ACP execution, and channel delivery separate enough that Lark, Weixin, local threads, and future channels all follow the same invariants.
 
 ## Ownership
 
-Scheduled jobs are Local AI Core state. Renderer, Electron, and channel gateways can request scheduled job operations, but they do not own route resolution or delivery policy.
+Scheduled jobs are Local AI Core state. Renderer, Electron, and channel gateways can request scheduled job operations, but they do not own route resolution or delivery policy. The legacy Scheduler facade maps time activation to an `always` condition; it must not become a second path for approved-script execution.
 
 | Area | Owner | Responsibility |
 | --- | --- | --- |

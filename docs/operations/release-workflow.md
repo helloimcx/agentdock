@@ -77,6 +77,35 @@ Required server setup:
 - The deployment sudoers file allows `DEPLOY_USER` to run only `/usr/local/sbin/deploy-agentdock *` non-interactively.
 - `/etc/systemd/system/agentdock.service` exists and starts `agentdock serve --host 127.0.0.1 --port 14173`.
 
+## Conditional automation sandbox deployment
+
+The Linux Core image installs `bubblewrap`, `socat`, and `ripgrep`. A production host must also permit unprivileged user namespaces, network namespaces, and seccomp for the Core process. Run the deployment Doctor after installation and treat each `automation.linux.*` failure independently; script-backed Automations remain blocked until every required capability passes.
+
+Ubuntu 24.04+ enables `kernel.apparmor_restrict_unprivileged_userns`. The supported setup is a dedicated AppArmor profile granting `userns` only to the executables that need it. Do not globally disable `kernel.apparmor_restrict_unprivileged_userns`, and do not use `sysctl ...=0` as the default installation workaround.
+
+Install a host profile such as `/etc/apparmor.d/agentdock-automation-userns`, adjusting the Node package root if the npm installation is elsewhere:
+
+```text
+abi <abi/4.0>,
+#include <tunables/global>
+
+profile agentdock-automation-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+}
+
+profile agentdock-automation-seccomp /opt/agentdock/node_modules/**/apply-seccomp flags=(unconfined) {
+  userns,
+}
+```
+
+Load and inspect it with `sudo apparmor_parser -r /etc/apparmor.d/agentdock-automation-userns` and `sudo aa-status`. Confirm the executable paths with `command -v bwrap` and the installed Sandbox Runtime package before loading the profile. If the AppArmor parser or local policy rejects the profile, keep script Automations blocked and have the host security administrator adapt the dedicated profile; never fall back to unrestricted child processes.
+
+For container deployments, the host runtime must additionally allow the required namespace and seccomp operations for the Core container. Validate that policy with the Doctor in the final container rather than assuming the presence of packages is sufficient.
+
+Release qualification for conditional scripts requires real macOS and Linux Sandbox Runtime checks. macOS must report Sandbox Runtime, `sandbox-exec`, and `rg`; Linux must independently report Bubblewrap, `socat`, `rg`, AppArmor/userns, network namespace, and seccomp. Windows is unsupported and intentionally fail-closed.
+
+Review the accepted DNS-rebinding and detached-process limitations in [Conditional Automation Architecture](../architecture/conditional-automation.md) before enabling scripts that handle sensitive data. High-assurance Linux deployments should add a destination-pinning egress proxy and cgroup containment.
+
 ## Creating a Release
 
 Update `package.json` version first, then tag that commit:

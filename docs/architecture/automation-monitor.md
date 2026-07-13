@@ -1,10 +1,12 @@
 # Automation Monitor Architecture
 
+> Compatibility status: monitors are exposed through the unified [Conditional Automation](conditional-automation.md) model. This document describes the legacy provider-event facade and its channel bridge details; new cross-source state and security invariants belong to the Automation engine.
+
 This document describes how Local AI Core creates, evaluates, executes, and delivers automation monitors. Monitors are similar to scheduled jobs in that they start background work and can stream results back to a channel, but their trigger source is an observed event rather than a time expression.
 
 ## Ownership
 
-Automation monitor state belongs to Local AI Core. Renderer, CLI, channel slash commands, and ACP conversations can request monitor operations, but they do not own provider execution, condition evaluation, route resolution, or delivery lifecycle.
+Automation monitor state belongs to Local AI Core. Renderer, CLI, channel slash commands, and ACP conversations can request monitor operations, but they do not own provider execution, condition evaluation, route resolution, or delivery lifecycle. Provider event collection stays with the monitor plugin/runtime; activation admission, condition state, and action decisions are owned by the unified Automation services.
 
 | Area | Owner | Responsibility |
 | --- | --- | --- |

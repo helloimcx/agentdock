@@ -8,6 +8,7 @@ import {
 } from '@cc/superai-contracts';
 import { defaultOpenSandboxServerUrl } from '../sandbox/sandbox-config.js';
 import { AnthropicSandboxRunner } from '../automation/scripts/anthropic-sandbox-runner.js';
+import type { SandboxCapabilityProbe } from '../automation/scripts/sandbox-runner.js';
 
 export async function runDeploymentDiagnostics(input: {
   config: DesktopConnectConfig | null | undefined;
@@ -41,7 +42,7 @@ export async function runDeploymentDiagnostics(input: {
     workspacePathCheck(config, profile.id),
     allowlistCheck(config, env),
     sandboxImageCheck(config),
-    await automationSandboxCheck(),
+    ...(await automationSandboxChecks()),
     await opensandboxHealthCheck(opensandboxUrl, sandboxProvider.api_key_env, env),
   ];
   return {
@@ -51,25 +52,68 @@ export async function runDeploymentDiagnostics(input: {
   };
 }
 
-async function automationSandboxCheck(): Promise<LocalCoreDoctorCheck> {
+async function automationSandboxChecks(): Promise<LocalCoreDoctorCheck[]> {
   try {
     const capability = await new AnthropicSandboxRunner().probe();
-    return {
-      id: 'automation.sandbox',
-      label: 'Automation script sandbox',
-      status: capability.available ? 'pass' : 'fail',
-      summary: capability.available
-        ? `Anthropic Sandbox Runtime is available on ${capability.platform}.`
-        : `Automation scripts are blocked on ${capability.platform}; missing ${capability.missing.join(', ')}.`,
-    };
+    return automationSandboxDiagnosticChecks(capability);
   } catch (error) {
-    return {
+    return [{
       id: 'automation.sandbox',
-      label: 'Automation script sandbox',
+      label: 'Automation Sandbox Runtime',
       status: 'fail',
       summary: error instanceof Error ? error.message : String(error),
-    };
+    }];
   }
+}
+
+/**
+ * Convert the runner's stable capability identifiers into one doctor row per
+ * host prerequisite. Operators can then repair only the failed capability.
+ */
+export function automationSandboxDiagnosticChecks(capability: SandboxCapabilityProbe): LocalCoreDoctorCheck[] {
+  if (capability.platform === 'windows') {
+    return [{
+      id: 'automation.sandbox',
+      label: 'Automation scripts on Windows',
+      status: 'fail',
+      summary: 'Condition-script execution is unsupported on Windows and remains fail-closed.',
+    }];
+  }
+
+  const missing = new Set(capability.missing);
+  const check = (id: string, label: string, capabilityId: string): LocalCoreDoctorCheck => ({
+    id,
+    label,
+    status: missing.has(capabilityId) ? 'fail' : 'pass',
+    summary: missing.has(capabilityId) ? `${label} is unavailable.` : `${label} is available.`,
+  });
+  const runtimeMissing = missing.has('sandbox_runtime') || missing.has('sandbox_unavailable');
+  const runtime: LocalCoreDoctorCheck = {
+    id: 'automation.sandbox',
+    label: 'Anthropic Sandbox Runtime',
+    status: runtimeMissing ? 'fail' : 'pass',
+    summary: runtimeMissing
+      ? `Anthropic Sandbox Runtime is unavailable on ${capability.platform}.`
+      : `Anthropic Sandbox Runtime is available on ${capability.platform}.`,
+  };
+
+  if (capability.platform === 'linux') {
+    return [
+      runtime,
+      check('automation.linux.bwrap', 'Bubblewrap (bwrap)', 'bwrap'),
+      check('automation.linux.socat', 'socat proxy bridge', 'socat'),
+      check('automation.linux.rg', 'ripgrep (rg)', 'rg'),
+      check('automation.linux.userns-apparmor', 'user namespace / AppArmor permission', 'apparmor.userns'),
+      check('automation.linux.network-namespace', 'network namespace support', 'network.namespace'),
+      check('automation.linux.seccomp', 'seccomp support', 'seccomp'),
+    ];
+  }
+
+  return [
+    runtime,
+    check('automation.macos.sandbox-exec', 'macOS sandbox-exec', 'sandbox-exec'),
+    check('automation.macos.rg', 'ripgrep (rg)', 'rg'),
+  ];
 }
 
 function dockerSocketCheck(profileId: string): LocalCoreDoctorCheck {

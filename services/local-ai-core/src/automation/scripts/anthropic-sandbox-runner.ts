@@ -93,7 +93,7 @@ export const PRIVATE_NETWORK_DENY_HOSTS = [
   'metadata.google.internal',
 ] as const;
 
-const CAPABILITY_ORDER = ['sandbox_unavailable', 'bwrap', 'socat', 'rg', 'seccomp', 'sandbox_runtime', 'apparmor.userns'];
+const CAPABILITY_ORDER = ['sandbox_unavailable', 'bwrap', 'socat', 'rg', 'seccomp', 'network.namespace', 'sandbox_runtime', 'apparmor.userns'];
 const DEFAULT_WRITE_DENY_PATHS = [
   '/tmp/claude',
   '/private/tmp/claude',
@@ -329,6 +329,7 @@ export class AnthropicSandboxRunner implements SandboxRunner {
       }
     } else {
       if (!this.commandExists('sandbox-exec')) missing.add('sandbox-exec');
+      if (!this.commandExists('rg')) missing.add('rg');
     }
 
     if (missing.size === 0 && manager && this.probeInitialization) {
@@ -447,6 +448,7 @@ function addDependencyNames(missing: Set<string>, errors: string[]) {
     if (lower.includes('socat')) missing.add('socat');
     if (lower.includes('ripgrep') || /\brg\b/.test(lower)) missing.add('rg');
     if (lower.includes('seccomp')) missing.add('seccomp');
+    if (lower.includes('network namespace') || lower.includes('unshare-net')) missing.add('network.namespace');
     if (lower.includes('unsupported platform')) missing.add('sandbox_unavailable');
     if (lower.includes('sandbox')) missing.add('sandbox_runtime');
   }
