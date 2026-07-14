@@ -492,6 +492,14 @@ export class LocalAutomationStore {
     return row?.next_check_at ?? null;
   }
 
+  listDueAutomationIds(now: Date): Set<string> {
+    const rows = this.db.prepare(
+      `SELECT id FROM automations
+       WHERE enabled = 1 AND health = 'healthy' AND next_check_at IS NOT NULL AND next_check_at <= ?`,
+    ).all(now.toISOString()) as { id: string }[];
+    return new Set(rows.map((row) => row.id));
+  }
+
   private toDefinition(row: LocalAutomationRow): AutomationDefinition {
     try {
       return normalizeDefinition({

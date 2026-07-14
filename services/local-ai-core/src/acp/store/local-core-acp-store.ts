@@ -434,6 +434,10 @@ export class LocalCoreAcpStore {
     return this.automations.getNextCheckAt(automationId);
   }
 
+  listDueAutomationIds(now: Date): Set<string> {
+    return this.automations.listDueAutomationIds(now);
+  }
+
   createAutomation(input: AutomationCreateInput): AutomationDefinition {
     return this.automations.create(input);
   }

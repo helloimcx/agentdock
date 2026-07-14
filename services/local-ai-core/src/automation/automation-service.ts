@@ -387,10 +387,10 @@ export class AutomationService {
   private async runTick(generation: number): Promise<void> {
     const now = this.now();
     const due: AutomationDefinition[] = [];
+    const dueIds = this.options.store.listDueAutomationIds(now);
     for (const automation of this.list()) {
       if (!this.shouldPoll(automation)) continue;
-      const nextCheckAt = this.options.store.getAutomationNextCheckAt(automation.id);
-      if (nextCheckAt !== null && Date.parse(nextCheckAt) <= now.getTime()) {
+      if (dueIds.has(automation.id)) {
         due.push(automation);
       }
     }
