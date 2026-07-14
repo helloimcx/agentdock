@@ -74,6 +74,32 @@ test('creates, reads, updates, and persists trusted automation state', () => {
   }
 });
 
+test('listNextCheckAtById returns only automations with a scheduled next check in a single query', () => {
+  const context = fixture();
+  try {
+    const withCheck = context.store.create(createInput({ title: 'With next check' }));
+    const nullCheck = context.store.create(createInput({ title: 'Without next check' }));
+    context.store.updateState(withCheck.id, { nextCheckAt: '2026-07-05T01:05:00.000Z' });
+
+    const storeMap = context.store.listNextCheckAtById();
+    assert.equal(storeMap.size, 1);
+    assert.equal(storeMap.get(withCheck.id), '2026-07-05T01:05:00.000Z');
+    assert.equal(storeMap.has(nullCheck.id), false);
+
+    const facadeMap = context.facade.listAutomationNextCheckAtById();
+    assert.equal(facadeMap.size, 1);
+    assert.equal(facadeMap.get(withCheck.id), '2026-07-05T01:05:00.000Z');
+
+    const otherWorkspace = context.store.create(createInput({ workspaceId: 'workspace-2', title: 'Other workspace' }));
+    context.store.updateState(otherWorkspace.id, { nextCheckAt: '2026-07-05T02:00:00.000Z' });
+    const scoped = context.store.listNextCheckAtById('workspace-2');
+    assert.equal(scoped.size, 1);
+    assert.equal(scoped.get(otherWorkspace.id), '2026-07-05T02:00:00.000Z');
+  } finally {
+    context.close();
+  }
+});
+
 test('reconciles queued and running action runs as interrupted after restart', () => {
   const context = fixture();
   try {

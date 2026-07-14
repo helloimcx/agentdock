@@ -434,6 +434,10 @@ export class LocalCoreAcpStore {
     return this.automations.getNextCheckAt(automationId);
   }
 
+  listAutomationNextCheckAtById(workspaceId?: string): Map<string, string> {
+    return this.automations.listNextCheckAtById(workspaceId);
+  }
+
   createAutomation(input: AutomationCreateInput): AutomationDefinition {
     return this.automations.create(input);
   }
