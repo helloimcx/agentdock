@@ -80,21 +80,32 @@ test('listDueAutomationIds returns only automations whose next_check_at is at or
     const due = context.store.create(createInput({ title: 'Due' }));
     const future = context.store.create(createInput({ title: 'Future' }));
     const unset = context.store.create(createInput({ title: 'Unset' }));
+    const disabled = context.store.create(createInput({ title: 'Disabled' }));
+    const blocked = context.store.create(createInput({ title: 'Blocked' }));
     context.store.updateState(due.id, { nextCheckAt: '2026-07-05T01:05:00.000Z' });
     context.store.updateState(future.id, { nextCheckAt: '2026-07-05T02:00:00.000Z' });
+    context.store.updateState(disabled.id, { nextCheckAt: '2026-07-05T01:05:00.000Z' });
+    context.store.update(disabled.id, { enabled: false });
+    context.store.updateState(blocked.id, {
+      nextCheckAt: '2026-07-05T01:05:00.000Z',
+      health: 'blocked',
+      blockedReason: 'Provider unavailable',
+    });
 
-    const atDue = context.store.listDueAutomationIds('2026-07-05T01:05:00.000Z');
+    const atDue = context.store.listDueAutomationIds(new Date('2026-07-05T01:05:00.000Z'));
     assert.equal(atDue.size, 1);
     assert.equal(atDue.has(due.id), true);
     assert.equal(atDue.has(future.id), false);
     assert.equal(atDue.has(unset.id), false);
+    assert.equal(atDue.has(disabled.id), false);
+    assert.equal(atDue.has(blocked.id), false);
 
-    const atLater = context.store.listDueAutomationIds('2026-07-05T02:00:00.000Z');
+    const atLater = context.store.listDueAutomationIds(new Date('2026-07-05T02:00:00.000Z'));
     assert.equal(atLater.size, 2);
     assert.equal(atLater.has(due.id), true);
     assert.equal(atLater.has(future.id), true);
 
-    const facadeDue = context.facade.listDueAutomationIds('2026-07-05T01:05:00.000Z');
+    const facadeDue = context.facade.listDueAutomationIds(new Date('2026-07-05T01:05:00.000Z'));
     assert.equal(facadeDue.size, 1);
     assert.equal(facadeDue.has(due.id), true);
   } finally {

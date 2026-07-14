@@ -387,7 +387,7 @@ export class AutomationService {
   private async runTick(generation: number): Promise<void> {
     const now = this.now();
     const due: AutomationDefinition[] = [];
-    const dueIds = this.options.store.listDueAutomationIds(now.toISOString());
+    const dueIds = this.options.store.listDueAutomationIds(now);
     for (const automation of this.list()) {
       if (!this.shouldPoll(automation)) continue;
       if (dueIds.has(automation.id)) {
