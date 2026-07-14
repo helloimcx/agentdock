@@ -74,27 +74,29 @@ test('creates, reads, updates, and persists trusted automation state', () => {
   }
 });
 
-test('listNextCheckAtById returns only automations with a scheduled next check in a single query', () => {
+test('listDueAutomationIds returns only automations whose next_check_at is at or before now', () => {
   const context = fixture();
   try {
-    const withCheck = context.store.create(createInput({ title: 'With next check' }));
-    const nullCheck = context.store.create(createInput({ title: 'Without next check' }));
-    context.store.updateState(withCheck.id, { nextCheckAt: '2026-07-05T01:05:00.000Z' });
+    const due = context.store.create(createInput({ title: 'Due' }));
+    const future = context.store.create(createInput({ title: 'Future' }));
+    const unset = context.store.create(createInput({ title: 'Unset' }));
+    context.store.updateState(due.id, { nextCheckAt: '2026-07-05T01:05:00.000Z' });
+    context.store.updateState(future.id, { nextCheckAt: '2026-07-05T02:00:00.000Z' });
 
-    const storeMap = context.store.listNextCheckAtById();
-    assert.equal(storeMap.size, 1);
-    assert.equal(storeMap.get(withCheck.id), '2026-07-05T01:05:00.000Z');
-    assert.equal(storeMap.has(nullCheck.id), false);
+    const atDue = context.store.listDueAutomationIds('2026-07-05T01:05:00.000Z');
+    assert.equal(atDue.size, 1);
+    assert.equal(atDue.has(due.id), true);
+    assert.equal(atDue.has(future.id), false);
+    assert.equal(atDue.has(unset.id), false);
 
-    const facadeMap = context.facade.listAutomationNextCheckAtById();
-    assert.equal(facadeMap.size, 1);
-    assert.equal(facadeMap.get(withCheck.id), '2026-07-05T01:05:00.000Z');
+    const atLater = context.store.listDueAutomationIds('2026-07-05T02:00:00.000Z');
+    assert.equal(atLater.size, 2);
+    assert.equal(atLater.has(due.id), true);
+    assert.equal(atLater.has(future.id), true);
 
-    const otherWorkspace = context.store.create(createInput({ workspaceId: 'workspace-2', title: 'Other workspace' }));
-    context.store.updateState(otherWorkspace.id, { nextCheckAt: '2026-07-05T02:00:00.000Z' });
-    const scoped = context.store.listNextCheckAtById('workspace-2');
-    assert.equal(scoped.size, 1);
-    assert.equal(scoped.get(otherWorkspace.id), '2026-07-05T02:00:00.000Z');
+    const facadeDue = context.facade.listDueAutomationIds('2026-07-05T01:05:00.000Z');
+    assert.equal(facadeDue.size, 1);
+    assert.equal(facadeDue.has(due.id), true);
   } finally {
     context.close();
   }

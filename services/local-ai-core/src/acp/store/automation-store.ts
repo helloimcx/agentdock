@@ -492,17 +492,11 @@ export class LocalAutomationStore {
     return row?.next_check_at ?? null;
   }
 
-  listNextCheckAtById(workspaceId?: string): Map<string, string> {
-    const rows = this.db.prepare(`
-      SELECT id, next_check_at
-      FROM automations
-      ${workspaceId ? 'WHERE workspace_id = ?' : ''}
-    `).all(...(workspaceId ? [workspaceId] : [])) as { id: string; next_check_at: string | null }[];
-    const result = new Map<string, string>();
-    for (const row of rows) {
-      if (row.next_check_at) result.set(row.id, row.next_check_at);
-    }
-    return result;
+  listDueAutomationIds(nowIso: string): Set<string> {
+    const rows = this.db.prepare(
+      'SELECT id FROM automations WHERE next_check_at IS NOT NULL AND next_check_at <= ?',
+    ).all(nowIso) as { id: string }[];
+    return new Set(rows.map((row) => row.id));
   }
 
   private toDefinition(row: LocalAutomationRow): AutomationDefinition {
