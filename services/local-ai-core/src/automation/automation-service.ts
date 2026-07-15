@@ -183,6 +183,20 @@ export class AutomationService {
     return this.options.store.listAutomationRuns(automationId);
   }
 
+  listLatestFinishedEvaluationByOrigin(
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.options.store.listLatestFinishedAutomationEvaluationByOrigin(originKind, workspaceId);
+  }
+
+  listLatestRunByOrigin(
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    workspaceId?: string,
+  ): Map<string, AutomationRun> {
+    return this.options.store.listLatestAutomationRunByOrigin(originKind, workspaceId);
+  }
+
   getRuntimeStatus(): AutomationServiceRuntimeStatus {
     return this.runtimeStatus;
   }

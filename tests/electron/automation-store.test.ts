@@ -113,6 +113,103 @@ test('listDueAutomationIds returns only automations whose next_check_at is at or
   }
 });
 
+test('listLatestFinishedEvaluationByOrigin returns the most recent finished evaluation per automation', () => {
+  const context = fixture();
+  try {
+    const monitor = context.store.createTrusted({
+      ...createInput({ title: 'Monitor' }),
+      originKind: 'automation-monitor',
+    });
+    const otherWorkspace = context.store.createTrusted({
+      ...createInput({ workspaceId: 'workspace-2', title: 'Other' }),
+      originKind: 'automation-monitor',
+    });
+
+    const earlier = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T01:00:00.000Z',
+    });
+    context.store.finishEvaluation(earlier.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T01:00:05.000Z',
+    });
+    const later = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T02:00:00.000Z',
+    });
+    context.store.finishEvaluation(later.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T02:00:05.000Z',
+    });
+    const running = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T03:00:00.000Z',
+    });
+    const other = context.store.createEvaluation(otherWorkspace.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T01:00:00.000Z',
+    });
+    context.store.finishEvaluation(other.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T01:00:05.000Z',
+    });
+    void running;
+
+    const all = context.store.listLatestFinishedEvaluationByOrigin('automation-monitor');
+    assert.equal(all.size, 2);
+    assert.equal(all.get(monitor.id)?.id, later.id);
+    assert.equal(all.get(otherWorkspace.id)?.id, other.id);
+
+    const scoped = context.store.listLatestFinishedEvaluationByOrigin('automation-monitor', 'workspace-1');
+    assert.equal(scoped.size, 1);
+    assert.equal(scoped.get(monitor.id)?.id, later.id);
+
+    const facadeScoped = context.facade.listLatestFinishedAutomationEvaluationByOrigin('automation-monitor', 'workspace-1');
+    assert.equal(facadeScoped.get(monitor.id)?.id, later.id);
+  } finally {
+    context.close();
+  }
+});
+
+test('listLatestRunByOrigin returns the most recent run per automation', () => {
+  const context = fixture();
+  try {
+    const job = context.store.createTrusted({
+      ...createInput({ title: 'Job' }),
+      originKind: 'scheduled-job',
+    });
+
+    const evaluations = ['2026-07-05T01:00:00.000Z', '2026-07-05T02:00:00.000Z'].map((finishedAt, index) => {
+      const evaluation = context.store.createEvaluation(job.id, {
+        activationKind: 'cron',
+        startedAt: `2026-07-05T0${index + 1}:00:00.000Z`,
+      });
+      context.store.finishEvaluation(evaluation.id, {
+        conditionOutcome: 'matched',
+        triggerDecision: 'triggered',
+        finishedAt,
+      });
+      return evaluation;
+    });
+    const earlierRun = context.store.createRun(job.id, evaluations[0]!.id, { status: 'succeeded' });
+    const laterRun = context.store.createRun(job.id, evaluations[1]!.id, { status: 'failed', error: 'boom' });
+    void earlierRun;
+
+    const all = context.store.listLatestRunByOrigin('scheduled-job');
+    assert.equal(all.size, 1);
+    assert.equal(all.get(job.id)?.id, laterRun.id);
+    assert.equal(all.get(job.id)?.status, 'failed');
+
+    const facadeAll = context.facade.listLatestAutomationRunByOrigin('scheduled-job');
+    assert.equal(facadeAll.get(job.id)?.id, laterRun.id);
+  } finally {
+    context.close();
+  }
+});
+
 test('reconciles queued and running action runs as interrupted after restart', () => {
   const context = fixture();
   try {

@@ -290,6 +290,53 @@ export class LocalAutomationStore {
     return rows.map((row) => this.toRun(row));
   }
 
+  listLatestFinishedEvaluationByOrigin(
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    const rows = this.db.prepare(`
+      WITH ranked AS (
+        SELECT ${EVALUATION_COLUMNS},
+               ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY started_at DESC, id DESC) AS position
+        FROM automation_evaluations
+        WHERE status = 'finished'
+          AND automation_id IN (SELECT id FROM automations WHERE origin_kind = ?${workspaceId ? ' AND workspace_id = ?' : ''})
+      )
+      SELECT ${EVALUATION_COLUMNS}
+      FROM ranked
+      WHERE position = 1
+    `).all(...(workspaceId ? [originKind, workspaceId] : [originKind])) as LocalAutomationEvaluationRow[];
+    const result = new Map<string, AutomationEvaluation>();
+    for (const row of rows) {
+      const evaluation = this.toEvaluation(row);
+      result.set(evaluation.automationId, evaluation);
+    }
+    return result;
+  }
+
+  listLatestRunByOrigin(
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    workspaceId?: string,
+  ): Map<string, AutomationRun> {
+    const rows = this.db.prepare(`
+      WITH ranked AS (
+        SELECT ${RUN_COLUMNS},
+               ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY created_at DESC, id DESC) AS position
+        FROM automation_runs
+        WHERE automation_id IN (SELECT id FROM automations WHERE origin_kind = ?${workspaceId ? ' AND workspace_id = ?' : ''})
+      )
+      SELECT ${RUN_COLUMNS}
+      FROM ranked
+      WHERE position = 1
+    `).all(...(workspaceId ? [originKind, workspaceId] : [originKind])) as LocalAutomationRunRow[];
+    const result = new Map<string, AutomationRun>();
+    for (const row of rows) {
+      const run = this.toRun(row);
+      result.set(run.automationId, run);
+    }
+    return result;
+  }
+
   reconcileInterruptedRuns(reason: string, finishedAt: string): AutomationRun[] {
     const interruptedAt = assertIsoTimestamp(finishedAt, 'Automation interrupted run finishedAt');
     const rows = this.db.prepare(`

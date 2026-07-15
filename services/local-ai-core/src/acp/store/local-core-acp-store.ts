@@ -613,6 +613,20 @@ export class LocalCoreAcpStore {
     return this.automations.getLatestEvaluationWithState(automationId);
   }
 
+  listLatestFinishedAutomationEvaluationByOrigin(
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.automations.listLatestFinishedEvaluationByOrigin(originKind, workspaceId);
+  }
+
+  listLatestAutomationRunByOrigin(
+    originKind: NonNullable<AutomationDefinition['originKind']>,
+    workspaceId?: string,
+  ): Map<string, AutomationRun> {
+    return this.automations.listLatestRunByOrigin(originKind, workspaceId);
+  }
+
   createAutomationRun(
     automationId: string,
     evaluationId: string,
