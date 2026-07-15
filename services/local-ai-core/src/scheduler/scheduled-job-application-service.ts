@@ -48,11 +48,12 @@ export class ScheduledJobApplicationService {
   constructor(private readonly options: ScheduledJobApplicationServiceOptions) {}
 
   listJobs(workspaceId?: string): ScheduledJob[] {
-    return this.options.automations.list(workspaceId)
-      .filter((automation) => automation.originKind === 'scheduled-job')
+    const latestRunById = this.options.automations.listLatestRunByOrigin('scheduled-job', workspaceId);
+    return this.options.automations
+      .list(workspaceId, 'scheduled-job')
       .map((automation) => automationToScheduledJob(
         automation,
-        latestAutomationRun(this.options.automations.listRuns(automation.id)),
+        latestRunById.get(automation.id),
       ));
   }
 

@@ -165,14 +165,25 @@ export class AutomationMonitorService {
   }
 
   listMonitors(workspaceId?: string): AutomationMonitor[] {
-    return this.options.automations.list(workspaceId)
-      .filter((automation) => automation.originKind === 'automation-monitor')
-      .map((automation) => automationToMonitor(
-        automation,
-        latestFinishedEvaluation(this.options.automations.listEvaluations(automation.id)),
-        latestAutomationRun(this.options.automations.listRuns(automation.id)),
-        this.options.automations.getLatestEvaluationWithState(automation.id),
-      ));
+    const automations = this.options.automations.list(workspaceId, 'automation-monitor');
+    const latestEvaluationById = this.options.automations.listLatestFinishedEvaluationByOrigin(
+      'automation-monitor',
+      workspaceId,
+    );
+    const latestRunById = this.options.automations.listLatestRunByOrigin(
+      'automation-monitor',
+      workspaceId,
+    );
+    const latestEvaluationWithStateById = this.options.automations.listLatestEvaluationWithStateByOrigin(
+      'automation-monitor',
+      workspaceId,
+    );
+    return automations.map((automation) => automationToMonitor(
+      automation,
+      latestEvaluationById.get(automation.id),
+      latestRunById.get(automation.id),
+      latestEvaluationWithStateById.get(automation.id),
+    ));
   }
 
   getMonitor(monitorId: string): AutomationMonitor | undefined {

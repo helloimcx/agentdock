@@ -55,13 +55,23 @@ const RUN_COLUMNS = 'id, automation_id, evaluation_id, status, created_at, run_j
 export class LocalAutomationStore {
   constructor(private readonly db: DatabaseSync) {}
 
-  list(workspaceId?: string): AutomationDefinition[] {
+  list(workspaceId?: string, originKind?: NonNullable<AutomationDefinition['originKind']>): AutomationDefinition[] {
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (workspaceId) {
+      conditions.push('workspace_id = ?');
+      params.push(workspaceId);
+    }
+    if (originKind) {
+      conditions.push('origin_kind = ?');
+      params.push(originKind);
+    }
     const rows = this.db.prepare(`
       SELECT ${AUTOMATION_COLUMNS}
       FROM automations
-      ${workspaceId ? 'WHERE workspace_id = ?' : ''}
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
       ORDER BY updated_at DESC
-    `).all(...(workspaceId ? [workspaceId] : [])) as LocalAutomationRow[];
+    `).all(...params) as LocalAutomationRow[];
     return rows.map((row) => this.toDefinition(row));
   }
 
@@ -288,6 +298,78 @@ export class LocalAutomationStore {
       ORDER BY created_at DESC, id DESC
     `).all(automationId) as LocalAutomationRunRow[];
     return rows.map((row) => this.toRun(row));
+  }
+
+  listLatestFinishedEvaluationByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.listLatestEvaluationByOrigin(originKind, workspaceId, '');
+  }
+
+  listLatestEvaluationWithStateByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.listLatestEvaluationByOrigin(
+      originKind,
+      workspaceId,
+      "AND json_type(e.evaluation_json, '$.nextState') = 'object'",
+    );
+  }
+
+  private listLatestEvaluationByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId: string | undefined,
+    extraPredicate: string,
+  ): Map<string, AutomationEvaluation> {
+    const rows = this.db.prepare(`
+      WITH ranked AS (
+        SELECT
+          e.id, e.automation_id, e.status, e.activation_kind, e.script_version_id,
+          e.started_at, e.finished_at, e.evaluation_json,
+          ROW_NUMBER() OVER (PARTITION BY e.automation_id ORDER BY e.started_at DESC, e.id DESC) AS position
+        FROM automation_evaluations e
+        JOIN automations a ON a.id = e.automation_id
+        WHERE e.status = 'finished'
+          ${extraPredicate}
+          AND a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
+      )
+      SELECT ${EVALUATION_COLUMNS}
+      FROM ranked
+      WHERE position = 1
+    `).all(...(workspaceId ? [originKind, workspaceId] : [originKind])) as LocalAutomationEvaluationRow[];
+    const result = new Map<string, AutomationEvaluation>();
+    for (const row of rows) {
+      const evaluation = this.toEvaluation(row);
+      result.set(evaluation.automationId, evaluation);
+    }
+    return result;
+  }
+
+  listLatestRunByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId?: string,
+  ): Map<string, AutomationRun> {
+    const rows = this.db.prepare(`
+      WITH ranked AS (
+        SELECT
+          r.id, r.automation_id, r.evaluation_id, r.status, r.created_at, r.run_json,
+          ROW_NUMBER() OVER (PARTITION BY r.automation_id ORDER BY r.created_at DESC, r.id DESC) AS position
+        FROM automation_runs r
+        JOIN automations a ON a.id = r.automation_id
+        WHERE a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
+      )
+      SELECT ${RUN_COLUMNS}
+      FROM ranked
+      WHERE position = 1
+    `).all(...(workspaceId ? [originKind, workspaceId] : [originKind])) as LocalAutomationRunRow[];
+    const result = new Map<string, AutomationRun>();
+    for (const row of rows) {
+      const run = this.toRun(row);
+      result.set(run.automationId, run);
+    }
+    return result;
   }
 
   reconcileInterruptedRuns(reason: string, finishedAt: string): AutomationRun[] {
