@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-07-15
+
+- 定时任务（cron）现在使用服务器本地时区解释表达式——`0 1 * * *` 会在本地凌晨 1 点触发，而不是 UTC。支持任意 IANA 时区（如 `Asia/Shanghai`、`America/New_York`），并正确处理 DST 夏令时跳变。
+
 ### 2026-07-13
 
 - 条件自动化现已统一 Scheduler 与 Monitor 的 Activation、Condition、Action 和 Delivery 边界，并提供逐项 macOS/Linux Sandbox 部署诊断、Linux 镜像依赖及 Ubuntu 24.04+ 专用 AppArmor 安全配置指引；Windows 脚本执行保持 fail-closed。

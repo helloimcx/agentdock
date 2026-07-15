@@ -41,6 +41,70 @@ export function compileCronExpression(expression: string): CompiledCronExpressio
   });
 }
 
+interface WallClockFields extends CronDateFields {
+  year: number;
+}
+
+export function extractFieldsInTimezone(date: Date, timezone: string): CronDateFields {
+  return stripYear(extractWallClock(date, timezone));
+}
+
+function extractWallClock(date: Date, timezone: string): WallClockFields {
+  const parts = getFormatter(timezone).formatToParts(date);
+  const map: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') map[part.type] = part.value;
+  }
+  const weekday = String(map.weekday ?? '').toLowerCase();
+  const dayOfWeek = WEEKDAY_SHORT_TO_NUMBER[weekday];
+  return {
+    year: Number(map.year ?? '1970'),
+    minute: Number(map.minute ?? '0'),
+    hour: Number(map.hour ?? '0'),
+    dayOfMonth: Number(map.day ?? '1'),
+    month: Number(map.month ?? '1'),
+    dayOfWeek: dayOfWeek ?? 0,
+  };
+}
+
+function stripYear(fields: WallClockFields): CronDateFields {
+  return {
+    minute: fields.minute,
+    hour: fields.hour,
+    dayOfMonth: fields.dayOfMonth,
+    month: fields.month,
+    dayOfWeek: fields.dayOfWeek,
+  };
+}
+
+// Convert a wall-clock time (Y/M/D h:m) in `timezone` to the matching UTC instant.
+// Returns null when that wall clock never exists on that day (DST spring-forward gap),
+// so callers can treat the slot as non-matching.
+function wallClockToUtc(year: number, month: number, dayOfMonth: number, hour: number, minute: number, timezone: string): number | null {
+  const targetWallMs = Date.UTC(year, month - 1, dayOfMonth, hour, minute, 0, 0);
+  let utc = targetWallMs;
+  for (let i = 0; i < 5; i += 1) {
+    const f = extractWallClock(new Date(utc), timezone);
+    const wallAsUtc = Date.UTC(f.year, f.month - 1, f.dayOfMonth, f.hour, f.minute, 0, 0);
+    if (wallAsUtc === targetWallMs) {
+      // Round-trip verified — this instant really is the requested wall clock in `timezone`.
+      return utc;
+    }
+    // Fixed-point step: shift utc by the gap between where its wall clock lands and the target.
+    utc = utc - wallAsUtc + targetWallMs;
+  }
+  // Did not converge to a self-consistent wall clock: the requested time is in a DST gap.
+  return null;
+}
+
+// Day-level match: day-of-month AND month AND day-of-week (cron DOM+DOW AND semantics).
+// Hour and minute are matched separately once a wall-clock day qualifies.
+export function cronMatchesFieldsDay(compiled: CompiledCronExpression, fields: CronDateFields): boolean {
+  return compiled.daysOfMonth.includes(fields.dayOfMonth)
+    && compiled.months.includes(fields.month)
+    && compiled.daysOfWeek.includes(fields.dayOfWeek);
+}
+
 export function cronMatchesFields(compiled: CompiledCronExpression, fields: CronDateFields): boolean {
   // Preserve the legacy scheduler's DOM+DOW AND behavior.
   return compiled.minutes.includes(fields.minute)
@@ -129,6 +193,100 @@ export function findPreviousCronMatchUtc(
   return { date: null, inspectedDays: GREGORIAN_CYCLE_DAYS + 1 };
 }
 
+// Timezone-aware variants: iterate in the target timezone's wall clock rather than UTC.
+// These replace the UTC-only search used by the activation engine when timezone !== 'UTC'.
+export function findNextCronMatchInTimezone(
+  compiled: CompiledCronExpression,
+  after: Date,
+  timezone: string,
+): CronSearchResult {
+  assertSupportedTimezone(timezone);
+  const afterMs = validDateMs(after, 'cron search date');
+  const startFields = extractWallClock(after, timezone);
+  // Begin at the start of the current wall-clock day so a later match on the same day is found.
+  const startDay = wallClockToUtc(startFields.year, startFields.month, startFields.dayOfMonth, 0, 0, timezone);
+  let dayMs = startDay ?? startOfUtcDay(Date.UTC(startFields.year, startFields.month - 1, startFields.dayOfMonth, 0, 0, 0, 0));
+  for (let inspectedDays = 1; inspectedDays <= GREGORIAN_CYCLE_DAYS + 1; inspectedDays += 1) {
+    if (dayMs > MAX_DATE_MS) return { date: null, inspectedDays };
+    const dayFields = extractWallClock(new Date(dayMs), timezone);
+    if (cronMatchesFieldsDay(compiled, stripYear(dayFields))) {
+      for (const hour of compiled.hours) {
+        for (const minute of compiled.minutes) {
+          const candidateMs = wallClockToUtc(dayFields.year, dayFields.month, dayFields.dayOfMonth, hour, minute, timezone);
+          if (candidateMs !== null && candidateMs > afterMs && candidateMs <= MAX_DATE_MS) {
+            return { date: new Date(candidateMs), inspectedDays };
+          }
+        }
+      }
+    }
+    const nextDay = wallClockToUtc(dayFields.year, dayFields.month, dayFields.dayOfMonth + 1, 0, 0, timezone);
+    // A null here only means the next wall-clock midnight is in a DST gap (a handful of
+    // zones transition at midnight). Fall back to 24 h later — the loop extracts the wall-clock
+    // day from dayMs itself, so a one-day-probe offset cannot drop or duplicate a match.
+    if (nextDay === null) {
+      dayMs += DAY_MS;
+    } else {
+      dayMs = nextDay;
+    }
+  }
+  return { date: null, inspectedDays: GREGORIAN_CYCLE_DAYS + 1 };
+}
+
+export function findPreviousCronMatchInTimezone(
+  compiled: CompiledCronExpression,
+  atOrBefore: Date,
+  timezone: string,
+  afterExclusive?: Date,
+): CronSearchResult {
+  assertSupportedTimezone(timezone);
+  const atOrBeforeMs = validDateMs(atOrBefore, 'cron search date');
+  const afterExclusiveMs = afterExclusive ? validDateMs(afterExclusive, 'cron search lower bound') : undefined;
+  if (afterExclusiveMs !== undefined && afterExclusiveMs >= atOrBeforeMs) {
+    return { date: null, inspectedDays: 0 };
+  }
+  const upperFields = extractWallClock(atOrBefore, timezone);
+  const upperDay = wallClockToUtc(upperFields.year, upperFields.month, upperFields.dayOfMonth, 0, 0, timezone);
+  let dayMs = upperDay ?? startOfUtcDay(Date.UTC(upperFields.year, upperFields.month - 1, upperFields.dayOfMonth, 0, 0, 0, 0));
+  for (let inspectedDays = 1; inspectedDays <= GREGORIAN_CYCLE_DAYS + 1; inspectedDays += 1) {
+    if (dayMs < MIN_DATE_MS) return { date: null, inspectedDays };
+    if (afterExclusiveMs !== undefined && dayMs <= afterExclusiveMs) {
+      return { date: null, inspectedDays: inspectedDays - 1 };
+    }
+    const dayFields = extractWallClock(new Date(dayMs), timezone);
+    if (cronMatchesFieldsDay(compiled, stripYear(dayFields))) {
+      for (let hourIndex = compiled.hours.length - 1; hourIndex >= 0; hourIndex -= 1) {
+        for (let minuteIndex = compiled.minutes.length - 1; minuteIndex >= 0; minuteIndex -= 1) {
+          const candidateMs = wallClockToUtc(
+            dayFields.year,
+            dayFields.month,
+            dayFields.dayOfMonth,
+            compiled.hours[hourIndex],
+            compiled.minutes[minuteIndex],
+            timezone,
+          );
+          if (
+            candidateMs !== null
+            && candidateMs <= atOrBeforeMs
+            && candidateMs >= MIN_DATE_MS
+            && (afterExclusiveMs === undefined || candidateMs > afterExclusiveMs)
+          ) {
+            return { date: new Date(candidateMs), inspectedDays };
+          }
+        }
+      }
+    }
+    const prevDay = wallClockToUtc(dayFields.year, dayFields.month, dayFields.dayOfMonth - 1, 0, 0, timezone);
+    // See findNextCronMatchInTimezone: a null only marks a DST-at-midnight quirk, not the end
+    // of schedulable time. Step back 24 h and let the loop read the wall-clock day from dayMs.
+    if (prevDay === null) {
+      dayMs -= DAY_MS;
+    } else {
+      dayMs = prevDay;
+    }
+  }
+  return { date: null, inspectedDays: GREGORIAN_CYCLE_DAYS + 1 };
+}
+
 export function floorToMinute(date: Date) {
   return new Date(
     date.getFullYear(),
@@ -198,4 +356,61 @@ function validDateMs(date: Date, label: string): number {
 
 function invalidCron(expression: string, reason: string): Error {
   return new Error(`Invalid cron expression "${expression}": ${reason}.`);
+}
+
+const WEEKDAY_SHORT_TO_NUMBER: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+
+// formatToParts is dramatically faster when the formatter is reused; cache one per zone.
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+function getFormatter(timezone: string): Intl.DateTimeFormat {
+  const cached = formatterCache.get(timezone);
+  if (cached) return cached;
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hourCycle: 'h23',
+    minute: '2-digit',
+    hour: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    weekday: 'short',
+    year: 'numeric',
+  });
+  formatterCache.set(timezone, formatter);
+  return formatter;
+}
+
+// Intl.supportedValuesOf('timeZone') builds a full IANA list on first call; cache it per runtime.
+let supportedTimezones: Set<string> | null = null;
+function getSupportedTimezones(): Set<string> | null {
+  if (supportedTimezones) return supportedTimezones;
+  supportedTimezones = Intl.supportedValuesOf ? new Set(Intl.supportedValuesOf('timeZone')) : null;
+  return supportedTimezones;
+}
+
+export function isValidTimezone(timezone: string): boolean {
+  // "UTC"/"Z" are valid cron timezones but may be missing from Intl's list (which uses "Etc/UTC").
+  if (timezone === 'UTC' || timezone === 'Z' || timezone === 'Etc/UTC') return true;
+  const supported = getSupportedTimezones();
+  if (supported) return supported.has(timezone);
+  // Fallback for old runtimes: let the formatter constructor throw on bad zones.
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function assertSupportedTimezone(timezone: string): void {
+  if (!isValidTimezone(timezone)) {
+    throw new Error(`Automation scheduling received an unsupported timezone: ${timezone}`);
+  }
 }

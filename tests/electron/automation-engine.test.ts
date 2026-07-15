@@ -15,7 +15,10 @@ import {
 import {
   compileCronExpression,
   cronMatchesDate,
+  extractFieldsInTimezone,
+  findNextCronMatchInTimezone,
   findNextCronMatchUtc,
+  findPreviousCronMatchInTimezone,
   findPreviousCronMatchUtc,
 } from '../../services/local-ai-core/src/scheduler/cron.js';
 
@@ -84,10 +87,19 @@ test('provider-event activations are external and never timer-due', () => {
   assert.equal(missedActivationAt(activation, undefined, now), null);
 });
 
-test('cron timezone limitations are explicit', () => {
+test('cron now supports IANA timezones beyond UTC', () => {
+  // Shanghai is UTC+8 with no DST: next match of "0 1 * * *" after 2026-07-15T00:00Z
+  // (08:00 CST) should be 2026-07-16 01:00 CST = 2026-07-15T17:00Z.
+  assert.equal(
+    nextActivationAt({ kind: 'cron', expression: '0 1 * * *', timezone: 'Asia/Shanghai' }, at('2026-07-15T00:00:00.000Z'))?.toISOString(),
+    '2026-07-15T17:00:00.000Z',
+  );
+});
+
+test('cron rejects unknown timezones', () => {
   assert.throws(
-    () => nextActivationAt({ kind: 'cron', expression: '0 9 * * *', timezone: 'Asia/Shanghai' }, at('2026-07-05T00:00:00.000Z')),
-    /only UTC cron timezones/i,
+    () => nextActivationAt({ kind: 'cron', expression: '0 9 * * *', timezone: 'Not/AZone' }, at('2026-07-05T00:00:00.000Z')),
+    /unsupported timezone/i,
   );
 });
 
@@ -182,7 +194,117 @@ test('cron search does not return dates outside the JavaScript Date range', () =
   const activation: AutomationActivation = { kind: 'cron', expression: '* * * * *', timezone: 'UTC' };
   assert.throws(
     () => nextActivationAt(activation, new Date(8_640_000_000_000_000)),
-    /no UTC cron activation exists/i,
+    /no cron activation exists/i,
+  );
+});
+
+test('timezone-aware cron next match honors the target zone', () => {
+  // 0 1 * * * in Asia/Shanghai (UTC+8) after 2026-07-15T00:00Z (08:00 CST) → next 01:00 CST.
+  assert.equal(
+    findNextCronMatchInTimezone(
+      compileCronExpression('0 1 * * *'),
+      at('2026-07-15T00:00:00.000Z'),
+      'Asia/Shanghai',
+    ).date?.toISOString(),
+    '2026-07-15T17:00:00.000Z',
+  );
+});
+
+test('timezone-aware cron next match lands later when the target-zone hour has already passed', () => {
+  // After 2026-07-15T18:00Z, Shanghai wall clock is 2026-07-16 02:00. Next 01:00 CST is a day later.
+  assert.equal(
+    findNextCronMatchInTimezone(
+      compileCronExpression('0 1 * * *'),
+      at('2026-07-15T18:00:00.000Z'),
+      'Asia/Shanghai',
+    ).date?.toISOString(),
+    '2026-07-16T17:00:00.000Z',
+  );
+});
+
+test('timezone-aware previous match finds the most recent wall-clock hit', () => {
+  // At 2026-07-15T05:00Z (13:00 CST), previous 01:00 CST is 2026-07-14T17:00Z.
+  assert.equal(
+    findPreviousCronMatchInTimezone(
+      compileCronExpression('0 1 * * *'),
+      at('2026-07-15T05:00:00.000Z'),
+      'Asia/Shanghai',
+    ).date?.toISOString(),
+    '2026-07-14T17:00:00.000Z',
+  );
+});
+
+test('extractFieldsInTimezone reads wall clock in the given zone', () => {
+  // 2026-07-15T09:00Z = 2026-07-15 17:00 CST = a Wednesday (dayOfWeek 3).
+  const fields = extractFieldsInTimezone(at('2026-07-15T09:00:00.000Z'), 'Asia/Shanghai');
+  assert.equal(fields.hour, 17);
+  assert.equal(fields.minute, 0);
+  assert.equal(fields.dayOfMonth, 15);
+  assert.equal(fields.month, 7);
+  assert.equal(fields.dayOfWeek, 3);
+});
+
+test('extractFieldsInTimezone accounts for DST (America/New_York)', () => {
+  // 2026-07-15 is in EDT (UTC-4): 09:00Z = 05:00 local.
+  const fields = extractFieldsInTimezone(at('2026-07-15T09:00:00.000Z'), 'America/New_York');
+  assert.equal(fields.hour, 5);
+  assert.equal(fields.minute, 0);
+  assert.equal(fields.dayOfMonth, 15);
+  // 2026-01-15 is in EST (UTC-5): 09:00Z = 04:00 local — DST shift confirmed.
+  const winter = extractFieldsInTimezone(at('2026-01-15T09:00:00.000Z'), 'America/New_York');
+  assert.equal(winter.hour, 4);
+});
+
+test('cron next activation skips a DST gap and returns the next valid wall clock', () => {
+  // US spring-forward 2026: clocks jump from 02:00 to 03:00 local on 2026-03-08.
+  // A cron of "0 2 * * *" has no valid 02:00 local that day; the next match is 02:00
+  // the following day (2026-03-09), which does exist.
+  assert.equal(
+    nextActivationAt({ kind: 'cron', expression: '0 2 * * *', timezone: 'America/New_York' }, at('2026-03-07T07:00:00.000Z'))?.toISOString(),
+    '2026-03-09T06:00:00.000Z',
+  );
+});
+
+test('cron resolves ambiguous fall-back wall clocks to a single instant', () => {
+  // US fall-back 2026: 2026-11-01 01:00 local happens twice (EDT 05:00Z then EST 06:00Z).
+  // The engine must resolve "0 1 * * *" to exactly one instant, not two or zero.
+  const first = nextActivationAt({ kind: 'cron', expression: '0 1 * * *', timezone: 'America/New_York' }, at('2026-10-31T05:00:00.000Z'))?.toISOString();
+  assert.ok(first === '2026-11-01T05:00:00.000Z' || first === '2026-11-01T06:00:00.000Z', `fall-back resolved to ${first}`);
+  // And the following day still triggers exactly once, at EST 01:00 = 06:00Z.
+  assert.equal(
+    nextActivationAt({ kind: 'cron', expression: '0 1 * * *', timezone: 'America/New_York' }, at('2026-11-01T06:00:00.000Z'))?.toISOString(),
+    '2026-11-02T06:00:00.000Z',
+  );
+});
+
+test('cron accepts Z and Etc/UTC as aliases of UTC', () => {
+  // All three aliases must produce identical, UTC-aligned matches.
+  const after = at('2026-07-15T00:00:00.000Z');
+  const expr = '0 * * * *';
+  const viaUtc = nextActivationAt({ kind: 'cron', expression: expr, timezone: 'UTC' }, after)?.toISOString();
+  assert.equal(viaUtc, '2026-07-15T01:00:00.000Z');
+  assert.equal(
+    nextActivationAt({ kind: 'cron', expression: expr, timezone: 'Z' }, after)?.toISOString(),
+    viaUtc,
+    'Z alias should match UTC',
+  );
+  assert.equal(
+    nextActivationAt({ kind: 'cron', expression: expr, timezone: 'Etc/UTC' }, after)?.toISOString(),
+    viaUtc,
+    'Etc/UTC alias should match UTC',
+  );
+});
+
+test('timezone-aware search handles a half-hour offset zone', () => {
+  // Pacific/Chatham is UTC+12:45 in winter (July). 2026-07-16 00:00 local = 2026-07-15T11:15Z,
+  // so a "0 0 * * *" cron resolved right after 2026-07-15T23:00Z lands on the next calendar day.
+  assert.equal(
+    findNextCronMatchInTimezone(
+      compileCronExpression('0 0 * * *'),
+      at('2026-07-15T23:00:00.000Z'),
+      'Pacific/Chatham',
+    ).date?.toISOString(),
+    '2026-07-16T11:15:00.000Z',
   );
 });
 

@@ -1,8 +1,12 @@
 import type { AutomationActivation } from '@cc/superai-contracts';
 import {
+  assertSupportedTimezone,
   compileCronExpression,
   cronMatchesFields,
+  extractFieldsInTimezone,
+  findNextCronMatchInTimezone,
   findNextCronMatchUtc,
+  findPreviousCronMatchInTimezone,
   findPreviousCronMatchUtc,
   type CompiledCronExpression,
 } from '../scheduler/cron.js';
@@ -24,9 +28,12 @@ export function nextActivationAt(activation: AutomationActivation, after: Date):
       return validResultDate(nextMs);
     }
     case 'cron': {
-      const result = findNextCronMatchUtc(requireCompiledCron(compiledCron), after);
-      if (result.date) return result.date;
-      throw new Error(`No UTC cron activation exists for expression: ${activation.expression}`);
+      const compiled = requireCompiledCron(compiledCron);
+      const search = isUtcTimezone(activation.timezone)
+        ? findNextCronMatchUtc(compiled, after)
+        : findNextCronMatchInTimezone(compiled, after, activation.timezone);
+      if (search.date) return search.date;
+      throw new Error(`No cron activation exists for expression: ${activation.expression} (${activation.timezone})`);
     }
   }
 }
@@ -47,14 +54,10 @@ export function isActivationDue(
       return parseIsoTimestamp(activation.runAt, 'once runAt').getTime() <= nowMs;
     case 'interval':
       return nowMs % activation.intervalMs === 0;
-    case 'cron':
-      return nowMs === floorUtcMinute(nowMs) && cronMatchesFields(requireCompiledCron(compiledCron), {
-        minute: now.getUTCMinutes(),
-        hour: now.getUTCHours(),
-        dayOfMonth: now.getUTCDate(),
-        month: now.getUTCMonth() + 1,
-        dayOfWeek: now.getUTCDay(),
-      });
+    case 'cron': {
+      if (nowMs !== floorUtcMinute(nowMs)) return false;
+      return cronMatchesFields(requireCompiledCron(compiledCron), extractFieldsInTimezone(now, activation.timezone));
+    }
   }
 }
 
@@ -79,11 +82,10 @@ export function missedActivationAt(
       return latestMs > lastCheckedMs ? validResultDate(latestMs) : null;
     }
     case 'cron': {
-      return findPreviousCronMatchUtc(
-        requireCompiledCron(compiledCron),
-        now,
-        new Date(lastCheckedMs),
-      ).date;
+      const compiled = requireCompiledCron(compiledCron);
+      return (isUtcTimezone(activation.timezone)
+        ? findPreviousCronMatchUtc(compiled, now, new Date(lastCheckedMs))
+        : findPreviousCronMatchInTimezone(compiled, now, activation.timezone, new Date(lastCheckedMs))).date;
     }
   }
 }
@@ -99,15 +101,13 @@ function validateActivation(activation: AutomationActivation): CompiledCronExpre
       assertInterval(activation.intervalMs);
       return undefined;
     case 'cron':
-      assertUtcTimezone(activation.timezone);
+      assertSupportedTimezone(activation.timezone);
       return compileCronExpression(activation.expression);
   }
 }
 
-function assertUtcTimezone(timezone: string): void {
-  if (timezone !== 'UTC' && timezone !== 'Etc/UTC') {
-    throw new Error(`Automation scheduling currently supports only UTC cron timezones; received: ${timezone}`);
-  }
+function isUtcTimezone(timezone: string): boolean {
+  return timezone === 'UTC' || timezone === 'Etc/UTC' || timezone === 'Z';
 }
 
 function assertInterval(intervalMs: number): void {

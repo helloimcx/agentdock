@@ -59,7 +59,12 @@ test('legacy scheduler mappings validate origin and preserve the public shape', 
     description: 'Daily report',
     enabled: true,
   });
-  assert.deepEqual(input.activation, { kind: 'cron', expression: '0 9 * * *', timezone: 'UTC' });
+  // Legacy cron jobs default to the host's local IANA timezone (matches the old
+  // SchedulerService, which matched cron in local wall clock). Any valid IANA zone is correct.
+  assert.equal(input.activation.kind, 'cron');
+  assert.equal(input.activation.expression, '0 9 * * *');
+  assert.equal(typeof input.activation.timezone, 'string');
+  assert.ok(input.activation.timezone.length > 0, 'timezone should be a non-empty IANA zone');
   assert.deepEqual(input.condition, { kind: 'always' });
   assert.equal(input.originKind, 'scheduled-job');
   assert.equal(input.action.executionMode, 'same-thread');
