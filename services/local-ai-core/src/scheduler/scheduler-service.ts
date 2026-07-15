@@ -64,8 +64,7 @@ export class SchedulerService extends EventEmitter {
     const automations = this.options.automations;
     if (automations) {
       const latestRunById = automations.listLatestRunByOrigin('scheduled-job', workspaceId);
-      return automations.list(workspaceId)
-        .filter((automation) => automation.originKind === 'scheduled-job')
+      return automations.list(workspaceId, 'scheduled-job')
         .map((automation) => automationToScheduledJob(
           automation,
           latestRunById.get(automation.id),

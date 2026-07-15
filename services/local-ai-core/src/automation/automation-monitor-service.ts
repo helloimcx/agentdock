@@ -165,8 +165,7 @@ export class AutomationMonitorService {
   }
 
   listMonitors(workspaceId?: string): AutomationMonitor[] {
-    const automations = this.options.automations.list(workspaceId)
-      .filter((automation) => automation.originKind === 'automation-monitor');
+    const automations = this.options.automations.list(workspaceId, 'automation-monitor');
     const latestEvaluationById = this.options.automations.listLatestFinishedEvaluationByOrigin(
       'automation-monitor',
       workspaceId,
@@ -175,11 +174,15 @@ export class AutomationMonitorService {
       'automation-monitor',
       workspaceId,
     );
+    const latestWithStateById = this.options.automations.listLatestEvaluationWithStateByOrigin(
+      'automation-monitor',
+      workspaceId,
+    );
     return automations.map((automation) => automationToMonitor(
       automation,
       latestEvaluationById.get(automation.id),
       latestRunById.get(automation.id),
-      this.options.automations.getLatestEvaluationWithState(automation.id),
+      latestWithStateById.get(automation.id),
     ));
   }
 

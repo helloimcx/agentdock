@@ -422,8 +422,11 @@ export class LocalCoreAcpStore {
     return this.automationMonitors.updateRun(runId, input);
   }
 
-  listAutomations(workspaceId?: string): AutomationDefinition[] {
-    return this.automations.list(workspaceId);
+  listAutomations(
+    workspaceId?: string,
+    originKind?: NonNullable<AutomationDefinition['originKind']>,
+  ): AutomationDefinition[] {
+    return this.automations.list(workspaceId, originKind);
   }
 
   getAutomation(automationId: string): AutomationDefinition | undefined {
@@ -614,14 +617,21 @@ export class LocalCoreAcpStore {
   }
 
   listLatestFinishedAutomationEvaluationByOrigin(
-    originKind: NonNullable<AutomationDefinition['originKind']>,
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationEvaluation> {
     return this.automations.listLatestFinishedEvaluationByOrigin(originKind, workspaceId);
   }
 
+  listLatestAutomationEvaluationWithStateByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.automations.listLatestEvaluationWithStateByOrigin(originKind, workspaceId);
+  }
+
   listLatestAutomationRunByOrigin(
-    originKind: NonNullable<AutomationDefinition['originKind']>,
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationRun> {
     return this.automations.listLatestRunByOrigin(originKind, workspaceId);

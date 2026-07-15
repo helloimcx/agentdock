@@ -99,8 +99,11 @@ export class AutomationService {
     this.scriptProtocolRunner = options.scriptProtocolRunner;
   }
 
-  list(workspaceId?: string): AutomationDefinition[] {
-    return this.options.store.listAutomations(workspaceId);
+  list(
+    workspaceId?: string,
+    originKind?: NonNullable<AutomationDefinition['originKind']>,
+  ): AutomationDefinition[] {
+    return this.options.store.listAutomations(workspaceId, originKind);
   }
 
   get(automationId: string): AutomationDefinition | undefined {
@@ -184,14 +187,21 @@ export class AutomationService {
   }
 
   listLatestFinishedEvaluationByOrigin(
-    originKind: NonNullable<AutomationDefinition['originKind']>,
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationEvaluation> {
     return this.options.store.listLatestFinishedAutomationEvaluationByOrigin(originKind, workspaceId);
   }
 
+  listLatestEvaluationWithStateByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.options.store.listLatestAutomationEvaluationWithStateByOrigin(originKind, workspaceId);
+  }
+
   listLatestRunByOrigin(
-    originKind: NonNullable<AutomationDefinition['originKind']>,
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationRun> {
     return this.options.store.listLatestAutomationRunByOrigin(originKind, workspaceId);

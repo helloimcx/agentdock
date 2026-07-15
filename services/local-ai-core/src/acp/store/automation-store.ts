@@ -55,13 +55,23 @@ const RUN_COLUMNS = 'id, automation_id, evaluation_id, status, created_at, run_j
 export class LocalAutomationStore {
   constructor(private readonly db: DatabaseSync) {}
 
-  list(workspaceId?: string): AutomationDefinition[] {
+  list(workspaceId?: string, originKind?: NonNullable<AutomationDefinition['originKind']>): AutomationDefinition[] {
+    const conditions: string[] = [];
+    const params: string[] = [];
+    if (workspaceId) {
+      conditions.push('workspace_id = ?');
+      params.push(workspaceId);
+    }
+    if (originKind) {
+      conditions.push('origin_kind = ?');
+      params.push(originKind);
+    }
     const rows = this.db.prepare(`
       SELECT ${AUTOMATION_COLUMNS}
       FROM automations
-      ${workspaceId ? 'WHERE workspace_id = ?' : ''}
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
       ORDER BY updated_at DESC
-    `).all(...(workspaceId ? [workspaceId] : [])) as LocalAutomationRow[];
+    `).all(...params) as LocalAutomationRow[];
     return rows.map((row) => this.toDefinition(row));
   }
 
@@ -291,7 +301,7 @@ export class LocalAutomationStore {
   }
 
   listLatestFinishedEvaluationByOrigin(
-    originKind: NonNullable<AutomationDefinition['originKind']>,
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationEvaluation> {
     const rows = this.db.prepare(`
@@ -314,8 +324,33 @@ export class LocalAutomationStore {
     return result;
   }
 
+  listLatestEvaluationWithStateByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    const rows = this.db.prepare(`
+      WITH ranked AS (
+        SELECT ${EVALUATION_COLUMNS},
+               ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY started_at DESC, id DESC) AS position
+        FROM automation_evaluations
+        WHERE status = 'finished'
+          AND json_type(evaluation_json, '$.nextState') = 'object'
+          AND automation_id IN (SELECT id FROM automations WHERE origin_kind = ?${workspaceId ? ' AND workspace_id = ?' : ''})
+      )
+      SELECT ${EVALUATION_COLUMNS}
+      FROM ranked
+      WHERE position = 1
+    `).all(...(workspaceId ? [originKind, workspaceId] : [originKind])) as LocalAutomationEvaluationRow[];
+    const result = new Map<string, AutomationEvaluation>();
+    for (const row of rows) {
+      const evaluation = this.toEvaluation(row);
+      result.set(evaluation.automationId, evaluation);
+    }
+    return result;
+  }
+
   listLatestRunByOrigin(
-    originKind: NonNullable<AutomationDefinition['originKind']>,
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationRun> {
     const rows = this.db.prepare(`

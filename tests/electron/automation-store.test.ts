@@ -210,6 +210,73 @@ test('listLatestRunByOrigin returns the most recent run per automation', () => {
   }
 });
 
+test('listLatestEvaluationWithStateByOrigin returns the most recent finished-with-state evaluation per automation', () => {
+  const context = fixture();
+  try {
+    const monitor = context.store.createTrusted({
+      ...createInput({ title: 'Monitor' }),
+      originKind: 'automation-monitor',
+    });
+
+    const withoutState = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T01:00:00.000Z',
+    });
+    context.store.finishEvaluation(withoutState.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T01:00:05.000Z',
+    });
+    const withState = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T02:00:00.000Z',
+    });
+    context.store.finishEvaluation(withState.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T02:00:05.000Z',
+      nextState: { counter: 1 },
+    });
+
+    const all = context.store.listLatestEvaluationWithStateByOrigin('automation-monitor');
+    assert.equal(all.size, 1);
+    assert.equal(all.get(monitor.id)?.id, withState.id);
+    const finished = all.get(monitor.id);
+    assert.equal(finished?.status, 'finished');
+    if (finished?.status === 'finished') {
+      assert.deepEqual(finished.nextState, { counter: 1 });
+    }
+
+    const facadeAll = context.facade.listLatestAutomationEvaluationWithStateByOrigin('automation-monitor');
+    assert.equal(facadeAll.get(monitor.id)?.id, withState.id);
+  } finally {
+    context.close();
+  }
+});
+
+test('list filters by origin kind when provided', () => {
+  const context = fixture();
+  try {
+    const monitor = context.store.createTrusted({
+      ...createInput({ title: 'Monitor' }),
+      originKind: 'automation-monitor',
+    });
+    const job = context.store.createTrusted({
+      ...createInput({ title: 'Job' }),
+      originKind: 'scheduled-job',
+    });
+    void monitor;
+    void job;
+
+    assert.equal(context.store.list().length, 2);
+    assert.equal(context.store.list(undefined, 'automation-monitor').length, 1);
+    assert.equal(context.store.list(undefined, 'scheduled-job').length, 1);
+    assert.equal(context.facade.listAutomations(undefined, 'scheduled-job').length, 1);
+  } finally {
+    context.close();
+  }
+});
+
 test('reconciles queued and running action runs as interrupted after restart', () => {
   const context = fixture();
   try {
