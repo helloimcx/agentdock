@@ -306,11 +306,14 @@ export class LocalAutomationStore {
   ): Map<string, AutomationEvaluation> {
     const rows = this.db.prepare(`
       WITH ranked AS (
-        SELECT ${EVALUATION_COLUMNS},
-               ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY started_at DESC, id DESC) AS position
-        FROM automation_evaluations
-        WHERE status = 'finished'
-          AND automation_id IN (SELECT id FROM automations WHERE origin_kind = ?${workspaceId ? ' AND workspace_id = ?' : ''})
+        SELECT
+          e.id, e.automation_id, e.status, e.activation_kind, e.script_version_id,
+          e.started_at, e.finished_at, e.evaluation_json,
+          ROW_NUMBER() OVER (PARTITION BY e.automation_id ORDER BY e.started_at DESC, e.id DESC) AS position
+        FROM automation_evaluations e
+        JOIN automations a ON a.id = e.automation_id
+        WHERE e.status = 'finished'
+          AND a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
       )
       SELECT ${EVALUATION_COLUMNS}
       FROM ranked
@@ -330,12 +333,15 @@ export class LocalAutomationStore {
   ): Map<string, AutomationEvaluation> {
     const rows = this.db.prepare(`
       WITH ranked AS (
-        SELECT ${EVALUATION_COLUMNS},
-               ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY started_at DESC, id DESC) AS position
-        FROM automation_evaluations
-        WHERE status = 'finished'
-          AND json_type(evaluation_json, '$.nextState') = 'object'
-          AND automation_id IN (SELECT id FROM automations WHERE origin_kind = ?${workspaceId ? ' AND workspace_id = ?' : ''})
+        SELECT
+          e.id, e.automation_id, e.status, e.activation_kind, e.script_version_id,
+          e.started_at, e.finished_at, e.evaluation_json,
+          ROW_NUMBER() OVER (PARTITION BY e.automation_id ORDER BY e.started_at DESC, e.id DESC) AS position
+        FROM automation_evaluations e
+        JOIN automations a ON a.id = e.automation_id
+        WHERE e.status = 'finished'
+          AND json_type(e.evaluation_json, '$.nextState') = 'object'
+          AND a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
       )
       SELECT ${EVALUATION_COLUMNS}
       FROM ranked
@@ -355,10 +361,12 @@ export class LocalAutomationStore {
   ): Map<string, AutomationRun> {
     const rows = this.db.prepare(`
       WITH ranked AS (
-        SELECT ${RUN_COLUMNS},
-               ROW_NUMBER() OVER (PARTITION BY automation_id ORDER BY created_at DESC, id DESC) AS position
-        FROM automation_runs
-        WHERE automation_id IN (SELECT id FROM automations WHERE origin_kind = ?${workspaceId ? ' AND workspace_id = ?' : ''})
+        SELECT
+          r.id, r.automation_id, r.evaluation_id, r.status, r.created_at, r.run_json,
+          ROW_NUMBER() OVER (PARTITION BY r.automation_id ORDER BY r.created_at DESC, r.id DESC) AS position
+        FROM automation_runs r
+        JOIN automations a ON a.id = r.automation_id
+        WHERE a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
       )
       SELECT ${RUN_COLUMNS}
       FROM ranked

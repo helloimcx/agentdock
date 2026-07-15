@@ -174,7 +174,7 @@ export class AutomationMonitorService {
       'automation-monitor',
       workspaceId,
     );
-    const latestWithStateById = this.options.automations.listLatestEvaluationWithStateByOrigin(
+    const latestEvaluationWithStateById = this.options.automations.listLatestEvaluationWithStateByOrigin(
       'automation-monitor',
       workspaceId,
     );
@@ -182,7 +182,7 @@ export class AutomationMonitorService {
       automation,
       latestEvaluationById.get(automation.id),
       latestRunById.get(automation.id),
-      latestWithStateById.get(automation.id),
+      latestEvaluationWithStateById.get(automation.id),
     ));
   }
 
