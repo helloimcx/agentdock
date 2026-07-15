@@ -50,14 +50,28 @@ export class LocalRuntimeConfigStore {
     const row = this.selectStmt.get(RUNTIME_CONFIG_ID) as RuntimeConfigRow | undefined;
     if (row) {
       const config = parseJson<DesktopConnectConfig>(row.config_json, {});
-      const migrated = migrateDesktopConnectConfig(config);
-      if (migrated.changed) {
-        return this.writeRow(migrated.config, {
-          migratedFromPath: row.migrated_from_path || undefined,
-          warnings: migrated.warnings,
+      // If SQLite lost its projects (e.g. a partial save wrote {"config_version":2}),
+      // fall back to importing from config.toml rather than silently running empty.
+      const sqliteLostProjects = !Array.isArray(config.projects) || config.projects.length === 0;
+      if (!sqliteLostProjects) {
+        const migrated = migrateDesktopConnectConfig(config);
+        if (migrated.changed) {
+          return this.writeRow(migrated.config, {
+            migratedFromPath: row.migrated_from_path || undefined,
+            warnings: migrated.warnings,
+          });
+        }
+        return this.toState(row, config, migrated.warnings);
+      }
+      // projects missing in SQLite — try to recover from the on-disk toml.
+      const legacy = this.readLegacyConfig();
+      if (legacy && !('error' in legacy)) {
+        return this.writeRow(legacy.config, {
+          migratedFromPath: legacy.path,
+          warnings: ['Recovered projects from disk after SQLite config lost them.', ...legacy.warnings],
         });
       }
-      return this.toState(row, config, migrated.warnings);
+      // Fall through to the standard legacy path (which also handles the no-row case below).
     }
 
     const legacy = this.readLegacyConfig();

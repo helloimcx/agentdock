@@ -157,6 +157,10 @@ export class LocalCoreController extends EventEmitter {
 
   async init() {
     await this.runtime.start();
+    // Bind and start channel gateways (e.g. Lark WS) now that plugins are registered.
+    // Without this, channels only (re)connect when runtime_config is later re-saved,
+    // so a fresh process boot silently leaves every channel disconnected.
+    await this.channelService.refreshBindings();
     await this.emitRuntime();
     setTimeout(() => {
       void this.runtimeDetection.refreshOnStartup();
