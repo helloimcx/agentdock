@@ -304,32 +304,24 @@ export class LocalAutomationStore {
     originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
   ): Map<string, AutomationEvaluation> {
-    const rows = this.db.prepare(`
-      WITH ranked AS (
-        SELECT
-          e.id, e.automation_id, e.status, e.activation_kind, e.script_version_id,
-          e.started_at, e.finished_at, e.evaluation_json,
-          ROW_NUMBER() OVER (PARTITION BY e.automation_id ORDER BY e.started_at DESC, e.id DESC) AS position
-        FROM automation_evaluations e
-        JOIN automations a ON a.id = e.automation_id
-        WHERE e.status = 'finished'
-          AND a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
-      )
-      SELECT ${EVALUATION_COLUMNS}
-      FROM ranked
-      WHERE position = 1
-    `).all(...(workspaceId ? [originKind, workspaceId] : [originKind])) as LocalAutomationEvaluationRow[];
-    const result = new Map<string, AutomationEvaluation>();
-    for (const row of rows) {
-      const evaluation = this.toEvaluation(row);
-      result.set(evaluation.automationId, evaluation);
-    }
-    return result;
+    return this.listLatestEvaluationByOrigin(originKind, workspaceId, '');
   }
 
   listLatestEvaluationWithStateByOrigin(
     originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,
+  ): Map<string, AutomationEvaluation> {
+    return this.listLatestEvaluationByOrigin(
+      originKind,
+      workspaceId,
+      "AND json_type(e.evaluation_json, '$.nextState') = 'object'",
+    );
+  }
+
+  private listLatestEvaluationByOrigin(
+    originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
+    workspaceId: string | undefined,
+    extraPredicate: string,
   ): Map<string, AutomationEvaluation> {
     const rows = this.db.prepare(`
       WITH ranked AS (
@@ -340,7 +332,7 @@ export class LocalAutomationStore {
         FROM automation_evaluations e
         JOIN automations a ON a.id = e.automation_id
         WHERE e.status = 'finished'
-          AND json_type(e.evaluation_json, '$.nextState') = 'object'
+          ${extraPredicate}
           AND a.origin_kind = ?${workspaceId ? ' AND a.workspace_id = ?' : ''}
       )
       SELECT ${EVALUATION_COLUMNS}
