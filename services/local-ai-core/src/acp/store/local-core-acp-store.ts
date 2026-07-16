@@ -138,10 +138,6 @@ export class LocalCoreAcpStore {
     return this.threads.listSummaries(workspaceId);
   }
 
-  countThreads(workspaceId: string) {
-    return this.threads.count(workspaceId);
-  }
-
   countThreadsByWorkspace(workspaceIds: ReadonlyArray<string>): Map<string, number> {
     return this.threads.countByWorkspace(workspaceIds);
   }

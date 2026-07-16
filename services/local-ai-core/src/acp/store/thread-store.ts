@@ -42,11 +42,6 @@ export class LocalThreadStore {
     }));
   }
 
-  count(workspaceId: string) {
-    const row = this.db.prepare('SELECT COUNT(*) AS total FROM threads WHERE workspace_id = ?').get(workspaceId) as { total: number } | undefined;
-    return Number(row?.total || 0);
-  }
-
   countByWorkspace(workspaceIds: ReadonlyArray<string>): Map<string, number> {
     const result = new Map<string, number>();
     if (workspaceIds.length === 0) return result;
