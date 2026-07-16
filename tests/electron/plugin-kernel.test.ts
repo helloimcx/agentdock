@@ -809,8 +809,10 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
     status: 'signed',
   });
   await controller.saveRuntimeConfig({ projects: [] } as any);
-  assert.equal(channelRefreshes, 1);
-  assert.equal(weixinRefreshes, 1);
+  // init() and saveRuntimeConfig() each refresh bindings once; the channel-gateway
+  // startup fix in local-core-controller.init() intentionally added the first call.
+  assert.equal(channelRefreshes, 2);
+  assert.equal(weixinRefreshes, 2);
   await controller.close();
   assert.equal(stopped, true);
 });
