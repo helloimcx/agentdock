@@ -42,9 +42,23 @@ export class LocalThreadStore {
     }));
   }
 
-  count(workspaceId: string) {
-    const row = this.db.prepare('SELECT COUNT(*) AS total FROM threads WHERE workspace_id = ?').get(workspaceId) as { total: number } | undefined;
-    return Number(row?.total || 0);
+  countByWorkspace(workspaceIds: ReadonlyArray<string>): Map<string, number> {
+    const result = new Map<string, number>();
+    if (workspaceIds.length === 0) return result;
+    const placeholders = workspaceIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT workspace_id, COUNT(*) AS total
+      FROM threads
+      WHERE workspace_id IN (${placeholders})
+      GROUP BY workspace_id
+    `).all(...workspaceIds) as Array<{ workspace_id: string; total: number }>;
+    for (const id of workspaceIds) {
+      result.set(id, 0);
+    }
+    for (const row of rows) {
+      result.set(row.workspace_id, Number(row.total || 0));
+    }
+    return result;
   }
 
   create(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE, agentMode = 'default'): ThreadDetail {

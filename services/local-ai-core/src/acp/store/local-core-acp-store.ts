@@ -138,8 +138,8 @@ export class LocalCoreAcpStore {
     return this.threads.listSummaries(workspaceId);
   }
 
-  countThreads(workspaceId: string) {
-    return this.threads.count(workspaceId);
+  countThreadsByWorkspace(workspaceIds: ReadonlyArray<string>): Map<string, number> {
+    return this.threads.countByWorkspace(workspaceIds);
   }
 
   createThread(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE, agentMode = 'default'): ThreadDetail {

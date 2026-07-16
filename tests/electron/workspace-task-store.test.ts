@@ -72,6 +72,30 @@ test('runtime project migration makes workspace registry authoritative and prese
   }
 });
 
+test('countThreadsByWorkspace batches thread counts across workspaces in one query', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'thread-count-batch-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    store.createThread('workspace-a', 'A1');
+    store.createThread('workspace-a', 'A2');
+    store.createThread('workspace-b', 'B1');
+    // workspace-c has no threads; workspace-d is not in the input set at all.
+
+    const counts = store.countThreadsByWorkspace(['workspace-a', 'workspace-b', 'workspace-c']);
+    assert.equal(counts.get('workspace-a'), 2);
+    assert.equal(counts.get('workspace-b'), 1);
+    assert.equal(counts.get('workspace-c'), 0);
+    assert.equal(counts.has('workspace-d'), false);
+
+    const empty = store.countThreadsByWorkspace([]);
+    assert.equal(empty.size, 0);
+
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('model providers persist independently from workspace config', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'model-provider-store-'));
   try {

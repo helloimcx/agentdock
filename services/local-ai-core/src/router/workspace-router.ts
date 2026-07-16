@@ -122,20 +122,26 @@ export class WorkspaceRouter {
     const localProjects = await this.listLocalCoreProjects();
     const workspaceMap = new Map<string, WorkspaceSummary>();
     const configState = await this.options.readRuntimeConfig();
+    const workspaceIds: string[] = [];
     for (const project of localProjects) {
       const route = this.resolveProjectRoute(configState, project);
       if (!route) {
         continue;
       }
       const workspaceId = projectWorkspaceId(project);
+      workspaceIds.push(workspaceId);
       workspaceMap.set(workspaceId, {
         id: workspaceId,
         name: project.name,
         agentType: route.agentType,
         platforms: normalizePlatformTypes(project),
-        sessionsCount: this.store.countThreads(workspaceId),
+        sessionsCount: 0,
         heartbeatEnabled: false,
       });
+    }
+    const threadCounts = this.store.countThreadsByWorkspace(workspaceIds);
+    for (const [workspaceId, summary] of workspaceMap) {
+      summary.sessionsCount = threadCounts.get(workspaceId) ?? 0;
     }
     return [...workspaceMap.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
