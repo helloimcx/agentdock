@@ -71,7 +71,13 @@ export class LocalRuntimeConfigStore {
           warnings: ['Recovered projects from disk after SQLite config lost them.', ...legacy.warnings],
         });
       }
-      // Fall through to the standard legacy path (which also handles the no-row case below).
+      if (legacy && 'error' in legacy) {
+        return this.errorState(legacy.path, legacy.error);
+      }
+      // Row exists but projects were intentionally stripped (workspace-registry is
+      // authoritative). Return the row as-is rather than fabricating an empty
+      // projects list, which would mask the registry as the source of truth.
+      return this.toState(row, config, []);
     }
 
     const legacy = this.readLegacyConfig();
