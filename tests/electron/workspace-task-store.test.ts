@@ -1289,3 +1289,79 @@ test('agent task and run statuses normalize before persistence', () => {
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
+
+test('listWorkspaceRegistry batches active task counts and recent task ids across workspaces', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'registry-list-batch-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    store.upsertWorkspaceRegistryEntry({
+      workspaceId: 'ws-a',
+      displayName: 'Workspace A',
+      path: '/tmp/ws-a',
+      deviceId: 'local',
+      defaultRuntimeId: 'opencode',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+    store.upsertWorkspaceRegistryEntry({
+      workspaceId: 'ws-b',
+      displayName: 'Workspace B',
+      path: '/tmp/ws-b',
+      deviceId: 'local',
+      defaultRuntimeId: 'opencode',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+    store.upsertWorkspaceRegistryEntry({
+      workspaceId: 'ws-c',
+      displayName: 'Workspace C',
+      path: '/tmp/ws-c',
+      deviceId: 'local',
+      defaultRuntimeId: 'opencode',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+
+    for (let i = 0; i < 10; i++) {
+      store.createAgentTask({
+        workspaceId: 'ws-a',
+        deviceId: 'local',
+        runtimeId: 'opencode',
+        title: `A task ${i}`,
+        status: i % 2 === 0 ? 'running' : 'completed',
+      });
+    }
+    store.createAgentTask({
+      workspaceId: 'ws-b',
+      deviceId: 'local',
+      runtimeId: 'opencode',
+      title: 'B active task',
+      status: 'queued',
+    });
+
+    const entries = store.listWorkspaceRegistry();
+    const a = entries.find((entry) => entry.workspaceId === 'ws-a');
+    const b = entries.find((entry) => entry.workspaceId === 'ws-b');
+    const c = entries.find((entry) => entry.workspaceId === 'ws-c');
+    assert.ok(a);
+    assert.ok(b);
+    assert.ok(c);
+    // 5 of 10 ws-a tasks are running (even indexes) — only active statuses count.
+    assert.equal(a!.activeTaskCount, 5);
+    assert.equal(a!.recentTaskIds.length, 8);
+    assert.equal(b!.activeTaskCount, 1);
+    assert.equal(b!.recentTaskIds.length, 1);
+    // Workspace C has zero tasks — list and get paths agree on defaults.
+    assert.equal(c!.activeTaskCount, 0);
+    assert.deepEqual(c!.recentTaskIds, []);
+
+    const single = store.getWorkspaceRegistryEntry('ws-a');
+    assert.ok(single);
+    assert.equal(single!.activeTaskCount, 5);
+    assert.equal(single!.recentTaskIds.length, 8);
+
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});

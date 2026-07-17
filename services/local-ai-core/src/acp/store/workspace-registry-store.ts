@@ -9,6 +9,9 @@ import type {
 import type { LocalWorkspaceRegistryRow } from '../../router/workspace-router-types.js';
 import { parseJson } from './utils.js';
 
+const ACTIVE_AGENT_TASK_STATUSES = "'created', 'queued', 'running', 'waiting_for_user'";
+const RECENT_TASKS_PER_WORKSPACE = 8;
+
 export class LocalWorkspaceRegistryStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -18,7 +21,15 @@ export class LocalWorkspaceRegistryStore {
       FROM workspace_registry
       ORDER BY display_name ASC
     `).all() as LocalWorkspaceRegistryRow[];
-    return rows.map((row) => this.toEntry(row));
+    if (rows.length === 0) return [];
+    const workspaceIds = rows.map((row) => row.id);
+    const activeTaskCountByWorkspace = this.fetchActiveTaskCounts();
+    const recentTaskIdsByWorkspace = this.fetchRecentTaskIds(workspaceIds);
+    return rows.map((row) => this.shapeEntry(
+      row,
+      activeTaskCountByWorkspace.get(row.id) ?? 0,
+      recentTaskIdsByWorkspace.get(row.id) ?? [],
+    ));
   }
 
   get(workspaceId: string): WorkspaceRegistryEntry | undefined {
@@ -27,7 +38,12 @@ export class LocalWorkspaceRegistryStore {
       FROM workspace_registry
       WHERE id = ?
     `).get(workspaceId) as LocalWorkspaceRegistryRow | undefined;
-    return row ? this.toEntry(row) : undefined;
+    if (!row) return undefined;
+    return this.shapeEntry(
+      row,
+      this.fetchActiveTaskCount(workspaceId),
+      this.fetchRecentTaskIdsForWorkspace(workspaceId),
+    );
   }
 
   upsert(input: WorkspaceRegistryCreateInput & {
@@ -100,19 +116,55 @@ export class LocalWorkspaceRegistryStore {
       .run(new Date().toISOString(), new Date().toISOString(), workspaceId);
   }
 
-  private toEntry(row: LocalWorkspaceRegistryRow): WorkspaceRegistryEntry {
-    const activeTaskCount = Number((this.db.prepare(`
+  private fetchActiveTaskCounts(): Map<string, number> {
+    const rows = this.db.prepare(`
+      SELECT workspace_id, COUNT(*) AS total
+      FROM agent_tasks
+      WHERE status IN (${ACTIVE_AGENT_TASK_STATUSES})
+      GROUP BY workspace_id
+    `).all() as Array<{ workspace_id: string; total: number }>;
+    const result = new Map<string, number>();
+    for (const row of rows) {
+      result.set(row.workspace_id, Number(row.total || 0));
+    }
+    return result;
+  }
+
+  private fetchActiveTaskCount(workspaceId: string): number {
+    const row = this.db.prepare(`
       SELECT COUNT(*) AS total
       FROM agent_tasks
-      WHERE workspace_id = ? AND status IN ('created', 'queued', 'running', 'waiting_for_user')
-    `).get(row.id) as { total: number } | undefined)?.total || 0);
-    const recentTaskRows = this.db.prepare(`
+      WHERE workspace_id = ? AND status IN (${ACTIVE_AGENT_TASK_STATUSES})
+    `).get(workspaceId) as { total: number } | undefined;
+    return Number(row?.total || 0);
+  }
+
+  // Per-workspace index range scans (8 rows each via idx_agent_tasks_workspace_updated)
+  // beat one window-function scan that materializes the whole agent_tasks table.
+  private fetchRecentTaskIds(workspaceIds: ReadonlyArray<string>): Map<string, string[]> {
+    const result = new Map<string, string[]>();
+    for (const workspaceId of workspaceIds) {
+      result.set(workspaceId, this.fetchRecentTaskIdsForWorkspace(workspaceId));
+    }
+    return result;
+  }
+
+  private fetchRecentTaskIdsForWorkspace(workspaceId: string): string[] {
+    const rows = this.db.prepare(`
       SELECT id
       FROM agent_tasks
       WHERE workspace_id = ?
-      ORDER BY updated_at DESC
-      LIMIT 8
-    `).all(row.id) as Array<{ id: string }>;
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ${RECENT_TASKS_PER_WORKSPACE}
+    `).all(workspaceId) as Array<{ id: string }>;
+    return rows.map((row) => row.id);
+  }
+
+  private shapeEntry(
+    row: LocalWorkspaceRegistryRow,
+    activeTaskCount: number,
+    recentTaskIds: string[],
+  ): WorkspaceRegistryEntry {
     return {
       workspaceId: row.id,
       displayName: row.display_name,
@@ -129,7 +181,7 @@ export class LocalWorkspaceRegistryStore {
         issues: [],
       }),
       activeTaskCount,
-      recentTaskIds: recentTaskRows.map((item) => item.id),
+      recentTaskIds,
       metadata: parseJson(row.metadata_json, {}),
     };
   }
