@@ -9,6 +9,9 @@ import type {
 import type { LocalWorkspaceRegistryRow } from '../../router/workspace-router-types.js';
 import { parseJson } from './utils.js';
 
+const ACTIVE_AGENT_TASK_STATUSES = "'created', 'queued', 'running', 'waiting_for_user'";
+const RECENT_TASKS_PER_WORKSPACE = 8;
+
 export class LocalWorkspaceRegistryStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -19,8 +22,9 @@ export class LocalWorkspaceRegistryStore {
       ORDER BY display_name ASC
     `).all() as LocalWorkspaceRegistryRow[];
     if (rows.length === 0) return [];
+    const workspaceIds = rows.map((row) => row.id);
     const activeTaskCountByWorkspace = this.fetchActiveTaskCounts();
-    const recentTaskIdsByWorkspace = this.fetchRecentTaskIds();
+    const recentTaskIdsByWorkspace = this.fetchRecentTaskIds(workspaceIds);
     return rows.map((row) => this.shapeEntry(
       row,
       activeTaskCountByWorkspace.get(row.id) ?? 0,
@@ -116,7 +120,7 @@ export class LocalWorkspaceRegistryStore {
     const rows = this.db.prepare(`
       SELECT workspace_id, COUNT(*) AS total
       FROM agent_tasks
-      WHERE status IN ('created', 'queued', 'running', 'waiting_for_user')
+      WHERE status IN (${ACTIVE_AGENT_TASK_STATUSES})
       GROUP BY workspace_id
     `).all() as Array<{ workspace_id: string; total: number }>;
     const result = new Map<string, number>();
@@ -130,30 +134,17 @@ export class LocalWorkspaceRegistryStore {
     const row = this.db.prepare(`
       SELECT COUNT(*) AS total
       FROM agent_tasks
-      WHERE workspace_id = ? AND status IN ('created', 'queued', 'running', 'waiting_for_user')
+      WHERE workspace_id = ? AND status IN (${ACTIVE_AGENT_TASK_STATUSES})
     `).get(workspaceId) as { total: number } | undefined;
     return Number(row?.total || 0);
   }
 
-  private fetchRecentTaskIds(): Map<string, string[]> {
-    const rows = this.db.prepare(`
-      WITH ranked AS (
-        SELECT workspace_id, id,
-          ROW_NUMBER() OVER (PARTITION BY workspace_id ORDER BY updated_at DESC, id DESC) AS position
-        FROM agent_tasks
-      )
-      SELECT workspace_id, id
-      FROM ranked
-      WHERE position <= 8
-    `).all() as Array<{ workspace_id: string; id: string }>;
+  // Per-workspace index range scans (8 rows each via idx_agent_tasks_workspace_updated)
+  // beat one window-function scan that materializes the whole agent_tasks table.
+  private fetchRecentTaskIds(workspaceIds: ReadonlyArray<string>): Map<string, string[]> {
     const result = new Map<string, string[]>();
-    for (const row of rows) {
-      const list = result.get(row.workspace_id);
-      if (list) {
-        list.push(row.id);
-      } else {
-        result.set(row.workspace_id, [row.id]);
-      }
+    for (const workspaceId of workspaceIds) {
+      result.set(workspaceId, this.fetchRecentTaskIdsForWorkspace(workspaceId));
     }
     return result;
   }
@@ -163,8 +154,8 @@ export class LocalWorkspaceRegistryStore {
       SELECT id
       FROM agent_tasks
       WHERE workspace_id = ?
-      ORDER BY updated_at DESC
-      LIMIT 8
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ${RECENT_TASKS_PER_WORKSPACE}
     `).all(workspaceId) as Array<{ id: string }>;
     return rows.map((row) => row.id);
   }
