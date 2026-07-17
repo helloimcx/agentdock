@@ -335,6 +335,41 @@ xattr -cr /Applications/AgentDock.app
 └── scripts/         # 构建/启动脚本
 ```
 
+## 运维排查
+
+### 日志位置
+
+服务日志统一在 `~/.agentdock/logs/`（可通过 `AGENTDOCK_LOG_DIR` 覆盖），按级别分文件，单文件 10MB 轮动，保留 5 份：
+
+| 文件 | 内容 | 排查时用途 |
+|---|---|---|
+| `sys.log` | ACP session 生命周期、run 启停、bridge 事件 | 追踪任务执行时间线、确认 run 是否完成 |
+| `info.log` | 业务逻辑日志、插件注册、inbound message | 查看 cron 触发、任务投递过程 |
+| `error.log` | 错误和异常 | **排查定时任务失败时首先看这里** |
+| `warn.log` | 警告（工具调用失败、API 重试等） | 查看非致命性问题 |
+
+轮动后的历史文件按 `.1`、`.2` … 编号，`.1` 是最近的。跨天排查时注意同时检查当前文件和轮转文件。
+
+### 数据库
+
+运行时数据在 `/var/lib/agentdock/runtime/local-core.db`（SQLite）。关键表：
+
+| 表 | 用途 |
+|---|---|
+| `scheduled_jobs` | cron 定时任务配置（cron 表达式、prompt、启用状态） |
+| `scheduled_job_runs` | 定时任务执行记录（触发时间、完成时间、状态） |
+| `automations` | 自动化任务配置（含从 scheduled_jobs 迁移过来的） |
+| `automation_runs` | 自动化任务执行记录（含超时错误信息） |
+
+> 注意：同一张 cron 任务可能同时存在于 `scheduled_jobs` 和 `automations` 两张表中。7.14 之后的执行走 automation 路径，报错前缀为 `automation action failed`；之前走 scheduler 路径，报错前缀为 `scheduler job failed`。
+
+### 排查定时任务失败的推荐步骤
+
+1. `grep 'scheduler job failed\|automation action failed' ~/.agentdock/logs/error.log` — 确认失败时间和错误类型
+2. `grep '<run_id>' ~/.agentdock/logs/sys.log` — 追踪该次执行的完整时间线（prompt sent → completed）
+3. `sqlite3 /var/lib/agentdock/runtime/local-core.db "SELECT * FROM automation_runs WHERE id='...'"` — 查看具体错误信息
+4. 如果错误含 `Timed out`：任务实际可能仍在运行并最终完成，检查 `sys.log` 中是否有后续的 `prompt completed`
+
 ## License
 
 AgentDock is source-available under the [PolyForm Noncommercial License 1.0.0](./LICENSE.md). Commercial use requires a separate commercial license.
