@@ -18,7 +18,14 @@ export class LocalWorkspaceRegistryStore {
       FROM workspace_registry
       ORDER BY display_name ASC
     `).all() as LocalWorkspaceRegistryRow[];
-    return rows.map((row) => this.toEntry(row));
+    if (rows.length === 0) return [];
+    const activeTaskCountByWorkspace = this.fetchActiveTaskCounts();
+    const recentTaskIdsByWorkspace = this.fetchRecentTaskIds();
+    return rows.map((row) => this.shapeEntry(
+      row,
+      activeTaskCountByWorkspace.get(row.id) ?? 0,
+      recentTaskIdsByWorkspace.get(row.id) ?? [],
+    ));
   }
 
   get(workspaceId: string): WorkspaceRegistryEntry | undefined {
@@ -27,7 +34,12 @@ export class LocalWorkspaceRegistryStore {
       FROM workspace_registry
       WHERE id = ?
     `).get(workspaceId) as LocalWorkspaceRegistryRow | undefined;
-    return row ? this.toEntry(row) : undefined;
+    if (!row) return undefined;
+    return this.shapeEntry(
+      row,
+      this.fetchActiveTaskCount(workspaceId),
+      this.fetchRecentTaskIdsForWorkspace(workspaceId),
+    );
   }
 
   upsert(input: WorkspaceRegistryCreateInput & {
@@ -100,19 +112,68 @@ export class LocalWorkspaceRegistryStore {
       .run(new Date().toISOString(), new Date().toISOString(), workspaceId);
   }
 
-  private toEntry(row: LocalWorkspaceRegistryRow): WorkspaceRegistryEntry {
-    const activeTaskCount = Number((this.db.prepare(`
+  private fetchActiveTaskCounts(): Map<string, number> {
+    const rows = this.db.prepare(`
+      SELECT workspace_id, COUNT(*) AS total
+      FROM agent_tasks
+      WHERE status IN ('created', 'queued', 'running', 'waiting_for_user')
+      GROUP BY workspace_id
+    `).all() as Array<{ workspace_id: string; total: number }>;
+    const result = new Map<string, number>();
+    for (const row of rows) {
+      result.set(row.workspace_id, Number(row.total || 0));
+    }
+    return result;
+  }
+
+  private fetchActiveTaskCount(workspaceId: string): number {
+    const row = this.db.prepare(`
       SELECT COUNT(*) AS total
       FROM agent_tasks
       WHERE workspace_id = ? AND status IN ('created', 'queued', 'running', 'waiting_for_user')
-    `).get(row.id) as { total: number } | undefined)?.total || 0);
-    const recentTaskRows = this.db.prepare(`
+    `).get(workspaceId) as { total: number } | undefined;
+    return Number(row?.total || 0);
+  }
+
+  private fetchRecentTaskIds(): Map<string, string[]> {
+    const rows = this.db.prepare(`
+      WITH ranked AS (
+        SELECT workspace_id, id,
+          ROW_NUMBER() OVER (PARTITION BY workspace_id ORDER BY updated_at DESC, id DESC) AS position
+        FROM agent_tasks
+      )
+      SELECT workspace_id, id
+      FROM ranked
+      WHERE position <= 8
+    `).all() as Array<{ workspace_id: string; id: string }>;
+    const result = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = result.get(row.workspace_id);
+      if (list) {
+        list.push(row.id);
+      } else {
+        result.set(row.workspace_id, [row.id]);
+      }
+    }
+    return result;
+  }
+
+  private fetchRecentTaskIdsForWorkspace(workspaceId: string): string[] {
+    const rows = this.db.prepare(`
       SELECT id
       FROM agent_tasks
       WHERE workspace_id = ?
       ORDER BY updated_at DESC
       LIMIT 8
-    `).all(row.id) as Array<{ id: string }>;
+    `).all(workspaceId) as Array<{ id: string }>;
+    return rows.map((row) => row.id);
+  }
+
+  private shapeEntry(
+    row: LocalWorkspaceRegistryRow,
+    activeTaskCount: number,
+    recentTaskIds: string[],
+  ): WorkspaceRegistryEntry {
     return {
       workspaceId: row.id,
       displayName: row.display_name,
@@ -129,7 +190,7 @@ export class LocalWorkspaceRegistryStore {
         issues: [],
       }),
       activeTaskCount,
-      recentTaskIds: recentTaskRows.map((item) => item.id),
+      recentTaskIds,
       metadata: parseJson(row.metadata_json, {}),
     };
   }
