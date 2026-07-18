@@ -113,6 +113,34 @@ test('listDueAutomationIds returns only automations whose next_check_at is at or
   }
 });
 
+test('listIdsMissingNextCheckAt returns only automations whose next_check_at is null', () => {
+  const context = fixture();
+  try {
+    const unsetA = context.store.create(createInput({ title: 'Unset A' }));
+    const unsetB = context.store.create(createInput({ title: 'Unset B' }));
+    const scheduled = context.store.create(createInput({ title: 'Scheduled' }));
+    context.store.updateState(scheduled.id, { nextCheckAt: '2026-07-05T02:00:00.000Z' });
+
+    const missing = context.store.listIdsMissingNextCheckAt();
+    assert.equal(missing.size, 2);
+    assert.equal(missing.has(unsetA.id), true);
+    assert.equal(missing.has(unsetB.id), true);
+    assert.equal(missing.has(scheduled.id), false);
+
+    const facadeMissing = context.facade.listAutomationIdsMissingNextCheckAt();
+    assert.equal(facadeMissing.size, 2);
+    assert.equal(facadeMissing.has(unsetA.id), true);
+
+    context.store.updateState(unsetA.id, { nextCheckAt: '2026-07-05T03:00:00.000Z' });
+    const afterUpdate = context.store.listIdsMissingNextCheckAt();
+    assert.equal(afterUpdate.size, 1);
+    assert.equal(afterUpdate.has(unsetA.id), false);
+    assert.equal(afterUpdate.has(unsetB.id), true);
+  } finally {
+    context.close();
+  }
+});
+
 test('listLatestFinishedEvaluationByOrigin returns the most recent finished evaluation per automation', () => {
   const context = fixture();
   try {

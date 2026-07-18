@@ -437,6 +437,10 @@ export class LocalCoreAcpStore {
     return this.automations.getNextCheckAt(automationId);
   }
 
+  listAutomationIdsMissingNextCheckAt(): Set<string> {
+    return this.automations.listIdsMissingNextCheckAt();
+  }
+
   listDueAutomationIds(now: Date): Set<string> {
     return this.automations.listDueAutomationIds(now);
   }
