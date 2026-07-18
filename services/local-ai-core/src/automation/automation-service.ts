@@ -242,10 +242,11 @@ export class AutomationService {
         this.now().toISOString(),
       );
       for (const run of recovered) this.emitRun(run);
+      const missingNextCheckAt = this.options.store.listAutomationIdsMissingNextCheckAt();
       for (const automation of this.list()) {
         if (
           this.shouldPoll(automation)
-          && this.options.store.getAutomationNextCheckAt(automation.id) === null
+          && missingNextCheckAt.has(automation.id)
           && !this.isConsumedOnce(automation)
         ) {
           this.persistInitialNextCheck(automation);

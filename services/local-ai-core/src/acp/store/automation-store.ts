@@ -574,6 +574,12 @@ export class LocalAutomationStore {
     return row?.next_check_at ?? null;
   }
 
+  // Single scan replaces a per-automation getNextCheckAt() call inside the startup loop.
+  listIdsMissingNextCheckAt(): Set<string> {
+    const rows = this.db.prepare('SELECT id FROM automations WHERE next_check_at IS NULL').all() as { id: string }[];
+    return new Set(rows.map((row) => row.id));
+  }
+
   listDueAutomationIds(now: Date): Set<string> {
     const rows = this.db.prepare(
       `SELECT id FROM automations
