@@ -160,14 +160,26 @@ export class LocalCoreAcpSessionCoordinator {
     if (!threadId) {
       return { interrupted: false };
     }
+    const run = this.options.store.getRun(runId);
+    if (run && ['completed', 'failed', 'interrupted'].includes(run.status)) {
+      return { interrupted: false };
+    }
     const session = this.sessions.get(threadId);
     if (!session) {
-      this.options.store.updateRun(runId, threadId, 'interrupted');
+      this.markRunInterrupted(runId, threadId);
+      return { interrupted: false };
+    }
+    if (session.currentRunId && session.currentRunId !== runId) {
+      this.markRunInterrupted(runId, threadId);
       return { interrupted: false };
     }
     if (!session.sessionId) {
-      this.options.store.updateRun(runId, threadId, 'interrupted');
+      this.markRunInterrupted(runId, threadId);
       this.closeThreadSession(threadId);
+      return { interrupted: false };
+    }
+    if (!session.currentRunId) {
+      this.markRunInterrupted(runId, threadId);
       return { interrupted: false };
     }
     const pendingPermission = session.pendingPermissionByRun.get(runId);
@@ -191,11 +203,22 @@ export class LocalCoreAcpSessionCoordinator {
       },
     });
     if (!cancelled) {
-      this.options.store.updateRun(runId, threadId, 'interrupted');
+      this.markRunInterrupted(runId, threadId);
       return { interrupted: false };
     }
-    this.options.store.updateRun(runId, threadId, 'interrupted');
+    this.markRunInterrupted(runId, threadId);
     return { interrupted: true };
+  }
+
+  private markRunInterrupted(runId: string, threadId: string) {
+    this.options.store.updateRun(runId, threadId, 'interrupted');
+    const task = this.options.store.getAgentTaskByRunId(runId);
+    if (task) {
+      this.options.store.updateAgentTask(task.taskId, {
+        status: 'cancelled',
+        summary: 'Request cancelled.',
+      });
+    }
   }
 
   handleTransportSessionClosed(session: AcpSessionState, error: Error) {

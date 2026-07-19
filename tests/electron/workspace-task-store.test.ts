@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
 import { LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
@@ -651,6 +652,223 @@ test('ACP runtime env includes the current workspace path for file returns', asy
 
     assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_ID, 'workspace-a');
     assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_PATH, '/tmp/workspace-a');
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP interruption does not cancel a newer run that reused the same session', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'run-interrupt-race-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Thread');
+    store.updateRun('run-old', thread.id, 'completed');
+    const runThreadMap = new Map([['run-old', thread.id]]);
+    const sentPayloads: any[] = [];
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+            launchPermissionMode: '',
+          };
+        },
+        initializeSession: async () => {},
+        request: async (_session: any, method: string) => method === 'session/new' ? { sessionId: 'session-1' } : {},
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: (_session: any, payload: any) => {
+          sentPayloads.push(payload);
+          return true;
+        },
+      } as any,
+      runThreadMap,
+      emitBridge: () => {},
+    });
+    const session = await coordinator.ensureSession(thread.id, 'session:thread-1', {
+      workspaceId: 'workspace-a',
+      agentType: 'opencode',
+      command: 'opencode',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    });
+    session.currentRunId = 'run-new';
+
+    assert.deepEqual(await coordinator.interruptRun('run-old'), { interrupted: false });
+    assert.equal(store.getRun('run-old')?.status, 'completed');
+    assert.equal(sentPayloads.some((payload) => payload.method === 'session/cancel'), false);
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP interruption marks a run interrupted while its session has no active prompt yet', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'run-interrupt-initializing-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Thread');
+    store.updateRun('run-initializing', thread.id, 'running');
+    const runThreadMap = new Map([['run-initializing', thread.id]]);
+    const sentPayloads: any[] = [];
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            currentRunId: null,
+            currentTurn: null,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+            launchPermissionMode: '',
+          };
+        },
+        initializeSession: async () => {},
+        request: async (_session: any, method: string) => method === 'session/new' ? { sessionId: 'session-1' } : {},
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: (_session: any, payload: any) => {
+          sentPayloads.push(payload);
+          return true;
+        },
+      } as any,
+      runThreadMap,
+      emitBridge: () => {},
+    });
+    const session = await coordinator.ensureSession(thread.id, 'session:thread-1', {
+      workspaceId: 'workspace-a',
+      agentType: 'opencode',
+      command: 'opencode',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    });
+
+    assert.deepEqual(await coordinator.interruptRun('run-initializing'), { interrupted: false });
+    assert.equal(store.getRun('run-initializing')?.status, 'interrupted');
+    assert.equal(sentPayloads.some((payload) => payload.method === 'session/cancel'), false);
+
+    store.updateRun('run-queued', thread.id, 'running');
+    runThreadMap.set('run-queued', thread.id);
+    session.currentRunId = 'run-active';
+    assert.deepEqual(await coordinator.interruptRun('run-queued'), { interrupted: false });
+    assert.equal(store.getRun('run-queued')?.status, 'interrupted');
+    assert.equal(sentPayloads.some((payload) => payload.method === 'session/cancel'), false);
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP backend does not start a prompt after its registered run was interrupted', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'run-interrupt-before-prompt-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Thread');
+    const runThreadMap = new Map<string, string>();
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap,
+      emitBridge: () => {},
+      eventBus: { emit: () => {}, on: () => () => {} },
+      scheduler: {
+        createJob: async () => { throw new Error('not used'); },
+        listJobsForThread: async () => [],
+        deleteJob: async () => {},
+      },
+    } as any);
+    const session = {
+      threadId: thread.id,
+      bridgeSessionKey: `session:${thread.id}`,
+      closed: false,
+      sessionId: 'session-1',
+      supportsLoad: false,
+      currentRunId: null,
+      currentTurn: null,
+      pendingPermissionByRun: new Map(),
+      schedulerJobCreatedByRun: new Map(),
+      promptPromise: null,
+    };
+    let promptRequests = 0;
+    (backend as any).sessionCoordinator.ensureSession = async () => session;
+    (backend as any).transport.request = async (_session: any, method: string) => {
+      if (method === 'session/prompt') promptRequests += 1;
+      return {};
+    };
+
+    const sent = await backend.sendThreadMessage(thread.id, 'work', {
+      workspaceId: 'workspace-a',
+      agentType: 'opencode',
+      command: 'opencode',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    });
+    await backend.interruptRun(sent.runId);
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(promptRequests, 0);
+    assert.equal(store.getRun(sent.runId)?.status, 'interrupted');
+    assert.equal(store.getAgentTaskByRunId(sent.runId)?.status, 'cancelled');
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP backend preserves interruption when cancelled session initialization rejects', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'run-interrupt-initialization-error-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-a', 'Thread');
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap: new Map<string, string>(),
+      emitBridge: () => {},
+      eventBus: { emit: () => {}, on: () => () => {} },
+      scheduler: {
+        createJob: async () => { throw new Error('not used'); },
+        listJobsForThread: async () => [],
+        deleteJob: async () => {},
+      },
+    } as any);
+    (backend as any).sessionCoordinator.ensureSession = async () => {
+      throw new Error('session closed during initialization');
+    };
+
+    const sent = await backend.sendThreadMessage(thread.id, 'work', {
+      workspaceId: 'workspace-a',
+      agentType: 'opencode',
+      command: 'opencode',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-a',
+      model: '',
+    });
+    await backend.interruptRun(sent.runId);
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(store.getRun(sent.runId)?.status, 'interrupted');
+    assert.equal(store.getAgentTaskByRunId(sent.runId)?.status, 'cancelled');
     store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });

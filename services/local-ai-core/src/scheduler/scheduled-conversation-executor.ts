@@ -3,6 +3,7 @@ import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { ScheduledJob } from '@cc/superai-contracts';
 import type { ScheduledExecutionTarget } from './adapters.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
+import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { buildPlatformRuntimeEnv } from './scheduled-job-route.js';
 import { waitForRunCompletion } from './run-polling.js';
 import { getLatestAssistantFinalContent } from './thread-resolution.js';
@@ -17,7 +18,7 @@ type ScheduledConversationExecutorOptions = {
 export class ScheduledConversationExecutor {
   constructor(private readonly options: ScheduledConversationExecutorOptions) {}
 
-  async execute(job: ScheduledJob, prompt: string, policy: ScheduledExecutionPolicy, timeoutMs = 60 * 60 * 1000) {
+  async execute(job: ScheduledJob, prompt: string, policy: ScheduledExecutionPolicy, timeoutMs = BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS) {
     const target = await policy.resolveTarget(job);
     await policy.beforeExecute?.(target, job);
     try {
@@ -26,7 +27,13 @@ export class ScheduledConversationExecutor {
         permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
         runtimeEnv: buildPlatformRuntimeEnv(target.platform, target.route),
       });
-      await waitForRunCompletion(this.options.store, sendResult.runId, timeoutMs, 'Scheduled');
+      await waitForRunCompletion({
+        store: this.options.store,
+        runId: sendResult.runId,
+        timeoutMs,
+        label: 'Scheduled',
+        interruptRun: (runId) => workspaceRouter.interruptRun(runId),
+      });
       const thread = await workspaceRouter.getThread(target.threadId);
       const replyText = getLatestAssistantFinalContent(thread);
       return {

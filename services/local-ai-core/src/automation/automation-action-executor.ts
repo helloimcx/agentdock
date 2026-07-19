@@ -2,6 +2,7 @@ import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-con
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
 import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
 import { waitForRunCompletion } from '../scheduler/run-polling.js';
@@ -37,7 +38,7 @@ export class AutomationActionExecutor {
 
   async execute(
     input: AutomationActionExecutionInput,
-    timeoutMs = 15 * 60 * 1_000,
+    timeoutMs = BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS,
   ): Promise<AutomationActionExecutionResult> {
     const { automation } = input;
     const workspaceRouter = this.options.getWorkspaceRouter();
@@ -69,12 +70,13 @@ export class AutomationActionExecutor {
         permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
         runtimeEnv: buildPlatformRuntimeEnv(automation.delivery.platform, automation.delivery.route),
       });
-      await waitForRunCompletion(
-        this.options.store,
-        sendResult.runId,
+      await waitForRunCompletion({
+        store: this.options.store,
+        runId: sendResult.runId,
         timeoutMs,
-        automation.originKind === 'automation-monitor' ? 'Monitor' : 'Automation',
-      );
+        label: automation.originKind === 'automation-monitor' ? 'Monitor' : 'Automation',
+        interruptRun: (runId) => workspaceRouter.interruptRun(runId),
+      });
       const thread = await workspaceRouter.getThread(threadId);
       const replyText = [...thread.messages]
         .reverse()

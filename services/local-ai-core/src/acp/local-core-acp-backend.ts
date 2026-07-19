@@ -23,8 +23,7 @@ import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
-
-const ACP_PROMPT_TIMEOUT_MS = 180 * 60 * 1000;
+import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 
 type SendThreadMessageOptions = {
   permissionMode?: string;
@@ -401,6 +400,10 @@ export class LocalCoreAcpBackend {
         runId,
       });
       this.options.log?.(`[acp.run:${runId}] session ready in ${Date.now() - runStartedAt}ms`);
+      if (this.options.store.getRun(runId)?.status === 'interrupted') {
+        this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
+        return;
+      }
       const priorThreadMessages = this.options.store.getThread(threadId, []).messages;
       const priorAssistantFinalMessages = priorThreadMessages
         .filter((entry) => entry.role === 'assistant' && entry.kind === 'final')
@@ -554,6 +557,10 @@ export class LocalCoreAcpBackend {
         replyCtx: runId,
       });
     } catch (error) {
+      if (this.options.store.getRun(runId)?.status === 'interrupted') {
+        this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
+        return;
+      }
       const errorInfo = toLocalCoreErrorInfo(error, 'internal_error', {
         threadId,
         workspaceId: row.workspace_id,
@@ -628,6 +635,41 @@ export class LocalCoreAcpBackend {
         this.sessionCoordinator.releaseThreadSession(threadId, config);
       }
     }
+  }
+
+  private finishInterruptedRun(
+    runId: string,
+    threadId: string,
+    workspaceId: string,
+    bridgeSessionKey: string,
+  ) {
+    const task = this.options.store.getAgentTaskByRunId(runId);
+    if (task) {
+      this.options.store.updateAgentTask(task.taskId, {
+        status: 'cancelled',
+        summary: 'Request cancelled.',
+      });
+    }
+    this.options.eventBus.emit({
+      type: 'run.completed',
+      payload: {
+        runId,
+        threadId,
+        workspaceId,
+        stopReason: 'cancelled',
+      },
+    });
+    this.emitBridgeEvent({
+      type: 'reply',
+      sessionKey: bridgeSessionKey,
+      replyCtx: runId,
+      content: 'Request cancelled.',
+    });
+    this.emitBridgeEvent({
+      type: 'typing_stop',
+      sessionKey: bridgeSessionKey,
+      replyCtx: runId,
+    });
   }
 
   private handleAgentRequest(session: AcpSessionState, payload: any) {

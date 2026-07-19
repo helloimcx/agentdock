@@ -2,6 +2,7 @@ import type { AutomationMonitor, AutomationMonitorEventSnapshot } from '@cc/supe
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { AutomationActionExecutor } from './automation-action-executor.js';
 
 export type AutomationConversationExecutionResult = {
@@ -27,7 +28,7 @@ export class AutomationConversationExecutor {
     this.executor = new AutomationActionExecutor(options);
   }
 
-  async execute(monitor: AutomationMonitor, event: AutomationMonitorEventSnapshot, timeoutMs = 15 * 60 * 1000): Promise<AutomationConversationExecutionResult> {
+  async execute(monitor: AutomationMonitor, event: AutomationMonitorEventSnapshot, timeoutMs = BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS): Promise<AutomationConversationExecutionResult> {
     const result = await this.executor.execute({
       automation: {
         id: monitor.id,

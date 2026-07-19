@@ -6,6 +6,10 @@ import {
   AutomationActionExecutor,
   renderAutomationPrompt,
 } from '../../services/local-ai-core/src/automation/automation-action-executor.js';
+import {
+  ACP_PROMPT_TIMEOUT_MS,
+  BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS,
+} from '../../services/local-ai-core/src/agents/shared/execution-timeouts.js';
 
 function definition(platform = 'lark'): AutomationDefinition {
   return {
@@ -36,6 +40,12 @@ const evaluation: AutomationEvaluation = {
   conditionOutcome: 'matched',
   triggerDecision: 'triggered',
 };
+
+test('background agent execution has one business deadline below the ACP safety ceiling', () => {
+  assert.equal(BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS, 60 * 60 * 1_000);
+  assert.equal(ACP_PROMPT_TIMEOUT_MS, 180 * 60 * 1_000);
+  assert.ok(BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS < ACP_PROMPT_TIMEOUT_MS);
+});
 
 test('prompt rendering uses only own data properties and safely serializes objects', () => {
   const circular: Record<string, unknown> = {};
@@ -84,4 +94,31 @@ test('action executor closes an opened bridge when ACP send fails', async () => 
     promptVariables: {},
   }), /send failed/);
   assert.equal(closed, true);
+});
+
+test('action executor interrupts the ACP run when execution times out', async () => {
+  let interruptedRunId: string | undefined;
+  const executor = new AutomationActionExecutor({
+    store: {
+      getPlatformThreadBinding: () => undefined,
+      getRun: () => ({ status: 'running' }),
+    },
+    getWorkspaceRouter: () => ({
+      listThreads: async () => [],
+      createThread: async () => ({ id: 'thread-1' }),
+      sendThreadMessage: async () => ({ runId: 'acp-run-1' }),
+      interruptRun: async (runId: string) => {
+        interruptedRunId = runId;
+        return { interrupted: true };
+      },
+    }),
+    getChannelRuntime: () => undefined,
+  } as any);
+
+  await assert.rejects(() => executor.execute({
+    automation: definition('local'),
+    evaluation,
+    promptVariables: {},
+  }, 1), /Timed out waiting for automation run acp-run-1/);
+  assert.equal(interruptedRunId, 'acp-run-1');
 });
