@@ -6,7 +6,7 @@ import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/executio
 import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
 import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
 import { waitForRunCompletion } from '../scheduler/run-polling.js';
-import { threadExists } from '../scheduler/thread-resolution.js';
+import { getLatestAssistantFinalContent, threadExists } from '../scheduler/thread-resolution.js';
 
 const AUTOMATION_RUN_PERMISSION_MODE = 'bypassPermissions';
 const UNSAFE_PROMPT_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString']);
@@ -78,10 +78,7 @@ export class AutomationActionExecutor {
         interruptRun: (runId) => workspaceRouter.interruptRun(runId),
       });
       const thread = await workspaceRouter.getThread(threadId);
-      const replyText = [...thread.messages]
-        .reverse()
-        .find((message) => message.role === 'assistant' && message.kind === 'final')
-        ?.content;
+      const replyText = getLatestAssistantFinalContent(thread);
       return {
         threadId,
         acpRunId: sendResult.runId,
