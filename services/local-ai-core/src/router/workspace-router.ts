@@ -168,16 +168,20 @@ export class WorkspaceRouter {
   }
 
   async updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): Promise<WorkspaceRegistryEntry> {
-    const next = this.store.updateWorkspaceRegistryEntry(workspaceId, input);
+    const existing = this.store.getWorkspaceRegistryEntry(workspaceId);
+    if (!existing) {
+      throw new Error(`Workspace not found: ${workspaceId}`);
+    }
+    const path = input.path || existing.path;
     return this.store.upsertWorkspaceRegistryEntry({
-      workspaceId: next.workspaceId,
-      displayName: next.displayName,
-      path: next.path,
-      deviceId: next.deviceId,
-      defaultRuntimeId: next.defaultRuntimeId,
-      git: detectGitSummary(next.path),
-      health: workspaceHealth(next.path),
-      metadata: next.metadata,
+      workspaceId,
+      displayName: input.displayName || existing.displayName,
+      path,
+      deviceId: existing.deviceId,
+      defaultRuntimeId: input.defaultRuntimeId === null ? undefined : input.defaultRuntimeId || existing.defaultRuntimeId,
+      git: detectGitSummary(path),
+      health: workspaceHealth(path),
+      metadata: input.metadata || existing.metadata,
     });
   }
 
