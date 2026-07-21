@@ -89,8 +89,7 @@ export class LocalWorkspaceRegistryStore {
       now,
       existing?.lastOpenedAt || null,
     );
-    // Shape from already-fetched values; upsert doesn't touch agent_tasks, so
-    // existing.activeTaskCount/recentTaskIds remain valid snapshots.
+    // Safe: upsert only touches workspace_registry; task snapshots from the leading get() stay valid.
     return {
       workspaceId: id,
       displayName: input.displayName,
