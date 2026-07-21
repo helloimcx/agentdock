@@ -60,6 +60,9 @@ export class LocalWorkspaceRegistryStore {
       summary: 'Workspace health has not been checked.',
       issues: [],
     };
+    const git = input.git || existing?.git || { isRepo: false };
+    const metadata = input.metadata || existing?.metadata || {};
+    const createdAt = existing?.createdAt || now;
     this.db.prepare(`
       INSERT INTO workspace_registry (
         id, display_name, path, device_id, default_runtime_id, git_json, health_json, metadata_json, created_at, updated_at, last_opened_at
@@ -79,14 +82,30 @@ export class LocalWorkspaceRegistryStore {
       input.path,
       input.deviceId,
       input.defaultRuntimeId || null,
-      JSON.stringify(input.git || existing?.git || {}),
+      JSON.stringify(git),
       JSON.stringify(health),
-      JSON.stringify(input.metadata || existing?.metadata || {}),
-      existing?.createdAt || now,
+      JSON.stringify(metadata),
+      createdAt,
       now,
       existing?.lastOpenedAt || null,
     );
-    return this.get(id)!;
+    // Shape from already-fetched values; upsert doesn't touch agent_tasks, so
+    // existing.activeTaskCount/recentTaskIds remain valid snapshots.
+    return {
+      workspaceId: id,
+      displayName: input.displayName,
+      path: input.path,
+      deviceId: input.deviceId,
+      createdAt,
+      updatedAt: now,
+      lastOpenedAt: existing?.lastOpenedAt || undefined,
+      defaultRuntimeId: input.defaultRuntimeId || undefined,
+      git,
+      health,
+      activeTaskCount: existing?.activeTaskCount ?? 0,
+      recentTaskIds: existing?.recentTaskIds ?? [],
+      metadata,
+    };
   }
 
   update(workspaceId: string, input: WorkspaceRegistryUpdateInput): WorkspaceRegistryEntry {
