@@ -67,12 +67,6 @@ export class AutomationConversationExecutor {
 
 }
 
-export function renderMonitorPrompt(template: string, event: AutomationMonitorEventSnapshot, monitor: AutomationMonitor) {
-  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) =>
-    String(monitorPromptVariables(event, monitor)[key] ?? '')
-  );
-}
-
 function monitorPromptVariables(
   event: AutomationMonitorEventSnapshot,
   monitor: AutomationMonitor,
