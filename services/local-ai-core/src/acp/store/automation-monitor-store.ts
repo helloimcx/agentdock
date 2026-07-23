@@ -18,6 +18,7 @@ import type {
   LocalAutomationMonitorRow,
   LocalAutomationMonitorRunRow,
 } from '../../router/workspace-router-types.js';
+import { parseJson } from './utils.js';
 
 export type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
   platform: NonNullable<AutomationMonitorCreateInput['platform']>;
@@ -318,14 +319,6 @@ export class LocalAutomationMonitorStore {
     }
     if (this.get(id)) throw new Error('Unable to allocate a unique automation monitor id.');
     return id;
-  }
-}
-
-function parseJson<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
   }
 }
 
