@@ -172,7 +172,23 @@ export class LocalSchedulerStore {
       lastStatus: normalizedStatus,
       lastError: input.error || '',
     });
-    return this.getRun(id)!;
+    return {
+      id,
+      jobId,
+      status: normalizedStatus,
+      triggeredAt,
+      startedAt: input.startedAt || undefined,
+      finishedAt: input.finishedAt || undefined,
+      error: input.error || undefined,
+      threadId: input.threadId || undefined,
+      runId: input.runId || undefined,
+      platformMessageId: input.platformMessageId || undefined,
+      platformMessageIds: input.platformMessageIds || [],
+      deliveryMode: input.deliveryMode || undefined,
+      deliveryStatus: input.deliveryStatus || undefined,
+      deliveryError: input.deliveryError || undefined,
+      lastBridgeEventAt: input.lastBridgeEventAt || undefined,
+    };
   }
 
   getRun(runId: string): ScheduledJobRun | undefined {
@@ -221,7 +237,7 @@ export class LocalSchedulerStore {
         lastError: next.error || '',
       });
     }
-    return this.getRun(runId)!;
+    return next;
   }
 
   updateJobStatus(jobId: string, input: {
