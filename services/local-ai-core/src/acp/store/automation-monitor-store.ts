@@ -216,7 +216,22 @@ export class LocalAutomationMonitorStore {
       lastStatus: normalizedStatus,
       lastError: input.error || '',
     });
-    return this.getRun(id)!;
+    return {
+      id,
+      monitorId,
+      status: normalizedStatus,
+      triggeredAt,
+      startedAt: input.startedAt || undefined,
+      finishedAt: input.finishedAt || undefined,
+      error: input.error || undefined,
+      eventSnapshot: input.eventSnapshot || undefined,
+      threadId: input.threadId || undefined,
+      runId: input.runId || undefined,
+      deliveryMode: input.deliveryMode || undefined,
+      deliveryStatus: input.deliveryStatus || undefined,
+      deliveryError: input.deliveryError || undefined,
+      lastBridgeEventAt: input.lastBridgeEventAt || undefined,
+    };
   }
 
   getRun(runId: string): AutomationMonitorRun | undefined {
@@ -262,7 +277,7 @@ export class LocalAutomationMonitorStore {
         lastError: next.error || '',
       });
     }
-    return this.getRun(runId)!;
+    return next;
   }
 
   private toMonitor(row: LocalAutomationMonitorRow): AutomationMonitor {
