@@ -306,6 +306,8 @@ xattr -cr /Applications/AgentDock.app
 | `pnpm start:core` | 运行已构建的 Local AI Core |
 | `pnpm start:prod` | 运行已构建的 Electron 应用 |
 | `pnpm e2e:smoke` | E2E 冒烟测试 |
+| `pnpm test` | 运行完整测试套件（单测 + 契约 + 集成 + BDD） |
+| `pnpm test:bdd` | 运行 Gherkin 行为测试（`tests/bdd/`） |
 
 ## 环境变量
 

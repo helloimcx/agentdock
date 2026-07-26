@@ -120,6 +120,8 @@ Plugin contracts and runtime types belong in `packages/plugin-sdk/`; keep cross-
 
 When adding tests, keep single-module renderer tests near the feature they cover, put cross-layer Electron/contract/integration tests under `tests/electron/`, `tests/contracts/`, or `tests/integration/`, and keep package-private tests under `packages/<name>/test/`.
 
+Gherkin behavior specs (`.feature` files) live under `tests/bdd/features/` with step definitions in `tests/bdd/step-definitions/` and per-scenario state in `tests/bdd/support/world.ts`. They run via Cucumber against TypeScript source (registered through the `tsx` loader, not the compiled `dist-electron` output) with `pnpm test:bdd`, which is also appended to `pnpm test`. Reach for a `.feature` when a behavior reads naturally as Given/When/Then scenarios; keep step definitions thin and delegate the real work to the same pure functions the unit tests exercise.
+
 Use TDD selectively where it prevents repeated regressions. Bug fixes should start with the smallest failing test that reproduces the issue. Cross-layer features should add contract or state-machine coverage first, especially for ACP streaming, permission lifecycle, thread/task state, channel content normalization, scheduler behavior, and shared enum parsing. Pure UI polish, copy changes, and exploratory product work do not require strict TDD; validate them with focused manual checks, screenshots when useful, or smoke/e2e coverage.
 
 ## Agent Workflow

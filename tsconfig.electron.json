@@ -38,5 +38,6 @@
     "src/pages/Threads/thread-chat-permission.ts",
     "src/pages/Threads/thread-chat-permission.test.ts",
     "src/components/chat/chat-controller-state.ts"
-  ]
+  ],
+  "exclude": ["tests/bdd"]
 }

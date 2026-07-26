@@ -33,8 +33,9 @@
     "build:renderer": "vite build",
     "build:electron": "node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json && node scripts/copy-managed-skills.mjs",
     "build:core": "pnpm build:electron",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm typecheck && pnpm build:renderer && pnpm build:electron && node --test dist-electron/tests/electron/*.test.js dist-electron/tests/contracts/*.test.js dist-electron/tests/integration/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/bdd/tsconfig.json --noEmit",
+    "test": "pnpm typecheck && pnpm build:renderer && pnpm build:electron && node --test dist-electron/tests/electron/*.test.js dist-electron/tests/contracts/*.test.js dist-electron/tests/integration/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js && pnpm test:bdd",
+    "test:bdd": "node --import tsx node_modules/@cucumber/cucumber/bin/cucumber.js --config tests/bdd/cucumber.mjs",
     "e2e:smoke": "pnpm build && node scripts/e2e-smoke.mjs",
     "e2e:compose": "node scripts/e2e-compose.mjs",
     "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64",
@@ -75,6 +76,7 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@cucumber/cucumber": "^13.2.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
@@ -85,6 +87,7 @@
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "tsc-alias": "^1.8.17",
+    "tsx": "^4.23.1",
     "typescript": "~5.8.3",
     "vite": "^6.3.2"
   },
