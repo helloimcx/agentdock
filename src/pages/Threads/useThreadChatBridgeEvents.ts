@@ -46,6 +46,70 @@ function shouldRefreshThreadListForBridgeEvent(event: DesktopBridgeEvent) {
   return event.type === 'reply' && !isInternalProgressBridgeKind(event.bridgeKind);
 }
 
+function upsertStreamingPreviewMessage(
+  current: ChatMessage[],
+  event: DesktopBridgeEvent,
+  acpStreamingPreview: boolean,
+  reserveAssistantMessageOrder: (sessionKey?: string) => number,
+): ChatMessage[] {
+  const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
+  const previewId = existing?.id || event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`;
+  const next = current.filter((message) => message.id !== previewId);
+  next.push({
+    id: previewId,
+    role: 'assistant',
+    content: event.content || '',
+    kind: 'progress',
+    bridgeKind: event.bridgeKind,
+    bridgeStatus: event.bridgeStatus,
+    order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
+    timestamp: existing?.timestamp || new Date().toISOString(),
+    turnKey: event.replyCtx,
+    preview: true,
+    previewPlainText: acpStreamingPreview,
+  });
+  return next;
+}
+
+function upsertStreamingPreviewContent(
+  current: ChatMessage[],
+  event: DesktopBridgeEvent,
+  acpStreamingPreview: boolean,
+  reserveAssistantMessageOrder: (sessionKey?: string) => number,
+): ChatMessage[] {
+  const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
+  if (existing) {
+    return current.map((message) =>
+      message.id === existing.id
+        ? {
+            ...message,
+            content: event.content || '',
+            bridgeKind: event.bridgeKind,
+            bridgeStatus: event.bridgeStatus,
+            preview: true,
+            previewPlainText: acpStreamingPreview,
+          }
+        : message,
+    );
+  }
+  return [
+    ...current,
+    {
+      id: event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`,
+      role: 'assistant',
+      content: event.content || '',
+      kind: 'progress',
+      bridgeKind: event.bridgeKind,
+      bridgeStatus: event.bridgeStatus,
+      order: reserveAssistantMessageOrder(event.sessionKey),
+      timestamp: new Date().toISOString(),
+      turnKey: event.replyCtx,
+      preview: true,
+      previewPlainText: acpStreamingPreview,
+    },
+  ];
+}
+
 type UseThreadChatBridgeEventsInput = {
   clearActionStatuses: () => void;
   finalizeTurnMessages: (turnKey?: string) => void;
@@ -118,25 +182,7 @@ export function useThreadChatBridgeEvents({
           updateTaskState('awaiting_input', 'bridge-preview-awaiting-input');
           setPendingPermissionRequest(null);
           setBridgeError('');
-          setMessages((current) => {
-            const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
-            const previewId = existing?.id || event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`;
-            const next = current.filter((message) => message.id !== previewId);
-            next.push({
-              id: previewId,
-              role: 'assistant',
-              content: event.content || '',
-              kind: 'progress',
-              bridgeKind: event.bridgeKind,
-              bridgeStatus: event.bridgeStatus,
-              order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
-              timestamp: existing?.timestamp || new Date().toISOString(),
-              turnKey: event.replyCtx,
-              preview: true,
-              previewPlainText: acpStreamingPreview,
-            });
-            return next;
-          });
+          setMessages((current) => upsertStreamingPreviewMessage(current, event, acpStreamingPreview, reserveAssistantMessageOrder));
           break;
         }
         clearActionStatuses();
@@ -145,25 +191,7 @@ export function useThreadChatBridgeEvents({
         setPendingPermissionRequest(null);
         armReplyTimeout();
         setBridgeError('');
-        setMessages((current) => {
-          const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
-          const previewId = existing?.id || event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`;
-          const next = current.filter((message) => message.id !== previewId);
-          next.push({
-            id: previewId,
-            role: 'assistant',
-            content: event.content || '',
-            kind: 'progress',
-            bridgeKind: event.bridgeKind,
-            bridgeStatus: event.bridgeStatus,
-            order: existing?.order ?? reserveAssistantMessageOrder(event.sessionKey),
-            timestamp: existing?.timestamp || new Date().toISOString(),
-            turnKey: event.replyCtx,
-            preview: true,
-            previewPlainText: acpStreamingPreview,
-          });
-          return next;
-        });
+        setMessages((current) => upsertStreamingPreviewMessage(current, event, acpStreamingPreview, reserveAssistantMessageOrder));
         break;
       case 'update_message':
         if (isAwaitingInputBridgeStatus(event.bridgeStatus)) {
@@ -174,41 +202,7 @@ export function useThreadChatBridgeEvents({
           updateTaskState('awaiting_input', 'bridge-update-awaiting-input');
           setPendingPermissionRequest(null);
           setBridgeError('');
-          setMessages((current) =>
-            {
-              const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
-              if (existing) {
-                return current.map((message) =>
-                  message.id === existing.id
-                    ? {
-                        ...message,
-                        content: event.content || '',
-                        bridgeKind: event.bridgeKind,
-                        bridgeStatus: event.bridgeStatus,
-                        preview: true,
-                        previewPlainText: acpStreamingPreview,
-                      }
-                    : message,
-                );
-              }
-              return [
-                ...current,
-                {
-                  id: event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`,
-                  role: 'assistant',
-                  content: event.content || '',
-                  kind: 'progress',
-                  bridgeKind: event.bridgeKind,
-                  bridgeStatus: event.bridgeStatus,
-                  order: reserveAssistantMessageOrder(event.sessionKey),
-                  timestamp: new Date().toISOString(),
-                  turnKey: event.replyCtx,
-                  preview: true,
-                  previewPlainText: acpStreamingPreview,
-                },
-              ];
-            },
-          );
+          setMessages((current) => upsertStreamingPreviewContent(current, event, acpStreamingPreview, reserveAssistantMessageOrder));
           break;
         }
         clearActionStatuses();
@@ -217,41 +211,7 @@ export function useThreadChatBridgeEvents({
         setPendingPermissionRequest(null);
         armReplyTimeout();
         setBridgeError('');
-        setMessages((current) =>
-          {
-            const existing = findStreamingPreviewMessage(current, event.previewHandle, event.replyCtx);
-            if (existing) {
-              return current.map((message) =>
-                message.id === existing.id
-                  ? {
-                      ...message,
-                      content: event.content || '',
-                      bridgeKind: event.bridgeKind,
-                      bridgeStatus: event.bridgeStatus,
-                      preview: true,
-                      previewPlainText: acpStreamingPreview,
-                    }
-                  : message,
-              );
-            }
-            return [
-              ...current,
-              {
-                id: event.previewHandle || `${event.replyCtx || crypto.randomUUID()}-preview`,
-                role: 'assistant',
-                content: event.content || '',
-                kind: 'progress',
-                bridgeKind: event.bridgeKind,
-                bridgeStatus: event.bridgeStatus,
-                order: reserveAssistantMessageOrder(event.sessionKey),
-                timestamp: new Date().toISOString(),
-                turnKey: event.replyCtx,
-                preview: true,
-                previewPlainText: acpStreamingPreview,
-              },
-            ];
-          },
-        );
+        setMessages((current) => upsertStreamingPreviewContent(current, event, acpStreamingPreview, reserveAssistantMessageOrder));
         break;
       case 'delete_message':
         setMessages((current) => current.filter((message) => message.id !== event.previewHandle));
