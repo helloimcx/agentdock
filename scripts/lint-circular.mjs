@@ -16,7 +16,10 @@ const ROOT = process.cwd();
 const TS_CONFIG = `${ROOT}/tsconfig.json`;
 const ENTRY_DIRS = ['src', 'services', 'packages', 'electron', 'shared'];
 
-const tsconf = JSON.parse(readFileSync(TS_CONFIG, 'utf8'));
+// tsconfig.json is JSON5 (TypeScript permits comments), so strip comments
+// before parsing — a hand-rolled JSON.parse would otherwise throw on a
+// comment and break the script's "always exits 0" contract.
+const tsconf = JSON.parse(readFileSync(TS_CONFIG, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, ''));
 const paths = tsconf.compilerOptions?.paths || {};
 
 const res = await madge(ENTRY_DIRS, {
