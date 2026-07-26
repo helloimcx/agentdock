@@ -279,7 +279,7 @@ export class LocalAutomationStore {
       INSERT INTO automation_runs (id, automation_id, evaluation_id, status, created_at, run_json)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(run.id, run.automationId, run.evaluationId, run.status, run.createdAt, JSON.stringify(run));
-    return this.getRun(run.id)!;
+    return run;
   }
 
   updateRun(runId: string, input: AutomationRunUpdateInput): AutomationRun {
@@ -287,7 +287,7 @@ export class LocalAutomationStore {
     const run = validateRun({ ...existing, ...pickRunMutableFields(input) });
     this.db.prepare('UPDATE automation_runs SET status = ?, run_json = ? WHERE id = ?')
       .run(run.status, JSON.stringify(run), runId);
-    return this.getRun(runId)!;
+    return run;
   }
 
   listRuns(automationId: string): AutomationRun[] {
