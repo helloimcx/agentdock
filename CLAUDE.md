@@ -130,6 +130,8 @@ Use TDD selectively where it prevents repeated regressions. Bug fixes should sta
 
 `pnpm lint:circular` reports **circular (cyclic) import dependencies** across the same source roots, using [madge](https://github.com/pahen/madge) to build the import graph (honoring the `@cc/*` and `@/*` aliases from the root tsconfig) and collapsing it into **strongly-connected components** via Tarjan's algorithm — so one tangled cluster shows up once instead of as N overlapping paths. Each SCC of size > 1 is a genuine directed cycle and is printed with its files, largest first. It is an informational report — the script always exits 0 and does not gate CI. The script lives in `scripts/lint-circular.mjs`.
 
+`pnpm lint:duplicate` reports the **copy/paste (duplicate code) rate** across the same source roots using [jscpd](https://github.com/kucherenko/jscpd). It prints total files/lines scanned, duplicated lines and tokens, the **duplicate rate** as both a line percentage and a token percentage, a per-format breakdown (typescript vs tsx), and the ten largest duplicated blocks. It is an informational report — the script always exits 0 and does not gate CI. The script lives in `scripts/lint-duplicate.mjs`; tune detection with the `JSCPD_MIN_LINES` and `JSCPD_MIN_TOKENS` environment variables (defaults 5 lines / 25 tokens).
+
 ## Agent Workflow
 
 - Before writing any code, describe the intended approach and wait for approval

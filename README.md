@@ -310,6 +310,7 @@ xattr -cr /Applications/AgentDock.app
 | `pnpm test:bdd` | 运行 Gherkin 行为测试（`tests/bdd/`） |
 | `pnpm lint:complexity` | 圈复杂度报告（信息性，不阻断 CI） |
 | `pnpm lint:circular` | 循环依赖报告（强连通分量，信息性，不阻断 CI） |
+| `pnpm lint:duplicate` | 重复代码率报告（copy/paste，信息性，不阻断 CI） |
 
 ## 环境变量
 
