@@ -6,7 +6,6 @@ export type {
   ChannelOutboundMessageInput,
   ChannelOutboundMessagePart,
   ChannelOutboundMessageResult,
-  ChannelRoute,
   LocalCoreChannelAuthorizedUser,
   LocalCoreChannelConnectionResult,
   LocalCoreChannelGatewayStatus,
@@ -14,4 +13,5 @@ export type {
   LocalCoreChannelQrCode,
   LocalCoreChannelQrCodeStatus,
 } from './local-core.js';
+export type { ChannelRoute } from './scheduler.js';
 export type { DesktopBridgeEvent } from '../../../shared/desktop.js';

@@ -3,7 +3,7 @@ import type {
   ScheduledJobCreateInput,
   ScheduledJobRun,
   ScheduledJobUpdateInput,
-} from '@cc/superai-contracts/scheduler';
+} from '@cc/superai-contracts';
 import { buildQuery, coreRequest } from './request.js';
 
 export function listScheduledJobs(workspaceId?: string) {

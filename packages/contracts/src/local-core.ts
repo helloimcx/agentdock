@@ -1,6 +1,13 @@
 import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
 export * from './knowledge.js';
+import {
+  ChannelRoute,
+  normalizeContractEnumValue,
+  normalizeScheduledJobExecutionMode,
+  ScheduledJobExecutionMode,
+  ScheduledJobRoute,
+} from './scheduler.js';
 
 export interface WorkspaceSummary {
   id: string;
@@ -593,15 +600,6 @@ export interface OpenAiChatCompletionChunk {
   };
 }
 
-export interface ChannelRoute {
-  type: string;
-  channelId: string;
-  instanceId?: string;
-  participantId?: string;
-  threadId?: string;
-  metadata?: Record<string, unknown>;
-}
-
 export type ChannelOutboundMessagePart =
   | {
       type: 'text';
@@ -692,20 +690,6 @@ export interface ChannelFileSendResult {
 
 export type ScheduledJobTriggerType = 'cron' | 'once' | (string & {});
 
-export type ScheduledJobExecutionMode = 'same-thread' | 'side-thread' | (string & {});
-
-function normalizeContractEnumValue(value: unknown) {
-  return String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
-}
-
-export function normalizeScheduledJobExecutionMode(value: unknown, fallback: ScheduledJobExecutionMode = 'same-thread'): ScheduledJobExecutionMode {
-  const normalized = normalizeContractEnumValue(value || fallback);
-  if (normalized === 'same-thread' || normalized === 'side-thread') {
-    return normalized;
-  }
-  throw new Error('Scheduled job execution mode must be same-thread or side-thread.');
-}
-
 export function normalizeScheduledJobTriggerType(value: unknown, fallback: ScheduledJobTriggerType = 'cron'): ScheduledJobTriggerType {
   const normalized = normalizeContractEnumValue(value || fallback);
   if (normalized === 'cron' || normalized === 'once' || normalized === 'one-time') {
@@ -739,10 +723,6 @@ export function normalizeRunStatus(value: unknown, fallback: RunSummary['status'
   }
   throw new Error('Run status must be queued, running, awaiting_input, completed, failed, or interrupted.');
 }
-
-export type ScheduledJobDeliveryTarget = ChannelRoute;
-
-export type ScheduledJobRoute = ScheduledJobDeliveryTarget;
 
 export interface ScheduledJobExecutionTarget {
   kind: string;

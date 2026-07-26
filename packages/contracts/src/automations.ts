@@ -1,7 +1,7 @@
 import {
   normalizeScheduledJobExecutionMode,
   type ScheduledJobRoute,
-} from './local-core.js';
+} from './scheduler.js';
 
 export type AutomationActivation =
   | { kind: 'cron'; expression: string; timezone: string }
