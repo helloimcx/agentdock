@@ -124,6 +124,10 @@ Gherkin behavior specs (`.feature` files) live under `tests/bdd/features/` with 
 
 Use TDD selectively where it prevents repeated regressions. Bug fixes should start with the smallest failing test that reproduces the issue. Cross-layer features should add contract or state-machine coverage first, especially for ACP streaming, permission lifecycle, thread/task state, channel content normalization, scheduler behavior, and shared enum parsing. Pure UI polish, copy changes, and exploratory product work do not require strict TDD; validate them with focused manual checks, screenshots when useful, or smoke/e2e coverage.
 
+## Quality metrics
+
+`pnpm lint:complexity` reports cyclomatic complexity per function across the TS source (`src/`, `services/`, `packages/`, `electron/`, `shared/`) via ESLint's `complexity` rule. It is an informational report — the rule is `warn`, so it exits 0 and does not gate CI. Tune the threshold in [eslint.config.mjs](eslint.config.mjs) (`complexity: ['warn', { max }]`); the project default is 15.
+
 ## Agent Workflow
 
 - Before writing any code, describe the intended approach and wait for approval

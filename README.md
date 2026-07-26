@@ -308,6 +308,7 @@ xattr -cr /Applications/AgentDock.app
 | `pnpm e2e:smoke` | E2E 冒烟测试 |
 | `pnpm test` | 运行完整测试套件（单测 + 契约 + 集成 + BDD） |
 | `pnpm test:bdd` | 运行 Gherkin 行为测试（`tests/bdd/`） |
+| `pnpm lint:complexity` | 圈复杂度报告（信息性，不阻断 CI） |
 
 ## 环境变量
 
