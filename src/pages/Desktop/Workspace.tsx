@@ -1,27 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, QrCode, Save } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select, StatusPill } from '@/components/ui';
+import { Plus, Save } from 'lucide-react';
+import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select } from '@/components/ui';
 import {
-  checkLarkQrCodeStatus,
   checkWeixinQrCodeStatus,
-  enableLarkGateway,
-  getLarkQrCode,
   getWeixinQrCode,
-  testLarkConnection,
 } from '@cc/core-sdk/channels';
 import {
-  createModelProvider,
-  deleteModelProvider,
   listModelProviders,
   readCoreRuntimeConfig as readRuntimeConfig,
   saveCoreRuntimeConfig as saveRuntimeConfig,
-  updateModelProvider,
 } from '@cc/core-sdk/runtime';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
-  DESKTOP_PLATFORM_TYPE_OPTIONS,
   defaultSandboxProviderForProfile,
   defaultSandboxRuntimeImage,
   getDesktopDeploymentProfile,
@@ -38,19 +29,15 @@ import {
   clone,
   createPlatformDraft,
   createProjectDialogDraft,
-  CUSTOM_SELECT_VALUE,
   desktopProjectWorkspaceId,
   ensureProjects,
   fromSandboxForm,
   getPlatformInstanceId,
-  getSelectValue,
   normalizePlatformDraft,
   normalizeProject,
   noticeClass,
-  PLATFORM_TYPE_OPTIONS,
   providerToDraft,
   toSandboxForm,
-  type LarkQrState,
   type Notice,
   type PlatformDialogState,
   type ProjectDialogDraft,
@@ -58,24 +45,21 @@ import {
   type SandboxForm,
   type WeixinQrState,
 } from './workspace-model';
-import { ProjectListPanel, ProjectOverviewCards } from './workspace-components';
+import { AddProjectDialog, PlatformDialog, ProjectDetails, ProjectListPanel, ProjectOverviewCards } from './workspace-components';
 import { BasicProjectSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
+import { useLarkQr, useModelProviders } from './workspace-hooks';
 
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProject = searchParams.get('project') || '';
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
   const [persistedConfig, setPersistedConfig] = useState<DesktopConnectConfig | null>(null);
-  const [modelProviders, setModelProviders] = useState<DesktopModelProvider[]>([]);
-  const [providerDrafts, setProviderDrafts] = useState<Record<string, DesktopModelProviderInput>>({});
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [projectTab, setProjectTab] = useState<ProjectTab>('basic');
   const [projectDialog, setProjectDialog] = useState<ProjectDialogDraft | null>(null);
   const [platformDialog, setPlatformDialog] = useState<PlatformDialogState | null>(null);
   const [weixinQr, setWeixinQr] = useState<WeixinQrState | null>(null);
   const [weixinQrLoading, setWeixinQrLoading] = useState(false);
-  const [larkQr, setLarkQr] = useState<LarkQrState | null>(null);
-  const [larkQrLoading, setLarkQrLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -83,6 +67,17 @@ export default function DesktopWorkspace() {
   const platformDialogRef = useRef<PlatformDialogState | null>(null);
   const selectedIndexRef = useRef(selectedIndex);
   const selectedProjectWorkspaceIdRef = useRef('');
+
+  const {
+    modelProviders,
+    providerDrafts,
+    setModelProviders,
+    setProviderDrafts,
+    updateProviderDraft,
+    addProvider,
+    saveProvider,
+    deleteProvider,
+  } = useModelProviders(setNotice);
 
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
@@ -189,53 +184,6 @@ export default function DesktopWorkspace() {
 
   const handleAddProject = () => {
     setProjectDialog(createProjectDialogDraft(projects));
-  };
-
-  const updateProviderDraft = useCallback((providerId: string, updater: (provider: DesktopModelProviderInput) => DesktopModelProviderInput) => {
-    setProviderDrafts((current) => {
-      const provider = current[providerId];
-      if (!provider) return current;
-      return { ...current, [providerId]: updater(provider) };
-    });
-  }, []);
-
-  const handleAddProvider = async () => {
-    try {
-      const provider = await createModelProvider({ name: `provider-${modelProviders.length + 1}` });
-      setModelProviders((current) => [...current, provider].sort((a, b) => a.name.localeCompare(b.name)));
-      setProviderDrafts((current) => ({ ...current, [provider.id]: providerToDraft(provider) }));
-      setNotice({ tone: 'success', message: 'Provider created.' });
-    } catch (err) {
-      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-    }
-  };
-
-  const handleSaveProvider = async (providerId: string) => {
-    const draft = providerDrafts[providerId];
-    if (!draft) return;
-    try {
-      const provider = await updateModelProvider(providerId, draft);
-      setModelProviders((current) => current.map((item) => item.id === provider.id ? provider : item).sort((a, b) => a.name.localeCompare(b.name)));
-      setProviderDrafts((current) => ({ ...current, [provider.id]: providerToDraft(provider) }));
-      setNotice({ tone: 'success', message: 'Provider saved.' });
-    } catch (err) {
-      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-    }
-  };
-
-  const handleDeleteProvider = async (providerId: string) => {
-    try {
-      await deleteModelProvider(providerId);
-      setModelProviders((current) => current.filter((provider) => provider.id !== providerId));
-      setProviderDrafts((current) => {
-        const next = { ...current };
-        delete next[providerId];
-        return next;
-      });
-      setNotice({ tone: 'success', message: 'Provider removed.' });
-    } catch (err) {
-      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-    }
   };
 
   const updateProjectDialog = (patch: Partial<ProjectDialogDraft>) => {
@@ -365,21 +313,6 @@ export default function DesktopWorkspace() {
     }
   };
 
-  const handleGenerateLarkQr = async () => {
-    if (!selectedProject?.name || !configDraft) return;
-    setLarkQrLoading(true);
-    try {
-      await persistPlatformDialogDraft();
-      const result = await getLarkQrCode(selectedProject.workspace_id || selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
-      setLarkQr({ ...result, status: 'wait', createdAt: Date.now() });
-      setNotice(null);
-    } catch (err) {
-      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setLarkQrLoading(false);
-    }
-  };
-
   const handleCheckWeixinQr = async () => {
     if (!selectedProject?.name || !weixinQr?.ticket) return;
     setWeixinQrLoading(true);
@@ -396,145 +329,27 @@ export default function DesktopWorkspace() {
     }
   };
 
-  const activateLarkGatewayAfterBind = useCallback(async (workspaceId: string, instanceId: string) => {
-    const status = await enableLarkGateway(workspaceId, instanceId);
-    if (status.status !== 'running' || status.connected !== true) {
-      throw new Error(status.lastError || 'Lark bot credentials were saved, but the gateway is not connected yet.');
-    }
-    const connection = await testLarkConnection(workspaceId, instanceId);
-    if (!connection.success) {
-      throw new Error(connection.error || 'Lark bot credentials were saved, but the connection test failed.');
-    }
-  }, []);
-
-  const saveLarkCredentialsFromQr = useCallback(async (credentials: {
-    appId: string;
-    appSecret: string;
-    verificationToken?: string;
-    encryptKey?: string;
-    botName?: string;
-  }) => {
-    const workspaceId = selectedProjectWorkspaceIdRef.current;
-    const targetInstanceId = getPlatformInstanceId(platformDialogRef.current?.draft);
-    const currentConfig = configDraftRef.current;
-    if (!currentConfig) return;
-    const nextConfig = clone(currentConfig);
-    const nextProjects = ensureProjects(nextConfig);
-    const projectIndex = selectedIndexRef.current;
-    const project = nextProjects[projectIndex];
-    if (!project) return;
-    const platforms = [...(project.platforms || [])];
-    const currentDialog = platformDialogRef.current;
-    const currentIndex = currentDialog?.index ?? platforms.findIndex((platform) =>
-      normalizePlatformDraft(platform).type === 'lark' && getPlatformInstanceId(platform) === targetInstanceId
-    );
-    const currentPlatform = currentIndex >= 0 ? platforms[currentIndex] : currentDialog?.draft || createPlatformDraft('lark');
-    const nextPlatform = normalizePlatformDraft({
-      ...currentPlatform,
-      type: 'lark',
-      options: {
-        ...(currentPlatform.options || {}),
-        instance_id: targetInstanceId,
-        app_id: credentials.appId,
-        app_secret: credentials.appSecret,
-        verification_token: credentials.verificationToken || currentPlatform.options?.verification_token || '',
-        encrypt_key: credentials.encryptKey || currentPlatform.options?.encrypt_key || '',
-        card_actions: true,
-        subscribed_events: 'im.message.receive_v1 card.action.trigger',
-        subscribed_callbacks: 'card.action.trigger',
-      },
-    });
-    if (currentIndex >= 0) {
-      platforms[currentIndex] = nextPlatform;
-    } else {
-      platforms.push(nextPlatform);
-    }
-    nextProjects[projectIndex] = normalizeProject({ ...project, platforms });
-    const saved = await saveRuntimeConfig(nextConfig);
-    const savedConfig = clone(saved.config || nextConfig);
-    setPersistedConfig(savedConfig);
-    setConfigDraft(clone(savedConfig));
-    setPlatformDialog((current) => current ? { ...current, index: current.index ?? (currentIndex >= 0 ? currentIndex : platforms.length - 1), draft: nextPlatform } : current);
-    await activateLarkGatewayAfterBind(workspaceId, targetInstanceId);
-    setNotice({ tone: 'success', message: 'Lark bot bound, saved, and ready to send messages.' });
-    await loadAll(project.name);
-  }, [activateLarkGatewayAfterBind, loadAll]);
-
-  const handleCheckLarkQr = async () => {
-    if (!selectedProject?.name || !larkQr?.ticket || !configDraft) return;
-    setLarkQrLoading(true);
-    try {
-      const result = await checkLarkQrCodeStatus(selectedProject.workspace_id || selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialog?.draft));
-      setLarkQr((current) => current ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
-      if (result.status === 'confirmed' && result.credentials) {
-        await saveLarkCredentialsFromQr(result.credentials);
-      } else if (result.status === 'expired') {
-        setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
-      }
-    } catch (err) {
-      setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setLarkQrLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!selectedProject?.name || !larkQr?.ticket || platformDialog?.draft.type !== 'lark') return;
-    if (larkQr.status && !['wait', 'signed'].includes(larkQr.status)) return;
-
-    let cancelled = false;
-    let timer: number | undefined;
-    const createdAt = larkQr.createdAt || Date.now();
-    const expiresAt = createdAt + Math.max(larkQr.expiresIn || 0, 1) * 1000;
-    const pollDelay = Math.max(3, Math.min(Number(larkQr.interval || 5) || 5, 15)) * 1000;
-
-    const schedule = (delay: number) => {
-      timer = window.setTimeout(() => {
-        void poll();
-      }, delay);
-    };
-
-    const poll = async () => {
-      if (cancelled) return;
-      if (Date.now() >= expiresAt) {
-        setLarkQr((current) => current?.ticket === larkQr.ticket ? { ...current, status: 'expired' } : current);
-        setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
-        return;
-      }
-      try {
-        const result = await checkLarkQrCodeStatus(selectedProject.workspace_id || selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialogRef.current?.draft));
-        if (cancelled) return;
-        setLarkQr((current) => current?.ticket === larkQr.ticket ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
-        if (result.status === 'confirmed' && result.credentials) {
-          await saveLarkCredentialsFromQr(result.credentials);
-          return;
-        }
-        if (result.status === 'expired') {
-          setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
-          return;
-        }
-        schedule(pollDelay);
-      } catch (err) {
-        if (cancelled) return;
-        setNotice({ tone: 'error', message: err instanceof Error ? err.message : String(err) });
-      }
-    };
-
-    schedule(Math.min(2000, pollDelay));
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [
-    larkQr?.createdAt,
-    larkQr?.expiresIn,
-    larkQr?.interval,
-    larkQr?.status,
-    larkQr?.ticket,
-    platformDialog?.draft.type,
-    saveLarkCredentialsFromQr,
-    selectedProject?.name,
-  ]);
+  const {
+    larkQr,
+    larkQrLoading,
+    setLarkQr,
+    generateLarkQr,
+    checkLarkQr,
+  } = useLarkQr({
+    selectedProject,
+    configDraft,
+    platformDialog,
+    persistPlatformDialogDraft,
+    selectedProjectWorkspaceIdRef,
+    platformDialogRef,
+    configDraftRef,
+    selectedIndexRef,
+    setNotice,
+    setConfigDraft,
+    setPersistedConfig,
+    setPlatformDialog,
+    loadAll,
+  });
 
   const handleSaveConfig = async () => {
     if (!configDraft) return;
@@ -590,304 +405,60 @@ export default function DesktopWorkspace() {
           onRemoveProject={(index) => handleRemoveProject(index)}
         />
 
-        <SectionCard
-          title={selectedProject?.name || 'Project details'}
-          description={selectedProject ? (
-            <span className="break-all">
-              {selectedProject.agent?.type || 'unknown'} · {String(selectedProject.agent?.options?.work_dir || 'No work directory')}
-            </span>
-          ) : undefined}
-          className="app-panel"
-        >
-          {!selectedProject ? (
-            <EmptyState message="选择或新建项目后开始配置。" />
-          ) : (
-            <div className="space-y-6">
-              <ProjectOverviewCards project={selectedProject} sandbox={selectedSandbox} />
-
-              <div className="flex gap-2 overflow-x-auto border-b border-black/10 pb-4 [scrollbar-width:none] dark:border-white/[0.08] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
-                {[
-                  ['basic', '基本信息'],
-                  ['providers', 'Provider'],
-                  ['platforms', '平台接入'],
-                  ['sandbox', '云端模式'],
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setProjectTab(key as ProjectTab)}
-                    className={`app-segment ${
-                      projectTab === key
-                        ? 'app-segment-active'
-                        : 'app-segment-idle'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {projectTab === 'basic' ? (
-                <BasicProjectSection project={selectedProject} updateProject={updateSelectedProject} />
-              ) : null}
-
-              {projectTab === 'providers' ? (
-                <ProvidersSection
-                  project={selectedProject}
-                  modelProviders={modelProviders}
-                  providerDrafts={providerDrafts}
-                  updateProject={updateSelectedProject}
-                  updateProviderDraft={updateProviderDraft}
-                  onAddProvider={() => void handleAddProvider()}
-                  onSaveProvider={(providerId) => void handleSaveProvider(providerId)}
-                  onDeleteProvider={(providerId) => void handleDeleteProvider(providerId)}
-                />
-              ) : null}
-
-              {projectTab === 'platforms' ? (
-                <PlatformsSection
-                  project={selectedProject}
-                  updateProject={updateSelectedProject}
-                  onOpenPlatformDialog={openPlatformDialog}
-                />
-              ) : null}
-
-              {projectTab === 'sandbox' ? (
-                <SandboxSection
-                  project={selectedProject}
-                  sandbox={selectedSandbox}
-                  profile={selectedProfile}
-                  sandboxProvider={selectedSandboxProvider}
-                  runtimeImage={selectedSandboxRuntimeImage}
-                  updateSandbox={updateSelectedSandbox}
-                  updateDeploymentProfile={updateDeploymentProfile}
-                />
-              ) : null}
-
-              <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
-                <Button className="w-full sm:w-auto" onClick={() => void handleSaveConfig()} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>
-                  <Save size={14} /> 保存更改
-                </Button>
-              </div>
-            </div>
-          )}
-        </SectionCard>
+        <ProjectDetails
+          project={selectedProject}
+          sandbox={selectedSandbox}
+          profile={selectedProfile}
+          sandboxProvider={selectedSandboxProvider}
+          runtimeImage={selectedSandboxRuntimeImage}
+          projectTab={projectTab}
+          setProjectTab={setProjectTab}
+          modelProviders={modelProviders}
+          providerDrafts={providerDrafts}
+          configDirty={configDirty}
+          pending={pending}
+          updateProject={updateSelectedProject}
+          updateSandbox={updateSelectedSandbox}
+          updateDeploymentProfile={updateDeploymentProfile}
+          updateProviderDraft={updateProviderDraft}
+          openPlatformDialog={openPlatformDialog}
+          addProvider={addProvider}
+          saveProvider={saveProvider}
+          deleteProvider={deleteProvider}
+          onSaveConfig={() => void handleSaveConfig()}
+        />
       </div>
 
-      <Modal
-        open={Boolean(projectDialog)}
+      <AddProjectDialog
+        dialog={projectDialog}
+        updateDialog={updateProjectDialog}
+        onConfirm={handleConfirmAddProject}
         onClose={() => setProjectDialog(null)}
-        title="新建项目"
-      >
-        {projectDialog ? (
-          <div className="space-y-4">
-            <Input
-              label="Project name"
-              value={projectDialog.name}
-              onChange={(event) => updateProjectDialog({ name: event.target.value })}
-              autoFocus
-            />
-            <Select
-              label="Agent type"
-              value={projectDialog.agentType}
-              onChange={(event) => {
-                const agentType = event.target.value;
-                updateProjectDialog({ agentType });
-              }}
-            >
-              {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-            </Select>
-            <Input
-              label="Host workspace path"
-              value={projectDialog.workDir}
-              onChange={(event) => updateProjectDialog({ workDir: event.target.value })}
-              placeholder="/Users/yinyin/code/my-project"
-            />
-            <Input
-              label="Default model"
-              value={projectDialog.model}
-              onChange={(event) => updateProjectDialog({ model: event.target.value })}
-              placeholder={getDefaultDesktopAgentModel(projectDialog.agentType) || 'Use agent default model'}
-            />
-            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setProjectDialog(null)}>Cancel</Button>
-              <Button className="w-full sm:w-auto" onClick={handleConfirmAddProject}><Plus size={14} /> 新建项目</Button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
+      />
 
-      <Modal
-        open={Boolean(platformDialog)}
+      <PlatformDialog
+        dialog={platformDialog}
+        weixinQr={weixinQr}
+        weixinQrLoading={weixinQrLoading}
+        larkQr={larkQr}
+        larkQrLoading={larkQrLoading}
+        onChangeType={(type) => {
+          updatePlatformDialogDraft(() => createPlatformDraft(type));
+          setWeixinQr(null);
+          setLarkQr(null);
+        }}
+        onUpdateDraft={updatePlatformDialogDraft}
         onClose={() => {
           setPlatformDialog(null);
           setWeixinQr(null);
           setLarkQr(null);
         }}
-        title={platformDialog?.index === null ? 'Add platform' : 'Configure platform'}
-      >
-        {platformDialog ? (
-          <div className="space-y-4">
-            <Select
-              label="Platform"
-              value={getSelectValue(platformDialog.draft.type, [...PLATFORM_TYPE_OPTIONS])}
-              onChange={(event) => {
-                const type = event.target.value === CUSTOM_SELECT_VALUE ? platformDialog.draft.type : event.target.value;
-                updatePlatformDialogDraft(() => createPlatformDraft(type));
-                setWeixinQr(null);
-                setLarkQr(null);
-              }}
-            >
-              {PLATFORM_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-              {DESKTOP_PLATFORM_TYPE_OPTIONS
-                .filter((option) => !PLATFORM_TYPE_OPTIONS.includes(option as any))
-                .map((option) => <option key={option} value={option}>{option}</option>)}
-              <option value={CUSTOM_SELECT_VALUE}>custom</option>
-            </Select>
-
-            {platformDialog.draft.type === 'lark' ? (
-              <div className="grid grid-cols-1 gap-3">
-                {larkQr?.qrCodeUrl ? (
-                  <div className="flex flex-col items-center gap-3 rounded-lg border border-black/10 p-4 dark:border-white/[0.08]">
-                    <div className="rounded-lg border border-black/10 bg-white p-3">
-                      <QRCodeSVG value={larkQr.qrCodeUrl} size={176} includeMargin />
-                    </div>
-                    <StatusPill tone={larkQr.status === 'confirmed' ? 'success' : larkQr.status === 'expired' ? 'danger' : 'warning'}>
-                      {larkQr.botName || larkQr.status || 'wait'}
-                    </StatusPill>
-                  </div>
-                ) : null}
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleGenerateLarkQr()} loading={larkQrLoading}>
-                    <QrCode size={14} /> Generate QR
-                  </Button>
-                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleCheckLarkQr()} loading={larkQrLoading} disabled={!larkQr?.ticket}>
-                    Check status
-                  </Button>
-                </div>
-                <Input
-                  label="App ID"
-                  value={String(platformDialog.draft.options?.app_id || '')}
-                  onChange={(event) =>
-                    updatePlatformDialogDraft((platform) => ({
-                      ...platform,
-                      options: { ...(platform.options || {}), app_id: event.target.value },
-                    }))
-                  }
-                  placeholder="cli_xxx"
-                />
-                <Input
-                  label="App Secret"
-                  type="password"
-                  value={String(platformDialog.draft.options?.app_secret || '')}
-                  onChange={(event) =>
-                    updatePlatformDialogDraft((platform) => ({
-                      ...platform,
-                      options: { ...(platform.options || {}), app_secret: event.target.value },
-                    }))
-                  }
-                />
-                <Input
-                  label="Downloads directory"
-                  value={String(platformDialog.draft.options?.downloads_dir || '')}
-                  onChange={(event) =>
-                    updatePlatformDialogDraft((platform) => ({
-                      ...platform,
-                      options: { ...(platform.options || {}), downloads_dir: event.target.value },
-                    }))
-                  }
-                  placeholder=".agentdock/channel-uploads/lark/<instanceId>"
-                />
-                <Input
-                  label="Verification token"
-                  value={String(platformDialog.draft.options?.verification_token || '')}
-                  onChange={(event) =>
-                    updatePlatformDialogDraft((platform) => ({
-                      ...platform,
-                      options: { ...(platform.options || {}), verification_token: event.target.value },
-                    }))
-                  }
-                />
-                <Input
-                  label="Encrypt key"
-                  value={String(platformDialog.draft.options?.encrypt_key || '')}
-                  onChange={(event) =>
-                    updatePlatformDialogDraft((platform) => ({
-                      ...platform,
-                      options: { ...(platform.options || {}), encrypt_key: event.target.value },
-                    }))
-                  }
-                />
-                <label className="flex items-center gap-3 text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={platformDialog.draft.options?.auto_approve === true}
-                    onChange={(event) =>
-                      updatePlatformDialogDraft((platform) => ({
-                        ...platform,
-                        options: { ...(platform.options || {}), auto_approve: event.target.checked },
-                      }))
-                    }
-                  />
-                  Auto-approve Lark users
-                </label>
-                <label className="flex items-center gap-3 text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={platformDialog.draft.options?.card_actions === true}
-                    onChange={(event) =>
-                      updatePlatformDialogDraft((platform) => ({
-                        ...platform,
-                        options: { ...(platform.options || {}), card_actions: event.target.checked },
-                      }))
-                    }
-                  />
-                  Enable Lark card action buttons
-                </label>
-              </div>
-            ) : null}
-
-            {platformDialog.draft.type === 'weixin' ? (
-              <div className="space-y-3">
-                <div className="rounded-lg border border-black/10 bg-black/[0.03] px-3 py-3 text-sm text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.04]">
-                  WeChat does not need an App ID or secret. Save this platform, then generate a QR code and scan it to finish login.
-                </div>
-                {weixinQr?.qrCodeUrl ? (
-                  <div className="flex flex-col items-center gap-3 rounded-lg border border-black/10 p-4 dark:border-white/[0.08]">
-                    <div className="rounded-lg border border-black/10 bg-white p-3">
-                      <QRCodeSVG value={weixinQr.qrCodeUrl} size={176} includeMargin />
-                    </div>
-                    <StatusPill tone={weixinQr.status === 'confirmed' ? 'success' : weixinQr.status === 'expired' ? 'danger' : 'warning'}>
-                      {weixinQr.status || 'wait'}
-                    </StatusPill>
-                  </div>
-                ) : null}
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleGenerateWeixinQr()} loading={weixinQrLoading}>
-                    <QrCode size={14} /> Generate QR
-                  </Button>
-                  <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void handleCheckWeixinQr()} loading={weixinQrLoading} disabled={!weixinQr?.ticket}>
-                    Check status
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            {platformDialog.draft.type !== 'lark' && platformDialog.draft.type !== 'weixin' ? (
-              <div className="rounded-lg border border-black/10 bg-black/[0.03] px-3 py-3 text-sm text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.04]">
-                This platform has no daily UI fields yet. Existing advanced options are preserved in config.
-              </div>
-            ) : null}
-
-            <div className="flex flex-col-reverse gap-2 border-t border-black/10 pt-4 dark:border-white/[0.08] sm:flex-row sm:justify-end">
-              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setPlatformDialog(null)}>Cancel</Button>
-              <Button className="w-full sm:w-auto" onClick={handleApplyPlatformDialog}>
-                <Save size={14} /> Apply
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
+        onApply={handleApplyPlatformDialog}
+        onGenerateWeixinQr={handleGenerateWeixinQr}
+        onCheckWeixinQr={handleCheckWeixinQr}
+        onGenerateLarkQr={generateLarkQr}
+        onCheckLarkQr={checkLarkQr}
+      />
     </div>
   );
 }
