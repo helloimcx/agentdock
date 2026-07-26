@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/c8rc.json",
+  "include": [
+    "services/**/*.ts",
+    "packages/**/*.ts",
+    "electron/**/*.ts",
+    "shared/**/*.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "tests/**",
+    "dist/**",
+    "dist-electron/**",
+    "node_modules/**"
+  ],
+  "reporter": ["text", "html", "lcov"],
+  "all": true,
+  "exclude-after-remap": true
+}

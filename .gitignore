@@ -31,6 +31,10 @@ Thumbs.db
 # Test runner output.
 test-results/
 
+# Coverage output (pnpm coverage -> scripts/coverage.mjs).
+coverage/
+lcov.info
+
 # Local WeChat runtime state and credentials.
 weixin-monitor/
 

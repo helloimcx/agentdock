@@ -132,6 +132,8 @@ Use TDD selectively where it prevents repeated regressions. Bug fixes should sta
 
 `pnpm lint:duplicate` reports the **copy/paste (duplicate code) rate** across the same source roots using [jscpd](https://github.com/kucherenko/jscpd). It prints total files/lines scanned, duplicated lines and tokens, the **duplicate rate** as both a line percentage and a token percentage, a per-format breakdown (typescript vs tsx), and the ten largest duplicated blocks. It is an informational report — the script always exits 0 and does not gate CI. The script lives in `scripts/lint-duplicate.mjs`; tune detection with the `JSCPD_MIN_LINES` and `JSCPD_MIN_TOKENS` environment variables (defaults 5 lines / 25 tokens).
 
+`pnpm coverage` measures **branch/line/function coverage** of the Node test suite across the same source roots using [c8](https://github.com/bcoe/c8), which leverages V8's built-in coverage and remaps it back to TypeScript source via source maps. It prints a text summary to stdout and writes HTML + lcov reports to `coverage/` and `lcov.info`. It is an informational report — the script exits 0 unless tests themselves fail, and it never gates CI on a coverage threshold. The script lives in `scripts/coverage.mjs`; configure reporters and add `check-coverage` thresholds in [.c8rc.json](.c8rc.json) once you want gating. The production build stays source-map-free: coverage builds use a separate [tsconfig.coverage.json](tsconfig.coverage.json) that adds `sourceMap`.
+
 ## Agent Workflow
 
 - Before writing any code, describe the intended approach and wait for approval
