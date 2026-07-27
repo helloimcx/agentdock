@@ -198,7 +198,7 @@ export class LocalAutomationStore {
       startedAt: input.startedAt,
     });
     this.insertEvaluation(evaluation);
-    return this.getEvaluation(evaluation.id)!;
+    return evaluation;
   }
 
   finishEvaluation(evaluationId: string, input: AutomationEvaluationFinishInput): AutomationEvaluation {
@@ -219,7 +219,7 @@ export class LocalAutomationStore {
       SET status = ?, finished_at = ?, evaluation_json = ?
       WHERE id = ?
     `).run(evaluation.status, evaluation.finishedAt, JSON.stringify(evaluation), evaluationId);
-    return this.getEvaluation(evaluationId)!;
+    return evaluation;
   }
 
   listEvaluations(automationId: string): AutomationEvaluation[] {
