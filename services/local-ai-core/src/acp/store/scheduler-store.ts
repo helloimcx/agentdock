@@ -84,7 +84,22 @@ export class LocalSchedulerStore {
       now,
       now,
     );
-    return this.getJob(id)!;
+    return {
+      id,
+      workspaceId: input.workspaceId,
+      platform: normalizeChannelPlatform(input.platform),
+      route: input.route,
+      executionMode: normalizeScheduledJobExecutionMode(input.executionMode),
+      triggerType: normalizeScheduledJobTriggerType(input.triggerType),
+      cronExpr: input.cronExpr || undefined,
+      runAt: input.runAt || undefined,
+      promptTemplate: input.promptTemplate,
+      description: input.description || '',
+      enabled: input.enabled !== false,
+      concurrencyPolicy: 'skip_if_running',
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   updateJob(jobId: string, input: ScheduledJobUpdateInput): ScheduledJob {
@@ -122,7 +137,7 @@ export class LocalSchedulerStore {
       next.updatedAt,
       jobId,
     );
-    return this.getJob(jobId)!;
+    return next;
   }
 
   deleteJob(jobId: string) {
