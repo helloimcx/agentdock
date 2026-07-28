@@ -1,6 +1,6 @@
 {
   "name": "@kafca/agentdock",
-  "version": "0.1.67",
+  "version": "0.1.68",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "dist-electron/electron/main.js",

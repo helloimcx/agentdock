@@ -211,7 +211,7 @@ test('agent runtime detector reports Claude Code when claude command is availabl
     chmodSync(claude, 0o755);
 
     const claudeRuntime = detectInstalledAgentRuntimes({
-      env: { PATH: dir },
+      env: { PATH: [dir, '/bin', '/usr/bin'].join(delimiter) },
       requireFrom: join(dir, 'package.json'),
       versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'claudecode');
@@ -234,7 +234,7 @@ test('agent runtime detector reports Hermes when hermes command is available', (
     chmodSync(hermes, 0o755);
 
     const hermesRuntime = detectInstalledAgentRuntimes({
-      env: { PATH: dir },
+      env: { PATH: [dir, '/bin', '/usr/bin'].join(delimiter) },
       versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'hermes');
 

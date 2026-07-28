@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-07-28
+
+- 发布 AgentDock 0.1.68：彻底消除 ACP Store 与 Agent Registry 间的循环依赖；完成全项目圈复杂度 (Cyclomatic Complexity) 专项重构，优化 Top 10 高复杂度函数（最高复杂度从 76 降至 39）；降低重复代码率至 4.77%；建立强制 Pre-Commit 全套质量校验流程。
+
 ### 2026-07-19
 
 - 发布 AgentDock 0.1.67：统一 Scheduler、Automation 与 Monitor 的后台 Agent 执行超时为 1 小时；超时后会中断对应 ACP run，并避免误取消同一会话中已开始的新任务。
