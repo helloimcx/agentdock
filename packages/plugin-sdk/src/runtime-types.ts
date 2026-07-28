@@ -43,6 +43,41 @@ export interface UiCapability {
   commands?: CommandContribution[];
 }
 
+export interface CapabilitySnapshot {
+  agents: any[];
+  channels: any[];
+  knowledge: any[];
+  schedulers: any[];
+  monitors?: any[];
+  ui: UiCapability[];
+}
+
+export interface CapabilityContributionMap {
+  agents?: any[];
+  channels?: any[];
+  knowledge?: any[];
+  schedulers?: any[];
+  monitors?: any[];
+  ui?: UiCapability[];
+}
+
+export interface CapabilityRegistry {
+  registerAgent(capability: any): void;
+  registerChannel(capability: any): void;
+  registerKnowledge(capability: any): void;
+  registerScheduler(capability: any): void;
+  registerMonitor?(capability: any): void;
+  registerUi(capability: UiCapability): void;
+  registerContributions(contributions: CapabilityContributionMap): void;
+  listAgents(): any[];
+  listChannels(): any[];
+  listKnowledge(): any[];
+  listSchedulers(): any[];
+  listMonitors?(): any[];
+  listUi(): UiCapability[];
+  snapshot(): CapabilitySnapshot;
+}
+
 export interface DomainEventPayloadMap {
   'platform.bridge.updated': import('@cc/superai-contracts').DesktopBridgeEvent;
   'platform.message.received': {
@@ -116,7 +151,7 @@ export interface PluginConfigSchema {
 
 export interface PluginContext {
   bus: EventBus;
-  capabilities: any;
+  capabilities: CapabilityRegistry;
   logger: PluginLogger;
   config?: { get<TValue = unknown>(key: string): TValue | undefined };
   stores?: Record<string, unknown>;
@@ -139,7 +174,7 @@ export interface PluginManifest {
 
 export interface RuntimePlugin {
   manifest: PluginManifest;
-  capabilities?: any;
+  capabilities?: CapabilityContributionMap;
   init?(ctx: PluginContext): Promise<void> | void;
   start?(): Promise<void> | void;
   stop?(): Promise<void> | void;
