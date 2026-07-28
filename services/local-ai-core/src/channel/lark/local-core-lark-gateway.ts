@@ -22,6 +22,7 @@ import type {
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
+import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
@@ -278,16 +279,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         fileName: input.fileName,
       }],
     });
-    const attachment = result.attachments?.[0];
-    return {
-      platform: 'lark',
-      workspaceId,
-      channelId: result.channelId,
-      messageId: result.messageIds[0] || '',
-      fileKey: String(attachment?.metadata?.fileKey || attachment?.attachmentId || ''),
-      fileName: attachment?.fileName || input.fileName || '',
-      fileSize: attachment?.fileSize || 0,
-    };
+    return buildChannelFileSendPayload('lark', workspaceId, input, result);
   }
 
   async onBridgeEvent(event: DesktopBridgeEvent) {

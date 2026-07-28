@@ -4,6 +4,7 @@ import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { SchedulerExecutorRuntime, ScheduledExecutionContext, ScheduledExecutionResult } from './adapters.js';
 import type { ChannelExecutionPolicyOptions } from './channel-execution-policy.js';
+import { createChannelExecutionPolicy } from './channel-execution-policy.js';
 import type { ScheduledExecutionPolicy } from './execution-policy.js';
 import { ScheduledConversationExecutor } from './scheduled-conversation-executor.js';
 import { platformMatches } from './scheduled-job-route.js';
@@ -57,12 +58,21 @@ export abstract class BaseChannelScheduleAdapter implements SchedulerExecutorRun
     };
   }
 
-  protected abstract createPolicy(
+  protected createPolicy(
     job: ScheduledJob,
     options: ChannelExecutionPolicyOptions,
     resolveSameThread: (job: ScheduledJob) => Promise<string>,
     preferredAgentType: (job: ScheduledJob) => string,
-  ): ScheduledExecutionPolicy;
+  ): ScheduledExecutionPolicy {
+    const label = this.platformBase.charAt(0).toUpperCase() + this.platformBase.slice(1);
+    return createChannelExecutionPolicy(job, options, {
+      platformBase: this.platformBase,
+      resolveSameThread,
+      sideThreadTitle: (nextJob) => `[Scheduled:${label}] ${nextJob.description || nextJob.id}`,
+      legacySideThreadTitles: (nextJob) => [`[Scheduled] ${nextJob.description || nextJob.id}`],
+      preferredAgentType,
+    });
+  }
 
   protected async resolveThread(job: ScheduledJob) {
     const workspaceRouter = this.options.getWorkspaceRouter();

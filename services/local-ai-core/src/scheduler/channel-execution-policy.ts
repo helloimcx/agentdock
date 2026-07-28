@@ -32,24 +32,15 @@ export function createChannelExecutionPolicy(
   return new SameThreadChannelExecutionPolicy(options, config);
 }
 
-class SameThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
+abstract class BaseChannelBridgeExecutionPolicy implements ScheduledExecutionPolicy {
   private bridgeSession?: ScheduledBridgeSessionHandle;
 
   constructor(
-    private readonly options: ChannelExecutionPolicyOptions,
-    private readonly config: ChannelExecutionPolicyConfig,
+    protected readonly options: ChannelExecutionPolicyOptions,
+    protected readonly config: ChannelExecutionPolicyConfig,
   ) {}
 
-  async resolveTarget(job: ScheduledJob): Promise<ScheduledExecutionTarget> {
-    const threadId = await this.config.resolveSameThread(job);
-    return {
-      kind: `${this.config.platformBase}:same-thread`,
-      threadId,
-      workspaceId: job.workspaceId,
-      platform: job.platform,
-      route: job.route,
-    };
-  }
+  abstract resolveTarget(job: ScheduledJob): Promise<ScheduledExecutionTarget>;
 
   async beforeExecute(target: ScheduledExecutionTarget, job: ScheduledJob) {
     this.bridgeSession = await ScheduledBridgeSession.open({
@@ -66,14 +57,20 @@ class SameThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
   }
 }
 
-class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
-  private bridgeSession?: ScheduledBridgeSessionHandle;
+class SameThreadChannelExecutionPolicy extends BaseChannelBridgeExecutionPolicy {
+  async resolveTarget(job: ScheduledJob): Promise<ScheduledExecutionTarget> {
+    const threadId = await this.config.resolveSameThread(job);
+    return {
+      kind: `${this.config.platformBase}:same-thread`,
+      threadId,
+      workspaceId: job.workspaceId,
+      platform: job.platform,
+      route: job.route,
+    };
+  }
+}
 
-  constructor(
-    private readonly options: ChannelExecutionPolicyOptions,
-    private readonly config: ChannelExecutionPolicyConfig,
-  ) {}
-
+class SideThreadChannelExecutionPolicy extends BaseChannelBridgeExecutionPolicy {
   async resolveTarget(job: ScheduledJob): Promise<ScheduledExecutionTarget> {
     const title = this.config.sideThreadTitle(job);
     const reusableTitles = new Set([
@@ -92,20 +89,6 @@ class SideThreadChannelExecutionPolicy implements ScheduledExecutionPolicy {
       platform: job.platform,
       route: job.route,
     };
-  }
-
-  async beforeExecute(target: ScheduledExecutionTarget, job: ScheduledJob) {
-    this.bridgeSession = await ScheduledBridgeSession.open({
-      job,
-      threadId: target.threadId,
-      workspaceRouter: this.options.workspaceRouter,
-      getChannelRuntime: this.options.getChannelRuntime,
-    });
-  }
-
-  async afterExecute() {
-    await this.bridgeSession?.close();
-    this.bridgeSession = undefined;
   }
 
   private async resolveTargetAgent(job: ScheduledJob) {

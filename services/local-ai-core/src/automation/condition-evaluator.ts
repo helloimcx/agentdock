@@ -5,8 +5,15 @@ export function evaluateMonitorCondition(condition: AutomationMonitorCondition, 
     return evaluateExpression(condition.expression, event);
   }
   const actual = readMetric(event, condition.metric);
-  const expected = condition.value;
-  switch (condition.operator) {
+  return evaluateOperatorComparison(condition.operator, actual, condition.value);
+}
+
+export function evaluateOperatorComparison(
+  operator: AutomationMonitorCondition['operator'],
+  actual: unknown,
+  expected: unknown,
+): boolean {
+  switch (operator) {
     case '>':
       return Number(actual) > Number(expected);
     case '>=':
@@ -80,15 +87,7 @@ function evaluateRestrictedComparison(
   const numeric = Number(rawValue);
   const actual = resolveMetric(comparison.metric);
   const expected = Number.isFinite(numeric) && rawValue !== '' ? numeric : rawValue;
-  switch (comparison.operator) {
-    case '>': return Number(actual) > Number(expected);
-    case '>=': return Number(actual) >= Number(expected);
-    case '<': return Number(actual) < Number(expected);
-    case '<=': return Number(actual) <= Number(expected);
-    case '==': return String(actual) === String(expected);
-    case '!=': return String(actual) !== String(expected);
-    default: return false;
-  }
+  return evaluateOperatorComparison(comparison.operator, actual, expected);
 }
 
 export function readMetric(event: AutomationMonitorEventSnapshot, metric: string): unknown {

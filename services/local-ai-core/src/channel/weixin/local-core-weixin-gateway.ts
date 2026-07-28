@@ -20,6 +20,7 @@ import type {
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
+import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
@@ -431,16 +432,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
         fileName: input.fileName,
       }],
     });
-    const attachment = result.attachments?.[0];
-    return {
-      platform: 'weixin',
-      workspaceId,
-      channelId: result.channelId,
-      messageId: result.messageIds[0] || '',
-      fileKey: String(attachment?.metadata?.fileKey || attachment?.attachmentId || ''),
-      fileName: attachment?.fileName || input.fileName || '',
-      fileSize: attachment?.fileSize || 0,
-    };
+    return buildChannelFileSendPayload('weixin', workspaceId, input, result);
   }
 
   // ==================== Inbound Message Handling ====================

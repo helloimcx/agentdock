@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
-import type {
-  AutomationCreateInput,
-  AutomationDefinition,
-  AutomationEvaluation,
-  AutomationEvaluationCreateInput,
-  AutomationEvaluationFinishInput,
-  AutomationRun,
-  AutomationUpdateInput,
+import {
+  asRecord,
+  isoTimestamp,
+  normalizeAutomationDefinition,
+  optionalString,
+  requiredString,
+  type AutomationCreateInput,
+  type AutomationDefinition,
+  type AutomationEvaluation,
+  type AutomationEvaluationCreateInput,
+  type AutomationEvaluationFinishInput,
+  type AutomationRun,
+  type AutomationUpdateInput,
 } from '@cc/superai-contracts';
-import { normalizeAutomationDefinition } from '@cc/superai-contracts';
 import type {
   LocalAutomationEvaluationRow,
   LocalAutomationMonitorRow,
@@ -946,46 +950,13 @@ function parseStoredJson(value: string, label: string): unknown {
   }
 }
 
-function asRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
-  return value as Record<string, unknown>;
-}
-
-function requiredString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required.`);
-  return value.trim();
-}
-
-function optionalString(value: unknown, label: string): string | undefined {
-  return value === undefined ? undefined : requiredString(value, label);
-}
-
 function assertString(value: unknown, label: string): string {
   if (typeof value !== 'string') throw new Error(`${label} must be a string.`);
   return value;
 }
 
 function assertIsoTimestamp(value: unknown, label: string): string {
-  const timestamp = requiredString(value, label);
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.exec(timestamp);
-  if (!match || Number.isNaN(Date.parse(timestamp))) {
-    throw new Error(`${label} must be a valid ISO timestamp.`);
-  }
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const calendarDate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    calendarDate.getUTCFullYear() !== year ||
-    calendarDate.getUTCMonth() !== month - 1 ||
-    calendarDate.getUTCDate() !== day ||
-    Number(hourText) > 23 ||
-    Number(minuteText) > 59 ||
-    Number(secondText) > 59
-  ) {
-    throw new Error(`${label} must be a valid ISO timestamp.`);
-  }
+  const timestamp = isoTimestamp(value, label);
   return new Date(timestamp).toISOString();
 }
 

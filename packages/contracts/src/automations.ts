@@ -224,26 +224,26 @@ export type AutomationScriptVersionCreateInput = Pick<
   'scriptId' | 'shebang' | 'capabilities' | 'config' | 'configSchema' | 'secretRefs' | 'testPlan'
 >;
 
-function asRecord(value: unknown, label: string): Record<string, unknown> {
+export function asRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
 }
 
-function requiredString(value: unknown, label: string): string {
+export function requiredString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${label} is required.`);
   }
   return value.trim();
 }
 
-function optionalString(value: unknown, label: string): string | undefined {
+export function optionalString(value: unknown, label: string): string | undefined {
   if (value === undefined) return undefined;
   return requiredString(value, label);
 }
 
-function isoTimestamp(value: unknown, label: string): string {
+export function isoTimestamp(value: unknown, label: string): string {
   const normalized = requiredString(value, label);
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.exec(normalized);
   if (!match || Number.isNaN(Date.parse(normalized))) {

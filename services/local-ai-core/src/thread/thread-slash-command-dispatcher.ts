@@ -34,33 +34,11 @@ export type ThreadSlashCommandContext = {
   channel?: ThreadCommandChannelContext;
 };
 
+import type { ThreadCommandServiceOptions } from './thread-command-types.js';
+
 export type ThreadSlashCommandOptions = {
   session: SessionCommandOperations;
-  thread: {
-    getThreadRow: (threadId: string) => LocalThreadRow | undefined;
-    updateThreadAgentMode: (threadId: string, mode: string) => void;
-    updateThreadAgentType: (threadId: string, agentType: string) => void;
-    getLatestRunForThread: (threadId: string) => LocalRunRow | undefined;
-    createAuditEvent: (input: {
-      type: AuditEvent['type'];
-      workspaceId?: string;
-      actor?: string;
-      summary: string;
-      metadata?: Record<string, unknown>;
-    }) => void;
-    getAgentTypes?: () => string[];
-    setThreadMode?: (threadId: string, mode: string) => Promise<void>;
-    closeThreadSession?: (threadId: string) => void;
-    interruptRun?: (runId: string) => Promise<{ interrupted: boolean }>;
-    setChannelPreferredAgent?: (input: {
-      workspaceId: string;
-      chatId: string;
-      platformUserId: string;
-      platform: string;
-      agentType: string | null;
-    }) => void;
-    log?: (message: string) => void;
-  };
+  thread: ThreadCommandServiceOptions;
 };
 
 const SESSION_COMMAND_NAMES = namesForGroup('session');

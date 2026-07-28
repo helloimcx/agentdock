@@ -2,14 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { dirname, join, posix, resolve, win32 } from 'node:path';
-import type {
-  AutomationScript,
-  AutomationScriptAuditActor,
-  AutomationScriptCreateInput,
-  AutomationScriptUpdateInput,
-  AutomationScriptVersion,
-  AutomationScriptVersionStatus,
-  AutomationScriptSourceFile,
+import {
+  asRecord,
+  isoTimestamp,
+  optionalString,
+  requiredString,
+  type AutomationScript,
+  type AutomationScriptAuditActor,
+  type AutomationScriptCreateInput,
+  type AutomationScriptUpdateInput,
+  type AutomationScriptVersion,
+  type AutomationScriptVersionStatus,
+  type AutomationScriptSourceFile,
 } from '@cc/superai-contracts';
 import {
   stageImmutableScriptPackage,
@@ -393,26 +397,11 @@ function parseStatus(value: unknown): AutomationScriptVersionStatus {
   throw new Error('Automation script version status is invalid.');
 }
 
-function requiredString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required.`);
-  return value.trim();
-}
-
-function optionalString(value: unknown, label: string): string | undefined {
-  if (value === undefined) return undefined;
-  return requiredString(value, label);
-}
-
 function optionalDescription(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') throw new Error('Automation script description must be a string.');
   const normalized = value.trim();
   return normalized || undefined;
-}
-
-function asRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object.`);
-  return value as Record<string, unknown>;
 }
 
 function stringArray(value: unknown, label: string): string[] {
@@ -477,30 +466,6 @@ function parseAuditActor(value: unknown, label: string): AutomationScriptAuditAc
     at: isoTimestamp(actor.at, `${label}.at`),
     ...(actor.approvalId === undefined ? {} : { approvalId: optionalString(actor.approvalId, `${label}.approvalId`) }),
   };
-}
-
-function isoTimestamp(value: unknown, label: string): string {
-  const normalized = requiredString(value, label);
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.exec(normalized);
-  if (!match || Number.isNaN(Date.parse(normalized))) {
-    throw new Error(`${label} must be a valid ISO timestamp.`);
-  }
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const calendarDate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    calendarDate.getUTCFullYear() !== year ||
-    calendarDate.getUTCMonth() !== month - 1 ||
-    calendarDate.getUTCDate() !== day ||
-    Number(hourText) > 23 ||
-    Number(minuteText) > 59 ||
-    Number(secondText) > 59
-  ) {
-    throw new Error(`${label} must be a valid ISO timestamp.`);
-  }
-  return normalized;
 }
 
 function assertDuplicatedField(field: string, stored: unknown, json: unknown) {
