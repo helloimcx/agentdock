@@ -62,6 +62,44 @@ export class LarkInboundHandler {
     const mayMaterializeAttachments = Boolean(
       runtimeState?.autoApprove || this.options.store.getAuthorizedUser(workspaceId, platformUserId, platformKey),
     );
+    const contentParts = await this.materializeInboundContentParts({
+      workspaceId,
+      instanceId,
+      message,
+      parsedContent,
+      messageType,
+      text,
+      mayMaterializeAttachments,
+    });
+    if (contentParts.length === 0) {
+      this.options.log?.(`localcore-lark ignored unsupported message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
+      return;
+    }
+    const displayText = text || summarizeLarkInboundContentParts(contentParts);
+    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} chatType=${chatType || 'unknown'} mentions=${mentions.length} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
+    await this.options.dispatchInboundMessage({
+      workspaceId,
+      instanceId,
+      platformKey,
+      platformUserId,
+      chatId,
+      displayName,
+      text: displayText,
+      messageId,
+      contentParts,
+    });
+  }
+
+  private async materializeInboundContentParts(input: {
+    workspaceId: string;
+    instanceId: string;
+    message: any;
+    parsedContent: any;
+    messageType: string;
+    text: string;
+    mayMaterializeAttachments: boolean;
+  }): Promise<ChannelInboundContentPart[]> {
+    const { workspaceId, instanceId, message, parsedContent, messageType, text, mayMaterializeAttachments } = input;
     const contentParts: ChannelInboundContentPart[] = text ? [{ type: 'text', text }] : [];
     if (messageType === 'image') {
       const imageKey = String(parsedContent.image_key || parsedContent.file_key || '').trim();
@@ -100,23 +138,7 @@ export class LarkInboundHandler {
         }
       }
     }
-    if (contentParts.length === 0) {
-      this.options.log?.(`localcore-lark ignored unsupported message for ${workspaceId}: type=${String(message.message_type || 'unknown')} contentKeys=${JSON.stringify(Object.keys(parsedContent))}`);
-      return;
-    }
-    const displayText = text || summarizeLarkInboundContentParts(contentParts);
-    this.options.log?.(`localcore-lark inbound message for ${workspaceId}: chat=${chatId} user=${platformUserId} chatType=${chatType || 'unknown'} mentions=${mentions.length} type=${messageType || 'unknown'} text=${JSON.stringify(displayText.slice(0, 120))}`);
-    await this.options.dispatchInboundMessage({
-      workspaceId,
-      instanceId,
-      platformKey,
-      platformUserId,
-      chatId,
-      displayName,
-      text: displayText,
-      messageId,
-      contentParts,
-    });
+    return contentParts;
   }
 
   async downloadMessageImage(workspaceId: string, messageId: string, imageKey: string, instanceId = 'default'): Promise<ChannelInboundContentPart> {

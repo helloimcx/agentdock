@@ -124,42 +124,28 @@ export type LocalAiCoreRoute =
 
 const API_PREFIX = '/api/local/v1';
 
+const STATIC_LOCALCORE_ROUTES: Record<string, LocalAiCoreRoute> = {
+  'GET /health': { name: 'health' },
+  'GET /runtime': { name: 'runtime.status' },
+  'POST /runtime/service/start': { name: 'runtime.service.start' },
+  'POST /runtime/service/stop': { name: 'runtime.service.stop' },
+  'POST /runtime/service/restart': { name: 'runtime.service.restart' },
+  'GET /runtime/logs': { name: 'runtime.logs' },
+  'GET /logs': { name: 'logs.list' },
+  'GET /runtime/agent-runtimes': { name: 'runtime.agent-runtimes' },
+  'GET /runtime/runtime-config': { name: 'runtime.runtime-config.read' },
+  'GET /runtime/config': { name: 'runtime.runtime-config.read' },
+  'POST /runtime/runtime-config': { name: 'runtime.runtime-config.save' },
+  'POST /runtime/settings': { name: 'runtime.settings.save' },
+};
+
 export function parseLocalAiCoreRoute(method: string | undefined, path: string): LocalAiCoreRoute | null {
   const normalizedMethod = String(method || '').toUpperCase();
   const relativePath = path.startsWith(API_PREFIX) ? path.slice(API_PREFIX.length) || '/' : path;
 
-  if (normalizedMethod === 'GET' && relativePath === '/health') {
-    return { name: 'health' };
-  }
-  if (normalizedMethod === 'GET' && relativePath === '/runtime') {
-    return { name: 'runtime.status' };
-  }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/service/start') {
-    return { name: 'runtime.service.start' };
-  }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/service/stop') {
-    return { name: 'runtime.service.stop' };
-  }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/service/restart') {
-    return { name: 'runtime.service.restart' };
-  }
-  if (normalizedMethod === 'GET' && relativePath === '/runtime/logs') {
-    return { name: 'runtime.logs' };
-  }
-  if (normalizedMethod === 'GET' && relativePath === '/logs') {
-    return { name: 'logs.list' };
-  }
-  if (normalizedMethod === 'GET' && relativePath === '/runtime/agent-runtimes') {
-    return { name: 'runtime.agent-runtimes' };
-  }
-  if (normalizedMethod === 'GET' && (relativePath === '/runtime/runtime-config' || relativePath === '/runtime/config')) {
-    return { name: 'runtime.runtime-config.read' };
-  }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/runtime-config') {
-    return { name: 'runtime.runtime-config.save' };
-  }
-  if (normalizedMethod === 'POST' && relativePath === '/runtime/settings') {
-    return { name: 'runtime.settings.save' };
+  const staticMatch = STATIC_LOCALCORE_ROUTES[`${normalizedMethod} ${relativePath}`];
+  if (staticMatch) {
+    return staticMatch;
   }
 
   const segments = splitRouteSegments(relativePath);

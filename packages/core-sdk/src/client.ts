@@ -314,6 +314,15 @@ function isLocalCoreEvent(value: unknown): value is LocalCoreEvent {
   if (!isRecord(value) || !hasString(value, 'type')) {
     return false;
   }
+  return (
+    isRuntimeCoreEvent(value) ||
+    isThreadCoreEvent(value) ||
+    isAutomationCoreEvent(value) ||
+    isExternalCoreEvent(value)
+  );
+}
+
+function isRuntimeCoreEvent(value: Record<string, unknown>): boolean {
   switch (value.type) {
     case 'runtime.updated':
       return isDesktopRuntimeStatus(value.runtime);
@@ -327,6 +336,17 @@ function isLocalCoreEvent(value: unknown): value is LocalCoreEvent {
       return hasString(value, 'detectedAt') && hasString(value, 'error');
     case 'runtime.status.changed':
       return isInstalledAgentRuntime(value.runtime);
+    case 'presence.updated':
+      return hasBoolean(value, 'live') && (value.stream === undefined || isDesktopBridgeEvent(value.stream));
+    case 'stream.updated':
+      return isDesktopBridgeEvent(value.stream);
+    default:
+      return false;
+  }
+}
+
+function isThreadCoreEvent(value: Record<string, unknown>): boolean {
+  switch (value.type) {
     case 'thread.updated':
       return isThreadSummary(value.thread);
     case 'thread.session.activated':
@@ -341,6 +361,13 @@ function isLocalCoreEvent(value: unknown): value is LocalCoreEvent {
         (value.stream === undefined || isDesktopBridgeEvent(value.stream));
     case 'run.updated':
       return isRunSummary(value.run) && (value.stream === undefined || isDesktopBridgeEvent(value.stream));
+    default:
+      return false;
+  }
+}
+
+function isAutomationCoreEvent(value: Record<string, unknown>): boolean {
+  switch (value.type) {
     case 'scheduler.job.updated':
       return isScheduledJob(value.job);
     case 'scheduler.run.updated':
@@ -357,10 +384,13 @@ function isLocalCoreEvent(value: unknown): value is LocalCoreEvent {
       return isAutomationRun(value.run);
     case 'automation.script-version.updated':
       return isAutomationScriptVersion(value.version);
-    case 'presence.updated':
-      return hasBoolean(value, 'live') && (value.stream === undefined || isDesktopBridgeEvent(value.stream));
-    case 'stream.updated':
-      return isDesktopBridgeEvent(value.stream);
+    default:
+      return false;
+  }
+}
+
+function isExternalCoreEvent(value: Record<string, unknown>): boolean {
+  switch (value.type) {
     case 'external.run.snapshot':
       return isRecord(value.snapshot) && hasString(value.snapshot, 'runId');
     case 'external.run.stream':

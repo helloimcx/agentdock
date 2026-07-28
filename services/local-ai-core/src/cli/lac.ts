@@ -39,6 +39,8 @@ type CliContext = {
   platformUserId: string;
 };
 
+type ParsedFlags = Map<string, string[]>;
+
 const DEFAULT_BASE_URL = 'http://127.0.0.1:9831/api/local/v1';
 
 export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.env, io: StdIo = process) {
@@ -46,87 +48,87 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
     const { positionals, flags } = parseArgs(argv);
     const [domain = '', action = '', maybeId = ''] = positionals;
     const json = getBooleanFlag(flags, 'json', false);
-    if (domain === 'channel') {
-      switch (action) {
-        case 'send-file':
-          return await handleChannelSendFile(flags, env, io, json);
-        default:
-          printUsage(io.stderr);
-          return 2;
-      }
-    }
-    if (domain === 'monitor') {
-      switch (action) {
-        case 'add':
-          return await handleMonitorAdd(flags, env, io, json);
-        case 'list':
-          return await handleMonitorList(flags, env, io, json);
-        case 'info':
-          return await handleMonitorInfo(maybeId, flags, env, io, json);
-        case 'edit':
-          return await handleMonitorEdit(maybeId, flags, env, io, json);
-        case 'del':
-        case 'delete':
-          return await handleMonitorDelete(maybeId, flags, env, io, json);
-        case 'run':
-          return await handleMonitorRun(maybeId, flags, env, io, json);
-        default:
-          printUsage(io.stderr);
-          return 2;
-      }
-    }
-    if (domain === 'automation') {
-      switch (action) {
-        case 'add': return await handleAutomationAdd(flags, env, io, json);
-        case 'list': return await handleAutomationList(flags, env, io, json);
-        case 'info': return await handleAutomationInfo(maybeId, flags, env, io, json);
-        case 'edit': return await handleAutomationEdit(maybeId, flags, env, io, json);
-        case 'del':
-        case 'delete': return await handleAutomationDelete(maybeId, flags, env, io, json);
-        case 'check': return await handleAutomationCheck(maybeId, flags, env, io, json);
-        default: printUsage(io.stderr); return 2;
-      }
-    }
-    if (domain === 'script') {
-      switch (action) {
-        case 'list': return await handleScriptList(flags, env, io, json);
-        case 'create': return await handleScriptCreate(flags, env, io, json);
-        case 'stage': return await handleScriptStage(flags, env, io, json);
-        case 'status': return await handleScriptStatus(maybeId, flags, env, io, json);
-        case 'test-approval': return await handleScriptTransition('test-approval', maybeId, flags, env, io, json);
-        case 'test': return await handleScriptTest(maybeId, flags, env, io, json);
-        case 'enable-approval': return await handleScriptTransition('enable-approval', maybeId, flags, env, io, json);
-        case 'approve': return await handleScriptApprovalDecision('approve', maybeId, flags, env, io, json);
-        case 'reject': return await handleScriptApprovalDecision('reject', maybeId, flags, env, io, json);
-        case 'revoke': return await handleScriptTransition('revoke', maybeId, flags, env, io, json);
-        default: printUsage(io.stderr); return 2;
-      }
-    }
-    if (domain !== 'scheduler') {
-      printUsage(io.stderr);
-      return 2;
-    }
-    switch (action) {
-      case 'add':
-        return await handleAdd(flags, env, io, json);
-      case 'list':
-        return await handleList(flags, env, io, json);
-      case 'info':
-        return await handleInfo(maybeId, flags, env, io, json);
-      case 'edit':
-        return await handleEdit(maybeId, flags, env, io, json);
-      case 'del':
-      case 'delete':
-        return await handleDelete(maybeId, flags, env, io, json);
-      case 'run':
-        return await handleRun(maybeId, flags, env, io, json);
+    switch (domain) {
+      case 'channel':
+        return await runChannelDomain(action, flags, env, io, json);
+      case 'monitor':
+        return await runMonitorDomain(action, maybeId, flags, env, io, json);
+      case 'automation':
+        return await runAutomationDomain(action, maybeId, flags, env, io, json);
+      case 'script':
+        return await runScriptDomain(action, maybeId, flags, env, io, json);
+      case 'scheduler':
+        return await runSchedulerDomain(action, maybeId, flags, env, io, json);
       default:
         printUsage(io.stderr);
         return 2;
     }
-  } catch (error) {
-    io.stderr.write(`${formatSafeError(error)}\n`);
+  } catch (err: any) {
+    io.stderr.write(`lac CLI error: ${err.message}\n`);
     return 1;
+  }
+}
+
+async function runChannelDomain(action: string, flags: ParsedFlags, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  if (action === 'send-file') {
+    return await handleChannelSendFile(flags, env, io, json);
+  }
+  printUsage(io.stderr);
+  return 2;
+}
+
+async function runMonitorDomain(action: string, maybeId: string, flags: ParsedFlags, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  switch (action) {
+    case 'add': return await handleMonitorAdd(flags, env, io, json);
+    case 'list': return await handleMonitorList(flags, env, io, json);
+    case 'info': return await handleMonitorInfo(maybeId, flags, env, io, json);
+    case 'edit': return await handleMonitorEdit(maybeId, flags, env, io, json);
+    case 'del':
+    case 'delete': return await handleMonitorDelete(maybeId, flags, env, io, json);
+    case 'run': return await handleMonitorRun(maybeId, flags, env, io, json);
+    default: printUsage(io.stderr); return 2;
+  }
+}
+
+async function runAutomationDomain(action: string, maybeId: string, flags: ParsedFlags, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  switch (action) {
+    case 'add': return await handleAutomationAdd(flags, env, io, json);
+    case 'list': return await handleAutomationList(flags, env, io, json);
+    case 'info': return await handleAutomationInfo(maybeId, flags, env, io, json);
+    case 'edit': return await handleAutomationEdit(maybeId, flags, env, io, json);
+    case 'del':
+    case 'delete': return await handleAutomationDelete(maybeId, flags, env, io, json);
+    case 'check': return await handleAutomationCheck(maybeId, flags, env, io, json);
+    default: printUsage(io.stderr); return 2;
+  }
+}
+
+async function runScriptDomain(action: string, maybeId: string, flags: ParsedFlags, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  switch (action) {
+    case 'list': return await handleScriptList(flags, env, io, json);
+    case 'create': return await handleScriptCreate(flags, env, io, json);
+    case 'stage': return await handleScriptStage(flags, env, io, json);
+    case 'status': return await handleScriptStatus(maybeId, flags, env, io, json);
+    case 'test-approval': return await handleScriptTransition('test-approval', maybeId, flags, env, io, json);
+    case 'test': return await handleScriptTest(maybeId, flags, env, io, json);
+    case 'enable-approval': return await handleScriptTransition('enable-approval', maybeId, flags, env, io, json);
+    case 'approve': return await handleScriptApprovalDecision('approve', maybeId, flags, env, io, json);
+    case 'reject': return await handleScriptApprovalDecision('reject', maybeId, flags, env, io, json);
+    case 'revoke': return await handleScriptTransition('revoke', maybeId, flags, env, io, json);
+    default: printUsage(io.stderr); return 2;
+  }
+}
+
+async function runSchedulerDomain(action: string, maybeId: string, flags: ParsedFlags, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
+  switch (action) {
+    case 'add': return await handleAdd(flags, env, io, json);
+    case 'list': return await handleList(flags, env, io, json);
+    case 'info': return await handleInfo(maybeId, flags, env, io, json);
+    case 'edit': return await handleEdit(maybeId, flags, env, io, json);
+    case 'del':
+    case 'delete': return await handleDelete(maybeId, flags, env, io, json);
+    case 'run': return await handleRun(maybeId, flags, env, io, json);
+    default: printUsage(io.stderr); return 2;
   }
 }
 

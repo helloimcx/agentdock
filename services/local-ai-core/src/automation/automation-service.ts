@@ -517,59 +517,16 @@ export class AutomationService {
     }
     const finishedAt = this.now();
     if (decision.kind === 'script-delegation') {
-      try {
-        const previousEvaluation = this.getLatestEvaluationWithState(automation.id);
-        const previousState = previousEvaluation?.status === 'finished' && previousEvaluation.nextState
-          ? previousEvaluation.nextState
-          : {};
-        const scriptResult = await this.getScriptProtocolRunner().run({
-          scriptId: decision.request.scriptId,
-          approvedVersionId: decision.request.approvedVersionId,
-          evaluationId: running.id,
-          triggeredAt: startedAt.toISOString(),
-          previousState,
-        });
-        const scriptDecision = decideTrigger({
-          previous: automation.lastSuccessfulMatch,
-          matched: scriptResult.matched,
-          coolingDown,
-          actionRunning,
-        });
-        const scriptFinishedAt = this.now();
-        const scriptPayload = scriptResult.payload || {};
-        const scriptFinishDetails = {
-          finishedAt: scriptFinishedAt.toISOString(),
-          durationMs: Math.max(0, scriptFinishedAt.getTime() - startedAt.getTime()),
-          ...(scriptDecision.triggerDecision === 'triggered' ? { triggeredAt: startedAt.toISOString() } : {}),
-          payload: scriptPayload,
-          ...(scriptResult.nextState === undefined ? {} : { nextState: scriptResult.nextState }),
-          stdout: scriptResult.stdout,
-          stderr: scriptResult.stderr,
-          exitCode: scriptResult.exitCode === null ? undefined : scriptResult.exitCode,
-          outputTruncated: scriptResult.outputTruncated,
-          ...(scriptResult.networkAudit === undefined ? {} : { networkAudit: scriptResult.networkAudit }),
-          ...(scriptResult.summary === undefined ? {} : { resultSummary: scriptResult.summary }),
-        };
-        const scriptFinished = this.finishEvaluation(running.id, scriptDecision.conditionOutcome === 'matched'
-          ? { ...scriptFinishDetails, conditionOutcome: 'matched', triggerDecision: scriptDecision.triggerDecision }
-          : { ...scriptFinishDetails, conditionOutcome: 'not_matched', triggerDecision: 'not_rising' });
-        const updated = this.updateDefinitionAfterEvaluation(automation, startedAt, {
-          nextMatch: scriptDecision.nextMatch,
-          failureCount: 0,
-          triggered: scriptDecision.triggerDecision === 'triggered',
-        });
-        if (scriptDecision.triggerDecision === 'triggered') {
-          await this.executeAction(updated, scriptFinished, scriptPayload);
-        } else {
-          this.emitCompatibilityEvaluationRun(updated, scriptFinished);
-        }
-        return scriptFinished;
-      } catch (error) {
-        const message = normalizeAutomationError(error);
-        if (error instanceof ScriptProtocolError && error.blockAutomation) this.blockAutomation(automation, message);
-        return this.finishError(automation, running, startedAt, this.now(), message, undefined,
-          error instanceof ScriptProtocolError ? { networkAudit: error.networkAudit } : undefined);
-      }
+      return await this.handleScriptDelegationEvaluation({
+        automation,
+        running,
+        startedAt,
+        context,
+        decision,
+        coolingDown,
+        actionRunning,
+        manual,
+      });
     }
     if (decision.conditionOutcome === 'error') {
       return this.finishError(
@@ -642,6 +599,72 @@ export class AutomationService {
     if (FAILURE_ALERT_COUNTS.has(count)) this.options.alert?.({ automation: updated, count, error });
     this.emitCompatibilityEvaluationRun(updated, finished);
     return finished;
+  }
+
+  private async handleScriptDelegationEvaluation(input: {
+    automation: AutomationDefinition;
+    running: AutomationEvaluation;
+    startedAt: Date;
+    context?: EvaluationContext;
+    decision: any;
+    coolingDown: boolean;
+    actionRunning: boolean;
+    manual: boolean;
+  }): Promise<AutomationEvaluation> {
+    const { automation, running, startedAt, decision, coolingDown, actionRunning } = input;
+    try {
+      const previousEvaluation = this.getLatestEvaluationWithState(automation.id);
+      const previousState = previousEvaluation?.status === 'finished' && previousEvaluation.nextState
+        ? previousEvaluation.nextState
+        : {};
+      const scriptResult = await this.getScriptProtocolRunner().run({
+        scriptId: decision.request.scriptId,
+        approvedVersionId: decision.request.approvedVersionId,
+        evaluationId: running.id,
+        triggeredAt: startedAt.toISOString(),
+        previousState,
+      });
+      const scriptDecision = decideTrigger({
+        previous: automation.lastSuccessfulMatch,
+        matched: scriptResult.matched,
+        coolingDown,
+        actionRunning,
+      });
+      const scriptFinishedAt = this.now();
+      const scriptPayload = scriptResult.payload || {};
+      const scriptFinishDetails = {
+        finishedAt: scriptFinishedAt.toISOString(),
+        durationMs: Math.max(0, scriptFinishedAt.getTime() - startedAt.getTime()),
+        ...(scriptDecision.triggerDecision === 'triggered' ? { triggeredAt: startedAt.toISOString() } : {}),
+        payload: scriptPayload,
+        ...(scriptResult.nextState === undefined ? {} : { nextState: scriptResult.nextState }),
+        stdout: scriptResult.stdout,
+        stderr: scriptResult.stderr,
+        exitCode: scriptResult.exitCode === null ? undefined : scriptResult.exitCode,
+        outputTruncated: scriptResult.outputTruncated,
+        ...(scriptResult.networkAudit === undefined ? {} : { networkAudit: scriptResult.networkAudit }),
+        ...(scriptResult.summary === undefined ? {} : { resultSummary: scriptResult.summary }),
+      };
+      const scriptFinished = this.finishEvaluation(running.id, scriptDecision.conditionOutcome === 'matched'
+        ? { ...scriptFinishDetails, conditionOutcome: 'matched', triggerDecision: scriptDecision.triggerDecision }
+        : { ...scriptFinishDetails, conditionOutcome: 'not_matched', triggerDecision: 'not_rising' });
+      const updated = this.updateDefinitionAfterEvaluation(automation, startedAt, {
+        nextMatch: scriptDecision.nextMatch,
+        failureCount: 0,
+        triggered: scriptDecision.triggerDecision === 'triggered',
+      });
+      if (scriptDecision.triggerDecision === 'triggered') {
+        await this.executeAction(updated, scriptFinished, scriptPayload);
+      } else {
+        this.emitCompatibilityEvaluationRun(updated, scriptFinished);
+      }
+      return scriptFinished;
+    } catch (error) {
+      const message = normalizeAutomationError(error);
+      if (error instanceof ScriptProtocolError && error.blockAutomation) this.blockAutomation(automation, message);
+      return this.finishError(automation, running, startedAt, this.now(), message, undefined,
+        error instanceof ScriptProtocolError ? { networkAudit: error.networkAudit } : undefined);
+    }
   }
 
   private getScriptProtocolRunner(): Pick<ScriptProtocolRunner, 'run'> {

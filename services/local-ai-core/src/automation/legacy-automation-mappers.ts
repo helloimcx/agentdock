@@ -216,31 +216,47 @@ export function automationToMonitorRun(
 ): AutomationMonitorRun {
   const payload = evaluation.status === 'finished' ? evaluation.payload : undefined;
   const eventSnapshot = payload?.eventSnapshot ? parseEventSnapshot(payload.eventSnapshot) : undefined;
-  const evaluationError = !run && evaluation.status === 'finished'
-    && (evaluation.conditionOutcome === 'skipped' || evaluation.conditionOutcome === 'error')
-    ? evaluation.resultSummary
-    : undefined;
+  const evaluationError = resolveEvaluationError(evaluation, run);
+  const status = run?.status || evaluationStatus(evaluation);
+  const deliveryStatus = resolveEvaluationDeliveryStatus(run, evaluationError, status);
+  const deliveryMode = legacyDeliveryMode(run?.bridgeActivity?.deliveryMode);
   return {
     id: run?.id || evaluation.id,
     monitorId: evaluation.automationId,
-    status: run?.status || evaluationStatus(evaluation),
+    status,
     triggeredAt: eventSnapshot?.occurredAt || (evaluation.status === 'finished' ? evaluation.triggeredAt : undefined) || evaluation.startedAt,
     ...(run?.startedAt ? { startedAt: run.startedAt } : {}),
     ...(run?.finishedAt ? { finishedAt: run.finishedAt } : {}),
-    ...(run?.error || evaluationError
-      ? { error: run?.error || evaluationError, deliveryError: run?.error || evaluationError }
-      : {}),
+    ...(evaluationError ? { error: evaluationError, deliveryError: evaluationError } : {}),
     ...(eventSnapshot ? { eventSnapshot } : {}),
     ...(run?.threadId ? { threadId: run.threadId } : {}),
     ...(run?.acpRunId ? { runId: run.acpRunId } : {}),
-    ...(legacyDeliveryMode(run?.bridgeActivity?.deliveryMode) ? { deliveryMode: legacyDeliveryMode(run?.bridgeActivity?.deliveryMode) } : {}),
-    ...(run?.deliveryStatus
-      ? { deliveryStatus: legacyDeliveryStatus(run.deliveryStatus) }
-      : evaluationError ? { deliveryStatus: (run?.status || evaluationStatus(evaluation)) === 'failed' ? 'failed' as const : 'skipped' as const } : {}),
+    ...(deliveryMode ? { deliveryMode } : {}),
+    ...(deliveryStatus ? { deliveryStatus } : {}),
     ...(typeof run?.bridgeActivity?.lastBridgeEventAt === 'string'
       ? { lastBridgeEventAt: run.bridgeActivity.lastBridgeEventAt }
       : {}),
   };
+}
+
+function resolveEvaluationError(evaluation: AutomationEvaluation, run?: AutomationRun): string | undefined {
+  if (run?.error) {
+    return run.error;
+  }
+  if (!run && evaluation.status === 'finished' && (evaluation.conditionOutcome === 'skipped' || evaluation.conditionOutcome === 'error')) {
+    return evaluation.resultSummary;
+  }
+  return undefined;
+}
+
+function resolveEvaluationDeliveryStatus(run: AutomationRun | undefined, evaluationError: string | undefined, status: string) {
+  if (run?.deliveryStatus) {
+    return legacyDeliveryStatus(run.deliveryStatus);
+  }
+  if (evaluationError) {
+    return status === 'failed' ? ('failed' as const) : ('skipped' as const);
+  }
+  return undefined;
 }
 
 export function latestFinishedEvaluation(evaluations: AutomationEvaluation[]): AutomationEvaluation | undefined {

@@ -108,71 +108,7 @@ export async function runWeixinInboundPoller(input: {
       }
 
       for (const msg of resp.msgs ?? []) {
-        const items = msg.item_list ?? [];
-        const textItem = items.find((item) => item.type === TEXT_ITEM_TYPE);
-        const voiceTextItems = items.filter((item) => item.type === VOICE_ITEM_TYPE && item.voice_item?.text);
-        const mediaItems = items.filter((item) => item.type === IMAGE_ITEM_TYPE || item.type === FILE_ITEM_TYPE);
-        if (!textItem && voiceTextItems.length === 0 && mediaItems.length === 0) continue;
-
-        const conversationId = msg.from_user_id ?? '';
-        const text = [textItem?.text_item?.text?.trim(), ...voiceTextItems.map((item) => item.voice_item?.text?.trim())]
-          .filter((part): part is string => Boolean(part))
-          .join('\n\n');
-        const msgId = msg.msg_id ?? String(Date.now());
-        let attachmentText = '';
-        const attachmentParts: ChannelInboundContentPart[] = [];
-        if (mediaItems.length > 0) {
-          const uploadsDir = join(binding.stateDir, 'weixin-uploads');
-          const mayMaterializeAttachments = binding.allowFrom === '*' || Boolean(
-            input.getAuthorizedUser(binding.workspaceId, conversationId, binding.platformKey),
-          );
-          if (!mayMaterializeAttachments) {
-            for (const item of mediaItems) {
-              const itemData = item.image_item ?? item.file_item ?? null;
-              const declaredName = String(itemData?.file_name ?? (item.type === IMAGE_ITEM_TYPE ? 'image' : 'file'));
-              attachmentText += attachmentText ? '\n' : '';
-              attachmentText += item.type === IMAGE_ITEM_TYPE ? '[Image]' : `[File: ${declaredName}]`;
-            }
-          } else {
-            const downloads = await Promise.all(mediaItems.map(async (item, index) => {
-              try {
-                return await input.downloadMediaItem(item, msgId, index, uploadsDir, binding);
-              } catch (error) {
-                input.log?.(`localcore-weixin attachment download failed (${conversationId}#${index}): ${formatSafeError(error)}`);
-                return null;
-              }
-            }));
-            for (const attachment of downloads) {
-              if (!attachment) {
-                continue;
-              }
-              attachmentText += attachmentText ? '\n' : '';
-              attachmentText += attachment.kind === 'image'
-                ? `[Image: ${attachment.path}]`
-                : `[File "${attachment.name}": ${attachment.path}]`;
-              const part = createWeixinAttachmentContentPart(attachment);
-              if (part) attachmentParts.push(part);
-            }
-          }
-        }
-
-        const fullText = [text, attachmentText].filter(Boolean).join('\n\n');
-        if (!fullText) continue;
-        await input.handleInboundMessage({
-          workspaceId: binding.workspaceId,
-          instanceId: binding.instanceId,
-          platformKey: binding.platformKey,
-          platformUserId: conversationId,
-          chatId: conversationId,
-          displayName: conversationId.slice(-6),
-          text: fullText,
-          messageId: msgId,
-          contextToken: msg.context_token,
-          contentParts: [
-            ...(text ? [{ type: 'text' as const, text }] : []),
-            ...attachmentParts,
-          ],
-        });
+        await processWeixinInboundMsg(msg, binding, input);
       }
     } catch (error) {
       if (signal.aborted) return;
@@ -192,4 +128,87 @@ export async function runWeixinInboundPoller(input: {
       await waitForWeixinRetry(retryDelayMs, signal);
     }
   }
+}
+
+async function processWeixinInboundMsg(
+  msg: any,
+  binding: WeixinWorkspaceBinding,
+  input: {
+    getAuthorizedUser: (workspaceId: string, platformUserId: string, platformKey: string) => unknown;
+    downloadMediaItem: (
+      item: WeixinRawItem,
+      messageId: string,
+      index: number,
+      uploadsDir: string,
+      binding: WeixinWorkspaceBinding,
+    ) => Promise<WeixinDownloadedMedia | null>;
+    handleInboundMessage: (message: unknown) => Promise<void>;
+    log?: (message: string) => void;
+  },
+) {
+  const items = msg.item_list ?? [];
+  const textItem = items.find((item: any) => item.type === TEXT_ITEM_TYPE);
+  const voiceTextItems = items.filter((item: any) => item.type === VOICE_ITEM_TYPE && item.voice_item?.text);
+  const mediaItems = items.filter((item: any) => item.type === IMAGE_ITEM_TYPE || item.type === FILE_ITEM_TYPE);
+  if (!textItem && voiceTextItems.length === 0 && mediaItems.length === 0) return;
+
+  const conversationId = msg.from_user_id ?? '';
+  const text = [textItem?.text_item?.text?.trim(), ...voiceTextItems.map((item: any) => item.voice_item?.text?.trim())]
+    .filter((part): part is string => Boolean(part))
+    .join('\n\n');
+  const msgId = msg.msg_id ?? String(Date.now());
+  let attachmentText = '';
+  const attachmentParts: ChannelInboundContentPart[] = [];
+  if (mediaItems.length > 0) {
+    const uploadsDir = join(binding.stateDir, 'weixin-uploads');
+    const mayMaterializeAttachments = binding.allowFrom === '*' || Boolean(
+      input.getAuthorizedUser(binding.workspaceId, conversationId, binding.platformKey),
+    );
+    if (!mayMaterializeAttachments) {
+      for (const item of mediaItems) {
+        const itemData = item.image_item ?? item.file_item ?? null;
+        const declaredName = String(itemData?.file_name ?? (item.type === IMAGE_ITEM_TYPE ? 'image' : 'file'));
+        attachmentText += attachmentText ? '\n' : '';
+        attachmentText += item.type === IMAGE_ITEM_TYPE ? '[Image]' : `[File: ${declaredName}]`;
+      }
+    } else {
+      const downloads = await Promise.all(mediaItems.map(async (item: any, index: number) => {
+        try {
+          return await input.downloadMediaItem(item, msgId, index, uploadsDir, binding);
+        } catch (error) {
+          input.log?.(`localcore-weixin attachment download failed (${conversationId}#${index}): ${formatSafeError(error)}`);
+          return null;
+        }
+      }));
+      for (const attachment of downloads) {
+        if (!attachment) {
+          continue;
+        }
+        attachmentText += attachmentText ? '\n' : '';
+        attachmentText += attachment.kind === 'image'
+          ? `[Image: ${attachment.path}]`
+          : `[File "${attachment.name}": ${attachment.path}]`;
+        const part = createWeixinAttachmentContentPart(attachment);
+        if (part) attachmentParts.push(part);
+      }
+    }
+  }
+
+  const fullText = [text, attachmentText].filter(Boolean).join('\n\n');
+  if (!fullText) return;
+  await input.handleInboundMessage({
+    workspaceId: binding.workspaceId,
+    instanceId: binding.instanceId,
+    platformKey: binding.platformKey,
+    platformUserId: conversationId,
+    chatId: conversationId,
+    displayName: conversationId.slice(-6),
+    text: fullText,
+    messageId: msgId,
+    contextToken: msg.context_token,
+    contentParts: [
+      ...(text ? [{ type: 'text' as const, text }] : []),
+      ...attachmentParts,
+    ],
+  });
 }

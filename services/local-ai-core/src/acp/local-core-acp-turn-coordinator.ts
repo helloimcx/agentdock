@@ -30,7 +30,7 @@ import {
   type PermissionApprovalInput,
 } from './local-core-acp-permission-lifecycle.js';
 import { formatToolCallContent, toPermissionButtonRows } from './workspace-acp-permissions.js';
-import type { AcpSessionState } from '../router/workspace-router-types.js';
+import type { AcpSessionState, RunningTurn } from '../router/workspace-router-types.js';
 import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import type { AgentAcpProgressKind } from '../agents/shared/acp-behavior.js';
@@ -279,192 +279,200 @@ export class LocalCoreAcpTurnCoordinator {
       return;
     }
     switch (String(update.sessionUpdate || '')) {
-      case 'agent_message_chunk': {
-        this.closePendingThoughtSegment(session);
-        this.flushPendingToolCall(session);
-        if (update.content?.type !== 'text') {
+      case 'agent_message_chunk':
+        return this.handleMessageChunkUpdate(session, currentTurn, currentRunId, update);
+      case 'agent_thought_chunk':
+        return this.handleThoughtChunkUpdate(session, currentTurn, currentRunId, update);
+      case 'tool_call':
+        return this.handleToolCallStarted(session, currentTurn, currentRunId, update);
+      case 'tool_call_update':
+        return this.handleToolCallUpdate(session, currentTurn, currentRunId, update);
+      case 'plan':
+        return this.handlePlanUpdate(session, currentTurn, currentRunId, update);
+    }
+  }
+
+  private handleMessageChunkUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
+    this.closePendingThoughtSegment(session);
+    this.flushPendingToolCall(session);
+    if (update.content?.type !== 'text') {
+      return;
+    }
+    if (isToolScopedAssistantUpdate(update) || consumeRawAssistantProgressChunk(session, String(update.content.text || ''))) {
+      this.closePendingAssistantSegment(session);
+      const content = String(update.content.text || '').trim();
+      if (content) {
+        if (this.shouldSuppressProgress(currentTurn, 'tool', content)) {
           return;
         }
-        if (isToolScopedAssistantUpdate(update) || consumeRawAssistantProgressChunk(session, String(update.content.text || ''))) {
-          this.closePendingAssistantSegment(session);
-          const content = String(update.content.text || '').trim();
-          if (content) {
-            if (this.shouldSuppressProgress(currentTurn, 'tool', content)) {
-              return;
-            }
-            this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'tool');
-            this.options.emitBridge({
-              type: 'reply',
-              sessionKey: session.bridgeSessionKey,
-              replyCtx: currentRunId,
-              bridgeKind: 'tool',
-              content,
-            });
-          }
-          return;
-        }
-        const chunk = String(update.content.text || '');
-        currentTurn.rawAssistantText = `${currentTurn.rawAssistantText || ''}${chunk}`;
-        const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
-        const normalizedText = behavior.normalizeAssistantText({
-          rawText: currentTurn.rawAssistantText,
-          priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
-        });
-        const nextChunk = normalizedText.startsWith(currentTurn.assistantText)
-          ? normalizedText.slice(currentTurn.assistantText.length)
-          : normalizedText;
-        if (!nextChunk) {
-          return;
-        }
-        const projection = applyAssistantMessageChunk(currentTurn, nextChunk);
-        if (!projection) {
-          return;
-        }
-        return;
-      }
-      case 'agent_thought_chunk': {
-        this.closePendingAssistantSegment(session);
-        if (update.content?.type !== 'text') {
-          return;
-        }
-        const projection = applyThoughtChunk(currentTurn, String(update.content.text || ''));
-        if (!projection) {
-          return;
-        }
-        if (this.shouldSuppressProgress(currentTurn, 'thought', projection.content)) {
-          this.resetThoughtSegment(currentTurn);
-          return;
-        }
-        if (this.options.upsertMessage) {
-          this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress', undefined, projection.bridgeKind);
-        }
-        this.options.emitBridge({
-          type: projection.bridgeType,
-          sessionKey: session.bridgeSessionKey,
-          replyCtx: currentRunId,
-          previewHandle: projection.previewHandle,
-          bridgeKind: projection.bridgeKind,
-          content: projection.content,
-        });
-        return;
-      }
-      case 'tool_call': {
-        this.closePendingAssistantSegment(session);
-        this.closePendingThoughtSegment(session);
-        const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
-        if (this.isKnownPriorToolInput(currentTurn, toolCall.title, toolCall.input)) {
-          toolCall.suppressReplay = true;
-        } else {
-          recordToolObservation(currentTurn, {
-            name: toolCall.title,
-            title: toolCall.title,
-            input: toolCall.input,
-          });
-        }
-        syncLegacyPendingToolCall(currentTurn, toolCall);
-        return;
-      }
-      case 'tool_call_update': {
-        this.closePendingAssistantSegment(session);
-        this.closePendingThoughtSegment(session);
-        const title = String(update.title || 'Tool update').trim();
-        const status = String(update.status || '').trim();
-        const content = extractToolUpdateContent(update.content);
-        if (isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
-          session.schedulerJobCreatedByRun.set(currentRunId, true);
-        }
-        const toolCall = resolveToolCallForUpdate(currentTurn, update);
-        const updateInput = extractToolCallInput(update);
-        if (toolCall && updateInput !== undefined) {
-          toolCall.input = updateInput;
-        }
-        const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
-        const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
-        const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
-        if (isEmptyRunningToolUpdate({ title, status, content })) {
-          if (toolCall) {
-            deletePendingToolCall(currentTurn, toolCall.key);
-          } else {
-            currentTurn.pendingToolCallTitle = undefined;
-            currentTurn.pendingToolCallId = undefined;
-            currentTurn.pendingToolCallDetail = undefined;
-          }
-          syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
-          return;
-        }
-        const displayTitle = resolveToolUpdateDisplayTitle({ title, status, priorDetail });
-        if (!isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
-          if (toolCall) {
-            toolCall.detail = displayTitle;
-          }
-          currentTurn.pendingToolCallDetail = displayTitle;
-        }
-        if (isTerminalToolStatus(status)) {
-          if (toolCall) {
-            deletePendingToolCall(currentTurn, toolCall.key);
-          } else {
-            currentTurn.pendingToolCallTitle = undefined;
-            currentTurn.pendingToolCallId = undefined;
-            currentTurn.pendingToolCallDetail = undefined;
-          }
-        }
-        const toolCallPayload = createToolCallPayload({
-          id: toolCall?.key || currentTurn.activeToolCallKey,
-          name: toolName || displayTitle || 'Tool update',
-          status,
-          input: updateInput === undefined ? toolCall?.input : updateInput,
-          detail: displayTitle,
-          content,
-        });
-        const progressContent = formatToolProgressMessage({ toolName, title: displayTitle, status, content });
-        const suppressProgress = Boolean(toolCall?.suppressReplay) || this.shouldSuppressProgress(currentTurn, 'tool', progressContent);
-        if (!suppressProgress) {
-          recordToolObservation(currentTurn, {
-            name: toolName || displayTitle || title,
-            title: displayTitle || title,
-            status,
-            input: updateInput === undefined ? toolCall?.input : updateInput,
-            outputText: content,
-          });
-          this.emitProgress(
-            session,
-            currentRunId,
-            progressContent,
-            messageId,
-            toolCallPayload,
-          );
-        }
-        syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
-        return;
-      }
-      case 'plan': {
-        this.closePendingAssistantSegment(session);
-        this.closePendingThoughtSegment(session);
-        this.flushPendingToolCall(session);
-        const entries = Array.isArray(update.entries) ? update.entries : [];
-        if (entries.length === 0) {
-          return;
-        }
-        const content = formatPlanProgress(entries);
-        if (!content) {
-          return;
-        }
-        if (this.shouldSuppressProgress(currentTurn, 'plan', content)) {
-          return;
-        }
-        this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'plan');
+        this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'tool');
         this.options.emitBridge({
           type: 'reply',
           sessionKey: session.bridgeSessionKey,
           replyCtx: currentRunId,
-          bridgeKind: 'plan',
+          bridgeKind: 'tool',
           content,
         });
-        return;
       }
-      default:
-        return;
+      return;
     }
+    const chunk = String(update.content.text || '');
+    currentTurn.rawAssistantText = `${currentTurn.rawAssistantText || ''}${chunk}`;
+    const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+    const normalizedText = behavior.normalizeAssistantText({
+      rawText: currentTurn.rawAssistantText,
+      priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
+    });
+    const nextChunk = normalizedText.startsWith(currentTurn.assistantText)
+      ? normalizedText.slice(currentTurn.assistantText.length)
+      : normalizedText;
+    if (!nextChunk) {
+      return;
+    }
+    const projection = applyAssistantMessageChunk(currentTurn, nextChunk);
+    if (!projection) {
+      return;
+    }
+  }
+
+  private handleThoughtChunkUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
+    this.closePendingAssistantSegment(session);
+    if (update.content?.type !== 'text') {
+      return;
+    }
+    const projection = applyThoughtChunk(currentTurn, String(update.content.text || ''));
+    if (!projection) {
+      return;
+    }
+    if (this.shouldSuppressProgress(currentTurn, 'thought', projection.content)) {
+      this.resetThoughtSegment(currentTurn);
+      return;
+    }
+    if (this.options.upsertMessage) {
+      this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress', undefined, projection.bridgeKind);
+    }
+    this.options.emitBridge({
+      type: projection.bridgeType,
+      sessionKey: session.bridgeSessionKey,
+      replyCtx: currentRunId,
+      previewHandle: projection.previewHandle,
+      bridgeKind: projection.bridgeKind,
+      content: projection.content,
+    });
+  }
+
+  private handleToolCallStarted(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
+    this.closePendingAssistantSegment(session);
+    this.closePendingThoughtSegment(session);
+    const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
+    if (this.isKnownPriorToolInput(currentTurn, toolCall.title, toolCall.input)) {
+      toolCall.suppressReplay = true;
+    } else {
+      recordToolObservation(currentTurn, {
+        name: toolCall.title,
+        title: toolCall.title,
+        input: toolCall.input,
+      });
+    }
+    syncLegacyPendingToolCall(currentTurn, toolCall);
+  }
+
+  private handleToolCallUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
+    this.closePendingAssistantSegment(session);
+    this.closePendingThoughtSegment(session);
+    const title = String(update.title || 'Tool update').trim();
+    const status = String(update.status || '').trim();
+    const content = extractToolUpdateContent(update.content);
+    if (isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
+      session.schedulerJobCreatedByRun.set(currentRunId, true);
+    }
+    const toolCall = resolveToolCallForUpdate(currentTurn, update);
+    const updateInput = extractToolCallInput(update);
+    if (toolCall && updateInput !== undefined) {
+      toolCall.input = updateInput;
+    }
+    const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
+    const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
+    const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
+    if (isEmptyRunningToolUpdate({ title, status, content })) {
+      if (toolCall) {
+        deletePendingToolCall(currentTurn, toolCall.key);
+      } else {
+        currentTurn.pendingToolCallTitle = undefined;
+        currentTurn.pendingToolCallId = undefined;
+        currentTurn.pendingToolCallDetail = undefined;
+      }
+      syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
+      return;
+    }
+    const displayTitle = resolveToolUpdateDisplayTitle({ title, status, priorDetail });
+    if (!isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
+      if (toolCall) {
+        toolCall.detail = displayTitle;
+      }
+      currentTurn.pendingToolCallDetail = displayTitle;
+    }
+    if (isTerminalToolStatus(status)) {
+      if (toolCall) {
+        deletePendingToolCall(currentTurn, toolCall.key);
+      } else {
+        currentTurn.pendingToolCallTitle = undefined;
+        currentTurn.pendingToolCallId = undefined;
+        currentTurn.pendingToolCallDetail = undefined;
+      }
+    }
+    const toolCallPayload = createToolCallPayload({
+      id: toolCall?.key || currentTurn.activeToolCallKey,
+      name: toolName || displayTitle || 'Tool update',
+      status,
+      input: updateInput === undefined ? toolCall?.input : updateInput,
+      detail: displayTitle,
+      content,
+    });
+    const progressContent = formatToolProgressMessage({ toolName, title: displayTitle, status, content });
+    const suppressProgress = Boolean(toolCall?.suppressReplay) || this.shouldSuppressProgress(currentTurn, 'tool', progressContent);
+    if (!suppressProgress) {
+      recordToolObservation(currentTurn, {
+        name: toolName || displayTitle || title,
+        title: displayTitle || title,
+        status,
+        input: updateInput === undefined ? toolCall?.input : updateInput,
+        outputText: content,
+      });
+      this.emitProgress(
+        session,
+        currentRunId,
+        progressContent,
+        messageId,
+        toolCallPayload,
+      );
+    }
+    syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
+  }
+
+  private handlePlanUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
+    this.closePendingAssistantSegment(session);
+    this.closePendingThoughtSegment(session);
+    this.flushPendingToolCall(session);
+    const entries = Array.isArray(update.entries) ? update.entries : [];
+    if (entries.length === 0) {
+      return;
+    }
+    const content = formatPlanProgress(entries);
+    if (!content) {
+      return;
+    }
+    if (this.shouldSuppressProgress(currentTurn, 'plan', content)) {
+      return;
+    }
+    this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'plan');
+    this.options.emitBridge({
+      type: 'reply',
+      sessionKey: session.bridgeSessionKey,
+      replyCtx: currentRunId,
+      bridgeKind: 'plan',
+      content,
+    });
   }
 
   private handleClaudeSdkMessage(session: AcpSessionState, message: any) {

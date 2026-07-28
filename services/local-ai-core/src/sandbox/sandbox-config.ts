@@ -62,24 +62,14 @@ export function normalizeSandboxLaunchConfig(input: {
   const rawOptions = input.project.agent?.options || {};
   const userId = sanitizePathSegment(String(rawOptions.user_id || (rawOptions as Record<string, unknown>).tenant_id || 'local'), 'local');
   const agentId = sanitizePathSegment(agentType, 'agent');
-  const stateHostRoot = String(process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] || '').trim() || resolve(userDataRoot, 'sandbox-state');
   const proxyCwd = resolveSandboxProxyCwd(configDir);
-  const stateHostPath = resolve(
-    stateHostRoot,
-    'users',
+  const stateHostPath = buildSandboxStateHostPath({
+    userDataRoot,
     userId,
-    ...(stateScope === 'user'
-      ? ['agents', agentId]
-      : ['projects', projectId, 'agents', agentId]),
-    ...(stateScope === 'thread'
-      ? ['threads', '${LOCAL_AI_THREAD_ID}', 'state']
-      : stateScope === 'run'
-        ? ['runs', '${AGENTDOCK_SANDBOX_RUN_ID}', 'state']
-        : ['state']),
-  );
-  if (stateHostPath && !stateHostPath.includes('${')) {
-    mkdirSync(stateHostPath, { recursive: true, mode: 0o700 });
-  }
+    projectId,
+    agentId,
+    stateScope,
+  });
   return {
     enabled: true,
     provider: String(raw.provider || sandboxProvider.type || 'opensandbox').trim() || 'opensandbox',
@@ -118,6 +108,33 @@ export function normalizeSandboxLaunchConfig(input: {
     runtimeArgs: normalizeRuntimeArgsForSandbox(agentType, input.launchConfig.args || [], runtimeImage.runtime_args),
     runtimeEnv: normalizeRuntimeEnvForSandbox(agentType, input.launchConfig.env || {}, stateMountPath),
   };
+}
+
+function buildSandboxStateHostPath(input: {
+  userDataRoot: string;
+  userId: string;
+  projectId: string;
+  agentId: string;
+  stateScope: string;
+}): string {
+  const stateHostRoot = String(process.env[DEFAULT_SANDBOX_STATE_HOST_ROOT_ENV] || '').trim() || resolve(input.userDataRoot, 'sandbox-state');
+  const stateHostPath = resolve(
+    stateHostRoot,
+    'users',
+    input.userId,
+    ...(input.stateScope === 'user'
+      ? ['agents', input.agentId]
+      : ['projects', input.projectId, 'agents', input.agentId]),
+    ...(input.stateScope === 'thread'
+      ? ['threads', '${LOCAL_AI_THREAD_ID}', 'state']
+      : input.stateScope === 'run'
+        ? ['runs', '${AGENTDOCK_SANDBOX_RUN_ID}', 'state']
+        : ['state']),
+  );
+  if (stateHostPath && !stateHostPath.includes('${')) {
+    mkdirSync(stateHostPath, { recursive: true, mode: 0o700 });
+  }
+  return stateHostPath;
 }
 
 function resolveSandboxProvider(

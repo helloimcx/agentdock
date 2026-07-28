@@ -349,77 +349,7 @@ export class AnthropicSandboxRunner implements SandboxRunner {
       if (this.platform === 'linux') markLinuxBehaviorUnverified();
     }
     if (manager && this.probeInitialization && !behaviorBlocked) {
-      let attempted = false;
-      const probeTempPath = join(this.tempRoot, `probe-${randomUUID()}`);
-      try {
-        mkdirSync(probeTempPath, { recursive: true });
-        const probeConfig = buildSandboxRuntimeConfig({
-          command: 'true',
-          cwd: process.cwd(),
-          packagePath: process.cwd(),
-          tempRoot: this.tempRoot,
-          tempDir: probeTempPath,
-          network: 'none',
-        });
-        attempted = true;
-        await manager.initialize(probeConfig);
-        if (manager.waitForNetworkInitialization && !(await manager.waitForNetworkInitialization())) {
-          missing.add('sandbox_runtime');
-          if (this.platform === 'linux') markLinuxBehaviorUnverified();
-        } else if (!manager.wrapWithSandboxArgv) {
-          missing.add('sandbox_runtime');
-          if (this.platform === 'linux') markLinuxBehaviorUnverified();
-        } else {
-          const wrapped = await manager.wrapWithSandboxArgv('true');
-          let result: SandboxRunResult;
-          try {
-            result = await spawnWrappedCommand(wrapped, {
-              command: 'true',
-              cwd: process.cwd(),
-              packagePath: process.cwd(),
-              tempRoot: this.tempRoot,
-              tempDir: probeTempPath,
-              network: 'none',
-              timeoutMs: 5_000,
-              stdoutBytes: 16_384,
-              stderrBytes: 16_384,
-            });
-          } finally {
-            manager.cleanupAfterCommand?.();
-          }
-          if (result.exitCode !== 0 || result.signal) {
-            if (this.platform === 'linux') {
-              const failure = classifyLinuxBehaviorFailures(result.stderr, this.isAppArmorUsernsRestricted());
-              for (const capability of failure.missing) {
-                missing.add(capability);
-              }
-              for (const capability of failure.unverified) unverified.add(capability);
-            } else {
-              missing.add('sandbox_runtime');
-            }
-          }
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-        if (this.platform === 'linux') {
-          const failure = classifyLinuxBehaviorFailures(message, this.isAppArmorUsernsRestricted());
-          for (const capability of failure.missing) {
-            missing.add(capability);
-          }
-          for (const capability of failure.unverified) unverified.add(capability);
-        } else {
-          missing.add('sandbox_runtime');
-        }
-      } finally {
-        if (attempted) {
-          try {
-            await manager.reset?.();
-          } catch {
-            missing.add('sandbox_runtime');
-          }
-        }
-        rmSync(probeTempPath, { recursive: true, force: true });
-      }
+      await this.probeManagerBehavior(manager, missing, unverified, markLinuxBehaviorUnverified);
     }
 
     const orderedUnverified = orderCapabilities(unverified);
@@ -429,6 +359,85 @@ export class AnthropicSandboxRunner implements SandboxRunner {
       missing: orderCapabilities(missing),
       ...(orderedUnverified.length === 0 ? {} : { unverified: orderedUnverified }),
     };
+  }
+
+  private async probeManagerBehavior(
+    manager: SandboxManagerLike,
+    missing: Set<string>,
+    unverified: Set<string>,
+    markLinuxBehaviorUnverified: () => void,
+  ) {
+    let attempted = false;
+    const probeTempPath = join(this.tempRoot, `probe-${randomUUID()}`);
+    try {
+      mkdirSync(probeTempPath, { recursive: true });
+      const probeConfig = buildSandboxRuntimeConfig({
+        command: 'true',
+        cwd: process.cwd(),
+        packagePath: process.cwd(),
+        tempRoot: this.tempRoot,
+        tempDir: probeTempPath,
+        network: 'none',
+      });
+      attempted = true;
+      await manager.initialize(probeConfig);
+      if (manager.waitForNetworkInitialization && !(await manager.waitForNetworkInitialization())) {
+        missing.add('sandbox_runtime');
+        if (this.platform === 'linux') markLinuxBehaviorUnverified();
+      } else if (!manager.wrapWithSandboxArgv) {
+        missing.add('sandbox_runtime');
+        if (this.platform === 'linux') markLinuxBehaviorUnverified();
+      } else {
+        const wrapped = await manager.wrapWithSandboxArgv('true');
+        let result: SandboxRunResult;
+        try {
+          result = await spawnWrappedCommand(wrapped, {
+            command: 'true',
+            cwd: process.cwd(),
+            packagePath: process.cwd(),
+            tempRoot: this.tempRoot,
+            tempDir: probeTempPath,
+            network: 'none',
+            timeoutMs: 5_000,
+            stdoutBytes: 16_384,
+            stderrBytes: 16_384,
+          });
+        } finally {
+          manager.cleanupAfterCommand?.();
+        }
+        if (result.exitCode !== 0 || result.signal) {
+          if (this.platform === 'linux') {
+            const failure = classifyLinuxBehaviorFailures(result.stderr, this.isAppArmorUsernsRestricted());
+            for (const capability of failure.missing) {
+              missing.add(capability);
+            }
+            for (const capability of failure.unverified) unverified.add(capability);
+          } else {
+            missing.add('sandbox_runtime');
+          }
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      if (this.platform === 'linux') {
+        const failure = classifyLinuxBehaviorFailures(message, this.isAppArmorUsernsRestricted());
+        for (const capability of failure.missing) {
+          missing.add(capability);
+        }
+        for (const capability of failure.unverified) unverified.add(capability);
+      } else {
+        missing.add('sandbox_runtime');
+      }
+    } finally {
+      if (attempted) {
+        try {
+          await manager.reset?.();
+        } catch {
+          missing.add('sandbox_runtime');
+        }
+      }
+      rmSync(probeTempPath, { recursive: true, force: true });
+    }
   }
 
   private isAppArmorUsernsRestricted() {
