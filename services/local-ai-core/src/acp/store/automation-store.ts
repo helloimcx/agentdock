@@ -16,7 +16,7 @@ import type {
   LocalAutomationRow,
   LocalAutomationRunRow,
   LocalScheduledJobRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 
 export type AutomationStateUpdateInput = {
   health?: AutomationDefinition['health'];

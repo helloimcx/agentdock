@@ -35,7 +35,7 @@
     "build:core": "pnpm build:electron",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/bdd/tsconfig.json --noEmit",
     "test": "pnpm typecheck && pnpm build:renderer && pnpm build:electron && node --test dist-electron/tests/electron/*.test.js dist-electron/tests/contracts/*.test.js dist-electron/tests/integration/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js && pnpm test:bdd",
-    "test:bdd": "node --import tsx node_modules/@cucumber/cucumber/bin/cucumber.js --config tests/bdd/cucumber.mjs",
+    "test:bdd": "node --import tsx scripts/test-bdd.mjs --config tests/bdd/cucumber.mjs",
     "coverage": "node scripts/coverage.mjs",
     "lint:complexity": "eslint . --format stylish",
     "lint:circular": "node scripts/lint-circular.mjs",
@@ -84,6 +84,7 @@
   },
   "devDependencies": {
     "@cucumber/cucumber": "^13.2.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",

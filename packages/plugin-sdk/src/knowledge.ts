@@ -1,4 +1,4 @@
-import type { PluginContext, PluginManifest, RuntimePlugin } from './runtime.js';
+import type { PluginContext, PluginManifest, RuntimePlugin } from './runtime-types.js';
 import type { ThreadKnowledgeAttachmentStore } from './threads.js';
 
 export interface KnowledgeCapability {

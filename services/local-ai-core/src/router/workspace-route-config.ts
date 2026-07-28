@@ -6,7 +6,7 @@ import {
   normalizeDesktopAgentModel,
   normalizeDesktopPlatformType,
 } from '@cc/superai-contracts';
-import { resolveAgentRuntimeDefinition, type AgentRuntimeDefinition } from '../agents/index.js';
+import { resolveAgentRuntimeDefinition, type AgentRuntimeDefinition } from '../agents/registry.js';
 import { collectProviderEnv as collectSharedProviderEnv } from '../agents/shared/launch-utils.js';
 import { prepareAgentExecutionLaunch } from '../execution/agent-execution-backend.js';
 

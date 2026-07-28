@@ -9,7 +9,7 @@ import type {
   AgentTaskUpdateInput,
 } from '@cc/superai-contracts';
 import { normalizeAgentTaskStatus } from '@cc/superai-contracts';
-import type { LocalAgentTaskRow } from '../../router/workspace-router-types.js';
+import type { LocalAgentTaskRow } from './acp-store-types.js';
 import { parseJson, redactSecrets } from './utils.js';
 import type { AuditEventCreateInput } from './security-store.js';
 

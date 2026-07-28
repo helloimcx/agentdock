@@ -151,6 +151,7 @@ test('agent runtime detector reports pi version when PATH command succeeds', () 
     const piRuntime = detectInstalledAgentRuntimes({
       env: { PATH: dir },
       requireFrom: join(dir, 'package.json'),
+      versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'pi');
 
     assert.equal(piRuntime?.status, 'installed');
@@ -171,6 +172,7 @@ test('agent runtime detector reports version when version command succeeds', () 
 
     const opencodeRuntime = detectInstalledAgentRuntimes({
       env: { PATH: dir },
+      versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'opencode');
 
     assert.equal(opencodeRuntime?.status, 'installed');
@@ -211,6 +213,7 @@ test('agent runtime detector reports Claude Code when claude command is availabl
     const claudeRuntime = detectInstalledAgentRuntimes({
       env: { PATH: dir },
       requireFrom: join(dir, 'package.json'),
+      versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'claudecode');
 
     assert.equal(claudeRuntime?.status, 'installed');
@@ -232,6 +235,7 @@ test('agent runtime detector reports Hermes when hermes command is available', (
 
     const hermesRuntime = detectInstalledAgentRuntimes({
       env: { PATH: dir },
+      versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'hermes');
 
     assert.equal(hermesRuntime?.status, 'installed');
@@ -253,6 +257,7 @@ test('agent runtime detector keeps runtime installed when version command fails'
 
     const opencodeRuntime = detectInstalledAgentRuntimes({
       env: { PATH: dir },
+      versionTimeoutMs: 5000,
     }).find((runtime) => runtime.agentType === 'opencode');
 
     assert.equal(opencodeRuntime?.status, 'installed');

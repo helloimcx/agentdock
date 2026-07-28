@@ -1,10 +1,3 @@
-import type { AgentCapability } from './agents.js';
-import type { MonitorCapability } from './automation.js';
-import type { ChannelCapability } from './channels.js';
-import type { KnowledgeCapability } from './knowledge.js';
-import type { SchedulerCapability } from './scheduler.js';
-export * from './runtime-types.js';
-
 export type PluginKind = 'agent' | 'channel' | 'knowledge' | 'scheduler' | 'monitor' | 'ui' | 'composite';
 export type PluginHealthStatus = 'healthy' | 'degraded' | 'failed';
 
@@ -48,41 +41,6 @@ export interface UiCapability {
   navItems?: UiNavContribution[];
   settingsPanels?: UiSettingsContribution[];
   commands?: CommandContribution[];
-}
-
-export interface CapabilitySnapshot {
-  agents: AgentCapability[];
-  channels: ChannelCapability[];
-  knowledge: KnowledgeCapability[];
-  schedulers: SchedulerCapability[];
-  monitors?: MonitorCapability[];
-  ui: UiCapability[];
-}
-
-export interface CapabilityContributionMap {
-  agents?: AgentCapability[];
-  channels?: ChannelCapability[];
-  knowledge?: KnowledgeCapability[];
-  schedulers?: SchedulerCapability[];
-  monitors?: MonitorCapability[];
-  ui?: UiCapability[];
-}
-
-export interface CapabilityRegistry {
-  registerAgent(capability: AgentCapability): void;
-  registerChannel(capability: ChannelCapability): void;
-  registerKnowledge(capability: KnowledgeCapability): void;
-  registerScheduler(capability: SchedulerCapability): void;
-  registerMonitor?(capability: MonitorCapability): void;
-  registerUi(capability: UiCapability): void;
-  registerContributions(contributions: CapabilityContributionMap): void;
-  listAgents(): AgentCapability[];
-  listChannels(): ChannelCapability[];
-  listKnowledge(): KnowledgeCapability[];
-  listSchedulers(): SchedulerCapability[];
-  listMonitors?(): MonitorCapability[];
-  listUi(): UiCapability[];
-  snapshot(): CapabilitySnapshot;
 }
 
 export interface DomainEventPayloadMap {
@@ -158,7 +116,7 @@ export interface PluginConfigSchema {
 
 export interface PluginContext {
   bus: EventBus;
-  capabilities: CapabilityRegistry;
+  capabilities: any;
   logger: PluginLogger;
   config?: { get<TValue = unknown>(key: string): TValue | undefined };
   stores?: Record<string, unknown>;
@@ -181,7 +139,7 @@ export interface PluginManifest {
 
 export interface RuntimePlugin {
   manifest: PluginManifest;
-  capabilities?: CapabilityContributionMap;
+  capabilities?: any;
   init?(ctx: PluginContext): Promise<void> | void;
   start?(): Promise<void> | void;
   stop?(): Promise<void> | void;

@@ -11,7 +11,7 @@ import type {
   LocalMessageRow,
   LocalRunRow,
   LocalThreadRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 import { normalizeMessageContent } from '../../thread/workspace-thread-mappers.js';
 import { encodeThreadId } from '../../thread/workspace-thread-id.js';
 import { normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.js';

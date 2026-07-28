@@ -7,7 +7,7 @@ import type {
   LocalPlatformPairingRow,
   LocalPlatformThreadBindingRow,
   LocalPlatformUserRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 
 export class LocalPlatformStore {
   constructor(private readonly db: DatabaseSync) {}

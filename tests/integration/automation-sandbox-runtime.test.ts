@@ -71,7 +71,7 @@ test('real Anthropic Sandbox Runtime enforces package, temp, and network policy'
     assert.notEqual(defaultTempWrite.exitCode, 0);
 
     const publicEgress = await runner.run({
-      command: 'curl -fsS https://example.com >/dev/null',
+      command: 'curl -fsS https://1.1.1.1 >/dev/null',
       cwd: root,
       packagePath,
       tempDir,

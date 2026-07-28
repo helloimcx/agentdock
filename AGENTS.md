@@ -14,6 +14,15 @@ Use `pnpm` for all local work.
 - `pnpm start:prod`: launches the packaged app from the current build output.
 - `pnpm e2e:smoke`: runs the bundled smoke test against a fresh production build.
 
+## Quality Metrics
+- `pnpm lint:complexity`: reports cyclomatic complexity per function across TS source via ESLint `complexity` rule (default max threshold 15).
+- `pnpm lint:circular`: reports circular import dependencies across source roots using `madge`.
+- `pnpm lint:duplicate`: reports copy/paste duplicate code rate using `jscpd`.
+- `pnpm lint:dead-code`: reports unused exports, unused types, and duplicate exports using `knip`.
+- `pnpm lint:function-length`: reports functions whose line count exceeds threshold (default 100).
+- `pnpm lint:file-size`: reports source files whose line count exceeds threshold (default 1000).
+- `pnpm coverage`: measures test coverage using `c8`.
+
 ## Coding Style & Naming Conventions
 The codebase uses TypeScript with `strict` mode enabled and the `@` alias for `src/` imports. Follow the existing style: 2-space indentation, semicolons in renderer code, and clear ESM imports. Use `PascalCase` for React components and page folders (`src/pages/Projects/ProjectList.tsx`), `camelCase` for functions and helpers, and lowercase filenames for stores and API modules (`src/store/auth.ts`, `src/api/client.ts`). Keep shared desktop contracts in `shared/` so renderer and Electron stay aligned.
 

@@ -6,7 +6,7 @@ import type {
   WorkspaceRegistryEntry,
   WorkspaceRegistryUpdateInput,
 } from '@cc/superai-contracts';
-import type { LocalWorkspaceRegistryRow } from '../../router/workspace-router-types.js';
+import type { LocalWorkspaceRegistryRow } from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
 const ACTIVE_AGENT_TASK_STATUSES = "'created', 'queued', 'running', 'waiting_for_user'";

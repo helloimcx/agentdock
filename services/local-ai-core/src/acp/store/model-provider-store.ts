@@ -4,7 +4,7 @@ import type {
   DesktopModelProviderInput,
   DesktopProviderConfig,
 } from '@cc/superai-contracts';
-import type { LocalModelProviderRow } from '../../router/workspace-router-types.js';
+import type { LocalModelProviderRow } from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
 export class LocalModelProviderStore {

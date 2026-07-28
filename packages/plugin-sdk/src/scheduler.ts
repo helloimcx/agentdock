@@ -1,4 +1,4 @@
-import type { PluginContext, PluginManifest, RuntimePlugin } from './runtime.js';
+import type { PluginContext, PluginManifest, RuntimePlugin } from './runtime-types.js';
 
 export interface SchedulerCapability {
   id: string;

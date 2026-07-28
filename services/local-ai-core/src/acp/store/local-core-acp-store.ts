@@ -63,7 +63,7 @@ import type {
   LocalPlatformThreadBindingRow,
   LocalPlatformUserRow,
   LocalRunRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 import { LocalAgentTaskStore } from './agent-task-store.js';
 import { LocalAutomationMonitorStore } from './automation-monitor-store.js';
 import {

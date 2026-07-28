@@ -19,7 +19,7 @@ import type {
   LocalApprovalRequestRow,
   LocalAuditEventRow,
   LocalWorkspaceSecuritySettingsRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 import { defaultPermissions, parseJson, redactSecrets } from './utils.js';
 
 export type AuditEventCreateInput = {

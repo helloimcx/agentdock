@@ -17,7 +17,7 @@ import {
 import type {
   LocalAutomationMonitorRow,
   LocalAutomationMonitorRunRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
 export type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {

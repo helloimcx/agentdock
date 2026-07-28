@@ -16,7 +16,7 @@ import { createScheduledJobId } from '../../scheduler/job-id.js';
 import type {
   LocalScheduledJobRow,
   LocalScheduledJobRunRow,
-} from '../../router/workspace-router-types.js';
+} from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
 export class LocalSchedulerStore {

@@ -1,5 +1,5 @@
-import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop';
-import type { DesktopBridgeButtonOption } from '../../../shared/desktop';
+import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop.js';
+import type { DesktopBridgeButtonOption } from '../../../shared/desktop.js';
 export * from './knowledge.js';
 import {
   ChannelRoute,
