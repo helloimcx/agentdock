@@ -94,7 +94,23 @@ export class LocalAutomationMonitorStore {
       now,
       now,
     );
-    return this.get(id)!;
+    return {
+      id,
+      workspaceId: input.workspaceId,
+      title,
+      sourceType,
+      sourceConfig: input.sourceConfig || {},
+      condition,
+      promptTemplate: input.promptTemplate,
+      platform: normalizeChannelPlatform(input.platform),
+      route: input.route,
+      executionMode: normalizeScheduledJobExecutionMode(input.executionMode, 'side-thread'),
+      enabled: input.enabled !== false,
+      cooldownMs: Math.max(0, Number(input.cooldownMs ?? 15 * 60 * 1000)),
+      concurrencyPolicy: 'skip_if_running',
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   update(monitorId: string, input: AutomationMonitorUpdateInput): AutomationMonitor {
@@ -139,7 +155,7 @@ export class LocalAutomationMonitorStore {
       next.updatedAt,
       monitorId,
     );
-    return this.get(monitorId)!;
+    return next;
   }
 
   updateState(monitorId: string, input: {
