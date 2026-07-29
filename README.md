@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-07-29
+
+- 发布 AgentDock 0.1.69：支持股票行情 Monitor Provider (`stock.quote`) 真实线上行情数据拉取，原生支持美股、A股、港股股票代码标准化解析与双通道行情 API 抓取（支持 GBK/UTF-8 字符解码）；集成显式 Mock 模式与网络异常降级防护。
+
 ### 2026-07-28
 
 - 发布 AgentDock 0.1.68：彻底消除 ACP Store 与 Agent Registry 间的循环依赖；完成全项目圈复杂度 (Cyclomatic Complexity) 专项重构，优化 Top 10 高复杂度函数（最高复杂度从 76 降至 39）；降低重复代码率至 4.77%；建立强制 Pre-Commit 全套质量校验流程。
