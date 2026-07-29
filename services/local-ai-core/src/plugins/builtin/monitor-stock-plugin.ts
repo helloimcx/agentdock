@@ -1,5 +1,5 @@
 import type { MonitorPlugin, MonitorRuntimeRegistration } from '@cc/plugin-sdk';
-import { MockStockQuoteProvider } from '../../automation/mock-stock-provider.js';
+import { StockQuoteProvider } from '../../automation/mock-stock-provider.js';
 
 export function createBuiltinStockMonitorPlugin(): MonitorPlugin {
   return {
@@ -22,9 +22,8 @@ export function createBuiltinStockMonitorPlugin(): MonitorPlugin {
     },
     createRuntime(): MonitorRuntimeRegistration {
       return {
-        providers: [new MockStockQuoteProvider()],
+        providers: [new StockQuoteProvider()],
       };
     },
   };
 }
-
