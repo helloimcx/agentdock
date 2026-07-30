@@ -123,7 +123,7 @@ export class LocalAutomationStore {
       updatedAt: now,
     });
     this.insertDefinition(definition);
-    return this.get(definition.id)!;
+    return definition;
   }
 
   update(id: string, input: AutomationUpdateInput): AutomationDefinition {
@@ -152,7 +152,7 @@ export class LocalAutomationStore {
     candidate.updatedAt = new Date().toISOString();
     const definition = normalizeDefinition(candidate);
     this.writeDefinition(definition);
-    return this.get(id)!;
+    return definition;
   }
 
   updateState(id: string, input: AutomationStateUpdateInput): AutomationDefinition {
@@ -182,7 +182,7 @@ export class LocalAutomationStore {
       ? null
       : assertIsoTimestamp(nextCheckAt, 'Automation nextCheckAt');
     this.writeDefinition(definition, canonicalNextCheckAt);
-    return this.get(id)!;
+    return definition;
   }
 
   delete(id: string) {
