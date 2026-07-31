@@ -31,7 +31,6 @@ import { resolveInboundChannelAuthorization } from '../shared/inbound-authorizat
 import { channelPlatformKey, extractChannelInstanceId, runtimeKey } from '../shared/channel-keys.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
-import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
 import {
   collectWeixinWorkspaceBindings,
   getWeixinBufPath,
@@ -520,30 +519,21 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       threadId,
     });
 
-    // Handle slash commands
-    const slashCommand = parseSlashCommand(msg.text);
-    const sessionCommand = await this.executeSessionCommand({
-      workspaceId: msg.workspaceId,
-      currentThreadId: threadId,
-      text: msg.text,
-      defaultTitle: `${msg.displayName || 'WeChat'} ${new Date().toLocaleTimeString()}`,
-      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(msg.workspaceId, threadId) : '',
-      chatId: msg.chatId,
-      platformUserId: msg.platformUserId,
-      platformKey,
-      instanceId,
-      contextToken: msg.contextToken,
-    });
-    if (sessionCommand.handled) {
-      return;
-    }
-
-    const latestRun = this.options.store.getLatestRunForThread(threadId);
     if (
-      (normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny')
-      && latestRun?.status === 'awaiting_input'
+      await this.dispatchSessionCommandOrAction({
+        workspaceId: msg.workspaceId,
+        threadId,
+        text: msg.text,
+        normalizedText,
+        displayName: msg.displayName,
+        platformLabel: 'WeChat',
+        chatId: msg.chatId,
+        platformUserId: msg.platformUserId,
+        platformKey,
+        instanceId,
+        contextToken: msg.contextToken,
+      })
     ) {
-      await router.sendThreadAction(threadId, msg.text);
       return;
     }
 

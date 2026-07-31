@@ -26,6 +26,7 @@ import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import { LocalCoreError } from '../../kernel/local-core-errors.js';
+import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
 
 export interface GatewayOptions {
   store: LocalCoreAcpStore;
@@ -378,6 +379,45 @@ export abstract class BaseChannelGateway<
 
   protected async executeSessionCommand(input: ChannelSessionCommandInput) {
     return this.sessionCommandRuntime.execute(input);
+  }
+
+  protected async dispatchSessionCommandOrAction(input: {
+    workspaceId: string;
+    threadId: string;
+    text: string;
+    normalizedText: string;
+    displayName?: string;
+    platformLabel: string;
+    chatId: string;
+    platformUserId: string;
+    platformKey: string;
+    instanceId: string;
+    contextToken?: string;
+  }): Promise<boolean> {
+    const slashCommand = parseSlashCommand(input.text);
+    const sessionCommand = await this.executeSessionCommand({
+      workspaceId: input.workspaceId,
+      currentThreadId: input.threadId,
+      text: input.text,
+      defaultTitle: `${input.displayName || input.platformLabel} ${new Date().toLocaleTimeString()}`,
+      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(input.workspaceId, input.threadId) : '',
+      chatId: input.chatId,
+      platformUserId: input.platformUserId,
+      platformKey: input.platformKey,
+      instanceId: input.instanceId,
+      contextToken: input.contextToken,
+    });
+    if (sessionCommand.handled) return true;
+    const latestRun = this.options.store.getLatestRunForThread(input.threadId);
+    if (
+      (input.normalizedText === 'allow' || input.normalizedText === 'allow all' || input.normalizedText === 'deny')
+      && latestRun?.status === 'awaiting_input'
+    ) {
+      const router = this.options.getWorkspaceRouter();
+      await router.sendThreadAction(input.threadId, input.text);
+      return true;
+    }
+    return false;
   }
 
   protected async resolveDefaultAgentType(workspaceId: string, threadId: string) {

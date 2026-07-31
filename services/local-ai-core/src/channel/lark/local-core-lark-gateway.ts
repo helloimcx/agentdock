@@ -66,7 +66,6 @@ import type {
 } from './types.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
-import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
 import {
   attachLarkWsDiagnostics,
   maskLarkAppId,
@@ -522,28 +521,21 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     });
     const acknowledgement = this.createTurnState(effectiveSessionKey, msg.messageId);
     await this.addAcknowledgementReaction(msg.workspaceId, msg.messageId, acknowledgement, instanceId);
-    const slashCommand = parseSlashCommand(msg.text);
-    const sessionCommand = await this.executeSessionCommand({
-      workspaceId: msg.workspaceId,
-      currentThreadId: threadId,
-      text: msg.text,
-      defaultTitle: `${msg.displayName || 'Lark'} ${new Date().toLocaleTimeString()}`,
-      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(msg.workspaceId, threadId) : '',
-      chatId: msg.chatId,
-      platformUserId: msg.platformUserId,
-      platformKey,
-      instanceId,
-    });
-    if (sessionCommand.handled) {
-      return; // { paired: true, threadId: sessionCommand.threadId || threadId };
-    }
-    const latestRun = this.options.store.getLatestRunForThread(threadId);
     if (
-      (normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny')
-      && latestRun?.status === 'awaiting_input'
+      await this.dispatchSessionCommandOrAction({
+        workspaceId: msg.workspaceId,
+        threadId,
+        text: msg.text,
+        normalizedText,
+        displayName: msg.displayName,
+        platformLabel: 'Lark',
+        chatId: msg.chatId,
+        platformUserId: msg.platformUserId,
+        platformKey,
+        instanceId,
+      })
     ) {
-      await router.sendThreadAction(threadId, msg.text);
-      return; // { paired: true, threadId };
+      return;
     }
     this.options.store.clearPlatformThreadMessageId(msg.workspaceId, msg.chatId, msg.platformUserId);
     await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts));
