@@ -510,27 +510,23 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     }
     const effectiveSessionKey = router.getThreadSessionKey(threadId);
 
-    this.threadRouting.set(effectiveSessionKey, {
+    const route: WeixinThreadRoute = {
       workspaceId: msg.workspaceId,
       instanceId,
       platformKey,
       platformUserId: msg.platformUserId,
       chatId: msg.chatId,
       threadId,
-    });
+    };
+    this.threadRouting.set(effectiveSessionKey, route);
 
     if (
-      await this.dispatchSessionCommandOrAction({
-        workspaceId: msg.workspaceId,
-        threadId,
+      await this.handleSessionCommandOrAction({
+        route,
         text: msg.text,
         normalizedText,
         displayName: msg.displayName,
         platformLabel: 'WeChat',
-        chatId: msg.chatId,
-        platformUserId: msg.platformUserId,
-        platformKey,
-        instanceId,
         contextToken: msg.contextToken,
       })
     ) {

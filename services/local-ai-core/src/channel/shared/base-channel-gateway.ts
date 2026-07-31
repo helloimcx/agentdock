@@ -381,40 +381,36 @@ export abstract class BaseChannelGateway<
     return this.sessionCommandRuntime.execute(input);
   }
 
-  protected async dispatchSessionCommandOrAction(input: {
-    workspaceId: string;
-    threadId: string;
+  protected async handleSessionCommandOrAction(input: {
+    route: TThreadRoute;
     text: string;
     normalizedText: string;
     displayName?: string;
     platformLabel: string;
-    chatId: string;
-    platformUserId: string;
-    platformKey: string;
-    instanceId: string;
     contextToken?: string;
   }): Promise<boolean> {
+    const { route } = input;
     const slashCommand = parseSlashCommand(input.text);
     const sessionCommand = await this.executeSessionCommand({
-      workspaceId: input.workspaceId,
-      currentThreadId: input.threadId,
+      workspaceId: route.workspaceId,
+      currentThreadId: route.threadId,
       text: input.text,
       defaultTitle: `${input.displayName || input.platformLabel} ${new Date().toLocaleTimeString()}`,
-      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(input.workspaceId, input.threadId) : '',
-      chatId: input.chatId,
-      platformUserId: input.platformUserId,
-      platformKey: input.platformKey,
-      instanceId: input.instanceId,
+      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(route.workspaceId, route.threadId) : '',
+      chatId: route.chatId,
+      platformUserId: route.platformUserId,
+      platformKey: route.platformKey,
+      instanceId: route.instanceId,
       contextToken: input.contextToken,
     });
     if (sessionCommand.handled) return true;
-    const latestRun = this.options.store.getLatestRunForThread(input.threadId);
+    const latestRun = this.options.store.getLatestRunForThread(route.threadId);
     if (
       (input.normalizedText === 'allow' || input.normalizedText === 'allow all' || input.normalizedText === 'deny')
       && latestRun?.status === 'awaiting_input'
     ) {
       const router = this.options.getWorkspaceRouter();
-      await router.sendThreadAction(input.threadId, input.text);
+      await router.sendThreadAction(route.threadId, input.text);
       return true;
     }
     return false;

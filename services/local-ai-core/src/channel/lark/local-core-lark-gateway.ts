@@ -511,28 +511,24 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       threadId = permissionThreadId;
     }
     const effectiveSessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
-    this.threadRouting.set(effectiveSessionKey, {
+    const route: LarkThreadRoute = {
       workspaceId: msg.workspaceId,
       instanceId,
       platformKey,
       platformUserId: msg.platformUserId,
       chatId: msg.chatId,
       threadId,
-    });
+    };
+    this.threadRouting.set(effectiveSessionKey, route);
     const acknowledgement = this.createTurnState(effectiveSessionKey, msg.messageId);
     await this.addAcknowledgementReaction(msg.workspaceId, msg.messageId, acknowledgement, instanceId);
     if (
-      await this.dispatchSessionCommandOrAction({
-        workspaceId: msg.workspaceId,
-        threadId,
+      await this.handleSessionCommandOrAction({
+        route,
         text: msg.text,
         normalizedText,
         displayName: msg.displayName,
         platformLabel: 'Lark',
-        chatId: msg.chatId,
-        platformUserId: msg.platformUserId,
-        platformKey,
-        instanceId,
       })
     ) {
       return;
