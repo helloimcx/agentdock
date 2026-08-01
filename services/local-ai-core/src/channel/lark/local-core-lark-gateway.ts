@@ -25,7 +25,6 @@ import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../ker
 import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
-import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
 import { resolveInboundChannelAuthorization } from '../shared/inbound-authorization.js';
 import {
@@ -490,27 +489,16 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     }
     const authorized = authorization.authorized;
     const router = this.options.getWorkspaceRouter();
-    let { threadId } = await resolveChannelThreadRoute({
-      store: this.options.store,
-      router,
+    const { threadId, normalizedText, effectiveSessionKey } = await this.resolveInboundThreadAndSession({
       workspaceId: msg.workspaceId,
       platformKey,
-      chatId: msg.chatId,
       platformUserId: msg.platformUserId,
+      chatId: msg.chatId,
       displayName: msg.displayName,
-      fallbackTitlePrefix: 'Lark',
+      text: msg.text,
       authorized,
+      fallbackTitlePrefix: 'Lark',
     });
-    const normalizedText = String(msg.text || '').trim().toLowerCase();
-    const permissionThreadId = (
-      normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
-    )
-      ? this.findAwaitingPermissionThreadId(msg.workspaceId, msg.chatId, msg.platformUserId)
-      : '';
-    if (permissionThreadId && permissionThreadId !== threadId) {
-      threadId = permissionThreadId;
-    }
-    const effectiveSessionKey = this.options.getWorkspaceRouter().getThreadSessionKey(threadId);
     const route: LarkThreadRoute = {
       workspaceId: msg.workspaceId,
       instanceId,

@@ -19,6 +19,7 @@ import type {
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
+import type { LocalPlatformUserRow } from '../../router/workspace-router-types.js';
 import type { EventBus } from '@cc/plugin-sdk';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
@@ -379,6 +380,51 @@ export abstract class BaseChannelGateway<
 
   protected async executeSessionCommand(input: ChannelSessionCommandInput) {
     return this.sessionCommandRuntime.execute(input);
+  }
+
+  protected async resolveInboundThreadAndSession(input: {
+    workspaceId: string;
+    platformKey: string;
+    platformUserId: string;
+    chatId: string;
+    displayName: string;
+    text?: string;
+    authorized: Pick<LocalPlatformUserRow, 'chat_id' | 'thread_id'>;
+    fallbackTitlePrefix: string;
+    permissionLookupPlatformKey?: string;
+  }): Promise<{
+    threadId: string;
+    normalizedText: string;
+    effectiveSessionKey: string;
+  }> {
+    const router = this.options.getWorkspaceRouter();
+    let { threadId } = await resolveChannelThreadRoute({
+      store: this.options.store,
+      router,
+      workspaceId: input.workspaceId,
+      platformKey: input.platformKey,
+      chatId: input.chatId,
+      platformUserId: input.platformUserId,
+      displayName: input.displayName,
+      fallbackTitlePrefix: input.fallbackTitlePrefix,
+      authorized: input.authorized,
+    });
+    const normalizedText = String(input.text || '').trim().toLowerCase();
+    const permissionThreadId = (
+      normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
+    )
+      ? this.findAwaitingPermissionThreadId(
+          input.workspaceId,
+          input.chatId,
+          input.platformUserId,
+          input.permissionLookupPlatformKey,
+        )
+      : '';
+    if (permissionThreadId && permissionThreadId !== threadId) {
+      threadId = permissionThreadId;
+    }
+    const effectiveSessionKey = router.getThreadSessionKey(threadId);
+    return { threadId, normalizedText, effectiveSessionKey };
   }
 
   protected async handleSessionCommandOrAction(input: {
