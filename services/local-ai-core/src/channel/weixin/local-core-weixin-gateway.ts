@@ -25,7 +25,6 @@ import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
-import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
 import { resolveInboundChannelAuthorization } from '../shared/inbound-authorization.js';
 import { channelPlatformKey, extractChannelInstanceId, runtimeKey } from '../shared/channel-keys.js';
@@ -489,26 +488,17 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     const authorized = authorization.authorized;
 
     const router = this.options.getWorkspaceRouter();
-    let { threadId } = await resolveChannelThreadRoute({
-      store: this.options.store,
-      router,
+    const { threadId, normalizedText, effectiveSessionKey } = await this.resolveInboundThreadAndSession({
       workspaceId: msg.workspaceId,
       platformKey,
-      chatId: msg.chatId,
       platformUserId: msg.platformUserId,
+      chatId: msg.chatId,
       displayName: msg.displayName,
-      fallbackTitlePrefix: 'WeChat',
+      text: msg.text,
       authorized,
+      fallbackTitlePrefix: 'WeChat',
+      permissionLookupPlatformKey: msg.platformKey || 'weixin',
     });
-
-    const normalizedText = String(msg.text || '').trim().toLowerCase();
-    const permissionThreadId = (
-      normalizedText === 'allow' || normalizedText === 'allow all' || normalizedText === 'deny'
-    ) ? this.findAwaitingPermissionThreadId(msg.workspaceId, msg.chatId, msg.platformUserId, msg.platformKey || 'weixin') : '';
-    if (permissionThreadId && permissionThreadId !== threadId) {
-      threadId = permissionThreadId;
-    }
-    const effectiveSessionKey = router.getThreadSessionKey(threadId);
 
     const route: WeixinThreadRoute = {
       workspaceId: msg.workspaceId,
