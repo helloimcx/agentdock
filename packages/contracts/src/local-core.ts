@@ -5,6 +5,7 @@ import {
   ChannelRoute,
   normalizeContractEnumValue,
   normalizeScheduledJobExecutionMode,
+  resolveContractEnum,
   ScheduledJobExecutionMode,
   ScheduledJobRoute,
 } from './scheduler.js';
@@ -119,26 +120,13 @@ export interface CommandRiskClassification {
 export type ApprovalRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 
 export function normalizeApprovalRequestStatus(value: unknown, fallback: ApprovalRequestStatus = 'pending'): ApprovalRequestStatus {
-  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
-  if (
-    normalized === 'pending' ||
-    normalized === 'approved' ||
-    normalized === 'rejected' ||
-    normalized === 'cancelled' ||
-    normalized === 'expired'
-  ) {
-    return normalized;
-  }
-  if (normalized === 'approve') {
-    return 'approved';
-  }
-  if (normalized === 'reject') {
-    return 'rejected';
-  }
-  if (normalized === 'canceled') {
-    return 'cancelled';
-  }
-  throw new Error('Approval request status must be pending, approved, rejected, cancelled, or expired.');
+  return resolveContractEnum({
+    value,
+    fallback,
+    valid: ['pending', 'approved', 'rejected', 'cancelled', 'expired'],
+    aliases: { approve: 'approved', reject: 'rejected', canceled: 'cancelled' },
+    errorMessage: 'Approval request status must be pending, approved, rejected, cancelled, or expired.',
+  });
 }
 
 export type ApprovalRequestKind =
@@ -348,22 +336,13 @@ export type AgentTaskStatus =
   | 'cancelled';
 
 export function normalizeAgentTaskStatus(value: unknown, fallback: AgentTaskStatus = 'created'): AgentTaskStatus {
-  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
-  if (
-    normalized === 'created' ||
-    normalized === 'queued' ||
-    normalized === 'running' ||
-    normalized === 'waiting_for_user' ||
-    normalized === 'completed' ||
-    normalized === 'failed' ||
-    normalized === 'cancelled'
-  ) {
-    return normalized;
-  }
-  if (normalized === 'canceled') {
-    return 'cancelled';
-  }
-  throw new Error('Agent task status must be created, queued, running, waiting_for_user, completed, failed, or cancelled.');
+  return resolveContractEnum({
+    value,
+    fallback,
+    valid: ['created', 'queued', 'running', 'waiting_for_user', 'completed', 'failed', 'cancelled'],
+    aliases: { canceled: 'cancelled' },
+    errorMessage: 'Agent task status must be created, queued, running, waiting_for_user, completed, failed, or cancelled.',
+  });
 }
 
 export type AgentTaskTimelineItemType =
@@ -707,21 +686,13 @@ export function normalizeChannelPlatform(value: unknown) {
 }
 
 export function normalizeRunStatus(value: unknown, fallback: RunSummary['status'] = 'queued'): RunSummary['status'] {
-  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
-  if (
-    normalized === 'queued' ||
-    normalized === 'running' ||
-    normalized === 'awaiting_input' ||
-    normalized === 'completed' ||
-    normalized === 'failed' ||
-    normalized === 'interrupted'
-  ) {
-    return normalized;
-  }
-  if (normalized === 'cancelled' || normalized === 'canceled') {
-    return 'interrupted';
-  }
-  throw new Error('Run status must be queued, running, awaiting_input, completed, failed, or interrupted.');
+  return resolveContractEnum({
+    value,
+    fallback,
+    valid: ['queued', 'running', 'awaiting_input', 'completed', 'failed', 'interrupted'],
+    aliases: { cancelled: 'interrupted', canceled: 'interrupted' },
+    errorMessage: 'Run status must be queued, running, awaiting_input, completed, failed, or interrupted.',
+  });
 }
 
 export interface ScheduledJobExecutionTarget {
@@ -772,23 +743,19 @@ export interface ScheduledJobRun {
 }
 
 export function normalizeScheduledJobRunStatus(value: unknown, fallback: ScheduledJobRun['status'] = 'queued'): ScheduledJobRun['status'] {
-  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
-  if (
-    normalized === 'queued' ||
-    normalized === 'running' ||
-    normalized === 'succeeded' ||
-    normalized === 'failed' ||
-    normalized === 'skipped'
-  ) {
-    return normalized;
-  }
-  if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
-    return 'succeeded';
-  }
-  if (normalized === 'cancelled' || normalized === 'canceled') {
-    return 'skipped';
-  }
-  throw new Error('Scheduled job run status must be queued, running, succeeded, failed, or skipped.');
+  return resolveContractEnum({
+    value,
+    fallback,
+    valid: ['queued', 'running', 'succeeded', 'failed', 'skipped'],
+    aliases: {
+      complete: 'succeeded',
+      completed: 'succeeded',
+      success: 'succeeded',
+      cancelled: 'skipped',
+      canceled: 'skipped',
+    },
+    errorMessage: 'Scheduled job run status must be queued, running, succeeded, failed, or skipped.',
+  });
 }
 
 export interface ScheduledJobCreateInput {
@@ -902,20 +869,13 @@ export interface AutomationMonitorUpdateInput {
 }
 
 export function normalizeAutomationMonitorStatus(value: unknown, fallback: AutomationMonitorStatus = 'queued'): AutomationMonitorStatus {
-  const normalized = normalizeContractEnumValue(value || fallback).replace(/-/g, '_');
-  if (
-    normalized === 'queued' ||
-    normalized === 'running' ||
-    normalized === 'succeeded' ||
-    normalized === 'failed' ||
-    normalized === 'skipped'
-  ) {
-    return normalized;
-  }
-  if (normalized === 'complete' || normalized === 'completed' || normalized === 'success') {
-    return 'succeeded';
-  }
-  throw new Error('Automation monitor status must be queued, running, succeeded, failed, or skipped.');
+  return resolveContractEnum({
+    value,
+    fallback,
+    valid: ['queued', 'running', 'succeeded', 'failed', 'skipped'],
+    aliases: { complete: 'succeeded', completed: 'succeeded', success: 'succeeded' },
+    errorMessage: 'Automation monitor status must be queued, running, succeeded, failed, or skipped.',
+  });
 }
 
 export function normalizeAutomationMonitorConditionOperator(value: unknown): AutomationMonitorConditionOperator {
