@@ -9,6 +9,21 @@ import type {
   LocalPlatformUserRow,
 } from './acp-store-types.js';
 
+function buildWorkspacePlatformWhere(workspaceId?: string, platform?: string): { where: string; params: string[] } {
+  const params: string[] = [];
+  const predicates: string[] = [];
+  if (workspaceId) {
+    predicates.push('workspace_id = ?');
+    params.push(workspaceId);
+  }
+  if (platform) {
+    predicates.push('platform = ?');
+    params.push(platform);
+  }
+  const where = predicates.length > 0 ? `WHERE ${predicates.join(' AND ')}` : '';
+  return { where, params };
+}
+
 export class LocalPlatformStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -75,17 +90,7 @@ export class LocalPlatformStore {
   }
 
   listAuthorizedUsers(workspaceId?: string, platform?: string): LocalCoreAuthorizedUser[] {
-    const params: string[] = [];
-    const predicates: string[] = [];
-    if (workspaceId) {
-      predicates.push('workspace_id = ?');
-      params.push(workspaceId);
-    }
-    if (platform) {
-      predicates.push('platform = ?');
-      params.push(platform);
-    }
-    const where = predicates.length > 0 ? `WHERE ${predicates.join(' AND ')}` : '';
+    const { where, params } = buildWorkspacePlatformWhere(workspaceId, platform);
     const query = `
         SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
         FROM platform_users
@@ -216,17 +221,7 @@ export class LocalPlatformStore {
   }
 
   listPairingRequests(workspaceId?: string, platform?: string): LocalCorePairingRequest[] {
-    const params: string[] = [];
-    const predicates: string[] = [];
-    if (workspaceId) {
-      predicates.push('workspace_id = ?');
-      params.push(workspaceId);
-    }
-    if (platform) {
-      predicates.push('platform = ?');
-      params.push(platform);
-    }
-    const where = predicates.length > 0 ? `WHERE ${predicates.join(' AND ')}` : '';
+    const { where, params } = buildWorkspacePlatformWhere(workspaceId, platform);
     const query = `
         SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
         FROM platform_pairings
