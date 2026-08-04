@@ -33,7 +33,7 @@ export type AutomationStateUpdateInput = {
 };
 
 export type AutomationRunCreateInput = Partial<
-  Omit<AutomationRun, 'id' | 'automationId' | 'evaluationId' | 'executionMode' | 'createdAt'>
+  Omit<AutomationRun, 'id' | 'automationId' | 'evaluationId' | 'executionMode'>
 >;
 export type AutomationRunUpdateInput = Partial<
   Omit<AutomationRun, 'id' | 'automationId' | 'evaluationId' | 'executionMode' | 'createdAt'>
@@ -782,10 +782,11 @@ function pickEvaluationFinishFields(input: AutomationEvaluationFinishInput): Rec
   return fields;
 }
 
-function pickRunMutableFields(input: AutomationRunCreateInput | AutomationRunUpdateInput): Record<string, unknown> {
+function pickRunMutableFields(input: Record<string, unknown>): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
   for (const key of [
     'status',
+    'createdAt',
     'threadId',
     'acpRunId',
     'deliveryStatus',

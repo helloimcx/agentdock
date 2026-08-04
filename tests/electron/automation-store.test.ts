@@ -222,8 +222,8 @@ test('listLatestRunByOrigin returns the most recent run per automation', () => {
       });
       return evaluation;
     });
-    const earlierRun = context.store.createRun(job.id, evaluations[0]!.id, { status: 'succeeded' });
-    const laterRun = context.store.createRun(job.id, evaluations[1]!.id, { status: 'failed', error: 'boom' });
+    const earlierRun = context.store.createRun(job.id, evaluations[0]!.id, { status: 'succeeded', createdAt: '2026-07-05T01:00:00.000Z' });
+    const laterRun = context.store.createRun(job.id, evaluations[1]!.id, { status: 'failed', error: 'boom', createdAt: '2026-07-05T02:00:00.000Z' });
     void earlierRun;
 
     const all = context.store.listLatestRunByOrigin('scheduled-job');

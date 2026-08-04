@@ -77,6 +77,7 @@ export interface LocalCoreRuntimeBootstrap {
 export function bootstrapLocalCoreKernel(options?: {
   log?: (message: string) => void;
   disabledPluginIds?: string[];
+  builtinPlugins?: RuntimePlugin[];
 }): LocalCoreKernel {
   const capabilities = new LocalCoreCapabilityRegistry();
   const plugins = new LocalCorePluginRegistry(options?.disabledPluginIds);
@@ -92,7 +93,8 @@ export function bootstrapLocalCoreKernel(options?: {
   const lifecycle = new LocalCoreLifecycleManager(plugins, context);
   const diagnostics = new LocalCoreDiagnostics(plugins, lifecycle);
 
-  registerPluginSet(plugins, capabilities, context, createKernelBuiltinPlugins());
+  const initialPlugins = options?.builtinPlugins ?? createKernelBuiltinPlugins();
+  registerPluginSet(plugins, capabilities, context, initialPlugins);
 
   return {
     context,
