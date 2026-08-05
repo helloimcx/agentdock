@@ -444,18 +444,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       return;
     }
 
-    this.options.eventBus.emit({
-      type: 'platform.message.received',
-      payload: {
-        platform: this.platform,
-        workspaceId: msg.workspaceId,
-        participantId: msg.platformUserId,
-        channelId: msg.chatId,
-        displayName: msg.displayName,
-        text: msg.text,
-        messageId: msg.messageId,
-      },
-    });
+    this.emitInboundMessageReceived(msg);
 
     const binding = await this.getBinding(msg.workspaceId, instanceId);
     const authorization = resolveInboundChannelAuthorization({
