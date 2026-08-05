@@ -72,6 +72,15 @@ export interface GatewayTurnState {
   awaitingPermission?: boolean;
 }
 
+export interface InboundMessageEventInput {
+  workspaceId: string;
+  platformUserId: string;
+  chatId: string;
+  displayName: string;
+  text: string;
+  messageId: string;
+}
+
 function resolveRuntimeKey(workspaceId: string, instanceId?: string): string {
   return instanceId ? `${workspaceId}::${instanceId}` : workspaceId;
 }
@@ -493,6 +502,21 @@ export abstract class BaseChannelGateway<
       }
     }
     return '';
+  }
+
+  protected emitInboundMessageReceived(msg: InboundMessageEventInput) {
+    this.options.eventBus.emit({
+      type: 'platform.message.received',
+      payload: {
+        platform: this.platform,
+        workspaceId: msg.workspaceId,
+        participantId: msg.platformUserId,
+        channelId: msg.chatId,
+        displayName: msg.displayName,
+        text: msg.text,
+        messageId: msg.messageId,
+      },
+    });
   }
 
   // ==================== Runtime Management ====================

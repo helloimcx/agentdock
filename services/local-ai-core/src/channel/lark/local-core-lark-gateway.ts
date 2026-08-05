@@ -439,18 +439,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     const msg = input as LarkInboundMessage;
     const instanceId = msg.instanceId || 'default';
     const platformKey = msg.platformKey || channelPlatformKey('lark', instanceId);
-    this.options.eventBus.emit({
-      type: 'platform.message.received',
-      payload: {
-        platform: this.platform,
-        workspaceId: msg.workspaceId,
-        participantId: msg.platformUserId,
-        channelId: msg.chatId,
-        displayName: msg.displayName,
-        text: msg.text,
-        messageId: msg.messageId,
-      },
-    });
+    this.emitInboundMessageReceived(msg);
     const runtimeState = this.resolveRuntimeState(msg.workspaceId, instanceId).state;
     let binding: LarkWorkspaceBinding | undefined;
     try {
