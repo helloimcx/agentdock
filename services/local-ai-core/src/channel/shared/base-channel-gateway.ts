@@ -72,7 +72,7 @@ export interface GatewayTurnState {
   awaitingPermission?: boolean;
 }
 
-export interface InboundMessageEventPayload {
+export interface InboundMessageEventInput {
   workspaceId: string;
   platformUserId: string;
   chatId: string;
@@ -504,7 +504,7 @@ export abstract class BaseChannelGateway<
     return '';
   }
 
-  protected emitInboundMessageReceived(msg: InboundMessageEventPayload) {
+  protected emitInboundMessageReceived(msg: InboundMessageEventInput) {
     this.options.eventBus.emit({
       type: 'platform.message.received',
       payload: {
