@@ -47,13 +47,14 @@ import {
 } from './workspace-model';
 import { AddProjectDialog, PlatformDialog, ProjectDetails, ProjectListPanel, ProjectOverviewCards } from './workspace-components';
 import { BasicProjectSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
-import { useLarkQr, useModelProviders } from './workspace-hooks';
+import { useLarkQr } from './workspace-hooks';
 
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProject = searchParams.get('project') || '';
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
   const [persistedConfig, setPersistedConfig] = useState<DesktopConnectConfig | null>(null);
+  const [modelProviders, setModelProviders] = useState<DesktopModelProvider[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [projectTab, setProjectTab] = useState<ProjectTab>('basic');
   const [projectDialog, setProjectDialog] = useState<ProjectDialogDraft | null>(null);
@@ -68,17 +69,6 @@ export default function DesktopWorkspace() {
   const selectedIndexRef = useRef(selectedIndex);
   const selectedProjectWorkspaceIdRef = useRef('');
 
-  const {
-    modelProviders,
-    providerDrafts,
-    setModelProviders,
-    setProviderDrafts,
-    updateProviderDraft,
-    addProvider,
-    saveProvider,
-    deleteProvider,
-  } = useModelProviders(setNotice);
-
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
     try {
@@ -91,7 +81,6 @@ export default function DesktopWorkspace() {
       setConfigDraft(parsed);
       setPersistedConfig(clone(parsed));
       setModelProviders(providerState.providers || []);
-      setProviderDrafts(Object.fromEntries((providerState.providers || []).map((provider) => [provider.id, providerToDraft(provider)])));
       if (projectName) {
         const index = (parsed.projects || []).findIndex((project) => project.name === projectName);
         setSelectedIndex(index >= 0 ? index : 0);
@@ -414,17 +403,12 @@ export default function DesktopWorkspace() {
           projectTab={projectTab}
           setProjectTab={setProjectTab}
           modelProviders={modelProviders}
-          providerDrafts={providerDrafts}
           configDirty={configDirty}
           pending={pending}
           updateProject={updateSelectedProject}
           updateSandbox={updateSelectedSandbox}
           updateDeploymentProfile={updateDeploymentProfile}
-          updateProviderDraft={updateProviderDraft}
           openPlatformDialog={openPlatformDialog}
-          addProvider={addProvider}
-          saveProvider={saveProvider}
-          deleteProvider={deleteProvider}
           onSaveConfig={() => void handleSaveConfig()}
         />
       </div>

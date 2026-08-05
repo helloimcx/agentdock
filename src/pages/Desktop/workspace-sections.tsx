@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Plus, Save, Settings, Trash2 } from 'lucide-react';
 import { Button, EmptyState, Input, Select, StatusPill } from '@/components/ui';
 import {
@@ -9,20 +10,14 @@ import {
   normalizeDesktopAgentModel,
   type DesktopDeploymentProfile,
   type DesktopModelProvider,
-  type DesktopModelProviderInput,
   type DesktopProjectConfig,
-  type DesktopProviderConfig,
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
 } from '@cc/superai-contracts';
 import {
-  applyProviderPreset,
   CUSTOM_SELECT_VALUE,
-  getProviderPresetValue,
   getSelectValue,
   platformSummary,
-  PROVIDER_PRESETS,
-  providerToDraft,
   type SandboxForm,
 } from './workspace-model';
 
@@ -93,26 +88,16 @@ export function BasicProjectSection({ project, updateProject }: BasicProjectSect
 type ProvidersSectionProps = {
   project: DesktopProjectConfig;
   modelProviders: DesktopModelProvider[];
-  providerDrafts: Record<string, DesktopModelProviderInput>;
   updateProject: ProjectUpdater;
-  updateProviderDraft: (providerId: string, updater: (provider: DesktopModelProviderInput) => DesktopModelProviderInput) => void;
-  onAddProvider: () => void;
-  onSaveProvider: (providerId: string) => void;
-  onDeleteProvider: (providerId: string) => void;
 };
 
 export function ProvidersSection({
   project,
   modelProviders,
-  providerDrafts,
   updateProject,
-  updateProviderDraft,
-  onAddProvider,
-  onSaveProvider,
-  onDeleteProvider,
 }: ProvidersSectionProps) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-4">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Select
           label="Project provider"
@@ -147,68 +132,19 @@ export function ProvidersSection({
           placeholder="Use provider default model"
         />
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+      <div className="rounded-xl border border-black/10 p-4 dark:border-white/[0.08] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Shared providers</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Providers are shared and selected by projects.</p>
+          <h4 className="text-sm font-semibold text-slate-950 dark:text-white">AI 服务商管理</h4>
+          <p className="mt-1 text-xs text-muted-foreground">全局 AI 服务商（API Key、Base URL 等）已解耦至独立页面管理。</p>
         </div>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={onAddProvider}
+        <Link
+          to="/providers"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
         >
-          <Plus size={14} /> Add provider
-        </Button>
+          管理服务商
+        </Link>
       </div>
-      {modelProviders.length === 0 ? (
-        <div className="rounded-xl border border-black/10 px-4 py-4 text-sm text-muted-foreground dark:border-white/[0.08]">
-          No shared providers configured.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {modelProviders.map((provider) => {
-            const draft = providerDrafts[provider.id] || providerToDraft(provider);
-            return (
-              <div key={provider.id} className="app-surface p-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <Select
-                    label="Preset"
-                    value={getProviderPresetValue(draft as DesktopProviderConfig)}
-                    onChange={(event) => {
-                      if (event.target.value !== CUSTOM_SELECT_VALUE) {
-                        updateProviderDraft(provider.id, (current) => applyProviderPreset(current as DesktopProviderConfig, event.target.value));
-                      }
-                    }}
-                  >
-                    {PROVIDER_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
-                    <option value={CUSTOM_SELECT_VALUE}>custom</option>
-                  </Select>
-                  <Input label="Name" value={draft.name || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, name: event.target.value }))} />
-                  <Input label="API key" type="password" value={draft.api_key || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, api_key: event.target.value }))} />
-                  <Input label="Base URL" value={draft.base_url || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, base_url: event.target.value }))} />
-                  <Input label="Default model" value={draft.model || ''} onChange={(event) => updateProviderDraft(provider.id, (current) => ({ ...current, model: event.target.value }))} />
-                  <div className="flex items-end gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => onSaveProvider(provider.id)}
-                    >
-                      <Save size={14} /> Save
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => onDeleteProvider(provider.id)}
-                    >
-                      <Trash2 size={14} /> Remove
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </section>
   );
 }

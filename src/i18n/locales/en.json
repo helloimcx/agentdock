@@ -5,6 +5,7 @@
     "chatDesktop": "Desktop Chat",
     "chatWeb": "Chat",
     "workspace": "Workspace",
+    "providers": "AI Providers",
     "knowledge": "Knowledge",
     "projects": "Projects",
     "sessions": "Sessions",
@@ -92,16 +93,19 @@
     "waitingActivation": "Waiting to become available"
   },
   "providers": {
-    "title": "Providers",
-    "name": "Name",
-    "model": "Model",
+    "title": "AI Providers",
+    "description": "Configure and manage global AI model provider API keys, base URLs, and default models.",
+    "addProvider": "Add Provider",
+    "listTitle": "Configured Providers",
+    "empty": "No AI providers configured yet. Click 'Add Provider' to get started.",
+    "preset": "Preset Template",
+    "name": "Provider Name",
+    "apiKey": "API Key",
     "baseUrl": "Base URL",
-    "active": "Active",
-    "add": "Add provider",
-    "remove": "Remove",
-    "activate": "Activate",
-    "setModel": "Set model",
-    "models": "Models"
+    "defaultModel": "Default Model",
+    "created": "Provider created.",
+    "saved": "Provider saved.",
+    "removed": "Provider removed."
   },
   "cron": {
     "title": "Scheduled jobs",

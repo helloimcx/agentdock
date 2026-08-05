@@ -2,6 +2,7 @@ import { lazy, type ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import {
   Activity,
+  Cpu,
   FolderKanban,
   LayoutDashboard,
   Library,
@@ -16,6 +17,7 @@ import type { RuntimeFeatureSupport } from '@/app/runtime';
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const ThreadChat = lazy(() => import('@/pages/Threads/ThreadChat'));
 const DesktopWorkspace = lazy(() => import('@/pages/Desktop/Workspace'));
+const ProvidersPage = lazy(() => import('@/pages/Providers'));
 const AutomationList = lazy(() => import('@/pages/Automation/AutomationList'));
 const SystemConfig = lazy(() => import('@/pages/System/Config'));
 const SystemLogs = lazy(() => import('@/pages/System/Logs'));
@@ -116,6 +118,13 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       element: ({ features }) => guarded(features.desktopWorkspace, <DesktopWorkspace />),
     },
     {
+      id: 'providers',
+      path: 'providers',
+      titleKey: 'nav.providers',
+      order: 35,
+      element: ({ features }) => guarded(features.desktopWorkspace, <ProvidersPage />),
+    },
+    {
       id: 'knowledge',
       path: 'knowledge',
       titleKey: 'nav.knowledge',
@@ -214,6 +223,14 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       labelKey: 'nav.workspace',
       icon: Wrench,
       order: 30,
+      visible: ({ features }) => features.desktopWorkspace,
+    },
+    {
+      id: 'providers',
+      path: '/providers',
+      labelKey: 'nav.providers',
+      icon: Cpu,
+      order: 35,
       visible: ({ features }) => features.desktopWorkspace,
     },
     {

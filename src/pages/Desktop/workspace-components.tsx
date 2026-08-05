@@ -7,7 +7,6 @@ import {
   getDefaultDesktopAgentModel,
   type DesktopDeploymentProfile,
   type DesktopModelProvider,
-  type DesktopModelProviderInput,
   type DesktopPlatformConfig,
   type DesktopProjectConfig,
   type DesktopSandboxProviderConfig,
@@ -342,17 +341,12 @@ type ProjectDetailsProps = {
   projectTab: ProjectTab;
   setProjectTab: (tab: ProjectTab) => void;
   modelProviders: DesktopModelProvider[];
-  providerDrafts: Record<string, DesktopModelProviderInput>;
   configDirty: boolean;
   pending: string;
   updateProject: (updater: (project: DesktopProjectConfig) => DesktopProjectConfig) => void;
   updateSandbox: (updater: (sandbox: SandboxForm) => SandboxForm) => void;
   updateDeploymentProfile: (profileId: string) => void;
-  updateProviderDraft: (providerId: string, updater: (provider: DesktopModelProviderInput) => DesktopModelProviderInput) => void;
   openPlatformDialog: (index: number | null) => void;
-  addProvider: () => void;
-  saveProvider: (providerId: string) => void;
-  deleteProvider: (providerId: string) => void;
   onSaveConfig: () => void;
 };
 
@@ -365,17 +359,12 @@ export function ProjectDetails({
   projectTab,
   setProjectTab,
   modelProviders,
-  providerDrafts,
   configDirty,
   pending,
   updateProject,
   updateSandbox,
   updateDeploymentProfile,
-  updateProviderDraft,
   openPlatformDialog,
-  addProvider,
-  saveProvider,
-  deleteProvider,
   onSaveConfig,
 }: ProjectDetailsProps) {
   return (
@@ -424,12 +413,7 @@ export function ProjectDetails({
             <ProvidersSection
               project={project}
               modelProviders={modelProviders}
-              providerDrafts={providerDrafts}
               updateProject={updateProject}
-              updateProviderDraft={updateProviderDraft}
-              onAddProvider={addProvider}
-              onSaveProvider={saveProvider}
-              onDeleteProvider={deleteProvider}
             />
           ) : null}
 

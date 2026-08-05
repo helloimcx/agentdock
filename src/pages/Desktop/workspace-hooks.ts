@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  createModelProvider,
-  deleteModelProvider,
   saveCoreRuntimeConfig as saveRuntimeConfig,
-  updateModelProvider,
 } from '@cc/core-sdk/runtime';
 import {
   checkLarkQrCodeStatus,
@@ -11,7 +8,7 @@ import {
   getLarkQrCode,
   testLarkConnection,
 } from '@cc/core-sdk/channels';
-import type { DesktopConnectConfig, DesktopModelProvider, DesktopModelProviderInput } from '@cc/superai-contracts';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
 import {
   clone,
   createPlatformDraft,
@@ -19,7 +16,6 @@ import {
   getPlatformInstanceId,
   normalizePlatformDraft,
   normalizeProject,
-  providerToDraft,
   type LarkQrState,
   type Notice,
   type PlatformDialogState,
@@ -27,75 +23,6 @@ import {
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-/**
- * Owns the model-provider list and its inline CRUD drafts.
- * `notify` receives success/error notices (wired to the page's notice state).
- * `setModelProviders` / `setProviderDrafts` are exposed so the initial load can
- * seed state from the runtime config fetch.
- */
-export function useModelProviders(notify: (notice: Notice) => void) {
-  const [modelProviders, setModelProviders] = useState<DesktopModelProvider[]>([]);
-  const [providerDrafts, setProviderDrafts] = useState<Record<string, DesktopModelProviderInput>>({});
-
-  const updateProviderDraft = useCallback((providerId: string, updater: (provider: DesktopModelProviderInput) => DesktopModelProviderInput) => {
-    setProviderDrafts((current) => {
-      const provider = current[providerId];
-      if (!provider) return current;
-      return { ...current, [providerId]: updater(provider) };
-    });
-  }, []);
-
-  const addProvider = async () => {
-    try {
-      const provider = await createModelProvider({ name: `provider-${modelProviders.length + 1}` });
-      setModelProviders((current) => [...current, provider].sort((a, b) => a.name.localeCompare(b.name)));
-      setProviderDrafts((current) => ({ ...current, [provider.id]: providerToDraft(provider) }));
-      notify({ tone: 'success', message: 'Provider created.' });
-    } catch (err) {
-      notify({ tone: 'error', message: describeError(err) });
-    }
-  };
-
-  const saveProvider = async (providerId: string) => {
-    const draft = providerDrafts[providerId];
-    if (!draft) return;
-    try {
-      const provider = await updateModelProvider(providerId, draft);
-      setModelProviders((current) => current.map((item) => item.id === provider.id ? provider : item).sort((a, b) => a.name.localeCompare(b.name)));
-      setProviderDrafts((current) => ({ ...current, [provider.id]: providerToDraft(provider) }));
-      notify({ tone: 'success', message: 'Provider saved.' });
-    } catch (err) {
-      notify({ tone: 'error', message: describeError(err) });
-    }
-  };
-
-  const deleteProvider = async (providerId: string) => {
-    try {
-      await deleteModelProvider(providerId);
-      setModelProviders((current) => current.filter((provider) => provider.id !== providerId));
-      setProviderDrafts((current) => {
-        const next = { ...current };
-        delete next[providerId];
-        return next;
-      });
-      notify({ tone: 'success', message: 'Provider removed.' });
-    } catch (err) {
-      notify({ tone: 'error', message: describeError(err) });
-    }
-  };
-
-  return {
-    modelProviders,
-    providerDrafts,
-    setModelProviders,
-    setProviderDrafts,
-    updateProviderDraft,
-    addProvider,
-    saveProvider,
-    deleteProvider,
-  };
 }
 
 interface UseLarkQrParams {
