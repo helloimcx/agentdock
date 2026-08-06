@@ -3,7 +3,7 @@ import { detectCronCommands, stripCronCommands, type CronCommand } from '../sche
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { withoutThreadRoute } from '../scheduler/scheduled-job-route.js';
 
-type SchedulerHandlers = {
+export type SchedulerHandlers = {
   createJob: (input: {
     workspaceId: string;
     platform: string;

@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { DesktopBridgeEvent, ScheduledJobRoute, ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
+import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
 } from '@cc/superai-contracts';
-import type { ScheduledJob } from '@cc/superai-contracts';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import type { EventBus } from '@cc/plugin-sdk';
 import type {
@@ -13,7 +12,7 @@ import type {
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
 import { LocalCoreAcpSessionCoordinator } from './local-core-acp-session-coordinator.js';
-import { LocalCoreAcpResponseProcessor } from './local-core-acp-response-processor.js';
+import { LocalCoreAcpResponseProcessor, type SchedulerHandlers } from './local-core-acp-response-processor.js';
 import type { ThreadMessageInput } from './local-core-acp-content.js';
 import { normalizeThreadMessageInput } from './local-core-acp-content.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
@@ -37,19 +36,7 @@ type LocalCoreAcpBackendOptions = {
   localCoreBase?: string;
   emitBridge: (event: DesktopBridgeEvent) => void;
   eventBus: EventBus;
-  scheduler: {
-    createJob: (input: {
-      workspaceId: string;
-      platform: string;
-      route: ScheduledJobRoute;
-      name: string;
-      schedule: string;
-      scheduleDescription: string;
-      message: string;
-    }) => Promise<ScheduledJob>;
-    listJobsForThread: (threadId: string) => Promise<ScheduledJob[]>;
-    deleteJob: (jobId: string) => Promise<void>;
-  };
+  scheduler: SchedulerHandlers;
   getAgentTypes?: () => string[];
   log?: (message: string) => void;
 };
