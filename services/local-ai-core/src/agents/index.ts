@@ -1,4 +1,5 @@
 import type { RuntimePlugin } from '@cc/plugin-sdk';
+import { buildAgentCapabilityFields } from './shared/agent-plugin.js';
 
 export {
   getAgentRuntimeDefinitions,
@@ -8,23 +9,7 @@ export {
 } from './registry.js';
 
 export function createBuiltinStaticAgentCapabilityPlugin(agentType: string, displayName = agentType): RuntimePlugin {
-  return {
-    manifest: {
-      id: `builtin.agent-${agentType}`,
-      kind: 'agent',
-      version: '0.1.0',
-      provides: [`agent:${agentType}`],
-    },
-    capabilities: {
-      agents: [
-        {
-          id: `agent.${agentType}`,
-          agentType,
-          displayName,
-        },
-      ],
-    },
-  };
+  return buildAgentCapabilityFields(agentType, displayName);
 }
 
 export { createBuiltinCodexAgentPlugin } from './codex/index.js';

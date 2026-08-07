@@ -31,17 +31,10 @@ function createRuntime(agentType: string, match: (normalizedAgentType: string) =
   };
 }
 
-export function createBuiltinAgentPlugin(options: {
-  pluginId?: string;
-  agentType?: string;
-  definition?: AgentRuntimeDefinition;
-  match: (normalizedAgentType: string) => boolean;
-  displayName?: string;
-}): AgentPlugin {
-  const agentType = options.definition?.agentType || options.agentType || '';
-  const displayName = options.definition?.displayName || options.displayName || agentType;
-  const pluginId = options.pluginId || `builtin.agent-${agentType}`;
-  let runtime: AgentRuntime | null = null;
+export function buildAgentCapabilityFields(agentType: string, displayName = agentType, pluginId = `builtin.agent-${agentType}`): {
+  manifest: { id: string; kind: 'agent'; version: string; provides: string[] };
+  capabilities: { agents: Array<{ id: string; agentType: string; displayName: string }> };
+} {
   return {
     manifest: {
       id: pluginId,
@@ -58,6 +51,22 @@ export function createBuiltinAgentPlugin(options: {
         },
       ],
     },
+  };
+}
+
+export function createBuiltinAgentPlugin(options: {
+  pluginId?: string;
+  agentType?: string;
+  definition?: AgentRuntimeDefinition;
+  match: (normalizedAgentType: string) => boolean;
+  displayName?: string;
+}): AgentPlugin {
+  const agentType = options.definition?.agentType || options.agentType || '';
+  const displayName = options.definition?.displayName || options.displayName || agentType;
+  const pluginId = options.pluginId || `builtin.agent-${agentType}`;
+  let runtime: AgentRuntime | null = null;
+  return {
+    ...buildAgentCapabilityFields(agentType, displayName, pluginId),
     createRuntime(_ctx: PluginContext) {
       if (!runtime) {
         runtime = createRuntime(agentType, options.match, displayName);
