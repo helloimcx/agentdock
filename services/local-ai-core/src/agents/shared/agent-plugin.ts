@@ -1,5 +1,5 @@
 import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
-import type { AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext } from '@cc/plugin-sdk';
+import type { AgentCapability, AgentPlugin, AgentRuntime, AgentRuntimeRoute, PluginContext, PluginManifest } from '@cc/plugin-sdk';
 import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
 import { toLocalCoreProjectConfig } from '../../router/workspace-route-config.js';
 import type { AgentRuntimeDefinition } from './definition.js';
@@ -32,8 +32,8 @@ function createRuntime(agentType: string, match: (normalizedAgentType: string) =
 }
 
 export function buildAgentCapabilityFields(agentType: string, displayName = agentType, pluginId = `builtin.agent-${agentType}`): {
-  manifest: { id: string; kind: 'agent'; version: string; provides: string[] };
-  capabilities: { agents: Array<{ id: string; agentType: string; displayName: string }> };
+  manifest: PluginManifest & { kind: 'agent' };
+  capabilities: { agents: AgentCapability[] };
 } {
   return {
     manifest: {
