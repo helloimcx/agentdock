@@ -11,7 +11,5 @@ export const hermesAgentDefinition: AgentRuntimeDefinition = {
     versionArgs: ['--version'],
   },
   resolveModel: resolveHermesModel,
-  buildLaunchConfig(input) {
-    return buildHermesLaunchConfig(input);
-  },
+  buildLaunchConfig: buildHermesLaunchConfig,
 };

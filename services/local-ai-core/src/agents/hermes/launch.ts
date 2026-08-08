@@ -2,7 +2,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DesktopProviderConfig, RuntimeConfigState } from '@cc/superai-contracts';
 import type { AgentLaunchDefaults, AgentLaunchResolverInput, AgentModelResolverInput } from '../shared/definition.js';
-import { ensurePrivateDir, getProviderDefaultModelId, projectLocalStateDir } from '../shared/launch-utils.js';
+import { collectProviderEnv, ensurePrivateDir, getProviderDefaultModelId, projectLocalStateDir } from '../shared/launch-utils.js';
 
 const HERMES_DEFAULT_MODEL = 'gpt-4o-mini';
 
@@ -14,12 +14,39 @@ export function resolveHermesModel(input: AgentModelResolverInput): string {
 }
 
 export function buildHermesLaunchConfig(input: AgentLaunchResolverInput): AgentLaunchDefaults {
-  const env: Record<string, string> = { HERMES_YOLO_MODE: '1' };
-  const provider = input.providers[0];
+  const providerId = String(input.project?.agent?.options?.provider_id || '').trim();
+  const provider = providerId
+    ? (input.providers || []).find((p) => (p as { id?: string }).id === providerId || p.name === providerId)
+    : input.providers?.[0];
+
+  const env: Record<string, string> = {
+    HERMES_YOLO_MODE: '1',
+    ...collectProviderEnv(input.providers || []),
+  };
+
   if (provider && (provider.base_url || provider.api_key || provider.model)) {
-    const hermesHome = ensureHermesHome(input.configState, input.project, input.providers, input.model);
+    const hermesHome = ensureHermesHome(input.configState, input.project, [provider], input.model);
     env.HERMES_HOME = hermesHome;
+
+    const apiKey = String(provider.api_key || '').trim();
+    if (apiKey) {
+      env.OPENAI_API_KEY = apiKey;
+      env.HERMES_API_KEY = apiKey;
+    }
+    const baseUrl = String(provider.base_url || '').trim();
+    if (baseUrl) {
+      env.OPENAI_BASE_URL = baseUrl;
+      env.OPENAI_API_BASE = baseUrl;
+      env.HERMES_BASE_URL = baseUrl;
+    }
   }
+
+  const model = String(input.model || (provider ? getProviderDefaultModelId(provider) : '') || '').trim();
+  if (model) {
+    env.HERMES_MODEL = model;
+    env.OPENAI_MODEL = model;
+  }
+
   return {
     command: 'hermes',
     args: ['acp'],
@@ -79,6 +106,10 @@ function firstProviderModelId(providers: DesktopProviderConfig[]): string {
 }
 
 function yamlString(value: string): string {
-  const escaped = String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const escaped = String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
   return `"${escaped}"`;
 }

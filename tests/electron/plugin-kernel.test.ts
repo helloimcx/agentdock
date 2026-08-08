@@ -450,6 +450,96 @@ type = "hermes"
   }
 });
 
+test('hermes agent runtime injects provider API key, base URL, and model into launch env', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    runtime.store.upsertModelProvider({
+      id: 'provider-opencode-go',
+      name: 'opencode go',
+      base_url: 'https://api.opencode.ai/v1',
+      api_key: 'sk-test-opencode-key',
+      model: 'opencode-go-v1',
+    });
+    await saveRawRuntimeConfig(runtime, `
+[[projects]]
+name = "hermes-provider-workspace"
+
+[projects.agent]
+type = "hermes"
+
+[projects.agent.options]
+provider_id = "provider-opencode-go"
+`);
+    const configState = runtime.store.readRuntimeConfig();
+    const rawProject = configState.config?.projects?.find((entry) => entry.name === 'hermes-provider-workspace');
+    const providerId = String(rawProject?.agent?.options?.provider_id || '').trim();
+    const provider = providerId ? runtime.store.getModelProvider(providerId) : undefined;
+    const project = rawProject ? {
+      ...rawProject,
+      agent: {
+        ...rawProject.agent,
+        providers: provider ? [provider] : [],
+      },
+    } : null;
+    const hermesRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'hermes');
+    const route = project ? hermesRuntime?.createRoute(configState, project) : null;
+
+    assert.equal(route?.agentType, 'hermes');
+    assert.equal(route?.config.env?.HERMES_YOLO_MODE, '1');
+    assert.equal(route?.config.env?.OPENAI_API_KEY, 'sk-test-opencode-key');
+    assert.equal(route?.config.env?.HERMES_API_KEY, 'sk-test-opencode-key');
+    assert.equal(route?.config.env?.OPENAI_BASE_URL, 'https://api.opencode.ai/v1');
+    assert.equal(route?.config.env?.HERMES_BASE_URL, 'https://api.opencode.ai/v1');
+    assert.equal(route?.config.env?.HERMES_MODEL, 'opencode-go-v1');
+
+
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('hermes agent runtime does not silently fallback to first provider when specified provider_id is unmatched', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    // Add a default provider that should NOT be selected if unmatched provider_id is requested
+    runtime.store.upsertModelProvider({
+      id: 'provider-cloud-openai',
+      name: 'openai',
+      api_key: 'sk-cloud-secret',
+    });
+    const configState = runtime.store.readRuntimeConfig();
+    const hermesRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'hermes');
+    const project = {
+      name: 'unmatched-provider-workspace',
+      platforms: [],
+      agent: {
+        type: 'hermes',
+        options: { provider_id: 'missing-local-provider' },
+        providers: [],
+      },
+    };
+    const route = hermesRuntime?.createRoute(configState, project);
+    assert.equal(route?.config.env?.OPENAI_API_KEY, undefined);
+    assert.equal(route?.config.env?.HERMES_API_KEY, undefined);
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+
+
 test('pi agent runtime routes projects through bundled pi ACP and coding agent', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {
