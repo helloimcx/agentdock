@@ -1,7 +1,7 @@
 import type { ChannelFileSendInput, ChannelFileSendResult, ChannelOutboundMessageResult } from '@cc/superai-contracts';
 
 export function buildChannelFileSendPayload(
-  platform: 'lark' | 'weixin',
+  platform: string,
   workspaceId: string,
   input: ChannelFileSendInput,
   result: ChannelOutboundMessageResult,

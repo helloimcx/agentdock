@@ -4,8 +4,6 @@ import { EventEmitter } from 'node:events';
 import { randomInt, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type {
-  ChannelFileSendInput,
-  ChannelFileSendResult,
   ChannelOutboundMessageInput,
   ChannelOutboundMessagePart,
   ChannelOutboundMessageResult,
@@ -20,7 +18,6 @@ import type {
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
-import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { prepareChannelFile, type PreparedChannelFile } from '../shared/file-utils.js';
 import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
@@ -417,21 +414,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     };
   }
 
-  async sendFile(workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult> {
-    const result = await this.sendOutboundMessage(workspaceId, {
-      route: {
-        type: 'channel.chat',
-        channelId: input.channelId,
-        participantId: input.participantId,
-      },
-      parts: [{
-        type: 'file',
-        path: input.path,
-        fileName: input.fileName,
-      }],
-    });
-    return buildChannelFileSendPayload('weixin', workspaceId, input, result);
-  }
 
   // ==================== Inbound Message Handling ====================
 

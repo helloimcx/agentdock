@@ -22,6 +22,7 @@ import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import type { LocalPlatformUserRow } from '../../router/workspace-router-types.js';
 import type { EventBus } from '@cc/plugin-sdk';
 import { createChannelThreadMessageInput } from '../shared/content.js';
+import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
@@ -181,8 +182,22 @@ export abstract class BaseChannelGateway<
   /** Send an outbound message through the platform. */
   abstract sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult>;
 
-  /** Send a file through the platform. */
-  abstract sendFile(workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult>;
+  /** Send a file through the platform via the standard file-part payload. */
+  async sendFile(workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult> {
+    const result = await this.sendOutboundMessage(workspaceId, {
+      route: {
+        type: 'channel.chat',
+        channelId: input.channelId,
+        participantId: input.participantId,
+      },
+      parts: [{
+        type: 'file',
+        path: input.path,
+        fileName: input.fileName,
+      }],
+    });
+    return buildChannelFileSendPayload(this.platform, workspaceId, input, result);
+  }
 
   /** Handle a bridge event from the ACP runtime. */
   abstract onBridgeEvent(event: DesktopBridgeEvent): Promise<void>;
