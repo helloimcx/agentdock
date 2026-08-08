@@ -97,7 +97,9 @@ flowchart LR
 
 ### 2026-08-08
 
+- 发布 AgentDock 0.1.72：通过独立 `HERMES_HOME` 目录 (`<baseDir>/hermes-homes/<workspaceId>/config.yaml`) 将工作区配置的模型 Provider (base_url, api_key, model) 注入 Hermes ACP 子进程，彻底解决修改工作区服务商对 Hermes 无效的问题。
 - 发布 AgentDock 0.1.71：修复工作区 Provider 配置保存后由于 `runtime_config` 缺失 `projects` 导致重新加载恢复旧版 `config.toml` 的问题；扩展 Hermes ACP agent 启动配置，自动注入对应的模型 Provider 环境变量 (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `HERMES_MODEL` 等)。
+
 
 ### 2026-08-05
 
