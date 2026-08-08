@@ -1,8 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { randomInt } from 'node:crypto';
 import type {
-  ChannelFileSendInput,
-  ChannelFileSendResult,
   ChannelInboundContentPart,
   ChannelOutboundMessageInput,
   ChannelOutboundMessageResult,
@@ -22,7 +20,6 @@ import type {
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import { LocalCoreError, formatSafeError, toLocalCoreErrorInfo } from '../../kernel/local-core-errors.js';
-import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
@@ -264,21 +261,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     };
   }
 
-  async sendFile(workspaceId: string, input: ChannelFileSendInput): Promise<ChannelFileSendResult> {
-    const result = await this.sendOutboundMessage(workspaceId, {
-      route: {
-        type: 'channel.chat',
-        channelId: input.channelId,
-        participantId: input.participantId,
-      },
-      parts: [{
-        type: 'file',
-        path: input.path,
-        fileName: input.fileName,
-      }],
-    });
-    return buildChannelFileSendPayload('lark', workspaceId, input, result);
-  }
 
   async onBridgeEvent(event: DesktopBridgeEvent) {
     if (!event.sessionKey) {
