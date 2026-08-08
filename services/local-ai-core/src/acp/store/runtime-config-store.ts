@@ -50,35 +50,16 @@ export class LocalRuntimeConfigStore {
     const row = this.selectStmt.get(RUNTIME_CONFIG_ID) as RuntimeConfigRow | undefined;
     if (row) {
       const config = parseJson<DesktopConnectConfig>(row.config_json, {});
-      // If SQLite lost its projects (e.g. a partial save wrote {"config_version":2}),
-      // fall back to importing from config.toml rather than silently running empty.
-      const sqliteLostProjects = !Array.isArray(config.projects) || config.projects.length === 0;
-      if (!sqliteLostProjects) {
-        const migrated = migrateDesktopConnectConfig(config);
-        if (migrated.changed) {
-          return this.writeRow(migrated.config, {
-            migratedFromPath: row.migrated_from_path || undefined,
-            warnings: migrated.warnings,
-          });
-        }
-        return this.toState(row, config, migrated.warnings);
-      }
-      // projects missing in SQLite — try to recover from the on-disk toml.
-      const legacy = this.readLegacyConfig();
-      if (legacy && !('error' in legacy)) {
-        return this.writeRow(legacy.config, {
-          migratedFromPath: legacy.path,
-          warnings: ['Recovered projects from disk after SQLite config lost them.', ...legacy.warnings],
+      const migrated = migrateDesktopConnectConfig(config);
+      if (migrated.changed) {
+        return this.writeRow(migrated.config, {
+          migratedFromPath: row.migrated_from_path || undefined,
+          warnings: migrated.warnings,
         });
       }
-      if (legacy && 'error' in legacy) {
-        return this.errorState(legacy.path, legacy.error);
-      }
-      // Row exists but projects were intentionally stripped (workspace-registry is
-      // authoritative). Return the row as-is rather than fabricating an empty
-      // projects list, which would mask the registry as the source of truth.
-      return this.toState(row, config, []);
+      return this.toState(row, config, migrated.warnings);
     }
+
 
     const legacy = this.readLegacyConfig();
     if (legacy) {

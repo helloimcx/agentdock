@@ -1,5 +1,6 @@
 import type { AgentRuntimeDefinition } from '../shared/definition.js';
 import { hermesAcpBehavior } from './behavior.js';
+import { buildHermesLaunchConfig } from './launch.js';
 
 export const hermesAgentDefinition: AgentRuntimeDefinition = {
   agentType: 'hermes',
@@ -9,13 +10,6 @@ export const hermesAgentDefinition: AgentRuntimeDefinition = {
     commandCandidates: ['hermes'],
     versionArgs: ['--version'],
   },
-  buildLaunchConfig() {
-    return {
-      command: 'hermes',
-      args: ['acp'],
-      env: {
-        HERMES_YOLO_MODE: '1',
-      },
-    };
-  },
+  buildLaunchConfig: buildHermesLaunchConfig,
 };
+

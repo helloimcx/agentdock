@@ -609,7 +609,7 @@ export class WorkspaceRouter {
       ? persistProjectsInRegistry(this.store, embeddedProjects, { preserveLegacyIds: true })
       : listRegistryProjects(this.store);
     if (embeddedProjects.length) {
-      this.store.saveRuntimeConfig(withoutRuntimeProjects(configState.config));
+      this.store.saveRuntimeConfig(configState.config);
     }
     const projectedConfigState = {
       ...configState,
@@ -629,8 +629,9 @@ export class WorkspaceRouter {
     let projects = listRegistryProjects(this.store);
     if (projects.length === 0 && configState.config.projects?.length) {
       projects = persistProjectsInRegistry(this.store, configState.config.projects, { preserveLegacyIds: true });
-      this.store.saveRuntimeConfig(withoutRuntimeProjects(configState.config));
+      this.store.saveRuntimeConfig(configState.config);
     }
+
     return projects.filter((project) => this.resolveProjectRoute(configState, project));
   }
 
