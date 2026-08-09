@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { DesktopConnectConfig } from '@cc/superai-contracts';
-import { normalizeDesktopPlatformType } from '@cc/superai-contracts';
-import { channelPlatformKey, normalizeChannelInstanceId } from '../shared/channel-keys.js';
+import { collectPlatformOptions } from '../shared/collect-platform-options.js';
 import type { WeixinCredentials, WeixinWorkspaceBinding } from './types.js';
 
 export const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
@@ -68,43 +67,31 @@ export function saveWeixinBuf(binding: WeixinWorkspaceBinding, buf: string): voi
 }
 
 export function collectWeixinWorkspaceBindings(config: DesktopConnectConfig | null | undefined): WeixinWorkspaceBinding[] {
-  const projects = Array.isArray(config?.projects) ? config!.projects! : [];
-  return projects.flatMap((project) => {
-    const platforms = Array.isArray(project.platforms) ? project.platforms : [];
-    return platforms
-      .map((platform) => ({
-        platformType: normalizeDesktopPlatformType(platform?.type),
-        options: platform?.options && typeof platform.options === 'object'
-          ? platform.options as Record<string, unknown>
-          : {},
-      }))
-      .filter((p) => p.platformType === 'weixin')
-      .map((p, index) => {
-        const instanceId = normalizeChannelInstanceId(p.options.instance_id || p.options.id, index === 0 ? 'default' : `weixin-${index + 1}`);
-        const stateDir = String(p.options.state_dir || getDefaultWeixinStateDir()).trim();
-        const credentials = loadWeixinCredentials(project.name, stateDir, instanceId);
-        const configuredToken = String(p.options.token || '').trim();
-        const configuredBaseUrl = String(p.options.base_url || '').trim();
-        const accountId = String(p.options.account_id || credentials?.botId || 'qr-login').trim();
-        return {
-          workspaceId: project.name,
-          instanceId,
-          displayName: String(p.options.name || p.options.display_name || `WeChat ${index + 1}`).trim(),
-          platformKey: channelPlatformKey('weixin', instanceId),
-          token: configuredToken || credentials?.token || '',
-          accountId,
-          baseUrl: configuredBaseUrl || credentials?.baseUrl || DEFAULT_BASE_URL,
-          cdnBaseUrl: String(p.options.cdn_base_url || DEFAULT_CDN_BASE_URL).trim(),
-          allowFrom: String(p.options.allow_from || '*').trim(),
-          routeTag: String(p.options.route_tag || '').trim(),
-          longPollTimeoutMs: Number(p.options.long_poll_timeout_ms || LONG_POLL_TIMEOUT_MS) || LONG_POLL_TIMEOUT_MS,
-          stateDir,
-          proxy: String(p.options.proxy || '').trim(),
-          proxyUsername: String(p.options.proxy_username || '').trim(),
-          proxyPassword: String(p.options.proxy_password || '').trim(),
-          enabled: true,
-          project,
-        };
-      });
+  return collectPlatformOptions(config, 'weixin').map((entry) => {
+    const { project, options: p, instanceId, workspaceId, platformKey, displayName } = entry;
+    const stateDir = String(p.state_dir || getDefaultWeixinStateDir()).trim();
+    const credentials = loadWeixinCredentials(project.name, stateDir, instanceId);
+    const configuredToken = String(p.token || '').trim();
+    const configuredBaseUrl = String(p.base_url || '').trim();
+    const accountId = String(p.account_id || credentials?.botId || 'qr-login').trim();
+    return {
+      workspaceId,
+      instanceId,
+      displayName,
+      platformKey,
+      token: configuredToken || credentials?.token || '',
+      accountId,
+      baseUrl: configuredBaseUrl || credentials?.baseUrl || DEFAULT_BASE_URL,
+      cdnBaseUrl: String(p.cdn_base_url || DEFAULT_CDN_BASE_URL).trim(),
+      allowFrom: String(p.allow_from || '*').trim(),
+      routeTag: String(p.route_tag || '').trim(),
+      longPollTimeoutMs: Number(p.long_poll_timeout_ms || LONG_POLL_TIMEOUT_MS) || LONG_POLL_TIMEOUT_MS,
+      stateDir,
+      proxy: String(p.proxy || '').trim(),
+      proxyUsername: String(p.proxy_username || '').trim(),
+      proxyPassword: String(p.proxy_password || '').trim(),
+      enabled: true,
+      project,
+    };
   });
 }
