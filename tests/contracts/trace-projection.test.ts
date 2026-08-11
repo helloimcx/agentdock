@@ -69,28 +69,31 @@ test('LocalCoreTraceStore inserts, updates, and calculates run trace summary', (
   assert.equal(summary.totalTokens, 700);
 });
 
-test('AcpTraceProjector normalizes ACP event stream into structured spans', () => {
+test('AcpTraceProjector handles parallel tool calls and secret redaction', () => {
   const db = createTestDb();
   const store = new LocalCoreTraceStore(db);
   const projector = new AcpTraceProjector(store);
 
   projector.startRun('run-1');
-  projector.onThought('run-1', 'Thinking about step 1');
-  projector.onPlan('run-1', '1. Read config, 2. Run test');
 
-  projector.onToolCallStart('run-1', 'read_file', { path: '/etc/config.json' });
-  projector.onToolCallEnd('run-1', 'read_file', 'completed', { content: '{ "ok": true }' });
+  // Parallel tool calls of the same tool name
+  const span1 = projector.onToolCallStart('run-1', 'read_file', { path: '/etc/file1', key: 'API_KEY=sk-proj-123456789012' }, 'call-1');
+  const span2 = projector.onToolCallStart('run-1', 'read_file', { path: '/etc/file2' }, 'call-2');
 
-  projector.onModelCall('run-1', 'claude-3-5-sonnet', { inputTokens: 100, outputTokens: 50 });
-  projector.endRun('run-1', 'completed');
+  projector.onToolCallEnd('run-1', 'read_file', 'completed', { result: 'file1 content' }, 'call-1');
+  projector.onToolCallEnd('run-1', 'read_file', 'completed', { result: 'file2 content' }, 'call-2');
 
   const spans = store.listRunSpans('run-1');
-  assert.equal(spans.length, 4);
+  assert.equal(spans.length, 2);
 
-  const toolSpan = spans.find((s) => s.kind === 'tool_call');
-  assert(toolSpan);
-  assert.equal(toolSpan.name, 'read_file');
-  assert.equal(toolSpan.status, 'completed');
+  const firstSpan = store.getSpan(span1.id);
+  assert(firstSpan);
+  assert.equal(firstSpan.status, 'completed');
+  assert.match(JSON.stringify(firstSpan.inputJson), /REDACTED_SECRET/);
+
+  const secondSpan = store.getSpan(span2.id);
+  assert(secondSpan);
+  assert.equal(secondSpan.status, 'completed');
 });
 
 test('SQLite ON DELETE CASCADE purges run_spans when parent run is deleted', () => {

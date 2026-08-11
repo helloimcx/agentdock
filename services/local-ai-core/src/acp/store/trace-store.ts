@@ -73,7 +73,7 @@ export class LocalCoreTraceStore {
 
     const outputJsonStr = updates.outputJson !== undefined
       ? (typeof updates.outputJson === 'string' ? updates.outputJson : JSON.stringify(updates.outputJson))
-      : (span.outputJson ? JSON.stringify(span.outputJson) : null);
+      : (span.outputJson ? (typeof span.outputJson === 'string' ? span.outputJson : JSON.stringify(span.outputJson)) : null);
 
     const usageJsonStr = updates.usageJson !== undefined
       ? JSON.stringify(updates.usageJson)
@@ -96,8 +96,10 @@ export class LocalCoreTraceStore {
     return mapRunSpanRow(row);
   }
 
-  listRunSpans(runId: string): RunSpan[] {
-    const rows = (this.db.prepare('SELECT * FROM run_spans WHERE run_id = ? ORDER BY started_at ASC').all(runId) as unknown) as LocalRunSpanRow[];
+  listRunSpans(runId: string, options: { limit?: number; offset?: number } = {}): RunSpan[] {
+    const limit = options.limit || 500;
+    const offset = options.offset || 0;
+    const rows = (this.db.prepare('SELECT * FROM run_spans WHERE run_id = ? ORDER BY started_at ASC LIMIT ? OFFSET ?').all(runId, limit, offset) as unknown) as LocalRunSpanRow[];
     return rows.map(mapRunSpanRow);
   }
 
@@ -135,7 +137,8 @@ function mapRunSpanRow(row: LocalRunSpanRow): RunSpan {
   let inputJson: Record<string, unknown> | string | null = null;
   if (row.input_json) {
     try {
-      inputJson = JSON.parse(row.input_json);
+      const parsed = JSON.parse(row.input_json);
+      inputJson = (parsed !== null && typeof parsed === 'object') ? parsed : row.input_json;
     } catch {
       inputJson = row.input_json;
     }
@@ -144,7 +147,8 @@ function mapRunSpanRow(row: LocalRunSpanRow): RunSpan {
   let outputJson: Record<string, unknown> | string | null = null;
   if (row.output_json) {
     try {
-      outputJson = JSON.parse(row.output_json);
+      const parsed = JSON.parse(row.output_json);
+      outputJson = (parsed !== null && typeof parsed === 'object') ? parsed : row.output_json;
     } catch {
       outputJson = row.output_json;
     }
@@ -153,7 +157,8 @@ function mapRunSpanRow(row: LocalRunSpanRow): RunSpan {
   let usageJson: TokenUsage | null = null;
   if (row.usage_json) {
     try {
-      usageJson = JSON.parse(row.usage_json);
+      const parsed = JSON.parse(row.usage_json);
+      if (parsed && typeof parsed === 'object') usageJson = parsed as TokenUsage;
     } catch {
       // Ignore parse failure
     }

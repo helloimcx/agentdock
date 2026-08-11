@@ -1,5 +1,9 @@
 import type { LocalCoreTraceStore } from './store/trace-store.js';
 import type { TokenUsage, RunSpan } from '@cc/superai-contracts';
+import { redactSecrets } from './store/utils.js';
+
+const MAX_ACTIVE_RUNS = 200;
+const MAX_PAYLOAD_CHARS = 20000;
 
 export class AcpTraceProjector {
   private activeRunSpans = new Map<string, Map<string, string>>(); // runId -> (key -> spanId)
@@ -8,6 +12,11 @@ export class AcpTraceProjector {
 
   startRun(runId: string): string {
     if (!this.activeRunSpans.has(runId)) {
+      if (this.activeRunSpans.size >= MAX_ACTIVE_RUNS) {
+        // LRU cleanup: delete oldest run entry
+        const oldestKey = this.activeRunSpans.keys().next().value;
+        if (oldestKey) this.activeRunSpans.delete(oldestKey);
+      }
       this.activeRunSpans.set(runId, new Map());
     }
     return runId;
@@ -17,6 +26,7 @@ export class AcpTraceProjector {
     this.startRun(runId);
     const keyMap = this.activeRunSpans.get(runId)!;
     let spanId = keyMap.get('thought');
+    const sanitizedText = sanitizeString(text);
 
     if (!spanId) {
       const span = this.traceStore.insertSpan({
@@ -24,14 +34,14 @@ export class AcpTraceProjector {
         kind: 'thought',
         name: 'Thought / Reasoning',
         status: 'running',
-        inputJson: { preview: text.slice(0, 200) },
+        inputJson: { preview: sanitizedText.slice(0, 200) },
       });
       spanId = span.id;
       keyMap.set('thought', spanId);
       return span;
     } else {
       const updated = this.traceStore.updateSpan(spanId, {
-        outputJson: { preview: text.slice(0, 500) },
+        outputJson: { preview: sanitizedText.slice(0, 500) },
       });
       return updated!;
     }
@@ -41,6 +51,7 @@ export class AcpTraceProjector {
     this.startRun(runId);
     const keyMap = this.activeRunSpans.get(runId)!;
     let spanId = keyMap.get('plan');
+    const sanitizedPlan = sanitizeString(planText);
 
     if (!spanId) {
       const span = this.traceStore.insertSpan({
@@ -48,23 +59,29 @@ export class AcpTraceProjector {
         kind: 'plan',
         name: 'Plan Step',
         status: 'running',
-        inputJson: { plan: planText },
+        inputJson: { plan: sanitizedPlan },
       });
       spanId = span.id;
       keyMap.set('plan', spanId);
       return span;
     } else {
       const updated = this.traceStore.updateSpan(spanId, {
-        outputJson: { plan: planText },
+        outputJson: { plan: sanitizedPlan },
       });
       return updated!;
     }
   }
 
-  onToolCallStart(runId: string, toolName: string, input?: Record<string, unknown> | string): RunSpan {
+  onToolCallStart(
+    runId: string,
+    toolName: string,
+    input?: Record<string, unknown> | string,
+    callId?: string
+  ): RunSpan {
     this.startRun(runId);
     const keyMap = this.activeRunSpans.get(runId)!;
     const parentSpanId = keyMap.get('thought') || keyMap.get('plan') || null;
+    const sanitizedInput = sanitizePayload(input);
 
     const span = this.traceStore.insertSpan({
       runId,
@@ -72,10 +89,11 @@ export class AcpTraceProjector {
       kind: 'tool_call',
       name: toolName,
       status: 'running',
-      inputJson: input || null,
+      inputJson: sanitizedInput || null,
     });
 
-    keyMap.set(`tool:${toolName}`, span.id);
+    const key = callId ? `tool:${callId}` : `tool:${toolName}:${span.id}`;
+    keyMap.set(key, span.id);
     return span;
   }
 
@@ -83,20 +101,40 @@ export class AcpTraceProjector {
     runId: string,
     toolName: string,
     status: 'completed' | 'failed' = 'completed',
-    output?: Record<string, unknown> | string
+    output?: Record<string, unknown> | string,
+    callId?: string
   ): RunSpan | undefined {
     const keyMap = this.activeRunSpans.get(runId);
     if (!keyMap) return undefined;
 
-    const spanId = keyMap.get(`tool:${toolName}`);
+    let spanId: string | undefined;
+    if (callId && keyMap.has(`tool:${callId}`)) {
+      spanId = keyMap.get(`tool:${callId}`);
+      keyMap.delete(`tool:${callId}`);
+    } else {
+      // Find matching tool call by prefix
+      const prefix = `tool:${toolName}:`;
+      for (const [k, id] of keyMap.entries()) {
+        if (k.startsWith(prefix)) {
+          spanId = id;
+          keyMap.delete(k);
+          break;
+        }
+      }
+      if (!spanId && keyMap.has(`tool:${toolName}`)) {
+        spanId = keyMap.get(`tool:${toolName}`);
+        keyMap.delete(`tool:${toolName}`);
+      }
+    }
+
     if (!spanId) return undefined;
 
+    const sanitizedOutput = sanitizePayload(output);
     const updated = this.traceStore.updateSpan(spanId, {
       status,
-      outputJson: output || null,
+      outputJson: sanitizedOutput || null,
     });
 
-    keyMap.delete(`tool:${toolName}`);
     return updated;
   }
 
@@ -125,10 +163,35 @@ export class AcpTraceProjector {
     const keyMap = this.activeRunSpans.get(runId);
     if (!keyMap) return;
 
-    for (const [key, spanId] of keyMap.entries()) {
+    for (const [, spanId] of keyMap.entries()) {
       this.traceStore.updateSpan(spanId, { status });
     }
 
     this.activeRunSpans.delete(runId);
+  }
+}
+
+function sanitizeString(str: string): string {
+  const redacted = redactSecrets(str || '');
+  return redacted.length > MAX_PAYLOAD_CHARS ? `${redacted.slice(0, MAX_PAYLOAD_CHARS)}... [TRUNCATED]` : redacted;
+}
+
+function sanitizePayload(data: unknown): Record<string, unknown> | string | undefined {
+  if (data === undefined || data === null) return undefined;
+  if (typeof data === 'string') {
+    return sanitizeString(data);
+  }
+  let str: string;
+  try {
+    str = JSON.stringify(data);
+  } catch {
+    str = String(data);
+  }
+
+  const redacted = sanitizeString(str);
+  try {
+    return JSON.parse(redacted) as Record<string, unknown>;
+  } catch {
+    return redacted;
   }
 }
