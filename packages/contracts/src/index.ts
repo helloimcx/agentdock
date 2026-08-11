@@ -3,3 +3,4 @@ export * from './local-core';
 export * from './automations';
 export * from './scheduler';
 export * from './skills';
+export * from './traces';

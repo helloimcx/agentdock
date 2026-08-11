@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  Activity,
   Circle,
   LoaderCircle,
   MessageSquarePlus,
@@ -7,6 +8,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { RunTimelineDrawer } from '@/components/traces/RunTimelineDrawer';
 import { formatRuntimePhase } from './thread-chat-model';
 import {
   getVisibleProjects,
@@ -24,6 +26,7 @@ import { useThreadChatController } from './useThreadChatController';
 
 export default function ThreadChat() {
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
+  const [traceDrawerRunId, setTraceDrawerRunId] = useState<string | null>(null);
   const {
     activeRunId,
     activeAgentMode,
@@ -176,6 +179,16 @@ export default function ThreadChat() {
                 {showSessionKey && activeSessionKey ? (
                   <span className="truncate text-[11px] text-slate-400 dark:text-slate-500">{activeSessionKey}</span>
                 ) : null}
+                {activeRunId ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setTraceDrawerRunId(activeRunId)}
+                    className="h-6 text-[11px] px-2 text-primary hover:bg-primary/10"
+                  >
+                    <Activity className="mr-1 h-3 w-3" /> Trace 轨迹
+                  </Button>
+                ) : null}
               </div>
             </div>
 
@@ -283,6 +296,12 @@ export default function ThreadChat() {
         setDeleteTarget={setDeleteTarget}
         setRenameDraft={setRenameDraft}
         setRenameTarget={setRenameTarget}
+      />
+
+      <RunTimelineDrawer
+        open={!!traceDrawerRunId}
+        onClose={() => setTraceDrawerRunId(null)}
+        runId={traceDrawerRunId}
       />
     </>
   );

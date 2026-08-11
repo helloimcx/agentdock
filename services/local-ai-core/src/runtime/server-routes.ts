@@ -58,6 +58,8 @@ export type LocalAiCoreRoute =
   | { name: 'thread.messages.send'; threadId: string }
   | { name: 'thread.actions.send'; threadId: string }
   | { name: 'run.interrupt'; runId: string }
+  | { name: 'runs.trace.get'; runId: string }
+  | { name: 'runs.spans.list'; runId: string }
   | { name: 'workspaces.list' }
   | { name: 'workspace-registry.list' }
   | { name: 'workspace-registry.create' }
@@ -436,8 +438,15 @@ function parseThreadsRoute(method: string, segments: string[]): LocalAiCoreRoute
 
 function parseRunsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   const runId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
-  if (method === 'POST' && runId && segments.length === 3 && segments[2] === 'interrupt') {
+  if (!runId) return null;
+  if (method === 'POST' && segments.length === 3 && segments[2] === 'interrupt') {
     return { name: 'run.interrupt', runId };
+  }
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'trace') {
+    return { name: 'runs.trace.get', runId };
+  }
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'spans') {
+    return { name: 'runs.spans.list', runId };
   }
   return null;
 }

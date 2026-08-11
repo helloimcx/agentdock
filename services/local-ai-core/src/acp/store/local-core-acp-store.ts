@@ -56,6 +56,7 @@ import type {
   ExternalThread,
 } from '@cc/superai-contracts';
 import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
+import { LocalCoreTraceStore } from './trace-store.js';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
 import type {
   LocalMessageRow,
@@ -104,6 +105,7 @@ export class LocalCoreAcpStore {
   private readonly modelProviders: LocalModelProviderStore;
   private readonly external: LocalExternalStore;
   private readonly runtimeConfig: LocalRuntimeConfigStore;
+  readonly trace: LocalCoreTraceStore;
 
   constructor(userDataPath: string) {
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
@@ -111,6 +113,7 @@ export class LocalCoreAcpStore {
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new DatabaseSync(dbPath);
     this.threads = new LocalThreadStore(this.db);
+    this.trace = new LocalCoreTraceStore(this.db);
     this.workspaceRegistry = new LocalWorkspaceRegistryStore(this.db);
     this.security = new LocalSecurityStore(this.db, (taskId, input) => {
       this.agentTasks.update(taskId, input);

@@ -6,6 +6,7 @@ import { subscribeEvents } from '@cc/core-sdk/runtime';
 import { listWorkspaces } from '@cc/core-sdk/threads';
 import type { AutomationDefinition, AutomationScriptVersion } from '@cc/superai-contracts/automations';
 import { Badge, Button, Card, EmptyState, PageHeader, Select } from '@/components/ui';
+import { RunTimelineDrawer } from '@/components/traces/RunTimelineDrawer';
 import AutomationDetailModal from './AutomationDetailModal';
 import ScriptApprovalModal from './ScriptApprovalModal';
 import { deriveAutomationDisplayStatus, filterAutomationRows, originLabel, type AutomationOriginFilter } from './automation-page-model';
@@ -23,6 +24,7 @@ export default function AutomationList() {
   const [selected, setSelected] = useState<AutomationDefinition | null>(null);
   const [scriptVersions, setScriptVersions] = useState<Array<{ workspaceId: string; title: string; version: AutomationScriptVersion }>>([]);
   const [selectedVersion, setSelectedVersion] = useState<{ workspaceId: string; version: AutomationScriptVersion } | null>(null);
+  const [activeTraceRunId, setActiveTraceRunId] = useState<string | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -61,5 +63,6 @@ export default function AutomationList() {
     {scriptVersions.filter(({ version }) => version.status !== 'approved' && version.status !== 'rejected' && version.status !== 'revoked').length > 0 && <section className="space-y-2"><h2 className="text-base font-semibold">{t('automations.scriptApprovals')}</h2>{scriptVersions.filter(({ version }) => version.status !== 'approved' && version.status !== 'rejected' && version.status !== 'revoked').map(({ workspaceId, title, version }) => <Card className="app-panel" key={version.id}><div className="flex items-center justify-between gap-3"><div><p className="font-medium">{title}</p><p className="text-xs text-gray-500">{version.status} · {version.interpreterPath} · {version.packageSha256.slice(0, 12)}…</p></div><Button size="sm" variant="secondary" onClick={() => setSelectedVersion({ workspaceId, version })}>{t('automations.reviewApproval')}</Button></div></Card>)}</section>}
     <AutomationDetailModal automation={selected} onClose={() => setSelected(null)} onChanged={load} />
     <ScriptApprovalModal open={Boolean(selectedVersion)} version={selectedVersion?.version || null} workspaceId={selectedVersion?.workspaceId || ''} onClose={() => setSelectedVersion(null)} onChanged={load} />
+    <RunTimelineDrawer open={Boolean(activeTraceRunId)} onClose={() => setActiveTraceRunId(null)} runId={activeTraceRunId} />
   </div>;
 }
