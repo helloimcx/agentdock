@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-11
+
+- 发布 AgentDock 0.1.73：正式支持 open Agent Skills (SKILL.md) 开放标准与多源技能目录（Builtin、User 全局、Workspace 项目级），在主侧边栏新增独立的技能中心页面 (`/skills`)，支持在线管理、编辑 SKILL.md 与 Git/URL 仓库一键安装，并在 ACP 进程启动时自动挂载/软链激活 Skill 到 Agent 原生 skills 目录。
+
 ### 2026-08-08
 
 - 发布 AgentDock 0.1.72：通过独立 `HERMES_HOME` 目录 (`<baseDir>/hermes-homes/<workspaceId>/config.yaml`) 将工作区配置的模型 Provider (base_url, api_key, model) 注入 Hermes ACP 子进程，彻底解决修改工作区服务商对 Hermes 无效的问题。
