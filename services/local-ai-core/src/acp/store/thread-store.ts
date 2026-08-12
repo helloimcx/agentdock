@@ -6,11 +6,12 @@ import type {
 } from '@cc/superai-contracts';
 import { normalizeRunStatus } from '@cc/superai-contracts';
 import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
-import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
+import type { DesktopBridgeToolCall } from '@cc/superai-contracts';
 import type {
   LocalMessageRow,
   LocalRunRow,
   LocalThreadRow,
+  MessageContentArgs,
 } from './acp-store-types.js';
 import { normalizeMessageContent } from '../../thread/workspace-thread-mappers.js';
 import { encodeThreadId } from '../../thread/workspace-thread-id.js';
@@ -135,15 +136,7 @@ export class LocalThreadStore {
     this.db.prepare('DELETE FROM threads WHERE id = ?').run(threadId);
   }
 
-  appendMessage(
-    threadId: string,
-    role: LocalMessageRow['role'],
-    content: string,
-    kind: LocalMessageRow['kind'],
-    toolCall?: DesktopBridgeToolCall,
-    bridgeKind?: DesktopBridgeEventKind,
-    bridgeStatus?: DesktopBridgeEvent['bridgeStatus'],
-  ) {
+  appendMessage(threadId: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
     const timestamp = new Date().toISOString();
     const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
@@ -179,16 +172,7 @@ export class LocalThreadStore {
     return { id, timestamp };
   }
 
-  upsertMessage(
-    threadId: string,
-    id: string,
-    role: LocalMessageRow['role'],
-    content: string,
-    kind: LocalMessageRow['kind'],
-    toolCall?: DesktopBridgeToolCall,
-    bridgeKind?: DesktopBridgeEventKind,
-    bridgeStatus?: DesktopBridgeEvent['bridgeStatus'],
-  ) {
+  upsertMessage(threadId: string, id: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
     const timestamp = new Date().toISOString();
     const excerpt = normalizeMessageContent(content);
     const existing = this.db.prepare('SELECT id FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as { id: string } | undefined;

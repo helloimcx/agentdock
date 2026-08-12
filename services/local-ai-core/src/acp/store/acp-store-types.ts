@@ -1,4 +1,4 @@
-import type { AutomationDefinition, AutomationEvaluation, AutomationRun } from '@cc/superai-contracts';
+import type { AutomationDefinition, AutomationEvaluation, AutomationRun, DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
 
 export type LocalThreadRow = {
   id: string;
@@ -28,6 +28,15 @@ export type LocalMessageRow = {
   kind: 'final' | 'progress' | 'system';
   seq: number;
 };
+
+export type MessageContentArgs = [
+  role: LocalMessageRow['role'],
+  content: string,
+  kind: LocalMessageRow['kind'],
+  toolCall?: DesktopBridgeToolCall,
+  bridgeKind?: DesktopBridgeEventKind,
+  bridgeStatus?: DesktopBridgeEvent['bridgeStatus'],
+];
 
 export type LocalRunRow = {
   id: string;
