@@ -3,6 +3,8 @@ import type {
   SkillDetail,
   SaveSkillInput,
   InstallSkillInput,
+  InstallSkillBundleInput,
+  InstallSkillBundleResult,
   DeleteSkillInput,
   ToggleSkillInput,
 } from '@cc/superai-contracts/skills';
@@ -28,6 +30,10 @@ export function deleteSkill(input: DeleteSkillInput) {
 
 export function installSkill(input: InstallSkillInput) {
   return coreRequest<SkillInfo>('POST', '/skills/install', input);
+}
+
+export function installSkillBundle(input: InstallSkillBundleInput) {
+  return coreRequest<InstallSkillBundleResult>('POST', '/skills/install-bundle', input);
 }
 
 export function toggleSkill(input: ToggleSkillInput) {

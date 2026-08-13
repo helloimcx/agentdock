@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-14
+
+- 技能中心页面新增「安装 Obsidian 技能包」按钮：一键从 `kepano/obsidian-skills` 克隆并导入 5 个官方维护的 Obsidian 技能（obsidian-markdown、obsidian-bases、json-canvas、obsidian-cli、defuddle）到用户级目录，并通过既有的 skill-mounter 自动挂载到 Claude Code / Codex / opencode / Hermes / Pi 的原生 skills 目录（Issue #72 首批切片）。
+
 ### 2026-08-13
 
 - 发布 AgentDock 0.1.74：支持 per-run ACP Trace 轨迹与 Gantt 时间线视图（Issue #63），持久化 `run_spans` 节点树（thought, plan, tool_call, model_call）与 Token 用量，通过 `AcpTraceProjector` 实时投影 ACP 流式事件，并在对话 Header 与 Automations 运行记录中提供全新的 `RunTimelineDrawer` 轨迹甘特图与 JSON 载荷查看器。

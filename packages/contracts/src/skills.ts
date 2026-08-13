@@ -40,6 +40,19 @@ export interface InstallSkillInput {
   workspacePath?: string;
 }
 
+export interface InstallSkillBundleInput {
+  url: string;
+  /** Subdirectory inside the repo containing per-skill folders. Defaults to 'skills'. */
+  skillsDir?: string;
+  targetScope: 'user' | 'workspace';
+  workspacePath?: string;
+}
+
+export interface InstallSkillBundleResult {
+  installed: SkillInfo[];
+  skipped: string[];
+}
+
 export interface DeleteSkillInput {
   id: string;
   scope: 'user' | 'workspace';
