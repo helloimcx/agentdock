@@ -47,6 +47,9 @@ import { registerSchedulerHandlers } from './handlers/scheduler-handler.js';
 import { registerAutomationHandlers } from './handlers/automation-handler.js';
 import { registerUnifiedAutomationHandlers } from './handlers/automations-handler.js';
 import { registerKnowledgeHandlers } from './handlers/knowledge-handler.js';
+import { registerSkillsHandlers } from './handlers/skills-handler.js';
+import { registerTraceHandlers } from './handlers/trace-handler.js';
+import { ManagedSkillCatalog } from './managed-skill-catalog.js';
 import { registerCapabilitiesHandlers } from './handlers/capabilities-handler.js';
 import { registerProviderHandlers } from './handlers/provider-handler.js';
 import { registerChannelHandlers } from './handlers/channel-handler.js';
@@ -85,6 +88,7 @@ export interface LocalAiCoreServerBindings {
   readonly runtimeDetection: RuntimeDetectionService;
   readonly kernel: LocalCoreKernel;
   readonly errorReporter: LocalCoreErrorReporter;
+  readonly skillCatalog?: ManagedSkillCatalog;
 }
 
 interface LocalAiCoreServerOptions {
@@ -178,6 +182,8 @@ export class LocalAiCoreServer {
       });
     }
     registerKnowledgeHandlers(this.handlers, b.knowledgeProvider);
+    registerSkillsHandlers(this.handlers, b.skillCatalog || new ManagedSkillCatalog());
+    registerTraceHandlers(this.handlers, b.store);
     registerCapabilitiesHandlers(this.handlers, b.kernel);
     registerProviderHandlers(this.handlers, b.store);
     registerChannelHandlers(this.handlers, b.channelService);

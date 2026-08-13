@@ -42,6 +42,22 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_runs_thread_updated ON runs (thread_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS run_spans (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      parent_span_id TEXT,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      duration_ms INTEGER,
+      input_json TEXT,
+      output_json TEXT,
+      usage_json TEXT,
+      FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_run_spans_run_started ON run_spans (run_id, started_at ASC);
     CREATE TABLE IF NOT EXISTS platform_pairings (
       code TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,

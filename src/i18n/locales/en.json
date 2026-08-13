@@ -7,6 +7,7 @@
     "workspace": "Workspace",
     "providers": "AI Providers",
     "knowledge": "Knowledge",
+    "skills": "Skills",
     "projects": "Projects",
     "sessions": "Sessions",
     "cron": "Cron",

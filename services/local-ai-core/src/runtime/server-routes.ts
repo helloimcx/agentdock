@@ -58,6 +58,8 @@ export type LocalAiCoreRoute =
   | { name: 'thread.messages.send'; threadId: string }
   | { name: 'thread.actions.send'; threadId: string }
   | { name: 'run.interrupt'; runId: string }
+  | { name: 'runs.trace.get'; runId: string }
+  | { name: 'runs.spans.list'; runId: string }
   | { name: 'workspaces.list' }
   | { name: 'workspace-registry.list' }
   | { name: 'workspace-registry.create' }
@@ -96,6 +98,12 @@ export type LocalAiCoreRoute =
   | { name: 'knowledge.base.files.upload'; knowledgeBaseId: string }
   | { name: 'knowledge.base.file.delete'; knowledgeBaseId: string; fileId: string }
   | { name: 'knowledge.base.search'; knowledgeBaseId: string }
+  | { name: 'skills.list' }
+  | { name: 'skills.get'; skillId: string }
+  | { name: 'skills.save' }
+  | { name: 'skills.delete' }
+  | { name: 'skills.install' }
+  | { name: 'skills.toggle' }
   | { name: 'capabilities.read' }
   | { name: 'capabilities.snapshot' }
   | { name: 'diagnostics.errors' }
@@ -196,6 +204,9 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
   if (segments[0] === 'knowledge') {
     return parseKnowledgeRoute(normalizedMethod, segments);
+  }
+  if (segments[0] === 'skills') {
+    return parseSkillsRoute(normalizedMethod, segments);
   }
   if (segments[0] === 'capabilities') {
     return parseCapabilitiesRoute(normalizedMethod, segments);
@@ -427,8 +438,15 @@ function parseThreadsRoute(method: string, segments: string[]): LocalAiCoreRoute
 
 function parseRunsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   const runId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
-  if (method === 'POST' && runId && segments.length === 3 && segments[2] === 'interrupt') {
+  if (!runId) return null;
+  if (method === 'POST' && segments.length === 3 && segments[2] === 'interrupt') {
     return { name: 'run.interrupt', runId };
+  }
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'trace') {
+    return { name: 'runs.trace.get', runId };
+  }
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'spans') {
+    return { name: 'runs.spans.list', runId };
   }
   return null;
 }
@@ -553,6 +571,20 @@ function parseKnowledgeRoute(method: string, segments: string[]): LocalAiCoreRou
   }
   if (segments[1] === 'bases') {
     return parseKnowledgeBasesRoute(method, segments);
+  }
+  return null;
+}
+
+function parseSkillsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 1) {
+    if (method === 'GET') return { name: 'skills.list' };
+    if (method === 'POST') return { name: 'skills.save' };
+    if (method === 'DELETE') return { name: 'skills.delete' };
+  }
+  if (segments.length === 2) {
+    if (segments[1] === 'install' && method === 'POST') return { name: 'skills.install' };
+    if (segments[1] === 'toggle' && method === 'POST') return { name: 'skills.toggle' };
+    if (method === 'GET') return { name: 'skills.get', skillId: decodeURIComponent(segments[1]) };
   }
   return null;
 }

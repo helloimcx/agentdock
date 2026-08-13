@@ -9,6 +9,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Settings,
+  Sparkles,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const SystemConfig = lazy(() => import('@/pages/System/Config'));
 const SystemLogs = lazy(() => import('@/pages/System/Logs'));
 const KnowledgeHome = lazy(() => import('@/pages/Knowledge/KnowledgeHome'));
 const KnowledgeDetail = lazy(() => import('@/pages/Knowledge/KnowledgeDetail'));
+const SkillsPage = lazy(() => import('@/pages/Skills/SkillsPage'));
 
 export type UiContributionContext = {
   features: RuntimeFeatureSupport;
@@ -139,6 +141,13 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       element: ({ features }) => guarded(features.knowledgeModule, <KnowledgeDetail />),
     },
     {
+      id: 'skills',
+      path: 'skills',
+      titleKey: 'nav.skills',
+      order: 42,
+      element: () => <SkillsPage />,
+    },
+    {
       id: 'projects',
       path: 'projects',
       titleKey: 'nav.projects',
@@ -240,6 +249,13 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       icon: Library,
       order: 40,
       visible: ({ features }) => features.knowledgeModule,
+    },
+    {
+      id: 'skills',
+      path: '/skills',
+      labelKey: 'nav.skills',
+      icon: Sparkles,
+      order: 42,
     },
     {
       id: 'projects',

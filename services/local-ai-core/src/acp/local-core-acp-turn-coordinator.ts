@@ -34,6 +34,8 @@ import type { AcpSessionState, RunningTurn } from '../router/workspace-router-ty
 import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import type { AgentAcpProgressKind } from '../agents/shared/acp-behavior.js';
+import type { LocalCoreTraceStore } from './store/trace-store.js';
+import { AcpTraceProjector } from './local-core-acp-trace-projector.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
@@ -43,10 +45,20 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   getThreadAgentMode?: (threadId: string) => string;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
+  traceStore?: LocalCoreTraceStore;
+  traceProjector?: AcpTraceProjector;
 };
 
 export class LocalCoreAcpTurnCoordinator {
-  constructor(private readonly options: LocalCoreAcpTurnCoordinatorOptions) {}
+  readonly traceProjector?: AcpTraceProjector;
+
+  constructor(private readonly options: LocalCoreAcpTurnCoordinatorOptions) {
+    this.traceProjector = options.traceProjector || (options.traceStore ? new AcpTraceProjector(options.traceStore) : undefined);
+  }
+
+  endRun(runId: string, status: 'completed' | 'failed' = 'completed') {
+    this.traceProjector?.endRun(runId, status);
+  }
 
   closePendingThoughtSegment(session: AcpSessionState) {
     const currentTurn = session.currentTurn;
@@ -348,6 +360,7 @@ export class LocalCoreAcpTurnCoordinator {
       this.resetThoughtSegment(currentTurn);
       return;
     }
+    this.traceProjector?.onThought(currentRunId, projection.content);
     if (this.options.upsertMessage) {
       this.options.upsertMessage(session.threadId, projection.messageId, 'assistant', projection.content, 'progress', undefined, projection.bridgeKind);
     }
@@ -375,6 +388,7 @@ export class LocalCoreAcpTurnCoordinator {
       });
     }
     syncLegacyPendingToolCall(currentTurn, toolCall);
+    this.traceProjector?.onToolCallStart(currentRunId, toolCall.title, toolCall.input, toolCall.key);
   }
 
   private handleToolCallUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
@@ -406,6 +420,24 @@ export class LocalCoreAcpTurnCoordinator {
       return;
     }
     const displayTitle = resolveToolUpdateDisplayTitle({ title, status, priorDetail });
+    const effectiveToolName = toolName || displayTitle || title;
+    const effectiveCallId = toolCall?.key || messageId;
+    if (isTerminalToolStatus(status)) {
+      this.traceProjector?.onToolCallEnd(
+        currentRunId,
+        effectiveToolName,
+        status === 'failed' ? 'failed' : 'completed',
+        content || (updateInput === undefined ? toolCall?.input : updateInput),
+        effectiveCallId,
+      );
+    } else {
+      this.traceProjector?.onToolCallStart(
+        currentRunId,
+        effectiveToolName,
+        updateInput === undefined ? toolCall?.input : updateInput,
+        effectiveCallId,
+      );
+    }
     if (!isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
       if (toolCall) {
         toolCall.detail = displayTitle;
@@ -465,6 +497,7 @@ export class LocalCoreAcpTurnCoordinator {
     if (this.shouldSuppressProgress(currentTurn, 'plan', content)) {
       return;
     }
+    this.traceProjector?.onPlan(currentRunId, content);
     this.options.appendMessage(session.threadId, 'assistant', content, 'progress', undefined, 'plan');
     this.options.emitBridge({
       type: 'reply',

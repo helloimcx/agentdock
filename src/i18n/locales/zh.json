@@ -7,6 +7,7 @@
     "workspace": "工作区",
     "providers": "AI 服务商",
     "knowledge": "知识库",
+    "skills": "技能中心",
     "projects": "项目",
     "sessions": "会话",
     "cron": "定时任务",

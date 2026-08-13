@@ -6,3 +6,5 @@ export * as scheduler from './scheduler.js';
 export * as automation from './automation.js';
 export * as automations from './automations.js';
 export * as knowledge from './knowledge.js';
+export * as skills from './skills.js';
+export * as traces from './traces.js';

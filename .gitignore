@@ -39,3 +39,4 @@ lcov.info
 weixin-monitor/
 
 .agentdock-core/
+tmp/
