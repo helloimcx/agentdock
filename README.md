@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-13
+
+- 发布 per-run ACP Trace 轨迹与 Gantt 时间线视图（Issue #63）：支持持久化 `run_spans` 节点树（thought, plan, tool_call, model_call）与 Token 用量，通过 `AcpTraceProjector` 实时投影 ACP 流式事件，并在对话 Header 与 Automations 运行记录中提供全新的 `RunTimelineDrawer` 轨迹甘特图与 JSON 载荷查看器。
+
 ### 2026-08-11
 
 - 发布 AgentDock 0.1.73：正式支持 open Agent Skills (SKILL.md) 开放标准与多源技能目录（Builtin、User 全局、Workspace 项目级），在主侧边栏新增独立的技能中心页面 (`/skills`)，支持在线管理、编辑 SKILL.md 与 Git/URL 仓库一键安装，并在 ACP 进程启动时自动挂载/软链激活 Skill 到 Agent 原生 skills 目录。
