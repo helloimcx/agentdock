@@ -59,11 +59,11 @@ import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
 import { LocalCoreTraceStore } from './trace-store.js';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
 import type {
-  LocalMessageRow,
   LocalPlatformPairingRow,
   LocalPlatformThreadBindingRow,
   LocalPlatformUserRow,
   LocalRunRow,
+  MessageContentArgs,
 } from './acp-store-types.js';
 import { LocalAgentTaskStore } from './agent-task-store.js';
 import { LocalAutomationMonitorStore } from './automation-monitor-store.js';
@@ -163,29 +163,12 @@ export class LocalCoreAcpStore {
     this.threads.delete(threadId);
   }
 
-  appendMessage(
-    threadId: string,
-    role: LocalMessageRow['role'],
-    content: string,
-    kind: LocalMessageRow['kind'],
-    toolCall?: DesktopBridgeToolCall,
-    bridgeKind?: DesktopBridgeEventKind,
-    bridgeStatus?: DesktopBridgeEvent['bridgeStatus'],
-  ) {
-    return this.threads.appendMessage(threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus);
+  appendMessage(threadId: string, ...args: MessageContentArgs) {
+    return this.threads.appendMessage(threadId, ...args);
   }
 
-  upsertMessage(
-    threadId: string,
-    id: string,
-    role: LocalMessageRow['role'],
-    content: string,
-    kind: LocalMessageRow['kind'],
-    toolCall?: DesktopBridgeToolCall,
-    bridgeKind?: DesktopBridgeEventKind,
-    bridgeStatus?: DesktopBridgeEvent['bridgeStatus'],
-  ) {
-    return this.threads.upsertMessage(threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus);
+  upsertMessage(threadId: string, id: string, ...args: MessageContentArgs) {
+    return this.threads.upsertMessage(threadId, id, ...args);
   }
 
   updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {
