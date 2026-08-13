@@ -56,6 +56,7 @@ export class LocalCoreAcpBackend {
       onSessionClosed: (session, error) => this.handleTransportSessionClosed(session, error),
     });
     this.turnCoordinator = new LocalCoreAcpTurnCoordinator({
+      traceStore: options.store.trace,
       emitBridge: (event) => this.emitBridgeEvent(event),
       appendMessage: (threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
         this.options.store.appendMessage(threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus);
@@ -522,6 +523,7 @@ export class LocalCoreAcpBackend {
       }
       const nextStatus = result?.stopReason === 'cancelled' ? 'interrupted' : 'completed';
       this.options.store.updateRun(runId, threadId, nextStatus);
+      this.turnCoordinator.endRun(runId, nextStatus === 'interrupted' ? 'failed' : 'completed');
       const task = this.options.store.getAgentTaskByRunId(runId);
       if (task) {
         this.options.store.updateAgentTask(task.taskId, {
@@ -555,6 +557,7 @@ export class LocalCoreAcpBackend {
       });
       const errorContent = formatUserError(errorInfo);
       this.options.store.updateRun(runId, threadId, 'failed');
+      this.turnCoordinator.endRun(runId, 'failed');
       const task = this.options.store.getAgentTaskByRunId(runId);
       if (task) {
         this.options.store.updateAgentTask(task.taskId, {
@@ -630,6 +633,7 @@ export class LocalCoreAcpBackend {
     workspaceId: string,
     bridgeSessionKey: string,
   ) {
+    this.turnCoordinator.endRun(runId, 'failed');
     const task = this.options.store.getAgentTaskByRunId(runId);
     if (task) {
       this.options.store.updateAgentTask(task.taskId, {

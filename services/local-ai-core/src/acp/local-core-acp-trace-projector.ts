@@ -75,12 +75,13 @@ export class AcpTraceProjector {
   onToolCallStart(
     runId: string,
     toolName: string,
-    input?: Record<string, unknown> | string,
+    input?: unknown,
     callId?: string
   ): RunSpan {
     this.startRun(runId);
     const keyMap = this.activeRunSpans.get(runId)!;
     const parentSpanId = keyMap.get('thought') || keyMap.get('plan') || null;
+    this.completeRunningThoughtOrPlan(keyMap);
     const sanitizedInput = sanitizePayload(input);
 
     const span = this.traceStore.insertSpan({
@@ -97,11 +98,22 @@ export class AcpTraceProjector {
     return span;
   }
 
+  private completeRunningThoughtOrPlan(keyMap: Map<string, string>): void {
+    const thoughtSpanId = keyMap.get('thought');
+    if (thoughtSpanId) {
+      this.traceStore.updateSpan(thoughtSpanId, { status: 'completed' });
+    }
+    const planSpanId = keyMap.get('plan');
+    if (planSpanId) {
+      this.traceStore.updateSpan(planSpanId, { status: 'completed' });
+    }
+  }
+
   onToolCallEnd(
     runId: string,
     toolName: string,
     status: 'completed' | 'failed' = 'completed',
-    output?: Record<string, unknown> | string,
+    output?: unknown,
     callId?: string
   ): RunSpan | undefined {
     const keyMap = this.activeRunSpans.get(runId);

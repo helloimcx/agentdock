@@ -112,3 +112,22 @@ test('SQLite ON DELETE CASCADE purges run_spans when parent run is deleted', () 
 
   assert.equal(store.listRunSpans('run-1').length, 0);
 });
+
+test('AcpTraceProjector auto-completes running thought span when tool call starts', () => {
+  const db = createTestDb();
+  const store = new LocalCoreTraceStore(db);
+  const projector = new AcpTraceProjector(store);
+
+  const thoughtSpan = projector.onThought('run-1', 'Analyzing repository files...');
+  assert.equal(thoughtSpan.status, 'running');
+
+  const toolSpan = projector.onToolCallStart('run-1', 'list_files', { dir: '.' }, 'call-1');
+  assert.equal(toolSpan.status, 'running');
+
+  const updatedThought = store.getSpan(thoughtSpan.id);
+  assert.equal(updatedThought?.status, 'completed');
+
+  projector.endRun('run-1', 'completed');
+  const updatedTool = store.getSpan(toolSpan.id);
+  assert.equal(updatedTool?.status, 'completed');
+});
