@@ -24,7 +24,7 @@ import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '.
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { BaseChannelGateway, type GatewayBinding, type GatewayRuntimeState, type GatewayThreadRoute } from '../shared/base-channel-gateway.js';
 import { resolveInboundChannelAuthorization } from '../shared/inbound-authorization.js';
-import { channelPlatformKey, extractChannelInstanceId, runtimeKey } from '../shared/channel-keys.js';
+import { channelPlatformKey, runtimeKey } from '../shared/channel-keys.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import {
@@ -95,15 +95,8 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
 
   // ==================== Abstract implementations ====================
 
-  protected makeThreadRoute(input: ChannelSessionCommandInput, threadId: string): WeixinThreadRoute {
-    return {
-      workspaceId: input.workspaceId,
-      instanceId: input.instanceId,
-      platformKey: input.platformKey,
-      platformUserId: input.platformUserId,
-      chatId: input.chatId,
-      threadId,
-    };
+  protected createScheduledTurnState(sessionKey: string): WeixinTurnState {
+    return createWeixinTurnState(sessionKey);
   }
 
   protected collectBindings(config: DesktopConnectConfig | null | undefined): WeixinWorkspaceBinding[] {
@@ -334,37 +327,6 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
   }
 
 
-
-  registerScheduledThreadBridge(input: {
-    workspaceId: string;
-    platform: string;
-    route: ChannelRoute;
-    threadId: string;
-    sessionKey: string;
-  }) {
-    const instanceId = input.route.instanceId || extractChannelInstanceId(input.platform, 'weixin') || 'default';
-    const platformKey = channelPlatformKey('weixin', instanceId);
-    const route: WeixinThreadRoute = {
-      workspaceId: input.workspaceId,
-      instanceId,
-      platformKey,
-      platformUserId: input.route.participantId || '',
-      chatId: input.route.channelId,
-      threadId: input.threadId,
-    };
-    const previousRoute = this.threadRouting.get(input.sessionKey);
-    this.threadRouting.set(input.sessionKey, route);
-    if (!this.outboundTurns.has(input.sessionKey)) {
-      this.outboundTurns.set(input.sessionKey, createWeixinTurnState(input.sessionKey));
-    }
-    return () => {
-      if (previousRoute) {
-        this.threadRouting.set(input.sessionKey, previousRoute);
-      } else {
-        this.threadRouting.delete(input.sessionKey);
-      }
-    };
-  }
 
   async sendOutboundMessage(workspaceId: string, input: ChannelOutboundMessageInput): Promise<ChannelOutboundMessageResult> {
     const state = this.resolveRuntimeState(workspaceId, input.route?.instanceId).state;

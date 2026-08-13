@@ -23,6 +23,7 @@ import type { LocalPlatformUserRow } from '../../router/workspace-router-types.j
 import type { EventBus } from '@cc/plugin-sdk';
 import { createChannelThreadMessageInput } from '../shared/content.js';
 import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
+import { channelPlatformKey, extractChannelInstanceId } from '../shared/channel-keys.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
@@ -149,8 +150,22 @@ export abstract class BaseChannelGateway<
 
   // ==================== Abstract (platform-specific) ====================
 
-  /** Create a thread route object for the given command input and resolved thread id. */
-  protected abstract makeThreadRoute(input: ChannelSessionCommandInput, threadId: string): TThreadRoute;
+  /** All current channel route types are structurally identical to GatewayThreadRoute; override only if a future channel adds route-specific fields. */
+  protected makeThreadRoute(input: ChannelSessionCommandInput, threadId: string): TThreadRoute {
+    return {
+      workspaceId: input.workspaceId,
+      instanceId: input.instanceId,
+      platformKey: input.platformKey,
+      platformUserId: input.platformUserId,
+      chatId: input.chatId,
+      threadId,
+    } as TThreadRoute;
+  }
+
+  /** Called by registerScheduledThreadBridge to seed outboundTurns. Returns undefined by default so channels that don't track turn state can register scheduled bridges without overriding. */
+  protected createScheduledTurnState(_sessionKey: string): TTurnState | undefined {
+    return undefined;
+  }
 
   /** Collect enabled workspace bindings from the desktop config. */
   protected abstract collectBindings(config: DesktopConnectConfig | null | undefined): TBinding[];
@@ -380,17 +395,21 @@ export abstract class BaseChannelGateway<
     threadId: string;
     sessionKey: string;
   }) {
-    const instanceId = (input.route as { instanceId?: string }).instanceId || 'default';
+    const instanceId = input.route.instanceId || extractChannelInstanceId(input.platform, this.platform) || 'default';
     const route: GatewayThreadRoute = {
       workspaceId: input.workspaceId,
       instanceId,
-      platformKey: `${this.platform}${instanceId !== 'default' ? `:${instanceId}` : ''}`,
+      platformKey: channelPlatformKey(this.platform, instanceId),
       platformUserId: input.route.participantId || '',
       chatId: input.route.channelId,
       threadId: input.threadId,
     };
     const previousRoute = this.threadRouting.get(input.sessionKey);
     this.threadRouting.set(input.sessionKey, route as TThreadRoute);
+    if (!this.outboundTurns.has(input.sessionKey)) {
+      const turn = this.createScheduledTurnState(input.sessionKey);
+      if (turn) this.outboundTurns.set(input.sessionKey, turn);
+    }
     return () => {
       if (previousRoute) {
         this.threadRouting.set(input.sessionKey, previousRoute as TThreadRoute);
