@@ -97,7 +97,7 @@ flowchart LR
 
 ### 2026-08-13
 
-- 发布 per-run ACP Trace 轨迹与 Gantt 时间线视图（Issue #63）：支持持久化 `run_spans` 节点树（thought, plan, tool_call, model_call）与 Token 用量，通过 `AcpTraceProjector` 实时投影 ACP 流式事件，并在对话 Header 与 Automations 运行记录中提供全新的 `RunTimelineDrawer` 轨迹甘特图与 JSON 载荷查看器。
+- 发布 AgentDock 0.1.74：支持 per-run ACP Trace 轨迹与 Gantt 时间线视图（Issue #63），持久化 `run_spans` 节点树（thought, plan, tool_call, model_call）与 Token 用量，通过 `AcpTraceProjector` 实时投影 ACP 流式事件，并在对话 Header 与 Automations 运行记录中提供全新的 `RunTimelineDrawer` 轨迹甘特图与 JSON 载荷查看器。
 
 ### 2026-08-11
 
