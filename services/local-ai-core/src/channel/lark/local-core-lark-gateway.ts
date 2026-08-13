@@ -165,38 +165,6 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     return this.sendScheduledCard(workspaceId, route.channelId, text);
   }
 
-  registerScheduledThreadBridge(input: {
-    workspaceId: string;
-    platform: string;
-    route: ChannelRoute;
-    threadId: string;
-    sessionKey: string;
-  }) {
-    const instanceId = input.route.instanceId || extractChannelInstanceId(input.platform, 'lark') || 'default';
-    const platformKey = channelPlatformKey('lark', instanceId);
-    const route: LarkThreadRoute = {
-      workspaceId: input.workspaceId,
-      instanceId,
-      platformKey,
-      platformUserId: input.route.participantId || '',
-      chatId: input.route.channelId,
-      threadId: input.threadId,
-    };
-    const previousRoute = this.threadRouting.get(input.sessionKey);
-    this.threadRouting.set(input.sessionKey, route);
-    if (!this.outboundTurns.has(input.sessionKey)) {
-      this.createTurnState(input.sessionKey);
-    }
-    return () => {
-      if (previousRoute) {
-        this.threadRouting.set(input.sessionKey, previousRoute);
-      } else {
-        this.threadRouting.delete(input.sessionKey);
-      }
-    };
-  }
-
-
   protected async sendSessionCommandResult(input: {
     workspaceId: string;
     currentThreadId: string;
@@ -650,15 +618,8 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     return openId;
   }
 
-  protected makeThreadRoute(input: ChannelSessionCommandInput, threadId: string): LarkThreadRoute {
-    return {
-      workspaceId: input.workspaceId,
-      instanceId: input.instanceId,
-      platformKey: input.platformKey,
-      platformUserId: input.platformUserId,
-      chatId: input.chatId,
-      threadId,
-    };
+  protected createScheduledTurnState(sessionKey: string): LarkTurnState {
+    return createLarkTurnState(sessionKey);
   }
 
   protected collectBindings(config: DesktopConnectConfig | null | undefined): LarkWorkspaceBinding[] {
