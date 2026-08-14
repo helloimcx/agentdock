@@ -100,6 +100,7 @@ flowchart LR
 - 配置存储彻底迁移到 SQLite：移除 config.toml 及全部文件兼容层（legacy 导入、settings configPath、内嵌 provider 迁移、registry 备份/合并舞步），`runtime_config` 表成为工作区配置的唯一事实来源，`workspace_registry` 降级为派生镜像。
 - 修复定时任务绑定旧 agent runtime 的问题：side-thread 定时任务（Automation/Monitor）复用时校验线程 agent 类型与工作区当前 agent 是否一致，不一致时自动在新 agent 下重建会话线程，任务随工作区 agent 切换自愈。
 - 技能中心页面新增「安装 Obsidian 技能包」按钮：一键从 `kepano/obsidian-skills` 克隆并导入 5 个官方维护的 Obsidian 技能（obsidian-markdown、obsidian-bases、json-canvas、obsidian-cli、defuddle）到用户级目录，并通过既有的 skill-mounter 自动挂载到 Claude Code / Codex / opencode / Hermes / Pi 的原生 skills 目录（Issue #72 首批切片）。
+- 修复飞书扫码新增机器人后 App ID/Secret 为空的问题：扫码前不再向配置落库空凭据实例（QR 注册接口支持临时实例，凭据确认后才写入配置），轮询改为弹窗关闭后后台继续、出错自动退避重试而非静默停止，并为 QR 注册/轮询全过程补充网关日志便于回溯。
 
 ### 2026-08-13
 

@@ -110,17 +110,21 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   }
 
   async getQrCode(workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
-    const binding = await this.getBinding(workspaceId, instanceId);
+    const binding = await this.resolveQrBinding(workspaceId, instanceId);
     const data = await requestAppRegistration(binding);
     const ticket = String(data.device_code || '').trim();
     const userCode = String(data.user_code || '').trim();
     if (!ticket || !userCode) {
+      this.options.log?.(`localcore-lark qr begin failed for ${workspaceId}/${binding.instanceId}: response did not include device_code/user_code`);
       throw new Error('Lark app registration did not return a device code and user code.');
     }
+    const expiresIn = Number(data.expires_in || DEFAULT_LARK_QR_EXPIRES_IN) || DEFAULT_LARK_QR_EXPIRES_IN;
+    const interval = Number(data.interval || 5) || 5;
+    this.options.log?.(`localcore-lark qr begin workspace=${workspaceId} instance=${binding.instanceId} brand=${binding.brand} userCode=${userCode} expiresIn=${expiresIn} interval=${interval}`);
     return {
       ticket,
-      expiresIn: Number(data.expires_in || DEFAULT_LARK_QR_EXPIRES_IN) || DEFAULT_LARK_QR_EXPIRES_IN,
-      interval: Number(data.interval || 5) || 5,
+      expiresIn,
+      interval,
       qrCodeUrl: `${getLarkOpenBase(binding)}${LARK_APP_REGISTRATION_SETUP_PATH}?user_code=${encodeURIComponent(userCode)}&from=openclaw`,
       instanceId: binding.instanceId,
       displayName: binding.displayName,
@@ -128,26 +132,38 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   }
 
   async checkQrCodeStatus(workspaceId: string, ticket: string, instanceId?: string): Promise<LocalCoreLarkQrCodeStatus> {
-    const binding = await this.getBinding(workspaceId, instanceId);
-    const data = await pollAppRegistration(binding, ticket);
+    const binding = await this.resolveQrBinding(workspaceId, instanceId);
+    let data: Record<string, unknown>;
+    try {
+      data = await pollAppRegistration(binding, ticket);
+    } catch (error) {
+      this.options.log?.(`localcore-lark qr poll request failed for ${workspaceId}/${binding.instanceId}: ${formatSafeError(error)}`);
+      throw error;
+    }
     const error = String(data.error || '').trim();
     if (error === 'authorization_pending' || error === 'slow_down') {
+      this.options.log?.(`localcore-lark qr poll workspace=${workspaceId} instance=${binding.instanceId}: waiting (${error})`);
       return { status: 'wait' };
     }
     if (error === 'expired_token' || error === 'invalid_grant') {
+      this.options.log?.(`localcore-lark qr poll workspace=${workspaceId} instance=${binding.instanceId}: expired (${error})`);
       return { status: 'expired' };
     }
     if (error === 'access_denied') {
+      this.options.log?.(`localcore-lark qr poll workspace=${workspaceId} instance=${binding.instanceId}: rejected (access_denied)`);
       throw new Error('Lark app registration was rejected.');
     }
     if (error) {
+      this.options.log?.(`localcore-lark qr poll workspace=${workspaceId} instance=${binding.instanceId}: unexpected error=${error} description=${String(data.error_description || '')}`);
       throw new Error(`Lark app registration failed: ${String(data.error_description || error)}`);
     }
     const appId = String(data.client_id || '').trim();
     const appSecret = String(data.client_secret || '').trim();
     if (!appId || !appSecret) {
+      this.options.log?.(`localcore-lark qr poll workspace=${workspaceId} instance=${binding.instanceId}: confirmed but credentials incomplete (client_id=${appId ? 'present' : 'missing'} client_secret=${appSecret ? 'present' : 'missing'})`);
       return { status: 'wait' };
     }
+    this.options.log?.(`localcore-lark qr poll workspace=${workspaceId} instance=${binding.instanceId}: confirmed app=${maskLarkAppId(appId)}`);
     return {
       status: 'confirmed',
       credentials: {
@@ -155,6 +171,46 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         appSecret,
       },
     };
+  }
+
+  /**
+   * Resolves the binding for QR registration. Unlike runtime operations, the
+   * Feishu device flow only needs the brand and identifiers, so an instance
+   * that has not been persisted yet (client generates the QR before the bot
+   * credentials exist) gets an ephemeral binding instead of an error. This
+   * keeps empty-credential instances out of the saved config until the flow
+   * actually confirms.
+   */
+  private async resolveQrBinding(workspaceId: string, instanceId?: string): Promise<LarkWorkspaceBinding> {
+    try {
+      return await this.getBinding(workspaceId, instanceId);
+    } catch {
+      const config = await this.options.readConfig();
+      const projects = Array.isArray(config?.projects) ? config!.projects : [];
+      const project = projects.find((entry) => (entry.workspace_id || entry.name) === workspaceId);
+      if (!project) {
+        throw new Error(`No lark binding configured for workspace "${workspaceId}"`);
+      }
+      const resolvedInstanceId = String(instanceId || '').trim() || 'default';
+      const existingCount = this.collectBindings(config).filter((entry) => entry.workspaceId === workspaceId).length;
+      return {
+        workspaceId,
+        instanceId: resolvedInstanceId,
+        displayName: `Lark ${existingCount + 1}`,
+        platformKey: channelPlatformKey('lark', resolvedInstanceId),
+        appId: '',
+        appSecret: '',
+        encryptKey: '',
+        verificationToken: '',
+        autoApprove: false,
+        cardActionsEnabled: this.defaultCardActionsEnabled,
+        groupReplyAll: false,
+        downloadsDir: '',
+        brand: 'feishu',
+        enabled: false,
+        project,
+      };
+    }
   }
 
   async sendScheduledCard(workspaceId: string, chatId: string, text: string) {

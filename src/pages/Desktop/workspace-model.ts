@@ -70,6 +70,9 @@ export type WeixinQrState = {
 
 export type LarkQrState = WeixinQrState & {
   botName?: string;
+  /** Captured at QR generation so polling and credential saving survive dialog close. */
+  workspaceId: string;
+  instanceId: string;
 };
 
 export const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: string }> = [

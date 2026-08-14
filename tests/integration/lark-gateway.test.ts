@@ -2169,6 +2169,119 @@ test('lark app registration QR confirmation returns app credentials', async () =
   }
 });
 
+test('lark QR registration works for an instance that is not persisted in config', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ body: string }> = [];
+  let call = 0;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    call += 1;
+    requests.push({ body: String(init?.body || '') });
+    if (call === 1) {
+      return new Response(JSON.stringify({
+        device_code: 'device-code-ephemeral',
+        user_code: 'EPH-1234',
+        expires_in: 300,
+        interval: 5,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      client_id: 'cli_ephemeral_1',
+      client_secret: 'secret-ephemeral',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const logs: string[] = [];
+  try {
+    const gateway = new LocalCoreLarkGateway({
+      store: {} as any,
+      readConfig: async () => ({
+        projects: [
+          {
+            name: 'default',
+            agent: { type: 'localcore-acp', providers: [] },
+            // The lark platform has NOT been persisted yet: the QR flow must
+            // still be able to begin and poll against an ephemeral instance.
+            platforms: [],
+          },
+        ],
+      } as any),
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+      log: (message: string) => logs.push(message),
+    });
+
+    const qr = await gateway.getQrCode('default', 'lark-ephemeral-1');
+    assert.equal(qr.ticket, 'device-code-ephemeral');
+    assert.equal(qr.instanceId, 'lark-ephemeral-1');
+    assert.equal(qr.displayName, 'Lark 1');
+    assert.equal(qr.qrCodeUrl, 'https://open.feishu.cn/page/openclaw?user_code=EPH-1234&from=openclaw');
+
+    const result = await gateway.checkQrCodeStatus('default', 'device-code-ephemeral', 'lark-ephemeral-1');
+    assert.deepEqual(result, {
+      status: 'confirmed',
+      credentials: {
+        appId: 'cli_ephemeral_1',
+        appSecret: 'secret-ephemeral',
+      },
+    });
+    assert.ok(logs.some((line) => line.includes('qr begin') && line.includes('instance=lark-ephemeral-1')));
+    // The app id is masked in logs; the first six characters are preserved.
+    assert.ok(logs.some((line) => line.includes('qr poll') && line.includes('confirmed app=cli_ep')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('lark QR poll logs pending, expired, rejected, and incomplete-credential transitions', async () => {
+  const originalFetch = globalThis.fetch;
+  let call = 0;
+  globalThis.fetch = (async () => {
+    call += 1;
+    const payload = call === 1
+      ? { error: 'authorization_pending', error_description: '', code: 20094 }
+      : call === 2
+        ? { error: 'expired_token', error_description: '', code: 20099 }
+        : call === 3
+          ? { error: 'access_denied', error_description: '', code: 20097 }
+          : { client_id: 'cli_partial', code: 0 };
+    return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const logs: string[] = [];
+  try {
+    const gateway = new LocalCoreLarkGateway({
+      store: {} as any,
+      readConfig: async () => ({
+        projects: [
+          {
+            name: 'default',
+            agent: { type: 'localcore-acp', providers: [] },
+            platforms: [{ type: 'lark', options: { instance_id: 'lark-pending', app_id: 'cli_a', app_secret: 'secret-a' } }],
+          },
+        ],
+      } as any),
+      getWorkspaceRouter: () => ({} as any),
+      eventBus: { emit: () => {}, on: () => () => {} } as any,
+      log: (message: string) => logs.push(message),
+    });
+
+    assert.deepEqual(await gateway.checkQrCodeStatus('default', 'ticket-1', 'lark-pending'), { status: 'wait' });
+    assert.deepEqual(await gateway.checkQrCodeStatus('default', 'ticket-1', 'lark-pending'), { status: 'expired' });
+    await assert.rejects(
+      () => gateway.checkQrCodeStatus('default', 'ticket-1', 'lark-pending'),
+      /rejected/,
+    );
+    // A confirmed poll without a client_secret must stay pending, not confirm.
+    assert.deepEqual(await gateway.checkQrCodeStatus('default', 'ticket-1', 'lark-pending'), { status: 'wait' });
+    assert.ok(logs.some((line) => line.includes('waiting (authorization_pending)')));
+    assert.ok(logs.some((line) => line.includes('expired (expired_token)')));
+    assert.ok(logs.some((line) => line.includes('rejected (access_denied)')));
+    assert.ok(logs.some((line) => line.includes('credentials incomplete (client_id=present client_secret=missing)')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('lark channel keeps multiple bot instances in one workspace isolated', async () => {
   const gateway = new LocalCoreLarkGateway({
     store: {
