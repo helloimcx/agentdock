@@ -100,6 +100,7 @@ export type LocalAiCoreRoute =
   | { name: 'skills.save' }
   | { name: 'skills.delete' }
   | { name: 'skills.install' }
+  | { name: 'skills.installBundle' }
   | { name: 'skills.toggle' }
   | { name: 'capabilities.read' }
   | { name: 'capabilities.snapshot' }
@@ -571,6 +572,7 @@ function parseSkillsRoute(method: string, segments: string[]): LocalAiCoreRoute 
   }
   if (segments.length === 2) {
     if (segments[1] === 'install' && method === 'POST') return { name: 'skills.install' };
+    if (segments[1] === 'install-bundle' && method === 'POST') return { name: 'skills.installBundle' };
     if (segments[1] === 'toggle' && method === 'POST') return { name: 'skills.toggle' };
     if (method === 'GET') return { name: 'skills.get', skillId: decodeURIComponent(segments[1]) };
   }

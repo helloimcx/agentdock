@@ -10,6 +10,7 @@ import {
   FolderGit2,
   RefreshCw,
   AlertTriangle,
+  BookOpen,
 } from 'lucide-react';
 import { Button, Card, EmptyState, Input, Modal, Textarea, PageHeader } from '@/components/ui';
 import { skills as skillsApi } from '@cc/core-sdk';
@@ -40,6 +41,7 @@ export default function SkillsPage() {
   const [installUrl, setInstallUrl] = useState('');
   const [installScope, setInstallScope] = useState<'user' | 'workspace'>('user');
   const [installing, setInstalling] = useState(false);
+  const [installingBundle, setInstallingBundle] = useState(false);
 
   const [showNewModal, setShowNewModal] = useState(false);
   const [newSkillId, setNewSkillId] = useState('');
@@ -141,6 +143,26 @@ export default function SkillsPage() {
     }
   };
 
+  const handleInstallObsidianBundle = async () => {
+    if (!confirm('将从 github.com/kepano/obsidian-skills 安装 5 个 Obsidian 技能到用户级目录（obsidian-markdown / obsidian-bases / json-canvas / obsidian-cli / defuddle）。继续？')) return;
+    setInstallingBundle(true);
+    try {
+      const result = await skillsApi.installSkillBundle({
+        url: 'https://github.com/kepano/obsidian-skills.git',
+        skillsDir: 'skills',
+        targetScope: 'user',
+      });
+      const count = result.installed.length;
+      const skippedNote = result.skipped.length ? `（跳过 ${result.skipped.length} 个不符合命名规范的目录）` : '';
+      setNotice({ tone: 'success', message: `成功安装 ${count} 个 Obsidian 技能${skippedNote}。` });
+      fetchSkills();
+    } catch (err) {
+      setNotice({ tone: 'error', message: `Obsidian 技能包安装失败: ${String(err)}` });
+    } finally {
+      setInstallingBundle(false);
+    }
+  };
+
   const handleCreateSkill = async () => {
     if (!newSkillId.trim()) return;
     setCreating(true);
@@ -185,6 +207,16 @@ export default function SkillsPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => fetchSkills()} title="刷新">
               <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleInstallObsidianBundle}
+              disabled={installingBundle}
+              title="一键安装 kepano/obsidian-skills 中的 5 个官方 Obsidian 技能"
+            >
+              <BookOpen className={cn('mr-1.5 h-4 w-4', installingBundle && 'animate-pulse')} />
+              {installingBundle ? '安装中…' : '安装 Obsidian 技能包'}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowInstallModal(true)}>
               <FolderGit2 className="mr-1.5 h-4 w-4" />

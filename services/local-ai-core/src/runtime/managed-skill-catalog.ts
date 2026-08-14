@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { SkillInfo, SkillDetail, SaveSkillInput, InstallSkillInput, DeleteSkillInput, ToggleSkillInput, SkillScope } from '@cc/superai-contracts';
+import type { SkillInfo, SkillDetail, SaveSkillInput, InstallSkillInput, InstallSkillBundleInput, InstallSkillBundleResult, DeleteSkillInput, ToggleSkillInput, SkillScope } from '@cc/superai-contracts';
 
 const execFileAsync = promisify(execFile);
 
@@ -313,6 +314,83 @@ export class ManagedSkillCatalog {
     };
   }
 
+  async installSkillBundleFromGit(input: InstallSkillBundleInput): Promise<InstallSkillBundleResult> {
+    const url = input.url.trim();
+    if (!url) throw new Error('Skill bundle Git repository URL is required.');
+
+    let baseDir: string;
+    if (input.targetScope === 'workspace') {
+      const wsPath = input.workspacePath ? resolve(input.workspacePath) : this.defaultWorkspacePath;
+      if (!wsPath) throw new Error('Workspace path is required for workspace bundle installation.');
+      baseDir = join(wsPath, '.agentdock', 'skills');
+    } else {
+      baseDir = this.userSkillsDir;
+    }
+
+    mkdirSync(baseDir, { recursive: true });
+
+    const staging = mkdtempSync(join(tmpdir(), 'agentdock-skill-bundle-'));
+    let stagedRoot: string;
+    try {
+      await execFileAsync('git', ['clone', '--depth', '1', url, staging]);
+      const skillsRelDir = (input.skillsDir || 'skills').trim();
+      stagedRoot = resolve(staging, skillsRelDir);
+      if (!stagedRoot.startsWith(`${staging}/`) || !existsSync(stagedRoot)) {
+        throw new Error(`Skills directory "${skillsRelDir}" not found in repository root.`);
+      }
+
+      const installed: SkillInfo[] = [];
+      const skipped: string[] = [];
+      let entries: { name: string; isDirectory(): boolean }[] = [];
+      try {
+        entries = readdirSync(stagedRoot, { withFileTypes: true }).map((e) => ({ name: e.name.toString(), isDirectory: () => e.isDirectory() }));
+      } catch {
+        entries = [];
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const id = entry.name;
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+          skipped.push(id);
+          continue;
+        }
+        const sourceSkillMd = join(stagedRoot, id, 'SKILL.md');
+        if (!existsSync(sourceSkillMd)) {
+          skipped.push(id);
+          continue;
+        }
+
+        const targetDir = join(baseDir, id);
+        if (existsSync(targetDir)) {
+          rmSync(targetDir, { recursive: true, force: true });
+        }
+        mkdirSync(targetDir, { recursive: true });
+        copyTree(stagedRoot, id, baseDir);
+
+        const content = readFileSync(join(targetDir, 'SKILL.md'), 'utf8');
+        const { metadata } = parseFrontmatter(content);
+        installed.push({
+          id,
+          name: (metadata.name as string) || id,
+          description: (metadata.description as string) || '',
+          scope: input.targetScope,
+          path: join(targetDir, 'SKILL.md'),
+          enabled: true,
+          overridden: false,
+          metadata,
+        });
+      }
+
+      if (installed.length === 0) {
+        throw new Error(`No skill directories with SKILL.md found under "${skillsRelDir}/" in ${url}.`);
+      }
+
+      return { installed, skipped };
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  }
+
   toggleSkill(input: ToggleSkillInput): boolean {
     const wsPath = input.workspacePath ? resolve(input.workspacePath) : this.defaultWorkspacePath;
     const dir = wsPath ? join(wsPath, '.agentdock', 'skills') : this.userSkillsDir;
@@ -388,4 +466,27 @@ function parseFrontmatter(markdownContent: string): { metadata: Record<string, u
     }
   }
   return { metadata, body };
+}
+
+function copyTree(sourceRoot: string, relativeDir: string, destRoot: string): void {
+  const sourceDir = resolve(sourceRoot, relativeDir);
+  const destDir = resolve(destRoot, relativeDir);
+  if (!sourceDir.startsWith(`${sourceRoot}/`) || !destDir.startsWith(`${destRoot}/`)) return;
+  const entries = readdirSync(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const name = entry.name.toString();
+    const sourceEntry = join(sourceDir, name);
+    const destEntry = join(destDir, name);
+    if (entry.isDirectory()) {
+      mkdirSync(destEntry, { recursive: true });
+      copyTree(sourceRoot, `${relativeDir}/${name}`, destRoot);
+    } else if (entry.isFile() && !entry.isSymbolicLink()) {
+      try {
+        const content = readFileSync(sourceEntry);
+        writeFileSync(destEntry, content);
+      } catch {
+        // Skip files that cannot be read (e.g. sockets, special files)
+      }
+    }
+  }
 }
