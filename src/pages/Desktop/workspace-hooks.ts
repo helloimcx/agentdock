@@ -12,6 +12,7 @@ import type { DesktopConnectConfig } from '@cc/superai-contracts';
 import {
   clone,
   createPlatformDraft,
+  desktopProjectWorkspaceId,
   ensureProjects,
   getPlatformInstanceId,
   normalizePlatformDraft,
@@ -29,11 +30,7 @@ interface UseLarkQrParams {
   selectedProject: { name?: string; workspace_id?: string } | null;
   configDraft: DesktopConnectConfig | null;
   platformDialog: PlatformDialogState | null;
-  persistPlatformDialogDraft: () => Promise<unknown>;
-  selectedProjectWorkspaceIdRef: React.RefObject<string>;
-  platformDialogRef: React.RefObject<PlatformDialogState | null>;
   configDraftRef: React.RefObject<DesktopConnectConfig | null>;
-  selectedIndexRef: React.RefObject<number>;
   setNotice: (notice: Notice | null) => void;
   setConfigDraft: React.Dispatch<React.SetStateAction<DesktopConnectConfig | null>>;
   setPersistedConfig: React.Dispatch<React.SetStateAction<DesktopConnectConfig | null>>;
@@ -52,17 +49,19 @@ interface LarkCredentials {
 /**
  * Owns the Lark QR-code binding flow: generating the QR, polling for the scan
  * result, persisting the returned credentials, and activating the gateway.
- * Pulls live values through refs so the polling loop never goes stale.
+ *
+ * The flow deliberately does NOT persist the platform before scanning: the QR
+ * registration endpoints accept an ephemeral instance, so an instance only
+ * enters the saved config once the bot credentials are confirmed. The polling
+ * loop keeps running in the background (even with the dialog closed) and keeps
+ * retrying on transient errors instead of dying silently, so a completed scan
+ * is never lost to a stopped poller.
  */
 export function useLarkQr({
   selectedProject,
   configDraft,
   platformDialog,
-  persistPlatformDialogDraft,
-  selectedProjectWorkspaceIdRef,
-  platformDialogRef,
   configDraftRef,
-  selectedIndexRef,
   setNotice,
   setConfigDraft,
   setPersistedConfig,
@@ -83,22 +82,25 @@ export function useLarkQr({
     }
   }, []);
 
-  const saveLarkCredentialsFromQr = useCallback(async (credentials: LarkCredentials) => {
-    const workspaceId = selectedProjectWorkspaceIdRef.current;
-    const targetInstanceId = getPlatformInstanceId(platformDialogRef.current?.draft);
+  const saveLarkCredentialsFromQr = useCallback(async (credentials: LarkCredentials, workspaceId: string, targetInstanceId: string) => {
     const currentConfig = configDraftRef.current;
-    if (!currentConfig) return;
+    if (!currentConfig) {
+      setNotice({ tone: 'error', message: 'Lark bot credentials were received, but the workspace config is not loaded. Refresh the page and retry.' });
+      return;
+    }
     const nextConfig = clone(currentConfig);
     const nextProjects = ensureProjects(nextConfig);
-    const projectIndex = selectedIndexRef.current;
+    const projectIndex = nextProjects.findIndex((project) => desktopProjectWorkspaceId(project) === workspaceId);
+    if (projectIndex < 0) {
+      setNotice({ tone: 'error', message: `Lark bot credentials were received for workspace "${workspaceId}", but the project is no longer in the config.` });
+      return;
+    }
     const project = nextProjects[projectIndex];
-    if (!project) return;
     const platforms = [...(project.platforms || [])];
-    const currentDialog = platformDialogRef.current;
-    const currentIndex = currentDialog?.index ?? platforms.findIndex((platform) =>
+    const currentIndex = platforms.findIndex((platform) =>
       normalizePlatformDraft(platform).type === 'lark' && getPlatformInstanceId(platform) === targetInstanceId
     );
-    const currentPlatform = currentIndex >= 0 ? platforms[currentIndex] : currentDialog?.draft || createPlatformDraft('lark');
+    const currentPlatform = currentIndex >= 0 ? platforms[currentIndex] : createPlatformDraft('lark');
     const nextPlatform = normalizePlatformDraft({
       ...currentPlatform,
       type: 'lark',
@@ -124,36 +126,44 @@ export function useLarkQr({
     const savedConfig = clone(saved.config || nextConfig);
     setPersistedConfig(savedConfig);
     setConfigDraft(clone(savedConfig));
-    setPlatformDialog((current) => current ? { ...current, index: current.index ?? (currentIndex >= 0 ? currentIndex : platforms.length - 1), draft: nextPlatform } : current);
+    setPlatformDialog((current) => {
+      if (!current || getPlatformInstanceId(current.draft) !== targetInstanceId) return current;
+      return {
+        ...current,
+        index: current.index ?? (currentIndex >= 0 ? currentIndex : platforms.length - 1),
+        draft: nextPlatform,
+      };
+    });
     await activateLarkGatewayAfterBind(workspaceId, targetInstanceId);
     setNotice({ tone: 'success', message: 'Lark bot bound, saved, and ready to send messages.' });
     const projectName = nextProjects[projectIndex]?.name;
     if (projectName) await loadAll(projectName);
-  }, [activateLarkGatewayAfterBind, loadAll, selectedProjectWorkspaceIdRef, platformDialogRef, configDraftRef, selectedIndexRef, setPersistedConfig, setConfigDraft, setPlatformDialog, setNotice]);
+  }, [activateLarkGatewayAfterBind, loadAll, configDraftRef, setPersistedConfig, setConfigDraft, setPlatformDialog, setNotice]);
 
   const handleGenerateLarkQr = useCallback(async () => {
     if (!selectedProject?.name || !configDraft) return;
     setLarkQrLoading(true);
     try {
-      await persistPlatformDialogDraft();
-      const result = await getLarkQrCode(selectedProject.workspace_id || selectedProject.name, getPlatformInstanceId(platformDialog?.draft));
-      setLarkQr({ ...result, status: 'wait', createdAt: Date.now() });
+      const workspaceId = selectedProject.workspace_id || selectedProject.name;
+      const instanceId = getPlatformInstanceId(platformDialog?.draft);
+      const result = await getLarkQrCode(workspaceId, instanceId);
+      setLarkQr({ ...result, status: 'wait', createdAt: Date.now(), workspaceId, instanceId });
       setNotice(null);
     } catch (err) {
       setNotice({ tone: 'error', message: describeError(err) });
     } finally {
       setLarkQrLoading(false);
     }
-  }, [selectedProject, configDraft, platformDialog, persistPlatformDialogDraft, setNotice]);
+  }, [selectedProject, configDraft, platformDialog, setNotice]);
 
   const handleCheckLarkQr = useCallback(async () => {
-    if (!selectedProject?.name || !larkQr?.ticket || !configDraft) return;
+    if (!larkQr?.ticket) return;
     setLarkQrLoading(true);
     try {
-      const result = await checkLarkQrCodeStatus(selectedProject.workspace_id || selectedProject.name, larkQr.ticket, getPlatformInstanceId(platformDialog?.draft));
+      const result = await checkLarkQrCodeStatus(larkQr.workspaceId, larkQr.ticket, larkQr.instanceId);
       setLarkQr((current) => current ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
       if (result.status === 'confirmed' && result.credentials) {
-        await saveLarkCredentialsFromQr(result.credentials);
+        await saveLarkCredentialsFromQr(result.credentials, larkQr.workspaceId, larkQr.instanceId);
       } else if (result.status === 'expired') {
         setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
       }
@@ -162,17 +172,18 @@ export function useLarkQr({
     } finally {
       setLarkQrLoading(false);
     }
-  }, [selectedProject, larkQr, configDraft, platformDialog, saveLarkCredentialsFromQr, setNotice]);
+  }, [larkQr, saveLarkCredentialsFromQr, setNotice]);
 
   useEffect(() => {
-    if (!selectedProject?.name || !larkQr?.ticket || platformDialog?.draft.type !== 'lark') return;
+    if (!larkQr?.ticket) return;
     if (larkQr.status && !['wait', 'signed'].includes(larkQr.status)) return;
 
     let cancelled = false;
     let timer: number | undefined;
     const createdAt = larkQr.createdAt || Date.now();
     const expiresAt = createdAt + Math.max(larkQr.expiresIn || 0, 1) * 1000;
-    const pollDelay = Math.max(3, Math.min(Number(larkQr.interval || 5) || 5, 15)) * 1000;
+    const basePollDelay = Math.max(3, Math.min(Number(larkQr.interval || 5) || 5, 15)) * 1000;
+    let consecutiveErrors = 0;
 
     const schedule = (delay: number) => {
       timer = window.setTimeout(() => {
@@ -188,25 +199,33 @@ export function useLarkQr({
         return;
       }
       try {
-        const result = await checkLarkQrCodeStatus(selectedProject.workspace_id || selectedProject.name || '', larkQr.ticket, getPlatformInstanceId(platformDialogRef.current?.draft));
+        const result = await checkLarkQrCodeStatus(larkQr.workspaceId, larkQr.ticket, larkQr.instanceId);
         if (cancelled) return;
+        consecutiveErrors = 0;
         setLarkQr((current) => current?.ticket === larkQr.ticket ? { ...current, status: result.status, botName: result.credentials?.botName } : current);
         if (result.status === 'confirmed' && result.credentials) {
-          await saveLarkCredentialsFromQr(result.credentials);
+          await saveLarkCredentialsFromQr(result.credentials, larkQr.workspaceId, larkQr.instanceId);
           return;
         }
         if (result.status === 'expired') {
           setNotice({ tone: 'warning', message: 'Lark QR code expired. Generate a new QR code and scan again.' });
           return;
         }
-        schedule(pollDelay);
+        schedule(basePollDelay);
       } catch (err) {
         if (cancelled) return;
-        setNotice({ tone: 'error', message: describeError(err) });
+        // Never stop polling on transient errors: the Feishu registration flow
+        // may still complete while we wait, and the confirmed credentials are
+        // only handed out once. Back off so a broken endpoint is not hammered.
+        consecutiveErrors += 1;
+        if (consecutiveErrors === 1) {
+          setNotice({ tone: 'warning', message: `Lark QR status check failed, retrying: ${describeError(err)}` });
+        }
+        schedule(Math.min(basePollDelay * Math.pow(2, consecutiveErrors - 1), 30000));
       }
     };
 
-    schedule(Math.min(2000, pollDelay));
+    schedule(Math.min(2000, basePollDelay));
     return () => {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
@@ -217,9 +236,8 @@ export function useLarkQr({
     larkQr?.interval,
     larkQr?.status,
     larkQr?.ticket,
-    platformDialog?.draft.type,
-    selectedProject?.name,
-    platformDialogRef,
+    larkQr?.workspaceId,
+    larkQr?.instanceId,
     saveLarkCredentialsFromQr,
     setNotice,
   ]);

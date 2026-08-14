@@ -91,6 +91,10 @@ export class KnowledgeSqliteStore {
 
     const shouldMigrate = !existsSync(this.dbPath) && existsSync(this.legacyStorePath);
     this.db = new DatabaseSync(this.dbPath);
+    // WAL + busy timeout: without them a concurrent write throws
+    // `database is locked` immediately instead of waiting briefly.
+    this.db.exec('PRAGMA journal_mode = WAL');
+    this.db.exec('PRAGMA busy_timeout = 5000');
 
     try {
       this.initializeSchema();

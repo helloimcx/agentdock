@@ -79,7 +79,7 @@ import {
   type AutomationRunUpdateInput,
   type AutomationStateUpdateInput,
 } from './automation-store.js';
-import { ensureLocalCoreAcpSchema } from './schema.js';
+import { configureSqlitePragmas, ensureLocalCoreAcpSchema } from './schema.js';
 import { LocalPlatformStore } from './platform-store.js';
 import { LocalSchedulerStore } from './scheduler-store.js';
 import { LocalSecurityStore } from './security-store.js';
@@ -111,6 +111,7 @@ export class LocalCoreAcpStore {
     const runtimeDir = dirname(dbPath);
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new DatabaseSync(dbPath);
+    configureSqlitePragmas(this.db);
     this.threads = new LocalThreadStore(this.db);
     this.trace = new LocalCoreTraceStore(this.db);
     this.workspaceRegistry = new LocalWorkspaceRegistryStore(this.db);

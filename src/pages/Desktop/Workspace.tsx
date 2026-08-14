@@ -29,7 +29,6 @@ import {
   clone,
   createPlatformDraft,
   createProjectDialogDraft,
-  desktopProjectWorkspaceId,
   ensureProjects,
   fromSandboxForm,
   getPlatformInstanceId,
@@ -65,9 +64,6 @@ export default function DesktopWorkspace() {
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
-  const platformDialogRef = useRef<PlatformDialogState | null>(null);
-  const selectedIndexRef = useRef(selectedIndex);
-  const selectedProjectWorkspaceIdRef = useRef('');
 
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
@@ -109,15 +105,6 @@ export default function DesktopWorkspace() {
   useEffect(() => {
     configDraftRef.current = configDraft;
   }, [configDraft]);
-
-  useEffect(() => {
-    platformDialogRef.current = platformDialog;
-  }, [platformDialog]);
-
-  useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-    selectedProjectWorkspaceIdRef.current = selectedProject ? desktopProjectWorkspaceId(selectedProject) : '';
-  }, [selectedIndex, selectedProject?.name, selectedProject?.workspace_id]);
 
   useEffect(() => {
     if (!configDraft || !requestedProject) return;
@@ -233,13 +220,18 @@ export default function DesktopWorkspace() {
 
   const openPlatformDialog = (index: number | null) => {
     setWeixinQr(null);
-    setLarkQr(null);
     if (index === null) {
+      // A brand-new draft has a fresh instance id, so an in-flight QR for
+      // another instance is no longer relevant.
+      setLarkQr(null);
       setPlatformDialog({ index, draft: createPlatformDraft() });
       return;
     }
     const platform = selectedProject?.platforms?.[index];
     if (platform) {
+      // Keep an in-flight QR when the user reopens the dialog for the same
+      // instance (the background poll may have already confirmed it).
+      setLarkQr((current) => current && getPlatformInstanceId(platform) === current.instanceId ? current : null);
       setPlatformDialog({ index, draft: clone(platform) });
     }
   };
@@ -328,11 +320,7 @@ export default function DesktopWorkspace() {
     selectedProject,
     configDraft,
     platformDialog,
-    persistPlatformDialogDraft,
-    selectedProjectWorkspaceIdRef,
-    platformDialogRef,
     configDraftRef,
-    selectedIndexRef,
     setNotice,
     setConfigDraft,
     setPersistedConfig,
@@ -434,8 +422,9 @@ export default function DesktopWorkspace() {
         onUpdateDraft={updatePlatformDialogDraft}
         onClose={() => {
           setPlatformDialog(null);
+          // Keep larkQr alive: the background poll may still confirm a scan
+          // that happened while the dialog was open.
           setWeixinQr(null);
-          setLarkQr(null);
         }}
         onApply={handleApplyPlatformDialog}
         onGenerateWeixinQr={handleGenerateWeixinQr}

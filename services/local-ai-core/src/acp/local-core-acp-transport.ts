@@ -234,11 +234,11 @@ export class LocalCoreAcpTransport {
         continue;
       }
       if (payload.method && payload.id !== undefined) {
-        this.options.onAgentRequest(session, payload);
+        this.dispatchAgentEvent('onAgentRequest', session, payload);
         continue;
       }
       if (payload.method) {
-        this.options.onAgentNotification(session, payload);
+        this.dispatchAgentEvent('onAgentNotification', session, payload);
         continue;
       }
       if (payload.id !== undefined) {
@@ -261,6 +261,17 @@ export class LocalCoreAcpTransport {
           pending.resolve(payload.result);
         }
       }
+    }
+  }
+
+  private dispatchAgentEvent(kind: 'onAgentRequest' | 'onAgentNotification', session: AcpSessionState, payload: any) {
+    try {
+      this.options[kind](session, payload);
+    } catch (error) {
+      // A single event (e.g. a message write hitting a transient store error)
+      // must never take down the whole core process: log it, drop the event,
+      // and keep consuming the agent stream.
+      this.options.log?.(`[localcore-acp:${session.threadId}] ${kind} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

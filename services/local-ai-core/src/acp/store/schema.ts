@@ -1,5 +1,18 @@
 import type { DatabaseSync } from 'node:sqlite';
 
+/**
+ * Apply the connection settings every AgentDock SQLite store needs. The
+ * default rollback-journal mode has no busy timeout, so any write contention
+ * (e.g. a message upsert racing another store write) throws `database is
+ * locked` immediately. WAL lets readers coexist with a single writer and
+ * `busy_timeout` makes brief lock waits succeed instead of throwing, so a
+ * transient write conflict can never crash the process.
+ */
+export function configureSqlitePragmas(db: DatabaseSync) {
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA busy_timeout = 5000');
+}
+
 export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
   db.exec(`
     PRAGMA foreign_keys = ON;
