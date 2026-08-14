@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { configureSqlitePragmas } from '../../services/local-ai-core/src/acp/store/schema.js';
 import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
 import { LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
@@ -948,6 +950,74 @@ test('ACP transport reports missing agent commands without an unhandled process 
 
   const error = await closed;
   assert.equal(error.message, 'ACP agent command not found: agentdock-command-that-does-not-exist');
+});
+
+test('ACP transport isolates notification and request handler errors instead of crashing', () => {
+  const logs: string[] = [];
+  const transport = new LocalCoreAcpTransport({
+    log: (message: string) => logs.push(message),
+    onAgentRequest: () => {
+      throw new Error('request handler boom');
+    },
+    onAgentNotification: () => {
+      throw new Error('notification handler boom');
+    },
+    onSessionClosed: () => {},
+  });
+  const session = {
+    threadId: 'thread-error-isolation',
+    stdoutBuffer: '',
+    pending: new Map(),
+  } as any;
+
+  // A throwing notification handler must not propagate out of the stdout
+  // event (the crash class that killed the core with "database is locked").
+  assert.doesNotThrow(() => {
+    (transport as any).handleStdout(session, '{"method":"message","params":{}}\n');
+  });
+  // A throwing request handler must not propagate either.
+  assert.doesNotThrow(() => {
+    (transport as any).handleStdout(session, '{"method":"initialize","id":1,"params":{}}\n');
+  });
+  // The stream keeps being consumed after handler failures.
+  assert.doesNotThrow(() => {
+    (transport as any).handleStdout(session, 'garbage line\n{"method":"message","params":{}}\n');
+  });
+  assert.ok(logs.some((line) => line.includes('notification handler boom')));
+  assert.ok(logs.some((line) => line.includes('request handler boom')));
+  assert.ok(logs.some((line) => line.includes('ACP stdout parse failed')));
+});
+
+test('SQLite stores run in WAL mode with a busy timeout', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'store-pragma-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    // journal_mode is persisted in the database header, so a separate
+    // connection observes the mode the store set.
+    const probe = new DatabaseSync(join(userDataPath, 'runtime', 'local-core.db'));
+    const mode = probe.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
+    assert.equal(mode.journal_mode, 'wal');
+    probe.close();
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('configureSqlitePragmas sets WAL and a busy timeout on the connection', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'pragma-helper-'));
+  try {
+    const db = new DatabaseSync(join(userDataPath, 'pragma.db'));
+    configureSqlitePragmas(db);
+    const mode = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
+    // SQLite returns the busy timeout under the column name "timeout".
+    const timeout = db.prepare('PRAGMA busy_timeout').get() as { timeout: number };
+    assert.equal(mode.journal_mode, 'wal');
+    assert.equal(timeout.timeout, 5000);
+    db.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
 });
 
 test('ACP scheduled session can override permission mode without changing thread mode', async () => {

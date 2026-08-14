@@ -316,7 +316,9 @@ async function runServe(flags) {
     await waitForCore(coreOrigin);
   }
   const server = startWebServer({ host, port, coreOrigin });
+  let shuttingDown = false;
   const shutdown = () => {
+    shuttingDown = true;
     server.close();
     if (coreProcess) {
       coreProcess.kill('SIGTERM');
@@ -324,6 +326,18 @@ async function runServe(flags) {
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
+  if (coreProcess) {
+    coreProcess.on('exit', (code, signal) => {
+      if (shuttingDown) {
+        return;
+      }
+      // Never leave the web server proxying to a dead core: exit so the
+      // supervisor (systemd Restart=always) brings the whole stack back up.
+      console.error(`[agentdock] Local AI Core exited unexpectedly (code=${code} signal=${signal}); exiting for supervisor restart`);
+      server.close();
+      process.exit(code ?? 1);
+    });
+  }
 }
 
 const { command, flags } = parseArgs(process.argv.slice(2));
