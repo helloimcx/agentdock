@@ -57,10 +57,11 @@ test('runtime project migration makes workspace registry authoritative and prese
     const workspaceId = first.config.projects?.[0]?.workspace_id;
     assert.ok(workspaceId);
     assert.equal(controller.store.getWorkspaceRegistryEntry(workspaceId)?.displayName, 'Workspace A');
-    // Projects are now owned by the workspace registry; the store's runtime_config
-    // either omits them or retains an empty array as a recovery placeholder.
+    // SQLite runtime_config is the single source of truth: the full project
+    // (with its workspace_id) is persisted there, and the registry mirrors it.
     const storeProjects = controller.store.readRuntimeConfig().config.projects;
-    assert.ok(!storeProjects || storeProjects.length === 0);
+    assert.equal(storeProjects?.[0]?.workspace_id, workspaceId);
+    assert.equal(storeProjects?.[0]?.name, 'Workspace A');
 
     await controller.saveRuntimeConfig({
       ...first.config,
@@ -167,7 +168,7 @@ test('external project and thread mappings persist with isolated workspace paths
   }
 });
 
-test('controller migrates embedded project providers into shared provider store', async () => {
+test('controller stores embedded project providers as-is without migrating them', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'model-provider-migration-'));
   try {
     const runtime = bootstrapLocalCoreRuntime({
@@ -193,12 +194,12 @@ test('controller migrates embedded project providers into shared provider store'
       }],
     });
 
+    // SQLite is the single source of truth: the project is stored verbatim and
+    // nothing is copied into the shared provider store.
     const config = await controller.readRuntimeConfig();
-    assert.equal(config.config?.projects?.[0]?.agent.options?.provider_id, 'deepseek');
-    assert.equal(config.config?.projects?.[0]?.agent.providers, undefined);
-    const providers = controller.store.listModelProviders();
-    assert.equal(providers[0]?.id, 'deepseek');
-    assert.equal(providers[0]?.name, 'deepseek');
+    assert.equal(config.config?.projects?.[0]?.agent.options?.provider_id, undefined);
+    assert.equal(config.config?.projects?.[0]?.agent.providers?.length, 1);
+    assert.equal(controller.store.listModelProviders().length, 0);
     await controller.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });

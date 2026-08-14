@@ -13,7 +13,6 @@ import type {
   RuntimeConfigState,
 } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import { applyLegacyProviderMigration } from './provider-config-migration.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 
 export interface ExternalServiceDeps {
@@ -198,11 +197,7 @@ export class ExternalService {
   }
 
   private async readAndMigrateConfigFile(): Promise<RuntimeConfigState> {
-    return applyLegacyProviderMigration(
-      await this.deps.readRuntimeConfig(),
-      this.store,
-      (config) => this.deps.saveRuntimeConfig(config),
-    );
+    return this.deps.readRuntimeConfig();
   }
 
   private projectBasePath(userId: string, externalProjectId: string) {

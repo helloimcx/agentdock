@@ -1,9 +1,7 @@
 import type {
   ThreadDetail,
   ThreadSummary,
-  WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
-  WorkspaceRegistryUpdateInput,
   WorkspaceSummary,
 } from '@cc/superai-contracts';
 import { buildQuery, coreRequest } from './request.js';
@@ -18,18 +16,6 @@ export function listWorkspaceRegistry() {
 
 export function getWorkspaceRegistryEntry(workspaceId: string) {
   return coreRequest<WorkspaceRegistryEntry>('GET', `/workspace-registry/${encodeURIComponent(workspaceId)}`);
-}
-
-export function createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput) {
-  return coreRequest<WorkspaceRegistryEntry>('POST', '/workspace-registry', input);
-}
-
-export function updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput) {
-  return coreRequest<WorkspaceRegistryEntry>('PATCH', `/workspace-registry/${encodeURIComponent(workspaceId)}`, input);
-}
-
-export function deleteWorkspaceRegistryEntry(workspaceId: string) {
-  return coreRequest<{ deleted: boolean }>('DELETE', `/workspace-registry/${encodeURIComponent(workspaceId)}`);
 }
 
 export function listThreads(workspaceId: string) {

@@ -95,6 +95,11 @@ flowchart LR
 
 ## New
 
+### 2026-08-14
+
+- 配置存储彻底迁移到 SQLite：移除 config.toml 及全部文件兼容层（legacy 导入、settings configPath、内嵌 provider 迁移、registry 备份/合并舞步），`runtime_config` 表成为工作区配置的唯一事实来源，`workspace_registry` 降级为派生镜像。
+- 修复定时任务绑定旧 agent runtime 的问题：side-thread 定时任务（Automation/Monitor）复用时校验线程 agent 类型与工作区当前 agent 是否一致，不一致时自动在新 agent 下重建会话线程，任务随工作区 agent 切换自愈。
+
 ### 2026-08-13
 
 - 发布 AgentDock 0.1.74：支持 per-run ACP Trace 轨迹与 Gantt 时间线视图（Issue #63），持久化 `run_spans` 节点树（thought, plan, tool_call, model_call）与 Token 用量，通过 `AcpTraceProjector` 实时投影 ACP 流式事件，并在对话 Header 与 Automations 运行记录中提供全新的 `RunTimelineDrawer` 轨迹甘特图与 JSON 载荷查看器。
@@ -172,7 +177,7 @@ flowchart LR
 
 ### 2026-06-15
 
-- Local AI Core 项目配置从 `runtime/config.toml` 迁移到 `runtime/local-core.db` 的 SQLite 持久化存储；旧 TOML 会在首次读取时导入，但后续不再回写。
+- Local AI Core 项目配置迁移到 `runtime/local-core.db` 的 SQLite 持久化存储；旧 TOML 仅在迁移期被导入一次，后续不再回写。自 2026-08-14 起 config.toml 及其导入逻辑已彻底移除，SQLite 为唯一配置来源。
 
 ### 2026-06-14
 

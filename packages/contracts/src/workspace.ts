@@ -63,9 +63,3 @@ export interface WorkspaceRegistryCreateInput {
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkspaceRegistryUpdateInput {
-  displayName?: string;
-  path?: string;
-  defaultRuntimeId?: string | null;
-  metadata?: Record<string, unknown>;
-}

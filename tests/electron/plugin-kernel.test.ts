@@ -4,7 +4,6 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as TOML from '@iarna/toml';
 import type { RuntimePlugin } from '../../packages/plugin-sdk/src/index.js';
 import { bootstrapLocalCoreKernel } from '../../services/local-ai-core/src/kernel/bootstrap.js';
 import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
@@ -69,8 +68,8 @@ function parseLogLine(line: string) {
   return JSON.parse(line) as { ts: string; level: string; scope: string; message: string };
 }
 
-async function saveRawRuntimeConfig(runtime: { store: { saveRuntimeConfig(config: unknown): unknown } }, raw: string) {
-  runtime.store.saveRuntimeConfig(TOML.parse(raw) as Record<string, unknown>);
+async function saveConfig(runtime: { store: { saveRuntimeConfig(config: unknown): unknown } }, config: unknown) {
+  runtime.store.saveRuntimeConfig(config);
 }
 
 function plugin(id: string, dependsOn: string[] = []): RuntimePlugin {
@@ -349,13 +348,9 @@ test('codex agent runtime routes projects through the bundled ACP adapter', asyn
       userDataPath,
       enableKnowledge: false,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "codex-workspace"
-
-[projects.agent]
-type = "codex"
-`);
+    await saveConfig(runtime, {
+      projects: [{ name: 'codex-workspace', agent: { type: 'codex' } }],
+    });
     const configState = runtime.store.readRuntimeConfig();
     const project = configState.config?.projects?.find((entry) => entry.name === 'codex-workspace');
     const codexRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'codex');
@@ -388,13 +383,9 @@ test('thread slash agent reset resolves the workspace default agent through the 
       userDataPath,
       enableKnowledge: false,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "agent-workspace"
-
-[projects.agent]
-type = "codex"
-`);
+    await saveConfig(runtime, {
+      projects: [{ name: 'agent-workspace', agent: { type: 'codex' } }],
+    });
     const thread = await runtime.workspaceRouter.createThread('agent-workspace', 'Agent reset');
 
     await runtime.workspaceRouter.sendThreadMessage(thread.id, '/agent use pi');
@@ -417,13 +408,9 @@ test('hermes agent runtime routes projects through hermes ACP command', async ()
       userDataPath,
       enableKnowledge: false,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "hermes-workspace"
-
-[projects.agent]
-type = "hermes"
-`);
+    await saveConfig(runtime, {
+      projects: [{ name: 'hermes-workspace', agent: { type: 'hermes' } }],
+    });
     const configState = runtime.store.readRuntimeConfig();
     const project = configState.config?.projects?.find((entry) => entry.name === 'hermes-workspace');
     const hermesRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'hermes');
@@ -464,16 +451,12 @@ test('hermes agent runtime injects provider API key, base URL, and model into la
       api_key: 'sk-test-opencode-key',
       model: 'opencode-go-v1',
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "hermes-provider-workspace"
-
-[projects.agent]
-type = "hermes"
-
-[projects.agent.options]
-provider_id = "provider-opencode-go"
-`);
+    await saveConfig(runtime, {
+      projects: [{
+        name: 'hermes-provider-workspace',
+        agent: { type: 'hermes', options: { provider_id: 'provider-opencode-go' } },
+      }],
+    });
     const configState = runtime.store.readRuntimeConfig();
     const rawProject = configState.config?.projects?.find((entry) => entry.name === 'hermes-provider-workspace');
     const providerId = String(rawProject?.agent?.options?.provider_id || '').trim();
@@ -547,22 +530,30 @@ test('pi agent runtime routes projects through bundled pi ACP and coding agent',
       userDataPath,
       enableKnowledge: false,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "pi-workspace"
-
-[projects.agent]
-type = "pi"
-
-[[projects.agent.providers]]
-name = "openai"
-api_key = "test-openai-key"
-
-[projects.agent.options.env]
-OPENAI_API_KEY = "override-openai-key"
-`);
+    runtime.store.upsertModelProvider({
+      id: 'provider-openai',
+      name: 'openai',
+      api_key: 'test-openai-key',
+    });
+    await saveConfig(runtime, {
+      projects: [{
+        name: 'pi-workspace',
+        agent: {
+          type: 'pi',
+          options: {
+            provider_id: 'provider-openai',
+            env: { OPENAI_API_KEY: 'override-openai-key' },
+          },
+        },
+      }],
+    });
     const configState = runtime.store.readRuntimeConfig();
-    const project = configState.config?.projects?.find((entry) => entry.name === 'pi-workspace');
+    const rawProject = configState.config?.projects?.find((entry) => entry.name === 'pi-workspace');
+    const provider = runtime.store.getModelProvider('provider-openai');
+    const project = rawProject ? {
+      ...rawProject,
+      agent: { ...rawProject.agent, providers: provider ? [provider] : [] },
+    } : null;
     const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
     const route = project ? piRuntime?.createRoute(configState, project) : null;
 
@@ -600,21 +591,26 @@ test('pi agent runtime writes provider auth and default model into Pi config dir
       userDataPath,
       enableKnowledge: false,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "deepseek-workspace"
-
-[projects.agent]
-type = "pi"
-
-[[projects.agent.providers]]
-name = "DeepSeek"
-api_key = "test-deepseek-key"
-base_url = "https://api.deepseek.com"
-model = "deepseek-v4-flash"
-`);
+    runtime.store.upsertModelProvider({
+      id: 'deepseek',
+      name: 'DeepSeek',
+      api_key: 'test-deepseek-key',
+      base_url: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    });
+    await saveConfig(runtime, {
+      projects: [{
+        name: 'deepseek-workspace',
+        agent: { type: 'pi', options: { provider_id: 'deepseek' } },
+      }],
+    });
     const configState = runtime.store.readRuntimeConfig();
-    const project = configState.config?.projects?.find((entry) => entry.name === 'deepseek-workspace');
+    const rawProject = configState.config?.projects?.find((entry) => entry.name === 'deepseek-workspace');
+    const provider = runtime.store.getModelProvider('deepseek');
+    const project = rawProject ? {
+      ...rawProject,
+      agent: { ...rawProject.agent, providers: provider ? [provider] : [] },
+    } : null;
     const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
     const route = project ? piRuntime?.createRoute(configState, project) : null;
     const piAgentDir = route?.config.env.PI_CODING_AGENT_DIR || '';
@@ -653,21 +649,26 @@ test('pi agent runtime normalizes DeepSeek provider when provider name is the mo
       userDataPath,
       enableKnowledge: false,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "deepseek-model-name-workspace"
-
-[projects.agent]
-type = "pi"
-
-[[projects.agent.providers]]
-name = "deepseek-v4-flash"
-api_key = "test-deepseek-key"
-base_url = "https://api.deepseek.com"
-model = "deepseek-v4-flash"
-`);
+    runtime.store.upsertModelProvider({
+      id: 'deepseek-v4-flash',
+      name: 'deepseek-v4-flash',
+      api_key: 'test-deepseek-key',
+      base_url: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+    });
+    await saveConfig(runtime, {
+      projects: [{
+        name: 'deepseek-model-name-workspace',
+        agent: { type: 'pi', options: { provider_id: 'deepseek-v4-flash' } },
+      }],
+    });
     const configState = runtime.store.readRuntimeConfig();
-    const project = configState.config?.projects?.find((entry) => entry.name === 'deepseek-model-name-workspace');
+    const rawProject = configState.config?.projects?.find((entry) => entry.name === 'deepseek-model-name-workspace');
+    const provider = runtime.store.getModelProvider('deepseek-v4-flash');
+    const project = rawProject ? {
+      ...rawProject,
+      agent: { ...rawProject.agent, providers: provider ? [provider] : [] },
+    } : null;
     const piRuntime = runtime.agentRuntimes.find((entry) => entry.agentType === 'pi');
     const route = project ? piRuntime?.createRoute(configState, project) : null;
     const piAgentDir = route?.config.env.PI_CODING_AGENT_DIR || '';
@@ -868,6 +869,7 @@ test('LocalCoreController accepts injected bootstrap dependencies', async () => 
         };
         return runtimeConfig;
       },
+      listWorkspaceRegistry: () => [],
     } as any,
     agentRuntimes: [],
     channelRuntimes: [channelRuntime, weixinChannelRuntime],
@@ -1418,19 +1420,12 @@ test('agent runtime selection is registry-based and disabled runtimes do not rou
     const runtime = bootstrapLocalCoreRuntime({
       userDataPath,
     });
-    await saveRawRuntimeConfig(runtime, `
-[[projects]]
-name = "claude-workspace"
-
-[projects.agent]
-type = "claudecode"
-
-[[projects]]
-name = "pi-workspace"
-
-[projects.agent]
-type = "pi"
-`);
+    await saveConfig(runtime, {
+      projects: [
+        { name: 'claude-workspace', agent: { type: 'claudecode' } },
+        { name: 'pi-workspace', agent: { type: 'pi' } },
+      ],
+    });
 
     assert.deepEqual(
       runtime.agentRuntimes.map((entry) => entry.agentType),

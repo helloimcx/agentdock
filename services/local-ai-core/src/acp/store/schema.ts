@@ -396,7 +396,6 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       id TEXT PRIMARY KEY,
       config_json TEXT NOT NULL,
       base_dir TEXT NOT NULL,
-      migrated_from_path TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );

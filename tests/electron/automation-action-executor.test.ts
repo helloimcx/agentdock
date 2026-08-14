@@ -122,3 +122,76 @@ test('action executor interrupts the ACP run when execution times out', async ()
   }, 1), /Timed out waiting for automation run acp-run-1/);
   assert.equal(interruptedRunId, 'acp-run-1');
 });
+
+test('side-thread executor recreates the thread when the workspace agent changed', async () => {
+  const created: Array<{ workspaceId: string; title: string }> = [];
+  const executor = new AutomationActionExecutor({
+    store: {
+      getPlatformThreadBinding: () => undefined,
+      getRun: () => ({ status: 'completed' }),
+    },
+    getWorkspaceRouter: () => ({
+      listThreads: async () => [
+        {
+          id: 'stale-thread',
+          title: '[Automation:lark] Safe prompt',
+          agentType: 'hermes',
+        },
+      ],
+      getWorkspaceAgentType: async () => 'pi',
+      createThread: async (workspaceId: string, title: string) => {
+        created.push({ workspaceId, title });
+        return { id: 'fresh-thread' };
+      },
+      getThread: async () => ({ messages: [] }),
+      sendThreadMessage: async () => ({ runId: 'acp-run-1' }),
+    }),
+    getChannelRuntime: () => undefined,
+  } as any);
+
+  const result = await executor.execute({
+    automation: definition(),
+    evaluation,
+    promptVariables: {},
+  });
+  // The stale thread was bound to hermes; the workspace now runs pi, so the
+  // task must start a fresh thread under the current agent instead of
+  // reusing the dead session.
+  assert.deepEqual(created, [{ workspaceId: 'workspace-1', title: '[Automation:lark] Safe prompt' }]);
+  assert.equal(result.threadId, 'fresh-thread');
+});
+
+test('side-thread executor reuses the thread when the workspace agent matches', async () => {
+  let createCalls = 0;
+  const executor = new AutomationActionExecutor({
+    store: {
+      getPlatformThreadBinding: () => undefined,
+      getRun: () => ({ status: 'completed' }),
+    },
+    getWorkspaceRouter: () => ({
+      listThreads: async () => [
+        {
+          id: 'matching-thread',
+          title: '[Automation:lark] Safe prompt',
+          agentType: 'pi',
+        },
+      ],
+      getWorkspaceAgentType: async () => 'pi',
+      createThread: async () => {
+        createCalls += 1;
+        return { id: 'fresh-thread' };
+      },
+      getThread: async () => ({ messages: [] }),
+      sendThreadMessage: async () => ({ runId: 'acp-run-1' }),
+    }),
+    getChannelRuntime: () => undefined,
+  } as any);
+
+  const result = await executor.execute({
+    automation: definition(),
+    evaluation,
+    promptVariables: {},
+  });
+  assert.equal(createCalls, 0);
+  assert.equal(result.threadId, 'matching-thread');
+});

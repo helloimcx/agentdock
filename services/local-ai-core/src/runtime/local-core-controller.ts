@@ -20,16 +20,11 @@ import type { AutomationMonitorService } from '../automation/automation-monitor-
 import type { AutomationService } from '../automation/automation-service.js';
 import type { AutomationActionExecutor } from '../automation/automation-action-executor.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
-import { migrateLegacyProjectProvidersToStore } from './provider-config-migration.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { ChannelService } from './channel-service.js';
 import { ExternalService } from './external-service.js';
 import { runDeploymentDiagnostics } from './deployment-diagnostics.js';
-import {
-  listRegistryProjects,
-  persistProjectsInRegistry,
-  withoutRuntimeProjects,
-} from './workspace-project-registry.js';
+import { normalizeWorkspaceIds, syncWorkspaceRegistry } from './workspace-project-registry.js';
 
 export class LocalCoreController extends EventEmitter {
   readonly store: LocalCoreAcpStore;
@@ -229,29 +224,19 @@ export class LocalCoreController extends EventEmitter {
   }
 
   async readRuntimeConfig(): Promise<RuntimeConfigState> {
-    return this.readAndMigrateRuntimeConfig();
+    return this.store.readRuntimeConfig();
   }
 
   async saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState> {
-    const migrated = migrateLegacyProjectProvidersToStore(config, this.store);
-    if (typeof this.store.listWorkspaceRegistry !== 'function') {
-      const next = this.store.saveRuntimeConfig(migrated.config);
-      await this.channelService.refreshBindings();
-      await this.emitRuntime();
-      return { ...next, warnings: [...(next.warnings || []), ...migrated.warnings] };
-    }
-    const projects = persistProjectsInRegistry(this.store, migrated.config.projects || []);
-    const next = this.store.saveRuntimeConfig(withoutRuntimeProjects(migrated.config));
+    const normalized = normalizeWorkspaceIds(this.store, Array.isArray(config.projects) ? config.projects : []);
+    const next = this.store.saveRuntimeConfig({ ...config, projects: normalized });
+    // The store may apply config normalization (e.g. sandbox defaults) on save;
+    // keep the registry mirror and the returned state consistent with what was
+    // actually persisted.
+    syncWorkspaceRegistry(this.store, next.config.projects || []);
     await this.channelService.refreshBindings();
     await this.emitRuntime();
-    return {
-      ...next,
-      config: { ...next.config, projects },
-      warnings: [
-        ...(next.warnings || []),
-        ...migrated.warnings,
-      ],
-    };
+    return next;
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {
@@ -379,38 +364,5 @@ export class LocalCoreController extends EventEmitter {
     } finally {
       this.handlingLog = false;
     }
-  }
-
-  private async readAndMigrateRuntimeConfig(): Promise<RuntimeConfigState> {
-    const current = this.store.readRuntimeConfig();
-    const migrated = migrateLegacyProjectProvidersToStore(current.config, this.store);
-    if (typeof this.store.listWorkspaceRegistry !== 'function') {
-      return { ...current, config: migrated.config, warnings: [...(current.warnings || []), ...migrated.warnings] };
-    }
-    const legacyProjects = migrated.config.projects || [];
-    let warnings = [...(current.warnings || []), ...migrated.warnings];
-    if (legacyProjects.length > 0) {
-      // Persist a copy of the projects into the workspace registry as a
-      // crash-recovery backup, but do NOT strip them from runtime_config:
-      // channel bindings still read runtime_config directly, so removing
-      // projects here would silently disable every channel until the next
-      // explicit save.
-      const registryNames = (this.store.listWorkspaceRegistry?.() ?? [])
-        .filter((e) => e.metadata?.source === 'runtime-project')
-        .map((e) => e.displayName);
-      const alreadyBackedUp = legacyProjects.every((p) => registryNames.includes(p.name));
-      if (!alreadyBackedUp) {
-        persistProjectsInRegistry(this.store, legacyProjects, { preserveLegacyIds: true });
-        warnings = [...warnings, 'Backed up runtime projects into the workspace registry.'];
-      }
-    }
-    return {
-      ...this.store.readRuntimeConfig(),
-      config: {
-        ...this.store.readRuntimeConfig().config,
-        projects: listRegistryProjects(this.store),
-      },
-      warnings: [...new Set(warnings)],
-    };
   }
 }

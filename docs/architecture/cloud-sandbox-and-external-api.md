@@ -26,7 +26,7 @@ flowchart TD
 
 ## Sandbox Mode
 
-Cloud sandbox mode is project configuration, not a renderer-only mode. Runtime project config is persisted in `<userData>/runtime/local-core.db`; legacy `<userData>/runtime/config.toml` is imported on first read but is no longer the write target. A project selects a sandbox provider and runtime image through `agent.options.sandbox`; Local AI Core materializes that into an `AgentSandboxLaunchConfig` before launching the agent runtime.
+Cloud sandbox mode is project configuration, not a renderer-only mode. Runtime project config is persisted in `<userData>/runtime/local-core.db` (SQLite `runtime_config` table is the single source of truth; the workspace registry is a derived mirror). A project selects a sandbox provider and runtime image through `agent.options.sandbox`; Local AI Core materializes that into an `AgentSandboxLaunchConfig` before launching the agent runtime.
 
 Key behavior:
 

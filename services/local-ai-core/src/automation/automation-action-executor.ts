@@ -112,7 +112,15 @@ export class AutomationActionExecutor {
       : `[${label}:${getChannelPlatformBase(platform) || platform}] ${automation.title}`;
     const existing = (await workspaceRouter.listThreads(automation.workspaceId))
       .find((thread) => thread.title === title);
-    if (existing) return existing.id;
+    if (existing) {
+      // A scheduled task must follow the workspace's current agent runtime.
+      // The thread created under a previous agent keeps a session that no
+      // longer exists once the workspace agent changes, so reuse it only when
+      // its agent type still matches; otherwise start a fresh thread under the
+      // current agent.
+      const currentAgentType = await workspaceRouter.getWorkspaceAgentType(automation.workspaceId);
+      if (existing.agentType === currentAgentType) return existing.id;
+    }
     return (await workspaceRouter.createThread(automation.workspaceId, title)).id;
   }
 }

@@ -62,10 +62,7 @@ export type LocalAiCoreRoute =
   | { name: 'runs.spans.list'; runId: string }
   | { name: 'workspaces.list' }
   | { name: 'workspace-registry.list' }
-  | { name: 'workspace-registry.create' }
   | { name: 'workspace-registry.get'; workspaceId: string }
-  | { name: 'workspace-registry.update'; workspaceId: string }
-  | { name: 'workspace-registry.delete'; workspaceId: string }
   | { name: 'providers.list' }
   | { name: 'providers.create' }
   | { name: 'provider.update'; providerId: string }
@@ -466,21 +463,12 @@ function parseWorkspaceRegistryRoute(method: string, segments: string[]): LocalA
   if (method === 'GET' && segments.length === 1) {
     return { name: 'workspace-registry.list' };
   }
-  if (method === 'POST' && segments.length === 1) {
-    return { name: 'workspace-registry.create' };
-  }
   const workspaceId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
   if (!workspaceId || segments.length !== 2) {
     return null;
   }
   if (method === 'GET') {
     return { name: 'workspace-registry.get', workspaceId };
-  }
-  if (method === 'PATCH') {
-    return { name: 'workspace-registry.update', workspaceId };
-  }
-  if (method === 'DELETE') {
-    return { name: 'workspace-registry.delete', workspaceId };
   }
   return null;
 }
