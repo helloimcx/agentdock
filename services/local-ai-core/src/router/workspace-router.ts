@@ -1,5 +1,3 @@
-import { existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import type {
   AgentTask,
   AgentTaskCreateInput,
@@ -23,10 +21,7 @@ import type {
   DesktopProjectConfig,
   ThreadDetail,
   ThreadSummary,
-  WorkspaceGitSummary,
-  WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
-  WorkspaceRegistryUpdateInput,
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
 } from '@cc/superai-contracts';
@@ -37,12 +32,7 @@ import { decodeThreadId } from '../thread/workspace-thread-id.js';
 import { classifyCommandRisk } from '../security/command-risk.js';
 import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions, WorkspaceThreadMessageOptions } from './workspace-router-types.js';
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
-import {
-  listRegistryProjects,
-  persistProjectsInRegistry,
-  projectWorkspaceId,
-  withoutRuntimeProjects,
-} from '../runtime/workspace-project-registry.js';
+import { projectWorkspaceId } from '../runtime/workspace-project-registry.js';
 import { composeAgentMessage } from '../thread/agent-message-policy.js';
 import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
@@ -156,37 +146,6 @@ export class WorkspaceRouter {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
     return workspace;
-  }
-
-  async createWorkspaceRegistryEntry(input: WorkspaceRegistryCreateInput): Promise<WorkspaceRegistryEntry> {
-    return this.store.upsertWorkspaceRegistryEntry({
-      ...input,
-      deviceId: 'local',
-      git: detectGitSummary(input.path),
-      health: workspaceHealth(input.path),
-    });
-  }
-
-  async updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): Promise<WorkspaceRegistryEntry> {
-    const existing = this.store.getWorkspaceRegistryEntry(workspaceId);
-    if (!existing) {
-      throw new Error(`Workspace not found: ${workspaceId}`);
-    }
-    const path = input.path || existing.path;
-    return this.store.upsertWorkspaceRegistryEntry({
-      workspaceId,
-      displayName: input.displayName || existing.displayName,
-      path,
-      deviceId: existing.deviceId,
-      defaultRuntimeId: input.defaultRuntimeId === null ? undefined : input.defaultRuntimeId || existing.defaultRuntimeId,
-      git: detectGitSummary(path),
-      health: workspaceHealth(path),
-      metadata: input.metadata || existing.metadata,
-    });
-  }
-
-  async deleteWorkspaceRegistryEntry(workspaceId: string) {
-    return this.store.deleteWorkspaceRegistryEntry(workspaceId);
   }
 
   listAgentTasks(query: AgentTaskListQuery = {}): AgentTaskListResponse {
@@ -604,13 +563,9 @@ export class WorkspaceRouter {
 
   private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
     const configState = await this.options.readRuntimeConfig();
-    const embeddedProjects = Array.isArray(configState.config?.projects) ? configState.config.projects! : [];
-    const projects = embeddedProjects.length
-      ? persistProjectsInRegistry(this.store, embeddedProjects, { preserveLegacyIds: true })
-      : listRegistryProjects(this.store);
-    if (embeddedProjects.length) {
-      this.store.saveRuntimeConfig(configState.config);
-    }
+    const projects = this.withWorkspaceIds(
+      Array.isArray(configState.config?.projects) ? configState.config.projects : [],
+    );
     const projectedConfigState = {
       ...configState,
       config: { ...configState.config, projects },
@@ -624,15 +579,24 @@ export class WorkspaceRouter {
     return route;
   }
 
+  async getWorkspaceAgentType(workspaceId: string): Promise<string> {
+    const route = await this.getWorkspaceRoute(workspaceId);
+    return route.agentType;
+  }
+
   private async listLocalCoreProjects() {
     const configState = await this.options.readRuntimeConfig();
-    let projects = listRegistryProjects(this.store);
-    if (projects.length === 0 && configState.config.projects?.length) {
-      projects = persistProjectsInRegistry(this.store, configState.config.projects, { preserveLegacyIds: true });
-      this.store.saveRuntimeConfig(configState.config);
-    }
-
+    const projects = this.withWorkspaceIds(
+      Array.isArray(configState.config?.projects) ? configState.config.projects : [],
+    );
     return projects.filter((project) => this.resolveProjectRoute(configState, project));
+  }
+
+  private withWorkspaceIds(projects: DesktopProjectConfig[]): DesktopProjectConfig[] {
+    return projects.map((project) => ({
+      ...project,
+      workspace_id: projectWorkspaceId(project) || project.name,
+    }));
   }
 
   private resolveProjectRoute(configState: Awaited<ReturnType<WorkspaceRouterOptions['readRuntimeConfig']>>, project: DesktopProjectConfig) {
@@ -737,78 +701,4 @@ function isLocalSlashCommand(content: string | ChannelInboundMessageContent) {
     || normalized.startsWith('/agent ')
     || normalized === '/mode'
     || normalized.startsWith('/mode ');
-}
-
-function workspaceHealth(path: string) {
-  if (!path) {
-    return {
-      status: 'warning' as const,
-      summary: 'Workspace path is not configured.',
-      issues: [{
-        code: 'workspace_path_missing',
-        severity: 'warning' as const,
-        message: 'Workspace path is not configured.',
-        help: 'Set a workspace path in the project agent options.',
-      }],
-      checkedAt: new Date().toISOString(),
-    };
-  }
-  if (!existsSync(path)) {
-    return {
-      status: 'error' as const,
-      summary: 'Workspace path does not exist.',
-      issues: [{
-        code: 'workspace_path_not_found',
-        severity: 'error' as const,
-        message: `Workspace path does not exist: ${path}`,
-        help: 'Update the workspace path or restore the missing directory.',
-      }],
-      checkedAt: new Date().toISOString(),
-    };
-  }
-  return {
-    status: 'healthy' as const,
-    summary: 'Workspace is available.',
-    issues: [],
-    checkedAt: new Date().toISOString(),
-  };
-}
-
-function detectGitSummary(path: string): WorkspaceGitSummary {
-  if (!path || !existsSync(path)) {
-    return { isRepo: false };
-  }
-  try {
-    const isRepo = git(path, ['rev-parse', '--is-inside-work-tree']) === 'true';
-    if (!isRepo) {
-      return { isRepo: false };
-    }
-    const branch = git(path, ['branch', '--show-current']) || undefined;
-    const remote = git(path, ['config', '--get', 'remote.origin.url']) || undefined;
-    const status = git(path, ['status', '--porcelain']);
-    const sha = git(path, ['rev-parse', '--short', 'HEAD']) || '';
-    const message = git(path, ['log', '-1', '--pretty=%s']) || '';
-    const committedAt = git(path, ['log', '-1', '--pretty=%cI']) || undefined;
-    return {
-      isRepo: true,
-      branch,
-      remote,
-      dirty: Boolean(status),
-      lastCommit: sha ? { sha, message, committedAt } : undefined,
-    };
-  } catch (error) {
-    return {
-      isRepo: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-function git(cwd: string, args: string[]) {
-  return execFileSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-    timeout: 1500,
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }).trim();
 }

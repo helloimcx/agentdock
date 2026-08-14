@@ -618,6 +618,5 @@ export interface RuntimeConfigState {
   config: DesktopConnectConfig;
   error?: string;
   warnings?: string[];
-  migratedFromPath?: string;
   updatedAt?: string;
 }

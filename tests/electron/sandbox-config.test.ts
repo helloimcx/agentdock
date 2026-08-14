@@ -297,21 +297,15 @@ test('workspace route records local execution when sandbox is disabled', () => {
   }
 });
 
-test('desktop config migration normalizes user id, DeepSeek provider, and sandbox defaults', () => {
+test('desktop config migration normalizes sandbox defaults and config version', () => {
   const migrated = migrateDesktopConnectConfig({
     projects: [{
       name: 'cloud-project',
       agent: {
         type: 'pi',
         options: {
-          tenant_id: 'team-a',
           sandbox: { enabled: true },
         } as any,
-        providers: [{
-          name: 'deepseek-v4-flash',
-          api_key: 'secret',
-          model: 'deepseek-v4-flash',
-        }],
       },
       platforms: [],
     }],
@@ -320,9 +314,6 @@ test('desktop config migration normalizes user id, DeepSeek provider, and sandbo
   assert.equal(migrated.changed, true);
   assert.equal(migrated.config.config_version, 2);
   const projectConfig = migrated.config.projects?.[0];
-  assert.equal(projectConfig?.agent.options?.user_id, 'team-a');
-  assert.equal((projectConfig?.agent.options as any).tenant_id, undefined);
-  assert.equal(projectConfig?.agent.providers?.[0]?.name, 'deepseek');
   assert.equal(projectConfig?.agent.options?.sandbox?.provider_id, 'opensandbox-default');
   assert.equal(projectConfig?.agent.options?.sandbox?.runtime_image_id, 'pi-acp-local');
   assert.equal(projectConfig?.agent.options?.sandbox?.sandbox_lifecycle, 'per_thread');

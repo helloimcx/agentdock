@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   LocalCoreAuthorizedUser,
   LocalCorePairingRequest,
@@ -48,7 +48,6 @@ import type {
   WorkspaceHealthSummary,
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
-  WorkspaceRegistryUpdateInput,
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopConnectConfig,
@@ -130,7 +129,7 @@ export class LocalCoreAcpStore {
     this.modelProviders = new LocalModelProviderStore(this.db);
     this.external = new LocalExternalStore(this.db);
     ensureLocalCoreAcpSchema(this.db);
-    this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath, resolveLegacyConfigPaths(runtimeDir));
+    this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
   }
 
   close() {
@@ -198,10 +197,6 @@ export class LocalCoreAcpStore {
     health?: WorkspaceHealthSummary;
   }): WorkspaceRegistryEntry {
     return this.workspaceRegistry.upsert(input);
-  }
-
-  updateWorkspaceRegistryEntry(workspaceId: string, input: WorkspaceRegistryUpdateInput): WorkspaceRegistryEntry {
-    return this.workspaceRegistry.update(workspaceId, input);
   }
 
   deleteWorkspaceRegistryEntry(workspaceId: string) {
@@ -760,25 +755,6 @@ export class LocalCoreAcpStore {
       throw error;
     }
   }
-}
-
-function resolveLegacyConfigPaths(runtimeDir: string) {
-  const defaultPath = join(runtimeDir, 'config.toml');
-  const settingsPath = join(runtimeDir, 'local-core-settings.json');
-  const paths: string[] = [];
-  if (existsSync(settingsPath)) {
-    try {
-      const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { configPath?: unknown };
-      const configuredPath = String(settings.configPath || '').trim();
-      if (configuredPath) {
-        paths.push(isAbsolute(configuredPath) ? configuredPath : resolve(runtimeDir, configuredPath));
-      }
-    } catch {
-      // Ignore malformed legacy settings and fall back to the default legacy path.
-    }
-  }
-  paths.push(defaultPath);
-  return [...new Set(paths)];
 }
 
 export { redactSecrets } from './utils.js';

@@ -4,7 +4,6 @@ import type {
   WorkspaceHealthSummary,
   WorkspaceRegistryCreateInput,
   WorkspaceRegistryEntry,
-  WorkspaceRegistryUpdateInput,
 } from '@cc/superai-contracts';
 import type { LocalWorkspaceRegistryRow } from './acp-store-types.js';
 import { parseJson } from './utils.js';
@@ -105,23 +104,6 @@ export class LocalWorkspaceRegistryStore {
       recentTaskIds: existing?.recentTaskIds ?? [],
       metadata,
     };
-  }
-
-  update(workspaceId: string, input: WorkspaceRegistryUpdateInput): WorkspaceRegistryEntry {
-    const existing = this.get(workspaceId);
-    if (!existing) {
-      throw new Error(`Workspace not found: ${workspaceId}`);
-    }
-    return this.upsert({
-      workspaceId,
-      displayName: input.displayName || existing.displayName,
-      path: input.path || existing.path,
-      deviceId: existing.deviceId,
-      defaultRuntimeId: input.defaultRuntimeId === null ? undefined : input.defaultRuntimeId || existing.defaultRuntimeId,
-      git: existing.git,
-      health: existing.health,
-      metadata: input.metadata || existing.metadata,
-    });
   }
 
   delete(workspaceId: string) {

@@ -8,10 +8,7 @@ import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/
 import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
 import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
 
-
-
-
-test('runtime config migrates legacy config.toml into sqlite without rewriting the file', () => {
+test('runtime config ignores legacy config.toml and stays sqlite-only', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-runtime-config-'));
   try {
     const runtimeDir = join(userDataPath, 'runtime');
@@ -34,88 +31,39 @@ work_dir = "relative-workspace"
     assert.equal(config.storage, 'sqlite');
     assert.equal(config.databasePath, join(runtimeDir, 'local-core.db'));
     assert.equal(config.baseDir, runtimeDir);
-    assert.equal(config.migratedFromPath, legacyPath);
     assert.equal(config.config.config_version, 2);
-    assert.equal(config.config.projects?.[0]?.name, 'legacy-workspace');
+    assert.deepEqual(config.config.projects, []);
     assert.equal(existsSync(legacyPath), true);
     store.close();
 
     const reopened = new LocalCoreAcpStore(userDataPath);
     const persisted = reopened.readRuntimeConfig();
-    assert.equal(persisted.config.projects?.[0]?.name, 'legacy-workspace');
-    assert.equal(persisted.migratedFromPath, legacyPath);
+    assert.deepEqual(persisted.config.projects, []);
     reopened.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
 
-test('runtime config reports malformed legacy toml without saving an empty sqlite config', () => {
+test('runtime config ignores legacy settings configPath and malformed toml', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-runtime-config-'));
   try {
     const runtimeDir = join(userDataPath, 'runtime');
     const legacyPath = join(runtimeDir, 'config.toml');
     mkdirSync(runtimeDir, { recursive: true });
-    writeFileSync(legacyPath, '[[projects]\nname = "broken"\n', 'utf8');
-
-    const store = new LocalCoreAcpStore(userDataPath);
-    const broken = store.readRuntimeConfig();
-    assert.match(broken.error || '', /Unexpected character/);
-    assert.equal(broken.migratedFromPath, legacyPath);
-    assert.deepEqual(broken.config.projects, []);
-
-    writeFileSync(legacyPath, `
-[[projects]]
-name = "fixed-workspace"
-
-[projects.agent]
-type = "pi"
-`, 'utf8');
-    const fixed = store.readRuntimeConfig();
-    assert.equal(fixed.error, undefined);
-    assert.equal(fixed.config.projects?.[0]?.name, 'fixed-workspace');
-    store.close();
-  } finally {
-    rmSync(userDataPath, { recursive: true, force: true });
-  }
-});
-
-test('runtime config migrates legacy custom configPath from settings before default path', () => {
-  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-runtime-config-'));
-  try {
-    const runtimeDir = join(userDataPath, 'runtime');
-    const customDir = join(userDataPath, 'custom-config');
-    const customPath = join(customDir, 'agentdock.toml');
-    const defaultPath = join(runtimeDir, 'config.toml');
-    mkdirSync(runtimeDir, { recursive: true });
-    mkdirSync(customDir, { recursive: true });
     writeFileSync(join(runtimeDir, 'local-core-settings.json'), JSON.stringify({
-      configPath: customPath,
+      configPath: join(userDataPath, 'custom-config', 'agentdock.toml'),
       defaultProject: '',
       autoStartService: true,
       knowledge: {},
       plugins: {},
     }), 'utf8');
-    writeFileSync(defaultPath, `
-[[projects]]
-name = "default-workspace"
-
-[projects.agent]
-type = "pi"
-`, 'utf8');
-    writeFileSync(customPath, `
-[[projects]]
-name = "custom-workspace"
-
-[projects.agent]
-type = "codex"
-`, 'utf8');
+    writeFileSync(legacyPath, '[[projects]\nname = "broken"\n', 'utf8');
 
     const store = new LocalCoreAcpStore(userDataPath);
     const config = store.readRuntimeConfig();
-    assert.equal(config.migratedFromPath, customPath);
-    assert.equal(config.config.projects?.[0]?.name, 'custom-workspace');
-    assert.equal(config.config.projects?.[0]?.agent.type, 'codex');
+    assert.equal(config.error, undefined);
+    assert.deepEqual(config.config.projects, []);
     store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
@@ -183,7 +131,7 @@ test('runtime config routes expose sqlite config and reject raw toml save route'
   assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/runtime/config/structured'), null);
 });
 
-test('runtime config save retains projects in SQLite row and does not revert to legacy config.toml on read', async () => {
+test('runtime config save stores the full config with projects in SQLite and reads it back', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-runtime-config-'));
   try {
     const runtimeDir = join(userDataPath, 'runtime');
@@ -206,7 +154,8 @@ provider_id = "deepseek"
     });
     const controller = new LocalCoreController(userDataPath, runtime);
     const initialConfig = await controller.readRuntimeConfig();
-    assert.equal(initialConfig.config.projects?.[0]?.agent?.options?.provider_id, 'deepseek');
+    // The legacy config.toml is never imported: SQLite starts empty.
+    assert.deepEqual(initialConfig.config.projects, []);
 
     await controller.saveRuntimeConfig({
       config_version: 2,
@@ -227,7 +176,8 @@ provider_id = "deepseek"
     });
     const storeConfig = reopenedRuntime.store.readRuntimeConfig();
     assert.equal(storeConfig.storage, 'sqlite');
-    assert.equal(storeConfig.config.projects, undefined);
+    assert.equal(storeConfig.config.projects?.[0]?.name, 'Obsidian-Personal');
+    assert.equal(storeConfig.config.projects?.[0]?.agent?.options?.provider_id, 'opencode-go');
 
     const reopenedController = new LocalCoreController(userDataPath, reopenedRuntime);
     const readBack = await reopenedController.readRuntimeConfig();

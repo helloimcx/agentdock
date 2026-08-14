@@ -7,7 +7,6 @@ import {
 import type {
   DesktopConnectConfig,
   DesktopProjectConfig,
-  DesktopProviderConfig,
   DesktopSandboxOptions,
 } from '@cc/superai-contracts';
 
@@ -33,22 +32,6 @@ export function migrateDesktopConnectConfig(input: DesktopConnectConfig): Deskto
 
   for (const project of Array.isArray(config.projects) ? config.projects : []) {
     const options = ensureProjectOptions(project);
-    if ('tenant_id' in options && !options.user_id) {
-      options.user_id = String(options.tenant_id || '').trim() || 'local';
-      delete options.tenant_id;
-      changed = true;
-      warnings.push(`Project "${project.name}" migrated agent.options.tenant_id to user_id.`);
-    }
-
-    if (Array.isArray(project.agent?.providers)) {
-      for (const provider of project.agent.providers) {
-        if (normalizeDeepSeekProvider(provider)) {
-          changed = true;
-          warnings.push(`Project "${project.name}" normalized a DeepSeek provider name.`);
-        }
-      }
-    }
-
     const sandbox = normalizeSandboxOptions(options.sandbox);
     if (sandbox.changed) {
       options.sandbox = sandbox.value;
@@ -73,22 +56,6 @@ function ensureProjectOptions(project: DesktopProjectConfig): Record<string, unk
   project.agent ||= { type: 'pi', options: {}, providers: [] };
   project.agent.options ||= {};
   return project.agent.options;
-}
-
-function normalizeDeepSeekProvider(provider: DesktopProviderConfig) {
-  const name = String(provider.name || '').trim().toLowerCase();
-  const baseUrl = String(provider.base_url || '').trim().toLowerCase();
-  if (name === 'deepseek' || (!name.startsWith('deepseek-') && !baseUrl.includes('deepseek.com'))) {
-    return false;
-  }
-  provider.name = 'deepseek';
-  return true;
-}
-
-export function normalizeDesktopProviderForStorage(provider: DesktopProviderConfig): DesktopProviderConfig {
-  const next = JSON.parse(JSON.stringify(provider || {})) as DesktopProviderConfig;
-  normalizeDeepSeekProvider(next);
-  return next;
 }
 
 function normalizeSandboxOptions(input?: DesktopSandboxOptions): { value?: DesktopSandboxOptions; changed: boolean } {

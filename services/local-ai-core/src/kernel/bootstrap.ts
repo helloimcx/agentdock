@@ -21,7 +21,6 @@ import type {
   ThreadKnowledgeAttachmentStore,
 } from '@cc/plugin-sdk';
 import { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import { listRegistryProjects } from '../runtime/workspace-project-registry.js';
 import { LocalCoreCapabilityRegistry } from './capability-registry.js';
 
 import { LocalCoreDiagnostics } from './diagnostics.js';
@@ -225,11 +224,7 @@ export function bootstrapLocalCoreRuntime(options: {
     store,
     readConfig: async () => {
       const configState = store.readRuntimeConfig();
-      const projects = listRegistryProjects(store);
-      return {
-        ...configState.config,
-        projects: projects.length > 0 ? projects : configState.config.projects,
-      } as DesktopConnectConfig | null | undefined;
+      return configState.config as DesktopConnectConfig | null | undefined;
     },
 
     getWorkspaceRouter: () => workspaceRouter,

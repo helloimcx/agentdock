@@ -122,15 +122,17 @@ test('local core route parser keeps workspace state routes bounded to one id seg
     name: 'workspace.streaming-probe',
     workspaceId: 'workspace/one',
   });
-  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-registry'), { name: 'workspace-registry.create' });
-  assert.deepEqual(parseLocalAiCoreRoute('PATCH', '/api/local/v1/workspace-registry/workspace%2Fone'), {
-    name: 'workspace-registry.update',
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspace-registry/workspace%2Fone'), {
+    name: 'workspace-registry.get',
     workspaceId: 'workspace/one',
   });
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspace-security/workspace%2Fone'), {
     name: 'workspace-security.get',
     workspaceId: 'workspace/one',
   });
+  assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-registry'), null);
+  assert.equal(parseLocalAiCoreRoute('PATCH', '/api/local/v1/workspace-registry/workspace%2Fone'), null);
+  assert.equal(parseLocalAiCoreRoute('DELETE', '/api/local/v1/workspace-registry/workspace%2Fone'), null);
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/workspace-registry/workspace-1/extra'), null);
   assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/workspace-security/workspace-1'), null);
   assert.equal(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/workspace-1/streaming-probe'), null);

@@ -97,6 +97,8 @@ flowchart LR
 
 ### 2026-08-14
 
+- 配置存储彻底迁移到 SQLite：移除 config.toml 及全部文件兼容层（legacy 导入、settings configPath、内嵌 provider 迁移、registry 备份/合并舞步），`runtime_config` 表成为工作区配置的唯一事实来源，`workspace_registry` 降级为派生镜像。
+- 修复定时任务绑定旧 agent runtime 的问题：side-thread 定时任务（Automation/Monitor）复用时校验线程 agent 类型与工作区当前 agent 是否一致，不一致时自动在新 agent 下重建会话线程，任务随工作区 agent 切换自愈。
 - 技能中心页面新增「安装 Obsidian 技能包」按钮：一键从 `kepano/obsidian-skills` 克隆并导入 5 个官方维护的 Obsidian 技能（obsidian-markdown、obsidian-bases、json-canvas、obsidian-cli、defuddle）到用户级目录，并通过既有的 skill-mounter 自动挂载到 Claude Code / Codex / opencode / Hermes / Pi 的原生 skills 目录（Issue #72 首批切片）。
 
 ### 2026-08-13
@@ -176,7 +178,7 @@ flowchart LR
 
 ### 2026-06-15
 
-- Local AI Core 项目配置从 `runtime/config.toml` 迁移到 `runtime/local-core.db` 的 SQLite 持久化存储；旧 TOML 会在首次读取时导入，但后续不再回写。
+- Local AI Core 项目配置迁移到 `runtime/local-core.db` 的 SQLite 持久化存储；旧 TOML 仅在迁移期被导入一次，后续不再回写。自 2026-08-14 起 config.toml 及其导入逻辑已彻底移除，SQLite 为唯一配置来源。
 
 ### 2026-06-14
 
