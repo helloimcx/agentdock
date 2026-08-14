@@ -10,7 +10,7 @@ import type {
 } from '@cc/superai-contracts';
 import { normalizeAgentTaskStatus } from '@cc/superai-contracts';
 import type { LocalAgentTaskRow } from './acp-store-types.js';
-import { parseJson, redactSecrets } from './utils.js';
+import { clampLimit, SqlPredicateBuilder, parseJson, redactSecrets } from './utils.js';
 import type { AuditEventCreateInput } from './security-store.js';
 
 export class LocalAgentTaskStore {
@@ -65,30 +65,18 @@ export class LocalAgentTaskStore {
   }
 
   list(query: AgentTaskListQuery = {}): AgentTaskListResponse {
-    const predicates: string[] = [];
-    const params: Array<string | number> = [];
-    if (query.workspaceId) {
-      predicates.push('workspace_id = ?');
-      params.push(query.workspaceId);
-    }
-    if (query.runtimeId) {
-      predicates.push('runtime_id = ?');
-      params.push(query.runtimeId);
-    }
-    if (query.status) {
-      const statuses = (Array.isArray(query.status) ? query.status : [query.status]).map((status) => normalizeAgentTaskStatus(status));
-      predicates.push(`status IN (${statuses.map(() => '?').join(', ')})`);
-      params.push(...statuses);
-    }
-    const limit = Math.max(1, Math.min(Number(query.limit || 50), 100));
-    const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
+    const filter = new SqlPredicateBuilder()
+      .eq('workspace_id', query.workspaceId)
+      .eq('runtime_id', query.runtimeId)
+      .in('status', query.status, normalizeAgentTaskStatus);
+    const limit = clampLimit(query.limit);
     const rows = this.db.prepare(`
       SELECT *
       FROM agent_tasks
-      ${where}
+      ${filter.whereClause()}
       ORDER BY updated_at DESC
       LIMIT ?
-    `).all(...params, limit) as LocalAgentTaskRow[];
+    `).all(...filter.params, limit) as LocalAgentTaskRow[];
     return { tasks: rows.map((row) => this.toAgentTask(row)) };
   }
 

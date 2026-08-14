@@ -80,6 +80,24 @@ test('approval requests persist, resolve, attach to tasks, and audit lifecycle',
   store.close();
 });
 
+test('empty status filter returns all rows instead of building invalid IN () SQL', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'approval-empty-filter-'));
+  const store = new LocalCoreAcpStore(userDataPath);
+  for (const title of ['first', 'second', 'third']) {
+    store.createApprovalRequest({
+      workspaceId: 'workspace-a',
+      kind: 'command',
+      riskLevel: 'medium',
+      title,
+      description: 'do work',
+      requestedAction: 'do work',
+    });
+  }
+  assert.equal(store.listApprovalRequests({ status: [] }).approvals.length, 3);
+  assert.equal(store.listAgentTasks({ status: [] }).tasks.length, 0);
+  store.close();
+});
+
 test('command risk classification and secret redaction cover baseline rules', () => {
   const high = classifyCommandRisk('git reset --hard HEAD');
   assert.equal(high.riskLevel, 'high');
