@@ -20,7 +20,7 @@ import type {
   LocalAuditEventRow,
   LocalWorkspaceSecuritySettingsRow,
 } from './acp-store-types.js';
-import { defaultPermissions, parseJson, redactSecrets } from './utils.js';
+import { clampLimit, defaultPermissions, parseJson, redactSecrets, SqlPredicateBuilder } from './utils.js';
 
 export type AuditEventCreateInput = {
   type: AuditEventType;
@@ -162,30 +162,18 @@ export class LocalSecurityStore {
   }
 
   listApprovalRequests(query: ApprovalRequestListQuery = {}): ApprovalRequestListResponse {
-    const predicates: string[] = [];
-    const params: Array<string | number> = [];
-    if (query.workspaceId) {
-      predicates.push('workspace_id = ?');
-      params.push(query.workspaceId);
-    }
-    if (query.taskId) {
-      predicates.push('task_id = ?');
-      params.push(query.taskId);
-    }
-    if (query.status) {
-      const statuses = (Array.isArray(query.status) ? query.status : [query.status]).map((status) => normalizeApprovalRequestStatus(status));
-      predicates.push(`status IN (${statuses.map(() => '?').join(', ')})`);
-      params.push(...statuses);
-    }
-    const limit = Math.max(1, Math.min(Number(query.limit || 50), 100));
-    const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
+    const filter = new SqlPredicateBuilder()
+      .eq('workspace_id', query.workspaceId)
+      .eq('task_id', query.taskId)
+      .in('status', query.status, normalizeApprovalRequestStatus);
+    const limit = clampLimit(query.limit);
     const rows = this.db.prepare(`
       SELECT *
       FROM approval_requests
-      ${where}
+      ${filter.whereClause()}
       ORDER BY updated_at DESC
       LIMIT ?
-    `).all(...params, limit) as LocalApprovalRequestRow[];
+    `).all(...filter.params, limit) as LocalApprovalRequestRow[];
     return { approvals: rows.map((row) => this.toApprovalRequest(row)) };
   }
 
@@ -258,34 +246,19 @@ export class LocalSecurityStore {
   }
 
   listAuditEvents(query: AuditEventListQuery = {}): AuditEventListResponse {
-    const predicates: string[] = [];
-    const params: Array<string | number> = [];
-    if (query.workspaceId) {
-      predicates.push('workspace_id = ?');
-      params.push(query.workspaceId);
-    }
-    if (query.taskId) {
-      predicates.push('task_id = ?');
-      params.push(query.taskId);
-    }
-    if (query.approvalId) {
-      predicates.push('approval_id = ?');
-      params.push(query.approvalId);
-    }
-    if (query.type) {
-      const types = Array.isArray(query.type) ? query.type : [query.type];
-      predicates.push(`type IN (${types.map(() => '?').join(', ')})`);
-      params.push(...types);
-    }
-    const limit = Math.max(1, Math.min(Number(query.limit || 50), 100));
-    const where = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
+    const filter = new SqlPredicateBuilder()
+      .eq('workspace_id', query.workspaceId)
+      .eq('task_id', query.taskId)
+      .eq('approval_id', query.approvalId)
+      .in('type', query.type);
+    const limit = clampLimit(query.limit);
     const rows = this.db.prepare(`
       SELECT *
       FROM audit_events
-      ${where}
+      ${filter.whereClause()}
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(...params, limit) as LocalAuditEventRow[];
+    `).all(...filter.params, limit) as LocalAuditEventRow[];
     return { events: rows.map((row) => this.toAuditEvent(row)) };
   }
 

@@ -12,6 +12,43 @@ export function parseJson<T>(value: string, fallback: T): T {
   }
 }
 
+export class SqlPredicateBuilder {
+  readonly predicates: string[] = [];
+  readonly params: Array<string | number> = [];
+
+  eq(column: string, value: string | number | undefined | null): this {
+    if (value === undefined || value === null || value === '') {
+      return this;
+    }
+    this.predicates.push(`${column} = ?`);
+    this.params.push(value);
+    return this;
+  }
+
+  in<T>(column: string, value: T | T[] | undefined | null, normalize?: (item: T) => string): this {
+    if (value === undefined || value === null || value === '') {
+      return this;
+    }
+    const items = (Array.isArray(value) ? value : [value]).map((item) => (normalize ? normalize(item) : String(item)));
+    // An empty array means "no filter" (matching all rows), not an impossible
+    // predicate — `IN ()` would be a SQLite syntax error at runtime.
+    if (!items.length) {
+      return this;
+    }
+    this.predicates.push(`${column} IN (${items.map(() => '?').join(', ')})`);
+    this.params.push(...items);
+    return this;
+  }
+
+  whereClause(): string {
+    return this.predicates.length ? `WHERE ${this.predicates.join(' AND ')}` : '';
+  }
+}
+
+export function clampLimit(limit: unknown, fallback = 50, max = 100): number {
+  return Math.max(1, Math.min(Number(limit || fallback), max));
+}
+
 export function normalizeBridgeKind(value: string | null | undefined): DesktopBridgeEventKind | undefined {
   switch (value) {
     case 'assistant':

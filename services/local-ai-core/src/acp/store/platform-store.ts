@@ -8,20 +8,13 @@ import type {
   LocalPlatformThreadBindingRow,
   LocalPlatformUserRow,
 } from './acp-store-types.js';
+import { SqlPredicateBuilder } from './utils.js';
 
-function buildWorkspacePlatformWhere(workspaceId?: string, platform?: string): { where: string; params: string[] } {
-  const params: string[] = [];
-  const predicates: string[] = [];
-  if (workspaceId) {
-    predicates.push('workspace_id = ?');
-    params.push(workspaceId);
-  }
-  if (platform) {
-    predicates.push('platform = ?');
-    params.push(platform);
-  }
-  const where = predicates.length > 0 ? `WHERE ${predicates.join(' AND ')}` : '';
-  return { where, params };
+function buildWorkspacePlatformWhere(workspaceId?: string, platform?: string): { where: string; params: Array<string | number> } {
+  const builder = new SqlPredicateBuilder()
+    .eq('workspace_id', workspaceId)
+    .eq('platform', platform);
+  return { where: builder.whereClause(), params: builder.params };
 }
 
 export class LocalPlatformStore {

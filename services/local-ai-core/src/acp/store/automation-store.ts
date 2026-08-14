@@ -21,6 +21,7 @@ import type {
   LocalAutomationRunRow,
   LocalScheduledJobRow,
 } from './acp-store-types.js';
+import { SqlPredicateBuilder } from './utils.js';
 
 export type AutomationStateUpdateInput = {
   health?: AutomationDefinition['health'];
@@ -60,22 +61,15 @@ export class LocalAutomationStore {
   constructor(private readonly db: DatabaseSync) {}
 
   list(workspaceId?: string, originKind?: NonNullable<AutomationDefinition['originKind']>): AutomationDefinition[] {
-    const conditions: string[] = [];
-    const params: string[] = [];
-    if (workspaceId) {
-      conditions.push('workspace_id = ?');
-      params.push(workspaceId);
-    }
-    if (originKind) {
-      conditions.push('origin_kind = ?');
-      params.push(originKind);
-    }
+    const filter = new SqlPredicateBuilder()
+      .eq('workspace_id', workspaceId)
+      .eq('origin_kind', originKind);
     const rows = this.db.prepare(`
       SELECT ${AUTOMATION_COLUMNS}
       FROM automations
-      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+      ${filter.whereClause()}
       ORDER BY updated_at DESC
-    `).all(...params) as LocalAutomationRow[];
+    `).all(...filter.params) as LocalAutomationRow[];
     return rows.map((row) => this.toDefinition(row));
   }
 
