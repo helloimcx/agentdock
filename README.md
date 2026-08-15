@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-15
+
+- CI 建立完整质量门禁链：`.github/workflows/ci.yml` 拆分为 lint / test / coverage 三个 job，五个 lint 指标（circular / duplicate / dead-code / file-size / function-length）从"仅报告"升级为可失败门禁（`pnpm lint:gates`），ESLint 以 `--max-warnings 108` 基线把关新增告警，覆盖率以 `.c8rc.json` 的 `check-coverage` 阈值（lines/statements 68、functions 72、branches 66）把关。配套新增 `knip.json`（声明入口提升死代码检测准确性）、拆分 `automation-service.ts` 尾部工具函数到 `automation-event-utils.ts`（文件降至 1000 行内）、提取 security-store 列表查询与 Knowledge 通知横幅的重复代码。
+
 ### 2026-08-14
 
 - 配置存储彻底迁移到 SQLite：移除 config.toml 及全部文件兼容层（legacy 导入、settings configPath、内嵌 provider 迁移、registry 备份/合并舞步），`runtime_config` 表成为工作区配置的唯一事实来源，`workspace_registry` 降级为派生镜像。

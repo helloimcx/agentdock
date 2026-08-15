@@ -3,8 +3,9 @@
  * File-size quality metric.
  *
  * `pnpm lint:file-size` prints every source file whose line count meets
- * `FILE_MIN_LINES` (default 1000). It is an informational report: the script
- * ALWAYS exits 0, so it never blocks CI.
+ * `FILE_MIN_LINES` (default 1000). It is an informational report by default;
+ * pass `--fail` to exit non-zero when over-sized files exist (used by the CI
+ * gate).
  *
  * Detection honors the same source roots as the other lint metrics and skips
  * tests, build output, and config files. Lower `FILE_MIN_LINES` to surface
@@ -17,6 +18,7 @@ import { collectFiles, ENTRY_DIRS } from './lint-metrics-common.mjs';
 
 const ROOT = process.cwd();
 const MIN_LINES = Number(process.env.FILE_MIN_LINES || 1000);
+const FAIL = process.argv.includes('--fail');
 const EXTS = new Set(['.ts', '.tsx']);
 
 function countLines(filePath) {
@@ -75,9 +77,9 @@ function run() {
   }
 
   console.log('');
+
+  // Informational by default; --fail turns the report into a CI gate.
+  process.exit(FAIL && large.length > 0 ? 1 : 0);
 }
 
 run();
-
-// Informational only — never block CI.
-process.exit(0);

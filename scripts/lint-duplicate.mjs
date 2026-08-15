@@ -4,7 +4,8 @@
  *
  * `pnpm lint:duplicate` prints the repository's copy/paste rate using jscpd,
  * broken down by language, plus the largest duplicated blocks. It is an
- * informational report: the script ALWAYS exits 0, so it never blocks CI.
+ * informational report by default; pass `--fail` to exit non-zero when clones
+ * are detected (used by the CI gate).
  *
  * Detection honors the same source roots as `lint:complexity`/`lint:circular`
  * and skips tests, build output, and config files. Raise `--min-lines` /
@@ -19,11 +20,14 @@ import { fileURLToPath } from 'node:url';
 const ROOT = process.cwd();
 const JSCPD = join(ROOT, 'node_modules', 'jscpd', 'run-jscpd.js');
 const ENTRY_DIRS = ['src', 'services', 'packages', 'electron', 'shared'];
+const FAIL = process.argv.includes('--fail');
 
 const MIN_LINES = Number(process.env.JSCPD_MIN_LINES || 5);
 const MIN_TOKENS = Number(process.env.JSCPD_MIN_TOKENS || 25);
 
 // Mirrors the ignore set in eslint.config.mjs — tests, build output, configs.
+// The lark/weixin gateway files are deliberately parallel implementations of
+// the same inbound protocol, so clones between them are not actionable debt.
 const IGNORE = [
   '**/dist/**',
   '**/dist-electron/**',
@@ -36,6 +40,8 @@ const IGNORE = [
   '**/tests/**',
   'tests/**',
   'scripts/**',
+  '**/channel/lark/local-core-lark-gateway.ts',
+  '**/channel/weixin/local-core-weixin-gateway.ts',
 ];
 
 function run() {
@@ -64,21 +70,26 @@ function run() {
       report = JSON.parse(readFileSync(join(outDir, 'jscpd-report.json'), 'utf8'));
     } catch {
       console.log('\nDuplicate-code report — could not read jscpd output.\n');
-      return;
+      return 1;
     }
 
-    printReport(report);
+    const cloneCount = printReport(report);
+    // Informational by default; --fail turns the report into a CI gate.
+    // Return the exit code instead of calling process.exit() here: process.exit
+    // inside a try block would skip the finally cleanup below.
+    return FAIL && cloneCount > 0 ? 1 : 0;
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
 }
+
+process.exit(run());
 
 function printReport(report) {
   const stats = report.statistics || {};
   const total = stats.total || {};
   const formats = stats.formats || {};
   const duplicates = report.duplicates || [];
-
   console.log(`\nDuplicate-code report — ${ENTRY_DIRS.join(', ')}`);
   console.log(`(min-lines=${MIN_LINES}, min-tokens=${MIN_TOKENS})\n`);
 
@@ -120,12 +131,10 @@ function printReport(report) {
   }
 
   console.log('');
+  return duplicates.length;
 }
 
 run();
-
-// Informational only — never block CI, regardless of what jscpd detected.
-process.exit(0);
 
 // Keep imports referenced for environments that tree-shake unused ESM.
 void fileURLToPath;

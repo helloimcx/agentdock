@@ -15,13 +15,14 @@ Use `pnpm` for all local work.
 - `pnpm e2e:smoke`: runs the bundled smoke test against a fresh production build.
 
 ## Quality Metrics
-- `pnpm lint:complexity`: reports cyclomatic complexity per function across TS source via ESLint `complexity` rule (default max threshold 15).
-- `pnpm lint:circular`: reports circular import dependencies across source roots using `madge`.
-- `pnpm lint:duplicate`: reports copy/paste duplicate code rate using `jscpd`.
-- `pnpm lint:dead-code`: reports unused exports, unused types, and duplicate exports using `knip`.
-- `pnpm lint:function-length`: reports functions whose line count exceeds threshold (default 100).
-- `pnpm lint:file-size`: reports source files whose line count exceeds threshold (default 1000).
-- `pnpm coverage`: measures test coverage using `c8`.
+- `pnpm lint:complexity`: reports cyclomatic complexity per function across TS source via ESLint `complexity` rule (default max threshold 15). CI gate: `pnpm lint:complexity:gate` (ESLint `--max-warnings 108` baseline).
+- `pnpm lint:circular`: reports circular import dependencies across source roots using `madge`. CI gate: `--fail` (zero-tolerance, baseline 0).
+- `pnpm lint:duplicate`: reports copy/paste duplicate code rate using `jscpd`. CI gate: `--fail` with `JSCPD_MIN_LINES=10`/`JSCPD_MIN_TOKENS=60`; lark/weixin gateway files are ignored (deliberately parallel implementations).
+- `pnpm lint:dead-code`: reports unused exports, unused types, and duplicate exports using `knip` (entry points declared in `knip.json`). CI gate: `--fail --max-count 171` (incremental over baseline).
+- `pnpm lint:function-length`: reports functions whose line count exceeds threshold (default 100). CI gate: `--fail --max-count 45` (incremental over baseline).
+- `pnpm lint:file-size`: reports source files whose line count exceeds threshold (default 1000). CI gate: `--fail` (zero-tolerance).
+- `pnpm coverage`: measures test coverage using `c8`. CI gate: `check-coverage` thresholds in `.c8rc.json` (lines/statements 68, functions 72, branches 66).
+- All gates aggregate in `pnpm lint:gates`; CI runs it plus `typecheck`/`test`/`coverage` in `.github/workflows/ci.yml`.
 
 ## Coding Style & Naming Conventions
 The codebase uses TypeScript with `strict` mode enabled and the `@` alias for `src/` imports. Follow the existing style: 2-space indentation, semicolons in renderer code, and clear ESM imports. Use `PascalCase` for React components and page folders (`src/pages/Projects/ProjectList.tsx`), `camelCase` for functions and helpers, and lowercase filenames for stores and API modules (`src/store/auth.ts`, `src/api/client.ts`). Keep shared desktop contracts in `shared/` so renderer and Electron stay aligned.
@@ -45,7 +46,7 @@ There is no frontend unit-test runner configured in this snapshot. The main fast
 Use TDD selectively where it prevents repeated regressions. Bug fixes should start with the smallest failing test that reproduces the issue, then pass by fixing the underlying invariant. Cross-layer features should add contract or state-machine coverage first, especially for ACP streaming, permission lifecycle, thread/task state, channel content normalization, scheduler behavior, and shared enum parsing. Pure UI polish, copy changes, and exploratory product work do not require strict TDD; validate them with focused manual checks, screenshots when useful, or smoke/e2e coverage. Release and packaging issues should be guarded with `pnpm build` and `pnpm e2e:smoke`.
 
 ## Commit & Pull Request Guidelines
-Before committing or pushing code, always run the complete verification suite (`pnpm typecheck`, `pnpm lint:circular`, `pnpm lint:duplicate`, and `pnpm test`) to ensure zero TS errors, zero circular dependencies, no new duplicate code blocks, and 100% test pass rate. Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates.
+Before committing or pushing code, run the same gates CI runs: `pnpm typecheck`, `pnpm lint:gates` (the CI-pinned gate variants with `--fail`/baseline args), and `pnpm test`, to ensure zero TS errors, zero circular dependencies, no new duplicate code blocks, no new dead symbols or long functions, no new ESLint warnings, and 100% test pass rate. Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates.
 
 ## Configuration Notes
 Development scripts honor Electron runtime overrides such as `AI_WORKSTATION_USER_DATA_DIR` and `AI_WORKSTATION_SMOKE_OUTPUT`. Avoid committing machine-specific paths, secrets, or generated output.
