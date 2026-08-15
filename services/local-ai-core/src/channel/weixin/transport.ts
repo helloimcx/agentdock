@@ -109,6 +109,34 @@ export function getWeixinUpdates(
   );
 }
 
+const MESSAGE_STATE_IN_PROGRESS = 1;
+const MESSAGE_STATE_FINAL = 2;
+
+export function createWeixinClientId() {
+  return `openclaw-weixin-${crypto.randomUUID()}`;
+}
+
+function buildBotMessagePayload(
+  toUserId: string,
+  clientId: string | undefined,
+  messageState: typeof MESSAGE_STATE_IN_PROGRESS | typeof MESSAGE_STATE_FINAL,
+  itemList: Array<Record<string, unknown>>,
+  contextToken?: string,
+) {
+  return {
+    msg: {
+      from_user_id: '',
+      to_user_id: toUserId,
+      client_id: clientId || createWeixinClientId(),
+      message_type: 2,
+      message_state: messageState,
+      item_list: itemList,
+      ...(contextToken ? { context_token: contextToken } : {}),
+    },
+    base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
+  };
+}
+
 export function sendWeixinTextMessageChunk(
   binding: WeixinWorkspaceBinding,
   toUserId: string,
@@ -119,18 +147,13 @@ export function sendWeixinTextMessageChunk(
   return weixinApiPost<SendMessageResp>(
     binding,
     'ilink/bot/sendmessage',
-    {
-      msg: {
-        from_user_id: '',
-        to_user_id: toUserId,
-        client_id: options.clientId || `openclaw-weixin-${crypto.randomUUID()}`,
-        message_type: 2,
-        message_state: options.final === false ? 1 : 2,
-        item_list: [{ type: TEXT_ITEM_TYPE, text_item: { text } }],
-        ...(contextToken ? { context_token: contextToken } : {}),
-      },
-      base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
-    },
+    buildBotMessagePayload(
+      toUserId,
+      options.clientId,
+      options.final === false ? MESSAGE_STATE_IN_PROGRESS : MESSAGE_STATE_FINAL,
+      [{ type: TEXT_ITEM_TYPE, text_item: { text } }],
+      contextToken,
+    ),
     API_TIMEOUT_MS,
   );
 }
@@ -146,29 +169,24 @@ export function sendWeixinFileMessage(
   return weixinApiPost<SendMessageResp>(
     binding,
     'ilink/bot/sendmessage',
-    {
-      msg: {
-        from_user_id: '',
-        to_user_id: toUserId,
-        client_id: options.clientId || `openclaw-weixin-${crypto.randomUUID()}`,
-        message_type: 2,
-        message_state: 2,
-        item_list: [{
-          type: FILE_ITEM_TYPE,
-          file_item: {
-            media: {
-              encrypt_query_param: uploaded.encryptedQueryParam,
-              aes_key: Buffer.from(uploaded.aesKeyHex).toString('base64'),
-              encrypt_type: 1,
-            },
-            file_name: fileName,
-            len: String(uploaded.fileSize),
+    buildBotMessagePayload(
+      toUserId,
+      options.clientId,
+      MESSAGE_STATE_FINAL,
+      [{
+        type: FILE_ITEM_TYPE,
+        file_item: {
+          media: {
+            encrypt_query_param: uploaded.encryptedQueryParam,
+            aes_key: Buffer.from(uploaded.aesKeyHex).toString('base64'),
+            encrypt_type: 1,
           },
-        }],
-        ...(contextToken ? { context_token: contextToken } : {}),
-      },
-      base_info: { channel_version: WEIXIN_CHANNEL_VERSION },
-    },
+          file_name: fileName,
+          len: String(uploaded.fileSize),
+        },
+      }],
+      contextToken,
+    ),
     API_TIMEOUT_MS,
   );
 }

@@ -35,6 +35,7 @@ import {
 import {
   API_TIMEOUT_MS,
   getWeixinUploadUrl,
+  createWeixinClientId,
   IMAGE_ITEM_TYPE,
   isWeixinApiError,
   sendWeixinFileMessage,
@@ -250,41 +251,14 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
 
 
   async onBridgeEvent(event: DesktopBridgeEvent) {
-    if (!event.sessionKey) {
-      this.options.log?.(`localcore-weixin bridge event ignored without sessionKey: ${event.type}`);
+    const context = this.resolveBridgeEventContext(event);
+    if (!context) {
       return;
     }
-    const sessionKey = event.sessionKey;
-    const route = this.threadRouting.get(sessionKey);
-    if (!route) {
-      return;
-    }
-    const routeInstanceId = route.instanceId || 'default';
-    const routePlatformKey = route.platformKey || channelPlatformKey('weixin', routeInstanceId);
-    const state = this.runtime.get(runtimeKey(route.workspaceId, routeInstanceId)) || this.runtime.get(route.workspaceId);
-    if (!state?.connected) {
-      this.options.log?.(`localcore-weixin bridge event ignored because workspace is not connected: ${route.workspaceId}`);
-      return;
-    }
-    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
-    if (!initialBinding) {
-      this.options.log?.(`localcore-weixin bridge binding miss for workspace=${route.workspaceId}`);
-      return;
-    }
-    if (
-      event.type !== 'preview_start'
-      && event.type !== 'update_message'
-      && event.type !== 'reply'
-      && event.type !== 'buttons'
-      && event.type !== 'typing_start'
-      && event.type !== 'typing_stop'
-      && event.type !== 'status'
-    ) {
-      return;
-    }
+    const { sessionKey, route, state, platformKey: routePlatformKey } = context;
 
     const current = this.scheduleOutboundChain(sessionKey, async () => {
-      const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
+      const binding = this.getBridgeBinding(route, routePlatformKey);
       if (!binding) return;
       const bridgeThreadId = route.threadId || binding.thread_id;
       if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
@@ -588,7 +562,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     uploaded: UploadedWeixinFile,
     contextToken?: string,
   ): Promise<string> {
-    const clientId = `openclaw-weixin-${crypto.randomUUID()}`;
+    const clientId = createWeixinClientId();
     const resp = await sendWeixinFileMessage(binding, toUserId, fileName, uploaded, contextToken, { clientId });
     if (isWeixinApiError(resp)) {
       throw new Error(`WeChat send file failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''}`);
