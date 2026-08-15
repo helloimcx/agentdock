@@ -87,6 +87,16 @@ function resolveRuntimeKey(workspaceId: string, instanceId?: string): string {
   return instanceId ? `${workspaceId}::${instanceId}` : workspaceId;
 }
 
+const RENDERABLE_BRIDGE_EVENT_TYPES = new Set<string>([
+  'preview_start',
+  'update_message',
+  'reply',
+  'buttons',
+  'typing_start',
+  'typing_stop',
+  'status',
+]);
+
 export abstract class BaseChannelGateway<
   TRuntimeState extends GatewayRuntimeState,
   TBinding extends GatewayBinding,
@@ -618,6 +628,50 @@ export abstract class BaseChannelGateway<
       });
     this.outboundEventChains.set(sessionKey, current);
     return current;
+  }
+
+  /**
+   * Shared onBridgeEvent prologue: resolve the session route, a connected
+   * runtime state, and a live platform thread binding for the event. Returns
+   * undefined (with a log) when the event should be dropped before any
+   * outbound work is scheduled.
+   */
+  protected resolveBridgeEventContext(event: DesktopBridgeEvent): {
+    sessionKey: string;
+    route: TThreadRoute;
+    state: TRuntimeState;
+    platformKey: string;
+  } | undefined {
+    if (!event.sessionKey) {
+      this.options.log?.(`localcore-${this.platform} bridge event ignored without sessionKey: ${event.type}`);
+      return undefined;
+    }
+    const route = this.threadRouting.get(event.sessionKey);
+    if (!route) {
+      return undefined;
+    }
+    const routeInstanceId = route.instanceId || 'default';
+    const platformKey = route.platformKey || channelPlatformKey(this.platform, routeInstanceId);
+    const state = this.runtime.get(resolveRuntimeKey(route.workspaceId, routeInstanceId)) || this.runtime.get(route.workspaceId);
+    if (!state || !this.isBridgeRuntimeReady(state)) {
+      this.options.log?.(`localcore-${this.platform} bridge event ignored because workspace is not connected: ${route.workspaceId}`);
+      return undefined;
+    }
+    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, platformKey);
+    if (!initialBinding) {
+      this.options.log?.(`localcore-${this.platform} bridge binding miss for workspace=${route.workspaceId} chat=${route.chatId} user=${route.platformUserId}`);
+      return undefined;
+    }
+    if (!RENDERABLE_BRIDGE_EVENT_TYPES.has(event.type)) {
+      this.options.log?.(`localcore-${this.platform} bridge event ignored type=${event.type}`);
+      return undefined;
+    }
+    return { sessionKey: event.sessionKey, route, state, platformKey };
+  }
+
+  /** Runtime readiness check for bridge events; gateways with a transport client override to require it. */
+  protected isBridgeRuntimeReady(state: TRuntimeState): boolean {
+    return state.connected;
   }
 
   protected clearRuntimeError(state: TRuntimeState) {

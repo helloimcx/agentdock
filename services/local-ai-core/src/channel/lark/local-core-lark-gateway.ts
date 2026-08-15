@@ -83,6 +83,10 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
   private readonly outboundTransport: LarkOutboundTransport;
   readonly platform = 'lark';
 
+  protected isBridgeRuntimeReady(state: LarkRuntimeState): boolean {
+    return Boolean(state.connected && state.client);
+  }
+
   constructor(options: LocalCoreLarkGatewayOptions) {
     super(options);
     this.inboundHandler = new LarkInboundHandler({
@@ -287,39 +291,11 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
 
 
   async onBridgeEvent(event: DesktopBridgeEvent) {
-    if (!event.sessionKey) {
-      this.options.log?.(`localcore-lark bridge event ignored without sessionKey: ${event.type}`);
+    const context = this.resolveBridgeEventContext(event);
+    if (!context) {
       return;
     }
-    const sessionKey = event.sessionKey;
-    const route = this.threadRouting.get(sessionKey);
-    if (!route) {
-      return;
-    }
-    const routeInstanceId = route.instanceId || 'default';
-    const routePlatformKey = route.platformKey || channelPlatformKey('lark', routeInstanceId);
-    const state = this.runtime.get(runtimeKey(route.workspaceId, routeInstanceId)) || this.runtime.get(route.workspaceId);
-    if (!state?.client || !state.connected) {
-      this.options.log?.(`localcore-lark bridge event ignored because workspace is not connected: ${route.workspaceId}`);
-      return;
-    }
-    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
-    if (!initialBinding) {
-      this.options.log?.(`localcore-lark bridge binding miss for workspace=${route.workspaceId} chat=${route.chatId} user=${route.platformUserId}`);
-      return;
-    }
-    if (
-      event.type !== 'preview_start'
-      && event.type !== 'update_message'
-      && event.type !== 'reply'
-      && event.type !== 'buttons'
-      && event.type !== 'typing_start'
-      && event.type !== 'typing_stop'
-      && event.type !== 'status'
-    ) {
-      this.options.log?.(`localcore-lark bridge event ignored type=${event.type}`);
-      return;
-    }
+    const { sessionKey, route, state, platformKey: routePlatformKey } = context;
     const current = this.scheduleOutboundChain(sessionKey, async () => {
       const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
       if (!binding) {
