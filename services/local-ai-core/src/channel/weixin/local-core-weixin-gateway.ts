@@ -35,6 +35,7 @@ import {
 import {
   API_TIMEOUT_MS,
   getWeixinUploadUrl,
+  createWeixinClientId,
   IMAGE_ITEM_TYPE,
   isWeixinApiError,
   sendWeixinFileMessage,
@@ -257,7 +258,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     const { sessionKey, route, state, platformKey: routePlatformKey } = context;
 
     const current = this.scheduleOutboundChain(sessionKey, async () => {
-      const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
+      const binding = this.getBridgeBinding(route, routePlatformKey);
       if (!binding) return;
       const bridgeThreadId = route.threadId || binding.thread_id;
       if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
@@ -561,7 +562,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     uploaded: UploadedWeixinFile,
     contextToken?: string,
   ): Promise<string> {
-    const clientId = `openclaw-weixin-${crypto.randomUUID()}`;
+    const clientId = createWeixinClientId();
     const resp = await sendWeixinFileMessage(binding, toUserId, fileName, uploaded, contextToken, { clientId });
     if (isWeixinApiError(resp)) {
       throw new Error(`WeChat send file failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''}`);

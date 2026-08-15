@@ -297,7 +297,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     }
     const { sessionKey, route, state, platformKey: routePlatformKey } = context;
     const current = this.scheduleOutboundChain(sessionKey, async () => {
-      const binding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, routePlatformKey);
+      const binding = this.getBridgeBinding(route, routePlatformKey);
       if (!binding) {
         this.options.log?.(`localcore-lark bridge binding disappeared for sessionKey=${sessionKey}`);
         return;

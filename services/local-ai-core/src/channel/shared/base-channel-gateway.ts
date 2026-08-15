@@ -87,7 +87,7 @@ function resolveRuntimeKey(workspaceId: string, instanceId?: string): string {
   return instanceId ? `${workspaceId}::${instanceId}` : workspaceId;
 }
 
-const RENDERABLE_BRIDGE_EVENT_TYPES = new Set<string>([
+const RENDERABLE_BRIDGE_EVENT_TYPES = new Set<DesktopBridgeEvent['type']>([
   'preview_start',
   'update_message',
   'reply',
@@ -646,6 +646,12 @@ export abstract class BaseChannelGateway<
       this.options.log?.(`localcore-${this.platform} bridge event ignored without sessionKey: ${event.type}`);
       return undefined;
     }
+    // Filter on the event alone before any lookups so non-renderable types
+    // (which stream continuously during turns) skip the binding read entirely.
+    if (!RENDERABLE_BRIDGE_EVENT_TYPES.has(event.type)) {
+      this.options.log?.(`localcore-${this.platform} bridge event ignored type=${event.type}`);
+      return undefined;
+    }
     const route = this.threadRouting.get(event.sessionKey);
     if (!route) {
       return undefined;
@@ -657,16 +663,15 @@ export abstract class BaseChannelGateway<
       this.options.log?.(`localcore-${this.platform} bridge event ignored because workspace is not connected: ${route.workspaceId}`);
       return undefined;
     }
-    const initialBinding = this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, platformKey);
-    if (!initialBinding) {
+    if (!this.getBridgeBinding(route, platformKey)) {
       this.options.log?.(`localcore-${this.platform} bridge binding miss for workspace=${route.workspaceId} chat=${route.chatId} user=${route.platformUserId}`);
       return undefined;
     }
-    if (!RENDERABLE_BRIDGE_EVENT_TYPES.has(event.type)) {
-      this.options.log?.(`localcore-${this.platform} bridge event ignored type=${event.type}`);
-      return undefined;
-    }
     return { sessionKey: event.sessionKey, route, state, platformKey };
+  }
+
+  protected getBridgeBinding(route: TThreadRoute, platformKey: string) {
+    return this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, platformKey);
   }
 
   /** Runtime readiness check for bridge events; gateways with a transport client override to require it. */
