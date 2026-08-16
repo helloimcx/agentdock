@@ -58,7 +58,7 @@ async function callAppRegistration(
     // HTTP 400 whose JSON body carries the OAuth error code; the caller
     // translates those into wait/expired states, so return the body instead
     // of throwing.
-    if (options.returnOAuthErrorBody && typeof parsed.error === 'string' && parsed.error) {
+    if (options.returnOAuthErrorBody && response.status === 400 && typeof parsed.error === 'string' && parsed.error) {
       return parsed;
     }
     throw new Error(`Lark app registration failed (${response.status}): ${String(parsed.error_description || parsed.error || text || response.statusText)}`);
