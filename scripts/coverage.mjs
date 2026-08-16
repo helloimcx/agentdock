@@ -35,6 +35,13 @@ function run(command, args) {
 const tsc = 'node_modules/.bin/tsc';
 const tscAlias = 'node_modules/.bin/tsc-alias';
 const c8 = 'node_modules/.bin/c8';
+const vite = 'node_modules/.bin/vite';
+
+// Mirror `pnpm test`'s build steps: the suite below asserts the production
+// renderer output exists (renderer-packaging.test.js), so a clean checkout
+// needs the renderer built before the Electron output.
+console.log('\nBuilding renderer output...\n');
+run(vite, ['build']);
 
 console.log('\nBuilding Electron output with source maps (tsconfig.coverage.json)...\n');
 run('node', ['scripts/write-electron-package.mjs']);
