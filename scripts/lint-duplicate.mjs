@@ -15,7 +15,6 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const ROOT = process.cwd();
 const JSCPD = join(ROOT, 'node_modules', 'jscpd', 'run-jscpd.js');
@@ -133,8 +132,3 @@ function printReport(report) {
   console.log('');
   return duplicates.length;
 }
-
-run();
-
-// Keep imports referenced for environments that tree-shake unused ESM.
-void fileURLToPath;

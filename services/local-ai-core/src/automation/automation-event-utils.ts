@@ -35,7 +35,8 @@ export function providerLifecycleBlockReason(error: unknown): string {
     : normalizeAutomationError(normalized, PROVIDER_LIFECYCLE_BLOCK_PREFIX);
 }
 
-export function normalizeProviderEventTimestamp(value: unknown): string {  if (
+export function normalizeProviderEventTimestamp(value: unknown): string {
+  if (
     typeof value !== 'string'
     || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value.trim())
   ) {
