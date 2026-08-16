@@ -60,7 +60,12 @@ const RUN_COLUMNS = 'id, automation_id, evaluation_id, status, created_at, run_j
 export class LocalAutomationStore {
   constructor(private readonly db: DatabaseSync) {}
 
-  list(workspaceId?: string, originKind?: NonNullable<AutomationDefinition['originKind']>): AutomationDefinition[] {
+  list(
+    workspaceId?: string,
+    originKind?: NonNullable<AutomationDefinition['originKind']>,
+    channelId?: string,
+    platform?: string,
+  ): AutomationDefinition[] {
     const filter = new SqlPredicateBuilder()
       .eq('workspace_id', workspaceId)
       .eq('origin_kind', originKind);
@@ -70,7 +75,18 @@ export class LocalAutomationStore {
       ${filter.whereClause()}
       ORDER BY updated_at DESC
     `).all(...filter.params) as LocalAutomationRow[];
-    return rows.map((row) => this.toDefinition(row));
+    let definitions = rows.map((row) => this.toDefinition(row));
+    if (channelId) {
+      definitions = definitions.filter((def) => def.delivery?.route?.channelId === channelId);
+    }
+    if (platform) {
+      const norm = platform.trim().toLowerCase();
+      definitions = definitions.filter((def) => {
+        const p = (def.delivery?.platform || '').toLowerCase();
+        return p === norm || p.startsWith(`${norm}:`);
+      });
+    }
+    return definitions;
   }
 
   get(id: string): AutomationDefinition | undefined {
@@ -93,12 +109,22 @@ export class LocalAutomationStore {
     legacyMetadata?: AutomationDefinition['legacyMetadata'],
   ): AutomationDefinition {
     const now = new Date().toISOString();
-    const uuid = randomUUID();
-    const id = originKind === 'scheduled-job'
-      ? uuid.split('-')[0] || uuid
-      : originKind === 'automation-monitor'
-        ? `monitor:${uuid}`
-        : `automation:${uuid}`;
+    let id = '';
+    if (originKind === 'scheduled-job') {
+      for (let i = 0; i < 5; i++) {
+        const candidate = randomUUID().split('-')[0];
+        const existing = this.db.prepare('SELECT id FROM automations WHERE id = ?').get(candidate);
+        if (!existing) {
+          id = candidate;
+          break;
+        }
+      }
+      if (!id) id = randomUUID();
+    } else if (originKind === 'automation-monitor') {
+      id = `monitor:${randomUUID()}`;
+    } else {
+      id = `automation:${randomUUID()}`;
+    }
     const definition = normalizeDefinition({
       id,
       workspaceId: input.workspaceId,
@@ -652,6 +678,12 @@ export class LocalAutomationStore {
     const activation = row.trigger_type === 'once'
       ? { kind: 'once' as const, runAt: row.run_at }
       : { kind: 'cron' as const, expression: row.cron_expr, timezone: 'UTC' };
+    const rawRoute = (parseStoredJson(row.route_config, `Scheduled job ${row.id} route`) || {}) as Record<string, unknown>;
+    const route = {
+      ...rawRoute,
+      type: rawRoute.type || (row.platform === 'local' ? 'local.thread' : 'channel.chat'),
+      channelId: String(rawRoute.channelId || row.workspace_id || 'local').trim(),
+    };
     const definition = normalizeDefinition({
       id: row.id,
       workspaceId: row.workspace_id,
@@ -663,7 +695,7 @@ export class LocalAutomationStore {
       action: { kind: 'agent-prompt', promptTemplate: row.prompt_template, executionMode: row.execution_mode },
       delivery: {
         platform: row.platform,
-        route: parseStoredJson(row.route_config, `Scheduled job ${row.id} route`),
+        route,
       },
       policies: { concurrency: 'skip-if-running', cooldownMs: 0 },
       ...(row.last_status ? { lastSuccessfulMatch: row.last_status === 'succeeded' } : {}),

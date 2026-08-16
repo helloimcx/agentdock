@@ -102,8 +102,10 @@ export class AutomationService {
   list(
     workspaceId?: string,
     originKind?: NonNullable<AutomationDefinition['originKind']>,
+    channelId?: string,
+    platform?: string,
   ): AutomationDefinition[] {
-    return this.options.store.listAutomations(workspaceId, originKind);
+    return this.options.store.listAutomations(workspaceId, originKind, channelId, platform);
   }
 
   get(automationId: string): AutomationDefinition | undefined {
@@ -171,7 +173,18 @@ export class AutomationService {
   }
 
   delete(automationId: string): { deleted: boolean } {
-    return this.options.store.deleteAutomation(automationId);
+    const existing = this.options.store.getAutomation(automationId);
+    const result = this.options.store.deleteAutomation(automationId);
+    if (result.deleted && existing) {
+      this.emitEvent({ type: 'automation.definition.updated', payload: { ...existing, enabled: false } });
+      if (existing.originKind === 'scheduled-job') {
+        this.emitEvent({
+          type: 'scheduler.job.updated',
+          payload: automationToScheduledJob(existing, undefined),
+        });
+      }
+    }
+    return result;
   }
 
   listEvaluations(automationId: string): AutomationEvaluation[] {

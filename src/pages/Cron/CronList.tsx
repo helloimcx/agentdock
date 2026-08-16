@@ -16,13 +16,14 @@ import { formatTime } from '@/lib/utils';
 
 type SchedulerFormState = {
   workspaceId: string;
+  platform: string;
+  channelId: string;
   executionMode: 'same-thread' | 'side-thread';
   triggerType: 'cron' | 'once';
   cronExpr: string;
   runAt: string;
   promptTemplate: string;
   description: string;
-  chatId: string;
   platformUserId: string;
   threadId: string;
   enabled: boolean;
@@ -30,17 +31,33 @@ type SchedulerFormState = {
 
 const DEFAULT_FORM: SchedulerFormState = {
   workspaceId: '',
+  platform: 'local',
+  channelId: '',
   executionMode: 'same-thread',
   triggerType: 'cron',
   cronExpr: '0 9 * * *',
   runAt: '',
   promptTemplate: '',
   description: '',
-  chatId: '',
   platformUserId: '',
   threadId: '',
   enabled: true,
 };
+
+function isoToLocalDateTimeInput(iso?: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  const tzOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+}
+
+function localDateTimeInputToIso(localStr: string): string | undefined {
+  if (!localStr) return undefined;
+  const date = new Date(localStr);
+  if (isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+}
 
 function toForm(job?: CronJob | null): SchedulerFormState {
   if (!job) {
@@ -48,13 +65,14 @@ function toForm(job?: CronJob | null): SchedulerFormState {
   }
   return {
     workspaceId: job.workspaceId,
+    platform: job.platform || 'local',
+    channelId: job.route.channelId || '',
     executionMode: job.executionMode as SchedulerFormState['executionMode'],
     triggerType: job.triggerType as SchedulerFormState['triggerType'],
     cronExpr: job.cronExpr || '0 9 * * *',
-    runAt: job.runAt ? String(job.runAt).slice(0, 16) : '',
+    runAt: isoToLocalDateTimeInput(job.runAt),
     promptTemplate: job.promptTemplate,
     description: job.description,
-    chatId: job.route.channelId,
     platformUserId: job.route.participantId || '',
     threadId: job.route.threadId || '',
     enabled: job.enabled,
@@ -62,19 +80,23 @@ function toForm(job?: CronJob | null): SchedulerFormState {
 }
 
 function toPayload(form: SchedulerFormState): CronJobCreateInput {
+  const platform = form.platform || 'local';
+  const parsedRunAt = form.triggerType === 'once' ? localDateTimeInputToIso(form.runAt) : undefined;
   return {
     workspaceId: form.workspaceId,
-    platform: 'local',
+    platform,
+    channelId: form.channelId || (platform === 'local' ? (form.workspaceId || 'local') : ''),
     route: {
-      type: 'local.thread',
-      channelId: form.workspaceId || 'local',
+      type: platform === 'local' ? 'local.thread' : 'channel.chat',
+      channelId: form.channelId || (platform === 'local' ? (form.workspaceId || 'local') : ''),
+      ...(form.platformUserId ? { participantId: form.platformUserId } : {}),
       ...(form.threadId ? { threadId: form.threadId } : {}),
     },
     executionMode: form.executionMode || 'same-thread',
     triggerType: form.triggerType,
     ...(form.triggerType === 'cron'
       ? { cronExpr: form.cronExpr, runAt: undefined }
-      : { runAt: new Date(form.runAt).toISOString(), cronExpr: undefined }),
+      : { runAt: parsedRunAt, cronExpr: undefined }),
     promptTemplate: form.promptTemplate,
     description: form.description,
     enabled: form.enabled,
@@ -85,6 +107,7 @@ export default function CronList() {
   const { t } = useTranslation();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [workspaces, setWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
+  const [channelFilter, setChannelFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -119,7 +142,11 @@ export default function CronList() {
   useEffect(() => {
     void fetchJobs();
     const dispose = subscribeEvents((event) => {
-      if (event.type === 'scheduler.job.updated' || event.type === 'scheduler.run.updated') {
+      if (
+        event.type === 'scheduler.job.updated' ||
+        event.type === 'scheduler.run.updated' ||
+        event.type === 'automation.definition.updated'
+      ) {
         void fetchJobs();
       }
     });
@@ -145,7 +172,12 @@ export default function CronList() {
     if (!form.workspaceId || !form.promptTemplate.trim()) {
       return;
     }
-    if (form.triggerType === 'once' && !form.runAt) {
+    if (form.platform !== 'local' && !form.channelId.trim()) {
+      alert('Please enter a Channel / Chat ID for external platform delivery.');
+      return;
+    }
+    if (form.triggerType === 'once' && (!form.runAt || !localDateTimeInputToIso(form.runAt))) {
+      alert('Please specify a valid execution date and time.');
       return;
     }
     setSubmitting(true);
@@ -178,6 +210,24 @@ export default function CronList() {
     await fetchJobs();
   };
 
+  const channelFilterOptions = useMemo(() => {
+    const channels = new Set<string>();
+    for (const job of jobs) {
+      if (job.platform === 'local') {
+        channels.add('local');
+      } else if (job.route.channelId) {
+        channels.add(`${job.platform}:${job.route.channelId}`);
+      }
+    }
+    return Array.from(channels);
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    if (channelFilter === 'all') return jobs;
+    if (channelFilter === 'local') return jobs.filter((j) => j.platform === 'local');
+    return jobs.filter((j) => `${j.platform}:${j.route.channelId}` === channelFilter || j.route.channelId === channelFilter);
+  }, [jobs, channelFilter]);
+
   if (loading && jobs.length === 0) {
     return <div className="flex items-center justify-center h-64 text-gray-400 animate-pulse">{t('common.loading')}</div>;
   }
@@ -186,15 +236,29 @@ export default function CronList() {
     <div className="space-y-4 animate-fade-in">
       <PageHeader
         title={t('cron.title')}
-        description="Create simple scheduled prompts for a workspace."
+        description="Create simple scheduled prompts for a workspace and channel."
         actions={<Button onClick={openCreate}><Plus size={16} /> {t('cron.add')}</Button>}
       />
 
-      {jobs.length === 0 ? (
+      <div className="flex items-center gap-3">
+        <Select
+          value={channelFilter}
+          onChange={(event) => setChannelFilter(event.target.value)}
+          className="max-w-xs"
+        >
+          <option value="all">All channels</option>
+          <option value="local">Local only</option>
+          {channelFilterOptions.filter((c) => c !== 'local').map((ch) => (
+            <option key={ch} value={ch}>Channel: {ch}</option>
+          ))}
+        </Select>
+      </div>
+
+      {filteredJobs.length === 0 ? (
         <EmptyState message={t('cron.noJobs')} icon={Clock} />
       ) : (
         <div className="space-y-3">
-          {jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <Card key={job.id} className="app-panel">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex-1">
@@ -202,13 +266,13 @@ export default function CronList() {
                     <span className="font-medium text-gray-900 dark:text-white text-sm">{job.description || job.id}</span>
                     <Badge variant={job.enabled ? 'success' : 'default'}>{job.enabled ? t('cron.enabled') : 'disabled'}</Badge>
                     <Badge variant="default">{job.triggerType}</Badge>
-                    <Badge variant="default">{job.platform}</Badge>
+                    <Badge variant="secondary">{job.platform}: {job.route.channelId || 'local'}</Badge>
                     {job.lastStatus && <Badge variant={job.lastStatus === 'failed' ? 'danger' : 'default'}>{job.lastStatus}</Badge>}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-2">
                     <span><strong>Workspace:</strong> {job.workspaceId}</span>
+                    <span><strong>Channel:</strong> {job.platform} · {job.route.channelId || 'local'}</span>
                     <span><strong>Execution:</strong> {job.executionMode}</span>
-                    <span><strong>Route:</strong> {job.route.channelId} / {job.route.participantId}</span>
                     <span><strong>{job.triggerType === 'cron' ? t('cron.expression') : 'Run at'}:</strong> {job.triggerType === 'cron' ? job.cronExpr : formatTime(job.runAt || '')}</span>
                     {job.route.threadId && <span><strong>Thread:</strong> {job.route.threadId}</span>}
                     {job.lastRunAt && <span><strong>{t('cron.lastRun')}:</strong> {formatTime(job.lastRunAt)}</span>}
@@ -243,6 +307,25 @@ export default function CronList() {
             <option value="">Select workspace</option>
             {selectedWorkspaceOptions}
           </Select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Platform / Target"
+              value={form.platform}
+              onChange={(event) => setForm({ ...form, platform: event.target.value })}
+            >
+              <option value="local">Local Desktop</option>
+              <option value="lark">Lark (Feishu)</option>
+              <option value="weixin">WeChat (Weixin)</option>
+            </Select>
+            {form.platform !== 'local' ? (
+              <Input
+                label="Channel / Chat ID"
+                value={form.channelId}
+                onChange={(event) => setForm({ ...form, channelId: event.target.value })}
+                placeholder="e.g. oc_xxx or chat id"
+              />
+            ) : null}
+          </div>
           <Select
             label="Schedule type"
             value={form.triggerType}

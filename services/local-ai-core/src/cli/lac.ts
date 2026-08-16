@@ -479,8 +479,12 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
   if (!context.workspaceId) {
     throw new Error('scheduler add requires a workspace context. Set LOCAL_AI_WORKSPACE_ID or pass --workspace.');
   }
+  const explicitPlatform = getFlag(flags, 'platform');
+  const explicitChannelId = getFlag(flags, 'channel') || getFlag(flags, 'channel-id') || getFlag(flags, 'chat-id');
   const job = await request<ScheduledJob>(context.baseUrl, 'POST', '/scheduler/jobs', {
     workspaceId: context.workspaceId,
+    ...(explicitPlatform ? { platform: explicitPlatform } : {}),
+    ...(explicitChannelId ? { channelId: explicitChannelId } : {}),
     ...(context.threadId ? { threadId: context.threadId } : {}),
     executionMode,
     triggerType: 'cron',
@@ -501,14 +505,20 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
 async function handleList(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
   const context = resolveContext(flags, env);
   const workspaceId = getFlag(flags, 'workspace') || context.workspaceId;
+  const showAllChannels = flags.has('all-channels') || flags.has('all');
+  const explicitChannelId = getFlag(flags, 'channel') || getFlag(flags, 'channel-id') || getFlag(flags, 'chat-id');
   const threadId = flags.has('thread')
     ? normalizeMaybeBooleanFlag(getFlag(flags, 'thread')) || context.threadId
     : '';
   const suffix = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
   const response = await request<{ jobs: ScheduledJob[] }>(context.baseUrl, 'GET', `/scheduler/jobs${suffix}`);
-  const jobs = threadId
-    ? response.jobs.filter((job) => job.route.threadId === threadId || scheduledJobMatchesCliContext(job, context))
-    : response.jobs;
+  let jobs = response.jobs;
+  if (threadId) {
+    jobs = jobs.filter((job) => job.route.threadId === threadId || scheduledJobMatchesCliContext(job, context));
+  } else if (!showAllChannels && (explicitChannelId || context.chatId)) {
+    const targetChannel = explicitChannelId || context.chatId;
+    jobs = jobs.filter((job) => job.route.channelId === targetChannel || scheduledJobMatchesCliContext(job, context));
+  }
   print(json, io.stdout, { jobs: jobs.map(presentJob) }, jobs.length === 0 ? 'No scheduler jobs.' : jobs.map(formatJobLine).join('\n'));
   return 0;
 }
@@ -604,7 +614,7 @@ function resolveContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv): C
   const platformInstanceId = getFlag(flags, 'instance-id') ||
     String(env.LOCAL_AI_PLATFORM_INSTANCE_ID || '') ||
     getChannelPlatformInstanceId(rawPlatform);
-  const chatId = getFlag(flags, 'chat-id') || String(env.LOCAL_AI_CHAT_ID || '');
+  const chatId = getFlag(flags, 'channel') || getFlag(flags, 'channel-id') || getFlag(flags, 'chat-id') || String(env.LOCAL_AI_CHAT_ID || '');
   const platformUserId = getFlag(flags, 'platform-user-id') || String(env.LOCAL_AI_PLATFORM_USER_ID || '');
   return {
     baseUrl: getFlag(flags, 'base-url') || String(env.LOCAL_AI_CORE_BASE || DEFAULT_BASE_URL),

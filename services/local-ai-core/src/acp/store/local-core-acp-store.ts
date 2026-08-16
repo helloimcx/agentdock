@@ -313,8 +313,8 @@ export class LocalCoreAcpStore {
     return this.agentTasks.update(taskId, input);
   }
 
-  listScheduledJobs(workspaceId?: string): ScheduledJob[] {
-    return this.scheduler.listJobs(workspaceId);
+  listScheduledJobs(workspaceId?: string, channelId?: string, platform?: string): ScheduledJob[] {
+    return this.scheduler.listJobs(workspaceId, channelId, platform);
   }
 
   getScheduledJob(jobId: string): ScheduledJob | undefined {
@@ -407,8 +407,10 @@ export class LocalCoreAcpStore {
   listAutomations(
     workspaceId?: string,
     originKind?: NonNullable<AutomationDefinition['originKind']>,
+    channelId?: string,
+    platform?: string,
   ): AutomationDefinition[] {
-    return this.automations.list(workspaceId, originKind);
+    return this.automations.list(workspaceId, originKind, channelId, platform);
   }
 
   getAutomation(automationId: string): AutomationDefinition | undefined {

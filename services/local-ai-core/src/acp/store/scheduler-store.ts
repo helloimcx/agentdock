@@ -22,7 +22,7 @@ import { parseJson } from './utils.js';
 export class LocalSchedulerStore {
   constructor(private readonly db: DatabaseSync) {}
 
-  listJobs(workspaceId?: string): ScheduledJob[] {
+  listJobs(workspaceId?: string, channelId?: string, platform?: string): ScheduledJob[] {
     const query = workspaceId
       ? `
         SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
@@ -38,7 +38,18 @@ export class LocalSchedulerStore {
         ORDER BY updated_at DESC
       `;
     const rows = this.db.prepare(query).all(...(workspaceId ? [workspaceId] : [])) as LocalScheduledJobRow[];
-    return rows.map((row) => this.toScheduledJob(row));
+    let jobs = rows.map((row) => this.toScheduledJob(row));
+    if (channelId) {
+      jobs = jobs.filter((job) => job.route.channelId === channelId);
+    }
+    if (platform) {
+      const norm = platform.trim().toLowerCase();
+      jobs = jobs.filter((job) => {
+        const p = job.platform.toLowerCase();
+        return p === norm || p.startsWith(`${norm}:`);
+      });
+    }
+    return jobs;
   }
 
   getJob(jobId: string): ScheduledJob | undefined {

@@ -77,7 +77,7 @@ export function scheduledJobMatchesPlatformBinding(job: ScheduledJob, binding: P
     job.workspaceId === binding.workspace_id &&
     getChannelPlatformBase(job.platform) === getChannelPlatformBase(binding.platform) &&
     job.route.channelId === binding.chat_id &&
-    String(job.route.participantId || '') === String(binding.platform_user_id || '')
+    (!job.route.participantId || String(job.route.participantId) === String(binding.platform_user_id || ''))
   );
 }
 
@@ -89,6 +89,6 @@ export function scheduledJobMatchesCliContext(job: ScheduledJob, context: Schedu
     job.workspaceId === context.workspaceId &&
     getChannelPlatformBase(job.platform) === getChannelPlatformBase(context.platform) &&
     job.route.channelId === context.chatId &&
-    String(job.route.participantId || '') === String(context.platformUserId || '')
+    (!job.route.participantId || String(job.route.participantId) === String(context.platformUserId || ''))
   );
 }

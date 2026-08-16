@@ -750,6 +750,127 @@ test('lac scheduler list --thread filters by current thread context', async () =
   }
 });
 
+test('lac scheduler list scopes to current channel context by default and supports --all-channels', async () => {
+  const { restore } = withFetchMock(async () => {
+    return new Response(JSON.stringify({
+      ok: true,
+      data: {
+        jobs: [
+          {
+            id: 'job-chat-1',
+            workspaceId: '知识库',
+            platform: 'lark',
+            route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1' },
+            executionMode: 'same-thread',
+            triggerType: 'cron',
+            cronExpr: '0 9 * * *',
+            promptTemplate: 'chat 1 ping',
+            description: 'chat 1 task',
+            enabled: true,
+            concurrencyPolicy: 'skip_if_running',
+            createdAt: '2026-04-22T06:00:00.000Z',
+            updatedAt: '2026-04-22T06:00:00.000Z',
+          },
+          {
+            id: 'job-chat-2',
+            workspaceId: '知识库',
+            platform: 'lark',
+            route: { type: 'channel.chat', channelId: 'chat-2', participantId: 'user-2' },
+            executionMode: 'side-thread',
+            triggerType: 'cron',
+            cronExpr: '0 10 * * *',
+            promptTemplate: 'chat 2 ping',
+            description: 'chat 2 task',
+            enabled: true,
+            concurrencyPolicy: 'skip_if_running',
+            createdAt: '2026-04-22T06:00:00.000Z',
+            updatedAt: '2026-04-22T06:00:00.000Z',
+          },
+        ],
+      },
+    }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    // In chat-1 context, default list should only show chat-1's task
+    const { io: io1, read: read1 } = createIo();
+    const exit1 = await runCli(
+      ['scheduler', 'list'],
+      {
+        LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+        LOCAL_AI_WORKSPACE_ID: '知识库',
+        LOCAL_AI_PLATFORM: 'lark',
+        LOCAL_AI_CHAT_ID: 'chat-1',
+      },
+      io1,
+    );
+    assert.equal(exit1, 0);
+    assert.match(read1().stdout, /job-chat-1/);
+    assert.doesNotMatch(read1().stdout, /job-chat-2/);
+
+    // With --all-channels, it should show both
+    const { io: ioAll, read: readAll } = createIo();
+    const exitAll = await runCli(
+      ['scheduler', 'list', '--all-channels'],
+      {
+        LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+        LOCAL_AI_WORKSPACE_ID: '知识库',
+        LOCAL_AI_PLATFORM: 'lark',
+        LOCAL_AI_CHAT_ID: 'chat-1',
+      },
+      ioAll,
+    );
+    assert.equal(exitAll, 0);
+    assert.match(readAll().stdout, /job-chat-1/);
+    assert.match(readAll().stdout, /job-chat-2/);
+  } finally {
+    restore();
+  }
+});
+
+test('lac scheduler add supports explicit --platform and --channel flags', async () => {
+  let capturedBody: string | null = null;
+  const { restore } = withFetchMock(async (input, init) => {
+    if (init?.body) capturedBody = init.body as string;
+    return new Response(JSON.stringify({
+      ok: true,
+      data: {
+        id: 'job-explicit-1',
+        workspaceId: '知识库',
+        platform: 'lark',
+        route: { type: 'channel.chat', channelId: 'custom-channel-id' },
+        executionMode: 'same-thread',
+        triggerType: 'cron',
+        cronExpr: '0 8 * * *',
+        promptTemplate: 'explicit prompt',
+        description: 'explicit channel task',
+        enabled: true,
+        concurrencyPolicy: 'skip_if_running',
+        createdAt: '2026-04-22T06:00:00.000Z',
+        updatedAt: '2026-04-22T06:00:00.000Z',
+      },
+    }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io, read } = createIo();
+    const exitCode = await runCli(
+      ['scheduler', 'add', '--cron', '0 8 * * *', '--message', 'explicit prompt', '--desc', 'explicit channel task', '--platform', 'lark', '--channel', 'custom-channel-id', '--workspace', '知识库'],
+      {
+        LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+      },
+      io,
+    );
+    assert.equal(exitCode, 0);
+    assert(capturedBody);
+    const parsed = JSON.parse(capturedBody);
+    assert.equal(parsed.workspaceId, '知识库');
+    assert.equal(parsed.platform, 'lark');
+    assert.equal(parsed.channelId, 'custom-channel-id');
+    assert.match(read().stdout, /Created scheduler job job-explicit-1/);
+  } finally {
+    restore();
+  }
+});
+
 test('lac automation add verifies an approved script version before creating the automation', async () => {
   const requests: Array<{ url: string; method: string; body?: unknown }> = [];
   const { restore } = withFetchMock(async (input, init) => {

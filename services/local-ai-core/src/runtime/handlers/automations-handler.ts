@@ -37,7 +37,8 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
 
   map.set('automations.list', async (_route, _req, res, url) => {
     const workspaceId = requiredWorkspace(url);
-    json(res, 200, { automations: automations.list(workspaceId) });
+    const channelId = url.searchParams.get('channel_id') || undefined;
+    json(res, 200, { automations: automations.list(workspaceId, undefined, channelId) });
   });
   map.set('automations.create', async (_route, req, res) => {
     const body = await strictBody<AutomationCreateInput>(req, {
