@@ -2237,6 +2237,11 @@ test('lark QR poll logs pending, expired, rejected, and incomplete-credential tr
   let call = 0;
   globalThis.fetch = (async () => {
     call += 1;
+    // Device-flow polls answer pending/expired/denied states with HTTP 400
+    // plus an OAuth error body; confirmation arrives as HTTP 200.
+    if (call === 5) {
+      return new Response('<html>Bad Gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } });
+    }
     const payload = call === 1
       ? { error: 'authorization_pending', error_description: '', code: 20094 }
       : call === 2
@@ -2244,7 +2249,8 @@ test('lark QR poll logs pending, expired, rejected, and incomplete-credential tr
         : call === 3
           ? { error: 'access_denied', error_description: '', code: 20097 }
           : { client_id: 'cli_partial', code: 0 };
-    return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const status = call >= 4 ? 200 : 400;
+    return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
 
   const logs: string[] = [];
@@ -2273,6 +2279,11 @@ test('lark QR poll logs pending, expired, rejected, and incomplete-credential tr
     );
     // A confirmed poll without a client_secret must stay pending, not confirm.
     assert.deepEqual(await gateway.checkQrCodeStatus('default', 'ticket-1', 'lark-pending'), { status: 'wait' });
+    // A non-JSON error page must surface its HTTP status, not a JSON SyntaxError.
+    await assert.rejects(
+      () => gateway.checkQrCodeStatus('default', 'ticket-1', 'lark-pending'),
+      /Lark app registration failed \(502\)/,
+    );
     assert.ok(logs.some((line) => line.includes('waiting (authorization_pending)')));
     assert.ok(logs.some((line) => line.includes('expired (expired_token)')));
     assert.ok(logs.some((line) => line.includes('rejected (access_denied)')));
