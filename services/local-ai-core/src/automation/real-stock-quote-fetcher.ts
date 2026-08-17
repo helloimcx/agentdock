@@ -1,5 +1,14 @@
 import { calculateBollingerBands, type BollingerBandsResult } from './bollinger-bands.js';
 
+export interface DividendInfo {
+  annualDividend: number;
+  dividendYield: number; // in percent
+  dividendCount: number;
+  treasury10yYield: number; // in percent
+  erpSpread: number; // in percent
+  signal: 'high_yield' | 'low_yield' | 'neutral';
+}
+
 export interface RealStockQuoteResult {
   symbol: string;
   name?: string;
@@ -9,6 +18,7 @@ export interface RealStockQuoteResult {
   timestamp: string;
   providerName: string;
   boll?: BollingerBandsResult;
+  dividend?: DividendInfo;
 }
 
 export interface FetchStockOptions {
@@ -16,6 +26,7 @@ export interface FetchStockOptions {
   bollInterval?: string;
   bollPeriod?: number;
   bollStdDev?: number;
+  treasury10yYield?: number;
 }
 
 export function normalizeSymbolForTencent(symbol: string): string {
@@ -76,6 +87,7 @@ function buildQuoteResult(
   name: string,
   providerName: string,
   boll?: BollingerBandsResult,
+  dividend?: DividendInfo,
 ): RealStockQuoteResult | null {
   if (!Number.isFinite(latestPrice) || latestPrice <= 0) return null;
   const prev = Number.isFinite(previousPrice) && previousPrice > 0 ? previousPrice : latestPrice;
@@ -89,6 +101,7 @@ function buildQuoteResult(
     timestamp: new Date().toISOString(),
     providerName,
     ...(boll ? { boll } : {}),
+    ...(dividend ? { dividend } : {}),
   };
 }
 
@@ -194,6 +207,52 @@ function parseYahooMeta(meta: any) {
   };
 }
 
+export function parseYahooDividends(
+  data: any,
+  latestPrice: number,
+  symbol: string,
+  customTreasuryYield?: number,
+): DividendInfo | undefined {
+  const events = data?.chart?.result?.[0]?.events?.dividends;
+  if (!events || typeof events !== 'object') return undefined;
+
+  const entries = Object.values(events) as Array<{ amount?: number }>;
+  let annualDividend = 0;
+  let count = 0;
+  for (const entry of entries) {
+    const amt = Number(entry?.amount ?? 0);
+    if (Number.isFinite(amt) && amt > 0) {
+      annualDividend += amt;
+      count++;
+    }
+  }
+
+  if (annualDividend <= 0 || latestPrice <= 0) return undefined;
+
+  const dividendYield = (annualDividend / latestPrice) * 100;
+  const isChinaOrHk = symbol.endsWith('.SS') || symbol.endsWith('.SZ') || symbol.endsWith('.HK') || /^(sh|sz|hk|\d)/i.test(symbol);
+  const treasury10yYield = typeof customTreasuryYield === 'number' && customTreasuryYield > 0
+    ? customTreasuryYield
+    : (isChinaOrHk ? 2.2 : 4.0);
+  const erpSpread = dividendYield - treasury10yYield;
+
+  let signal: DividendInfo['signal'] = 'neutral';
+  if (dividendYield >= 5.0 || erpSpread >= 2.5) {
+    signal = 'high_yield';
+  } else if (dividendYield <= 2.5) {
+    signal = 'low_yield';
+  }
+
+  return {
+    annualDividend: Number(annualDividend.toFixed(4)),
+    dividendYield: Number(dividendYield.toFixed(2)),
+    dividendCount: count,
+    treasury10yYield: Number(treasury10yYield.toFixed(2)),
+    erpSpread: Number(erpSpread.toFixed(2)),
+    signal,
+  };
+}
+
 export async function fetchStockQuoteFromYahoo(
   symbol: string,
   timeoutMs = 5000,
@@ -203,7 +262,7 @@ export async function fetchStockQuoteFromYahoo(
   if (!yahooSymbol) return null;
   const interval = options.bollInterval || '1wk';
   const range = interval === '1d' ? '3mo' : '1y';
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${encodeURIComponent(interval)}&range=${encodeURIComponent(range)}`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${encodeURIComponent(interval)}&range=${encodeURIComponent(range)}&events=div`;
   const buffer = await httpFetchBuffer(url, timeoutMs);
   if (!buffer) return null;
 
@@ -214,6 +273,7 @@ export async function fetchStockQuoteFromYahoo(
     if (!metaInfo) return null;
 
     const boll = computeYahooBollinger(data, metaInfo.latestPrice, options);
+    const dividend = parseYahooDividends(data, metaInfo.latestPrice, symbol, options.treasury10yYield);
     return buildQuoteResult(
       symbol,
       metaInfo.latestPrice,
@@ -221,6 +281,7 @@ export async function fetchStockQuoteFromYahoo(
       metaInfo.symbol || symbol,
       'yahoo',
       boll,
+      dividend,
     );
   } catch {
     return null;

@@ -1,6 +1,6 @@
 import type { MonitorEvent, MonitorProviderRuntime } from '@cc/plugin-sdk';
 import { calculateBollingerBands, type BollingerBandsResult } from './bollinger-bands.js';
-import { fetchRealStockQuote } from './real-stock-quote-fetcher.js';
+import { fetchRealStockQuote, type DividendInfo } from './real-stock-quote-fetcher.js';
 
 export class StockQuoteProvider implements MonitorProviderRuntime {
   readonly sourceType = 'stock.quote';
@@ -51,6 +51,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     const changePercent = previousPrice > 0 ? ((latestPrice - previousPrice) / previousPrice) * 100 : 0;
     const now = new Date().toISOString();
     const boll = extractMockBollinger(sourceConfig, latestPrice, lastState);
+    const dividend = extractMockDividend(sourceConfig, latestPrice, symbol, lastState);
     const payload = buildEventPayload({
       symbol,
       name: String(sourceConfig.name || symbol),
@@ -59,6 +60,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       changePercent: Number(changePercent.toFixed(2)),
       timestamp: now,
       boll,
+      dividend,
     });
 
     return {
@@ -66,7 +68,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       sourceType: this.sourceType,
       occurredAt: now,
       subject: symbol,
-      summary: buildEventSummary(symbol, latestPrice, changePercent, boll),
+      summary: buildEventSummary(symbol, latestPrice, changePercent, boll, dividend),
       payload,
     };
   }
@@ -79,12 +81,14 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     const bollInterval = String(sourceConfig.bollInterval || '1wk');
     const bollPeriod = typeof sourceConfig.bollPeriod === 'number' ? sourceConfig.bollPeriod : 20;
     const bollStdDev = typeof sourceConfig.bollStdDev === 'number' ? sourceConfig.bollStdDev : 2;
+    const treasury10yYield = typeof sourceConfig.treasury10yYield === 'number' ? sourceConfig.treasury10yYield : undefined;
 
     const realQuote = await fetchRealStockQuote(symbol, 5000, {
       includeBollinger: true,
       bollInterval,
       bollPeriod,
       bollStdDev,
+      treasury10yYield,
     });
     if (!realQuote) return null;
 
@@ -98,6 +102,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       timestamp: realQuote.timestamp,
       providerName: realQuote.providerName,
       boll: realQuote.boll,
+      dividend: realQuote.dividend,
     });
 
     return {
@@ -105,7 +110,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       sourceType: this.sourceType,
       occurredAt: now,
       subject: symbol,
-      summary: buildEventSummary(symbol, realQuote.latestPrice, realQuote.change_percent, realQuote.boll),
+      summary: buildEventSummary(symbol, realQuote.latestPrice, realQuote.change_percent, realQuote.boll, realQuote.dividend),
       payload,
     };
   }
@@ -121,6 +126,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     const changePercent = previousPrice > 0 ? ((lastPrice - previousPrice) / previousPrice) * 100 : 0;
     const now = new Date().toISOString();
     const boll = extractMockBollinger(sourceConfig, lastPrice, lastState);
+    const dividend = extractMockDividend(sourceConfig, lastPrice, symbol, lastState);
     const payload = buildEventPayload({
       symbol,
       latestPrice: lastPrice,
@@ -128,6 +134,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       changePercent: Number(changePercent.toFixed(2)),
       timestamp: now,
       boll,
+      dividend,
     });
 
     return {
@@ -135,7 +142,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       sourceType: this.sourceType,
       occurredAt: now,
       subject: symbol,
-      summary: buildEventSummary(symbol, lastPrice, changePercent, boll),
+      summary: buildEventSummary(symbol, lastPrice, changePercent, boll, dividend),
       payload,
     };
   }
@@ -235,6 +242,57 @@ function extractMockBollinger(
   return undefined;
 }
 
+function extractMockDividend(
+  config: Record<string, unknown>,
+  latestPrice: number,
+  symbol: string,
+  lastState?: Record<string, unknown>,
+): DividendInfo | undefined {
+  if (config.dividend && typeof config.dividend === 'object') {
+    const raw = config.dividend as Record<string, unknown>;
+    const divYield = Number(raw.dividendYield ?? raw.yield ?? 0);
+    const annualDiv = Number(raw.annualDividend ?? (latestPrice * divYield) / 100);
+    const treasuryYield = Number(raw.treasury10yYield ?? 2.2);
+    const erp = Number(raw.erpSpread ?? (divYield - treasuryYield));
+    return {
+      annualDividend: Number(annualDiv.toFixed(4)),
+      dividendYield: Number(divYield.toFixed(2)),
+      dividendCount: Number(raw.dividendCount ?? 1),
+      treasury10yYield: Number(treasuryYield.toFixed(2)),
+      erpSpread: Number(erp.toFixed(2)),
+      signal: (raw.signal as DividendInfo['signal']) || (divYield >= 5.0 || erp >= 2.5 ? 'high_yield' : divYield <= 2.5 ? 'low_yield' : 'neutral'),
+    };
+  }
+
+  if (typeof config.dividendYield === 'number' || typeof config.annualDividend === 'number') {
+    const divYield = typeof config.dividendYield === 'number'
+      ? config.dividendYield
+      : (Number(config.annualDividend) / latestPrice) * 100;
+    const annualDiv = typeof config.annualDividend === 'number'
+      ? config.annualDividend
+      : (latestPrice * divYield) / 100;
+    const isChinaOrHk = symbol.endsWith('.SS') || symbol.endsWith('.SZ') || symbol.endsWith('.HK') || /^(sh|sz|hk|\d)/i.test(symbol);
+    const treasuryYield = typeof config.treasury10yYield === 'number'
+      ? config.treasury10yYield
+      : (isChinaOrHk ? 2.2 : 4.0);
+    const erp = divYield - treasuryYield;
+    return {
+      annualDividend: Number(annualDiv.toFixed(4)),
+      dividendYield: Number(divYield.toFixed(2)),
+      dividendCount: Number(config.dividendCount ?? 1),
+      treasury10yYield: Number(treasuryYield.toFixed(2)),
+      erpSpread: Number(erp.toFixed(2)),
+      signal: divYield >= 5.0 || erp >= 2.5 ? 'high_yield' : divYield <= 2.5 ? 'low_yield' : 'neutral',
+    };
+  }
+
+  if (lastState?.dividend && typeof lastState.dividend === 'object') {
+    return extractMockDividend({ dividend: lastState.dividend }, latestPrice, symbol);
+  }
+
+  return undefined;
+}
+
 function buildEventPayload(input: {
   symbol: string;
   name?: string;
@@ -244,8 +302,9 @@ function buildEventPayload(input: {
   timestamp: string;
   providerName?: string;
   boll?: BollingerBandsResult;
+  dividend?: DividendInfo;
 }) {
-  const { symbol, name, latestPrice, previousPrice, changePercent, timestamp, providerName, boll } = input;
+  const { symbol, name, latestPrice, previousPrice, changePercent, timestamp, providerName, boll, dividend } = input;
   const payload: Record<string, unknown> = {
     symbol,
     name: name || symbol,
@@ -276,6 +335,19 @@ function buildEventPayload(input: {
     payload.boll_period = boll.period;
   }
 
+  if (dividend) {
+    payload.dividend = dividend;
+    payload.dividend_yield = dividend.dividendYield;
+    payload.dividendYield = dividend.dividendYield;
+    payload.annual_dividend = dividend.annualDividend;
+    payload.annualDividend = dividend.annualDividend;
+    payload.dividend_count = dividend.dividendCount;
+    payload.treasury_10y_yield = dividend.treasury10yYield;
+    payload.erp_spread = dividend.erpSpread;
+    payload.dividend_bond_spread = dividend.erpSpread;
+    payload.dividend_signal = dividend.signal;
+  }
+
   return payload;
 }
 
@@ -284,9 +356,14 @@ function buildEventSummary(
   latestPrice: number,
   changePercent: number,
   boll?: BollingerBandsResult,
+  dividend?: DividendInfo,
 ): string {
   const changeStr = changePercent >= 0 ? `+${changePercent.toFixed(2)}%` : `${changePercent.toFixed(2)}%`;
   let summary = `${symbol} ${latestPrice} (${changeStr})`;
+  if (dividend && dividend.dividendYield > 0) {
+    const erpPrefix = dividend.erpSpread >= 0 ? '+' : '';
+    summary += ` | Div: ${dividend.dividendYield}% (ERP: ${erpPrefix}${dividend.erpSpread}%)`;
+  }
   if (boll) {
     summary += ` | BOLL(${boll.period},${boll.stdDevMultiplier},${boll.interval}): DN ${boll.lower} / MB ${boll.middle} / UP ${boll.upper} [%B: ${boll.percentB}]`;
   }

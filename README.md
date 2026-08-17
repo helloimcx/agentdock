@@ -97,7 +97,7 @@ flowchart LR
 
 ### 2026-08-17
 
-- 扩展股票行情监控插件（`stock.quote`）：原生支持**周线布林线（Weekly Bollinger Bands）**指标计算与多源（Yahoo / Tencent）历史周线 K 线抓取，提供中轨 (`boll_middle`)、上轨 (`boll_upper`)、下轨 (`boll_lower`)、相对位置百分比 (`boll_percent_b`)、偏离度及买卖信号 (`boll_signal`)；条件引擎全面支持动态指标比对（如 `latestPrice <= boll_lower` 周线下轨买入、`latestPrice >= boll_upper` 周线上轨卖出、`boll_percent_b <= 0.05` 贴近下轨等），并在 Monitor UI 中内置常用交易策略预设。
+- 扩展股票行情监控插件（`stock.quote`）：原生支持**周线布林线（Weekly Bollinger Bands）**与**动态股息率/股债利差（Dividend Yield & ERP Spread）**监控，提供中轨 (`boll_middle`)、上轨 (`boll_upper`)、下轨 (`boll_lower`)、相对位置百分比 (`boll_percent_b`)、买卖信号 (`boll_signal`)、股息率 (`dividend_yield`)、每股分红 (`annual_dividend`) 与股债利差 (`erp_spread`)；条件引擎支持指标动态比对与双重共振策略（如 `latestPrice <= boll_lower && dividend_yield >= 4.0` 周线下轨+高股息共振买点），并在 Monitor UI 中内置红利与周线交易策略预设。
 
 ### 2026-08-15
 

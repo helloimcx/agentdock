@@ -698,6 +698,8 @@ function buildSourceConfig(sourceType: string, flags: Map<string, string[]>) {
     if (bollPeriod) config.bollPeriod = Number(bollPeriod);
     const bollStdDev = getFlag(flags, 'boll-std-dev');
     if (bollStdDev) config.bollStdDev = Number(bollStdDev);
+    const treasuryYield = getFlag(flags, 'treasury-yield');
+    if (treasuryYield) config.treasury10yYield = Number(treasuryYield);
   }
   const rawConfig = getFlag(flags, 'source-config');
   if (rawConfig) {
