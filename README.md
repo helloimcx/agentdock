@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-17
+
+- 扩展股票行情监控插件（`stock.quote`）：原生支持**周线布林线（Weekly Bollinger Bands）**指标计算与多源（Yahoo / Tencent）历史周线 K 线抓取，提供中轨 (`boll_middle`)、上轨 (`boll_upper`)、下轨 (`boll_lower`)、相对位置百分比 (`boll_percent_b`)、偏离度及买卖信号 (`boll_signal`)；条件引擎全面支持动态指标比对（如 `latestPrice <= boll_lower` 周线下轨买入、`latestPrice >= boll_upper` 周线上轨卖出、`boll_percent_b <= 0.05` 贴近下轨等），并在 Monitor UI 中内置常用交易策略预设。
+
 ### 2026-08-15
 
 - CI 建立完整质量门禁链：`.github/workflows/ci.yml` 拆分为 lint / test / coverage 三个 job，五个 lint 指标（circular / duplicate / dead-code / file-size / function-length）从"仅报告"升级为可失败门禁（`pnpm lint:gates`），ESLint 以 `--max-warnings 108` 基线把关新增告警，覆盖率以 `.c8rc.json` 的 `check-coverage` 阈值（lines/statements 68、functions 72、branches 66）把关。配套新增 `knip.json`（声明入口提升死代码检测准确性）、拆分 `automation-service.ts` 尾部工具函数到 `automation-event-utils.ts`（文件降至 1000 行内）、提取 security-store 列表查询与 Knowledge 通知横幅的重复代码。
