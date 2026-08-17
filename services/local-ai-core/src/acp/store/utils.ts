@@ -4,6 +4,7 @@ import type {
 } from '@cc/superai-contracts';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind } from '@cc/superai-contracts';
 
+// Compat alias: the kernel-level helper is parseJsonSafe; store modules import it as parseJson.
 export { parseJsonSafe as parseJson } from '../../kernel/parse-json-safe.js';
 
 export class SqlPredicateBuilder {
