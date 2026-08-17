@@ -1,3 +1,4 @@
+import { parseJsonSafe } from '../../kernel/parse-json-safe.js';
 import type { LarkWorkspaceBinding } from './types.js';
 
 export const DEFAULT_LARK_QR_EXPIRES_IN = 180;
@@ -47,12 +48,9 @@ async function callAppRegistration(
     body: form.toString(),
   });
   const text = await response.text();
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = text ? JSON.parse(text) as Record<string, unknown> : {};
-  } catch {
-    // Non-JSON body (e.g. an HTML error page); fall through to the status-based error.
-  }
+  // Non-JSON bodies (e.g. an HTML error page) fall back to {} and surface the
+  // status-based error below.
+  const parsed: Record<string, unknown> = text ? parseJsonSafe<Record<string, unknown>>(text, {}) : {};
   if (!response.ok) {
     // The device-flow poll endpoint answers pending/expired polls with an
     // HTTP 400 whose JSON body carries the OAuth error code; the caller

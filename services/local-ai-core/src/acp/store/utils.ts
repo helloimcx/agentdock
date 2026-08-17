@@ -4,13 +4,7 @@ import type {
 } from '@cc/superai-contracts';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind } from '@cc/superai-contracts';
 
-export function parseJson<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
+export { parseJsonSafe as parseJson } from '../../kernel/parse-json-safe.js';
 
 export class SqlPredicateBuilder {
   readonly predicates: string[] = [];
