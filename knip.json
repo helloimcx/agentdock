@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "electron/main.ts",
+    "electron/preload.ts",
+    "src/main.tsx",
+    "src/App.tsx",
+    "services/local-ai-core/src/cli/lac.ts",
+    "packages/contracts/src/index.ts",
+    "packages/core-sdk/src/index.ts",
+    "packages/knowledge-api/src/index.ts",
+    "packages/plugin-sdk/src/index.ts",
+    "scripts/*.mjs",
+    "scripts/*.ts"
+  ],
+  "ignoreDependencies": [
+    "@cc/contracts",
+    "@cc/core-sdk",
+    "@cc/knowledge-api",
+    "@cc/plugin-sdk",
+    "@cc/superai-contracts"
+  ]
+}

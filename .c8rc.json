@@ -17,5 +17,10 @@
   ],
   "reporter": ["text", "html", "lcov"],
   "all": true,
-  "exclude-after-remap": true
+  "exclude-after-remap": true,
+  "check-coverage": true,
+  "lines": 68,
+  "statements": 68,
+  "functions": 72,
+  "branches": 66
 }

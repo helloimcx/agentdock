@@ -7,9 +7,9 @@
  * source. It prints a text summary to stdout and writes HTML + lcov reports to
  * `coverage/` and `lcov.info`.
  *
- * It is an informational report: the script exits 0 only when tests themselves
- * fail, never on a coverage threshold — it never blocks CI. Tune the reporters
- * and add `check-coverage` thresholds in `.c8rc.json` once you want gating.
+ * It is a CI gate: `check-coverage` thresholds in `.c8rc.json` (lines and
+ * statements 68, functions 72, branches 66) fail the run when coverage drops
+ * below them, and the script exits non-zero whenever tests themselves fail.
  */
 import { spawnSync } from 'node:child_process';
 
@@ -35,6 +35,13 @@ function run(command, args) {
 const tsc = 'node_modules/.bin/tsc';
 const tscAlias = 'node_modules/.bin/tsc-alias';
 const c8 = 'node_modules/.bin/c8';
+const vite = 'node_modules/.bin/vite';
+
+// Mirror `pnpm test`'s build steps: the suite below asserts the production
+// renderer output exists (renderer-packaging.test.js), so a clean checkout
+// needs the renderer built before the Electron output.
+console.log('\nBuilding renderer output...\n');
+run(vite, ['build']);
 
 console.log('\nBuilding Electron output with source maps (tsconfig.coverage.json)...\n');
 run('node', ['scripts/write-electron-package.mjs']);

@@ -3,8 +3,9 @@
  * Dead-code quality metric.
  *
  * `pnpm lint:dead-code` prints the repository's unused exports, unused types,
- * and duplicate exports using knip. It is an informational report: the script
- * ALWAYS exits 0, so it never blocks CI.
+ * and duplicate exports using knip. It is an informational report by default;
+ * pass `--fail` to exit non-zero when the dead-symbol total exceeds
+ * `--max-count N` (default 0), which the CI gate uses.
  *
  * Detection honors the same source roots knip discovers from the workspace
  * manifests. Accuracy improves once a knip config declares the project's entry
@@ -18,6 +19,12 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const KNIP = join(ROOT, 'node_modules', 'knip', 'bin', 'knip.js');
 
+const FAIL = process.argv.includes('--fail');
+const maxCountArg = process.argv.find((arg, i) => i > 0 && process.argv[i - 1] === '--max-count');
+const parsedMaxCount = maxCountArg !== undefined ? Number(maxCountArg) : 0;
+// Non-numeric values fail closed (0): a NaN threshold would silently pass every count.
+const MAX_COUNT = Number.isFinite(parsedMaxCount) && parsedMaxCount >= 0 ? parsedMaxCount : 0;
+
 // `--exports` is the dead-code surface: exports, nsExports, types, nsTypes,
 // enumMembers, namespaceMembers, duplicates.
 const ARGS = ['--reporter', 'json', '--exports'];
@@ -30,10 +37,13 @@ function run() {
     report = JSON.parse(res.stdout.toString());
   } catch {
     console.log('\nDead-code report — could not parse knip output (exit ' + (res.status ?? '?') + ').\n');
-    return;
+    process.exit(1);
   }
 
-  printReport(report);
+  const totalSymbols = printReport(report);
+  // Informational by default; --fail turns the report into a CI gate with an
+  // allowed baseline (`--max-count`), so new dead symbols fail the gate.
+  process.exit(FAIL && totalSymbols > MAX_COUNT ? 1 : 0);
 }
 
 function printReport(report) {
@@ -95,6 +105,7 @@ function printReport(report) {
   }
 
   console.log('');
+  return totalSymbols;
 }
 
 // Collect the first few symbol names across all issue types, for a quick preview.
@@ -115,6 +126,3 @@ function collectNames(issue) {
 }
 
 run();
-
-// Informational only — never block CI, regardless of what knip detected.
-process.exit(0);
