@@ -261,7 +261,10 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       const binding = this.getBridgeBinding(route, routePlatformKey);
       if (!binding) return;
       const bridgeThreadId = route.threadId || binding.thread_id;
-      if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) return;
+      if (this.isThreadBridgeMuted(bridgeThreadId)) {
+        this.options.log?.(`localcore-weixin bridge muted for thread=${bridgeThreadId} type=${event.type}`);
+        return;
+      }
 
       const turn = getOrCreateWeixinTurnState(this.outboundTurns, sessionKey);
       if (event.replyCtx) {

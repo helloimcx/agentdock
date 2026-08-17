@@ -674,6 +674,10 @@ export abstract class BaseChannelGateway<
     return this.options.store.getPlatformThreadBinding(route.workspaceId, route.chatId, route.platformUserId, platformKey);
   }
 
+  protected isThreadBridgeMuted(threadId: string): boolean {
+    return this.mutedThreadBridgeCounts.has(threadId);
+  }
+
   /** Runtime readiness check for bridge events; gateways with a transport client override to require it. */
   protected isBridgeRuntimeReady(state: TRuntimeState): boolean {
     return state.connected;
