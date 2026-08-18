@@ -258,9 +258,15 @@ export default function MonitorList() {
           <Input label={t('monitors.condition')} value={form.condition} onChange={(event) => setForm({ ...form, condition: event.target.value })} placeholder="abs_change_percent >= 3" />
           <div className="flex flex-wrap gap-2">
             {[
+              ['latestPrice <= boll_lower', '周线下轨买入 (<= Lower)'],
+              ['latestPrice >= boll_upper', '周线上轨卖出 (>= Upper)'],
+              ['boll_percent_b <= 0.05', '贴近周线下轨 (%B <= 0.05)'],
+              ['boll_percent_b >= 0.95', '贴近周线上轨 (%B >= 0.95)'],
+              ['dividend_yield >= 5.0', '高股息买入 (>= 5%)'],
+              ['erp_spread >= 2.5', '股债利差优势 (ERP >= 2.5%)'],
+              ['latestPrice <= boll_lower && dividend_yield >= 4.0', '周线下轨 + 高股息共振买点'],
               ['abs_change_percent >= 3', '+/- 3%'],
               ['price >= 500', 'Price >= 500'],
-              ['volume_ratio >= 2', 'Volume spike'],
             ].map(([value, label]) => (
               <button
                 key={value}

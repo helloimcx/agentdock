@@ -229,7 +229,7 @@ export class LocalThreadStore {
       SELECT id, thread_id, status, started_at, updated_at
       FROM runs
       WHERE thread_id = ?
-      ORDER BY updated_at DESC
+      ORDER BY updated_at DESC, rowid DESC
       LIMIT 1
     `).get(threadId) as LocalRunRow | undefined;
     return row ? { ...row, status: normalizeRunStatus(row.status) } : undefined;
