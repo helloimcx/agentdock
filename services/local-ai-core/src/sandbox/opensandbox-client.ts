@@ -1,4 +1,5 @@
 import { LocalCoreError, formatSafeError } from '../kernel/local-core-errors.js';
+import { parseJsonSafe } from '../kernel/parse-json-safe.js';
 
 export type OpenSandboxVolume = {
   host: string;
@@ -124,7 +125,7 @@ export class OpenSandboxClient {
       });
     }
     const text = await response.text();
-    const json = text ? parseJson(text) : {};
+    const json = text ? parseJsonSafe<Record<string, unknown> | null>(text, null) : {};
     if (!response.ok) {
       throw new LocalCoreError(response.status === 401 || response.status === 403 ? 'sandbox_unauthorized' : 'sandbox_request_failed', `OpenSandbox ${method} ${path} failed with ${response.status}.`, {
         details: {
@@ -136,13 +137,5 @@ export class OpenSandboxClient {
       });
     }
     return (json || {}) as T;
-  }
-}
-
-function parseJson(text: string) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
   }
 }
