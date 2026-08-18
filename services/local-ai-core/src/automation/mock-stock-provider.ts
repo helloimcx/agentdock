@@ -47,30 +47,9 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     sourceConfig: Record<string, unknown>,
     lastState?: Record<string, unknown>,
   ): MonitorEvent {
+    // Mock mode may honor a config previousPrice override; lastState only reflects the previous mock event.
     const previousPrice = Number(lastState?.latestPrice ?? sourceConfig.previousPrice ?? latestPrice);
-    const changePercent = previousPrice > 0 ? ((latestPrice - previousPrice) / previousPrice) * 100 : 0;
-    const now = new Date().toISOString();
-    const boll = extractMockBollinger(sourceConfig, latestPrice, lastState);
-    const dividend = extractMockDividend(sourceConfig, latestPrice, symbol, lastState);
-    const payload = buildEventPayload({
-      symbol,
-      name: String(sourceConfig.name || symbol),
-      latestPrice,
-      previousPrice,
-      changePercent: Number(changePercent.toFixed(2)),
-      timestamp: now,
-      boll,
-      dividend,
-    });
-
-    return {
-      id: `${monitorId}:${symbol}:${now}`,
-      sourceType: this.sourceType,
-      occurredAt: now,
-      subject: symbol,
-      summary: buildEventSummary(symbol, latestPrice, changePercent, boll, dividend),
-      payload,
-    };
+    return this.buildQuoteEvent(monitorId, symbol, latestPrice, previousPrice, sourceConfig, lastState, String(sourceConfig.name || symbol));
   }
 
   private async fetchRealQuoteEvent(
@@ -122,14 +101,28 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     sourceConfig: Record<string, unknown>,
     lastState?: Record<string, unknown>,
   ): MonitorEvent {
+    // Network-failure fallback trusts only the persisted previousPrice; no config override applies here.
     const previousPrice = Number(lastState?.previousPrice ?? lastPrice);
-    const changePercent = previousPrice > 0 ? ((lastPrice - previousPrice) / previousPrice) * 100 : 0;
+    return this.buildQuoteEvent(monitorId, symbol, lastPrice, previousPrice, sourceConfig, lastState, undefined);
+  }
+
+  private buildQuoteEvent(
+    monitorId: string,
+    symbol: string,
+    price: number,
+    previousPrice: number,
+    sourceConfig: Record<string, unknown>,
+    lastState: Record<string, unknown> | undefined,
+    name: string | undefined,
+  ): MonitorEvent {
+    const changePercent = previousPrice > 0 ? ((price - previousPrice) / previousPrice) * 100 : 0;
     const now = new Date().toISOString();
-    const boll = extractMockBollinger(sourceConfig, lastPrice, lastState);
-    const dividend = extractMockDividend(sourceConfig, lastPrice, symbol, lastState);
+    const boll = extractMockBollinger(sourceConfig, price, lastState);
+    const dividend = extractMockDividend(sourceConfig, price, symbol, lastState);
     const payload = buildEventPayload({
       symbol,
-      latestPrice: lastPrice,
+      name,
+      latestPrice: price,
       previousPrice,
       changePercent: Number(changePercent.toFixed(2)),
       timestamp: now,
@@ -142,7 +135,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
       sourceType: this.sourceType,
       occurredAt: now,
       subject: symbol,
-      summary: buildEventSummary(symbol, lastPrice, changePercent, boll, dividend),
+      summary: buildEventSummary(symbol, price, changePercent, boll, dividend),
       payload,
     };
   }
