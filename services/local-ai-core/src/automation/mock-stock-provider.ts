@@ -47,6 +47,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     sourceConfig: Record<string, unknown>,
     lastState?: Record<string, unknown>,
   ): MonitorEvent {
+    // Mock mode may honor a config previousPrice override; lastState only reflects the previous mock event.
     const previousPrice = Number(lastState?.latestPrice ?? sourceConfig.previousPrice ?? latestPrice);
     return this.buildQuoteEvent(monitorId, symbol, latestPrice, previousPrice, sourceConfig, lastState, String(sourceConfig.name || symbol));
   }
@@ -100,8 +101,9 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     sourceConfig: Record<string, unknown>,
     lastState?: Record<string, unknown>,
   ): MonitorEvent {
+    // Network-failure fallback trusts only the persisted previousPrice; no config override applies here.
     const previousPrice = Number(lastState?.previousPrice ?? lastPrice);
-    return this.buildQuoteEvent(monitorId, symbol, lastPrice, previousPrice, sourceConfig, lastState);
+    return this.buildQuoteEvent(monitorId, symbol, lastPrice, previousPrice, sourceConfig, lastState, undefined);
   }
 
   private buildQuoteEvent(
@@ -111,7 +113,7 @@ export class StockQuoteProvider implements MonitorProviderRuntime {
     previousPrice: number,
     sourceConfig: Record<string, unknown>,
     lastState: Record<string, unknown> | undefined,
-    name?: string,
+    name: string | undefined,
   ): MonitorEvent {
     const changePercent = previousPrice > 0 ? ((price - previousPrice) / previousPrice) * 100 : 0;
     const now = new Date().toISOString();
