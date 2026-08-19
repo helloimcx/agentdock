@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { parseJsonSafe } from '../../kernel/parse-json-safe.js';
 
 export type LarkInboundMention = Record<string, any>;
 
@@ -39,12 +40,7 @@ export function normalizeLarkInboundMessageEvent(
     return { ok: false, reason: 'missing-message-or-sender', detail: JSON.stringify(Object.keys(data || {})) };
   }
 
-  let parsedContent: Record<string, unknown> = {};
-  try {
-    parsedContent = JSON.parse(String(message.content || '{}'));
-  } catch {
-    parsedContent = {};
-  }
+  const parsedContent = parseJsonSafe<Record<string, unknown>>(String(message.content || '{}'), {});
 
   const messageType = String(message.message_type || '').trim().toLowerCase();
   const chatType = String(message.chat_type || '').trim().toLowerCase();

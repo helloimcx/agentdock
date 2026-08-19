@@ -303,7 +303,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         return;
       }
       const bridgeThreadId = route.threadId || binding.thread_id;
-      if (this.mutedThreadBridgeCounts.has(bridgeThreadId)) {
+      if (this.isThreadBridgeMuted(bridgeThreadId)) {
         this.options.log?.(`localcore-lark bridge muted for thread=${bridgeThreadId} type=${event.type}`);
         return;
       }
