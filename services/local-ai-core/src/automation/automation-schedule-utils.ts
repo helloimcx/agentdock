@@ -1,6 +1,8 @@
 import type {
   AutomationDefinition,
   AutomationEvaluation,
+  AutomationMonitor,
+  ScheduledJob,
 } from '@cc/superai-contracts';
 import type { AutomationActionExecutionResult } from './automation-action-executor.js';
 import { normalizeAutomationError } from './automation-event-utils.js';
@@ -35,6 +37,24 @@ export function calculateInitialNextCheckAt(
       || nextActivationAt(automation.activation, now);
   }
   return next?.toISOString() || null;
+}
+
+export function automationMonitorToScheduledJob(monitor: AutomationMonitor): ScheduledJob {
+  // 'once' is a matcher-neutral placeholder: route matchers only read workspace/platform/channel/participant.
+  return {
+    id: monitor.id,
+    workspaceId: monitor.workspaceId,
+    platform: monitor.platform,
+    route: monitor.route,
+    executionMode: monitor.executionMode,
+    triggerType: 'once' as const,
+    promptTemplate: monitor.promptTemplate,
+    description: monitor.title,
+    enabled: monitor.enabled,
+    concurrencyPolicy: monitor.concurrencyPolicy,
+    createdAt: monitor.createdAt,
+    updatedAt: monitor.updatedAt,
+  };
 }
 
 export function isAutomationConsumedOnce(
