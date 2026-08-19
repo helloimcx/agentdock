@@ -8,9 +8,14 @@ import type {
   AutomationScriptTestReport,
   AutomationUpdateInput,
 } from '@cc/superai-contracts';
-import type { DomainEventType, EventBus, EventBusEvent } from '@cc/plugin-sdk';
+import type { EventBus } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
-import { isPlainRecord, normalizeAutomationError, normalizeProviderEventSnapshot, normalizeProviderEventTimestamp, providerLifecycleBlockReason } from './automation-event-utils.js';
+import {
+  isPlainRecord,
+  normalizeAutomationError,
+  normalizeProviderEventSnapshot,
+  providerLifecycleBlockReason,
+} from './automation-event-utils.js';
 import {
   decideTrigger,
   decideCondition,
@@ -22,41 +27,34 @@ import {
 } from './scripts/script-protocol-runner.js';
 import { createAnthropicSandboxRunner } from './scripts/anthropic-sandbox-runner.js';
 import { evaluateExpression } from './condition-evaluator.js';
-import { missedActivationAt, nextActivationAt } from './automation-trigger-engine.js';
-import type {
-  AutomationActionExecutionResult,
-  AutomationActionExecutor,
-} from './automation-action-executor.js';
+import { nextActivationAt } from './automation-trigger-engine.js';
+import type { AutomationActionExecutor } from './automation-action-executor.js';
+import type { LegacyAutomationCreateInput } from './legacy-automation-mappers.js';
 import {
-  automationToMonitor,
-  automationToMonitorRun,
-  automationToScheduledJob,
-  automationToScheduledJobRun,
-  latestAutomationRun,
-  latestFinishedEvaluation,
-  type LegacyAutomationCreateInput,
-} from './legacy-automation-mappers.js';
+  AutomationEventProjector,
+  type EvaluationContext,
+} from './automation-event-projector.js';
+import {
+  calculateInitialNextCheckAt,
+  formatSuccessfulRunUpdate,
+  isAutomationConsumedOnce,
+  shouldPollAutomation,
+  type AutomationOwnershipPolicy,
+  NATIVE_AUTOMATION_OWNERSHIP,
+} from './automation-schedule-utils.js';
+
+export {
+  type AutomationOwnershipPolicy,
+  NATIVE_AUTOMATION_OWNERSHIP,
+} from './automation-schedule-utils.js';
 
 const DUE_LOOP_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_CONCURRENCY = 4;
 const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
 
-export interface AutomationOwnershipPolicy {
-  executes(automation: AutomationDefinition): boolean;
-}
-
-export const NATIVE_AUTOMATION_OWNERSHIP: AutomationOwnershipPolicy = {
-  executes: () => true,
-};
-
 type TimerHandle = unknown;
 type ActionExecutor = Pick<AutomationActionExecutor, 'execute'>;
-type EvaluationContext = {
-  payload: Record<string, unknown>;
-  nextState: Record<string, unknown>;
-  occurredAt: string;
-};
 
 export interface AutomationServiceOptions {
   store: LocalCoreAcpStore;
@@ -86,6 +84,7 @@ export class AutomationService {
   private stopping = false;
   private lifecycleGeneration = 0;
   private scriptProtocolRunner: (Pick<ScriptProtocolRunner, 'run'> & Partial<Pick<ScriptProtocolRunner, 'runTest'>>) | undefined;
+  private readonly eventProjector: AutomationEventProjector;
 
   constructor(private readonly options: AutomationServiceOptions) {
     const concurrency = options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
@@ -93,6 +92,16 @@ export class AutomationService {
       throw new Error('Automation maxConcurrency must be a positive safe integer.');
     }
     this.scriptProtocolRunner = options.scriptProtocolRunner;
+    this.eventProjector = new AutomationEventProjector(
+      options.eventBus,
+      {
+        getAutomation: (id) => this.get(id),
+        listRuns: (id) => this.listRuns(id),
+        listEvaluations: (id) => this.listEvaluations(id),
+        getLatestEvaluationWithState: (id) => this.getLatestEvaluationWithState(id),
+      },
+      options.log,
+    );
   }
 
   list(
@@ -108,18 +117,18 @@ export class AutomationService {
 
   create(input: AutomationCreateInput): AutomationDefinition {
     const updated = this.options.store.createAutomationAtomically(input, (automation) => ({
-      nextCheckAt: this.initialNextCheckAt(automation),
+      nextCheckAt: calculateInitialNextCheckAt(automation, this.now()),
     }));
-    this.emitDefinition(updated);
+    this.eventProjector.emitDefinition(updated);
     return updated;
   }
 
   createFromLegacy(input: LegacyAutomationCreateInput): AutomationDefinition {
     this.assertLegacyFacadesAvailable();
     const updated = this.options.store.createTrustedAutomationAtomically(input, (automation) => ({
-      nextCheckAt: this.initialNextCheckAt(automation),
+      nextCheckAt: calculateInitialNextCheckAt(automation, this.now()),
     }));
-    this.emitDefinition(updated);
+    this.eventProjector.emitDefinition(updated);
     return updated;
   }
 
@@ -149,20 +158,22 @@ export class AutomationService {
     const existing = this.requireAutomation(automationId);
     const initialize = (automation: AutomationDefinition) => {
       if (input.activation !== undefined) {
-        return { nextCheckAt: this.initialNextCheckAt(automation, true) };
+        return { nextCheckAt: calculateInitialNextCheckAt(automation, this.now(), true) };
       }
       if (
-      input.enabled === true
-      && existing.enabled === false
-      && this.options.store.getAutomationNextCheckAt(automation.id) === null
-      && !this.isConsumedOnce(automation)
-      ) return { nextCheckAt: this.initialNextCheckAt(automation) };
+        input.enabled === true
+        && existing.enabled === false
+        && this.options.store.getAutomationNextCheckAt(automation.id) === null
+        && !isAutomationConsumedOnce(automation, (id) => this.listEvaluations(id))
+      ) {
+        return { nextCheckAt: calculateInitialNextCheckAt(automation, this.now()) };
+      }
       return undefined;
     };
     const updated = trustedLegacy
       ? this.options.store.updateTrustedAutomationAtomically(automationId, input, initialize)
       : this.options.store.updateAutomationAtomically(automationId, input, initialize);
-    this.emitDefinition(updated);
+    this.eventProjector.emitDefinition(updated);
     return updated;
   }
 
@@ -229,7 +240,7 @@ export class AutomationService {
     } catch (error) {
       const reason = normalizeAutomationError(error, 'Legacy automation import failed: ');
       this.runtimeStatus = { status: 'degraded', reason };
-      this.reportDiagnostic('legacy-import', reason);
+      this.eventProjector.reportDiagnostic('legacy-import', reason);
       return;
     }
     try {
@@ -237,13 +248,13 @@ export class AutomationService {
         normalizeAutomationError(RESTART_INTERRUPTION_REASON),
         this.now().toISOString(),
       );
-      for (const run of recovered) this.emitRun(run);
+      for (const run of recovered) this.eventProjector.emitRun(run);
       const missingNextCheckAt = this.options.store.listAutomationIdsMissingNextCheckAt();
       for (const automation of this.list()) {
         if (
-          this.shouldPoll(automation)
+          shouldPollAutomation(automation, this.options.ownershipPolicy)
           && missingNextCheckAt.has(automation.id)
-          && !this.isConsumedOnce(automation)
+          && !isAutomationConsumedOnce(automation, (id) => this.listEvaluations(id))
         ) {
           this.persistInitialNextCheck(automation);
         }
@@ -262,7 +273,7 @@ export class AutomationService {
         this.runtimeStatus = { status: 'stopped' };
       }
       const message = normalizeAutomationError(error, 'Automation startup failed: ');
-      this.reportDiagnostic('startup', message);
+      this.eventProjector.reportDiagnostic('startup', message);
       throw new Error(message);
     }
   }
@@ -339,7 +350,7 @@ export class AutomationService {
     if (snapshot.sourceType !== automation.activation.sourceType) {
       throw new Error(normalizeAutomationError(`Provider event source "${snapshot.sourceType}" does not match automation source "${automation.activation.sourceType}".`));
     }
-    return this.checkAutomation(automation, this.providerEventContext(automation, snapshot));
+    return this.checkAutomation(automation, this.eventProjector.buildProviderEventContext(automation, snapshot));
   }
 
   recordUnavailableProviderEvent(automationId: string, reason: string): AutomationEvaluation {
@@ -362,7 +373,7 @@ export class AutomationService {
       nextMatch: automation.lastSuccessfulMatch,
       failureCount: automation.consecutiveEvaluationFailures,
     });
-    this.emitCompatibilityEvaluationRun(automation, finished);
+    this.eventProjector.emitCompatibilityEvaluationRun(automation, finished);
     return finished;
   }
 
@@ -375,7 +386,7 @@ export class AutomationService {
       health: 'blocked',
       blockedReason: providerLifecycleBlockReason(reason),
     }));
-    this.emitDefinition(blocked);
+    this.eventProjector.emitDefinition(blocked);
     return blocked;
   }
 
@@ -388,7 +399,7 @@ export class AutomationService {
       health: 'blocked',
       blockedReason: providerLifecycleBlockReason(reason),
     });
-    this.emitDefinition(blocked);
+    this.eventProjector.emitDefinition(blocked);
     return blocked;
   }
 
@@ -401,7 +412,7 @@ export class AutomationService {
       return automation;
     }
     const healthy = this.options.store.updateAutomationState(automationId, { health: 'healthy' });
-    this.emitDefinition(healthy);
+    this.eventProjector.emitDefinition(healthy);
     return healthy;
   }
 
@@ -410,7 +421,7 @@ export class AutomationService {
     const due: AutomationDefinition[] = [];
     const dueIds = this.options.store.listDueAutomationIds(now);
     for (const automation of this.list()) {
-      if (!this.shouldPoll(automation)) continue;
+      if (!shouldPollAutomation(automation, this.options.ownershipPolicy)) continue;
       if (dueIds.has(automation.id)) {
         due.push(automation);
       }
@@ -465,7 +476,7 @@ export class AutomationService {
       nextMatch: automation.lastSuccessfulMatch,
       failureCount: automation.consecutiveEvaluationFailures,
     });
-    this.emitCompatibilityEvaluationRun(automation, finished);
+    this.eventProjector.emitCompatibilityEvaluationRun(automation, finished);
     return finished;
   }
 
@@ -559,10 +570,10 @@ export class AutomationService {
       const run = await this.executeAction(updated, finished, payload);
       if (!manual && updated.originKind === 'scheduled-job' && updated.activation.kind === 'once' && run.status === 'succeeded') {
         const disabled = this.options.store.updateAutomation(updated.id, { enabled: false });
-        this.emitDefinition(disabled);
+        this.eventProjector.emitDefinition(disabled);
       }
     } else {
-      this.emitCompatibilityEvaluationRun(updated, finished);
+      this.eventProjector.emitCompatibilityEvaluationRun(updated, finished);
     }
     return finished;
   }
@@ -593,7 +604,7 @@ export class AutomationService {
     });
     this.options.log?.(normalizeAutomationError(error, `automation evaluation failed ${automation.id} (${count}): `));
     if (FAILURE_ALERT_COUNTS.has(count)) this.options.alert?.({ automation: updated, count, error });
-    this.emitCompatibilityEvaluationRun(updated, finished);
+    this.eventProjector.emitCompatibilityEvaluationRun(updated, finished);
     return finished;
   }
 
@@ -652,7 +663,7 @@ export class AutomationService {
       if (scriptDecision.triggerDecision === 'triggered') {
         await this.executeAction(updated, scriptFinished, scriptPayload);
       } else {
-        this.emitCompatibilityEvaluationRun(updated, scriptFinished);
+        this.eventProjector.emitCompatibilityEvaluationRun(updated, scriptFinished);
       }
       return scriptFinished;
     } catch (error) {
@@ -688,7 +699,7 @@ export class AutomationService {
       health: 'blocked',
       blockedReason: normalizeAutomationError(reason),
     });
-    this.emitDefinition(blocked);
+    this.eventProjector.emitDefinition(blocked);
   }
 
   private async executeAction(
@@ -697,10 +708,10 @@ export class AutomationService {
     payload: Record<string, unknown>,
   ): Promise<AutomationRun> {
     let run = this.options.store.createAutomationRun(automation.id, evaluation.id);
-    this.emitRun(run);
+    this.eventProjector.emitRun(run);
     const startedAt = this.now().toISOString();
     run = this.options.store.updateAutomationRun(run.id, { status: 'running', startedAt });
-    this.emitRun(run);
+    this.eventProjector.emitRun(run);
     const promptVariables = {
       title: automation.title,
       timestamp: evaluation.status === 'finished' ? evaluation.finishedAt : startedAt,
@@ -709,7 +720,7 @@ export class AutomationService {
     };
     try {
       const result = await this.options.actionExecutor.execute({ automation, evaluation, promptVariables });
-      run = this.options.store.updateAutomationRun(run.id, this.successfulRunUpdate(result));
+      run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result, this.now().toISOString()));
     } catch (error) {
       const message = normalizeAutomationError(error);
       run = this.options.store.updateAutomationRun(run.id, {
@@ -720,24 +731,8 @@ export class AutomationService {
       });
       this.options.log?.(normalizeAutomationError(run.error, `automation action failed ${automation.id}: `));
     }
-    this.emitRun(run);
+    this.eventProjector.emitRun(run);
     return run;
-  }
-
-  private successfulRunUpdate(result: AutomationActionExecutionResult) {
-    const bridgeActivity = {
-      ...(result.deliveryMode ? { deliveryMode: result.deliveryMode } : {}),
-      ...(result.lastBridgeEventAt ? { lastBridgeEventAt: result.lastBridgeEventAt } : {}),
-    };
-    return {
-      status: 'succeeded' as const,
-      threadId: result.threadId,
-      acpRunId: result.acpRunId,
-      finishedAt: this.now().toISOString(),
-      deliveryStatus: result.deliveryStatus === 'failed' ? 'failed' as const : 'delivered' as const,
-      ...(result.deliveryError ? { error: normalizeAutomationError(result.deliveryError) } : {}),
-      ...(Object.keys(bridgeActivity).length > 0 ? { bridgeActivity } : {}),
-    };
   }
 
   private createEvaluation(automation: AutomationDefinition, now: Date): AutomationEvaluation {
@@ -748,7 +743,7 @@ export class AutomationService {
         : {}),
       startedAt: now.toISOString(),
     });
-    this.emitEvaluation(evaluation);
+    this.eventProjector.emitEvaluation(evaluation);
     return evaluation;
   }
 
@@ -757,7 +752,7 @@ export class AutomationService {
     input: Parameters<LocalCoreAcpStore['finishAutomationEvaluation']>[1],
   ): AutomationEvaluation {
     const evaluation = this.options.store.finishAutomationEvaluation(evaluationId, input);
-    this.emitEvaluation(evaluation);
+    this.eventProjector.emitEvaluation(evaluation);
     return evaluation;
   }
 
@@ -774,7 +769,7 @@ export class AutomationService {
       consecutiveEvaluationFailures: input.failureCount,
       nextCheckAt: next?.toISOString() || null,
     });
-    this.emitDefinition(updated);
+    this.eventProjector.emitDefinition(updated);
     return updated;
   }
 
@@ -785,41 +780,8 @@ export class AutomationService {
   ): AutomationDefinition {
     if (!replace && this.options.store.getAutomationNextCheckAt(automation.id) !== null) return automation;
     return this.options.store.updateAutomationState(automation.id, {
-      nextCheckAt: this.initialNextCheckAt(automation, activationReplaced),
+      nextCheckAt: calculateInitialNextCheckAt(automation, this.now(), activationReplaced),
     });
-  }
-
-  private initialNextCheckAt(automation: AutomationDefinition, activationReplaced = false): string | null {
-    const now = this.now();
-    let next: Date | null;
-    if ((!automation.enabled && !activationReplaced) || automation.activation.kind === 'provider-event') {
-      next = null;
-    } else if (automation.activation.kind === 'once') {
-      next = new Date(automation.activation.runAt);
-    } else if (automation.lastEvaluationAt) {
-      next = missedActivationAt(automation.activation, automation.lastEvaluationAt, now)
-        || nextActivationAt(automation.activation, now);
-    } else if (automation.activation.kind === 'interval') {
-      next = new Date(Math.floor(now.getTime() / automation.activation.intervalMs) * automation.activation.intervalMs);
-    } else {
-      const baseline = new Date(Math.min(Date.parse(automation.createdAt), now.getTime() - 24 * 60 * 60 * 1_000));
-      next = missedActivationAt(automation.activation, baseline.toISOString(), now)
-        || nextActivationAt(automation.activation, now);
-    }
-    return next?.toISOString() || null;
-  }
-
-  private shouldPoll(automation: AutomationDefinition): boolean {
-    return automation.enabled
-      && automation.health === 'healthy'
-      && automation.activation.kind !== 'provider-event'
-      && (this.options.ownershipPolicy || NATIVE_AUTOMATION_OWNERSHIP).executes(automation);
-  }
-
-  private isConsumedOnce(automation: AutomationDefinition): boolean {
-    if (automation.activation.kind !== 'once') return false;
-    if (automation.lastEvaluationAt !== undefined) return true;
-    return this.listEvaluations(automation.id).some((evaluation) => evaluation.status === 'finished');
   }
 
   private requireAutomation(automationId: string): AutomationDefinition {
@@ -832,112 +794,6 @@ export class AutomationService {
     const now = (this.options.clock || (() => new Date()))();
     if (!Number.isFinite(now.getTime())) throw new Error('Automation clock returned an invalid date.');
     return new Date(now);
-  }
-
-  private emitDefinition(automation: AutomationDefinition): void {
-    this.emitEvent({ type: 'automation.definition.updated', payload: automation });
-    try {
-      if (automation.originKind === 'scheduled-job') {
-        this.emitEvent({
-          type: 'scheduler.job.updated',
-          payload: automationToScheduledJob(automation, latestAutomationRun(this.listRuns(automation.id))),
-        });
-      } else if (automation.originKind === 'automation-monitor') {
-        const latest = latestFinishedEvaluation(this.listEvaluations(automation.id));
-        this.emitEvent({
-          type: 'automation.monitor.updated',
-          payload: automationToMonitor(
-            automation,
-            latest,
-            latestAutomationRun(this.listRuns(automation.id)),
-            this.getLatestEvaluationWithState(automation.id),
-          ),
-        });
-      }
-    } catch (error) {
-      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
-    }
-  }
-
-  private emitEvaluation(evaluation: AutomationEvaluation): void {
-    this.emitEvent({ type: 'automation.evaluation.updated', payload: evaluation });
-  }
-
-  private emitRun(run: AutomationRun): void {
-    this.emitEvent({ type: 'automation.run.updated', payload: run });
-    try {
-      const automation = this.get(run.automationId);
-      const evaluation = this.listEvaluations(run.automationId).find((candidate) => candidate.id === run.evaluationId);
-      if (!automation || !evaluation) return;
-      if (automation.originKind === 'scheduled-job') {
-        this.emitEvent({ type: 'scheduler.run.updated', payload: automationToScheduledJobRun(evaluation, run) });
-      } else if (automation.originKind === 'automation-monitor') {
-        this.emitEvent({ type: 'automation.monitor.run.updated', payload: automationToMonitorRun(evaluation, run) });
-      }
-    } catch (error) {
-      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
-    }
-  }
-
-  private emitCompatibilityEvaluationRun(
-    automation: AutomationDefinition,
-    evaluation: AutomationEvaluation,
-  ): void {
-    try {
-      if (automation.originKind === 'scheduled-job') {
-        this.emitEvent({
-          type: 'scheduler.run.updated',
-          payload: automationToScheduledJobRun(evaluation),
-        });
-      } else if (automation.originKind === 'automation-monitor') {
-        this.emitEvent({
-          type: 'automation.monitor.run.updated',
-          payload: automationToMonitorRun(evaluation),
-        });
-      }
-    } catch (error) {
-      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
-    }
-  }
-
-  private providerEventContext(
-    automation: AutomationDefinition,
-    event: AutomationMonitorEventSnapshot,
-  ): EvaluationContext {
-    const occurredAt = normalizeProviderEventTimestamp(event.occurredAt);
-    const previousEvaluation = this.getLatestEvaluationWithState(automation.id);
-    const previous = previousEvaluation?.status === 'finished' ? previousEvaluation.nextState : undefined;
-    const nextState = {
-      ...(previous || {}),
-      ...event.payload,
-      payload: event.payload,
-      lastEventId: event.id,
-      lastEventAt: occurredAt,
-    };
-    return {
-      payload: {
-        ...event.payload,
-        ...(!Object.prototype.hasOwnProperty.call(event.payload, 'subject') ? { subject: event.subject } : {}),
-        ...(!Object.prototype.hasOwnProperty.call(event.payload, 'sourceType') ? { sourceType: event.sourceType } : {}),
-        eventSubject: event.subject,
-        eventSourceType: event.sourceType,
-        occurredAt,
-        timestamp: occurredAt,
-        summary: event.summary || '',
-        eventSnapshot: event,
-        previous: previous || {},
-      },
-      nextState,
-      occurredAt,
-    };
-  }
-
-  private emitEvent<TType extends DomainEventType>(event: EventBusEvent<TType>): void {
-    try {
-      this.options.eventBus.emit(event);
-    } catch (error) {
-      this.reportDiagnostic('event-projection', normalizeAutomationError(error, 'Automation event projection failed: '));
-    }
   }
 
   private clearTimer(): void {
@@ -961,7 +817,7 @@ export class AutomationService {
       }
       this.runtimeStatus = { status: 'degraded', reason };
     }
-    this.reportDiagnostic('timer-tick', reason);
+    this.eventProjector.reportDiagnostic('timer-tick', reason);
   }
 
   private isActiveGeneration(generation: number): boolean {
@@ -975,24 +831,7 @@ export class AutomationService {
     if (tick) await Promise.allSettled([tick]);
     await Promise.allSettled([...this.inFlight.values()]);
   }
-
-  private reportDiagnostic(phase: string, error: string): void {
-    try {
-      this.options.log?.(error);
-    } catch {
-      // Diagnostics must not destabilize automation lifecycle handling.
-    }
-    try {
-      this.options.eventBus.emit({
-        type: 'localcore.error',
-        payload: { scope: 'automation-service', error, context: { phase } },
-      });
-    } catch {
-      // Diagnostics must not destabilize automation lifecycle handling.
-    }
-  }
 }
 
 // Public API preserved for existing consumers (e.g. automation-monitor-service).
 export { PROVIDER_LIFECYCLE_BLOCK_PREFIX, normalizeAutomationError, normalizeProviderEventSnapshot, providerLifecycleBlockReason } from './automation-event-utils.js';
-
