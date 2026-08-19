@@ -136,40 +136,23 @@ export class LocalThreadStore {
     this.db.prepare('DELETE FROM threads WHERE id = ?').run(threadId);
   }
 
-  appendMessage(threadId: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
+  appendMessage(threadId: string, ...args: MessageContentArgs) {
     const timestamp = new Date().toISOString();
-    const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
-    const nextSeq = Number(nextSequenceRow?.next_seq || 0);
-    const id = `${timestamp}-${role}-${nextSeq}`;
-    const excerpt = normalizeMessageContent(content);
+    const excerpt = normalizeMessageContent(args[1]);
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db.prepare(`
-        INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        id,
-        threadId,
-        role,
-        content,
-        toolCall ? JSON.stringify(toolCall) : null,
-        bridgeKind || null,
-        bridgeStatus || null,
-        timestamp,
-        kind,
-        nextSeq,
-      );
+      const id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
       this.db.prepare(`
         UPDATE threads
         SET updated_at = ?, history_count = history_count + 1, excerpt = ?
         WHERE id = ?
       `).run(timestamp, excerpt, threadId);
       this.db.exec('COMMIT');
+      return { id, timestamp };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
-    return { id, timestamp };
   }
 
   upsertMessage(threadId: string, id: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
@@ -185,12 +168,7 @@ export class LocalThreadStore {
           WHERE id = ? AND thread_id = ?
         `).run(content, toolCall ? JSON.stringify(toolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, id, threadId);
       } else {
-        const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
-        const nextSeq = Number(nextSequenceRow?.next_seq || 0);
-        this.db.prepare(`
-          INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, threadId, role, content, toolCall ? JSON.stringify(toolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, nextSeq);
+        this.insertMessageRow(threadId, id, timestamp, role, content, kind, toolCall, bridgeKind, bridgeStatus);
         this.db.prepare(`
           UPDATE threads
           SET history_count = history_count + 1
@@ -208,6 +186,33 @@ export class LocalThreadStore {
       throw error;
     }
     return { id, timestamp };
+  }
+
+  private insertMessageRow(
+    threadId: string,
+    id: string | undefined,
+    timestamp: string,
+    ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs
+  ) {
+    const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
+    const nextSeq = Number(nextSequenceRow?.next_seq || 0);
+    const messageId = id ?? `${timestamp}-${role}-${nextSeq}`;
+    this.db.prepare(`
+      INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      messageId,
+      threadId,
+      role,
+      content,
+      toolCall ? JSON.stringify(toolCall) : null,
+      bridgeKind || null,
+      bridgeStatus || null,
+      timestamp,
+      kind,
+      nextSeq,
+    );
+    return messageId;
   }
 
   updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {

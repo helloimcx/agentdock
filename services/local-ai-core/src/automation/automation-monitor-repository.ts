@@ -60,22 +60,5 @@ export class AutomationMonitorRepository {
   getPlatformThreadBindingByThreadId(threadId: string) {
     return this.store.getPlatformThreadBindingByThreadId(threadId);
   }
-
-  toScheduledLike(monitor: AutomationMonitor) {
-    return {
-      id: monitor.id,
-      workspaceId: monitor.workspaceId,
-      platform: monitor.platform,
-      route: monitor.route,
-      executionMode: monitor.executionMode,
-      triggerType: 'once' as const,
-      promptTemplate: monitor.promptTemplate,
-      description: monitor.title,
-      enabled: monitor.enabled,
-      concurrencyPolicy: monitor.concurrencyPolicy,
-      createdAt: monitor.createdAt,
-      updatedAt: monitor.updatedAt,
-    };
-  }
 }
 

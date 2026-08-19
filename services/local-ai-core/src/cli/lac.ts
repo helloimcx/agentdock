@@ -13,6 +13,7 @@ import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '@c
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
+import { automationMonitorToScheduledJob } from '../automation/automation-schedule-utils.js';
 import { parseDurationMs, parseMonitorCondition } from './monitor-cli-parsers.js';
 import { formatSafeError } from '../kernel/local-core-errors.js';
 
@@ -799,20 +800,7 @@ function presentMonitor(monitor: AutomationMonitor): AutomationMonitor {
 }
 
 function monitorMatchesCliContext(monitor: AutomationMonitor, context: CliContext) {
-  return scheduledJobMatchesCliContext({
-    id: monitor.id,
-    workspaceId: monitor.workspaceId,
-    platform: monitor.platform,
-    route: monitor.route,
-    executionMode: monitor.executionMode,
-    triggerType: 'once',
-    promptTemplate: monitor.promptTemplate,
-    description: monitor.title,
-    enabled: monitor.enabled,
-    concurrencyPolicy: monitor.concurrencyPolicy,
-    createdAt: monitor.createdAt,
-    updatedAt: monitor.updatedAt,
-  }, context);
+  return scheduledJobMatchesCliContext(automationMonitorToScheduledJob(monitor), context);
 }
 
 void (async () => {

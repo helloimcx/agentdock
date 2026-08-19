@@ -22,6 +22,7 @@ import {
   monitorToAutomationInput,
 } from './legacy-automation-mappers.js';
 import type { AutomationService } from './automation-service.js';
+import { automationMonitorToScheduledJob } from './automation-schedule-utils.js';
 import {
   normalizeAutomationError,
   normalizeProviderEventSnapshot,
@@ -323,20 +324,10 @@ export class AutomationMonitorService {
   listMonitorsForThread(threadId: string): AutomationMonitor[] {
     const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
     return this.listMonitors().filter((monitor) =>
-      monitor.route.threadId === threadId || (binding ? scheduledJobMatchesPlatformBinding({
-        id: monitor.id,
-        workspaceId: monitor.workspaceId,
-        platform: monitor.platform,
-        route: monitor.route,
-        executionMode: monitor.executionMode,
-        triggerType: 'once',
-        promptTemplate: monitor.promptTemplate,
-        description: monitor.title,
-        enabled: monitor.enabled,
-        concurrencyPolicy: 'skip_if_running',
-        createdAt: monitor.createdAt,
-        updatedAt: monitor.updatedAt,
-      }, binding) : false)
+      monitor.route.threadId === threadId || (binding ? scheduledJobMatchesPlatformBinding(
+        automationMonitorToScheduledJob(monitor),
+        binding,
+      ) : false)
     );
   }
 
