@@ -40,6 +40,7 @@ export function calculateInitialNextCheckAt(
 }
 
 export function automationMonitorToScheduledJob(monitor: AutomationMonitor): ScheduledJob {
+  // 'once' is a matcher-neutral placeholder: route matchers only read workspace/platform/channel/participant.
   return {
     id: monitor.id,
     workspaceId: monitor.workspaceId,

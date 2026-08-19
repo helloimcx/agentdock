@@ -138,21 +138,23 @@ export class LocalThreadStore {
 
   appendMessage(threadId: string, ...args: MessageContentArgs) {
     const timestamp = new Date().toISOString();
-    const excerpt = normalizeMessageContent(args[1]);
+    const [, content] = args;
+    const excerpt = normalizeMessageContent(content);
+    let id: string;
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
+      id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
       this.db.prepare(`
         UPDATE threads
         SET updated_at = ?, history_count = history_count + 1, excerpt = ?
         WHERE id = ?
       `).run(timestamp, excerpt, threadId);
       this.db.exec('COMMIT');
-      return { id, timestamp };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+    return { id, timestamp };
   }
 
   upsertMessage(threadId: string, id: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
