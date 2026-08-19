@@ -3,8 +3,9 @@
  * Function-length quality metric.
  *
  * `pnpm lint:function-length` prints every function-like construct whose line
- * span meets `FUNC_MIN_LINES` (default 100). It is an informational report: the
- * script ALWAYS exits 0, so it never blocks CI.
+ * span meets `FUNC_MIN_LINES` (default 100). It is an informational report by
+ * default; pass `--fail` to exit non-zero when the long-function total exceeds
+ * `--max-count N` (default 0), which the CI gate uses.
  *
  * Detection walks the TypeScript AST (via the already-installed `typescript`
  * package) and measures the span of each function declaration, function
@@ -21,6 +22,11 @@ import { collectFiles, ENTRY_DIRS } from './lint-metrics-common.mjs';
 
 const ROOT = process.cwd();
 const MIN_LINES = Number(process.env.FUNC_MIN_LINES || 100);
+const FAIL = process.argv.includes('--fail');
+const maxCountArg = process.argv.find((arg, i) => i > 0 && process.argv[i - 1] === '--max-count');
+const parsedMaxCount = maxCountArg !== undefined ? Number(maxCountArg) : 0;
+// Non-numeric values fail closed (0): a NaN threshold would silently pass every count.
+const MAX_COUNT = Number.isFinite(parsedMaxCount) && parsedMaxCount >= 0 ? parsedMaxCount : 0;
 const EXTS = new Set(['.ts', '.tsx']);
 
 const FUNCTION_KINDS = new Set([
@@ -128,9 +134,10 @@ function run() {
   }
 
   console.log('');
+
+  // Informational by default; --fail turns the report into a CI gate with an
+  // allowed baseline (`--max-count`), so new long functions fail the gate.
+  process.exit(FAIL && flat.length > MAX_COUNT ? 1 : 0);
 }
 
 run();
-
-// Informational only — never block CI.
-process.exit(0);

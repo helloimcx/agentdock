@@ -5,7 +5,6 @@ import {
   FileSearch,
   FolderTree,
   Search,
-  Settings,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -20,19 +19,8 @@ import {
   uploadKnowledgeBaseFiles,
 } from '@cc/core-sdk/knowledge';
 import { cn, formatTime } from '@/lib/utils';
+import { KnowledgeNotice, type NoticeTone } from './KnowledgeNotice';
 import type { KnowledgeBase, KnowledgeFile, KnowledgeFolder, KnowledgeSearchResult } from '@cc/superai-contracts';
-
-type NoticeTone = 'success' | 'error' | 'warning';
-
-function noticeClassName(tone: NoticeTone) {
-  if (tone === 'success') {
-    return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/30 dark:bg-violet-950/20 dark:text-violet-300';
-  }
-  if (tone === 'warning') {
-    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300';
-  }
-  return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300';
-}
 
 export default function KnowledgeDetail() {
   const { knowledgebaseId = '' } = useParams<{ knowledgebaseId: string }>();
@@ -168,29 +156,13 @@ export default function KnowledgeDetail() {
         )}
       </div>
 
-      {notice && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${noticeClassName(notice.tone)}`}>
-          {notice.message}
-        </div>
-      )}
-
-      {!configReady && !loading && (
-        <div className={`rounded-2xl border px-5 py-4 ${noticeClassName('warning')}`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium">Knowledge retrieval is not configured.</p>
-              <p className="mt-1 text-sm opacity-90">
-                Add the ai_vector connection in System settings to upload files and search this knowledge base.
-              </p>
-            </div>
-            <Link to="/system">
-              <Button variant="secondary">
-                <Settings size={14} /> Open System Settings
-              </Button>
-            </Link>
-          </div>
-        </div>
-      )}
+      <KnowledgeNotice
+        notice={notice}
+        configReady={configReady}
+        loading={loading}
+        unconfiguredTitle="Knowledge retrieval is not configured."
+        unconfiguredHint="Add the ai_vector connection in System settings to upload files and search this knowledge base."
+      />
 
       {loading ? (
         <Card>

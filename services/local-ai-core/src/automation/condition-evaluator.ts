@@ -5,7 +5,14 @@ export function evaluateMonitorCondition(condition: AutomationMonitorCondition, 
     return evaluateExpression(condition.expression, event);
   }
   const actual = readMetric(event, condition.metric);
-  return evaluateOperatorComparison(condition.operator, actual, condition.value);
+  let expected: unknown = condition.value;
+  if (typeof expected === 'string' && Number.isNaN(Number(expected))) {
+    const metricVal = readMetric(event, expected);
+    if (metricVal !== undefined) {
+      expected = metricVal;
+    }
+  }
+  return evaluateOperatorComparison(condition.operator, actual, expected);
 }
 
 export function evaluateOperatorComparison(
@@ -86,7 +93,13 @@ function evaluateRestrictedComparison(
   const rawValue = comparison.rawValue.replace(/^["']|["']$/g, '');
   const numeric = Number(rawValue);
   const actual = resolveMetric(comparison.metric);
-  const expected = Number.isFinite(numeric) && rawValue !== '' ? numeric : rawValue;
+  let expected: unknown;
+  if (Number.isFinite(numeric) && rawValue !== '') {
+    expected = numeric;
+  } else {
+    const resolvedMetric = resolveMetric(rawValue);
+    expected = resolvedMetric !== undefined ? resolvedMetric : rawValue;
+  }
   return evaluateOperatorComparison(comparison.operator, actual, expected);
 }
 
@@ -98,30 +111,22 @@ export function readMetric(event: AutomationMonitorEventSnapshot, metric: string
   if (key === 'subject') return event.subject;
   if (key === 'sourceType') return event.sourceType;
   const payload = event.payload || {};
-  if (key === 'abs_change_percent') {
-    return Math.abs(Number(payload.change_percent ?? payload.changePercent ?? 0));
-  }
-  const normalizedKey = key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);
-  if (Object.prototype.hasOwnProperty.call(payload, key)) {
-    return payload[key];
-  }
-  if (Object.prototype.hasOwnProperty.call(payload, normalizedKey)) {
-    return payload[normalizedKey];
-  }
-  return key.split('.').reduce<unknown>((current, part) => {
-    if (!current || typeof current !== 'object') return undefined;
-    return (current as Record<string, unknown>)[part];
-  }, payload);
+  return readContextMetric(payload, key);
 }
 
 function readContextMetric(context: Record<string, unknown>, metric: string): unknown {
-  if (metric === 'abs_change_percent') {
+  const key = String(metric || '').trim();
+  if (!key) return undefined;
+  if (key === 'abs_change_percent') {
     return Math.abs(Number(context.change_percent ?? context.changePercent ?? 0));
   }
-  const normalizedKey = metric.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);
-  if (Object.prototype.hasOwnProperty.call(context, metric)) return context[metric];
+  if (key === 'price' && context.latestPrice !== undefined) {
+    return context.latestPrice;
+  }
+  const normalizedKey = key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);
+  if (Object.prototype.hasOwnProperty.call(context, key)) return context[key];
   if (Object.prototype.hasOwnProperty.call(context, normalizedKey)) return context[normalizedKey];
-  return metric.split('.').reduce<unknown>((current, part) => {
+  return key.split('.').reduce<unknown>((current, part) => {
     if (!current || typeof current !== 'object') return undefined;
     return (current as Record<string, unknown>)[part];
   }, context);

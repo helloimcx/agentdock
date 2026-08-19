@@ -9,7 +9,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Settings,
   Trash2,
 } from 'lucide-react';
 import { Button, Card, EmptyState, Input, Modal, Textarea } from '@/components/ui';
@@ -25,23 +24,12 @@ import {
   updateKnowledgeFolder,
 } from '@cc/core-sdk/knowledge';
 import { cn, formatTime } from '@/lib/utils';
+import { KnowledgeNotice, type NoticeTone } from './KnowledgeNotice';
 import type { KnowledgeBase, KnowledgeFolder } from '@cc/superai-contracts';
-
-type NoticeTone = 'success' | 'error' | 'warning';
 
 interface NoticeState {
   tone: NoticeTone;
   message: string;
-}
-
-function noticeClassName(tone: NoticeTone) {
-  if (tone === 'success') {
-    return 'border-primary/20 bg-primary/10 text-primary dark:border-primary/25 dark:bg-primary/10 dark:text-blue-200';
-  }
-  if (tone === 'warning') {
-    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300';
-  }
-  return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300';
 }
 
 function iconGlyph(icon: string) {
@@ -259,29 +247,14 @@ export default function KnowledgeHome() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {notice && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${noticeClassName(notice.tone)}`}>
-          {notice.message}
-        </div>
-      )}
-
-      {!configReady && !loading && (
-        <div className={`rounded-2xl border px-5 py-4 ${noticeClassName('warning')}`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium">Knowledge search is not configured yet.</p>
-              <p className="mt-1 text-sm opacity-90">
-                Add the ai_vector base URL in System settings before uploading files or running retrieval.
-              </p>
-            </div>
-            <Link to="/system">
-              <Button variant="secondary">
-                <Settings size={14} /> Open System Settings
-              </Button>
-            </Link>
-          </div>
-        </div>
-      )}
+      <KnowledgeNotice
+        notice={notice}
+        configReady={configReady}
+        loading={loading}
+        unconfiguredTitle="Knowledge search is not configured yet."
+        unconfiguredHint="Add the ai_vector base URL in System settings before uploading files or running retrieval."
+        successClass="border-primary/20 bg-primary/10 text-primary dark:border-primary/25 dark:bg-primary/10 dark:text-blue-200"
+      />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
         <Card className="app-panel p-0 overflow-hidden">

@@ -702,6 +702,14 @@ function buildSourceConfig(sourceType: string, flags: Map<string, string[]>) {
     config.symbol = getRequiredFlag(flags, 'symbol').toUpperCase();
     const price = getFlag(flags, 'price');
     if (price) config.price = Number(price);
+    const bollInterval = getFlag(flags, 'boll-interval');
+    if (bollInterval) config.bollInterval = bollInterval;
+    const bollPeriod = getFlag(flags, 'boll-period');
+    if (bollPeriod) config.bollPeriod = Number(bollPeriod);
+    const bollStdDev = getFlag(flags, 'boll-std-dev');
+    if (bollStdDev) config.bollStdDev = Number(bollStdDev);
+    const treasuryYield = getFlag(flags, 'treasury-yield');
+    if (treasuryYield) config.treasury10yYield = Number(treasuryYield);
   }
   const rawConfig = getFlag(flags, 'source-config');
   if (rawConfig) {

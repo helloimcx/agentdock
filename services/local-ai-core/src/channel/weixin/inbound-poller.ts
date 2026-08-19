@@ -26,14 +26,8 @@ function computeRetryDelay(failures: number) {
   return 60_000;
 }
 
-export async function runWeixinInboundPoller(input: {
-  binding: WeixinWorkspaceBinding;
-  signal: AbortSignal;
-  getRuntimeState: () => WeixinRuntimeState | undefined;
+type WeixinInboundCallbacks = {
   getAuthorizedUser: (workspaceId: string, platformUserId: string, platformKey: string) => unknown;
-  clearRuntimeError: (state: WeixinRuntimeState) => void;
-  setRuntimeError: (state: WeixinRuntimeState, error: ReturnType<typeof toLocalCoreErrorInfo>) => void;
-  notifyRuntimeStateChanged: () => void;
   downloadMediaItem: (
     item: WeixinRawItem,
     messageId: string,
@@ -43,7 +37,16 @@ export async function runWeixinInboundPoller(input: {
   ) => Promise<WeixinDownloadedMedia | null>;
   handleInboundMessage: (message: unknown) => Promise<void>;
   log?: (message: string) => void;
-}) {
+};
+
+export async function runWeixinInboundPoller(input: {
+  binding: WeixinWorkspaceBinding;
+  signal: AbortSignal;
+  getRuntimeState: () => WeixinRuntimeState | undefined;
+  clearRuntimeError: (state: WeixinRuntimeState) => void;
+  setRuntimeError: (state: WeixinRuntimeState, error: ReturnType<typeof toLocalCoreErrorInfo>) => void;
+  notifyRuntimeStateChanged: () => void;
+} & WeixinInboundCallbacks) {
   const { binding, signal } = input;
   const errorLogWindows = new Map<string, { at: number; count: number; errorKey: string }>();
   let buf = loadWeixinBuf(binding);
@@ -133,18 +136,7 @@ export async function runWeixinInboundPoller(input: {
 async function processWeixinInboundMsg(
   msg: any,
   binding: WeixinWorkspaceBinding,
-  input: {
-    getAuthorizedUser: (workspaceId: string, platformUserId: string, platformKey: string) => unknown;
-    downloadMediaItem: (
-      item: WeixinRawItem,
-      messageId: string,
-      index: number,
-      uploadsDir: string,
-      binding: WeixinWorkspaceBinding,
-    ) => Promise<WeixinDownloadedMedia | null>;
-    handleInboundMessage: (message: unknown) => Promise<void>;
-    log?: (message: string) => void;
-  },
+  input: WeixinInboundCallbacks,
 ) {
   const items = msg.item_list ?? [];
   const textItem = items.find((item: any) => item.type === TEXT_ITEM_TYPE);

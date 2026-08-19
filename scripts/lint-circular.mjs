@@ -5,7 +5,8 @@
  * `pnpm lint:circular` prints every strongly-connected component (SCC) of the
  * import graph that has more than one file — i.e. a cycle — collapsed so one
  * tangled cluster shows up once instead of as N overlapping paths. It is an
- * informational report: the script ALWAYS exits 0, so it never blocks CI.
+ * informational report by default; pass `--fail` to exit non-zero when cycles
+ * exist (used by the CI gate).
  *
  * Resolution honors the `@cc/*` and `@/*` aliases from the root tsconfig.
  */
@@ -15,10 +16,11 @@ import { readFileSync } from 'node:fs';
 const ROOT = process.cwd();
 const TS_CONFIG = `${ROOT}/tsconfig.json`;
 const ENTRY_DIRS = ['src', 'services', 'packages', 'electron', 'shared'];
+const FAIL = process.argv.includes('--fail');
 
 // tsconfig.json is JSON5 (TypeScript permits comments), so strip comments
 // before parsing — a hand-rolled JSON.parse would otherwise throw on a
-// comment and break the script's "always exits 0" contract.
+// comment and break the script's exit contract.
 const tsconf = JSON.parse(readFileSync(TS_CONFIG, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, ''));
 const paths = tsconf.compilerOptions?.paths || {};
 
@@ -103,5 +105,5 @@ if (sccs.length === 0) {
   });
 }
 
-// Informational only — never block CI.
-process.exit(0);
+// Informational by default; --fail turns the report into a CI gate.
+process.exit(FAIL && sccs.length > 0 ? 1 : 0);
