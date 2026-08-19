@@ -47,6 +47,10 @@ export class LocalCoreAcpBackend {
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
   private readonly responseProcessor: LocalCoreAcpResponseProcessor;
   private readonly slashCommands: ThreadSlashCommandDispatcher;
+  // Thread-scoped "always allow" memory. Kept at backend level (not on the ACP
+  // session) so the choice survives session rebuilds; in-memory only, so a
+  // Local AI Core restart asks once again.
+  private readonly threadAllowAll = new Set<string>();
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
     this.transport = new LocalCoreAcpTransport({
@@ -104,6 +108,7 @@ export class LocalCoreAcpBackend {
         return approval.approvalId;
       },
       getThreadAgentMode: (threadId) => this.options.store.getThreadRow(threadId)?.agent_mode || DEFAULT_AGENT_MODE,
+      hasThreadAllowAll: (threadId) => this.threadAllowAll.has(threadId),
       sendRaw: (session, payload) => this.transport.sendRaw(session, payload),
     });
     this.sessionCoordinator = new LocalCoreAcpSessionCoordinator({
@@ -318,6 +323,11 @@ export class LocalCoreAcpBackend {
     const matched = pendingPermission.options.find((option) => option.normalizedAction === action || option.optionId === action);
     if (!matched) {
       throw new Error(`Unknown permission option: ${content}`);
+    }
+    if (matched.normalizedAction === 'allow all') {
+      this.threadAllowAll.add(threadId);
+    } else if (matched.normalizedAction === 'deny') {
+      this.threadAllowAll.delete(threadId);
     }
     const accepted = this.transport.sendRaw(session, {
       jsonrpc: '2.0',

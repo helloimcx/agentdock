@@ -29,6 +29,12 @@ export function parsePermissionOptions(options: unknown): RunningPermissionReque
     : [];
 }
 
+export function selectAutoAllowPermissionOption(options: RunningPermissionRequest['options']) {
+  return options.find((option) => option.normalizedAction === 'allow all')
+    || options.find((option) => option.normalizedAction === 'allow')
+    || options.find((option) => option.normalizedAction !== 'deny');
+}
+
 export function createRunningPermissionRequest(input: {
   requestId: number | string;
   toolTitle: string;

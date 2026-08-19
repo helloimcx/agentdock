@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-20
+
+- 修复权限卡片「始终允许」不生效的问题：Local AI Core 现按线程（thread）记住用户选择的 "allow all"，即使 ACP agent 会话因空闲超时、按轮次隔离或配置变更而重建，后续 `session/request_permission` 也会自动放行、不再重复弹确认卡；回复 `deny` 即撤销该线程的始终允许记忆。对所有渠道（飞书/微信/Desktop/Web）与所有 ACP agent 生效。
+
 ### 2026-08-17
 
 - 扩展股票行情监控插件（`stock.quote`）：原生支持**周线布林线（Weekly Bollinger Bands）**与**动态股息率/股债利差（Dividend Yield & ERP Spread）**监控，提供中轨 (`boll_middle`)、上轨 (`boll_upper`)、下轨 (`boll_lower`)、相对位置百分比 (`boll_percent_b`)、买卖信号 (`boll_signal`)、股息率 (`dividend_yield`)、每股分红 (`annual_dividend`) 与股债利差 (`erp_spread`)；条件引擎支持指标动态比对与双重共振策略（如 `latestPrice <= boll_lower && dividend_yield >= 4.0` 周线下轨+高股息共振买点），并在 Monitor UI 中内置红利与周线交易策略预设。
