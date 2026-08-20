@@ -97,7 +97,7 @@ flowchart LR
 
 ### 2026-08-20
 
-- 修复权限卡片「始终允许」不生效的问题：Local AI Core 现按线程（thread）记住用户选择的 "allow all"，即使 ACP agent 会话因空闲超时、按轮次隔离或配置变更而重建，后续 `session/request_permission` 也会自动放行、不再重复弹确认卡；回复 `deny` 即撤销该线程的始终允许记忆。对所有渠道（飞书/微信/Desktop/Web）与所有 ACP agent 生效。
+- 修复权限卡片「始终允许」不生效的问题：Local AI Core 现按线程（thread）记住用户选择的 "allow all"，即使 ACP agent 会话因空闲超时、按轮次隔离或配置变更而重建，后续 `session/request_permission` 也会自动放行、不再重复弹确认卡。该记忆覆盖本线程的全部工具（线程生命周期内有效，重启 Local AI Core 后失效）；回复 `deny` / `拒绝` / `撤销` 即可撤销（授权时会收到提示），删除线程也会一并清理。对所有渠道（飞书/微信/Desktop/Web）与所有 ACP agent 生效。
 
 ### 2026-08-17
 

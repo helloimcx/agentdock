@@ -105,13 +105,13 @@ test('allow-all permission approval persists across ACP session rebuilds', async
   cleanup(backend, store, dir);
 });
 
-test('deny permission response revokes the thread allow-all memory', async () => {
+test('deny reply without a pending permission revokes the thread allow-all memory', async () => {
   const bridgeEvents: any[] = [];
   const sentPayloads: any[] = [];
   const dir = mkdtempSync(join(tmpdir(), 'thread-allow-all-'));
   const store = new LocalCoreAcpStore(dir);
   const thread = store.createThread('workspace-a', 'Deny thread', 'claudecode');
-  const firstSession = createSession(thread.id, 'run-1', true);
+  const grantSession = createSession(thread.id, 'run-1', true);
   const backend = new LocalCoreAcpBackend({
     store,
     runThreadMap: new Map<string, string>(),
@@ -123,18 +123,30 @@ test('deny permission response revokes the thread allow-all memory', async () =>
       deleteJob: async () => {},
     },
   } as any);
-  (backend as any).sessionCoordinator.getSession = () => firstSession;
+  (backend as any).sessionCoordinator.getSession = () => grantSession;
   (backend as any).transport.sendRaw = (_target: any, payload: any) => {
     sentPayloads.push(payload);
     return true;
   };
 
   await backend.sendThreadAction(thread.id, 'allow all');
-  const grantSession = createSession(thread.id, 'run-1b', true);
-  (backend as any).sessionCoordinator.getSession = () => grantSession;
-  await backend.sendThreadAction(thread.id, 'deny');
 
-  const rebuiltSession = createSession(thread.id, 'run-2', false);
+  // Once allow-all is remembered no card is pending, so the deny reply arrives
+  // with an empty pendingPermissionByRun — this is the reachable revoke path.
+  const idleSession = createSession(thread.id, 'run-2', false);
+  (backend as any).sessionCoordinator.getSession = () => idleSession;
+  bridgeEvents.length = 0;
+  sentPayloads.length = 0;
+  const revokeResult = await backend.sendThreadAction(thread.id, 'deny');
+  assert.equal(revokeResult.runId, '');
+  assert.equal(
+    bridgeEvents.some((event) => event.type === 'reply' && String(event.content || '').includes('撤销')),
+    true,
+    'revoke should confirm to the user',
+  );
+  assert.equal(sentPayloads.length, 0, 'revoke must not be forwarded to the agent as a prompt');
+
+  const rebuiltSession = createSession(thread.id, 'run-3', false);
   (backend as any).sessionCoordinator.getSession = () => rebuiltSession;
   bridgeEvents.length = 0;
   sentPayloads.length = 0;
@@ -150,9 +162,42 @@ test('deny permission response revokes the thread allow-all memory', async () =>
     },
   });
 
-  assert.equal(sentPayloads.some((payload) => payload.id === 43), false, 'request should wait for the user');
+  assert.equal(sentPayloads.some((payload) => payload.id === 43), false, 'request should wait for the user again');
   assert.equal(bridgeEvents.some((event) => event.type === 'buttons'), true, 'permission card should be emitted again');
   assert.equal(rebuiltSession.pendingPermissionByRun.size, 1);
+
+  cleanup(backend, store, dir);
+});
+
+test('deleting a thread clears its allow-all memory', async () => {
+  const bridgeEvents: any[] = [];
+  const sentPayloads: any[] = [];
+  const dir = mkdtempSync(join(tmpdir(), 'thread-allow-all-'));
+  const store = new LocalCoreAcpStore(dir);
+  const thread = store.createThread('workspace-a', 'Delete thread', 'claudecode');
+  const session = createSession(thread.id, 'run-1', true);
+  const backend = new LocalCoreAcpBackend({
+    store,
+    runThreadMap: new Map<string, string>(),
+    emitBridge: (event: any) => bridgeEvents.push(event),
+    eventBus: { emit: () => {}, on: () => () => {} },
+    scheduler: {
+      createJob: async () => { throw new Error('not used'); },
+      listJobsForThread: async () => [],
+      deleteJob: async () => {},
+    },
+  } as any);
+  (backend as any).sessionCoordinator.getSession = () => session;
+  (backend as any).transport.sendRaw = (_target: any, payload: any) => {
+    sentPayloads.push(payload);
+    return true;
+  };
+
+  await backend.sendThreadAction(thread.id, 'allow all');
+  assert.equal((backend as any).threadAllowAll.has(thread.id), true, 'grant should be remembered');
+
+  await backend.deleteThread(thread.id);
+  assert.equal((backend as any).threadAllowAll.has(thread.id), false, 'deleting the thread must clear the grant');
 
   cleanup(backend, store, dir);
 });

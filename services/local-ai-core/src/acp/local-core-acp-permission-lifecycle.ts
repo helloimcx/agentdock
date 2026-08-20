@@ -35,6 +35,14 @@ export function selectAutoAllowPermissionOption(options: RunningPermissionReques
     || options.find((option) => option.normalizedAction !== 'deny');
 }
 
+// While allow-all is remembered no permission card is pending, so a deny-style
+// reply arrives as plain text — these tokens revoke the remembered grant.
+const THREAD_ALLOW_ALL_REVOKE_INTENTS = new Set(['deny', '拒绝', '撤销']);
+
+export function isThreadAllowAllRevokeIntent(value: unknown) {
+  return THREAD_ALLOW_ALL_REVOKE_INTENTS.has(String(value || '').trim().toLowerCase());
+}
+
 export function createRunningPermissionRequest(input: {
   requestId: number | string;
   toolTitle: string;
