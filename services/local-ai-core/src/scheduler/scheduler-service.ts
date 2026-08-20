@@ -60,17 +60,24 @@ export class SchedulerService extends EventEmitter {
     }
   }
 
-  listJobs(workspaceId?: string) {
+  listJobs(workspaceId?: string, channelId?: string, platform?: string) {
     const automations = this.options.automations;
     if (automations) {
       const latestRunById = automations.listLatestRunByOrigin('scheduled-job', workspaceId);
-      return automations.list(workspaceId, 'scheduled-job')
-        .map((automation) => automationToScheduledJob(
-          automation,
-          latestRunById.get(automation.id),
-        ));
+      let list = automations.list(workspaceId, 'scheduled-job', channelId);
+      const normPlatform = platform ? platform.trim().toLowerCase() : '';
+      if (normPlatform) {
+        list = list.filter((a) => {
+          const p = a.delivery.platform.toLowerCase();
+          return p === normPlatform || p.startsWith(`${normPlatform}:`);
+        });
+      }
+      return list.map((automation) => automationToScheduledJob(
+        automation,
+        latestRunById.get(automation.id),
+      ));
     }
-    return this.options.store.listScheduledJobs(workspaceId);
+    return this.options.store.listScheduledJobs(workspaceId, channelId, platform);
   }
 
   getJob(jobId: string) {

@@ -446,6 +446,112 @@ test('concurrent monitor manual run emits one compatibility skipped run with its
   } finally { await monitors.stop(); context.close(); }
 });
 
+test('scheduled job creation preserves explicit local platform even when thread is bound to Lark', () => {
+  const context = fixture();
+  try {
+    const now = new Date().toISOString();
+    context.store.upsertPlatformThreadBinding({
+      thread_id: 'thread-1',
+      workspace_id: 'workspace-1',
+      platform: 'lark',
+      chat_id: 'lark-chat-123',
+      platform_user_id: 'user-1',
+      last_platform_message_id: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    // Create job with explicit platform: 'local' and threadId: 'thread-1'
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1',
+      platform: 'local',
+      threadId: 'thread-1',
+      triggerType: 'cron',
+      cronExpr: '0 9 * * *',
+      promptTemplate: 'local task',
+      description: 'stay local',
+    });
+
+    // It MUST stay local and not be overridden to lark!
+    assert.equal(job.platform, 'local');
+    assert.equal(job.route.type, 'local.thread');
+    assert.equal(job.route.threadId, 'thread-1');
+  } finally {
+    context.close();
+  }
+});
+
+test('scheduled job creation rejects non-local platform without channelId or route', () => {
+  const context = fixture();
+  try {
+    assert.throws(
+      () => context.jobs.createJob({
+        workspaceId: 'workspace-1',
+        platform: 'lark',
+        triggerType: 'cron',
+        cronExpr: '0 9 * * *',
+        promptTemplate: 'invalid lark task',
+        description: 'missing channel',
+      }),
+      /requires a channel ID or route/,
+    );
+  } finally {
+    context.close();
+  }
+});
+
+test('scheduled job update correctly updates channelId and platform', () => {
+  const context = fixture();
+  try {
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1',
+      platform: 'local',
+      triggerType: 'cron',
+      cronExpr: '0 9 * * *',
+      promptTemplate: 'init task',
+      description: 'initial',
+    });
+
+    assert.equal(job.platform, 'local');
+    assert.equal(job.route.channelId, 'workspace-1');
+
+    // Update to lark with channelId
+    const updated = context.jobs.updateJob(job.id, {
+      platform: 'lark',
+      channelId: 'oc_new_lark_channel',
+    });
+
+    assert.equal(updated.platform, 'lark');
+    assert.equal(updated.route.channelId, 'oc_new_lark_channel');
+    assert.equal(updated.route.type, 'channel.chat');
+  } finally {
+    context.close();
+  }
+});
+
+test('scheduled job list supports case-insensitive platform filter', () => {
+  const context = fixture();
+  try {
+    context.jobs.createJob({
+      workspaceId: 'workspace-1',
+      platform: 'lark',
+      channelId: 'oc_test_1',
+      triggerType: 'cron',
+      cronExpr: '0 9 * * *',
+      promptTemplate: 'lark task',
+      description: 'lark 1',
+    });
+
+    assert.equal(context.jobs.listJobs('workspace-1', undefined, 'LARK').length, 1);
+    assert.equal(context.jobs.listJobs('workspace-1', undefined, 'Lark').length, 1);
+    assert.equal(context.jobs.listJobs('workspace-1', undefined, 'lark').length, 1);
+    assert.equal(context.jobs.listJobs('workspace-1', undefined, 'weixin').length, 0);
+  } finally {
+    context.close();
+  }
+});
+
 function publicMonitorId(monitorId: string) {
   return monitorId.replace(/^monitor:/, '').split('-')[0] || monitorId;
 }
+

@@ -82,6 +82,7 @@ export interface ScheduledJobCreateInput {
   workspaceId: string;
   platform?: 'local' | 'lark' | (string & {});
   route?: ScheduledJobRoute;
+  channelId?: string;
   threadId?: string;
   executionMode?: ScheduledJobExecutionMode;
   triggerType: ScheduledJobTriggerType;
@@ -93,7 +94,9 @@ export interface ScheduledJobCreateInput {
 }
 
 export interface ScheduledJobUpdateInput {
+  platform?: 'local' | 'lark' | (string & {});
   route?: ScheduledJobRoute;
+  channelId?: string;
   executionMode?: ScheduledJobExecutionMode;
   triggerType?: ScheduledJobTriggerType;
   cronExpr?: string;

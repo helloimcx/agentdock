@@ -6,8 +6,12 @@ import type {
 } from '@cc/superai-contracts';
 import { buildQuery, coreRequest } from './request.js';
 
-export function listScheduledJobs(workspaceId?: string) {
-  const suffix = buildQuery({ workspace_id: workspaceId });
+export function listScheduledJobs(workspaceId?: string, channelId?: string, platform?: string) {
+  const suffix = buildQuery({
+    workspace_id: workspaceId,
+    channel_id: channelId,
+    platform: platform,
+  });
   return coreRequest<{ jobs: ScheduledJob[] }>('GET', `/scheduler/jobs${suffix}`);
 }
 

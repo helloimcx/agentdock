@@ -17,6 +17,7 @@ import type { SchedulerService } from './scheduler-service.js';
 import { toPublicScheduledJobId } from './job-id.js';
 import {
   routeFromPlatformThreadBinding,
+  routeTypeForPlatform,
   routeWithPlatformInstance,
   scheduledJobMatchesPlatformBinding,
   withoutThreadRoute,
@@ -47,14 +48,24 @@ type ScheduledJobApplicationServiceOptions = {
 export class ScheduledJobApplicationService {
   constructor(private readonly options: ScheduledJobApplicationServiceOptions) {}
 
-  listJobs(workspaceId?: string): ScheduledJob[] {
+  listJobs(workspaceId?: string, channelId?: string, platform?: string): ScheduledJob[] {
     const latestRunById = this.options.automations.listLatestRunByOrigin('scheduled-job', workspaceId);
-    return this.options.automations
-      .list(workspaceId, 'scheduled-job')
-      .map((automation) => automationToScheduledJob(
-        automation,
-        latestRunById.get(automation.id),
-      ));
+    let automations = this.options.automations.list(workspaceId, 'scheduled-job', channelId);
+    const normPlatform = platform ? platform.trim().toLowerCase() : '';
+    if (normPlatform) {
+      automations = automations.filter((automation) => {
+        const p = automation.delivery.platform.toLowerCase();
+        return p === normPlatform || p.startsWith(`${normPlatform}:`);
+      });
+    }
+    return automations.map((automation) => automationToScheduledJob(
+      automation,
+      latestRunById.get(automation.id),
+    ));
+  }
+
+  listJobsForChannel(workspaceId: string, channelId: string): ScheduledJob[] {
+    return this.listJobs(workspaceId, channelId);
   }
 
   getJob(jobId: string): ScheduledJob | undefined {
@@ -88,10 +99,18 @@ export class ScheduledJobApplicationService {
     this.options.automations.assertLegacyFacadesAvailable();
     const existing = this.getRequiredJob(jobId);
     const resolved = this.resolveRequiredJobId(jobId);
+    const platform = input.platform ?? existing.platform;
+    let route = input.route ? withoutThreadRoute(input.route) : existing.route;
+    if (input.channelId) {
+      route = {
+        type: routeTypeForPlatform(platform),
+        channelId: input.channelId,
+      };
+    }
     const merged = this.resolveCreateInput({
       workspaceId: existing.workspaceId,
-      platform: existing.platform,
-      route: input.route ? withoutThreadRoute(input.route) : existing.route,
+      platform,
+      route,
       executionMode: input.executionMode ?? existing.executionMode,
       triggerType: input.triggerType ?? existing.triggerType,
       cronExpr: input.cronExpr ?? existing.cronExpr,
@@ -138,30 +157,58 @@ export class ScheduledJobApplicationService {
   }
 
   resolveCreateInput(input: ScheduledJobCreateInput): ResolvedScheduledJobCreateInput {
+    if (input.platform === 'local') {
+      return {
+        ...input,
+        platform: 'local',
+        route: {
+          type: 'local.thread',
+          channelId: input.channelId || input.workspaceId || 'local',
+          ...(input.threadId ? { threadId: input.threadId } : {}),
+        },
+      };
+    }
     if (input.platform && input.route) {
       return {
         ...input,
         route: this.resolveExplicitRoute(input.platform, input.route),
       } as ResolvedScheduledJobCreateInput;
     }
-    const threadId = String(input.threadId || input.route?.threadId || '').trim();
-    if (threadId) {
-      const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
-      if (binding && binding.workspace_id === input.workspaceId) {
-        return {
-          ...input,
-          platform: binding.platform,
-          route: routeFromPlatformThreadBinding(binding),
-        };
-      }
+    if (input.platform && input.channelId) {
+      return {
+        ...input,
+        route: this.resolveExplicitRoute(input.platform, {
+          type: routeTypeForPlatform(input.platform),
+          channelId: input.channelId,
+        }),
+      } as ResolvedScheduledJobCreateInput;
+    }
+    const viaThread = this.resolveThreadBindingRoute(input);
+    if (viaThread) {
+      return viaThread;
+    }
+    if (input.platform && input.platform !== 'local') {
+      throw new Error(`Scheduled job creation for platform "${input.platform}" requires a channel ID or route.`);
     }
     return {
       ...input,
       platform: 'local',
       route: {
         type: 'local.thread',
-        channelId: input.workspaceId,
+        channelId: input.channelId || input.workspaceId || 'local',
       },
+    };
+  }
+
+  private resolveThreadBindingRoute(input: ScheduledJobCreateInput): ResolvedScheduledJobCreateInput | undefined {
+    const threadId = String(input.threadId || input.route?.threadId || '').trim();
+    if (!threadId) return undefined;
+    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+    if (!binding || binding.workspace_id !== input.workspaceId) return undefined;
+    return {
+      ...input,
+      platform: binding.platform,
+      route: routeFromPlatformThreadBinding(binding),
     };
   }
 

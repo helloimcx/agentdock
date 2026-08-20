@@ -128,6 +128,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       last_error TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_workspace_updated ON scheduled_jobs (workspace_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_workspace_platform ON scheduled_jobs (workspace_id, platform);
     CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled ON scheduled_jobs (enabled, trigger_type, run_at);
     CREATE TABLE IF NOT EXISTS scheduled_job_runs (
       id TEXT PRIMARY KEY,

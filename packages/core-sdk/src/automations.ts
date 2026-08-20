@@ -17,8 +17,9 @@ function scoped(path: string, workspaceId: string) {
   return `${path}${buildQuery({ workspace_id: workspaceId })}`;
 }
 
-export function listAutomations(workspaceId: string) {
-  return coreRequest<{ automations: AutomationDefinition[] }>('GET', scoped('/automations', workspaceId));
+export function listAutomations(workspaceId: string, channelId?: string) {
+  const suffix = buildQuery({ workspace_id: workspaceId, channel_id: channelId });
+  return coreRequest<{ automations: AutomationDefinition[] }>('GET', `/automations${suffix}`);
 }
 
 export function createAutomation(input: AutomationCreateInput) {

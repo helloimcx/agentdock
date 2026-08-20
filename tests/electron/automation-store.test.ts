@@ -880,3 +880,83 @@ test('rejects malformed persisted JSON with row context', () => {
     context.close();
   }
 });
+
+test('filters automations by workspaceId and channelId', () => {
+  const context = fixture();
+  try {
+    context.store.create(createInput({
+      workspaceId: 'ws-1',
+      title: 'Task in channel A',
+      delivery: { platform: 'lark', route: { type: 'channel.chat', channelId: 'chat-A' } },
+    }));
+    context.store.create(createInput({
+      workspaceId: 'ws-1',
+      title: 'Task in channel B',
+      delivery: { platform: 'lark', route: { type: 'channel.chat', channelId: 'chat-B' } },
+    }));
+    context.store.create(createInput({
+      workspaceId: 'ws-2',
+      title: 'Task in ws2 channel A',
+      delivery: { platform: 'lark', route: { type: 'channel.chat', channelId: 'chat-A' } },
+    }));
+
+    // List all in ws-1
+    assert.equal(context.store.list('ws-1').length, 2);
+    // List ws-1 + chat-A
+    const ws1ChatA = context.store.list('ws-1', undefined, 'chat-A');
+    assert.equal(ws1ChatA.length, 1);
+    assert.equal(ws1ChatA[0]?.title, 'Task in channel A');
+    // List ws-1 + chat-B
+    const ws1ChatB = context.store.list('ws-1', undefined, 'chat-B');
+    assert.equal(ws1ChatB.length, 1);
+    assert.equal(ws1ChatB[0]?.title, 'Task in channel B');
+    // List ws-2 + chat-A
+    const ws2ChatA = context.store.list('ws-2', undefined, 'chat-A');
+    assert.equal(ws2ChatA.length, 1);
+    assert.equal(ws2ChatA[0]?.title, 'Task in ws2 channel A');
+    // List non-existent channel
+    assert.equal(context.store.list('ws-1', undefined, 'chat-non-existent').length, 0);
+  } finally {
+    context.close();
+  }
+});
+
+test('legacy migration safely imports scheduled job with empty or missing route channelId', () => {
+  const context = fixture();
+  try {
+    // Insert a legacy row directly into scheduled_jobs without channelId
+    context.db.prepare(`
+      INSERT INTO scheduled_jobs (
+        id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr,
+        prompt_template, description, enabled, concurrency_policy, created_at, updated_at, execution_mode
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'legacy-job-1',
+      'ws-legacy',
+      'local',
+      'local.thread',
+      JSON.stringify({ type: 'local.thread' }), // No channelId!
+      'cron',
+      '0 9 * * *',
+      'Legacy prompt',
+      'Legacy description',
+      1,
+      'skip_if_running',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z',
+      'same-thread',
+    );
+
+    // Import legacy records
+    const imported = context.store.importLegacyRecords();
+    assert.equal(imported.scheduled, 1);
+
+    const record = context.store.get('legacy-job-1');
+    assert(record);
+    assert.equal(record.delivery?.route?.channelId, 'ws-legacy');
+  } finally {
+    context.close();
+  }
+});
+
+

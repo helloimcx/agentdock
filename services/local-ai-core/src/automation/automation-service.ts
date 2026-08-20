@@ -107,8 +107,10 @@ export class AutomationService {
   list(
     workspaceId?: string,
     originKind?: NonNullable<AutomationDefinition['originKind']>,
+    channelId?: string,
+    platform?: string,
   ): AutomationDefinition[] {
-    return this.options.store.listAutomations(workspaceId, originKind);
+    return this.options.store.listAutomations(workspaceId, originKind, channelId, platform);
   }
 
   get(automationId: string): AutomationDefinition | undefined {
@@ -178,7 +180,12 @@ export class AutomationService {
   }
 
   delete(automationId: string): { deleted: boolean } {
-    return this.options.store.deleteAutomation(automationId);
+    const existing = this.options.store.getAutomation(automationId);
+    const result = this.options.store.deleteAutomation(automationId);
+    if (result.deleted && existing) {
+      this.eventProjector.emitDefinition({ ...existing, enabled: false });
+    }
+    return result;
   }
 
   listEvaluations(automationId: string): AutomationEvaluation[] {

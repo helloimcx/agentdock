@@ -125,8 +125,11 @@ flowchart LR
 - 发布 AgentDock 0.1.71：修复工作区 Provider 配置保存后由于 `runtime_config` 缺失 `projects` 导致重新加载恢复旧版 `config.toml` 的问题；扩展 Hermes ACP agent 启动配置，自动注入对应的模型 Provider 环境变量 (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `HERMES_MODEL` 等)。
 
 
-### 2026-08-05
+### 2026-08-16
 
+- 发布 AgentDock 0.1.71：将定时任务（Scheduler / Automation）的归属升级为 Workspace + Channel 联合作用域；支持在 IM 渠道对话内自动按当前群聊隔离任务查询；CLI `lac scheduler add / list` 支持显式 `--platform`、`--channel` 与 `--all-channels`；桌面端 UI 新增渠道选择与多渠道标签过滤。
+
+### 2026-08-05
 
 - 发布 AgentDock 0.1.70：把模型 Provider (服务商) 的全局配置与工作区配置彻底解耦，新增独立的 AI 服务商管理页面 (`/providers`) 与侧边栏导航，简化工作区项目设置中的服务商绑定关联。
 
