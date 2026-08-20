@@ -183,13 +183,7 @@ export class AutomationService {
     const existing = this.options.store.getAutomation(automationId);
     const result = this.options.store.deleteAutomation(automationId);
     if (result.deleted && existing) {
-      this.emitEvent({ type: 'automation.definition.updated', payload: { ...existing, enabled: false } });
-      if (existing.originKind === 'scheduled-job') {
-        this.emitEvent({
-          type: 'scheduler.job.updated',
-          payload: automationToScheduledJob(existing, undefined),
-        });
-      }
+      this.eventProjector.emitDefinition({ ...existing, enabled: false });
     }
     return result;
   }
