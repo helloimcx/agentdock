@@ -183,16 +183,9 @@ export class ScheduledJobApplicationService {
         }),
       } as ResolvedScheduledJobCreateInput;
     }
-    const threadId = String(input.threadId || input.route?.threadId || '').trim();
-    if (threadId) {
-      const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
-      if (binding && binding.workspace_id === input.workspaceId) {
-        return {
-          ...input,
-          platform: binding.platform,
-          route: routeFromPlatformThreadBinding(binding),
-        };
-      }
+    const viaThread = this.resolveThreadBindingRoute(input);
+    if (viaThread) {
+      return viaThread;
     }
     if (input.platform && input.platform !== 'local') {
       throw new Error(`Scheduled job creation for platform "${input.platform}" requires a channel ID or route.`);
@@ -204,6 +197,18 @@ export class ScheduledJobApplicationService {
         type: 'local.thread',
         channelId: input.channelId || input.workspaceId || 'local',
       },
+    };
+  }
+
+  private resolveThreadBindingRoute(input: ScheduledJobCreateInput): ResolvedScheduledJobCreateInput | undefined {
+    const threadId = String(input.threadId || input.route?.threadId || '').trim();
+    if (!threadId) return undefined;
+    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
+    if (!binding || binding.workspace_id !== input.workspaceId) return undefined;
+    return {
+      ...input,
+      platform: binding.platform,
+      route: routeFromPlatformThreadBinding(binding),
     };
   }
 
