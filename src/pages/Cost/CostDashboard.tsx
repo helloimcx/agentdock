@@ -501,6 +501,19 @@ function DeleteConfirmModal({
   );
 }
 
+const DEFAULT_BUDGET_FORM: BudgetCreateInput = {
+  workspaceId: 'default',
+  name: '',
+  scopeKind: 'workspace',
+  scopeId: '',
+  periodKind: 'daily',
+  limitUsd: 5.0,
+  softThreshold: 0.8,
+  hardThreshold: 1.0,
+  action: 'alert_and_skip',
+  enabled: true,
+};
+
 function useCostDashboardData() {
   const [summary, setSummary] = useState<CostSummary | null>(null);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -509,18 +522,7 @@ function useCostDashboardData() {
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [deletingBudget, setDeletingBudget] = useState<Budget | null>(null);
-  const [modalForm, setModalForm] = useState<BudgetCreateInput>({
-    workspaceId: 'default',
-    name: '',
-    scopeKind: 'workspace',
-    scopeId: '',
-    periodKind: 'daily',
-    limitUsd: 5.0,
-    softThreshold: 0.8,
-    hardThreshold: 1.0,
-    action: 'alert_and_skip',
-    enabled: true,
-  });
+  const [modalForm, setModalForm] = useState<BudgetCreateInput>(DEFAULT_BUDGET_FORM);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -546,18 +548,7 @@ function useCostDashboardData() {
 
   const openCreateModal = () => {
     setEditingBudget(null);
-    setModalForm({
-      workspaceId: 'default',
-      name: '',
-      scopeKind: 'workspace',
-      scopeId: '',
-      periodKind: 'daily',
-      limitUsd: 5.0,
-      softThreshold: 0.8,
-      hardThreshold: 1.0,
-      action: 'alert_and_skip',
-      enabled: true,
-    });
+    setModalForm(DEFAULT_BUDGET_FORM);
     setBudgetModalOpen(true);
   };
 
