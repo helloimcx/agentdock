@@ -8,6 +8,7 @@ import type { EventBus } from '@cc/plugin-sdk';
 import type {
   AcpSessionState,
   LocalCoreProjectConfig,
+  RunningPermissionRequest,
 } from '../router/workspace-router-types.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
@@ -23,6 +24,7 @@ import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
+import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
 
 type SendThreadMessageOptions = {
   permissionMode?: string;
@@ -47,6 +49,10 @@ export class LocalCoreAcpBackend {
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
   private readonly responseProcessor: LocalCoreAcpResponseProcessor;
   private readonly slashCommands: ThreadSlashCommandDispatcher;
+  // Thread-scoped "always allow" memory. Kept at backend level (not on the ACP
+  // session) so the choice survives session rebuilds; in-memory only, so a
+  // Local AI Core restart asks once again.
+  private readonly threadAllowAll = new Set<string>();
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
     this.transport = new LocalCoreAcpTransport({
@@ -104,6 +110,7 @@ export class LocalCoreAcpBackend {
         return approval.approvalId;
       },
       getThreadAgentMode: (threadId) => this.options.store.getThreadRow(threadId)?.agent_mode || DEFAULT_AGENT_MODE,
+      hasThreadAllowAll: (threadId) => this.threadAllowAll.has(threadId),
       sendRaw: (session, payload) => this.transport.sendRaw(session, payload),
     });
     this.sessionCoordinator = new LocalCoreAcpSessionCoordinator({
@@ -181,6 +188,7 @@ export class LocalCoreAcpBackend {
 
   async deleteThread(threadId: string) {
     this.sessionCoordinator.closeThreadSession(threadId);
+    this.threadAllowAll.delete(threadId);
     this.options.store.deleteThread(threadId);
     return { deleted: true };
   }
@@ -307,17 +315,41 @@ export class LocalCoreAcpBackend {
 
   async sendThreadAction(threadId: string, content: string, config?: LocalCoreProjectConfig) {
     const session = this.sessionCoordinator.getSession(threadId);
-    if (!session?.currentRunId) {
-      return this.sendThreadMessage(threadId, content, config);
+    const pendingPermission = session?.currentRunId
+      ? session.pendingPermissionByRun.get(session.currentRunId)
+      : undefined;
+    if (session && pendingPermission) {
+      return this.answerPendingPermission(session, pendingPermission, threadId, content);
     }
-    const pendingPermission = session.pendingPermissionByRun.get(session.currentRunId);
-    if (!pendingPermission) {
-      return this.sendThreadMessage(threadId, content, config);
+    // While allow-all is remembered no permission card is pending, so a deny-style
+    // reply lands here — treat it as the user-facing revoke switch.
+    if (this.threadAllowAll.has(threadId) && isThreadAllowAllRevokeIntent(content)) {
+      return this.revokeThreadAllowAll(threadId, content);
     }
+    return this.sendThreadMessage(threadId, content, config);
+  }
+
+  private answerPendingPermission(
+    session: AcpSessionState,
+    pendingPermission: RunningPermissionRequest,
+    threadId: string,
+    content: string,
+  ): { runId: string } {
     const action = String(content || '').trim().toLowerCase();
     const matched = pendingPermission.options.find((option) => option.normalizedAction === action || option.optionId === action);
     if (!matched) {
       throw new Error(`Unknown permission option: ${content}`);
+    }
+    if (matched.normalizedAction === 'allow all') {
+      this.threadAllowAll.add(threadId);
+      this.postAssistantNotice(
+        threadId,
+        session.bridgeSessionKey,
+        '已记住本会话的“始终允许”：后续工具确认将自动通过，回复 deny / 拒绝 / 撤销 可恢复逐次确认。',
+        false,
+      );
+    } else if (matched.normalizedAction === 'deny') {
+      this.threadAllowAll.delete(threadId);
     }
     const accepted = this.transport.sendRaw(session, {
       jsonrpc: '2.0',
@@ -339,13 +371,65 @@ export class LocalCoreAcpBackend {
         resolution: matched.name || matched.optionId,
       });
     }
-    session.pendingPermissionByRun.delete(session.currentRunId);
+    const runId = session.currentRunId || '';
+    session.pendingPermissionByRun.delete(runId);
     this.emitBridgeEvent({
       type: 'typing_start',
       sessionKey: session.bridgeSessionKey,
-      replyCtx: session.currentRunId,
+      replyCtx: runId,
     });
-    return { runId: session.currentRunId };
+    return { runId };
+  }
+
+  private revokeThreadAllowAll(threadId: string, content: string): { runId: string } {
+    this.threadAllowAll.delete(threadId);
+    const row = this.options.store.getThreadRow(threadId);
+    const reply = String(content || '').trim();
+    if (row && reply) {
+      this.options.store.appendMessage(threadId, 'user', reply, 'final');
+      this.options.eventBus.emit({
+        type: 'thread.message.accepted',
+        payload: {
+          threadId,
+          workspaceId: row.workspace_id,
+          role: 'user',
+          content: reply,
+          kind: 'final',
+          source: 'user',
+        },
+      });
+    }
+    this.postAssistantNotice(
+      threadId,
+      row?.bridge_session_key,
+      '已撤销本会话的“始终允许”，后续工具确认将重新逐次询问。',
+      true,
+    );
+    return { runId: '' };
+  }
+
+  private postAssistantNotice(threadId: string, bridgeSessionKey: string | null | undefined, text: string, withTypingStop: boolean) {
+    const row = this.options.store.getThreadRow(threadId);
+    if (!row) {
+      return;
+    }
+    this.options.store.appendMessage(threadId, 'assistant', text, 'final');
+    this.options.eventBus.emit({
+      type: 'thread.message.accepted',
+      payload: {
+        threadId,
+        workspaceId: row.workspace_id,
+        role: 'assistant',
+        content: text,
+        kind: 'final',
+        source: 'system',
+      },
+    });
+    const sessionKey = String(bridgeSessionKey || row.bridge_session_key || '');
+    this.emitBridgeEvent({ type: 'reply', sessionKey, content: text });
+    if (withTypingStop) {
+      this.emitBridgeEvent({ type: 'typing_stop', sessionKey });
+    }
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
