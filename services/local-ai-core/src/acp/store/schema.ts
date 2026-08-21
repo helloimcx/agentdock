@@ -455,6 +455,20 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_budgets_workspace_scope ON budgets (workspace_id, scope_kind, scope_id);
     CREATE INDEX IF NOT EXISTS idx_budgets_enabled ON budgets (enabled);
+    CREATE TABLE IF NOT EXISTS skill_sources (
+      skill_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      workspace_id TEXT NOT NULL DEFAULT '',
+      workspace_path TEXT NOT NULL DEFAULT '',
+      source_repo TEXT NOT NULL,
+      source_ref TEXT NOT NULL DEFAULT '',
+      source_type TEXT NOT NULL DEFAULT 'github',
+      content_hash TEXT NOT NULL,
+      installed_at TEXT NOT NULL,
+      PRIMARY KEY (skill_id, scope, workspace_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_sources_repo ON skill_sources (source_repo);
+    CREATE INDEX IF NOT EXISTS idx_skill_sources_workspace ON skill_sources (workspace_id);
   `);
   ensureColumn(db, 'messages', 'tool_call_json', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_kind', 'TEXT');

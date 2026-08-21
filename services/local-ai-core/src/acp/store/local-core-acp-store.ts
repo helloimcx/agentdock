@@ -90,6 +90,8 @@ import { LocalWorkspaceRegistryStore } from './workspace-registry-store.js';
 import { LocalModelProviderStore } from './model-provider-store.js';
 import { LocalExternalStore } from './external-store.js';
 import { LocalRuntimeConfigStore } from './runtime-config-store.js';
+import { LocalSkillSourceStore } from './skill-source-store.js';
+import type { SkillSource, SkillScope } from '@cc/superai-contracts/skills';
 
 export class LocalCoreAcpStore {
   private readonly db: DatabaseSync;
@@ -109,6 +111,7 @@ export class LocalCoreAcpStore {
   readonly trace: LocalCoreTraceStore;
   readonly cost: LocalCoreCostStore;
   readonly budgets: LocalCoreBudgetStore;
+  readonly skillSources: LocalSkillSourceStore;
 
   constructor(userDataPath: string) {
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
@@ -120,6 +123,7 @@ export class LocalCoreAcpStore {
     this.trace = new LocalCoreTraceStore(this.db);
     this.cost = new LocalCoreCostStore(this.db);
     this.budgets = new LocalCoreBudgetStore(this.db);
+    this.skillSources = new LocalSkillSourceStore(this.db);
     this.workspaceRegistry = new LocalWorkspaceRegistryStore(this.db);
     this.security = new LocalSecurityStore(this.db, (taskId, input) => {
       this.agentTasks.update(taskId, input);
@@ -138,6 +142,7 @@ export class LocalCoreAcpStore {
     ensureLocalCoreAcpSchema(this.db);
     this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
   }
+
 
   close() {
     this.db.close();
