@@ -95,6 +95,13 @@ flowchart LR
 
 ## New
 
+### 2026-08-21
+
+- 支持 Token 成本跟踪与预算硬阻断治理（Issue #66）：
+  - **用量与费用多维度归集**：在 Local AI Core 内置 `cost_events` 实时流水与价格计算引擎，按模型/渠道/Agent/触发源（手动、Cron、Monitor、External 等）精确核算 Token 花费，支持主流模型预设费率与服务商自定义单价。
+  - **预算硬约束与 Preflight 拦截**：支持日/周/月周期及全局/工作区/Agent/自动化作用域预算策略；在触发源执行前进行预算预检（Preflight Check），超额自动阻断无监督任务（`alert_and_skip`）或强杀运行（`alert_and_kill`），并广播 `budget.limit.exceeded` 领域事件。
+  - **成本看板与 Trace 关联**：新增 `/costs` 成本治理大盘，展示今日/本周/本月费用、多维度开销占比、策略健康度与 Top 昂贵运行列表，支持从高花费记录一键跳转到 Trace Gantt 甘特图下钻诊断。
+
 ### 2026-08-20
 
 - 修复权限卡片「始终允许」不生效的问题：Local AI Core 现按线程（thread）记住用户选择的 "allow all"，即使 ACP agent 会话因空闲超时、按轮次隔离或配置变更而重建，后续 `session/request_permission` 也会自动放行、不再重复弹确认卡。该记忆覆盖本线程的全部工具（线程生命周期内有效，重启 Local AI Core 后失效）；回复 `deny` / `拒绝` / `撤销` 即可撤销（授权时会收到提示），删除线程也会一并清理。对所有渠道（飞书/微信/Desktop/Web）与所有 ACP agent 生效。

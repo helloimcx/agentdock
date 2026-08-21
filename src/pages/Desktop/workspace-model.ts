@@ -150,6 +150,9 @@ export function providerToDraft(provider: DesktopModelProvider): DesktopModelPro
     models: provider.models || [],
     thinking: provider.thinking || '',
     env: provider.env || {},
+    unit_price_in: provider.unit_price_in,
+    unit_price_out: provider.unit_price_out,
+    unit_price_cache: provider.unit_price_cache,
   };
 }
 

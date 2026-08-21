@@ -390,6 +390,9 @@ export interface DesktopPlatformConfig {
 export interface DesktopProviderModelConfig {
   model: string;
   alias?: string;
+  unit_price_in?: number;
+  unit_price_out?: number;
+  unit_price_cache?: number;
 }
 
 export interface DesktopProviderConfig {
@@ -400,6 +403,9 @@ export interface DesktopProviderConfig {
   models?: DesktopProviderModelConfig[];
   thinking?: string;
   env?: Record<string, string>;
+  unit_price_in?: number;
+  unit_price_out?: number;
+  unit_price_cache?: number;
 }
 
 export interface DesktopModelProvider extends DesktopProviderConfig {
@@ -417,6 +423,9 @@ export interface DesktopModelProviderInput {
   models?: DesktopProviderModelConfig[];
   thinking?: string;
   env?: Record<string, string>;
+  unit_price_in?: number;
+  unit_price_out?: number;
+  unit_price_cache?: number;
 }
 
 export interface DesktopModelProviderListResponse {

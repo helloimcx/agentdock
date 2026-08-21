@@ -2,13 +2,18 @@ import type { LocalCoreTraceStore } from './store/trace-store.js';
 import type { TokenUsage, RunSpan } from '@cc/superai-contracts';
 import { redactSecrets } from './store/utils.js';
 
+export type { TokenUsage };
+
 const MAX_ACTIVE_RUNS = 200;
 const MAX_PAYLOAD_CHARS = 20000;
 
 export class AcpTraceProjector {
   private activeRunSpans = new Map<string, Map<string, string>>(); // runId -> (key -> spanId)
 
-  constructor(private readonly traceStore: LocalCoreTraceStore) {}
+  constructor(
+    private readonly traceStore: LocalCoreTraceStore,
+    private readonly onUsageRecorded?: (runId: string, modelName: string, usage: TokenUsage) => void,
+  ) {}
 
   startRun(runId: string): string {
     if (!this.activeRunSpans.has(runId)) {
@@ -166,6 +171,7 @@ export class AcpTraceProjector {
 
     if (usage) {
       this.traceStore.updateSpan(span.id, { usageJson: usage });
+      this.onUsageRecorded?.(runId, modelName, usage);
     }
 
     return span;

@@ -36,7 +36,7 @@ import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import type { AgentAcpProgressKind } from '../agents/shared/acp-behavior.js';
 import type { LocalCoreTraceStore } from './store/trace-store.js';
-import { AcpTraceProjector } from './local-core-acp-trace-projector.js';
+import { AcpTraceProjector, type TokenUsage } from './local-core-acp-trace-projector.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
@@ -301,6 +301,16 @@ export class LocalCoreAcpTurnCoordinator {
     if (!update || !currentTurn || !currentRunId) {
       return;
     }
+    if (update.usage || update.tokens) {
+      const modelName = String(update.model || update.modelName || currentTurn.agentType || 'default');
+      const tokenUsage: TokenUsage = update.usage || {
+        inputTokens: Number(update.tokens?.input || update.tokens?.prompt || 0),
+        outputTokens: Number(update.tokens?.output || update.tokens?.completion || 0),
+        cacheTokens: Number(update.tokens?.cache || 0),
+        totalTokens: Number(update.tokens?.total || 0),
+      };
+      this.traceProjector?.onModelCall(currentRunId, modelName, tokenUsage);
+    }
     switch (String(update.sessionUpdate || '')) {
       case 'agent_message_chunk':
         return this.handleMessageChunkUpdate(session, currentTurn, currentRunId, update);
@@ -312,6 +322,9 @@ export class LocalCoreAcpTurnCoordinator {
         return this.handleToolCallUpdate(session, currentTurn, currentRunId, update);
       case 'plan':
         return this.handlePlanUpdate(session, currentTurn, currentRunId, update);
+      case 'model_call':
+      case 'usage':
+        return;
     }
   }
 

@@ -2,6 +2,7 @@ import { lazy, type ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import {
   Activity,
+  Coins,
   Cpu,
   FolderKanban,
   LayoutDashboard,
@@ -19,6 +20,7 @@ const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const ThreadChat = lazy(() => import('@/pages/Threads/ThreadChat'));
 const DesktopWorkspace = lazy(() => import('@/pages/Desktop/Workspace'));
 const ProvidersPage = lazy(() => import('@/pages/Providers'));
+const CostDashboard = lazy(() => import('@/pages/Cost/CostDashboard'));
 const AutomationList = lazy(() => import('@/pages/Automation/AutomationList'));
 const SystemConfig = lazy(() => import('@/pages/System/Config'));
 const SystemLogs = lazy(() => import('@/pages/System/Logs'));
@@ -125,6 +127,13 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       titleKey: 'nav.providers',
       order: 35,
       element: ({ features }) => guarded(features.desktopWorkspace, <ProvidersPage />),
+    },
+    {
+      id: 'costs',
+      path: 'costs',
+      titleKey: 'nav.costs',
+      order: 38,
+      element: () => <CostDashboard />,
     },
     {
       id: 'knowledge',
@@ -241,6 +250,13 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       icon: Cpu,
       order: 35,
       visible: ({ features }) => features.desktopWorkspace,
+    },
+    {
+      id: 'costs',
+      path: '/costs',
+      labelKey: 'nav.costs',
+      icon: Coins,
+      order: 38,
     },
     {
       id: 'knowledge',

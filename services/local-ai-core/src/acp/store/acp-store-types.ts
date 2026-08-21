@@ -177,6 +177,9 @@ export type LocalModelProviderRow = {
   models_json: string;
   thinking: string | null;
   env_json: string;
+  unit_price_in: number | null;
+  unit_price_out: number | null;
+  unit_price_cache: number | null;
   created_at: string;
   updated_at: string;
 };

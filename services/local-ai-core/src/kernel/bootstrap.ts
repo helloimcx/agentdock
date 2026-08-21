@@ -44,6 +44,7 @@ import { SchedulerService } from '../scheduler/scheduler-service.js';
 import { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 import { AutomationActionExecutor } from '../automation/automation-action-executor.js';
 import { AutomationService } from '../automation/automation-service.js';
+import { CostService } from '../cost/cost-service.js';
 import { setDefaultTimezone } from '../automation/legacy-automation-mappers.js';
 
 export interface LocalCoreKernel {
@@ -71,6 +72,7 @@ export interface LocalCoreRuntimeBootstrap {
   automationMonitors?: AutomationMonitorService;
   automationActionExecutor?: AutomationActionExecutor;
   automations?: AutomationService;
+  costService?: CostService;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -287,8 +289,14 @@ export function bootstrapLocalCoreRuntime(options: {
   const monitorProviders = monitorRuntimes.flatMap((runtime) => runtime.providers || []) as MonitorProviderRuntime[];
   const knowledgeProvider = knowledgeRuntime.provider as KnowledgeRuntime;
   const knowledgeAttachments = knowledgeRuntime.attachments as ThreadKnowledgeAttachmentStore;
+  const costService = new CostService({
+    store,
+    eventBus: kernel.context.bus,
+    log: options.log,
+  });
   workspaceRouter = createWorkspaceRouter({
     store,
+    costService,
     cliBinDir: state.cliBinDir,
     localCoreBase: options.localCoreBase,
     readRuntimeConfig: async () => store.readRuntimeConfig(),
@@ -304,6 +312,7 @@ export function bootstrapLocalCoreRuntime(options: {
     getWorkspaceRouter: () => workspaceRouter,
     getChannelRuntime: (platform) =>
       channelRuntimes.find((runtime) => runtime.platform === platform || platform.startsWith(`${runtime.platform}:`)),
+    costService,
   });
   // Default legacy cron jobs to the host's local timezone so they fire at the wall
   // clock the user wrote (e.g. a job written as "0 1 * * *" runs at 1 AM server time).
@@ -365,6 +374,7 @@ export function bootstrapLocalCoreRuntime(options: {
     automationMonitors,
     automationActionExecutor,
     automations,
+    costService,
     async start() {
       await kernel.lifecycle.startAll();
       await automations.start();

@@ -49,11 +49,13 @@ import { registerUnifiedAutomationHandlers } from './handlers/automations-handle
 import { registerKnowledgeHandlers } from './handlers/knowledge-handler.js';
 import { registerSkillsHandlers } from './handlers/skills-handler.js';
 import { registerTraceHandlers } from './handlers/trace-handler.js';
+import { registerCostHandlers } from './handlers/cost-handler.js';
 import { ManagedSkillCatalog } from './managed-skill-catalog.js';
 import { registerCapabilitiesHandlers } from './handlers/capabilities-handler.js';
 import { registerProviderHandlers } from './handlers/provider-handler.js';
 import { registerChannelHandlers } from './handlers/channel-handler.js';
 import { registerExternalHandlers } from './handlers/external-handler.js';
+import { CostService } from '../cost/cost-service.js';
 import {
   registerOpenAiHandler,
   OpenAiChatCompletionStreamAdapter,
@@ -84,6 +86,7 @@ export interface LocalAiCoreServerBindings {
   readonly scheduledJobs: ScheduledJobApplicationService;
   readonly automationMonitors: AutomationMonitorService;
   readonly automations?: AutomationService;
+  readonly costService?: CostService;
   readonly store: LocalCoreAcpStore;
   readonly runtimeDetection: RuntimeDetectionService;
   readonly kernel: LocalCoreKernel;
@@ -184,6 +187,9 @@ export class LocalAiCoreServer {
     registerKnowledgeHandlers(this.handlers, b.knowledgeProvider);
     registerSkillsHandlers(this.handlers, b.skillCatalog || new ManagedSkillCatalog());
     registerTraceHandlers(this.handlers, b.store);
+    const costEventBus = b.kernel?.context?.bus || { emit: () => {}, on: () => () => {} };
+    const costService = b.costService || new CostService({ store: b.store, eventBus: costEventBus as any });
+    registerCostHandlers(this.handlers, costService);
     registerCapabilitiesHandlers(this.handlers, b.kernel);
     registerProviderHandlers(this.handlers, b.store);
     registerChannelHandlers(this.handlers, b.channelService);
@@ -257,6 +263,17 @@ export class LocalAiCoreServer {
     });
     b.controller.on('automation-script-version', (version: AutomationScriptVersion) => {
       this.broadcast({ type: 'automation.script-version.updated', version });
+    });
+    b.controller.on('cost-event', (event) => {
+      this.broadcast({ type: 'cost.event.recorded', event });
+    });
+    b.controller.on('budget-threshold', (payload) => {
+      const spend = Number(payload.spend !== undefined ? payload.spend : (payload.currentSpendUsd || 0));
+      this.broadcast({ type: 'budget.threshold.reached', budget: payload.budget, spend });
+    });
+    b.controller.on('budget-limit-exceeded', (payload) => {
+      const spend = Number(payload.spend !== undefined ? payload.spend : (payload.currentSpendUsd || 0));
+      this.broadcast({ type: 'budget.limit.exceeded', budget: payload.budget, spend });
     });
     b.controller.on('runtime-detection', (event: LocalCoreEvent) => {
       this.broadcast(event);

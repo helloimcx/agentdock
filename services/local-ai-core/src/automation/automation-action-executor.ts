@@ -2,6 +2,7 @@ import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-con
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import type { CostService } from '../cost/cost-service.js';
 import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { ScheduledBridgeSession } from '../scheduler/scheduled-bridge-session.js';
 import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
@@ -31,6 +32,7 @@ export type AutomationActionExecutorOptions = {
   store: LocalCoreAcpStore;
   getWorkspaceRouter: () => WorkspaceRouter;
   getChannelRuntime: (platform: string) => ChannelRuntime | undefined;
+  costService?: CostService;
 };
 
 export class AutomationActionExecutor {
@@ -41,6 +43,20 @@ export class AutomationActionExecutor {
     timeoutMs = BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS,
   ): Promise<AutomationActionExecutionResult> {
     const { automation } = input;
+
+    if (this.options.costService) {
+      const channelId = typeof automation.delivery.route === 'object' && automation.delivery.route && 'channelId' in automation.delivery.route
+        ? String((automation.delivery.route as unknown as Record<string, unknown>).channelId || '')
+        : undefined;
+      const preflight = this.options.costService.checkBudgetPreflight({
+        workspaceId: automation.workspaceId,
+        channelId: channelId || undefined,
+        sourceId: automation.id,
+      });
+      if (!preflight.allowed) {
+        throw new Error(`budget_exceeded: ${preflight.budget?.name || 'budget limit reached'}`);
+      }
+    }
     const workspaceRouter = this.options.getWorkspaceRouter();
     const threadId = await this.resolveThread(automation);
     const prompt = renderAutomationPrompt(automation.action.promptTemplate, input.promptVariables);
