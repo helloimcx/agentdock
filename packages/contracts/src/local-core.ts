@@ -873,4 +873,7 @@ export type LocalCoreEvent =
   | { type: 'presence.updated'; threadId?: string; live: boolean; stream?: DesktopBridgeEvent }
   | { type: 'stream.updated'; stream: DesktopBridgeEvent }
   | { type: 'external.run.snapshot'; snapshot: ExternalRunSnapshot }
-  | { type: 'external.run.stream'; runId: string; stream: DesktopBridgeEvent };
+  | { type: 'external.run.stream'; runId: string; stream: DesktopBridgeEvent }
+  | { type: 'cost.event.recorded'; event: import('./costs.js').CostEvent }
+  | { type: 'budget.threshold.reached'; budget: import('./budgets.js').Budget; spend: number }
+  | { type: 'budget.limit.exceeded'; budget: import('./budgets.js').Budget; spend: number };

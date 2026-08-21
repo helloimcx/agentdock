@@ -294,6 +294,9 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       models_json TEXT NOT NULL DEFAULT '[]',
       thinking TEXT,
       env_json TEXT NOT NULL DEFAULT '{}',
+      unit_price_in REAL,
+      unit_price_out REAL,
+      unit_price_cache REAL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -413,6 +416,45 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS cost_events (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      provider_id TEXT,
+      model_id TEXT,
+      channel_id TEXT,
+      source_kind TEXT NOT NULL,
+      source_id TEXT,
+      tokens_in INTEGER NOT NULL DEFAULT 0,
+      tokens_out INTEGER NOT NULL DEFAULT 0,
+      tokens_cache INTEGER NOT NULL DEFAULT 0,
+      tokens_total INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0.0,
+      recorded_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cost_events_workspace_recorded ON cost_events (workspace_id, recorded_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_cost_events_run ON cost_events (run_id);
+    CREATE INDEX IF NOT EXISTS idx_cost_events_source ON cost_events (source_kind, source_id, recorded_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_cost_events_agent ON cost_events (agent_type, recorded_at DESC);
+    CREATE TABLE IF NOT EXISTS budgets (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      scope_kind TEXT NOT NULL,
+      scope_id TEXT,
+      period_kind TEXT NOT NULL,
+      limit_usd REAL NOT NULL,
+      soft_threshold REAL NOT NULL DEFAULT 0.8,
+      hard_threshold REAL NOT NULL DEFAULT 1.0,
+      action TEXT NOT NULL DEFAULT 'alert_and_skip',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_budgets_workspace_scope ON budgets (workspace_id, scope_kind, scope_id);
+    CREATE INDEX IF NOT EXISTS idx_budgets_enabled ON budgets (enabled);
   `);
   ensureColumn(db, 'messages', 'tool_call_json', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_kind', 'TEXT');
@@ -426,6 +468,9 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
   ensureColumn(db, 'scheduled_job_runs', 'last_bridge_event_at', 'TEXT');
   ensureColumn(db, 'threads', 'agent_mode', "TEXT NOT NULL DEFAULT 'default'");
   ensureColumn(db, 'automations', 'legacy_metadata_json', 'TEXT');
+  ensureColumn(db, 'model_providers', 'unit_price_in', 'REAL');
+  ensureColumn(db, 'model_providers', 'unit_price_out', 'REAL');
+  ensureColumn(db, 'model_providers', 'unit_price_cache', 'REAL');
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {

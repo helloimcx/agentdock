@@ -11,6 +11,7 @@ import type {
 } from '../router/workspace-router-types.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
+import { AcpTraceProjector } from './local-core-acp-trace-projector.js';
 import { LocalCoreAcpSessionCoordinator } from './local-core-acp-session-coordinator.js';
 import { LocalCoreAcpResponseProcessor, type SchedulerHandlers } from './local-core-acp-response-processor.js';
 import type { ThreadMessageInput } from './local-core-acp-content.js';
@@ -24,6 +25,8 @@ import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dis
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 
+import type { CostService } from '../cost/cost-service.js';
+
 type SendThreadMessageOptions = {
   permissionMode?: string;
   runtimeEnv?: Record<string, string>;
@@ -31,6 +34,7 @@ type SendThreadMessageOptions = {
 
 type LocalCoreAcpBackendOptions = {
   store: LocalCoreAcpStore;
+  costService?: CostService;
   runThreadMap: Map<string, string>;
   cliBinDir?: string;
   localCoreBase?: string;
@@ -55,8 +59,33 @@ export class LocalCoreAcpBackend {
       onAgentNotification: (session, payload) => this.handleAgentNotification(session, payload),
       onSessionClosed: (session, error) => this.handleTransportSessionClosed(session, error),
     });
+    const traceProjector = new AcpTraceProjector(options.store.trace, (runId, modelName, usage) => {
+      const threadId = this.options.runThreadMap.get(runId);
+      if (!threadId) return;
+      const threadRow = this.options.store.getThreadRow(threadId);
+      if (!threadRow) return;
+
+      const eventPayload = {
+        workspaceId: threadRow.workspace_id,
+        threadId,
+        runId,
+        agentType: threadRow.agent_type,
+        modelId: modelName,
+        sourceKind: 'manual' as const,
+        tokensIn: usage.inputTokens,
+        tokensOut: usage.outputTokens,
+        tokensCache: usage.cacheTokens,
+        tokensTotal: usage.totalTokens,
+      };
+
+      if (this.options.costService) {
+        this.options.costService.recordUsage(eventPayload);
+      } else {
+        this.options.store.cost.recordCostEvent(eventPayload);
+      }
+    });
     this.turnCoordinator = new LocalCoreAcpTurnCoordinator({
-      traceStore: options.store.trace,
+      traceProjector,
       emitBridge: (event) => this.emitBridgeEvent(event),
       appendMessage: (threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
         this.options.store.appendMessage(threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus);

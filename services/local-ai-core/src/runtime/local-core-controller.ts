@@ -19,6 +19,7 @@ import type { ScheduledJobApplicationService } from '../scheduler/scheduled-job-
 import type { AutomationMonitorService } from '../automation/automation-monitor-service.js';
 import type { AutomationService } from '../automation/automation-service.js';
 import type { AutomationActionExecutor } from '../automation/automation-action-executor.js';
+import { CostService } from '../cost/cost-service.js';
 import { RuntimeDetectionService, type RuntimeDetectionEvent } from './runtime-detection-service.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import { ChannelService } from './channel-service.js';
@@ -36,6 +37,7 @@ export class LocalCoreController extends EventEmitter {
   readonly automationMonitors: AutomationMonitorService;
   readonly automations: AutomationService;
   readonly automationActionExecutor?: AutomationActionExecutor;
+  readonly costService: CostService;
   readonly runtimeDetection: RuntimeDetectionService;
   readonly kernel: LocalCoreKernel;
   readonly errorReporter: LocalCoreErrorReporter;
@@ -59,6 +61,11 @@ export class LocalCoreController extends EventEmitter {
     this.state = this.runtime.state;
     this.store = this.runtime.store;
     this.kernel = this.runtime.kernel;
+    this.costService = this.runtime.costService || new CostService({
+      store: this.store,
+      eventBus: this.kernel.context.bus,
+      log: (message) => this.handleLog(message),
+    });
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
     const runtimeChannels = this.runtime.channelRuntimes || [this.runtime.channelRuntime, this.runtime.weixinChannelRuntime];
@@ -117,6 +124,15 @@ export class LocalCoreController extends EventEmitter {
       }),
       this.kernel.context.bus.on('scheduler.run.updated', (run) => {
         this.emit('scheduler-run', run);
+      }),
+      this.kernel.context.bus.on('cost.event.recorded', (event) => {
+        this.emit('cost-event', event);
+      }),
+      this.kernel.context.bus.on('budget.threshold.reached', (event) => {
+        this.emit('budget-threshold', event);
+      }),
+      this.kernel.context.bus.on('budget.limit.exceeded', (event) => {
+        this.emit('budget-limit-exceeded', event);
       }),
       this.kernel.context.bus.on('automation.monitor.updated', (monitor) => {
         this.emit('automation-monitor', monitor);

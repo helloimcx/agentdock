@@ -3,6 +3,7 @@ import {
   Activity,
   CheckCircle2,
   Clock,
+  Coins,
   Cpu,
   Database,
   FileJson,
@@ -78,7 +79,7 @@ export function RunTimelineView({ runId, className }: RunTimelineViewProps) {
   return (
     <div className={cn('space-y-4 text-xs', className)}>
       {/* Top Metrics Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-lg border bg-card p-3 shadow-sm">
           <div className="text-[11px] text-muted-foreground">执行状态</div>
           <div className="mt-1 font-semibold flex items-center gap-1.5">
@@ -109,6 +110,14 @@ export function RunTimelineView({ runId, className }: RunTimelineViewProps) {
           <div className="mt-1 font-semibold text-foreground flex items-center gap-1">
             <Cpu className="h-3.5 w-3.5 text-amber-500" />
             {summary.totalTokens ? summary.totalTokens.toLocaleString() : '0'} tokens
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-card p-3 shadow-sm">
+          <div className="text-[11px] text-muted-foreground">预估成本</div>
+          <div className="mt-1 font-semibold text-foreground flex items-center gap-1">
+            <Coins className="h-3.5 w-3.5 text-emerald-500" />
+            {summary.totalCostUsd !== undefined ? `$${summary.totalCostUsd.toFixed(4)}` : '$0.0000'}
           </div>
         </div>
       </div>

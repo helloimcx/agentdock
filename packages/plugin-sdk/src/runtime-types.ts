@@ -116,6 +116,12 @@ export interface DomainEventPayloadMap {
   'automation.evaluation.updated': import('@cc/superai-contracts').AutomationEvaluation;
   'automation.run.updated': import('@cc/superai-contracts').AutomationRun;
   'automation.script-version.updated': import('@cc/superai-contracts').AutomationScriptVersion;
+  'cost.event.recorded': import('@cc/superai-contracts').CostEvent;
+  'budget.created': import('@cc/superai-contracts').Budget;
+  'budget.updated': import('@cc/superai-contracts').Budget;
+  'budget.deleted': { id: string };
+  'budget.threshold.reached': { budget: import('@cc/superai-contracts').Budget; currentSpendUsd: number; threshold: number };
+  'budget.limit.exceeded': { budget: import('@cc/superai-contracts').Budget; currentSpendUsd: number; limitUsd: number };
   'runtime.state.changed': { reason: 'config' | 'settings' | 'channel-bindings' | 'bootstrap' | 'unknown' };
 }
 

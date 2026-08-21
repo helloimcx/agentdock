@@ -4,3 +4,5 @@ export * from './automations';
 export * from './scheduler';
 export * from './skills';
 export * from './traces';
+export * from './costs';
+export * from './budgets';

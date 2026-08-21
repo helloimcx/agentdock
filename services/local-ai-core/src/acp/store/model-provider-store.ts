@@ -12,7 +12,7 @@ export class LocalModelProviderStore {
 
   list(): DesktopModelProvider[] {
     const rows = this.db.prepare(`
-      SELECT id, name, api_key, base_url, model, models_json, thinking, env_json, created_at, updated_at
+      SELECT id, name, api_key, base_url, model, models_json, thinking, env_json, unit_price_in, unit_price_out, unit_price_cache, created_at, updated_at
       FROM model_providers
       ORDER BY name ASC, id ASC
     `).all() as LocalModelProviderRow[];
@@ -21,7 +21,7 @@ export class LocalModelProviderStore {
 
   get(providerId: string): DesktopModelProvider | undefined {
     const row = this.db.prepare(`
-      SELECT id, name, api_key, base_url, model, models_json, thinking, env_json, created_at, updated_at
+      SELECT id, name, api_key, base_url, model, models_json, thinking, env_json, unit_price_in, unit_price_out, unit_price_cache, created_at, updated_at
       FROM model_providers
       WHERE id = ?
     `).get(providerId) as LocalModelProviderRow | undefined;
@@ -35,8 +35,8 @@ export class LocalModelProviderStore {
     const existing = this.get(id);
     this.db.prepare(`
       INSERT INTO model_providers (
-        id, name, api_key, base_url, model, models_json, thinking, env_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, name, api_key, base_url, model, models_json, thinking, env_json, unit_price_in, unit_price_out, unit_price_cache, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         api_key = excluded.api_key,
@@ -45,6 +45,9 @@ export class LocalModelProviderStore {
         models_json = excluded.models_json,
         thinking = excluded.thinking,
         env_json = excluded.env_json,
+        unit_price_in = excluded.unit_price_in,
+        unit_price_out = excluded.unit_price_out,
+        unit_price_cache = excluded.unit_price_cache,
         updated_at = excluded.updated_at
     `).run(
       id,
@@ -55,6 +58,9 @@ export class LocalModelProviderStore {
       JSON.stringify(Array.isArray(input.models) ? input.models : []),
       stringOrNull(input.thinking),
       JSON.stringify(input.env && typeof input.env === 'object' ? input.env : {}),
+      numberOrNull(input.unit_price_in),
+      numberOrNull(input.unit_price_out),
+      numberOrNull(input.unit_price_cache),
       existing?.createdAt || now,
       now,
     );
@@ -87,6 +93,9 @@ export class LocalModelProviderStore {
       models: parseJson(row.models_json, []),
       thinking: row.thinking || undefined,
       env: parseJson(row.env_json, {}),
+      unit_price_in: row.unit_price_in !== null && row.unit_price_in !== undefined ? Number(row.unit_price_in) : undefined,
+      unit_price_out: row.unit_price_out !== null && row.unit_price_out !== undefined ? Number(row.unit_price_out) : undefined,
+      unit_price_cache: row.unit_price_cache !== null && row.unit_price_cache !== undefined ? Number(row.unit_price_cache) : undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -105,3 +114,8 @@ function stringOrNull(value: unknown) {
   const normalized = String(value || '').trim();
   return normalized || null;
 }
+
+function numberOrNull(value: unknown) {
+  return typeof value === 'number' && !Number.isNaN(value) ? value : null;
+}
+

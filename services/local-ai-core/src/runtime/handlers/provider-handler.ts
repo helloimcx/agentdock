@@ -7,6 +7,7 @@ import { validateBody } from '../request-validation.js';
 const providerSchema = {
   id: 'string', name: { kind: 'string', required: true }, api_key: 'string', base_url: 'string', model: 'string',
   models: 'array', thinking: 'string', env: 'object',
+  unit_price_in: 'number', unit_price_out: 'number', unit_price_cache: 'number',
 } as const;
 
 export function registerProviderHandlers(

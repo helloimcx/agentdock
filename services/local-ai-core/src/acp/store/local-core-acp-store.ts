@@ -56,6 +56,8 @@ import type {
 } from '@cc/superai-contracts';
 import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
 import { LocalCoreTraceStore } from './trace-store.js';
+import { LocalCoreCostStore } from './cost-store.js';
+import { LocalCoreBudgetStore } from './budget-store.js';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
 import type {
   LocalPlatformPairingRow,
@@ -105,6 +107,8 @@ export class LocalCoreAcpStore {
   private readonly external: LocalExternalStore;
   private readonly runtimeConfig: LocalRuntimeConfigStore;
   readonly trace: LocalCoreTraceStore;
+  readonly cost: LocalCoreCostStore;
+  readonly budgets: LocalCoreBudgetStore;
 
   constructor(userDataPath: string) {
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
@@ -114,6 +118,8 @@ export class LocalCoreAcpStore {
     configureSqlitePragmas(this.db);
     this.threads = new LocalThreadStore(this.db);
     this.trace = new LocalCoreTraceStore(this.db);
+    this.cost = new LocalCoreCostStore(this.db);
+    this.budgets = new LocalCoreBudgetStore(this.db);
     this.workspaceRegistry = new LocalWorkspaceRegistryStore(this.db);
     this.security = new LocalSecurityStore(this.db, (taskId, input) => {
       this.agentTasks.update(taskId, input);

@@ -60,6 +60,14 @@ export type LocalAiCoreRoute =
   | { name: 'run.interrupt'; runId: string }
   | { name: 'runs.trace.get'; runId: string }
   | { name: 'runs.spans.list'; runId: string }
+  | { name: 'costs.summary' }
+  | { name: 'costs.events' }
+  | { name: 'costs.top-runs' }
+  | { name: 'budgets.list' }
+  | { name: 'budgets.create' }
+  | { name: 'budget.get'; id: string }
+  | { name: 'budget.update'; id: string }
+  | { name: 'budget.delete'; id: string }
   | { name: 'workspaces.list' }
   | { name: 'workspace-registry.list' }
   | { name: 'workspace-registry.get'; workspaceId: string }
@@ -155,79 +163,55 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
   }
 
   const segments = splitRouteSegments(relativePath);
-  if (segments[0] === 'runtimes') {
-    return parseRuntimesRoute(normalizedMethod, segments);
-  }
   if (segments[0] === 'scheduler' && segments[1] === 'jobs') {
     return parseSchedulerJobsRoute(normalizedMethod, segments);
   }
   if (segments[0] === 'automation' && segments[1] === 'monitors') {
     return parseAutomationMonitorsRoute(normalizedMethod, segments);
   }
-  if (segments[0] === 'automations') {
-    return parseAutomationsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'automation-scripts') {
-    return parseAutomationScriptsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'threads') {
-    return parseThreadsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'runs') {
-    return parseRunsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'workspaces') {
-    return parseWorkspacesRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'workspace-registry') {
-    return parseWorkspaceRegistryRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'providers') {
-    return parseProvidersRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'workspace-security') {
-    return parseWorkspaceSecurityRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'security') {
-    return parseSecurityRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'approvals') {
-    return parseApprovalsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'audit-events') {
-    return parseAuditEventsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'tasks') {
-    return parseTasksRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'knowledge') {
-    return parseKnowledgeRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'skills') {
-    return parseSkillsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'capabilities') {
-    return parseCapabilitiesRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'diagnostics') {
-    return parseDiagnosticsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'plugins') {
-    return parsePluginsRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'external') {
-    return parseExternalRoute(normalizedMethod, segments);
-  }
-  if (segments[0] === 'openai') {
-    return parseOpenAiRoute(normalizedMethod, segments);
-  }
   if (normalizedMethod === 'GET' && segments.length === 1 && segments[0] === 'events') {
     return { name: 'events.stream' };
   }
-  if (segments[0] === 'platforms') {
-    return parsePlatformsRoute(normalizedMethod, segments);
+  const parser = SEGMENT_ROUTE_PARSERS[segments[0]];
+  if (parser) {
+    return parser(normalizedMethod, segments);
   }
 
+  return null;
+}
+
+type SegmentRouteParser = (method: string, segments: string[]) => LocalAiCoreRoute | null;
+
+const SEGMENT_ROUTE_PARSERS: Record<string, SegmentRouteParser> = {
+  runtimes: parseRuntimesRoute,
+  automations: parseAutomationsRoute,
+  'automation-scripts': parseAutomationScriptsRoute,
+  threads: parseThreadsRoute,
+  runs: parseRunsRoute,
+  workspaces: parseWorkspacesRoute,
+  'workspace-registry': parseWorkspaceRegistryRoute,
+  providers: parseProvidersRoute,
+  'workspace-security': parseWorkspaceSecurityRoute,
+  security: parseSecurityRoute,
+  approvals: parseApprovalsRoute,
+  'audit-events': parseAuditEventsRoute,
+  tasks: parseTasksRoute,
+  knowledge: parseKnowledgeRoute,
+  skills: parseSkillsRoute,
+  capabilities: parseCapabilitiesRoute,
+  diagnostics: parseDiagnosticsRoute,
+  plugins: parsePluginsRoute,
+  external: parseExternalRoute,
+  openai: parseOpenAiRoute,
+  costs: parseCostsRoute,
+  budgets: parseBudgetsRoute,
+  platforms: parsePlatformsRoute,
+};
+
+function parseAutomationActionRoute(method: string, automationId: string, action: string): LocalAiCoreRoute | null {
+  if (method === 'POST' && action === 'check') return { name: 'automation.check', automationId };
+  if (method === 'GET' && action === 'evaluations') return { name: 'automation.evaluations', automationId };
+  if (method === 'GET' && action === 'runs') return { name: 'automation.runs', automationId };
   return null;
 }
 
@@ -245,10 +229,9 @@ function parseAutomationsRoute(method: string, segments: string[]): LocalAiCoreR
     if (method === 'DELETE') return { name: 'automation.delete', automationId };
     return null;
   }
-  if (segments.length !== 3) return null;
-  if (method === 'POST' && segments[2] === 'check') return { name: 'automation.check', automationId };
-  if (method === 'GET' && segments[2] === 'evaluations') return { name: 'automation.evaluations', automationId };
-  if (method === 'GET' && segments[2] === 'runs') return { name: 'automation.runs', automationId };
+  if (segments.length === 3) {
+    return parseAutomationActionRoute(method, automationId, segments[2]);
+  }
   return null;
 }
 
@@ -749,6 +732,34 @@ function parsePlatformWriteRoute(platform: string, segments: string[]): LocalAiC
   return null;
 }
 
+function parseCostsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'summary') {
+    return { name: 'costs.summary' };
+  }
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'events') {
+    return { name: 'costs.events' };
+  }
+  if (method === 'GET' && segments.length === 2 && segments[1] === 'top-runs') {
+    return { name: 'costs.top-runs' };
+  }
+  return null;
+}
+
+function parseBudgetsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 1) {
+    if (method === 'GET') return { name: 'budgets.list' };
+    if (method === 'POST') return { name: 'budgets.create' };
+    return null;
+  }
+  const id = decodeURIComponent(segments[1] || '').trim();
+  if (!id || segments.length !== 2) return null;
+  if (method === 'GET') return { name: 'budget.get', id };
+  if (method === 'PUT' || method === 'PATCH') return { name: 'budget.update', id };
+  if (method === 'DELETE') return { name: 'budget.delete', id };
+  return null;
+}
+
 function splitRouteSegments(path: string) {
   return path.split('/').filter(Boolean);
 }
+

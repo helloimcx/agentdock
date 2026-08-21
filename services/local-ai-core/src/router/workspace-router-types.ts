@@ -20,10 +20,12 @@ import type {
 } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { AgentAcpProgressRecord } from '../agents/shared/acp-behavior.js';
+import type { CostService } from '../cost/cost-service.js';
 export * from '../acp/store/acp-store-types.js';
 
 export type WorkspaceRouterOptions = {
   store: LocalCoreAcpStore;
+  costService?: CostService;
   cliBinDir?: string;
   localCoreBase?: string;
   readRuntimeConfig: () => Promise<RuntimeConfigState>;

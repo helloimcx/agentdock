@@ -119,6 +119,9 @@ export class LocalCoreTraceStore {
     const updatedTime = new Date(runRow.updated_at).getTime();
     const durationMs = Math.max(0, updatedTime - startedTime);
 
+    const costRow = this.db.prepare('SELECT COALESCE(SUM(cost_usd), 0) as cost FROM cost_events WHERE run_id = ?').get(runId) as { cost: number } | undefined;
+    const totalCostUsd = Number(costRow?.cost || 0);
+
     return {
       runId: runRow.id,
       threadId: runRow.thread_id,
@@ -128,6 +131,7 @@ export class LocalCoreTraceStore {
       durationMs,
       totalSpans: spans.length,
       totalTokens,
+      totalCostUsd,
       spans,
     };
   }

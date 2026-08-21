@@ -95,6 +95,13 @@ flowchart LR
 
 ## New
 
+### 2026-08-21
+
+- 支持 Token 成本跟踪与预算硬阻断治理（Issue #66）：
+  - **用量与费用多维度归集**：在 Local AI Core 内置 `cost_events` 实时流水与价格计算引擎，按模型/渠道/Agent/触发源（手动、Cron、Monitor、External 等）精确核算 Token 花费，支持主流模型预设费率与服务商自定义单价。
+  - **预算硬约束与 Preflight 拦截**：支持日/周/月周期及全局/工作区/Agent/自动化作用域预算策略；在触发源执行前进行预算预检（Preflight Check），超额自动阻断无监督任务（`alert_and_skip`）或强杀运行（`alert_and_kill`），并广播 `budget.limit.exceeded` 领域事件。
+  - **成本看板与 Trace 关联**：新增 `/costs` 成本治理大盘，展示今日/本周/本月费用、多维度开销占比、策略健康度与 Top 昂贵运行列表，支持从高花费记录一键跳转到 Trace Gantt 甘特图下钻诊断。
+
 ### 2026-08-17
 
 - 扩展股票行情监控插件（`stock.quote`）：原生支持**周线布林线（Weekly Bollinger Bands）**与**动态股息率/股债利差（Dividend Yield & ERP Spread）**监控，提供中轨 (`boll_middle`)、上轨 (`boll_upper`)、下轨 (`boll_lower`)、相对位置百分比 (`boll_percent_b`)、买卖信号 (`boll_signal`)、股息率 (`dividend_yield`)、每股分红 (`annual_dividend`) 与股债利差 (`erp_spread`)；条件引擎支持指标动态比对与双重共振策略（如 `latestPrice <= boll_lower && dividend_yield >= 4.0` 周线下轨+高股息共振买点），并在 Monitor UI 中内置红利与周线交易策略预设。

@@ -63,6 +63,7 @@ export class WorkspaceRouter {
     this.bridgeEvents = new WorkspaceBridgeEventStream(options.eventBus);
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
+      costService: options.costService,
       runThreadMap: this.runThreadMap,
       cliBinDir: options.cliBinDir,
       localCoreBase: options.localCoreBase,
