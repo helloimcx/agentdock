@@ -589,6 +589,20 @@ export interface DesktopSandboxOptions {
   entrypoint?: string[];
 }
 
+export type DesktopMcpTransportType = 'stdio' | 'sse' | 'http';
+
+export interface DesktopMcpServerOptions {
+  /** Unique server name passed through to the agent via ACP mcpServers. */
+  name: string;
+  type?: DesktopMcpTransportType;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
 export interface DesktopProjectConfig {
   /** Stable Local AI Core identity. Display-name changes must not change this value. */
   workspace_id?: string;
@@ -598,6 +612,7 @@ export interface DesktopProjectConfig {
     options?: Record<string, unknown> & {
       provider_id?: string;
       sandbox?: DesktopSandboxOptions;
+      mcp_servers?: DesktopMcpServerOptions[];
     };
     /** @deprecated Providers are stored independently and projects should reference options.provider_id. */
     providers?: DesktopProviderConfig[];

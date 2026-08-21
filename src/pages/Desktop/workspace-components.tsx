@@ -12,7 +12,7 @@ import {
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
 } from '@cc/superai-contracts';
-import { BasicProjectSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
+import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
 import {
   CUSTOM_SELECT_VALUE,
   PLATFORM_TYPE_OPTIONS,
@@ -350,6 +350,66 @@ type ProjectDetailsProps = {
   onSaveConfig: () => void;
 };
 
+const PROJECT_TABS: Array<[ProjectTab, string]> = [
+  ['basic', '基本信息'],
+  ['providers', 'Provider'],
+  ['platforms', '平台接入'],
+  ['sandbox', '云端模式'],
+  ['mcp', 'MCP'],
+];
+
+type ProjectTabContentProps = {
+  project: DesktopProjectConfig;
+  projectTab: ProjectTab;
+  modelProviders: DesktopModelProvider[];
+  sandbox: SandboxForm;
+  profile: DesktopDeploymentProfile;
+  sandboxProvider: DesktopSandboxProviderConfig;
+  runtimeImage: DesktopSandboxRuntimeImage;
+  updateProject: (updater: (project: DesktopProjectConfig) => DesktopProjectConfig) => void;
+  updateSandbox: (updater: (sandbox: SandboxForm) => SandboxForm) => void;
+  updateDeploymentProfile: (profileId: string) => void;
+  openPlatformDialog: (index: number | null) => void;
+};
+
+function ProjectTabContent({
+  project,
+  projectTab,
+  modelProviders,
+  sandbox,
+  profile,
+  sandboxProvider,
+  runtimeImage,
+  updateProject,
+  updateSandbox,
+  updateDeploymentProfile,
+  openPlatformDialog,
+}: ProjectTabContentProps) {
+  if (projectTab === 'basic') {
+    return <BasicProjectSection project={project} updateProject={updateProject} />;
+  }
+  if (projectTab === 'providers') {
+    return <ProvidersSection project={project} modelProviders={modelProviders} updateProject={updateProject} />;
+  }
+  if (projectTab === 'platforms') {
+    return <PlatformsSection project={project} updateProject={updateProject} onOpenPlatformDialog={openPlatformDialog} />;
+  }
+  if (projectTab === 'sandbox') {
+    return (
+      <SandboxSection
+        project={project}
+        sandbox={sandbox}
+        profile={profile}
+        sandboxProvider={sandboxProvider}
+        runtimeImage={runtimeImage}
+        updateSandbox={updateSandbox}
+        updateDeploymentProfile={updateDeploymentProfile}
+      />
+    );
+  }
+  return <McpServersSection project={project} updateProject={updateProject} />;
+}
+
 export function ProjectDetails({
   project,
   sandbox,
@@ -384,16 +444,11 @@ export function ProjectDetails({
           <ProjectOverviewCards project={project} sandbox={sandbox} />
 
           <div className="flex gap-2 overflow-x-auto border-b border-black/10 pb-4 [scrollbar-width:none] dark:border-white/[0.08] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
-            {[
-              ['basic', '基本信息'],
-              ['providers', 'Provider'],
-              ['platforms', '平台接入'],
-              ['sandbox', '云端模式'],
-            ].map(([key, label]) => (
+            {PROJECT_TABS.map(([key, label]) => (
               <button
                 key={key}
                 type="button"
-                onClick={() => setProjectTab(key as ProjectTab)}
+                onClick={() => setProjectTab(key)}
                 className={`app-segment ${
                   projectTab === key
                     ? 'app-segment-active'
@@ -405,37 +460,19 @@ export function ProjectDetails({
             ))}
           </div>
 
-          {projectTab === 'basic' ? (
-            <BasicProjectSection project={project} updateProject={updateProject} />
-          ) : null}
-
-          {projectTab === 'providers' ? (
-            <ProvidersSection
-              project={project}
-              modelProviders={modelProviders}
-              updateProject={updateProject}
-            />
-          ) : null}
-
-          {projectTab === 'platforms' ? (
-            <PlatformsSection
-              project={project}
-              updateProject={updateProject}
-              onOpenPlatformDialog={openPlatformDialog}
-            />
-          ) : null}
-
-          {projectTab === 'sandbox' ? (
-            <SandboxSection
-              project={project}
-              sandbox={sandbox}
-              profile={profile}
-              sandboxProvider={sandboxProvider}
-              runtimeImage={runtimeImage}
-              updateSandbox={updateSandbox}
-              updateDeploymentProfile={updateDeploymentProfile}
-            />
-          ) : null}
+          <ProjectTabContent
+            project={project}
+            projectTab={projectTab}
+            modelProviders={modelProviders}
+            sandbox={sandbox}
+            profile={profile}
+            sandboxProvider={sandboxProvider}
+            runtimeImage={runtimeImage}
+            updateProject={updateProject}
+            updateSandbox={updateSandbox}
+            updateDeploymentProfile={updateDeploymentProfile}
+            openPlatformDialog={openPlatformDialog}
+          />
 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
             <Button className="w-full sm:w-auto" onClick={onSaveConfig} loading={pending === 'config'} disabled={!configDirty && pending !== 'config'}>

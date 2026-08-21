@@ -9,6 +9,7 @@ import {
   getDefaultDesktopAgentModel,
   normalizeDesktopAgentModel,
   type DesktopDeploymentProfile,
+  type DesktopMcpServerOptions,
   type DesktopModelProvider,
   type DesktopProjectConfig,
   type DesktopSandboxProviderConfig,
@@ -16,7 +17,11 @@ import {
 } from '@cc/superai-contracts';
 import {
   CUSTOM_SELECT_VALUE,
+  MCP_TYPE_OPTIONS,
+  createMcpServerDraft,
+  formatMcpArgs,
   getSelectValue,
+  parseMcpArgs,
   platformSummary,
   type SandboxForm,
 } from './workspace-model';
@@ -201,6 +206,140 @@ export function PlatformsSection({ project, updateProject, onOpenPlatformDialog 
                 </Button>
               </div>
             </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+type McpServersSectionProps = {
+  project: DesktopProjectConfig;
+  updateProject: ProjectUpdater;
+};
+
+type McpServerCardProps = {
+  server: DesktopMcpServerOptions;
+  index: number;
+  onChange: (patch: Partial<DesktopMcpServerOptions>) => void;
+  onRemove: () => void;
+};
+
+function McpServerCard({ server, index, onChange, onRemove }: McpServerCardProps) {
+  return (
+    <div className="space-y-3 rounded-xl border border-black/10 p-4 dark:border-white/[0.08]">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Input
+          label="Name"
+          value={server.name}
+          placeholder="unique-server-name"
+          onChange={(event) => onChange({ name: event.target.value })}
+        />
+        <Select
+          label="Transport"
+          value={server.type || 'stdio'}
+          onChange={(event) => onChange({ type: event.target.value as DesktopMcpServerOptions['type'] })}
+        >
+          {MCP_TYPE_OPTIONS.map((type) => <option key={type} value={type}>{type}</option>)}
+        </Select>
+        {server.type === 'stdio' ? (
+          <>
+            <Input
+              label="Command"
+              value={server.command || ''}
+              placeholder="npx"
+              onChange={(event) => onChange({ command: event.target.value })}
+            />
+            <Input
+              label="Args"
+              value={formatMcpArgs(server.args)}
+              placeholder="-y fs-mcp"
+              onChange={(event) => onChange({ args: parseMcpArgs(event.target.value) })}
+            />
+          </>
+        ) : (
+          <Input
+            label="URL"
+            value={server.url || ''}
+            placeholder="https://mcp.example.com/sse"
+            onChange={(event) => onChange({ url: event.target.value })}
+          />
+        )}
+      </div>
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-2 text-sm text-slate-950 dark:text-white">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+            checked={server.enabled !== false}
+            onChange={(event) => onChange({ enabled: event.target.checked })}
+          />
+          Enabled
+        </label>
+        <Button
+          variant="danger"
+          size="sm"
+          className="app-icon-button"
+          aria-label={`Remove ${server.name || `server ${index + 1}`}`}
+          onClick={onRemove}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function McpServersSection({ project, updateProject }: McpServersSectionProps) {
+  const servers: DesktopMcpServerOptions[] = Array.isArray(project.agent?.options?.mcp_servers)
+    ? project.agent.options.mcp_servers
+    : [];
+
+  const updateServers = (updater: (current: DesktopMcpServerOptions[]) => DesktopMcpServerOptions[]) => {
+    updateProject((current) => ({
+      ...current,
+      agent: {
+        ...current.agent,
+        options: {
+          ...(current.agent.options || {}),
+          mcp_servers: updater(
+            Array.isArray(current.agent?.options?.mcp_servers) ? current.agent.options.mcp_servers : [],
+          ),
+        },
+      },
+    }));
+  };
+
+  const updateServer = (index: number, patch: Partial<DesktopMcpServerOptions>) => {
+    updateServers((current) => current.map((server, i) => (i === index ? { ...server, ...patch } : server)));
+  };
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-950 dark:text-white">MCP Servers</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            通过 ACP mcpServers 透传给本工作区的所有 Agent 会话，一次配置全局生效。
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => updateServers((current) => [...current, createMcpServerDraft()])}>
+          <Plus size={14} /> Server
+        </Button>
+      </div>
+
+      {servers.length === 0 ? (
+        <EmptyState message="No MCP servers configured." />
+      ) : (
+        <div className="space-y-3">
+          {servers.map((server, index) => (
+            <McpServerCard
+              key={index}
+              server={server}
+              index={index}
+              onChange={(patch) => updateServer(index, patch)}
+              onRemove={() => updateServers((current) => current.filter((_, i) => i !== index))}
+            />
           ))}
         </div>
       )}

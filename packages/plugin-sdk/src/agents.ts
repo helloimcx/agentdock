@@ -16,6 +16,20 @@ export interface AgentLaunchConfig {
   model: string;
   execution?: AgentExecutionDescriptor;
   sandbox?: AgentSandboxLaunchConfig;
+  mcpServers?: AgentMcpServerConfig[];
+}
+
+export type AgentMcpTransportType = 'stdio' | 'sse' | 'http';
+
+export interface AgentMcpServerConfig {
+  name: string;
+  type: AgentMcpTransportType;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
 }
 
 export type AgentExecutionMode = 'local' | 'sandbox';

@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path';
 import type { DesktopProjectConfig, DesktopProviderConfig, RuntimeConfigState } from '@cc/superai-contracts';
-import type { AgentLaunchConfig } from '@cc/plugin-sdk';
+import type { AgentLaunchConfig, AgentMcpServerConfig } from '@cc/plugin-sdk';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
   normalizeDesktopAgentModel,
@@ -33,6 +33,79 @@ function resolveAgentModel(project: DesktopProjectConfig, providers: DesktopProv
     rawModel,
     normalizedModel,
   }) || normalizedModel;
+}
+
+function toStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([key, entryValue]) => key && entryValue !== undefined && entryValue !== null)
+    .map(([key, entryValue]) => [key, String(entryValue)]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+const MCP_TRANSPORT_TYPES = new Set(['stdio', 'sse', 'http']);
+
+function buildMcpServerFields(entry: Record<string, unknown>, command: string, url: string) {
+  const args = Array.isArray(entry.args)
+    ? entry.args.map((value) => String(value ?? '')).filter(Boolean)
+    : undefined;
+  const env = toStringRecord(entry.env);
+  const headers = toStringRecord(entry.headers);
+  return {
+    ...(command ? { command } : {}),
+    ...(args && args.length > 0 ? { args } : {}),
+    ...(env ? { env } : {}),
+    ...(url ? { url } : {}),
+    ...(headers ? { headers } : {}),
+  };
+}
+
+function normalizeMcpServerEntry(raw: unknown): AgentMcpServerConfig | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const entry = raw as Record<string, unknown>;
+  const name = String(entry.name || '').trim();
+  if (!name) {
+    return null;
+  }
+  const type = String(entry.type || 'stdio').trim().toLowerCase();
+  if (!MCP_TRANSPORT_TYPES.has(type)) {
+    return null;
+  }
+  const command = String(entry.command || '').trim();
+  const url = String(entry.url || '').trim();
+  if (type === 'stdio' && !command) {
+    return null;
+  }
+  if (type !== 'stdio' && !url) {
+    return null;
+  }
+  return {
+    name,
+    type: type as AgentMcpServerConfig['type'],
+    ...buildMcpServerFields(entry, command, url),
+    enabled: entry.enabled !== false,
+  };
+}
+
+export function normalizeMcpServerOptions(input: unknown): AgentMcpServerConfig[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const servers: AgentMcpServerConfig[] = [];
+  for (const raw of input) {
+    const server = normalizeMcpServerEntry(raw);
+    if (!server || seen.has(server.name)) {
+      continue;
+    }
+    seen.add(server.name);
+    servers.push(server);
+  }
+  return servers;
 }
 
 export function toLocalCoreProjectConfig(configState: RuntimeConfigState, project: DesktopProjectConfig): AgentLaunchConfig {
@@ -81,6 +154,7 @@ export function toLocalCoreProjectConfig(configState: RuntimeConfigState, projec
       ...env,
     },
     model,
+    mcpServers: normalizeMcpServerOptions(project.agent?.options?.mcp_servers),
   };
   return prepareAgentExecutionLaunch({ configState, project, launchConfig });
 }
