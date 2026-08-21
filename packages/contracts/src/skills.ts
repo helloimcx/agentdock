@@ -1,5 +1,20 @@
 export type SkillScope = 'builtin' | 'user' | 'workspace';
 
+export type SkillSourceStatus = 'clean' | 'locally-modified' | 'missing';
+
+export interface SkillSource {
+  skillId: string;
+  scope: SkillScope;
+  workspaceId?: string;
+  workspacePath?: string;
+  sourceRepo: string;
+  sourceRef?: string;
+  sourceType?: 'github' | 'git';
+  contentHash: string;
+  installedAt: string;
+  status?: SkillSourceStatus;
+}
+
 export interface SkillMetadata {
   name?: string;
   description?: string;
@@ -20,6 +35,7 @@ export interface SkillInfo {
   overridden: boolean;
   overriddenBy?: SkillScope;
   metadata?: SkillMetadata;
+  source?: SkillSource;
 }
 
 export interface SkillDetail extends SkillInfo {
@@ -35,9 +51,15 @@ export interface SaveSkillInput {
 }
 
 export interface InstallSkillInput {
-  url: string;
+  id?: string;
+  url?: string;
+  repo?: string;
+  ref?: string;
+  skillsDir?: string;
   targetScope: 'user' | 'workspace';
   workspacePath?: string;
+  workspaceId?: string;
+  force?: boolean;
 }
 
 export interface InstallSkillBundleInput {
@@ -46,6 +68,9 @@ export interface InstallSkillBundleInput {
   skillsDir?: string;
   targetScope: 'user' | 'workspace';
   workspacePath?: string;
+  workspaceId?: string;
+  ref?: string;
+  repo?: string;
 }
 
 export interface InstallSkillBundleResult {
@@ -53,10 +78,39 @@ export interface InstallSkillBundleResult {
   skipped: string[];
 }
 
+export interface UpdateSkillInput {
+  id?: string;
+  all?: boolean;
+  force?: boolean;
+  workspacePath?: string;
+  workspaceId?: string;
+}
+
+export interface UpdateSkillResult {
+  updated: SkillInfo[];
+  unchanged: string[];
+  conflicts: Array<{ id: string; reason: string }>;
+}
+
+export interface VerifySkillItem {
+  id: string;
+  name: string;
+  scope: SkillScope;
+  sourceRepo: string;
+  sourceRef?: string;
+  status: SkillSourceStatus;
+  path: string;
+}
+
+export interface VerifySkillResult {
+  skills: VerifySkillItem[];
+}
+
 export interface DeleteSkillInput {
   id: string;
   scope: 'user' | 'workspace';
   workspacePath?: string;
+  workspaceId?: string;
 }
 
 export interface ToggleSkillInput {
@@ -64,3 +118,15 @@ export interface ToggleSkillInput {
   enabled: boolean;
   workspacePath?: string;
 }
+
+export interface CuratedSkillPack {
+  id: string;
+  repo: string;
+  name: string;
+  description: string;
+  stars: string;
+  skillsCount?: number;
+  tags: string[];
+  defaultRef?: string;
+}
+

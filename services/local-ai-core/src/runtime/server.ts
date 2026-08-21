@@ -185,7 +185,7 @@ export class LocalAiCoreServer {
       });
     }
     registerKnowledgeHandlers(this.handlers, b.knowledgeProvider);
-    registerSkillsHandlers(this.handlers, b.skillCatalog || new ManagedSkillCatalog());
+    registerSkillsHandlers(this.handlers, b.skillCatalog || new ManagedSkillCatalog({ store: b.store }));
     registerTraceHandlers(this.handlers, b.store);
     const costEventBus = b.kernel?.context?.bus || { emit: () => {}, on: () => () => {} };
     const costService = b.costService || new CostService({ store: b.store, eventBus: costEventBus as any });

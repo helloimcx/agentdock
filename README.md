@@ -97,6 +97,11 @@ flowchart LR
 
 ### 2026-08-21
 
+- 统一技能分发层与生态目录互操作（Issue #91）：
+  - **统一 CLI 技能分发**：提供 `lac skill add <owner/repo>[@ref] [--scope user|workspace]`、`list`、`update <name|all> [--force]`、`remove <name>`、`verify` 命令，支持单技能与 monorepo 多技能包安装。
+  - **.agents/ 根目录与生态互操作**：原生支持项目根目录 `.agents/` 与 `.agents/skills/` 技能扫描与加载，遵循 `.agentdock/skills/` > `.agents/skills/` > `.agents/` > `~/.agentdock/skills/` > `builtin` 的优先级继承与同名覆盖链条。
+  - **来源追踪与自演进指纹保护**：在 SQLite 中内置 `skill_sources` 表追踪来源仓库与 commit/ref，安装时生成全量内容 SHA-256 指纹；在更新或验证时检测本地修改状态（`locally-modified`），默认保护本地自演进（#64）成果不被意外覆盖（支持 `--force` 强制覆盖）。
+  - **技能中心发现与推荐 UI**：在 Skills 页面新增「发现与推荐 (Browse)」标签页，内置 Matt Pocock、Superpowers、Anthropic、Obsidian 等高星精选技能包的一键安装；在已安装列表中展示来源徽标与本地修改/丢失状态，并支持一键指纹校验与更新。
 - 支持 Token 成本跟踪与预算硬阻断治理（Issue #66）：
   - **用量与费用多维度归集**：在 Local AI Core 内置 `cost_events` 实时流水与价格计算引擎，按模型/渠道/Agent/触发源（手动、Cron、Monitor、External 等）精确核算 Token 花费，支持主流模型预设费率与服务商自定义单价。
   - **预算硬约束与 Preflight 拦截**：支持日/周/月周期及全局/工作区/Agent/自动化作用域预算策略；在触发源执行前进行预算预检（Preflight Check），超额自动阻断无监督任务（`alert_and_skip`）或强杀运行（`alert_and_kill`），并广播 `budget.limit.exceeded` 领域事件。

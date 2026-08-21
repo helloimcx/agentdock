@@ -972,3 +972,98 @@ test('lac automation add uses local delivery when channel identifiers are incomp
     assert.deepEqual(body?.delivery, { platform: 'local', route: { type: 'local.thread', channelId: 'workspace-1' } });
   } finally { restore(); }
 });
+
+test('lac skill add, list, verify, update, and remove commands', async () => {
+  const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+  const { restore } = withFetchMock(async (input, init) => {
+    const url = String(input);
+    const method = init?.method || 'GET';
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    requests.push({ url, method, body });
+
+    if (url.includes('/skills/add')) {
+      return new Response(JSON.stringify({
+        ok: true,
+        data: {
+          installed: [{ id: 'tdd', name: 'TDD Skill', scope: 'user', path: '/skills/tdd/SKILL.md' }],
+          skipped: [],
+        },
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/skills/verify')) {
+      return new Response(JSON.stringify({
+        ok: true,
+        data: {
+          skills: [{ id: 'tdd', name: 'TDD Skill', scope: 'user', sourceRepo: 'mattpocock/skills', sourceRef: 'main', status: 'clean', path: '/skills/tdd/SKILL.md' }],
+        },
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/skills/update')) {
+      return new Response(JSON.stringify({
+        ok: true,
+        data: {
+          updated: [{ id: 'tdd', name: 'TDD Skill', scope: 'user', path: '/skills/tdd/SKILL.md' }],
+          unchanged: [],
+          conflicts: [],
+        },
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/skills') && method === 'GET') {
+      return new Response(JSON.stringify({
+        ok: true,
+        data: {
+          skills: [{
+            id: 'tdd',
+            name: 'TDD Skill',
+            scope: 'user',
+            path: '/skills/tdd/SKILL.md',
+            enabled: true,
+            source: { skillId: 'tdd', scope: 'user', sourceRepo: 'mattpocock/skills', sourceRef: 'main', status: 'clean' },
+          }],
+        },
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/skills') && method === 'DELETE') {
+      return new Response(JSON.stringify({ ok: true, data: { success: true } }), { headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ ok: true, data: {} }), { headers: { 'content-type': 'application/json' } });
+  });
+
+  try {
+    const { io, read } = createIo();
+    const env = { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1' };
+
+    // 1. lac skill add
+    const addCode = await runCli(['skill', 'add', 'mattpocock/skills@main', '--scope', 'user'], env, io);
+    assert.equal(addCode, 0);
+    assert.match(read().stdout, /Installed 1 skill/);
+    assert.deepEqual(requests[0], {
+      url: 'http://127.0.0.1:9831/api/local/v1/skills/add',
+      method: 'POST',
+      body: { repo: 'mattpocock/skills@main', targetScope: 'user', force: false },
+    });
+
+    // 2. lac skill list
+    const listCode = await runCli(['skill', 'list'], env, io);
+    assert.equal(listCode, 0);
+    assert.match(read().stdout, /tdd/);
+
+    // 3. lac skill verify
+    const verifyCode = await runCli(['skill', 'verify'], env, io);
+    assert.equal(verifyCode, 0);
+    assert.match(read().stdout, /clean/);
+
+    // 4. lac skill update
+    const updateCode = await runCli(['skill', 'update', 'tdd'], env, io);
+    assert.equal(updateCode, 0);
+    assert.match(read().stdout, /Updated 1 skill/);
+
+    // 5. lac skill remove
+    const removeCode = await runCli(['skill', 'remove', 'tdd'], env, io);
+    assert.equal(removeCode, 0);
+    assert.match(read().stdout, /Deleted skill "tdd"/);
+  } finally {
+    restore();
+  }
+});
+

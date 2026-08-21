@@ -16,33 +16,20 @@ import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
 import { automationMonitorToScheduledJob } from '../automation/automation-schedule-utils.js';
 import { parseDurationMs, parseMonitorCondition } from './monitor-cli-parsers.js';
 import { formatSafeError } from '../kernel/local-core-errors.js';
-
-type JsonEnvelope<T> = {
-  ok: boolean;
-  data: T;
-  error?: string;
-};
-
-type StdIo = {
-  stdout: Pick<NodeJS.WriteStream, 'write'>;
-  stderr: Pick<NodeJS.WriteStream, 'write'>;
-};
-
-type CliContext = {
-  baseUrl: string;
-  workspaceId: string;
-  workspacePath: string;
-  threadId: string;
-  platform: string;
-  platformInstanceId: string;
-  routeType: string;
-  chatId: string;
-  platformUserId: string;
-};
-
-type ParsedFlags = Map<string, string[]>;
-
-const DEFAULT_BASE_URL = 'http://127.0.0.1:9831/api/local/v1';
+import { runSkillDomain } from './skill-cli-handlers.js';
+import type { StdIo, ParsedFlags, CliContext } from './cli-helpers.js';
+import {
+  request,
+  resolveContext,
+  parseArgs,
+  getFlag,
+  getRequiredFlag,
+  getBooleanFlag,
+  getOptionalBooleanFlag,
+  normalizeMaybeBooleanFlag,
+  print,
+  DEFAULT_BASE_URL,
+} from './cli-helpers.js';
 
 export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.env, io: StdIo = process) {
   try {
@@ -60,6 +47,8 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
         return await runScriptDomain(action, maybeId, flags, env, io, json);
       case 'scheduler':
         return await runSchedulerDomain(action, maybeId, flags, env, io, json);
+      case 'skill':
+        return await runSkillDomain(action, maybeId, flags, env, io, json);
       default:
         printUsage(io.stderr);
         return 2;
@@ -589,106 +578,6 @@ async function handleRun(jobId: string, flags: Map<string, string[]>, env: NodeJ
   return 0;
 }
 
-async function request<T>(baseUrl: string, method: string, path: string, body?: unknown) {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch (error) {
-    throw new Error(`Local AI Core is unavailable at ${baseUrl}: ${formatSafeError(error)}`);
-  }
-  const payload = await response.json() as JsonEnvelope<T>;
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error || `Local AI Core request failed: ${response.status}`);
-  }
-  return payload.data;
-}
-
-function resolveContext(flags: Map<string, string[]>, env: NodeJS.ProcessEnv): CliContext {
-  const rawPlatform = getFlag(flags, 'platform') || String(env.LOCAL_AI_PLATFORM || '');
-  const platform = rawPlatform ? getChannelPlatformBase(rawPlatform) : '';
-  const platformInstanceId = getFlag(flags, 'instance-id') ||
-    String(env.LOCAL_AI_PLATFORM_INSTANCE_ID || '') ||
-    getChannelPlatformInstanceId(rawPlatform);
-  const chatId = getFlag(flags, 'channel') || getFlag(flags, 'channel-id') || getFlag(flags, 'chat-id') || String(env.LOCAL_AI_CHAT_ID || '');
-  const platformUserId = getFlag(flags, 'platform-user-id') || String(env.LOCAL_AI_PLATFORM_USER_ID || '');
-  return {
-    baseUrl: getFlag(flags, 'base-url') || String(env.LOCAL_AI_CORE_BASE || DEFAULT_BASE_URL),
-    workspaceId: getFlag(flags, 'workspace') || String(env.LOCAL_AI_WORKSPACE_ID || ''),
-    workspacePath: getFlag(flags, 'workspace-path') || String(env.LOCAL_AI_WORKSPACE_PATH || ''),
-    threadId: normalizeMaybeBooleanFlag(getFlag(flags, 'thread')) || String(env.LOCAL_AI_THREAD_ID || ''),
-    platform,
-    platformInstanceId,
-    routeType: String(env.LOCAL_AI_ROUTE_TYPE || '') || (platform === 'lark' && chatId && platformUserId ? 'channel.chat' : ''),
-    chatId,
-    platformUserId,
-  };
-}
-
-function parseArgs(argv: string[]) {
-  const positionals: string[] = [];
-  const flags = new Map<string, string[]>();
-  for (let i = 0; i < argv.length; i += 1) {
-    const part = argv[i];
-    if (!part.startsWith('--')) {
-      positionals.push(part);
-      continue;
-    }
-    const key = part.slice(2);
-    const next = argv[i + 1];
-    if (!next || next.startsWith('--')) {
-      flags.set(key, ['true']);
-      continue;
-    }
-    flags.set(key, [next]);
-    i += 1;
-  }
-  return { positionals, flags };
-}
-
-function getFlag(flags: Map<string, string[]>, name: string) {
-  return flags.get(name)?.[0] || '';
-}
-
-function getRequiredFlag(flags: Map<string, string[]>, name: string) {
-  const value = getFlag(flags, name);
-  if (!value) {
-    throw new Error(`Missing required flag --${name}`);
-  }
-  return value;
-}
-
-function getBooleanFlag(flags: Map<string, string[]>, name: string, defaultValue: boolean) {
-  const value = getFlag(flags, name);
-  if (!value) {
-    return defaultValue;
-  }
-  return value !== 'false';
-}
-
-function getOptionalBooleanFlag(flags: Map<string, string[]>, name: string) {
-  const value = getFlag(flags, name);
-  if (!value) {
-    return undefined;
-  }
-  if (value === 'true') {
-    return true;
-  }
-  if (value === 'false') {
-    return false;
-  }
-  throw new Error(`Flag --${name} must be true or false`);
-}
-
-function normalizeMaybeBooleanFlag(value: string) {
-  return value === 'true' ? '' : value;
-}
-
 function getExecutionMode(flags: Map<string, string[]>) {
   return normalizeScheduledJobExecutionMode(getFlag(flags, 'execution-mode'));
 }
@@ -719,13 +608,14 @@ function buildSourceConfig(sourceType: string, flags: Map<string, string[]>) {
   return config;
 }
 
-function print(asJson: boolean, output: Pick<NodeJS.WriteStream, 'write'>, payload: unknown, text: string) {
-  output.write(asJson ? `${JSON.stringify(payload, null, 2)}\n` : `${text}\n`);
-}
-
 function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
   output.write([
     'Usage:',
+    '  lac skill add <owner/repo>[@ref] [--scope user|workspace] [--skills-dir <dir>] [--force] [--json]',
+    '  lac skill list [--installed] [--workspace <id>] [--json]',
+    '  lac skill update <name|all> [--force] [--json]',
+    '  lac skill remove <name> [--scope user|workspace] [--json]',
+    '  lac skill verify [<name>] [--json]',
     '  lac scheduler add --cron "<expr>" --message "<text>" --desc "<label>" [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler list [--workspace <id>] [--thread [<id>]] [--json]',
     '  lac scheduler info <job-id> [--json]',
