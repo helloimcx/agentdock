@@ -102,6 +102,10 @@ flowchart LR
   - **预算硬约束与 Preflight 拦截**：支持日/周/月周期及全局/工作区/Agent/自动化作用域预算策略；在触发源执行前进行预算预检（Preflight Check），超额自动阻断无监督任务（`alert_and_skip`）或强杀运行（`alert_and_kill`），并广播 `budget.limit.exceeded` 领域事件。
   - **成本看板与 Trace 关联**：新增 `/costs` 成本治理大盘，展示今日/本周/本月费用、多维度开销占比、策略健康度与 Top 昂贵运行列表，支持从高花费记录一键跳转到 Trace Gantt 甘特图下钻诊断。
 
+### 2026-08-20
+
+- 修复权限卡片「始终允许」不生效的问题：Local AI Core 现按线程（thread）记住用户选择的 "allow all"，即使 ACP agent 会话因空闲超时、按轮次隔离或配置变更而重建，后续 `session/request_permission` 也会自动放行、不再重复弹确认卡。该记忆覆盖本线程的全部工具（线程生命周期内有效，重启 Local AI Core 后失效）；回复 `deny` / `拒绝` / `撤销` 即可撤销（授权时会收到提示），删除线程也会一并清理。对所有渠道（飞书/微信/Desktop/Web）与所有 ACP agent 生效。
+
 ### 2026-08-17
 
 - 扩展股票行情监控插件（`stock.quote`）：原生支持**周线布林线（Weekly Bollinger Bands）**与**动态股息率/股债利差（Dividend Yield & ERP Spread）**监控，提供中轨 (`boll_middle`)、上轨 (`boll_upper`)、下轨 (`boll_lower`)、相对位置百分比 (`boll_percent_b`)、买卖信号 (`boll_signal`)、股息率 (`dividend_yield`)、每股分红 (`annual_dividend`) 与股债利差 (`erp_spread`)；条件引擎支持指标动态比对与双重共振策略（如 `latestPrice <= boll_lower && dividend_yield >= 4.0` 周线下轨+高股息共振买点），并在 Monitor UI 中内置红利与周线交易策略预设。

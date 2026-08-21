@@ -27,10 +27,11 @@ import {
   createRunningPermissionRequest,
   isSchedulerAddCommand,
   parsePermissionOptions,
+  selectAutoAllowPermissionOption,
   type PermissionApprovalInput,
 } from './local-core-acp-permission-lifecycle.js';
 import { formatToolCallContent, toPermissionButtonRows } from './workspace-acp-permissions.js';
-import type { AcpSessionState, RunningTurn } from '../router/workspace-router-types.js';
+import type { AcpSessionState, RunningPermissionRequest, RunningTurn } from '../router/workspace-router-types.js';
 import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import type { AgentAcpProgressKind } from '../agents/shared/acp-behavior.js';
@@ -44,6 +45,7 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   getThreadAgentMode?: (threadId: string) => string;
+  hasThreadAllowAll?: (threadId: string) => boolean;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
   traceStore?: LocalCoreTraceStore;
   traceProjector?: AcpTraceProjector;
@@ -199,23 +201,14 @@ export class LocalCoreAcpTurnCoordinator {
     this.closePendingThoughtSegment(session);
     const effectiveAgentMode = session.launchPermissionMode || this.options.getThreadAgentMode?.(session.threadId) || DEFAULT_AGENT_MODE;
     if (effectiveAgentMode === 'bypassPermissions') {
-      const selected = options.find((option) => option.normalizedAction === 'allow all')
-        || options.find((option) => option.normalizedAction === 'allow')
-        || options.find((option) => option.normalizedAction !== 'deny');
-      this.options.sendRaw(session, {
-        jsonrpc: '2.0',
-        id: payload.id,
-        result: {
-          outcome: selected
-            ? {
-                outcome: 'selected',
-                optionId: selected.optionId,
-              }
-            : {
-                outcome: 'cancelled',
-              },
-        },
-      });
+      this.autoApprovePermissionRequest(session, payload.id, options);
+      return;
+    }
+    // "Always allow" is remembered per thread by the backend, because agent-side
+    // session rules are lost whenever the ACP session is rebuilt (idle timeout,
+    // per-run state scope, config change) — the memory must outlive sessions.
+    if (this.options.hasThreadAllowAll?.(session.threadId)) {
+      this.autoApprovePermissionRequest(session, payload.id, options);
       return;
     }
     const isSchedulerAdd = isSchedulerAddCommand(toolTitle);
@@ -270,6 +263,24 @@ export class LocalCoreAcpTurnCoordinator {
       bridgeStatus: 'awaiting_input',
       content: permissionPrompt,
       buttonRows,
+    });
+  }
+
+  private autoApprovePermissionRequest(session: AcpSessionState, requestId: number | string, options: RunningPermissionRequest['options']) {
+    const selected = selectAutoAllowPermissionOption(options);
+    this.options.sendRaw(session, {
+      jsonrpc: '2.0',
+      id: requestId,
+      result: {
+        outcome: selected
+          ? {
+              outcome: 'selected',
+              optionId: selected.optionId,
+            }
+          : {
+              outcome: 'cancelled',
+            },
+      },
     });
   }
 
