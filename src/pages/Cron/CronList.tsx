@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock, Pencil, Play, Plus, Trash2 } from 'lucide-react';
+import { Clock, Plus } from 'lucide-react';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
 import {
   createScheduledJob as createCronJob,
@@ -11,7 +11,7 @@ import {
 } from '@cc/core-sdk/scheduler';
 import { listWorkspaces } from '@cc/core-sdk/threads';
 import type { ScheduledJob as CronJob, ScheduledJobCreateInput as CronJobCreateInput } from '@cc/superai-contracts';
-import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, RowActions, Select, Textarea } from '@/components/ui';
 import { formatTime } from '@/lib/utils';
 
 type SchedulerFormState = {
@@ -280,17 +280,13 @@ export default function CronList() {
                   <p className="mt-3 line-clamp-3 rounded-[16px] bg-black/[0.035] px-3 py-2 text-sm leading-6 text-gray-700 dark:bg-white/[0.05] dark:text-gray-300">{job.promptTemplate}</p>
                   {job.lastError && <p className="text-xs text-red-500 mt-2">{job.lastError}</p>}
                 </div>
-                <div className="flex shrink-0 gap-2 lg:pt-0">
-                  <Button size="sm" variant="secondary" className="app-icon-button" onClick={() => void handleRun(job.id)} aria-label="Run now">
-                    <Play size={14} />
-                  </Button>
-                  <Button size="sm" variant="secondary" className="app-icon-button" onClick={() => openEdit(job)} aria-label="Edit job">
-                    <Pencil size={14} />
-                  </Button>
-                  <Button size="sm" variant="danger" className="app-icon-button" onClick={() => void handleDelete(job.id)} aria-label="Delete job">
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
+                <RowActions
+                  className="lg:pt-0"
+                  labels={{ run: 'Run now', edit: 'Edit job', delete: 'Delete job' }}
+                  onRun={() => void handleRun(job.id)}
+                  onEdit={() => openEdit(job)}
+                  onDelete={() => void handleDelete(job.id)}
+                />
               </div>
             </Card>
           ))}

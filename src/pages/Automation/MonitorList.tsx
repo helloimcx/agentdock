@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Pencil, Play, Plus, Trash2 } from 'lucide-react';
+import { Bell, Plus } from 'lucide-react';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
 import {
   createAutomationMonitor as createMonitor,
@@ -11,7 +11,7 @@ import {
 } from '@cc/core-sdk/automation';
 import { listWorkspaces } from '@cc/core-sdk/threads';
 import type { AutomationMonitor as Monitor, AutomationMonitorCreateInput as MonitorCreateInput } from '@cc/superai-contracts';
-import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, RowActions, Select, Textarea } from '@/components/ui';
 import { formatTime } from '@/lib/utils';
 
 type MonitorFormState = {
@@ -224,17 +224,12 @@ export default function MonitorList() {
                   <p className="mt-3 line-clamp-3 rounded-[16px] bg-black/[0.035] px-3 py-2 text-sm leading-6 text-gray-700 dark:bg-white/[0.05] dark:text-gray-300">{monitor.promptTemplate}</p>
                   {monitor.lastError && <p className="mt-2 text-xs text-red-500">{monitor.lastError}</p>}
                 </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button variant="secondary" size="sm" className="app-icon-button" onClick={() => handleRun(monitor.id)} title={t('monitors.run')} aria-label={t('monitors.run')}>
-                    <Play size={14} />
-                  </Button>
-                  <Button variant="secondary" size="sm" className="app-icon-button" onClick={() => openEdit(monitor)} title={t('common.save')} aria-label={t('common.save')}>
-                    <Pencil size={14} />
-                  </Button>
-                  <Button variant="danger" size="sm" className="app-icon-button" onClick={() => handleDelete(monitor.id)} title={t('common.delete')} aria-label={t('common.delete')}>
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
+                <RowActions
+                  labels={{ run: t('monitors.run'), edit: t('common.save'), delete: t('common.delete') }}
+                  onRun={() => handleRun(monitor.id)}
+                  onEdit={() => openEdit(monitor)}
+                  onDelete={() => handleDelete(monitor.id)}
+                />
               </div>
             </Card>
           ))}
