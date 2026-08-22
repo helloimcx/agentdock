@@ -225,7 +225,7 @@ export default function MonitorList() {
                   {monitor.lastError && <p className="mt-2 text-xs text-red-500">{monitor.lastError}</p>}
                 </div>
                 <RowActions
-                  labels={{ run: t('monitors.run'), edit: t('common.save'), delete: t('common.delete') }}
+                  labels={{ run: t('monitors.run'), edit: t('monitors.edit'), delete: t('common.delete') }}
                   onRun={() => handleRun(monitor.id)}
                   onEdit={() => openEdit(monitor)}
                   onDelete={() => handleDelete(monitor.id)}
