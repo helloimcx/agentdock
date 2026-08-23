@@ -10,6 +10,12 @@ import type {
 } from '@cc/superai-contracts/skills';
 import { ManagedSkillCatalog } from '../managed-skill-catalog.js';
 import { mountActiveSkillsForAgent } from '../skill-mounter.js';
+import {
+  scanSkillContent,
+  scanSkillDirectory,
+  summarizeFindings,
+  calculateHighestSeverity,
+} from '../../security/skill-content-scan.js';
 
 export function registerSkillsHandlers(
   map: Map<string, RouteHandler>,
@@ -57,6 +63,58 @@ function registerSkillQueryHandlers(map: Map<string, RouteHandler>, catalog: Man
     const sources = catalog.store ? catalog.store.listSources({ workspaceId }) : [];
     json(res, 200, { sources });
   });
+
+  map.set('skills.scan', async (_route, req, res) => {
+    if (req.method === 'POST') {
+      return await handleScanPost(req, res);
+    }
+    return await handleScanGet(req, res, catalog);
+  });
+}
+
+async function handleScanPost(req: any, res: any) {
+  const raw = await readJsonBody(req);
+  if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
+  const body = raw as { content?: string; name?: string; path?: string; id?: string };
+  if (body.content) {
+    const findings = scanSkillContent(body.content, body.name || 'SKILL.md');
+    const summary = summarizeFindings(findings);
+    const highestSeverity = calculateHighestSeverity(findings);
+    const passed = summary.critical === 0 && summary.high === 0;
+    return json(res, 200, {
+      report: {
+        skillId: body.id || body.name || 'skill',
+        scannedAt: new Date().toISOString(),
+        passed,
+        highestSeverity,
+        findings,
+        summary,
+      },
+    });
+  }
+  if (body.path) {
+    const report = scanSkillDirectory(body.path, body.id || 'skill');
+    return json(res, 200, { report });
+  }
+  return json(res, 400, { error: 'content or path is required for scanning.' });
+}
+
+async function handleScanGet(req: any, res: any, catalog: ManagedSkillCatalog) {
+  const url = new URL(req.url || '/', 'http://localhost');
+  const workspacePath = url.searchParams.get('workspacePath') || undefined;
+  const workspaceId = url.searchParams.get('workspaceId') || undefined;
+  const skillId = url.searchParams.get('skillId') || undefined;
+
+  if (skillId) {
+    const report = catalog.scanSkill(skillId, { workspacePath, workspaceId });
+    if (!report) {
+      return json(res, 404, { error: `Skill ${skillId} not found.` });
+    }
+    return json(res, 200, { report });
+  }
+
+  const result = catalog.scanAllSkills({ workspacePath, workspaceId });
+  json(res, 200, result);
 }
 
 function registerSkillMutationHandlers(map: Map<string, RouteHandler>, catalog: ManagedSkillCatalog) {

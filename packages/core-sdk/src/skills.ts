@@ -11,6 +11,8 @@ import type {
   UpdateSkillInput,
   UpdateSkillResult,
   VerifySkillResult,
+  SkillScanReport,
+  SkillSecurityAuditResult,
 } from '@cc/superai-contracts/skills';
 import { coreRequest } from './request.js';
 
@@ -64,4 +66,25 @@ export function listSkillSources(options: { workspacePath?: string } = {}) {
 export function toggleSkill(input: ToggleSkillInput) {
   return coreRequest<{ success: boolean }>('POST', '/skills/toggle', input);
 }
+
+export function scanSkill(skillId: string, options: { workspacePath?: string; workspaceId?: string } = {}) {
+  const params = new URLSearchParams();
+  params.set('skillId', skillId);
+  if (options.workspacePath) params.set('workspacePath', options.workspacePath);
+  if (options.workspaceId) params.set('workspaceId', options.workspaceId);
+  return coreRequest<{ report: SkillScanReport }>('GET', `/skills/scan?${params.toString()}`);
+}
+
+export function scanAllSkills(options: { workspacePath?: string; workspaceId?: string } = {}) {
+  const params = new URLSearchParams();
+  if (options.workspacePath) params.set('workspacePath', options.workspacePath);
+  if (options.workspaceId) params.set('workspaceId', options.workspaceId);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return coreRequest<SkillSecurityAuditResult>('GET', `/skills/scan${query}`);
+}
+
+export function scanSkillContent(input: { content: string; name?: string; id?: string }) {
+  return coreRequest<{ report: SkillScanReport }>('POST', '/skills/scan', input);
+}
+
 

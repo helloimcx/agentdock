@@ -25,6 +25,57 @@ export interface SkillMetadata {
   [key: string]: unknown;
 }
 
+export type SkillScanSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+export type SkillScanCategory =
+  | 'T01_INSTRUCTION_HIJACK'
+  | 'T02_MEMORY_POISONING'
+  | 'T03_REMOTE_PAYLOAD'
+  | 'T04_MALICIOUS_CODE'
+  | 'T05_PRIVILEGE_ESCALATION'
+  | 'T06_PERSISTENCE'
+  | 'T07_TOOL_HIJACK'
+  | 'T08_INSECURE_DEPENDENCIES'
+  | 'T09_INSECURE_PRACTICES';
+
+export interface SkillScanFinding {
+  id: string;
+  category: SkillScanCategory;
+  severity: SkillScanSeverity;
+  message: string;
+  snippet?: string;
+  file: string;
+  line?: number;
+}
+
+export interface SkillScanSummary {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+}
+
+export interface SkillScanReport {
+  skillId: string;
+  scope?: SkillScope;
+  path?: string;
+  scannedAt: string;
+  passed: boolean;
+  highestSeverity?: SkillScanSeverity | 'none';
+  findings: SkillScanFinding[];
+  summary: SkillScanSummary;
+}
+
+export interface SkillSecurityAuditResult {
+  totalSkills: number;
+  passedSkills: number;
+  failedSkills: number;
+  highestSeverity: SkillScanSeverity | 'none';
+  reports: SkillScanReport[];
+  summary: SkillScanSummary;
+}
+
 export interface SkillInfo {
   id: string;
   name: string;
@@ -36,6 +87,7 @@ export interface SkillInfo {
   overriddenBy?: SkillScope;
   metadata?: SkillMetadata;
   source?: SkillSource;
+  scanReport?: SkillScanReport;
 }
 
 export interface SkillDetail extends SkillInfo {

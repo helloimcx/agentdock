@@ -95,6 +95,14 @@ flowchart LR
 
 ## New
 
+### 2026-08-23
+
+- 技能供应链安全扫描闸门（Issue #93）：
+  - **T01-T09 全规则静态安全扫描引擎**：在 Local AI Core 内置高性能规则引擎，零外部重型依赖，覆盖指令劫持（T01）、记忆投毒（T02）、远程载荷下载执行（T03）、内嵌恶意代码与反弹 Shell（T04）、提权与敏感凭据窃取（T05）、系统持久化注入（T06）、工具链劫持（T07）、不安全依赖（T08）以及不安全编码与明文凭证（T09）共 9 大类风险。
+  - **Fail-Closed 安装与更新闸门**：在 `lac skill add`、UI 技能安装与更新时，在 Staging 暂存目录自动执行全量静态分析；命中高危/严重风险默认拦截并输出违规证据，支持 `--force` 显式确认放行。
+  - **CLI 与 API 审计支持**：新增 `lac skill scan [<name>] [--all] [--json]` 命令与 `/skills/scan` REST API 接口，支持对单个或全量已安装技能执行安全审计。
+  - **技能中心安全状态与体检 UI**：在 Skills 页面新增「安全体检 (Security Scan)」全局扫描操作，在技能卡片与详情弹窗中直观展示安全合规徽标（Clean / Warning / Danger）及详细违规报告。
+
 ### 2026-08-22
 
 - 工作区级 MCP Server 注册表（Issue #98，Phase 1）：在工作区设置的「MCP」标签页统一配置 MCP servers（stdio `command`/`args` 或 http/sse `url`，支持启用开关），Local AI Core 会在 ACP `session/new` / `session/load` 时通过协议原生的 `mcpServers` 字段下发给本工作区的所有 agent 会话——一次配置全局生效，无需再为每个 agent CLI 单独维护 MCP 配置。修改 MCP 列表会自动重建 ACP 会话以应用新配置；未配置时行为与此前完全一致。

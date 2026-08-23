@@ -17,6 +17,8 @@ import type {
   UpdateSkillResult,
   VerifySkillItem,
   VerifySkillResult,
+  SkillScanReport,
+  SkillSecurityAuditResult,
 } from '@cc/superai-contracts/skills';
 import { LocalSkillSourceStore } from '../acp/store/skill-source-store.js';
 import {
@@ -27,6 +29,11 @@ import {
   cloneGitRepository,
   discoverSkillsInDirectory,
 } from './skill-distribution-service.js';
+import {
+  scanSkillDirectory,
+  aggregateAuditResults,
+  SkillSecurityError,
+} from '../security/skill-content-scan.js';
 
 export interface ManagedSkill {
   id: string;
@@ -327,6 +334,14 @@ export class ManagedSkillCatalog {
       const installedAt = new Date().toISOString();
 
       for (const discovered of targetDiscovered) {
+        const scanReport = scanSkillDirectory(discovered.sourceDir, discovered.id, input.targetScope);
+        if (!scanReport.passed && !input.force) {
+          throw new SkillSecurityError(
+            `Security scan failed for skill "${discovered.id}": detected ${scanReport.findings.length} risk finding(s) with highest severity "${scanReport.highestSeverity}". Use --force to override.`,
+            scanReport,
+          );
+        }
+
         const targetSkillDir = join(baseDir, discovered.id);
         if (existsSync(targetSkillDir)) {
           rmSync(targetSkillDir, { recursive: true, force: true });
@@ -362,6 +377,7 @@ export class ManagedSkillCatalog {
           overridden: false,
           metadata: discovered.metadata,
           source: sourceRecord,
+          scanReport,
         });
       }
 
@@ -390,6 +406,24 @@ export class ManagedSkillCatalog {
       workspaceId: input.workspaceId,
     });
     return { installed: res.installed, skipped: res.skipped };
+  }
+
+  scanSkill(id: string, options: { workspacePath?: string; workspaceId?: string } = {}): SkillScanReport | undefined {
+    const detail = this.getDetail(id, options);
+    if (!detail || !detail.path) return undefined;
+    const skillDir = resolve(detail.path, '..');
+    return scanSkillDirectory(skillDir, detail.id, detail.scope);
+  }
+
+  scanAllSkills(options: { workspacePath?: string; workspaceId?: string } = {}): SkillSecurityAuditResult {
+    const skills = this.listSkills(options);
+    const reports: SkillScanReport[] = [];
+    for (const skill of skills) {
+      if (skill.overridden) continue;
+      const skillDir = resolve(skill.path, '..');
+      reports.push(scanSkillDirectory(skillDir, skill.id, skill.scope));
+    }
+    return aggregateAuditResults(reports);
   }
 
   verifySkills(options: { workspacePath?: string; workspaceId?: string; skillId?: string } = {}): VerifySkillResult {
@@ -450,7 +484,7 @@ export class ManagedSkillCatalog {
           targetScope: skill.scope as 'user' | 'workspace',
           workspacePath,
           workspaceId: input.workspaceId,
-          force: true,
+          force: input.force ?? false,
         });
         const match = res.installed.find((s) => s.id === skill.id) || res.installed[0];
         if (match) {

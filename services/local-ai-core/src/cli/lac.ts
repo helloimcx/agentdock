@@ -616,6 +616,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac skill update <name|all> [--force] [--json]',
     '  lac skill remove <name> [--scope user|workspace] [--json]',
     '  lac skill verify [<name>] [--json]',
+    '  lac skill scan [<name>] [--all] [--workspace <id>] [--json]',
     '  lac scheduler add --cron "<expr>" --message "<text>" --desc "<label>" [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler list [--workspace <id>] [--thread [<id>]] [--json]',
     '  lac scheduler info <job-id> [--json]',

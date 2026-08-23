@@ -16,10 +16,19 @@ import {
   ExternalLink,
   CheckCircle2,
   GitBranch,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { Button, Card, EmptyState, Input, Modal, Textarea, PageHeader } from '@/components/ui';
 import { skills as skillsApi } from '@cc/core-sdk';
-import type { SkillInfo, SkillDetail, SkillScope, CuratedSkillPack, SkillSource } from '@cc/superai-contracts/skills';
+import type {
+  SkillInfo,
+  SkillDetail,
+  SkillScope,
+  CuratedSkillPack,
+  SkillSource,
+  SkillScanReport,
+} from '@cc/superai-contracts/skills';
 import { cn } from '@/lib/utils';
 import { useSkillsPageController, type NoticeState } from './useSkillsPageController';
 
@@ -34,8 +43,10 @@ export default function SkillsPage() {
         setActiveTab={ctrl.setActiveTab}
         loading={ctrl.loading}
         verifying={ctrl.verifying}
+        scanning={ctrl.scanning}
         onRefresh={ctrl.fetchSkills}
         onVerify={ctrl.handleVerifySkills}
+        onScan={ctrl.handleScanSkills}
         onOpenInstall={() => ctrl.setShowInstallModal(true)}
         onOpenNew={() => ctrl.setShowNewModal(true)}
       />
@@ -130,8 +141,10 @@ function SkillsPageHeader(props: {
   setActiveTab: (t: 'installed' | 'browse') => void;
   loading: boolean;
   verifying: boolean;
+  scanning: boolean;
   onRefresh: () => void;
   onVerify: () => void;
+  onScan: () => void;
   onOpenInstall: () => void;
   onOpenNew: () => void;
 }) {
@@ -179,6 +192,16 @@ function SkillsPageHeader(props: {
           >
             <CheckCircle2 className={cn('mr-1.5 h-4 w-4', props.verifying && 'animate-spin')} />
             {props.verifying ? '校验中…' : '指纹校验'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={props.onScan}
+            disabled={props.scanning}
+            title="安全扫描所有已安装技能 (T01-T09 规则)"
+          >
+            <ShieldAlert className={cn('mr-1.5 h-4 w-4 text-emerald-500', props.scanning && 'animate-spin')} />
+            {props.scanning ? '体检中…' : '安全体检'}
           </Button>
           <Button variant="outline" size="sm" onClick={props.onOpenInstall}>
             <FolderGit2 className="mr-1.5 h-4 w-4" />
@@ -349,6 +372,7 @@ function SkillInstalledCard(props: {
               </span>
             )}
             {skill.source && <SourceStatusBadge source={skill.source} />}
+            <SecurityBadge report={skill.scanReport} />
           </div>
           <label className="relative inline-flex cursor-pointer items-center">
             <input type="checkbox" checked={skill.enabled} onChange={props.onToggle} className="peer sr-only" />
@@ -448,6 +472,7 @@ function SkillDetailModal({
   const [detail, setDetail] = useState<SkillDetail>(skill);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
+  const [scanReport, setScanReport] = useState<SkillScanReport | null>(null);
 
   useEffect(() => {
     skillsApi
@@ -455,6 +480,13 @@ function SkillDetailModal({
       .then((d) => {
         setDetail(d);
         setEditedContent(d.content);
+      })
+      .catch(() => {});
+
+    skillsApi
+      .scanSkill(skill.id)
+      .then((res) => {
+        if (res.report) setScanReport(res.report);
       })
       .catch(() => {});
   }, [skill.id]);
@@ -478,6 +510,7 @@ function SkillDetailModal({
           <div className="flex items-center gap-2 flex-wrap">
             <ScopeBadge scope={detail.scope} />
             {detail.source && <SourceStatusBadge source={detail.source} />}
+            {scanReport && <SecurityBadge report={scanReport} />}
             <span className="font-mono text-xs text-muted-foreground">{detail.path}</span>
           </div>
           <Button
@@ -494,6 +527,25 @@ function SkillDetailModal({
             )}
           </Button>
         </div>
+        {scanReport && scanReport.findings.length > 0 && (
+          <div className={cn(
+            'rounded-md border p-3 text-xs space-y-1.5',
+            scanReport.passed
+              ? 'border-amber-500/20 bg-amber-500/10 text-amber-900 dark:text-amber-200'
+              : 'border-rose-500/20 bg-rose-500/10 text-rose-900 dark:text-rose-200',
+          )}>
+            <div className="font-semibold flex items-center gap-1.5">
+              <ShieldAlert className="h-4 w-4" /> 安全扫描发现 {scanReport.findings.length} 项风险/建议：
+            </div>
+            <div className="space-y-1 pl-5">
+              {scanReport.findings.map((f, i) => (
+                <div key={i} className="font-mono text-[11px]">
+                  • [{f.severity.toUpperCase()}] {f.category}: {f.message} ({f.file}{f.line ? `:${f.line}` : ''})
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {detail.helpers && detail.helpers.length > 0 && (
           <div className="rounded-md border bg-muted/30 p-3 text-xs">
             <div className="font-medium text-foreground mb-1.5 flex items-center gap-1.5">
@@ -700,6 +752,38 @@ function SourceStatusBadge({ source }: { source: SkillSource }) {
       title={`来源: ${label}`}
     >
       <GitBranch className="h-3 w-3" /> {label}
+    </span>
+  );
+}
+
+function SecurityBadge({ report }: { report?: SkillScanReport }) {
+  if (!report) return null;
+  if (!report.passed) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-600 dark:text-rose-400 border border-rose-500/20"
+        title={`安全风险: ${report.findings.map((f) => f.category).join(', ')}`}
+      >
+        <ShieldAlert className="h-3 w-3" /> 风险 ({report.highestSeverity})
+      </span>
+    );
+  }
+  if (report.summary.medium > 0 || report.summary.low > 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/20"
+        title={`安全提示: ${report.findings.length} 条`}
+      >
+        <ShieldAlert className="h-3 w-3" /> 提示 ({report.findings.length})
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+      title="已通过 T01-T09 安全审计"
+    >
+      <ShieldCheck className="h-3 w-3" /> 安全
     </span>
   );
 }

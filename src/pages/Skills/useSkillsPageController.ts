@@ -135,8 +135,6 @@ function useSkillOperations(
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<NoticeState | null>(null);
-  const [installing, setInstalling] = useState(false);
-  const [verifying, setVerifying] = useState(false);
 
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -152,13 +150,59 @@ function useSkillOperations(
 
   useEffect(() => { fetchSkills(); }, [fetchSkills]);
 
+  const crud = useSkillCrudOperations({
+    selectedSkill,
+    setSelectedSkill,
+    setShowInstallModal,
+    setInstallUrl,
+    setInstallRef,
+    installUrl,
+    installRef,
+    installScope,
+    setNotice,
+    fetchSkills,
+    setSkills,
+  });
+
+  const audit = useSkillAuditOperations({
+    setNotice,
+    fetchSkills,
+    setSkills,
+  });
+
+  return {
+    skills,
+    loading,
+    notice,
+    setNotice,
+    fetchSkills,
+    ...crud,
+    ...audit,
+  };
+}
+
+function useSkillCrudOperations(ctx: {
+  selectedSkill: SkillDetail | null;
+  setSelectedSkill: (s: SkillDetail | null) => void;
+  setShowInstallModal: (s: boolean) => void;
+  setInstallUrl: (s: string) => void;
+  setInstallRef: (s: string) => void;
+  installUrl: string;
+  installRef: string;
+  installScope: 'user' | 'workspace';
+  setNotice: (n: NoticeState | null) => void;
+  fetchSkills: () => Promise<void>;
+  setSkills: React.Dispatch<React.SetStateAction<SkillInfo[]>>;
+}) {
+  const [installing, setInstalling] = useState(false);
+
   const handleToggleSkill = async (skill: SkillInfo) => {
     try {
       await skillsApi.toggleSkill({ id: skill.id, enabled: !skill.enabled });
-      setSkills((prev) => prev.map((s) => (s.id === skill.id && s.scope === skill.scope ? { ...s, enabled: !s.enabled } : s)));
-      setNotice({ tone: 'success', message: `已${!skill.enabled ? '启用' : '禁用'} Skill "${skill.name || skill.id}"` });
+      ctx.setSkills((prev) => prev.map((s) => (s.id === skill.id && s.scope === skill.scope ? { ...s, enabled: !s.enabled } : s)));
+      ctx.setNotice({ tone: 'success', message: `已${!skill.enabled ? '启用' : '禁用'} Skill "${skill.name || skill.id}"` });
     } catch (err) {
-      setNotice({ tone: 'error', message: `状态切换失败: ${String(err)}` });
+      ctx.setNotice({ tone: 'error', message: `状态切换失败: ${String(err)}` });
     }
   };
 
@@ -166,27 +210,27 @@ function useSkillOperations(
     if (!confirm(`确定要删除 Skill "${skill.name || skill.id}" 吗？此操作无法撤销。`)) return;
     try {
       await skillsApi.deleteSkill({ id: skill.id, scope: skill.scope as 'user' | 'workspace' });
-      setNotice({ tone: 'success', message: `Skill "${skill.name || skill.id}" 已成功删除` });
-      if (selectedSkill?.id === skill.id) setSelectedSkill(null);
-      fetchSkills();
+      ctx.setNotice({ tone: 'success', message: `Skill "${skill.name || skill.id}" 已成功删除` });
+      if (ctx.selectedSkill?.id === skill.id) ctx.setSelectedSkill(null);
+      ctx.fetchSkills();
     } catch (err) {
-      setNotice({ tone: 'error', message: `删除失败: ${String(err)}` });
+      ctx.setNotice({ tone: 'error', message: `删除失败: ${String(err)}` });
     }
   };
 
   const handleInstallSkill = async (customRepo?: string, customRef?: string) => {
-    const targetRepo = customRepo || installUrl;
+    const targetRepo = customRepo || ctx.installUrl;
     if (!targetRepo.trim()) return;
     setInstalling(true);
     try {
-      const result = await skillsApi.addSkill({ repo: targetRepo.trim(), ref: customRef || installRef.trim() || undefined, targetScope: installScope });
-      setNotice({ tone: 'success', message: `成功安装 ${result.installed.length} 个 Skill！` });
-      setShowInstallModal(false);
-      setInstallUrl('');
-      setInstallRef('');
-      fetchSkills();
+      const result = await skillsApi.addSkill({ repo: targetRepo.trim(), ref: customRef || ctx.installRef.trim() || undefined, targetScope: ctx.installScope });
+      ctx.setNotice({ tone: 'success', message: `成功安装 ${result.installed.length} 个 Skill！` });
+      ctx.setShowInstallModal(false);
+      ctx.setInstallUrl('');
+      ctx.setInstallRef('');
+      ctx.fetchSkills();
     } catch (err) {
-      setNotice({ tone: 'error', message: `安装失败: ${String(err)}` });
+      ctx.setNotice({ tone: 'error', message: `安装失败: ${String(err)}` });
     } finally {
       setInstalling(false);
     }
@@ -196,15 +240,32 @@ function useSkillOperations(
     try {
       const result = await skillsApi.updateSkill({ id: skillId, all: !skillId });
       if (result.conflicts.length > 0) {
-        setNotice({ tone: 'warning', message: `存在本地修改冲突: ${result.conflicts.map((c) => c.reason).join('; ')}` });
+        ctx.setNotice({ tone: 'warning', message: `存在本地修改冲突: ${result.conflicts.map((c) => c.reason).join('; ')}` });
       } else {
-        setNotice({ tone: 'success', message: `成功更新 ${result.updated.length} 个 Skill` });
+        ctx.setNotice({ tone: 'success', message: `成功更新 ${result.updated.length} 个 Skill` });
       }
-      fetchSkills();
+      ctx.fetchSkills();
     } catch (err) {
-      setNotice({ tone: 'error', message: `更新失败: ${String(err)}` });
+      ctx.setNotice({ tone: 'error', message: `更新失败: ${String(err)}` });
     }
   };
+
+  return {
+    installing,
+    handleToggleSkill,
+    handleDeleteSkill,
+    handleInstallSkill,
+    handleUpdateSkill,
+  };
+}
+
+function useSkillAuditOperations(ctx: {
+  setNotice: (n: NoticeState | null) => void;
+  fetchSkills: () => Promise<void>;
+  setSkills: React.Dispatch<React.SetStateAction<SkillInfo[]>>;
+}) {
+  const [verifying, setVerifying] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   const handleVerifySkills = async () => {
     setVerifying(true);
@@ -212,30 +273,57 @@ function useSkillOperations(
       const res = await skillsApi.verifySkills();
       const modified = res.skills.filter((s) => s.status === 'locally-modified');
       if (modified.length > 0) {
-        setNotice({ tone: 'warning', message: `检测到 ${modified.length} 个技能已被本地修改（${modified.map((s) => s.id).join(', ')}）。` });
+        ctx.setNotice({ tone: 'warning', message: `检测到 ${modified.length} 个技能已被本地修改（${modified.map((s) => s.id).join(', ')}）。` });
       } else {
-        setNotice({ tone: 'success', message: '所有已安装技能的来源与指纹校验通过 (Clean)。' });
+        ctx.setNotice({ tone: 'success', message: '所有已安装技能的来源与指纹校验通过 (Clean)。' });
       }
-      fetchSkills();
+      ctx.fetchSkills();
     } catch (err) {
-      setNotice({ tone: 'error', message: `校验失败: ${String(err)}` });
+      ctx.setNotice({ tone: 'error', message: `校验失败: ${String(err)}` });
     } finally {
       setVerifying(false);
     }
   };
 
+  const handleScanSkills = async () => {
+    setScanning(true);
+    try {
+      const res = await skillsApi.scanAllSkills();
+      const reportMap = new Map(res.reports.map((r) => [r.skillId, r]));
+      ctx.setSkills((prev) =>
+        prev.map((s) => ({
+          ...s,
+          scanReport: reportMap.get(s.id),
+        })),
+      );
+
+      if (res.failedSkills > 0) {
+        ctx.setNotice({
+          tone: 'error',
+          message: `安全体检完成：共扫描 ${res.totalSkills} 个技能，发现 ${res.failedSkills} 个高危技能，请查看详情！`,
+        });
+      } else if (res.summary.medium > 0 || res.summary.low > 0) {
+        ctx.setNotice({
+          tone: 'warning',
+          message: `安全体检完成：全部技能通过基础检查，存在 ${res.summary.medium + res.summary.low} 条优化提示。`,
+        });
+      } else {
+        ctx.setNotice({
+          tone: 'success',
+          message: `安全体检完成：共扫描 ${res.totalSkills} 个技能，全部安全合规 (Clean)。`,
+        });
+      }
+    } catch (err) {
+      ctx.setNotice({ tone: 'error', message: `安全扫描失败: ${String(err)}` });
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return {
-    skills,
-    loading,
-    notice,
-    setNotice,
-    installing,
     verifying,
-    fetchSkills,
-    handleToggleSkill,
-    handleDeleteSkill,
-    handleInstallSkill,
-    handleUpdateSkill,
+    scanning,
     handleVerifySkills,
+    handleScanSkills,
   };
 }
