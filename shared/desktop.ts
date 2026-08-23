@@ -414,18 +414,8 @@ export interface DesktopModelProvider extends DesktopProviderConfig {
   updatedAt: string;
 }
 
-export interface DesktopModelProviderInput {
+export interface DesktopModelProviderInput extends DesktopProviderConfig {
   id?: string;
-  name: string;
-  api_key?: string;
-  base_url?: string;
-  model?: string;
-  models?: DesktopProviderModelConfig[];
-  thinking?: string;
-  env?: Record<string, string>;
-  unit_price_in?: number;
-  unit_price_out?: number;
-  unit_price_cache?: number;
 }
 
 export interface DesktopModelProviderListResponse {
