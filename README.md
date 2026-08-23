@@ -95,6 +95,10 @@ flowchart LR
 
 ## New
 
+### 2026-08-22
+
+- 工作区级 MCP Server 注册表（Issue #98，Phase 1）：在工作区设置的「MCP」标签页统一配置 MCP servers（stdio `command`/`args` 或 http/sse `url`，支持启用开关），Local AI Core 会在 ACP `session/new` / `session/load` 时通过协议原生的 `mcpServers` 字段下发给本工作区的所有 agent 会话——一次配置全局生效，无需再为每个 agent CLI 单独维护 MCP 配置。修改 MCP 列表会自动重建 ACP 会话以应用新配置；未配置时行为与此前完全一致。
+
 ### 2026-08-21
 
 - 统一技能分发层与生态目录互操作（Issue #91）：

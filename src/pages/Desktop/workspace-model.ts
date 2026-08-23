@@ -6,6 +6,7 @@ import {
 } from '@cc/superai-contracts';
 import type {
   DesktopConnectConfig,
+  DesktopMcpServerOptions,
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopPlatformConfig,
@@ -26,7 +27,7 @@ export type Notice = {
   message: string;
 };
 
-export type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox';
+export type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox' | 'mcp';
 
 export type PlatformDialogState = {
   index: number | null;
@@ -218,6 +219,20 @@ export function normalizePlatformDraft(platform: DesktopPlatformConfig): Desktop
     };
   }
   return { type, options };
+}
+
+export const MCP_TYPE_OPTIONS = ['stdio', 'sse', 'http'] as const;
+
+export function createMcpServerDraft(): DesktopMcpServerOptions {
+  return { name: '', type: 'stdio', command: '', args: [], enabled: true };
+}
+
+export function formatMcpArgs(args?: string[]) {
+  return (args || []).join(' ');
+}
+
+export function parseMcpArgs(value: string): string[] {
+  return value.split(/\s+/).map((part) => part.trim()).filter(Boolean);
 }
 
 export function platformSummary(platform: DesktopPlatformConfig) {

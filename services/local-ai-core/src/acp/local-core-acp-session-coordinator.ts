@@ -7,6 +7,33 @@ import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import type { AcpSessionState, LocalCoreProjectConfig } from '../router/workspace-router-types.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
 import { getPathEnv } from '../runtime/env-utils.js';
+import type { AgentMcpServerConfig } from '@cc/plugin-sdk';
+
+type AcpWireMcpServer = {
+  name: string;
+  type: AgentMcpServerConfig['type'];
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+};
+
+// The ACP session/new|load `mcpServers` field takes the wire shape only — the
+// local `enabled` flag is filtered out before the list leaves Local AI Core.
+function toAcpMcpServers(config: LocalCoreProjectConfig): AcpWireMcpServer[] {
+  return (config.mcpServers || [])
+    .filter((server) => server.enabled !== false)
+    .map((server) => {
+      const wire: AcpWireMcpServer = { name: server.name, type: server.type };
+      if (server.command) wire.command = server.command;
+      if (server.args && server.args.length > 0) wire.args = server.args;
+      if (server.env && Object.keys(server.env).length > 0) wire.env = server.env;
+      if (server.url) wire.url = server.url;
+      if (server.headers && Object.keys(server.headers).length > 0) wire.headers = server.headers;
+      return wire;
+    });
+}
 
 type LocalCoreAcpSessionCoordinatorOptions = {
   store: LocalCoreAcpStore;
@@ -113,7 +140,7 @@ export class LocalCoreAcpSessionCoordinator {
         await this.options.transport.request(session, 'session/load', {
           sessionId: row.acp_session_id,
           cwd: acpSessionCwd(config),
-          mcpServers: [],
+          mcpServers: toAcpMcpServers(config),
         }, 30000);
         session.sessionId = row.acp_session_id;
       } catch (error) {
@@ -126,7 +153,7 @@ export class LocalCoreAcpSessionCoordinator {
       try {
         const created = await this.options.transport.request(session, 'session/new', {
           cwd: acpSessionCwd(config),
-          mcpServers: [],
+          mcpServers: toAcpMcpServers(config),
           _meta: this.buildSessionMeta(threadId, permissionMode),
         }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
         session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
@@ -316,6 +343,7 @@ export class LocalCoreAcpSessionCoordinator {
       model: config.model || '',
       execution: config.execution || null,
       sandbox: config.sandbox || null,
+      mcpServers: toAcpMcpServers(config),
     });
   }
 
