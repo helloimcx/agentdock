@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Plus, Save, Settings, Trash2 } from 'lucide-react';
 import { Button, EmptyState, Input, Select, StatusPill } from '@/components/ui';
@@ -96,46 +98,138 @@ type ProvidersSectionProps = {
   updateProject: ProjectUpdater;
 };
 
+function ProviderModelSelector({
+  provider,
+  model,
+  onModelChange,
+}: {
+  provider: DesktopModelProvider;
+  model: string;
+  onModelChange: (model: string) => void;
+}) {
+  const { t } = useTranslation();
+  const providerModels = provider.models || [];
+  const isMatchingConfigured = providerModels.some((m) => m.model === model);
+  const isDefaultOption = model === '' || model === provider.model;
+  const isCustom = Boolean(model && !isMatchingConfigured && !isDefaultOption);
+
+  const [customMode, setCustomMode] = useState<boolean>(isCustom);
+
+  useEffect(() => {
+    if (isCustom) {
+      setCustomMode(true);
+    }
+  }, [isCustom]);
+
+  let selectValue = CUSTOM_SELECT_VALUE;
+  if (!customMode && !isCustom) {
+    if (isMatchingConfigured) {
+      selectValue = model;
+    } else if (isDefaultOption) {
+      selectValue = '';
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Select
+        label={t('providers.selectModel', '选择模型')}
+        value={selectValue}
+        onChange={(event) => {
+          const val = event.target.value;
+          if (val === CUSTOM_SELECT_VALUE) {
+            setCustomMode(true);
+          } else {
+            setCustomMode(false);
+            onModelChange(val);
+          }
+        }}
+      >
+        <option value="">
+          {provider.model
+            ? `${t('providers.isDefault', '默认')} (${provider.model})`
+            : t('providers.useProviderDefault', '使用服务商默认模型')}
+        </option>
+        {providerModels.map((m) => (
+          <option key={m.model} value={m.model}>
+            {m.alias ? `${m.alias} (${m.model})` : m.model}
+          </option>
+        ))}
+        <option value={CUSTOM_SELECT_VALUE}>{t('providers.customModel', '自定义模型...')}</option>
+      </Select>
+      {(customMode || isCustom) && (
+        <Input
+          label={t('providers.customModelName', '自定义模型名称')}
+          value={model}
+          onChange={(event) => onModelChange(event.target.value)}
+          placeholder={provider.model || 'e.g. gpt-4o-2024-11-20'}
+          autoFocus
+        />
+      )}
+    </div>
+  );
+}
+
 export function ProvidersSection({
   project,
   modelProviders,
   updateProject,
 }: ProvidersSectionProps) {
+  const selectedProviderId = String(project.agent?.options?.provider_id || '');
+  const selectedProvider = modelProviders.find((p) => p.id === selectedProviderId);
+  const currentModel = String(project.agent?.options?.model || '');
+
+  const setModel = (model: string) => {
+    updateProject((current) => ({
+      ...current,
+      agent: {
+        ...current.agent,
+        options: { ...(current.agent.options || {}), model },
+      },
+    }));
+  };
+
   return (
     <section className="space-y-4">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Select
           label="Project provider"
-          value={String(project.agent?.options?.provider_id || '')}
-          onChange={(event) =>
+          value={selectedProviderId}
+          onChange={(event) => {
+            const providerId = event.target.value;
             updateProject((current) => ({
               ...current,
               agent: {
                 ...current.agent,
                 options: {
                   ...(current.agent.options || {}),
-                  provider_id: event.target.value,
+                  provider_id: providerId,
                 },
               },
-            }))
-          }
+            }));
+          }}
         >
           <option value="">No provider</option>
           {modelProviders.map((provider) => (
             <option key={provider.id} value={provider.id}>{provider.name}</option>
           ))}
         </Select>
-        <Input
-          label="Model override"
-          value={String(project.agent?.options?.model || '')}
-          onChange={(event) =>
-            updateProject((current) => ({
-              ...current,
-              agent: { ...current.agent, options: { ...(current.agent.options || {}), model: event.target.value } },
-            }))
-          }
-          placeholder="Use provider default model"
-        />
+
+        {selectedProvider ? (
+          <ProviderModelSelector
+            key={selectedProvider.id}
+            provider={selectedProvider}
+            model={currentModel}
+            onModelChange={setModel}
+          />
+        ) : (
+          <Input
+            label="Model override"
+            value={currentModel}
+            onChange={(event) => setModel(event.target.value)}
+            placeholder={getDefaultDesktopAgentModel(project.agent?.type) || 'Use agent default model'}
+          />
+        )}
       </div>
 
       <div className="rounded-xl border border-black/10 p-4 dark:border-white/[0.08] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

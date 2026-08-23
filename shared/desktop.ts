@@ -422,6 +422,118 @@ export interface DesktopModelProviderListResponse {
   providers: DesktopModelProvider[];
 }
 
+export const CUSTOM_SELECT_VALUE = '__custom__';
+
+export const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: string }> = [
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    name: 'openai',
+    base_url: 'https://api.openai.com/v1',
+    model: 'gpt-4o',
+    models: [
+      { model: 'gpt-4o', alias: 'GPT-4o', unit_price_in: 2.5, unit_price_out: 10.0, unit_price_cache: 1.25 },
+      { model: 'gpt-4o-mini', alias: 'GPT-4o mini', unit_price_in: 0.15, unit_price_out: 0.6, unit_price_cache: 0.075 },
+      { model: 'o3-mini', alias: 'o3-mini', unit_price_in: 1.1, unit_price_out: 4.4, unit_price_cache: 0.55 },
+      { model: 'o1', alias: 'o1', unit_price_in: 15.0, unit_price_out: 60.0, unit_price_cache: 7.5 },
+    ],
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    name: 'deepseek',
+    base_url: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    models: [
+      { model: 'deepseek-chat', alias: 'DeepSeek V3 (Chat)', unit_price_in: 0.27, unit_price_out: 1.1, unit_price_cache: 0.07 },
+      { model: 'deepseek-reasoner', alias: 'DeepSeek R1 (Reasoner)', unit_price_in: 0.55, unit_price_out: 2.19, unit_price_cache: 0.14 },
+    ],
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic',
+    name: 'anthropic',
+    base_url: 'https://api.anthropic.com/v1',
+    model: 'claude-3-7-sonnet-latest',
+    models: [
+      { model: 'claude-3-7-sonnet-latest', alias: 'Claude 3.7 Sonnet', unit_price_in: 3.0, unit_price_out: 15.0, unit_price_cache: 0.375 },
+      { model: 'claude-3-5-sonnet-latest', alias: 'Claude 3.5 Sonnet', unit_price_in: 3.0, unit_price_out: 15.0, unit_price_cache: 0.375 },
+      { model: 'claude-3-5-haiku-latest', alias: 'Claude 3.5 Haiku', unit_price_in: 0.8, unit_price_out: 4.0, unit_price_cache: 0.08 },
+    ],
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    name: 'openrouter',
+    base_url: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4o',
+    models: [
+      { model: 'openai/gpt-4o', alias: 'GPT-4o (OpenRouter)' },
+      { model: 'anthropic/claude-3.7-sonnet', alias: 'Claude 3.7 Sonnet (OpenRouter)' },
+      { model: 'deepseek/deepseek-chat', alias: 'DeepSeek V3 (OpenRouter)' },
+      { model: 'deepseek/deepseek-r1', alias: 'DeepSeek R1 (OpenRouter)' },
+    ],
+  },
+  {
+    id: 'minimax',
+    label: 'Minimax',
+    name: 'minimax',
+    base_url: 'https://api.minimax.chat/v1',
+    model: 'MiniMax-M2.5',
+    models: [
+      { model: 'MiniMax-M2.5', alias: 'MiniMax M2.5' },
+      { model: 'MiniMax-Text-01', alias: 'MiniMax Text-01' },
+    ],
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    name: 'ollama',
+    base_url: 'http://127.0.0.1:11434/v1',
+    model: 'qwen2.5-coder:7b',
+    models: [
+      { model: 'qwen2.5-coder:7b', alias: 'Qwen 2.5 Coder 7B' },
+      { model: 'deepseek-r1:8b', alias: 'DeepSeek R1 8B' },
+      { model: 'llama3.3:70b', alias: 'Llama 3.3 70B' },
+    ],
+  },
+];
+
+export function getProviderPresetValue(provider: DesktopProviderConfig) {
+  return PROVIDER_PRESETS.find((preset) =>
+    provider.name === preset.name ||
+    (preset.base_url && provider.base_url === preset.base_url),
+  )?.id || CUSTOM_SELECT_VALUE;
+}
+
+export function applyProviderPreset(provider: DesktopProviderConfig, presetId: string): DesktopProviderConfig {
+  const preset = PROVIDER_PRESETS.find((item) => item.id === presetId);
+  if (!preset) return provider;
+  return {
+    ...provider,
+    name: preset.name,
+    base_url: preset.base_url,
+    model: preset.model,
+    models: Array.isArray(preset.models) ? JSON.parse(JSON.stringify(preset.models)) : (provider.models || []),
+  };
+}
+
+export function providerToDraft(provider: DesktopModelProvider): DesktopModelProviderInput {
+  return {
+    id: provider.id,
+    name: provider.name,
+    api_key: provider.api_key || '',
+    base_url: provider.base_url || '',
+    model: provider.model || '',
+    models: Array.isArray(provider.models) ? JSON.parse(JSON.stringify(provider.models)) : [],
+    thinking: provider.thinking || '',
+    env: provider.env ? JSON.parse(JSON.stringify(provider.env)) : {},
+    unit_price_in: provider.unit_price_in,
+    unit_price_out: provider.unit_price_out,
+    unit_price_cache: provider.unit_price_cache,
+  };
+}
+
 export type DesktopSandboxStateScope = 'user' | 'project' | 'thread' | 'run';
 export type DesktopDeploymentProfileId = 'local-desktop' | 'docker-compose' | 'remote-cloud';
 export type DesktopSandboxTransport = 'http-ndjson';

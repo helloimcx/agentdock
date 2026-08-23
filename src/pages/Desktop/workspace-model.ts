@@ -1,8 +1,13 @@
 import {
+  CUSTOM_SELECT_VALUE,
   DEFAULT_DESKTOP_AGENT_TYPE,
   DEFAULT_SANDBOX_PROVIDER_ID,
   defaultSandboxRuntimeImage,
   normalizeDesktopAgentModel,
+  PROVIDER_PRESETS,
+  getProviderPresetValue,
+  applyProviderPreset,
+  providerToDraft,
 } from '@cc/superai-contracts';
 import type {
   DesktopConnectConfig,
@@ -15,7 +20,13 @@ import type {
   DesktopSandboxOptions,
 } from '@cc/superai-contracts';
 
-export const CUSTOM_SELECT_VALUE = '__custom__';
+export {
+  CUSTOM_SELECT_VALUE,
+  PROVIDER_PRESETS,
+  getProviderPresetValue,
+  applyProviderPreset,
+  providerToDraft,
+};
 export const PLATFORM_TYPE_OPTIONS = ['weixin', 'lark'] as const;
 
 export function desktopProjectWorkspaceId(project: DesktopProjectConfig) {
@@ -76,15 +87,6 @@ export type LarkQrState = WeixinQrState & {
   instanceId: string;
 };
 
-export const PROVIDER_PRESETS: Array<DesktopProviderConfig & { id: string; label: string }> = [
-  { id: 'openai', label: 'OpenAI', name: 'openai', base_url: 'https://api.openai.com/v1', model: 'gpt-4.1-mini' },
-  { id: 'openrouter', label: 'OpenRouter', name: 'openrouter', base_url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4.1-mini' },
-  { id: 'anthropic', label: 'Anthropic', name: 'anthropic', base_url: 'https://api.anthropic.com/v1', model: 'claude-3-5-haiku-latest' },
-  { id: 'deepseek', label: 'DeepSeek', name: 'deepseek', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
-  { id: 'minimax', label: 'Minimax', name: 'minimax', base_url: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.5' },
-  { id: 'ollama', label: 'Ollama', name: 'ollama', base_url: 'http://127.0.0.1:11434/v1', model: 'qwen2.5-coder:7b' },
-];
-
 export const defaultSandboxForm: SandboxForm = {
   enabled: false,
   provider_id: DEFAULT_SANDBOX_PROVIDER_ID,
@@ -141,43 +143,8 @@ export function normalizeProject(project: DesktopProjectConfig): DesktopProjectC
   };
 }
 
-export function providerToDraft(provider: DesktopModelProvider): DesktopModelProviderInput {
-  return {
-    id: provider.id,
-    name: provider.name,
-    api_key: provider.api_key || '',
-    base_url: provider.base_url || '',
-    model: provider.model || '',
-    models: provider.models || [],
-    thinking: provider.thinking || '',
-    env: provider.env || {},
-    unit_price_in: provider.unit_price_in,
-    unit_price_out: provider.unit_price_out,
-    unit_price_cache: provider.unit_price_cache,
-  };
-}
-
 export function getSelectValue(value: string, options: readonly string[]) {
   return options.includes(value as any) ? value : CUSTOM_SELECT_VALUE;
-}
-
-export function getProviderPresetValue(provider: DesktopProviderConfig) {
-  return PROVIDER_PRESETS.find((preset) =>
-    provider.name === preset.name ||
-    (preset.base_url && provider.base_url === preset.base_url) ||
-    (preset.model && provider.model === preset.model && provider.name === preset.name),
-  )?.id || CUSTOM_SELECT_VALUE;
-}
-
-export function applyProviderPreset(provider: DesktopProviderConfig, presetId: string): DesktopProviderConfig {
-  const preset = PROVIDER_PRESETS.find((item) => item.id === presetId);
-  if (!preset) return provider;
-  return {
-    ...provider,
-    name: preset.name,
-    base_url: preset.base_url,
-    model: preset.model,
-  };
 }
 
 export function createPlatformDraft(type = 'weixin'): DesktopPlatformConfig {
