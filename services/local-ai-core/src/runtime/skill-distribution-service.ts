@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { SkillInfo, SkillScope, SkillSource, SkillSourceStatus, UpdateSkillResult, VerifySkillResult } from '@cc/superai-contracts/skills';
 import type { LocalSkillSourceStore } from '../acp/store/skill-source-store.js';
+import { collectFilesRecursive } from '../kernel/fs-walk.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,27 +20,7 @@ export interface DiscoveredSkill {
 export function computeSkillContentHash(skillDir: string): string {
   if (!existsSync(skillDir)) return '';
   const hash = createHash('sha256');
-  const filePaths: string[] = [];
-
-  function collectFiles(current: string) {
-    try {
-      const entries = readdirSync(current, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(current, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name === '.git' || entry.name === 'node_modules') continue;
-          collectFiles(fullPath);
-        } else if (entry.isFile() && !entry.isSymbolicLink()) {
-          filePaths.push(fullPath);
-        }
-      }
-    } catch {
-      // Skip directories that cannot be read
-    }
-  }
-
-  collectFiles(skillDir);
-  filePaths.sort();
+  const filePaths = collectFilesRecursive(skillDir);
 
   for (const filePath of filePaths) {
     const relPath = relative(skillDir, filePath).replace(/\\/g, '/');

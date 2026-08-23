@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
+import { collectFilesRecursive } from '../kernel/fs-walk.js';
 import type {
   SkillScanCategory,
   SkillScanFinding,
@@ -325,9 +326,7 @@ export function scanSkillDirectory(skillDir: string, skillId: string = 'skill', 
   const resolvedDir = resolve(skillDir);
 
   if (existsSync(resolvedDir)) {
-    const filesToScan: string[] = [];
-    collectScannableFiles(resolvedDir, filesToScan);
-    filesToScan.sort();
+    const filesToScan = collectFilesRecursive(resolvedDir, isScannableFile);
 
     for (const file of filesToScan) {
       try {
@@ -367,23 +366,6 @@ function isScannableFile(name: string): boolean {
   const dotIdx = lower.lastIndexOf('.');
   if (dotIdx === -1) return false;
   return SCANNABLE_EXTENSIONS.has(lower.slice(dotIdx));
-}
-
-function collectScannableFiles(current: string, result: string[]): void {
-  try {
-    const entries = readdirSync(current, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue;
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) {
-        collectScannableFiles(full, result);
-      } else if (entry.isFile() && !entry.isSymbolicLink() && isScannableFile(entry.name)) {
-        result.push(full);
-      }
-    }
-  } catch {
-    // Ignore directory traversal errors
-  }
 }
 
 export function summarizeFindings(findings: SkillScanFinding[]): SkillScanSummary {
