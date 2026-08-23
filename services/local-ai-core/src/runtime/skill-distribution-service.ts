@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { SkillInfo, SkillScope, SkillSource, SkillSourceStatus, UpdateSkillResult, VerifySkillResult } from '@cc/superai-contracts/skills';
 import type { LocalSkillSourceStore } from '../acp/store/skill-source-store.js';
+import { collectFilesRecursive } from '../kernel/fs-walk.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -14,31 +15,6 @@ export interface DiscoveredSkill {
   sourceDir: string;
   metadata: Record<string, unknown>;
   content: string;
-}
-
-const SKILL_TREE_SKIP_DIRS = new Set(['.git', 'node_modules']);
-
-export function collectFilesRecursive(root: string, includeFile?: (name: string) => boolean): string[] {
-  const files: string[] = [];
-  walkFiles(root, includeFile, files);
-  files.sort();
-  return files;
-}
-
-function walkFiles(current: string, includeFile: ((name: string) => boolean) | undefined, files: string[]): void {
-  try {
-    const entries = readdirSync(current, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (SKILL_TREE_SKIP_DIRS.has(entry.name)) continue;
-        walkFiles(join(current, entry.name), includeFile, files);
-      } else if (entry.isFile() && !entry.isSymbolicLink() && (!includeFile || includeFile(entry.name))) {
-        files.push(join(current, entry.name));
-      }
-    }
-  } catch {
-    // Skip directories that cannot be read
-  }
 }
 
 export function computeSkillContentHash(skillDir: string): string {

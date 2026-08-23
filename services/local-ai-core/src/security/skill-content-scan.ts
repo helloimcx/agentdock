@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { collectFilesRecursive } from '../runtime/skill-distribution-service.js';
+import { collectFilesRecursive } from '../kernel/fs-walk.js';
 import type {
   SkillScanCategory,
   SkillScanFinding,
