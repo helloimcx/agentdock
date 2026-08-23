@@ -16,30 +16,35 @@ export interface DiscoveredSkill {
   content: string;
 }
 
+const SKILL_TREE_SKIP_DIRS = new Set(['.git', 'node_modules']);
+
+export function collectFilesRecursive(root: string, includeFile?: (name: string) => boolean): string[] {
+  const files: string[] = [];
+  walkFiles(root, includeFile, files);
+  files.sort();
+  return files;
+}
+
+function walkFiles(current: string, includeFile: ((name: string) => boolean) | undefined, files: string[]): void {
+  try {
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (SKILL_TREE_SKIP_DIRS.has(entry.name)) continue;
+        walkFiles(join(current, entry.name), includeFile, files);
+      } else if (entry.isFile() && !entry.isSymbolicLink() && (!includeFile || includeFile(entry.name))) {
+        files.push(join(current, entry.name));
+      }
+    }
+  } catch {
+    // Skip directories that cannot be read
+  }
+}
+
 export function computeSkillContentHash(skillDir: string): string {
   if (!existsSync(skillDir)) return '';
   const hash = createHash('sha256');
-  const filePaths: string[] = [];
-
-  function collectFiles(current: string) {
-    try {
-      const entries = readdirSync(current, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(current, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name === '.git' || entry.name === 'node_modules') continue;
-          collectFiles(fullPath);
-        } else if (entry.isFile() && !entry.isSymbolicLink()) {
-          filePaths.push(fullPath);
-        }
-      }
-    } catch {
-      // Skip directories that cannot be read
-    }
-  }
-
-  collectFiles(skillDir);
-  filePaths.sort();
+  const filePaths = collectFilesRecursive(skillDir);
 
   for (const filePath of filePaths) {
     const relPath = relative(skillDir, filePath).replace(/\\/g, '/');
