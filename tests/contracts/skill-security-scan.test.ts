@@ -435,3 +435,37 @@ test('ManagedSkillCatalog.updateSkill blocks malicious updates without force', a
   }
 });
 
+test('listSkills reports stable clean status and detects nested-file edits', () => {
+  const root = mkdtempSync(join(tmpdir(), 'skill-hash-cache-test-'));
+  try {
+    const userDir = join(root, 'user-skills');
+    mkdirSync(join(userDir, 'demo-skill', 'scripts'), { recursive: true });
+    writeFileSync(join(userDir, 'demo-skill', 'SKILL.md'), '---\nname: demo-skill\n---\n# Demo\n');
+    writeFileSync(join(userDir, 'demo-skill', 'scripts', 'helper.sh'), 'echo hello\n');
+
+    const store = createTestDb();
+    const catalog = new ManagedSkillCatalog({ rootDir: join(root, 'builtin'), userSkillsDir: userDir, store });
+    store.upsertSource({
+      skillId: 'demo-skill',
+      scope: 'user',
+      sourceRepo: 'owner/demo',
+      sourceRef: 'v1.0.0',
+      installedAt: new Date().toISOString(),
+      contentHash: computeSkillContentHash(join(userDir, 'demo-skill')),
+    });
+
+    const statusOf = () => {
+      const skill = catalog.listSkills().find((s) => s.id === 'demo-skill');
+      return skill?.source?.status;
+    };
+
+    assert.equal(statusOf(), 'clean');
+    assert.equal(statusOf(), 'clean');
+
+    writeFileSync(join(userDir, 'demo-skill', 'scripts', 'helper.sh'), 'echo tampered\n');
+    assert.equal(statusOf(), 'locally-modified');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
