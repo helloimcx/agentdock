@@ -166,7 +166,10 @@ export class ManagedSkillCatalog {
    * locally-modified check must never read a stale "clean".
    */
   private computeSkillHashCached(skillDir: string): string {
-    if (!existsSync(skillDir)) return '';
+    if (!existsSync(skillDir)) {
+      this.skillHashCache.delete(skillDir);
+      return '';
+    }
     let signature = '';
     for (const file of collectFilesRecursive(skillDir)) {
       let stats;
@@ -176,7 +179,7 @@ export class ManagedSkillCatalog {
         // A file vanished mid-walk: hash fresh and skip caching this pass.
         return computeSkillContentHash(skillDir);
       }
-      signature += `${relative(skillDir, file).replace(/\\/g, '/')}:${stats.mtimeMs}:${stats.size}\n`;
+      signature += `${relative(skillDir, file).replace(/\\/g, '/')}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}\n`;
     }
     const cached = this.skillHashCache.get(skillDir);
     if (cached && cached.signature === signature) return cached.hash;
