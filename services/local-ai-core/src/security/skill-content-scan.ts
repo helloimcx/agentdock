@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { collectFilesRecursive } from '../kernel/fs-walk.js';
 import type {
@@ -348,20 +348,21 @@ export function scanSkillDirectory(skillDir: string, skillId: string = 'skill', 
     let scannedBytes = 0;
     for (const file of filesToScan) {
       try {
-        const content = readFileSync(file, 'utf8');
-        scannedBytes += content.length;
+        const rel = relative(resolvedDir, file).replace(/\\/g, '/');
+        // Size-check before reading so a single huge file is never fully
+        // loaded just to discover it exceeds the budget.
+        scannedBytes += statSync(file).size;
         if (scannedBytes > MAX_SCAN_BYTES) {
-          const rel = relative(resolvedDir, file).replace(/\\/g, '/');
           findings.push({
             id: 'SCAN-LIMIT-BYTES',
             category: 'SCAN_LIMIT_EXCEEDED',
             severity: 'high',
-            message: `Scan budget exceeded: over ${MAX_SCAN_BYTES} bytes of scannable content read.`,
+            message: `Scan budget exceeded: scannable content exceeds ${MAX_SCAN_BYTES} bytes.`,
             file: rel,
           });
           break;
         }
-        const rel = relative(resolvedDir, file).replace(/\\/g, '/');
+        const content = readFileSync(file, 'utf8');
         const fileFindings = scanSkillContent(content, rel);
         findings.push(...fileFindings);
       } catch {

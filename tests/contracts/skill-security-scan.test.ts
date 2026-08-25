@@ -231,6 +231,34 @@ test('scanSkillDirectory enforces scan budget on oversized skill trees', () => {
   }
 });
 
+test('scanSkillDirectory allows trees exactly at the scan budget boundary', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-scan-boundary-'));
+  try {
+    // Exactly 2000 scannable files stays within the file budget.
+    mkdirSync(join(dir, 'file-boundary-skill'), { recursive: true });
+    for (let i = 0; i < 2000; i++) {
+      writeFileSync(join(dir, 'file-boundary-skill', `f${String(i).padStart(4, '0')}.md`), 'x\n');
+    }
+
+    const fileBoundaryReport = scanSkillDirectory(join(dir, 'file-boundary-skill'), 'file-boundary-skill', 'user');
+    assert.equal(fileBoundaryReport.passed, true);
+    assert(!fileBoundaryReport.findings.some((f) => f.id === 'SCAN-LIMIT-FILES'));
+
+    // Exactly 20MB of scannable content stays within the byte budget.
+    mkdirSync(join(dir, 'byte-boundary-skill'), { recursive: true });
+    const exact = 'x'.repeat(5 * 1024 * 1024);
+    for (let i = 0; i < 4; i++) {
+      writeFileSync(join(dir, 'byte-boundary-skill', `f${String(i).padStart(4, '0')}.md`), exact);
+    }
+
+    const byteBoundaryReport = scanSkillDirectory(join(dir, 'byte-boundary-skill'), 'byte-boundary-skill', 'user');
+    assert.equal(byteBoundaryReport.passed, true);
+    assert(!byteBoundaryReport.findings.some((f) => f.id === 'SCAN-LIMIT-BYTES'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('ManagedSkillCatalog.installSkillFromSource blocks malicious skills by default and allows with force', async () => {
   const staging = mkdtempSync(join(tmpdir(), 'agentdock-sec-git-'));
   const userDir = mkdtempSync(join(tmpdir(), 'agentdock-sec-user-'));
