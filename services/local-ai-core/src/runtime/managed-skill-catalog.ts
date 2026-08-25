@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'node:fs';
-import { resolve, join, sep } from 'node:path';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, mkdtempSync, statSync } from 'node:fs';
+import { resolve, join, sep, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import type {
   SkillInfo,
@@ -21,6 +21,7 @@ import type {
   SkillSecurityAuditResult,
 } from '@cc/superai-contracts/skills';
 import { LocalSkillSourceStore } from '../acp/store/skill-source-store.js';
+import { collectFilesRecursive } from '../kernel/fs-walk.js';
 import {
   computeSkillContentHash,
   parseSkillRepoUrl,
@@ -53,6 +54,7 @@ export class ManagedSkillCatalog {
   private readonly rootDir: string;
   private readonly userSkillsDir: string;
   private readonly defaultWorkspacePath?: string;
+  private readonly skillHashCache = new Map<string, { signature: string; hash: string }>();
   readonly store?: LocalSkillSourceStore;
 
   constructor(options: ManagedSkillCatalogOptions = {}) {
@@ -146,7 +148,7 @@ export class ManagedSkillCatalog {
       const source = this.store.getSource(skill.id, skill.scope, workspaceId);
       if (source) {
         const skillDir = resolve(skill.path, '..');
-        const currentHash = computeSkillContentHash(skillDir);
+        const currentHash = this.computeSkillHashCached(skillDir);
         const status: SkillSourceStatus = !existsSync(skillDir)
           ? 'missing'
           : currentHash === source.contentHash
@@ -155,6 +157,35 @@ export class ManagedSkillCatalog {
         skill.source = { ...source, status };
       }
     }
+  }
+
+  /**
+   * listSkills runs on every skills REST call, so the per-file content hash is
+   * reused while every file's path/mtime/size is unchanged. Any edit, add, or
+   * removal changes the signature and forces a fresh hash — the
+   * locally-modified check must never read a stale "clean".
+   */
+  private computeSkillHashCached(skillDir: string): string {
+    if (!existsSync(skillDir)) {
+      this.skillHashCache.delete(skillDir);
+      return '';
+    }
+    let signature = '';
+    for (const file of collectFilesRecursive(skillDir)) {
+      let stats;
+      try {
+        stats = statSync(file);
+      } catch {
+        // A file vanished mid-walk: hash fresh and skip caching this pass.
+        return computeSkillContentHash(skillDir);
+      }
+      signature += `${relative(skillDir, file).replace(/\\/g, '/')}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}\n`;
+    }
+    const cached = this.skillHashCache.get(skillDir);
+    if (cached && cached.signature === signature) return cached.hash;
+    const hash = computeSkillContentHash(skillDir);
+    this.skillHashCache.set(skillDir, { signature, hash });
+    return hash;
   }
 
   get(id: string, options: { workspacePath?: string } = {}): ManagedSkill | undefined {
