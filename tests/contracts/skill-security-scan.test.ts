@@ -195,6 +195,42 @@ test('scanSkillDirectory analyzes multi-file skill folder', () => {
   }
 });
 
+test('scanSkillDirectory enforces scan budget on oversized skill trees', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-scan-budget-'));
+  try {
+    // File-count cap: 2001 scannable files exceeds the 2000-file budget.
+    mkdirSync(join(dir, 'file-cap-skill'), { recursive: true });
+    for (let i = 0; i <= 2000; i++) {
+      writeFileSync(join(dir, 'file-cap-skill', `f${String(i).padStart(4, '0')}.md`), 'x\n');
+    }
+
+    const fileCapReport = scanSkillDirectory(join(dir, 'file-cap-skill'), 'file-cap-skill', 'user');
+    assert.equal(fileCapReport.passed, false);
+    const filesFinding = fileCapReport.findings.find((f) => f.id === 'SCAN-LIMIT-FILES');
+    assert(filesFinding);
+    assert.equal(filesFinding.category, 'SCAN_LIMIT_EXCEEDED');
+    assert.equal(filesFinding.severity, 'high');
+    assert(filesFinding.file);
+
+    // Byte cap: 5 x 5MB files exceeds the 20MB read budget.
+    mkdirSync(join(dir, 'byte-cap-skill'), { recursive: true });
+    const big = 'x'.repeat(5 * 1024 * 1024);
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(join(dir, 'byte-cap-skill', `f${String(i).padStart(4, '0')}.md`), big);
+    }
+
+    const byteCapReport = scanSkillDirectory(join(dir, 'byte-cap-skill'), 'byte-cap-skill', 'user');
+    assert.equal(byteCapReport.passed, false);
+    const bytesFinding = byteCapReport.findings.find((f) => f.id === 'SCAN-LIMIT-BYTES');
+    assert(bytesFinding);
+    assert.equal(bytesFinding.category, 'SCAN_LIMIT_EXCEEDED');
+    assert.equal(bytesFinding.severity, 'high');
+    assert(bytesFinding.file);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('ManagedSkillCatalog.installSkillFromSource blocks malicious skills by default and allows with force', async () => {
   const staging = mkdtempSync(join(tmpdir(), 'agentdock-sec-git-'));
   const userDir = mkdtempSync(join(tmpdir(), 'agentdock-sec-user-'));

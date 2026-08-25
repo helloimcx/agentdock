@@ -321,6 +321,12 @@ export function scanSkillContent(content: string, relativePath: string = 'SKILL.
   return findings;
 }
 
+// The scanner reads untrusted skill bundles synchronously on the event loop;
+// without a budget a malicious tree could stall the server. Any skill that
+// trips a limit fails the gate (high severity) instead of being trusted.
+const MAX_SCAN_FILES = 2000;
+const MAX_SCAN_BYTES = 20 * 1024 * 1024;
+
 export function scanSkillDirectory(skillDir: string, skillId: string = 'skill', scope?: SkillScope): SkillScanReport {
   const findings: SkillScanFinding[] = [];
   const resolvedDir = resolve(skillDir);
@@ -328,9 +334,33 @@ export function scanSkillDirectory(skillDir: string, skillId: string = 'skill', 
   if (existsSync(resolvedDir)) {
     const filesToScan = collectFilesRecursive(resolvedDir, isScannableFile);
 
+    if (filesToScan.length > MAX_SCAN_FILES) {
+      findings.push({
+        id: 'SCAN-LIMIT-FILES',
+        category: 'SCAN_LIMIT_EXCEEDED',
+        severity: 'high',
+        message: `Scan budget exceeded: ${filesToScan.length} scannable files (limit ${MAX_SCAN_FILES}).`,
+        file: relative(resolvedDir, filesToScan[MAX_SCAN_FILES]).replace(/\\/g, '/'),
+      });
+      filesToScan.length = MAX_SCAN_FILES;
+    }
+
+    let scannedBytes = 0;
     for (const file of filesToScan) {
       try {
         const content = readFileSync(file, 'utf8');
+        scannedBytes += content.length;
+        if (scannedBytes > MAX_SCAN_BYTES) {
+          const rel = relative(resolvedDir, file).replace(/\\/g, '/');
+          findings.push({
+            id: 'SCAN-LIMIT-BYTES',
+            category: 'SCAN_LIMIT_EXCEEDED',
+            severity: 'high',
+            message: `Scan budget exceeded: over ${MAX_SCAN_BYTES} bytes of scannable content read.`,
+            file: rel,
+          });
+          break;
+        }
         const rel = relative(resolvedDir, file).replace(/\\/g, '/');
         const fileFindings = scanSkillContent(content, rel);
         findings.push(...fileFindings);
