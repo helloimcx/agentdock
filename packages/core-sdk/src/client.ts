@@ -81,11 +81,11 @@ function hasRecord(value: Record<string, unknown>, key: string) {
   return isRecord(value[key]);
 }
 
-function optionalString(value: Record<string, unknown>, key: string) {
+function hasOptionalString(value: Record<string, unknown>, key: string) {
   return value[key] === undefined || typeof value[key] === 'string';
 }
 
-function optionalBoolean(value: Record<string, unknown>, key: string) {
+function hasOptionalBoolean(value: Record<string, unknown>, key: string) {
   return value[key] === undefined || typeof value[key] === 'boolean';
 }
 
@@ -93,7 +93,7 @@ function isEnumString(value: Record<string, unknown>, key: string, allowed: read
   return allowed.includes(String(value[key]));
 }
 
-function optionalEnumString(value: Record<string, unknown>, key: string, allowed: readonly string[]) {
+function hasOptionalEnumString(value: Record<string, unknown>, key: string, allowed: readonly string[]) {
   return value[key] === undefined || allowed.includes(String(value[key]));
 }
 
@@ -135,10 +135,10 @@ function isThreadMessagePatch(value: unknown) {
   if (!isRecord(value)) {
     return false;
   }
-  return optionalString(value, 'id') &&
-    optionalEnumString(value, 'role', ['user', 'assistant', 'system']) &&
-    optionalString(value, 'content') &&
-    optionalString(value, 'timestamp');
+  return hasOptionalString(value, 'id') &&
+    hasOptionalEnumString(value, 'role', ['user', 'assistant', 'system']) &&
+    hasOptionalString(value, 'content') &&
+    hasOptionalString(value, 'timestamp');
 }
 
 function isRunSummary(value: unknown) {
@@ -209,14 +209,17 @@ function isAutomationDefinition(value: unknown) {
     isNonNegativeInteger(value.consecutiveEvaluationFailures) &&
     hasString(value, 'createdAt') && hasString(value, 'updatedAt') &&
     (value.health !== 'blocked' || hasString(value, 'blockedReason')) &&
-    optionalString(value, 'blockedReason') && optionalBoolean(value, 'lastSuccessfulMatch') &&
-    optionalString(value, 'lastEvaluationAt') && optionalString(value, 'lastTriggeredAt');
+    hasOptionalString(value, 'blockedReason') && hasOptionalBoolean(value, 'lastSuccessfulMatch') &&
+    hasOptionalString(value, 'lastEvaluationAt') && hasOptionalString(value, 'lastTriggeredAt');
 }
 
+// Mirrors the finished-only evaluation fields; note the guard has always been
+// permissive about triggeredAt/outputTruncated, which are also finished-only.
+const RUNNING_EVALUATION_FORBIDDEN_FIELDS = ['conditionOutcome', 'triggerDecision', 'finishedAt', 'durationMs', 'exitCode', 'errorCategory',
+  'stdout', 'stderr', 'resultSummary', 'payload', 'nextState', 'sandboxViolations', 'networkAudit'];
+
 function isRunningEvaluation(value: Record<string, unknown>) {
-  return ['conditionOutcome', 'triggerDecision', 'finishedAt', 'durationMs', 'exitCode', 'errorCategory',
-    'stdout', 'stderr', 'resultSummary', 'payload', 'nextState', 'sandboxViolations', 'networkAudit']
-    .every((key) => value[key] === undefined);
+  return RUNNING_EVALUATION_FORBIDDEN_FIELDS.every((key) => value[key] === undefined);
 }
 
 function isAutomationEvaluation(value: unknown) {
@@ -237,8 +240,8 @@ function isAutomationRun(value: unknown) {
   return isRecord(value) && hasString(value, 'id') && hasString(value, 'automationId') && hasString(value, 'evaluationId') &&
     isEnumString(value, 'status', ['queued', 'running', 'succeeded', 'failed', 'skipped']) &&
     isEnumString(value, 'executionMode', ['same-thread', 'side-thread']) && hasString(value, 'createdAt') &&
-    optionalEnumString(value, 'deliveryStatus', ['pending', 'delivering', 'delivered', 'failed']) &&
-    optionalString(value, 'threadId') && optionalString(value, 'acpRunId') && optionalString(value, 'error');
+    hasOptionalEnumString(value, 'deliveryStatus', ['pending', 'delivering', 'delivered', 'failed']) &&
+    hasOptionalString(value, 'threadId') && hasOptionalString(value, 'acpRunId') && hasOptionalString(value, 'error');
 }
 
 function isAutomationScriptVersion(value: unknown) {
@@ -271,7 +274,7 @@ function isAutomationCondition(value: unknown) {
 
 function isAutomationAction(value: unknown) {
   return isRecord(value) && value.kind === 'agent-prompt' && hasString(value, 'promptTemplate') &&
-    (value.executionMode === 'same-thread' || value.executionMode === 'side-thread');
+    isEnumString(value, 'executionMode', ['same-thread', 'side-thread']);
 }
 
 function isAutomationDelivery(value: unknown) {

@@ -71,7 +71,7 @@ test('automation.definition.updated guard accepts valid definitions and rejects 
 
     emit({
       type: 'automation.definition.updated',
-      automation: { ...validDefinition(), health: 'blocked', blockedReason: 'policy', blockedReasonExtra: undefined },
+      automation: { ...validDefinition(), health: 'blocked', blockedReason: 'policy', lastTriggeredAt: '2026-01-02T00:00:00.000Z' },
     });
     assert.equal(received.length, 2);
   } finally {
@@ -91,6 +91,7 @@ test('automation.evaluation.updated guard pins running and finished field rules'
     };
     emit({ type: 'automation.evaluation.updated', evaluation: running });
     emit({ type: 'automation.evaluation.updated', evaluation: { ...running, finishedAt: '2026-01-01T00:01:00.000Z' } });
+    emit({ type: 'automation.evaluation.updated', evaluation: { ...running, stdout: null } });
     emit({ type: 'automation.evaluation.updated', evaluation: { ...running, status: 'finished' } });
     emit({ type: 'automation.evaluation.updated', evaluation: { ...running, activationKind: 'webhook' } });
     assert.equal(received.length, 1);
@@ -174,6 +175,7 @@ test('automation.run.updated and message.updated guards pin enum and optional-fi
     emit({ type: 'automation.run.updated', run: { ...validRun, status: 'cancelled' } });
     emit({ type: 'automation.run.updated', run: { ...validRun, deliveryStatus: 'shipped' } });
     emit({ type: 'automation.run.updated', run: { ...validRun, threadId: 7 } });
+    emit({ type: 'automation.run.updated', run: { ...validRun, threadId: null } });
     assert.equal(received.length, 2);
 
     const baseMessage = { id: 'm1', role: 'assistant', content: 'hello', timestamp: '2026-01-01T00:00:00.000Z' };
