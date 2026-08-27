@@ -95,6 +95,12 @@ flowchart LR
 
 ## New
 
+### 2026-08-27
+
+- 发布 AgentDock 0.1.80：内置股票与量化盯盘 Skill (`stock-monitor`)：
+  - **内置专业盯盘技能**：在 `electron/managed-skills/stock-monitor/` 内置标准化技能定义，支持 A股、港股、美股行情标准化解析，提供周线布林带（`boll_lower`/`boll_upper`/`boll_percent_b`）、动态股息率（`dividend_yield`）、股债利差（`erp_spread`）等量化指标字典与策略模板。
+  - **语义识别与动态注入**：在 `agent-message-policy` 中集成智能意图识别（`isStockMonitorRequest`），当用户询问盯盘能力或配置行情监控时自动注入该 Skill，提供流畅的交互引导与一键创建命令。
+
 ### 2026-08-23
 
 - 模型提供商多模型配置与工作区模型级联下拉支持：

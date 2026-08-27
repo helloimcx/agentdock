@@ -59,32 +59,58 @@ export interface AgentMessageKnowledgeBase {
   name: string;
 }
 
+function formatKnowledgeBlock(knowledgeBases: AgentMessageKnowledgeBase[]): string[] {
+  if (!knowledgeBases.length) return [];
+  return [
+    '',
+    '[Selected Knowledge Bases]',
+    ...knowledgeBases.map((base) => `- id: ${base.id} | name: ${base.name}`),
+    '[/Selected Knowledge Bases]',
+  ];
+}
+
+function resolveConditionBlocks(content: string, catalog: ManagedSkillCatalog): string[] {
+  if (!isConditionAutomationRequest(content)) return [];
+  const skill = catalog.get('condition-trigger')?.content || '';
+  if (!skill) return [];
+  const helper = catalog.getHelperPath('condition-trigger', 'scripts/register-condition-trigger.sh') || '';
+  return ['', '[Condition Trigger Skill]', skill, '[/Condition Trigger Skill]', '[Condition Trigger Helper]', helper, '[/Condition Trigger Helper]'];
+}
+
+function resolveStockBlock(content: string, catalog: ManagedSkillCatalog): string[] {
+  if (!isStockMonitorRequest(content)) return [];
+  const skill = catalog.get('stock-monitor')?.content || '';
+  return skill ? ['', '[Stock Monitor Skill]', skill, '[/Stock Monitor Skill]'] : [];
+}
+
 export function composeAgentMessage(content: string, knowledgeBases: AgentMessageKnowledgeBase[] = [], catalog = new ManagedSkillCatalog()) {
   if (content.trim().startsWith('/')) {
     return content;
   }
-  const knowledgeBlock = knowledgeBases.length
-    ? [
-        '[Selected Knowledge Bases]',
-        ...knowledgeBases.map((base) => `- id: ${base.id} | name: ${base.name}`),
-        '[/Selected Knowledge Bases]',
-      ].join('\n')
-    : '';
-  const conditionSkill = isConditionAutomationRequest(content) ? catalog.get('condition-trigger')?.content || '' : '';
-  const conditionHelper = conditionSkill ? catalog.getHelperPath('condition-trigger', 'scripts/register-condition-trigger.sh') || '' : '';
   return [
     SCHEDULER_INSTRUCTION,
     '',
     MONITOR_INSTRUCTION,
     '',
     CHANNEL_INSTRUCTION,
-    ...(conditionSkill ? ['', '[Condition Trigger Skill]', conditionSkill, '[/Condition Trigger Skill]', '[Condition Trigger Helper]', conditionHelper, '[/Condition Trigger Helper]'] : []),
-    ...(knowledgeBlock ? ['', knowledgeBlock] : []),
+    ...resolveConditionBlocks(content, catalog),
+    ...resolveStockBlock(content, catalog),
+    ...formatKnowledgeBlock(knowledgeBases),
     '',
     '[User Message]',
     content,
     '[/User Message]',
   ].join('\n');
+}
+
+function isStockMonitorRequest(content: string) {
+  const normalized = content.toLowerCase();
+  const englishStock = /\b(?:stock|stocks|ticker|quote|quotes|bollinger|dividend|erp|shares|market[-\s]?watch)\b/.test(normalized);
+  const englishIntent = /\b(?:monitor|alert|watch|track|buy|sell|price|condition|metric|strategy|capability|capabilities)\b/.test(normalized);
+  const chineseStock = /股票|盯盘|看盘|行情|个股|美股|港股|A股|证券|标的|涨跌幅|布林带|布林线|股息率|分红|股债利差|财报|价格预警|行情预警/.test(content);
+  const stockCodeWithAction = /(?:\b[0-9]{5,6}\b|\b[A-Z]{1,5}\b).*(?:监控|盯盘|预警|行情|走势|股价)/.test(content)
+    || /(?:监控|盯盘|预警|行情|走势|股价).*(?:\b[0-9]{5,6}\b|\b[A-Z]{1,5}\b)/.test(content);
+  return (englishStock && englishIntent) || chineseStock || stockCodeWithAction;
 }
 
 function isConditionAutomationRequest(content: string) {
@@ -99,3 +125,4 @@ function isConditionAutomationRequest(content: string) {
   return (englishCondition && englishAutomation && englishRequest && !englishNegation) || (chineseCondition && chineseRequest && !chineseNegation);
 }
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
+
