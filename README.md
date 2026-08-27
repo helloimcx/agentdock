@@ -95,6 +95,12 @@ flowchart LR
 
 ## New
 
+### 2026-08-28
+
+- 事件监控支持 cron 时间窗（Issue #115 Phase 1）：
+  - **定时评估窗口**：`lac monitor add/edit` 新增 `--cron "<expr>"` 与 `--timezone <tz>`（默认 `Asia/Shanghai`），监控仅在匹配的时间窗内轮询评估（如每交易日 11 点检查、`edit --cron off` 清除窗口），窗口外不再空转轮询，降低行情源限流风险。
+  - **向后兼容**：未配置时间窗的监控保持 24×7 轮询行为不变；`monitor info` 输出新增 Schedule 行；交易日历门控留待后续阶段。
+
 ### 2026-08-27
 
 - 发布 AgentDock 0.1.80：内置股票与量化盯盘 Skill (`stock-monitor`)：
