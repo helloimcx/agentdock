@@ -1,3 +1,5 @@
+import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
+
 const SCHEDULER_INSTRUCTION = [
   '[Scheduler Tools]',
   'If the user asks to create, view, edit, delete, or manually run a scheduled task for this conversation, use the Bash tool to run the local scheduler CLI.',
@@ -124,5 +126,5 @@ function isConditionAutomationRequest(content: string) {
   const chineseNegation = /(?:不要|不需要|无需|别|仅|只是|不想).{0,8}(?:创建|新建|设置|添加|建立|配置|制作|实现)/.test(content);
   return (englishCondition && englishAutomation && englishRequest && !englishNegation) || (chineseCondition && chineseRequest && !chineseNegation);
 }
-import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
+
 

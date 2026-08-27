@@ -34,6 +34,7 @@ import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions, WorkspaceT
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 import { projectWorkspaceId } from '../runtime/workspace-project-registry.js';
 import { composeAgentMessage } from '../thread/agent-message-policy.js';
+import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
 
@@ -263,7 +264,7 @@ export class WorkspaceRouter {
     const route = isLocalSlashCommand(content)
       ? await this.getWorkspaceRoute(workspaceId)
       : await this.getThreadWorkspaceRoute(threadId, workspaceId);
-    const preparedContent = await this.prepareAgentMessage(threadId, content);
+    const preparedContent = await this.prepareAgentMessage(threadId, content, route.config.workDir);
     return this.localCoreAcp.sendThreadMessage(threadId, preparedContent, route.config, options);
   }
 
@@ -327,7 +328,7 @@ export class WorkspaceRouter {
     };
   }
 
-  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent) {
+  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent, workspacePath: string) {
     const displayText = typeof content === 'string' ? content : content.displayText;
     if (displayText.trim().startsWith('/')) {
       return content;
@@ -338,7 +339,9 @@ export class WorkspaceRouter {
           .filter((base) => selectedIds.has(base.id))
           .map(({ id, name }) => ({ id, name }))
       : [];
-    const wrapped = composeAgentMessage(displayText, knowledgeBases);
+    // Honor workspace > user > builtin skill precedence so workspace-scoped
+    // overrides of condition-trigger / stock-monitor are the ones injected.
+    const wrapped = composeAgentMessage(displayText, knowledgeBases, new ManagedSkillCatalog({ workspacePath }));
     return typeof content === 'string'
       ? wrapped
       : createChannelThreadMessageInput(wrapped, content.contentParts);
