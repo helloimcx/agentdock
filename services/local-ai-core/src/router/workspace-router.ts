@@ -328,7 +328,7 @@ export class WorkspaceRouter {
     };
   }
 
-  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent, workspacePath = '') {
+  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent, workspacePath: string) {
     const displayText = typeof content === 'string' ? content : content.displayText;
     if (displayText.trim().startsWith('/')) {
       return content;
@@ -341,8 +341,7 @@ export class WorkspaceRouter {
       : [];
     // Honor workspace > user > builtin skill precedence so workspace-scoped
     // overrides of condition-trigger / stock-monitor are the ones injected.
-    const catalog = workspacePath ? new ManagedSkillCatalog({ workspacePath }) : new ManagedSkillCatalog();
-    const wrapped = composeAgentMessage(displayText, knowledgeBases, catalog);
+    const wrapped = composeAgentMessage(displayText, knowledgeBases, new ManagedSkillCatalog({ workspacePath }));
     return typeof content === 'string'
       ? wrapped
       : createChannelThreadMessageInput(wrapped, content.contentParts);

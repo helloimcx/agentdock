@@ -25,31 +25,31 @@ test('sendThreadMessage composes skill blocks from workspace-scoped skill overri
     '',
   ].join('\n'), 'utf8');
 
-  const store = new LocalCoreAcpStore(userData);
-  const router = new WorkspaceRouter({
-    store,
-    eventBus: new LocalCoreEventBus(),
-    readRuntimeConfig: async () => ({
-      storage: 'sqlite',
-      databasePath: join(userData, 'runtime.db'),
-      baseDir: userData,
-      config: {
-        projects: [{
-          name: 'fixture-ws',
-          platforms: [],
-          agent: {
-            type: 'localcore-acp',
-            options: { command: 'true', work_dir: workspaceDir },
-          },
-        }],
-      },
-    }),
-    getCapabilities: () => ({ snapshot: { agents: [] } }) as any,
-    knowledgeProvider: { listKnowledgeBases: async () => [] } as any,
-    knowledgeAttachments: { listThreadKnowledgeBaseIds: async () => [] } as any,
-  });
-
+  let router: WorkspaceRouter | undefined;
   try {
+    const store = new LocalCoreAcpStore(userData);
+    router = new WorkspaceRouter({
+      store,
+      eventBus: new LocalCoreEventBus(),
+      readRuntimeConfig: async () => ({
+        storage: 'sqlite',
+        databasePath: join(userData, 'runtime.db'),
+        baseDir: userData,
+        config: {
+          projects: [{
+            name: 'fixture-ws',
+            platforms: [],
+            agent: {
+              type: 'localcore-acp',
+              options: { command: 'true', work_dir: workspaceDir },
+            },
+          }],
+        },
+      }),
+      getCapabilities: () => ({ snapshot: { agents: [] } }) as any,
+      knowledgeProvider: { listKnowledgeBases: async () => [] } as any,
+      knowledgeAttachments: { listThreadKnowledgeBaseIds: async () => [] } as any,
+    });
     const thread = store.createThread('fixture-ws', 'skill composition');
     await router.sendThreadMessage(thread.id, '帮我监控股票价格');
 
@@ -59,7 +59,7 @@ test('sendThreadMessage composes skill blocks from workspace-scoped skill overri
     assert.match(userMessage.content, /\[Stock Monitor Skill\]/);
     assert.match(userMessage.content, new RegExp(OVERRIDE_MARKER));
   } finally {
-    router.close();
+    router?.close();
     rmSync(userData, { recursive: true, force: true });
     rmSync(workspaceDir, { recursive: true, force: true });
   }
