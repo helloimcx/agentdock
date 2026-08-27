@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
+import { collectFilesRecursive } from '../kernel/fs-walk.js';
 import type {
   SkillScanCategory,
   SkillScanFinding,
@@ -320,19 +321,48 @@ export function scanSkillContent(content: string, relativePath: string = 'SKILL.
   return findings;
 }
 
+// The scanner reads untrusted skill bundles synchronously on the event loop;
+// without a budget a malicious tree could stall the server. Any skill that
+// trips a limit fails the gate (high severity) instead of being trusted.
+const MAX_SCAN_FILES = 2000;
+const MAX_SCAN_BYTES = 20 * 1024 * 1024;
+
 export function scanSkillDirectory(skillDir: string, skillId: string = 'skill', scope?: SkillScope): SkillScanReport {
   const findings: SkillScanFinding[] = [];
   const resolvedDir = resolve(skillDir);
 
   if (existsSync(resolvedDir)) {
-    const filesToScan: string[] = [];
-    collectScannableFiles(resolvedDir, filesToScan);
-    filesToScan.sort();
+    const filesToScan = collectFilesRecursive(resolvedDir, isScannableFile);
 
+    if (filesToScan.length > MAX_SCAN_FILES) {
+      findings.push({
+        id: 'SCAN-LIMIT-FILES',
+        category: 'SCAN_LIMIT_EXCEEDED',
+        severity: 'high',
+        message: `Scan budget exceeded: ${filesToScan.length} scannable files (limit ${MAX_SCAN_FILES}).`,
+        file: relative(resolvedDir, filesToScan[MAX_SCAN_FILES]).replace(/\\/g, '/'),
+      });
+      filesToScan.length = MAX_SCAN_FILES;
+    }
+
+    let scannedBytes = 0;
     for (const file of filesToScan) {
       try {
-        const content = readFileSync(file, 'utf8');
         const rel = relative(resolvedDir, file).replace(/\\/g, '/');
+        // Size-check before reading so a single huge file is never fully
+        // loaded just to discover it exceeds the budget.
+        scannedBytes += statSync(file).size;
+        if (scannedBytes > MAX_SCAN_BYTES) {
+          findings.push({
+            id: 'SCAN-LIMIT-BYTES',
+            category: 'SCAN_LIMIT_EXCEEDED',
+            severity: 'high',
+            message: `Scan budget exceeded: scannable content exceeds ${MAX_SCAN_BYTES} bytes.`,
+            file: rel,
+          });
+          break;
+        }
+        const content = readFileSync(file, 'utf8');
         const fileFindings = scanSkillContent(content, rel);
         findings.push(...fileFindings);
       } catch {
@@ -367,23 +397,6 @@ function isScannableFile(name: string): boolean {
   const dotIdx = lower.lastIndexOf('.');
   if (dotIdx === -1) return false;
   return SCANNABLE_EXTENSIONS.has(lower.slice(dotIdx));
-}
-
-function collectScannableFiles(current: string, result: string[]): void {
-  try {
-    const entries = readdirSync(current, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue;
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) {
-        collectScannableFiles(full, result);
-      } else if (entry.isFile() && !entry.isSymbolicLink() && isScannableFile(entry.name)) {
-        result.push(full);
-      }
-    }
-  } catch {
-    // Ignore directory traversal errors
-  }
 }
 
 export function summarizeFindings(findings: SkillScanFinding[]): SkillScanSummary {

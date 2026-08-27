@@ -36,7 +36,8 @@ export type SkillScanCategory =
   | 'T06_PERSISTENCE'
   | 'T07_TOOL_HIJACK'
   | 'T08_INSECURE_DEPENDENCIES'
-  | 'T09_INSECURE_PRACTICES';
+  | 'T09_INSECURE_PRACTICES'
+  | 'SCAN_LIMIT_EXCEEDED';
 
 export interface SkillScanFinding {
   id: string;

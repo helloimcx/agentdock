@@ -195,6 +195,70 @@ test('scanSkillDirectory analyzes multi-file skill folder', () => {
   }
 });
 
+test('scanSkillDirectory enforces scan budget on oversized skill trees', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-scan-budget-'));
+  try {
+    // File-count cap: 2001 scannable files exceeds the 2000-file budget.
+    mkdirSync(join(dir, 'file-cap-skill'), { recursive: true });
+    for (let i = 0; i <= 2000; i++) {
+      writeFileSync(join(dir, 'file-cap-skill', `f${String(i).padStart(4, '0')}.md`), 'x\n');
+    }
+
+    const fileCapReport = scanSkillDirectory(join(dir, 'file-cap-skill'), 'file-cap-skill', 'user');
+    assert.equal(fileCapReport.passed, false);
+    const filesFinding = fileCapReport.findings.find((f) => f.id === 'SCAN-LIMIT-FILES');
+    assert(filesFinding);
+    assert.equal(filesFinding.category, 'SCAN_LIMIT_EXCEEDED');
+    assert.equal(filesFinding.severity, 'high');
+    assert(filesFinding.file);
+
+    // Byte cap: 5 x 5MB files exceeds the 20MB read budget.
+    mkdirSync(join(dir, 'byte-cap-skill'), { recursive: true });
+    const big = 'x'.repeat(5 * 1024 * 1024);
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(join(dir, 'byte-cap-skill', `f${String(i).padStart(4, '0')}.md`), big);
+    }
+
+    const byteCapReport = scanSkillDirectory(join(dir, 'byte-cap-skill'), 'byte-cap-skill', 'user');
+    assert.equal(byteCapReport.passed, false);
+    const bytesFinding = byteCapReport.findings.find((f) => f.id === 'SCAN-LIMIT-BYTES');
+    assert(bytesFinding);
+    assert.equal(bytesFinding.category, 'SCAN_LIMIT_EXCEEDED');
+    assert.equal(bytesFinding.severity, 'high');
+    assert(bytesFinding.file);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('scanSkillDirectory allows trees exactly at the scan budget boundary', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentdock-scan-boundary-'));
+  try {
+    // Exactly 2000 scannable files stays within the file budget.
+    mkdirSync(join(dir, 'file-boundary-skill'), { recursive: true });
+    for (let i = 0; i < 2000; i++) {
+      writeFileSync(join(dir, 'file-boundary-skill', `f${String(i).padStart(4, '0')}.md`), 'x\n');
+    }
+
+    const fileBoundaryReport = scanSkillDirectory(join(dir, 'file-boundary-skill'), 'file-boundary-skill', 'user');
+    assert.equal(fileBoundaryReport.passed, true);
+    assert(!fileBoundaryReport.findings.some((f) => f.id === 'SCAN-LIMIT-FILES'));
+
+    // Exactly 20MB of scannable content stays within the byte budget.
+    mkdirSync(join(dir, 'byte-boundary-skill'), { recursive: true });
+    const exact = 'x'.repeat(5 * 1024 * 1024);
+    for (let i = 0; i < 4; i++) {
+      writeFileSync(join(dir, 'byte-boundary-skill', `f${String(i).padStart(4, '0')}.md`), exact);
+    }
+
+    const byteBoundaryReport = scanSkillDirectory(join(dir, 'byte-boundary-skill'), 'byte-boundary-skill', 'user');
+    assert.equal(byteBoundaryReport.passed, true);
+    assert(!byteBoundaryReport.findings.some((f) => f.id === 'SCAN-LIMIT-BYTES'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('ManagedSkillCatalog.installSkillFromSource blocks malicious skills by default and allows with force', async () => {
   const staging = mkdtempSync(join(tmpdir(), 'agentdock-sec-git-'));
   const userDir = mkdtempSync(join(tmpdir(), 'agentdock-sec-user-'));
@@ -430,6 +494,40 @@ test('ManagedSkillCatalog.updateSkill blocks malicious updates without force', a
     assert.equal(callForce, true);
     assert.equal(resForce.updated.length, 1);
     assert.equal(resForce.conflicts.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('listSkills reports stable clean status and detects nested-file edits', () => {
+  const root = mkdtempSync(join(tmpdir(), 'skill-hash-cache-test-'));
+  try {
+    const userDir = join(root, 'user-skills');
+    mkdirSync(join(userDir, 'demo-skill', 'scripts'), { recursive: true });
+    writeFileSync(join(userDir, 'demo-skill', 'SKILL.md'), '---\nname: demo-skill\n---\n# Demo\n');
+    writeFileSync(join(userDir, 'demo-skill', 'scripts', 'helper.sh'), 'echo hello\n');
+
+    const store = createTestDb();
+    const catalog = new ManagedSkillCatalog({ rootDir: join(root, 'builtin'), userSkillsDir: userDir, store });
+    store.upsertSource({
+      skillId: 'demo-skill',
+      scope: 'user',
+      sourceRepo: 'owner/demo',
+      sourceRef: 'v1.0.0',
+      installedAt: new Date().toISOString(),
+      contentHash: computeSkillContentHash(join(userDir, 'demo-skill')),
+    });
+
+    const statusOf = () => {
+      const skill = catalog.listSkills().find((s) => s.id === 'demo-skill');
+      return skill?.source?.status;
+    };
+
+    assert.equal(statusOf(), 'clean');
+    assert.equal(statusOf(), 'clean');
+
+    writeFileSync(join(userDir, 'demo-skill', 'scripts', 'helper.sh'), 'echo tampered\n');
+    assert.equal(statusOf(), 'locally-modified');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
