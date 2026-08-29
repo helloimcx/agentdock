@@ -212,7 +212,7 @@ test('provider-event activation preserves a valid evaluation schedule', () => {
     sourceConfig: {},
     schedule: { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' },
   });
-  assert.deepEqual(activation.schedule, { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' });
+  assert.deepEqual(activation.kind === 'provider-event' ? activation.schedule : undefined, { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' });
 
   const withoutSchedule = normalizeAutomationActivation({
     kind: 'provider-event',
