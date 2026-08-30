@@ -4,6 +4,7 @@ import {
   ScheduledJobExecutionMode,
   ScheduledJobRoute,
 } from './scheduler.js';
+import type { AutomationMonitorSchedule } from './automations.js';
 
 export type ScheduledJobTriggerType = 'cron' | 'once' | (string & {});
 
@@ -140,6 +141,7 @@ export interface AutomationMonitor {
   enabled: boolean;
   cooldownMs: number;
   concurrencyPolicy: 'skip_if_running';
+  schedule?: AutomationMonitorSchedule;
   lastState?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -178,6 +180,7 @@ export interface AutomationMonitorCreateInput {
   executionMode?: ScheduledJobExecutionMode;
   enabled?: boolean;
   cooldownMs?: number;
+  schedule?: AutomationMonitorSchedule;
 }
 
 export interface AutomationMonitorUpdateInput {
@@ -189,6 +192,7 @@ export interface AutomationMonitorUpdateInput {
   executionMode?: ScheduledJobExecutionMode;
   enabled?: boolean;
   cooldownMs?: number;
+  schedule?: AutomationMonitorSchedule | null;
 }
 
 export function normalizeAutomationMonitorStatus(value: unknown, fallback: AutomationMonitorStatus = 'queued'): AutomationMonitorStatus {

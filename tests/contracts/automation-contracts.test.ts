@@ -204,3 +204,36 @@ test('validates canonical timestamps', () => {
     /timestamp/,
   );
 });
+
+test('provider-event activation preserves a valid evaluation schedule', () => {
+  const activation = normalizeAutomationActivation({
+    kind: 'provider-event',
+    sourceType: 'stock.quote',
+    sourceConfig: {},
+    schedule: { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' },
+  });
+  assert.deepEqual(activation.kind === 'provider-event' ? activation.schedule : undefined, { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' });
+
+  const withoutSchedule = normalizeAutomationActivation({
+    kind: 'provider-event',
+    sourceType: 'stock.quote',
+    sourceConfig: {},
+  });
+  assert.equal(withoutSchedule.kind === 'provider-event' ? withoutSchedule.schedule : undefined, undefined);
+});
+
+test('provider-event schedule requires both cron and timezone', () => {
+  const base = { kind: 'provider-event', sourceType: 'stock.quote', sourceConfig: {} };
+  assert.throws(
+    () => normalizeAutomationActivation({ ...base, schedule: { timezone: 'UTC' } }),
+    /schedule cron/,
+  );
+  assert.throws(
+    () => normalizeAutomationActivation({ ...base, schedule: { cron: '* * * * *' } }),
+    /schedule timezone/,
+  );
+  assert.throws(
+    () => normalizeAutomationActivation({ ...base, schedule: 'weekdays' }),
+    /schedule must be an object/,
+  );
+});

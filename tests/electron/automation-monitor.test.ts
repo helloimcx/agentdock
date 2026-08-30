@@ -8,6 +8,7 @@ import {
   validateRestrictedExpression,
 } from '../../services/local-ai-core/src/automation/condition-evaluator.js';
 import { AutomationMonitorService } from '../../services/local-ai-core/src/automation/automation-monitor-service.js';
+import { isMonitorWithinSchedule } from '../../services/local-ai-core/src/automation/automation-monitor-service.js';
 import { AutomationService } from '../../services/local-ai-core/src/automation/automation-service.js';
 import { monitorToAutomationInput } from '../../services/local-ai-core/src/automation/legacy-automation-mappers.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
@@ -1255,5 +1256,100 @@ test('unified monitor evaluation preserves nested legacy metrics and trusted sta
       subject: { market: 'NASDAQ' }, sourceType: { vendor: 'IEX' },
       lastEventId: 'spoofed', lastEventAt: 'spoofed', payload: { spoofed: true },
     });
+  } finally { await monitors.stop(); context.close(); }
+});
+
+test('schedule gate matches wall clock in the schedule timezone and fails open on corrupt state', () => {
+  const weekdayCron = { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' };
+  // 11:00 Monday Asia/Shanghai (2026-08-24) is 03:00Z.
+  assert.equal(isMonitorWithinSchedule(weekdayCron, new Date('2026-08-24T03:00:00Z')), true);
+  assert.equal(isMonitorWithinSchedule(weekdayCron, new Date('2026-08-24T03:00:59Z')), true);
+  assert.equal(isMonitorWithinSchedule(weekdayCron, new Date('2026-08-24T04:01:00Z')), false);
+  assert.equal(isMonitorWithinSchedule(weekdayCron, new Date('2026-08-22T03:00:00Z')), false);
+  assert.equal(isMonitorWithinSchedule(undefined, new Date('2026-08-22T03:00:00Z')), true);
+  assert.equal(isMonitorWithinSchedule({ cron: 'not a cron', timezone: 'UTC' }, new Date()), true);
+  assert.equal(isMonitorWithinSchedule({ cron: '* * * * *', timezone: 'Mars/Phobos' }, new Date()), true);
+});
+
+test('monitor create persists a validated schedule and rejects invalid windows', async () => {
+  const context = monitorFixture();
+  const monitors = new AutomationMonitorService({
+    store: context.store, automations: context.automations, eventBus: context.eventBus, providers: [],
+  });
+  try {
+    await monitors.createMonitor({
+      workspaceId: 'workspace', title: 'Quote', sourceType: 'stock.quote',
+      condition: { metric: 'latestPrice', operator: '>', value: 1 }, promptTemplate: 'quote',
+      schedule: { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' },
+    });
+    assert.deepEqual(monitors.listMonitors()[0]?.schedule, { cron: '0 11 * * 1-5', timezone: 'Asia/Shanghai' });
+
+    await assert.rejects(() => monitors.createMonitor({
+      workspaceId: 'workspace', title: 'Bad cron', sourceType: 'stock.quote',
+      condition: { metric: 'latestPrice', operator: '>', value: 1 }, promptTemplate: 'quote',
+      schedule: { cron: '0 11', timezone: 'Asia/Shanghai' },
+    }), /Monitor schedule is invalid/);
+    await assert.rejects(() => monitors.createMonitor({
+      workspaceId: 'workspace', title: 'Bad timezone', sourceType: 'stock.quote',
+      condition: { metric: 'latestPrice', operator: '>', value: 1 }, promptTemplate: 'quote',
+      schedule: { cron: '* * * * *', timezone: 'Mars/Phobos' },
+    }), /Monitor schedule is invalid/);
+    assert.equal(context.automations.list().length, 1);
+  } finally { await monitors.stop(); context.close(); }
+});
+
+test('monitor edit can set and clear the schedule window', async () => {
+  const context = monitorFixture();
+  const monitors = new AutomationMonitorService({
+    store: context.store, automations: context.automations, eventBus: context.eventBus, providers: [],
+  });
+  try {
+    const monitor = await monitors.createMonitor({
+      workspaceId: 'workspace', title: 'Quote', sourceType: 'stock.quote',
+      condition: { metric: 'latestPrice', operator: '>', value: 1 }, promptTemplate: 'quote',
+    });
+    assert.equal(monitors.listMonitors()[0]?.schedule, undefined);
+
+    await monitors.updateMonitor(monitor.id, { schedule: { cron: '30 9 * * 1-5', timezone: 'Asia/Shanghai' } });
+    assert.deepEqual(monitors.listMonitors()[0]?.schedule, { cron: '30 9 * * 1-5', timezone: 'Asia/Shanghai' });
+
+    await assert.rejects(() => monitors.updateMonitor(monitor.id, { schedule: { cron: 'nope', timezone: 'UTC' } }), /Monitor schedule is invalid/);
+
+    await monitors.updateMonitor(monitor.id, { schedule: null });
+    assert.equal(monitors.listMonitors()[0]?.schedule, undefined);
+  } finally { await monitors.stop(); context.close(); }
+});
+
+test('runTick skips out-of-window monitors while manual runs still poll', async () => {
+  const context = monitorFixture();
+  const polled: string[] = [];
+  const laterMinute = (new Date().getUTCMinutes() + 30) % 60;
+  const inWindow = context.automations.createFromLegacy(monitorToAutomationInput({
+    workspaceId: 'workspace', title: 'Always', sourceType: 'stock.quote', sourceConfig: { symbol: 'IN' },
+    condition: { metric: 'latestPrice', operator: '>', value: 1 }, promptTemplate: 'quote',
+    platform: 'local', route: { type: 'local.thread', channelId: 'workspace' },
+  }));
+  const outWindow = context.automations.createFromLegacy(monitorToAutomationInput({
+    workspaceId: 'workspace', title: 'Windowed', sourceType: 'stock.quote', sourceConfig: { symbol: 'OUT' },
+    condition: { metric: 'latestPrice', operator: '>', value: 1 }, promptTemplate: 'quote',
+    platform: 'local', route: { type: 'local.thread', channelId: 'workspace' },
+    schedule: { cron: `${laterMinute} * * * *`, timezone: 'UTC' },
+  }));
+  const monitors = new AutomationMonitorService({
+    store: context.store, automations: context.automations, eventBus: context.eventBus,
+    providers: [{ sourceType: 'stock.quote', modes: ['poll'], async poll({ sourceConfig }) {
+      polled.push(String(sourceConfig.symbol));
+      return null;
+    } }],
+  });
+  try {
+    await monitors.start();
+    assert.ok(polled.includes('IN'));
+    assert.equal(polled.includes('OUT'), false);
+
+    await monitors.runMonitorNow(outWindow.id);
+    assert.ok(polled.includes('OUT'));
+    assert.ok(monitors.listMonitors().find((candidate) => candidate.id === outWindow.id)?.schedule);
+    assert.equal(inWindow.id === outWindow.id, false);
   } finally { await monitors.stop(); context.close(); }
 });
