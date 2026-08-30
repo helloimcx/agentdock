@@ -1,5 +1,7 @@
 import type {
   AgentTask,
+  AgentTaskArtifact,
+  AgentTaskArtifactContent,
   AgentTaskCreateInput,
   AgentTaskListQuery,
   AgentTaskListResponse,
@@ -25,6 +27,9 @@ import type {
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
 } from '@cc/superai-contracts';
+import { inferArtifactKind, getArtifactMimeType } from '@cc/superai-contracts';
+import { existsSync, statSync, readFileSync } from 'node:fs';
+import { resolve, isAbsolute, sep, extname } from 'node:path';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import { DEFAULT_AGENT_MODE, normalizeAgentMode } from '../acp/local-core-slash-commands.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
@@ -168,6 +173,89 @@ export class WorkspaceRouter {
 
   updateAgentTask(taskId: string, input: AgentTaskUpdateInput): AgentTask {
     return this.store.updateAgentTask(taskId, input);
+  }
+
+  async getAgentTaskArtifactContent(taskId: string, artifactId: string): Promise<AgentTaskArtifactContent> {
+    const task = this.getAgentTask(taskId);
+    const artifact = task.artifacts?.find((a) => a.id === artifactId);
+    if (!artifact) {
+      throw new Error(`Artifact not found: ${artifactId} on task ${taskId}`);
+    }
+
+    const filePath = artifact.path;
+    if (!filePath) {
+      const textContent = (artifact.metadata?.content as string) || artifact.summary || '';
+      return {
+        id: artifact.id,
+        taskId: task.taskId,
+        title: artifact.title,
+        kind: artifact.kind || 'text',
+        mimeType: (artifact.metadata?.mimeType as string) || 'text/plain',
+        content: textContent,
+        isBinary: false,
+        sizeBytes: Buffer.byteLength(textContent, 'utf8'),
+        url: artifact.url,
+      };
+    }
+
+    const workspace = this.store.getWorkspaceRegistryEntry(task.workspaceId);
+    const workspaceRoot = workspace?.path ? resolve(workspace.path) : null;
+    const userDataRoot = (this.store as { userDataPath?: string }).userDataPath
+      ? resolve((this.store as { userDataPath?: string }).userDataPath!)
+      : null;
+
+    let targetPath = filePath;
+    if (!isAbsolute(targetPath)) {
+      if (workspaceRoot) {
+        targetPath = resolve(workspaceRoot, targetPath);
+      } else {
+        throw new Error(`Cannot resolve relative artifact path without workspace root: ${filePath}`);
+      }
+    } else {
+      targetPath = resolve(targetPath);
+    }
+
+    const isInsideWorkspace = workspaceRoot && (targetPath === workspaceRoot || targetPath.startsWith(workspaceRoot + sep));
+    const isInsideUserData = userDataRoot && (targetPath === userDataRoot || targetPath.startsWith(userDataRoot + sep));
+
+    if (!isInsideWorkspace && !isInsideUserData) {
+      throw new Error(`Access denied: artifact path ${artifact.path} is outside allowed workspace boundaries.`);
+    }
+
+    if (!existsSync(targetPath)) {
+      throw new Error(`Artifact file not found at path: ${artifact.path}`);
+    }
+
+    const stats = statSync(targetPath);
+    if (stats.isDirectory()) {
+      throw new Error(`Artifact path is a directory: ${artifact.path}`);
+    }
+
+    const mimeType = (artifact.metadata?.mimeType as string) || getArtifactMimeType(targetPath);
+    const kind = artifact.kind && artifact.kind !== 'file' ? artifact.kind : inferArtifactKind(targetPath);
+    const isBinary = mimeType.startsWith('image/') && !mimeType.includes('svg');
+
+    let content: string;
+    if (isBinary) {
+      const buffer = readFileSync(targetPath);
+      content = buffer.toString('base64');
+    } else {
+      content = readFileSync(targetPath, 'utf8');
+    }
+
+    return {
+      id: artifact.id,
+      taskId: task.taskId,
+      title: artifact.title,
+      kind,
+      mimeType,
+      content,
+      isBinary,
+      sizeBytes: stats.size,
+      extension: extname(targetPath).replace(/^\./, ''),
+      path: artifact.path,
+      url: artifact.url,
+    };
   }
 
   getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {

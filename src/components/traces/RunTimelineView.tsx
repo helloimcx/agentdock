@@ -13,11 +13,17 @@ import {
   Sparkles,
   Zap,
   Box,
+  Layers,
+  FileText,
+  Code2,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { traces as tracesApi } from '@cc/core-sdk';
+import { traces as tracesApi, runtime as runtimeApi } from '@cc/core-sdk';
 import type { RunSpan, RunTraceSummary, RunSpanKind } from '@cc/superai-contracts/traces';
+import type { AgentTask, AgentTaskArtifact } from '@cc/superai-contracts';
 import { cn } from '@/lib/utils';
-import { Badge, StatusPill } from '@/components/ui';
+import { Badge, StatusPill, Button } from '@/components/ui';
+import { ArtifactViewerDrawer } from '@/components/artifacts/ArtifactViewerDrawer';
 
 export interface RunTimelineViewProps {
   runId: string;
@@ -26,16 +32,24 @@ export interface RunTimelineViewProps {
 
 export function RunTimelineView({ runId, className }: RunTimelineViewProps) {
   const [summary, setSummary] = useState<RunTraceSummary | null>(null);
+  const [task, setTask] = useState<AgentTask | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedSpanIds, setExpandedSpanIds] = useState<Set<string>>(new Set());
+  const [artifactDrawerOpen, setArtifactDrawerOpen] = useState(false);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | undefined>();
 
   const fetchTrace = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await tracesApi.getRunTrace(runId);
-      setSummary(data);
+      const [traceData, taskListRes] = await Promise.all([
+        tracesApi.getRunTrace(runId),
+        runtimeApi.listAgentTasks({ limit: 50 }).catch(() => ({ tasks: [] })),
+      ]);
+      setSummary(traceData);
+      const matchedTask = taskListRes.tasks.find((t) => t.runId === runId || t.taskId === runId);
+      setTask(matchedTask || null);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -121,6 +135,70 @@ export function RunTimelineView({ runId, className }: RunTimelineViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Artifacts Summary Card (when task artifacts exist) */}
+      {task?.artifacts && task.artifacts.length > 0 ? (
+        <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-indigo-500" />
+              <span className="font-semibold text-foreground">本次运行生成的交付物 Artifacts</span>
+              <Badge variant="info">{task.artifacts.length} 个工件</Badge>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSelectedArtifactId(undefined);
+                setArtifactDrawerOpen(true);
+              }}
+              className="h-6 text-[11px] px-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10"
+            >
+              浏览全部工件
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {task.artifacts.map((art) => (
+              <button
+                key={art.id}
+                onClick={() => {
+                  setSelectedArtifactId(art.id);
+                  setArtifactDrawerOpen(true);
+                }}
+                className="flex items-center justify-between gap-2 rounded-md border bg-background/80 hover:bg-background p-2 text-left transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {art.kind === 'html' ? (
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                  ) : art.kind === 'image' ? (
+                    <ImageIcon className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  ) : art.kind === 'diff' ? (
+                    <Code2 className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+                  )}
+                  <span className="truncate text-xs font-medium text-foreground">{art.title}</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0">
+                  {art.kind || 'file'}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Artifact Drawer */}
+      {task && task.artifacts && task.artifacts.length > 0 ? (
+        <ArtifactViewerDrawer
+          open={artifactDrawerOpen}
+          onClose={() => setArtifactDrawerOpen(false)}
+          taskId={task.taskId}
+          artifacts={task.artifacts}
+          initialArtifactId={selectedArtifactId}
+        />
+      ) : null}
 
       {/* Spans Gantt & Timeline List */}
       <div className="rounded-lg border bg-card p-4 space-y-3">

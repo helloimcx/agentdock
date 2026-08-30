@@ -87,6 +87,8 @@ export type LocalAiCoreRoute =
   | { name: 'tasks.create' }
   | { name: 'task.get'; taskId: string }
   | { name: 'task.update'; taskId: string }
+  | { name: 'task.artifacts.list'; taskId: string }
+  | { name: 'task.artifact.content'; taskId: string; artifactId: string }
   | { name: 'knowledge.sources.list' }
   | { name: 'knowledge.config.read' }
   | { name: 'knowledge.config.update' }
@@ -518,14 +520,30 @@ function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute |
     return { name: 'tasks.create' };
   }
   const taskId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
-  if (!taskId || segments.length !== 2) {
+  if (!taskId) {
     return null;
   }
-  if (method === 'GET') {
-    return { name: 'task.get', taskId };
+  if (segments.length === 2) {
+    if (method === 'GET') {
+      return { name: 'task.get', taskId };
+    }
+    if (method === 'PATCH') {
+      return { name: 'task.update', taskId };
+    }
+    return null;
   }
-  if (method === 'PATCH') {
-    return { name: 'task.update', taskId };
+  if (segments.length === 3 && segments[2] === 'artifacts') {
+    if (method === 'GET') {
+      return { name: 'task.artifacts.list', taskId };
+    }
+    return null;
+  }
+  if (segments.length === 5 && segments[2] === 'artifacts' && segments[4] === 'content') {
+    const artifactId = decodeURIComponent(segments[3] || '');
+    if (method === 'GET' && artifactId) {
+      return { name: 'task.artifact.content', taskId, artifactId };
+    }
+    return null;
   }
   return null;
 }

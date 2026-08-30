@@ -40,4 +40,13 @@ export function registerTaskHandlers(
     });
     json(res, 200, await workspaceRouter.updateAgentTask((route as { taskId: string }).taskId, body));
   });
+  map.set('task.artifacts.list', async (route, _req, res) => {
+    const task = await workspaceRouter.getAgentTask((route as { taskId: string }).taskId);
+    json(res, 200, { artifacts: task.artifacts || [] });
+  });
+  map.set('task.artifact.content', async (route, _req, res) => {
+    const { taskId, artifactId } = route as { taskId: string; artifactId: string };
+    const content = await workspaceRouter.getAgentTaskArtifactContent(taskId, artifactId);
+    json(res, 200, content);
+  });
 }

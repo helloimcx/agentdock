@@ -1,14 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   Circle,
+  Layers,
   LoaderCircle,
   MessageSquarePlus,
   PanelLeft,
   WifiOff,
 } from 'lucide-react';
+import { runtime as runtimeApi } from '@cc/core-sdk';
+import type { AgentTask } from '@cc/superai-contracts';
 import { Button } from '@/components/ui';
 import { RunTimelineDrawer } from '@/components/traces/RunTimelineDrawer';
+import { ArtifactViewerDrawer } from '@/components/artifacts/ArtifactViewerDrawer';
 import { formatRuntimePhase } from './thread-chat-model';
 import {
   getVisibleProjects,
@@ -27,6 +31,8 @@ import { useThreadChatController } from './useThreadChatController';
 export default function ThreadChat() {
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [traceDrawerRunId, setTraceDrawerRunId] = useState<string | null>(null);
+  const [artifactDrawerOpen, setArtifactDrawerOpen] = useState(false);
+  const [activeTask, setActiveTask] = useState<AgentTask | null>(null);
   const {
     activeRunId,
     activeAgentMode,
@@ -103,6 +109,29 @@ export default function ThreadChat() {
   const composerPermissionCard = toComposerPermissionCard(pendingPermissionRequest);
   const isRuntimeStarting = runtime?.phase === 'starting';
 
+  useEffect(() => {
+    let active = true;
+    async function loadActiveTask() {
+      try {
+        const res = await runtimeApi.listAgentTasks({
+          workspaceId: selectedProject || undefined,
+          limit: 20,
+        });
+        if (!active) return;
+        const matched = res.tasks.find(
+          (t) => (activeRunId && t.runId === activeRunId) || (activeSessionId && t.threadId === activeSessionId)
+        );
+        setActiveTask(matched || null);
+      } catch {
+        if (active) setActiveTask(null);
+      }
+    }
+    loadActiveTask();
+    return () => {
+      active = false;
+    };
+  }, [activeRunId, activeSessionId, selectedProject, taskRunning]);
+
   if (loading) {
     return <div className="flex h-64 items-center justify-center text-sm text-slate-500 animate-pulse">正在加载桌面对话…</div>;
   }
@@ -136,37 +165,36 @@ export default function ThreadChat() {
             setSessionSearch={setSessionSearch}
           />
 
-          <section className="flex min-h-0 flex-col bg-white dark:bg-[#0b0d10]">
-            <div className="border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06] sm:px-6 sm:py-4">
-              <div className="flex items-start gap-3">
-                <Button
-                  size="sm"
-                  variant="secondary"
+          <section className="flex h-full min-h-0 flex-col bg-white/70 dark:bg-white/[0.02]">
+            <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06] sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  aria-label="切换会话列表"
                   onClick={() => setMobileSessionsOpen(true)}
-                  className="mt-0.5 h-9 w-9 shrink-0 rounded-xl px-0 md:hidden"
-                  aria-label="Open sessions"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200 md:hidden"
                 >
                   <PanelLeft size={16} />
-                </Button>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium tracking-[0.16em] text-slate-400 dark:text-slate-500">当前会话</p>
-                  <h2
-                    className="mt-1 truncate text-[1.75rem] font-semibold leading-tight text-slate-900 dark:text-white sm:mt-2 sm:text-[1.95rem] sm:leading-none"
-                    data-testid="desktop-chat-active-title"
-                  >
-                    {activeSessionName || branding.activeConversationFallback}
-                  </h2>
+                </button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-white sm:text-base">
+                      {activeSessionName || (selectedProject ? `${selectedProject} 会话` : '桌面对话')}
+                    </h2>
+                    {taskRunning ? (
+                      <span className="flex items-center gap-1 text-[11px] text-primary">
+                        <LoaderCircle size={12} className="animate-spin" />
+                        {formatRuntimePhase(runtime?.phase)}
+                      </span>
+                    ) : null}
+                  </div>
+                  {taskHint ? (
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">{taskHint}</p>
+                  ) : null}
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                {selectedProject ? (
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 dark:bg-white/[0.05] dark:text-slate-300">
-                    {selectedProject}
-                  </span>
-                ) : null}
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:bg-white/[0.05] dark:text-slate-400">
-                  {formatRuntimePhase(runtime?.phase)}
-                </span>
+
+              <div className="flex items-center gap-2 text-xs">
                 {transportReady ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary dark:text-primary">
                     <Circle size={6} className="fill-current" /> {branding.runtimeOnlineLabel}
@@ -178,6 +206,16 @@ export default function ThreadChat() {
                 )}
                 {showSessionKey && activeSessionKey ? (
                   <span className="truncate text-[11px] text-slate-400 dark:text-slate-500">{activeSessionKey}</span>
+                ) : null}
+                {activeTask?.artifacts && activeTask.artifacts.length > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setArtifactDrawerOpen(true)}
+                    className="h-6 text-[11px] px-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 font-medium"
+                  >
+                    <Layers className="mr-1 h-3 w-3 text-indigo-500" /> Artifacts ({activeTask.artifacts.length})
+                  </Button>
                 ) : null}
                 {activeRunId ? (
                   <Button
@@ -303,6 +341,15 @@ export default function ThreadChat() {
         onClose={() => setTraceDrawerRunId(null)}
         runId={traceDrawerRunId}
       />
+
+      {activeTask && activeTask.artifacts && activeTask.artifacts.length > 0 ? (
+        <ArtifactViewerDrawer
+          open={artifactDrawerOpen}
+          onClose={() => setArtifactDrawerOpen(false)}
+          taskId={activeTask.taskId}
+          artifacts={activeTask.artifacts}
+        />
+      ) : null}
     </>
   );
 }

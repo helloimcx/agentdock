@@ -96,18 +96,39 @@ export class LocalCoreTraceStore {
     return mapRunSpanRow(row);
   }
 
+  private resolveActualRunId(runId: string): string {
+    if (!runId) return runId;
+    const exists = this.db.prepare('SELECT 1 FROM runs WHERE id = ? LIMIT 1').get(runId);
+    if (exists) return runId;
+
+    try {
+      const autoRun = (this.db.prepare('SELECT run_json FROM automation_runs WHERE id = ?').get(runId) as unknown) as { run_json: string } | undefined;
+      if (autoRun?.run_json) {
+        const parsed = JSON.parse(autoRun.run_json);
+        if (typeof parsed?.acpRunId === 'string' && parsed.acpRunId) {
+          return parsed.acpRunId;
+        }
+      }
+    } catch {
+      // Ignore fallback errors if table does not exist or JSON parsing fails
+    }
+    return runId;
+  }
+
   listRunSpans(runId: string, options: { limit?: number; offset?: number } = {}): RunSpan[] {
+    const actualRunId = this.resolveActualRunId(runId);
     const limit = options.limit || 500;
     const offset = options.offset || 0;
-    const rows = (this.db.prepare('SELECT * FROM run_spans WHERE run_id = ? ORDER BY started_at ASC LIMIT ? OFFSET ?').all(runId, limit, offset) as unknown) as LocalRunSpanRow[];
+    const rows = (this.db.prepare('SELECT * FROM run_spans WHERE run_id = ? ORDER BY started_at ASC LIMIT ? OFFSET ?').all(actualRunId, limit, offset) as unknown) as LocalRunSpanRow[];
     return rows.map(mapRunSpanRow);
   }
 
   getRunTraceSummary(runId: string): RunTraceSummary | undefined {
-    const runRow = (this.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as unknown) as { id: string; thread_id: string; status: string; started_at: string; updated_at: string } | undefined;
+    const actualRunId = this.resolveActualRunId(runId);
+    const runRow = (this.db.prepare('SELECT * FROM runs WHERE id = ?').get(actualRunId) as unknown) as { id: string; thread_id: string; status: string; started_at: string; updated_at: string } | undefined;
     if (!runRow) return undefined;
 
-    const spans = this.listRunSpans(runId);
+    const spans = this.listRunSpans(actualRunId);
     let totalTokens = 0;
     for (const span of spans) {
       if (span.usageJson) {

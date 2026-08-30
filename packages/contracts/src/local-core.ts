@@ -148,12 +148,61 @@ export interface AgentTaskLogEntry {
 
 export interface AgentTaskArtifact {
   id: string;
-  kind: 'file' | 'diff' | 'url' | 'text' | (string & {});
+  kind: 'file' | 'diff' | 'url' | 'text' | 'html' | 'image' | 'markdown' | (string & {});
   title: string;
   path?: string;
   url?: string;
   summary?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskArtifactContent {
+  id: string;
+  taskId: string;
+  title: string;
+  kind: string;
+  mimeType: string;
+  content: string;
+  isBinary: boolean;
+  sizeBytes: number;
+  extension?: string;
+  path?: string;
+  url?: string;
+}
+
+export function inferArtifactKind(filenameOrPath: string): 'html' | 'markdown' | 'image' | 'diff' | 'file' {
+  const lower = String(filenameOrPath || '').toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+  if (
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.svg') ||
+    lower.endsWith('.webp')
+  ) {
+    return 'image';
+  }
+  if (lower.endsWith('.diff') || lower.endsWith('.patch')) return 'diff';
+  return 'file';
+}
+
+export function getArtifactMimeType(filenameOrPath: string): string {
+  const lower = String(filenameOrPath || '').toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.svg')) return 'image/svg+xml';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.diff') || lower.endsWith('.patch')) return 'text/x-diff';
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.txt') || lower.endsWith('.log')) return 'text/plain';
+  if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.ts')) return 'text/javascript';
+  if (lower.endsWith('.css')) return 'text/css';
+  return 'application/octet-stream';
 }
 
 export interface AgentTask {
