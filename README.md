@@ -95,6 +95,14 @@ flowchart LR
 
 ## New
 
+### 2026-09-01
+
+- 确定性技能路由层与外部工具可用性索引（Issue #122）：
+  - **确定性技能路由引擎（Skill Router）**：在 Local AI Core 内置高性能规则意图打分引擎，支持在 Skill 元数据与集中规则中配置正则模式（`patterns`）、关键词（`keywords`）、否定排他规则（`negativePatterns`）、连词组约束（`requiredGroups`）与优先级（`priority`），杜绝全量提示词膨胀与模型玄学猜测。
+  - **宿主机外部工具可用性探测（Tool-Index）**：在技能执行前自动探测宿主机 PATH 中的可执行依赖（`requires-tools`），检测结果带缓存与平台兼容；若工具缺失则标记状态并输出指引，防止 Agent 产生幻觉调用。
+  - **消息装配策略解耦与全量 CI 回归守护**：重构 `agent-message-policy`，支持命中的多技能动态装配，100% 保持向后兼容；配套 19 个典型问答场景（中英文、否定式、复合任务、工具依赖等）的回归测试套件进入持续集成门禁。
+  - **REST API 与 UI 路由调试器**：新增 `/skills/route` API 与 Core SDK `skills.route()` 支持；在 Skills 页面新增「路由调试」可视化弹窗，支持实时输入提示词测试技能命中、规则匹配得分与外部工具就绪状态。
+
 ### 2026-08-27
 
 - 发布 AgentDock 0.1.80：内置股票与量化盯盘 Skill (`stock-monitor`)：

@@ -15,6 +15,17 @@ export interface SkillSource {
   status?: SkillSourceStatus;
 }
 
+export interface SkillRoutingRule {
+  skillId: string;
+  priority?: number;
+  patterns?: string[];
+  keywords?: string[];
+  domains?: string[];
+  negativePatterns?: string[];
+  requiredGroups?: string[][];
+  requiresTools?: string[];
+}
+
 export interface SkillMetadata {
   name?: string;
   description?: string;
@@ -22,7 +33,34 @@ export interface SkillMetadata {
   author?: string;
   homepage?: string;
   triggers?: string[];
+  domains?: string[];
+  priority?: number;
+  requiresTools?: string[];
+  rules?: SkillRoutingRule[];
   [key: string]: unknown;
+}
+
+export interface SkillRouteMatch {
+  skillId: string;
+  name: string;
+  score: number;
+  matchedRules: string[];
+  requiresTools: string[];
+  missingTools: string[];
+  available: boolean;
+}
+
+export interface SkillRouteResult {
+  query: string;
+  matches: SkillRouteMatch[];
+  selectedSkills: SkillRouteMatch[];
+}
+
+export interface SkillRouteInput {
+  query: string;
+  workspacePath?: string;
+  workspaceId?: string;
+  maxMatches?: number;
 }
 
 export type SkillScanSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';

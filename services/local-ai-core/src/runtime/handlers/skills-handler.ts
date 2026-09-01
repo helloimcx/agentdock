@@ -7,9 +7,11 @@ import type {
   DeleteSkillInput,
   ToggleSkillInput,
   UpdateSkillInput,
+  SkillRouteInput,
 } from '@cc/superai-contracts/skills';
 import { ManagedSkillCatalog } from '../managed-skill-catalog.js';
 import { mountActiveSkillsForAgent } from '../skill-mounter.js';
+import { SkillRouter } from '../../skills/skill-router.js';
 import {
   scanSkillContent,
   scanSkillDirectory,
@@ -69,6 +71,33 @@ function registerSkillQueryHandlers(map: Map<string, RouteHandler>, catalog: Man
       return await handleScanPost(req, res);
     }
     return await handleScanGet(req, res, catalog);
+  });
+
+  map.set('skills.route', async (_route, req, res) => {
+    let query = '';
+    let workspacePath: string | undefined;
+    let workspaceId: string | undefined;
+    let maxMatches: number | undefined;
+
+    if (req.method === 'POST') {
+      const body = (await readJsonBody(req)) as unknown as SkillRouteInput | null;
+      query = body?.query || '';
+      workspacePath = body?.workspacePath;
+      workspaceId = body?.workspaceId;
+      maxMatches = body?.maxMatches;
+    } else {
+      const url = new URL(req.url || '/', 'http://localhost');
+      query = url.searchParams.get('query') || url.searchParams.get('q') || '';
+      workspacePath = url.searchParams.get('workspacePath') || undefined;
+      workspaceId = url.searchParams.get('workspaceId') || undefined;
+      const m = url.searchParams.get('maxMatches');
+      if (m) maxMatches = Number.parseInt(m, 10);
+    }
+
+    const skills = catalog.listSkills({ workspacePath, workspaceId });
+    const router = new SkillRouter(maxMatches ? { maxMatches } : {});
+    const result = router.route(query, skills);
+    json(res, 200, result);
   });
 }
 

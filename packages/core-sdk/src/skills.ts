@@ -13,6 +13,8 @@ import type {
   VerifySkillResult,
   SkillScanReport,
   SkillSecurityAuditResult,
+  SkillRouteInput,
+  SkillRouteResult,
 } from '@cc/superai-contracts/skills';
 import { coreRequest } from './request.js';
 
@@ -85,6 +87,10 @@ export function scanAllSkills(options: { workspacePath?: string; workspaceId?: s
 
 export function scanSkillContent(input: { content: string; name?: string; id?: string }) {
   return coreRequest<{ report: SkillScanReport }>('POST', '/skills/scan', input);
+}
+
+export function routeSkills(input: SkillRouteInput) {
+  return coreRequest<SkillRouteResult>('POST', '/skills/route', input);
 }
 
 
