@@ -143,6 +143,21 @@ export abstract class BaseChannelGateway<
           input.agentType,
           input.platform,
         ),
+        listModelProviders: () => options.store.listModelProviders(),
+        getModelProvider: (providerId) => options.store.getModelProvider(providerId),
+        getWorkspaceDefaultProviderId: (workspaceId) => {
+          const config = options.store.readRuntimeConfig().config;
+          const project = config?.projects?.find((p: any) => p.name === workspaceId || p.workspace_id === workspaceId);
+          return String(project?.agent?.options?.provider_id || '').trim();
+        },
+        getChannelBinding: (workspaceId, chatId, platformUserId, platform) => options.store.getPlatformThreadBinding(workspaceId, chatId, platformUserId, platform),
+        setChannelPreferredProvider: (input) => options.store.updatePlatformThreadPreferredProvider(
+          input.workspaceId,
+          input.chatId,
+          input.platformUserId,
+          input.providerId,
+          input.platform,
+        ),
         log: options.log,
       },
     });

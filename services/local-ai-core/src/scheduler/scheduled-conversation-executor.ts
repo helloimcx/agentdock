@@ -26,6 +26,7 @@ export class ScheduledConversationExecutor {
       const sendResult = await workspaceRouter.sendThreadMessage(target.threadId, prompt, {
         permissionMode: SCHEDULED_RUN_PERMISSION_MODE,
         runtimeEnv: buildPlatformRuntimeEnv(target.platform, target.route),
+        channelRoute: target.route,
       });
       await waitForRunCompletion({
         store: this.options.store,

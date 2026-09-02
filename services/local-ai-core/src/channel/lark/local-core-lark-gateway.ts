@@ -493,7 +493,13 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       return;
     }
     this.options.store.clearPlatformThreadMessageId(msg.workspaceId, msg.chatId, msg.platformUserId);
-    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts));
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts), {
+      channelRoute: {
+        type: 'channel.chat',
+        channelId: msg.chatId,
+        participantId: msg.platformUserId,
+      },
+    });
     return; // { paired: true, threadId };
   }
 

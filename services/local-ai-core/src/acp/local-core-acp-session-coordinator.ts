@@ -134,7 +134,17 @@ export class LocalCoreAcpSessionCoordinator {
     await this.options.transport.initializeSession(session);
     this.options.log?.(`[acp.session:${threadId}] initialize done in ${Date.now() - startedAt}ms`);
     const row = this.options.store.getThreadRow(threadId);
-    if (row?.acp_session_id && row.acp_supports_load && session.supportsLoad) {
+    const providerKey = this.buildSessionProviderKey(config);
+    const hasProviderMismatch = Boolean(
+      row?.acp_launch_config_key && row.acp_launch_config_key !== providerKey,
+    );
+    if (hasProviderMismatch && row?.acp_session_id) {
+      this.options.log?.(
+        `[acp.session:${threadId}] provider configuration mismatch (stored=${row.acp_launch_config_key} current=${providerKey}); ` +
+        `discarding stale session ${row.acp_session_id} to prevent provider/model pollution`,
+      );
+    }
+    if (row?.acp_session_id && row.acp_supports_load && session.supportsLoad && !hasProviderMismatch) {
       try {
         session.loadReplayMode = true;
         await this.options.transport.request(session, 'session/load', {
@@ -160,12 +170,14 @@ export class LocalCoreAcpSessionCoordinator {
         if (!session.sessionId) {
           throw new Error('ACP session/new did not return a sessionId');
         }
-        this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad);
+        this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad, providerKey);
         this.options.log?.(`[acp.session:${threadId}] session/new done in ${Date.now() - startedAt}ms`);
       } catch (error) {
         this.closeThreadSession(threadId);
         throw error;
       }
+    } else if (!row?.acp_launch_config_key) {
+      this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad, providerKey);
     }
     this.options.log?.(`[acp.session:${threadId}] ready in ${Date.now() - startedAt}ms`);
     return session;
@@ -344,6 +356,16 @@ export class LocalCoreAcpSessionCoordinator {
       execution: config.execution || null,
       sandbox: config.sandbox || null,
       mcpServers: toAcpMcpServers(config),
+    });
+  }
+
+  private buildSessionProviderKey(config: LocalCoreProjectConfig) {
+    const env = config.env || {};
+    return JSON.stringify({
+      agentType: config.agentType,
+      model: config.model || '',
+      baseUrl: env.OPENAI_BASE_URL || env.HERMES_BASE_URL || env.ANTHROPIC_BASE_URL || '',
+      apiKey: env.OPENAI_API_KEY || env.HERMES_API_KEY || env.ANTHROPIC_API_KEY || '',
     });
   }
 

@@ -29,7 +29,8 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       excerpt TEXT NOT NULL DEFAULT '',
       acp_session_id TEXT,
       acp_supports_load INTEGER NOT NULL DEFAULT 0,
-      agent_mode TEXT NOT NULL DEFAULT 'default'
+      agent_mode TEXT NOT NULL DEFAULT 'default',
+      acp_launch_config_key TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_threads_workspace_updated ON threads (workspace_id, updated_at DESC);
     CREATE TABLE IF NOT EXISTS messages (
@@ -102,6 +103,8 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       platform_user_id TEXT NOT NULL,
       thread_id TEXT NOT NULL,
       last_platform_message_id TEXT,
+      preferred_agent_type TEXT,
+      preferred_provider_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       PRIMARY KEY (workspace_id, platform, chat_id, platform_user_id)
@@ -474,6 +477,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
   ensureColumn(db, 'messages', 'bridge_kind', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_status', 'TEXT');
   ensureColumn(db, 'platform_thread_bindings', 'preferred_agent_type', 'TEXT');
+  ensureColumn(db, 'platform_thread_bindings', 'preferred_provider_id', 'TEXT');
   ensureColumn(db, 'scheduled_jobs', 'execution_mode', "TEXT NOT NULL DEFAULT 'same-thread'");
   ensureColumn(db, 'scheduled_job_runs', 'platform_message_ids_json', 'TEXT');
   ensureColumn(db, 'scheduled_job_runs', 'delivery_mode', 'TEXT');
@@ -481,6 +485,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
   ensureColumn(db, 'scheduled_job_runs', 'delivery_error', 'TEXT');
   ensureColumn(db, 'scheduled_job_runs', 'last_bridge_event_at', 'TEXT');
   ensureColumn(db, 'threads', 'agent_mode', "TEXT NOT NULL DEFAULT 'default'");
+  ensureColumn(db, 'threads', 'acp_launch_config_key', 'TEXT');
   ensureColumn(db, 'automations', 'legacy_metadata_json', 'TEXT');
   ensureColumn(db, 'model_providers', 'unit_price_in', 'REAL');
   ensureColumn(db, 'model_providers', 'unit_price_out', 'REAL');

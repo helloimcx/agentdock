@@ -401,6 +401,42 @@ test('thread slash agent reset resolves the workspace default agent through the 
   }
 });
 
+test('thread slash provider commands query and list providers through router', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-provider-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    runtime.store.upsertModelProvider({
+      id: 'provider-default',
+      name: 'Default Provider',
+      base_url: 'https://default.ai/v1',
+      api_key: 'key-1',
+    });
+    runtime.store.upsertModelProvider({
+      id: 'provider-volcano',
+      name: '火山方舟',
+      base_url: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+      api_key: 'key-2',
+    });
+    await saveConfig(runtime, {
+      projects: [{ name: 'agent-workspace', agent: { type: 'hermes', options: { provider_id: 'provider-default' } } }],
+    });
+    const thread = await runtime.workspaceRouter.createThread('agent-workspace', 'Provider test');
+
+    await runtime.workspaceRouter.sendThreadMessage(thread.id, '/provider current');
+    assert.match(runtime.store.getThread(thread.id, []).messages.at(-1)?.content || '', /Default Provider/);
+
+    await runtime.workspaceRouter.sendThreadMessage(thread.id, '/provider list');
+    assert.match(runtime.store.getThread(thread.id, []).messages.at(-1)?.content || '', /火山方舟/);
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('hermes agent runtime routes projects through hermes ACP command', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-kernel-'));
   try {

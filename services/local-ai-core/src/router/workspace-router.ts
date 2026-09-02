@@ -12,6 +12,7 @@ import type {
   AuditEventListQuery,
   AuditEventListResponse,
   ChannelInboundMessageContent,
+  ChannelRoute,
   CommandRiskClassification,
   DesktopBridgeEvent,
   LocalCoreCapabilities,
@@ -263,14 +264,14 @@ export class WorkspaceRouter {
     const { workspaceId } = decodeThreadId(threadId);
     const route = isLocalSlashCommand(content)
       ? await this.getWorkspaceRoute(workspaceId)
-      : await this.getThreadWorkspaceRoute(threadId, workspaceId);
+      : await this.getThreadWorkspaceRoute(threadId, workspaceId, options);
     const preparedContent = await this.prepareAgentMessage(threadId, content, route.config.workDir);
     return this.localCoreAcp.sendThreadMessage(threadId, preparedContent, route.config, options);
   }
 
-  async sendThreadAction(threadId: string, content: string) {
+  async sendThreadAction(threadId: string, content: string, options?: WorkspaceThreadMessageOptions) {
     const { workspaceId } = decodeThreadId(threadId);
-    const route = await this.getThreadWorkspaceRoute(threadId, workspaceId);
+    const route = await this.getThreadWorkspaceRoute(threadId, workspaceId, options);
     return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
   }
 
@@ -552,20 +553,36 @@ export class WorkspaceRouter {
     }
   }
 
-  private async getThreadWorkspaceRoute(threadId: string, workspaceId: string): Promise<WorkspaceRoute> {
-    const defaultRoute = await this.getWorkspaceRoute(workspaceId);
+  private async getThreadWorkspaceRoute(
+    threadId: string,
+    workspaceId: string,
+    options?: WorkspaceThreadMessageOptions,
+  ): Promise<WorkspaceRoute> {
     const row = this.store.getThreadRow(threadId);
     const threadAgentType = String(row?.agent_type || '').trim().toLowerCase();
-    const route = !threadAgentType || threadAgentType === defaultRoute.agentType
-      ? defaultRoute
-      : await this.getWorkspaceRoute(workspaceId, threadAgentType);
+    const binding = this.resolveThreadBinding(workspaceId, threadId, options?.channelRoute);
+    const effectiveAgentType = options?.agentTypeOverride
+      || (binding?.preferred_agent_type && binding.preferred_agent_type !== threadAgentType ? binding.preferred_agent_type : '');
+    const effectiveProviderId = options?.providerIdOverride || binding?.preferred_provider_id || '';
+    const route = await this.getWorkspaceRoute(workspaceId, effectiveAgentType, effectiveProviderId);
     const externalThread = this.store.getExternalThreadByThreadId(threadId);
-    return externalThread
-      ? withThreadWorkspacePath(route, externalThread.workspacePath)
-      : route;
+    return externalThread ? withThreadWorkspacePath(route, externalThread.workspacePath) : route;
   }
 
-  private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
+  private resolveThreadBinding(workspaceId: string, threadId: string, channelRoute?: ChannelRoute) {
+    if (channelRoute) {
+      const platform = channelRoute.type?.replace(/^channel\./, '') || 'lark';
+      return this.store.getPlatformThreadBinding(
+        workspaceId,
+        channelRoute.channelId,
+        channelRoute.participantId || '',
+        platform,
+      );
+    }
+    return this.store.getPlatformThreadBindingByThreadId(threadId);
+  }
+
+  private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = '', providerIdOverride = ''): Promise<WorkspaceRoute> {
     const configState = await this.options.readRuntimeConfig();
     const projects = this.withWorkspaceIds(
       Array.isArray(configState.config?.projects) ? configState.config.projects : [],
@@ -575,7 +592,13 @@ export class WorkspaceRouter {
       config: { ...configState.config, projects },
     };
     const matched = projects.find((project) => projectWorkspaceId(project) === workspaceId);
-    const project = matched && agentTypeOverride ? withAgentTypeOverride(matched, agentTypeOverride) : matched;
+    let project = matched;
+    if (project && agentTypeOverride) {
+      project = withAgentTypeOverride(project, agentTypeOverride);
+    }
+    if (project && providerIdOverride) {
+      project = withProviderOverride(project, providerIdOverride);
+    }
     const route = project ? this.resolveProjectRoute(projectedConfigState, project) : null;
     if (!matched || !route) {
       throw new Error(`Workspace "${workspaceId}" is not configured as a Local AI Core ACP workspace.`);
@@ -586,6 +609,15 @@ export class WorkspaceRouter {
   async getWorkspaceAgentType(workspaceId: string): Promise<string> {
     const route = await this.getWorkspaceRoute(workspaceId);
     return route.agentType;
+  }
+
+  async getWorkspaceDefaultProviderId(workspaceId: string): Promise<string> {
+    const configState = await this.options.readRuntimeConfig();
+    const projects = this.withWorkspaceIds(
+      Array.isArray(configState.config?.projects) ? configState.config.projects : [],
+    );
+    const matched = projects.find((project) => projectWorkspaceId(project) === workspaceId);
+    return String(matched?.agent?.options?.provider_id || '').trim();
   }
 
   private async listLocalCoreProjects() {
@@ -662,6 +694,22 @@ export function createWorkspaceRouter(options: WorkspaceRouterOptions) {
   return new WorkspaceRouter(options);
 }
 
+function withProviderOverride(project: DesktopProjectConfig, providerId: string): DesktopProjectConfig {
+  const options = project.agent?.options && typeof project.agent.options === 'object'
+    ? { ...(project.agent.options as Record<string, unknown>) }
+    : {};
+  return {
+    ...project,
+    agent: {
+      ...(project.agent || {}),
+      options: {
+        ...options,
+        provider_id: providerId,
+      },
+    },
+  };
+}
+
 function withAgentTypeOverride(project: DesktopProjectConfig, agentType: string): DesktopProjectConfig {
   const options = project.agent?.options && typeof project.agent.options === 'object'
     ? { ...(project.agent.options as Record<string, unknown>) }
@@ -703,6 +751,8 @@ function isLocalSlashCommand(content: string | ChannelInboundMessageContent) {
   const normalized = text.trim().toLowerCase();
   return normalized === '/agent'
     || normalized.startsWith('/agent ')
+    || normalized === '/provider'
+    || normalized.startsWith('/provider ')
     || normalized === '/mode'
     || normalized.startsWith('/mode ');
 }

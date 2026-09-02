@@ -60,6 +60,18 @@ export class ThreadCommandService {
         ),
       }),
     });
+    this.registry.register({
+      names: ['provider'],
+      execute: (command, input) => ({
+        handled: true,
+        displayText: this.executeProviderCommand(
+          input.threadId,
+          input.workspaceId,
+          command.args,
+          input.channel,
+        ),
+      }),
+    });
   }
 
   async execute(input: ExecuteThreadCommandInput): Promise<ThreadCommandResult> {
@@ -199,6 +211,153 @@ export class ThreadCommandService {
       });
     } catch (error) {
       this.options.log?.(`setChannelPreferredAgent failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private executeProviderCommand(
+    threadId: string,
+    workspaceId: string,
+    args: string[],
+    channel?: ThreadCommandChannelContext,
+  ) {
+    const defaultProviderId = this.options.getWorkspaceDefaultProviderId?.(workspaceId) || '';
+    const binding = channel
+      ? this.options.getChannelBinding?.(workspaceId, channel.chatId, channel.platformUserId, channel.platform)
+      : undefined;
+    const channelProviderId = binding?.preferred_provider_id || '';
+    const currentProviderId = channelProviderId || defaultProviderId;
+    const currentProvider = currentProviderId ? this.options.getModelProvider?.(currentProviderId) : undefined;
+    const defaultProvider = defaultProviderId ? this.options.getModelProvider?.(defaultProviderId) : undefined;
+    const availableProviders = this.options.listModelProviders?.() || (currentProvider ? [currentProvider] : []);
+
+    const [rawAction = '', ...rest] = args;
+    const action = String(rawAction || '').trim().toLowerCase();
+
+    if (!action || action === 'current') {
+      return this.formatProviderCurrent(channelProviderId, currentProvider, defaultProvider, currentProviderId, defaultProviderId);
+    }
+    if (action === 'list') {
+      return this.formatProviderList(availableProviders);
+    }
+    if (action === 'reset') {
+      return this.executeProviderReset(threadId, workspaceId, channel, channelProviderId, defaultProvider, defaultProviderId);
+    }
+
+    const requestedId = (action === 'use' ? rest.join(' ') : args.join(' ')).trim();
+    return this.executeProviderUse(threadId, workspaceId, channel, requestedId, availableProviders, channelProviderId);
+  }
+
+  private formatProviderCurrent(
+    channelProviderId: string,
+    currentProvider: any,
+    defaultProvider: any,
+    currentProviderId: string,
+    defaultProviderId: string,
+  ) {
+    const sourceLabel = channelProviderId ? '渠道偏好设置' : '工作区默认设置';
+    const currentName = currentProvider ? `${currentProvider.name} (${currentProvider.id})` : (currentProviderId || '未配置');
+    const defaultName = defaultProvider ? `${defaultProvider.name} (${defaultProvider.id})` : (defaultProviderId || '未配置');
+    return [
+      `当前使用的 Provider：${currentName}`,
+      `来源：${sourceLabel}`,
+      `工作区默认 Provider：${defaultName}`,
+      '使用 `/provider list` 查看可用 Provider，或 `/provider use <id>` 切换。',
+    ].join('\n');
+  }
+
+  private formatProviderList(availableProviders: any[]) {
+    if (!availableProviders.length) {
+      return '暂无可用 Model Provider。';
+    }
+    const listText = availableProviders
+      .map((p) => `- \`${p.id}\`: ${p.name} (${p.base_url || '内置'})`)
+      .join('\n');
+    return [
+      '可用 Model Provider 列表：',
+      listText,
+      '',
+      '使用 `/provider use <id>` 切换当前渠道使用的 Provider，使用 `/provider reset` 恢复工作区默认。',
+    ].join('\n');
+  }
+
+  private executeProviderReset(
+    threadId: string,
+    workspaceId: string,
+    channel: ThreadCommandChannelContext | undefined,
+    channelProviderId: string,
+    defaultProvider: any,
+    defaultProviderId: string,
+  ) {
+    if (!channelProviderId) {
+      const defaultDesc = defaultProvider ? `${defaultProvider.name} (${defaultProvider.id})` : defaultProviderId;
+      return `当前渠道未单独指定 Provider，已在跟随工作区默认：${defaultDesc}。`;
+    }
+    this.persistChannelPreferredProvider(channel, workspaceId, null);
+    this.options.closeThreadSession?.(threadId);
+    this.options.createAuditEvent({
+      type: 'agent.changed',
+      workspaceId,
+      actor: 'local',
+      summary: `Channel provider reset to default ${defaultProviderId}.`,
+      metadata: { threadId, defaultProviderId, previousProviderId: channelProviderId },
+    });
+    const defaultDesc = defaultProvider ? `${defaultProvider.name} (${defaultProvider.id})` : defaultProviderId;
+    return `已清除当前渠道的 Provider 偏好设置。\n当前渠道已恢复跟随工作区默认 Provider：${defaultDesc}。`;
+  }
+
+  private executeProviderUse(
+    threadId: string,
+    workspaceId: string,
+    channel: ThreadCommandChannelContext | undefined,
+    requestedId: string,
+    availableProviders: any[],
+    channelProviderId: string,
+  ) {
+    if (!requestedId) {
+      return '请指定 Provider ID，例如：`/provider use provider-5`。使用 `/provider list` 查看可用 Provider。';
+    }
+
+    const matchedProvider = availableProviders.find(
+      (p) => p.id.toLowerCase() === requestedId.toLowerCase() || p.name.toLowerCase() === requestedId.toLowerCase(),
+    );
+    if (!matchedProvider) {
+      return `未找到 Provider "${requestedId}"。\n使用 \`/provider list\` 查看所有可用 Provider。`;
+    }
+
+    if (matchedProvider.id === channelProviderId) {
+      return `当前渠道已经在使用 Provider：${matchedProvider.name} (${matchedProvider.id})。`;
+    }
+
+    this.persistChannelPreferredProvider(channel, workspaceId, matchedProvider.id);
+    this.options.closeThreadSession?.(threadId);
+    this.options.createAuditEvent({
+      type: 'agent.changed',
+      workspaceId,
+      actor: 'local',
+      summary: `Channel provider changed to ${matchedProvider.id}.`,
+      metadata: { threadId, providerId: matchedProvider.id, previousProviderId: channelProviderId },
+    });
+    return `已将当前渠道的 Provider 切换为：${matchedProvider.name} (${matchedProvider.id})。\n后续新一轮对话或定时任务将立即生效。`;
+  }
+
+  private persistChannelPreferredProvider(
+    channel: ThreadCommandChannelContext | undefined,
+    workspaceId: string,
+    providerId: string | null,
+  ) {
+    if (!channel?.chatId || !channel.platformUserId) {
+      return;
+    }
+    try {
+      this.options.setChannelPreferredProvider?.({
+        workspaceId,
+        chatId: channel.chatId,
+        platformUserId: channel.platformUserId,
+        platform: channel.platform,
+        providerId,
+      });
+    } catch (error) {
+      this.options.log?.(`setChannelPreferredProvider failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
