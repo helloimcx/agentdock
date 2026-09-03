@@ -1,4 +1,4 @@
-import type { AuditEvent, DesktopModelProvider } from '@cc/superai-contracts';
+import type { AuditEvent, DesktopModelProvider, RuntimeConfigState } from '@cc/superai-contracts';
 import type { LocalRunRow, LocalThreadRow } from '../router/workspace-router-types.js';
 import {
   agentHelpText,
@@ -24,7 +24,7 @@ export type ThreadCommandChannelContext = {
 export type ProviderCommandStoreLike = {
   listModelProviders(): DesktopModelProvider[];
   getModelProvider(providerId: string): DesktopModelProvider | undefined;
-  readRuntimeConfig(): { config?: { projects?: unknown[] } | undefined };
+  readRuntimeConfig(): RuntimeConfigState;
   getPlatformThreadBinding(
     workspaceId: string,
     chatId: string,
@@ -287,14 +287,14 @@ export class ThreadCommandService {
       return this.formatProviderList(state.availableProviders);
     }
     if (action === 'reset') {
-      return this.executeProviderReset(threadId, workspaceId, channel, state.channelProviderId, state.defaultProvider, state.defaultProviderId);
+      return this.executeProviderReset(threadId, workspaceId, channel, state);
     }
     if (action === 'help') {
       return this.formatProviderHelp(state.currentProvider, state.defaultProvider);
     }
 
     const requestedId = (action === 'use' ? rest.join(' ') : args.join(' ')).trim();
-    return this.executeProviderUse(threadId, workspaceId, channel, requestedId, state.availableProviders, state.channelProviderId);
+    return this.executeProviderUse(threadId, workspaceId, channel, requestedId, state);
   }
 
   private formatProviderHelp(currentProvider: DesktopModelProvider | undefined, defaultProvider: DesktopModelProvider | undefined) {
@@ -346,10 +346,9 @@ export class ThreadCommandService {
     threadId: string,
     workspaceId: string,
     channel: ThreadCommandChannelContext | undefined,
-    channelProviderId: string,
-    defaultProvider: DesktopModelProvider | undefined,
-    defaultProviderId: string,
+    state: ProviderCommandState,
   ) {
+    const { channelProviderId, defaultProvider, defaultProviderId } = state;
     if (!channel?.chatId || !channel.platformUserId) {
       return '当前会话未绑定飞书或微信等渠道，无需重置。';
     }
@@ -375,9 +374,9 @@ export class ThreadCommandService {
     workspaceId: string,
     channel: ThreadCommandChannelContext | undefined,
     requestedId: string,
-    availableProviders: DesktopModelProvider[],
-    channelProviderId: string,
+    state: ProviderCommandState,
   ) {
+    const { availableProviders, channelProviderId } = state;
     if (!requestedId) {
       return '请指定 Provider ID，例如：`/provider use provider-5`。使用 `/provider list` 查看可用 Provider。';
     }
@@ -468,11 +467,12 @@ export function createProviderCommandOptions(store: ProviderCommandStoreLike): P
   return {
     listModelProviders: () => store.listModelProviders(),
     getModelProvider: (providerId) => store.getModelProvider(providerId),
+    // Runtime config projects match by either stable workspace_id or display name,
+    // unlike projectWorkspaceId() which only handles the stable id.
     getWorkspaceDefaultProviderId: (workspaceId) => {
-      const config = store.readRuntimeConfig().config;
-      const project = config?.projects?.find((p: any) => p.name === workspaceId || p.workspace_id === workspaceId) as
-        { agent?: { options?: { provider_id?: string } } } | undefined;
-      return String(project?.agent?.options?.provider_id || '').trim();
+      const { config } = store.readRuntimeConfig();
+      const project = config.projects?.find((p) => p.name === workspaceId || p.workspace_id === workspaceId);
+      return String(project?.agent.options?.provider_id || '').trim();
     },
     getChannelBinding: (workspaceId, chatId, platformUserId, platform) => store.getPlatformThreadBinding(workspaceId, chatId, platformUserId, platform),
     setChannelPreferredProvider: (input) => store.updatePlatformThreadPreferredProvider(
