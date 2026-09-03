@@ -25,6 +25,7 @@ import { createChannelThreadMessageInput } from '../shared/content.js';
 import { buildChannelFileSendPayload } from '../../runtime/channel-service-helpers.js';
 import { channelPlatformKey, extractChannelInstanceId } from '../shared/channel-keys.js';
 import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '../shared/session-command-runtime.js';
+import { createProviderCommandOptions } from '../../thread/thread-command-service.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
@@ -143,6 +144,7 @@ export abstract class BaseChannelGateway<
           input.agentType,
           input.platform,
         ),
+        ...createProviderCommandOptions(options.store),
         log: options.log,
       },
     });

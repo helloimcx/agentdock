@@ -253,7 +253,7 @@ export class LocalThreadStore {
 
   getRow(threadId: string) {
     return this.db.prepare(`
-      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode
+      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode, acp_launch_config_key
       FROM threads
       WHERE id = ?
     `).get(threadId) as LocalThreadRow | undefined;
@@ -270,16 +270,39 @@ export class LocalThreadStore {
   updateAgentType(threadId: string, agentType: string) {
     this.db.prepare(`
       UPDATE threads
-      SET agent_type = ?, acp_session_id = NULL, acp_supports_load = 0, updated_at = ?
+      SET agent_type = ?, acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
       WHERE id = ?
     `).run(agentType, new Date().toISOString(), threadId);
   }
 
-  updateSession(threadId: string, sessionId: string, supportsLoad: boolean) {
+  updateSession(threadId: string, sessionId: string, supportsLoad: boolean, launchConfigKey?: string | null) {
     this.db.prepare(`
       UPDATE threads
-      SET acp_session_id = ?, acp_supports_load = ?, updated_at = COALESCE(updated_at, ?)
+      SET acp_session_id = ?, acp_supports_load = ?, acp_launch_config_key = ?, updated_at = COALESCE(updated_at, ?)
       WHERE id = ?
-    `).run(sessionId, supportsLoad ? 1 : 0, new Date().toISOString(), threadId);
+    `).run(sessionId, supportsLoad ? 1 : 0, launchConfigKey ?? null, new Date().toISOString(), threadId);
+  }
+
+  clearSession(threadId: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), threadId);
+  }
+
+  clearWorkspaceSessions(workspaceId: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+      WHERE workspace_id = ?
+    `).run(new Date().toISOString(), workspaceId);
+  }
+
+  clearAllSessions() {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+    `).run(new Date().toISOString());
   }
 }

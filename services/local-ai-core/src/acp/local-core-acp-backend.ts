@@ -27,6 +27,7 @@ import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
+import { createProviderCommandOptions } from '../thread/thread-command-service.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
@@ -175,6 +176,7 @@ export class LocalCoreAcpBackend {
         setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
         closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
         interruptRun: (runId) => this.sessionCoordinator.interruptRun(runId),
+        ...createProviderCommandOptions(this.options.store),
         log: options.log,
       },
     });
