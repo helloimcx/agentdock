@@ -23,6 +23,7 @@ import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
+import { createProviderCommandOptions } from '../thread/thread-command-service.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
@@ -171,21 +172,7 @@ export class LocalCoreAcpBackend {
         setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
         closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
         interruptRun: (runId) => this.sessionCoordinator.interruptRun(runId),
-        listModelProviders: () => this.options.store.listModelProviders(),
-        getModelProvider: (providerId) => this.options.store.getModelProvider(providerId),
-        getWorkspaceDefaultProviderId: (workspaceId) => {
-          const config = this.options.store.readRuntimeConfig().config;
-          const project = config?.projects?.find((p: any) => p.name === workspaceId || p.workspace_id === workspaceId);
-          return String(project?.agent?.options?.provider_id || '').trim();
-        },
-        getChannelBinding: (workspaceId, chatId, platformUserId, platform) => this.options.store.getPlatformThreadBinding(workspaceId, chatId, platformUserId, platform),
-        setChannelPreferredProvider: (input) => this.options.store.updatePlatformThreadPreferredProvider(
-          input.workspaceId,
-          input.chatId,
-          input.platformUserId,
-          input.providerId,
-          input.platform,
-        ),
+        ...createProviderCommandOptions(this.options.store),
         log: options.log,
       },
     });
