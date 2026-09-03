@@ -24,6 +24,7 @@ import type { AgentTask, AgentTaskArtifact } from '@cc/superai-contracts';
 import { cn } from '@/lib/utils';
 import { Badge, StatusPill, Button } from '@/components/ui';
 import { ArtifactViewerDrawer } from '@/components/artifacts/ArtifactViewerDrawer';
+import { getArtifactKindIcon } from '@/components/artifacts/ArtifactRenderers';
 
 export interface RunTimelineViewProps {
   runId: string;
@@ -169,15 +170,7 @@ export function RunTimelineView({ runId, className }: RunTimelineViewProps) {
                 className="flex items-center justify-between gap-2 rounded-md border bg-background/80 hover:bg-background p-2 text-left transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  {art.kind === 'html' ? (
-                    <Sparkles className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                  ) : art.kind === 'image' ? (
-                    <ImageIcon className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                  ) : art.kind === 'diff' ? (
-                    <Code2 className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                  ) : (
-                    <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
-                  )}
+                  {getArtifactKindIcon(art.kind)}
                   <span className="truncate text-xs font-medium text-foreground">{art.title}</span>
                 </div>
                 <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0">
@@ -261,46 +254,50 @@ export function RunTimelineView({ runId, className }: RunTimelineViewProps) {
                   </div>
 
                   {/* Expanded Detail Panel */}
-                  {isExpanded && (
-                    <div className="mt-3 space-y-2 border-t pt-2.5 text-[11px] font-mono">
-                      {span.usageJson && (
-                        <div className="flex items-center gap-2 rounded bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
-                          <Cpu className="h-3.5 w-3.5" />
-                          <span>Input Tokens: {span.usageJson.inputTokens || 0}</span>
-                          <span>| Output Tokens: {span.usageJson.outputTokens || 0}</span>
-                          <span>| Cache: {span.usageJson.cacheTokens || 0}</span>
-                        </div>
-                      )}
-
-                      {span.inputJson && (
-                        <div className="space-y-1">
-                          <div className="text-muted-foreground font-semibold flex items-center gap-1">
-                            <FileJson className="h-3 w-3" /> Input Payload:
-                          </div>
-                          <pre className="overflow-x-auto rounded bg-muted/60 p-2 text-[10px] leading-relaxed">
-                            {typeof span.inputJson === 'string' ? span.inputJson : JSON.stringify(span.inputJson, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-
-                      {span.outputJson && (
-                        <div className="space-y-1">
-                          <div className="text-muted-foreground font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Output / Result:
-                          </div>
-                          <pre className="overflow-x-auto rounded bg-muted/60 p-2 text-[10px] leading-relaxed">
-                            {typeof span.outputJson === 'string' ? span.outputJson : JSON.stringify(span.outputJson, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {isExpanded && <SpanDetailPanel span={span} />}
                 </div>
               );
             })}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SpanDetailPanel({ span }: { span: RunSpan }) {
+  return (
+    <div className="mt-3 space-y-2 border-t pt-2.5 text-[11px] font-mono">
+      {span.usageJson && (
+        <div className="flex items-center gap-2 rounded bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
+          <Cpu className="h-3.5 w-3.5" />
+          <span>Input Tokens: {span.usageJson.inputTokens || 0}</span>
+          <span>| Output Tokens: {span.usageJson.outputTokens || 0}</span>
+          <span>| Cache: {span.usageJson.cacheTokens || 0}</span>
+        </div>
+      )}
+
+      {span.inputJson && (
+        <div className="space-y-1">
+          <div className="text-muted-foreground font-semibold flex items-center gap-1">
+            <FileJson className="h-3 w-3" /> Input Payload:
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-2 text-[10px] leading-relaxed">
+            {typeof span.inputJson === 'string' ? span.inputJson : JSON.stringify(span.inputJson, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {span.outputJson && (
+        <div className="space-y-1">
+          <div className="text-muted-foreground font-semibold flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Output / Result:
+          </div>
+          <pre className="overflow-x-auto rounded bg-muted/60 p-2 text-[10px] leading-relaxed">
+            {typeof span.outputJson === 'string' ? span.outputJson : JSON.stringify(span.outputJson, null, 2)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

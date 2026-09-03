@@ -188,21 +188,32 @@ export function inferArtifactKind(filenameOrPath: string): 'html' | 'markdown' |
   return 'file';
 }
 
+const ARTIFACT_MIME_BY_SUFFIX: ReadonlyArray<readonly [suffix: string, mime: string]> = [
+  ['.html', 'text/html'],
+  ['.htm', 'text/html'],
+  ['.md', 'text/markdown'],
+  ['.markdown', 'text/markdown'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.svg', 'image/svg+xml'],
+  ['.webp', 'image/webp'],
+  ['.diff', 'text/x-diff'],
+  ['.patch', 'text/x-diff'],
+  ['.json', 'application/json'],
+  ['.txt', 'text/plain'],
+  ['.log', 'text/plain'],
+  ['.js', 'text/javascript'],
+  ['.mjs', 'text/javascript'],
+  ['.ts', 'text/javascript'],
+  ['.css', 'text/css'],
+];
+
 export function getArtifactMimeType(filenameOrPath: string): string {
   const lower = String(filenameOrPath || '').toLowerCase();
-  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
-  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.svg')) return 'image/svg+xml';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.diff') || lower.endsWith('.patch')) return 'text/x-diff';
-  if (lower.endsWith('.json')) return 'application/json';
-  if (lower.endsWith('.txt') || lower.endsWith('.log')) return 'text/plain';
-  if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.ts')) return 'text/javascript';
-  if (lower.endsWith('.css')) return 'text/css';
-  return 'application/octet-stream';
+  const match = ARTIFACT_MIME_BY_SUFFIX.find(([suffix]) => lower.endsWith(suffix));
+  return match ? match[1] : 'application/octet-stream';
 }
 
 export interface AgentTask {

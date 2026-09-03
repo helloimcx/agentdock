@@ -512,6 +512,26 @@ function parseAuditEventsRoute(method: string, segments: string[]): LocalAiCoreR
   return null;
 }
 
+function parseTaskSubresourceRoute(method: string, segments: string[], taskId: string): LocalAiCoreRoute | null {
+  if (segments.length === 2) {
+    if (method === 'GET') {
+      return { name: 'task.get', taskId };
+    }
+    if (method === 'PATCH') {
+      return { name: 'task.update', taskId };
+    }
+    return null;
+  }
+  if (segments.length === 3 && segments[2] === 'artifacts') {
+    return method === 'GET' ? { name: 'task.artifacts.list', taskId } : null;
+  }
+  if (segments.length === 5 && segments[2] === 'artifacts' && segments[4] === 'content') {
+    const artifactId = decodeURIComponent(segments[3] || '');
+    return method === 'GET' && artifactId ? { name: 'task.artifact.content', taskId, artifactId } : null;
+  }
+  return null;
+}
+
 function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   if (method === 'GET' && segments.length === 1) {
     return { name: 'tasks.list' };
@@ -523,29 +543,7 @@ function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute |
   if (!taskId) {
     return null;
   }
-  if (segments.length === 2) {
-    if (method === 'GET') {
-      return { name: 'task.get', taskId };
-    }
-    if (method === 'PATCH') {
-      return { name: 'task.update', taskId };
-    }
-    return null;
-  }
-  if (segments.length === 3 && segments[2] === 'artifacts') {
-    if (method === 'GET') {
-      return { name: 'task.artifacts.list', taskId };
-    }
-    return null;
-  }
-  if (segments.length === 5 && segments[2] === 'artifacts' && segments[4] === 'content') {
-    const artifactId = decodeURIComponent(segments[3] || '');
-    if (method === 'GET' && artifactId) {
-      return { name: 'task.artifact.content', taskId, artifactId };
-    }
-    return null;
-  }
-  return null;
+  return parseTaskSubresourceRoute(method, segments, taskId);
 }
 
 function parseKnowledgeRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
