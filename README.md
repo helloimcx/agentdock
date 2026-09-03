@@ -95,9 +95,9 @@ flowchart LR
 
 ## New
 
-### 2026-09-02
+### 2026-09-03
 
-- 定时任务与渠道会话 LLM Provider 动态继承与会话指纹隔离：
+- 发布 AgentDock 0.1.81：定时任务与渠道会话 LLM Provider 动态继承与会话指纹隔离：
   - **Workspace + Channel Provider 层次继承模型**：定时任务与渠道消息严格跟随当前工作区与渠道绑定的 Provider 配置；支持渠道级独立覆写（`preferred_provider_id`），未单独覆写时严格继承工作区默认配置，确保提供商切换实时生效。
   - **Session 强指纹防污染**：ACP 会话管理器建立模型提供商启动指纹（`buildSessionProviderKey`）；当提供商凭证、Base URL 或 Model 变更时，自动失效并拒绝载入旧 Session，避免跨提供商旧端点残留导致的 401 认证异常。
   - **渠道交互式 `/provider` 指令**：支持在飞书/微信等渠道直接使用 `/provider current`、`/provider list`、`/provider use <id>` 与 `/provider reset` 进行渠道级 Provider 查询、切换与重置。
