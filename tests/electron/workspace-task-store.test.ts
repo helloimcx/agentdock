@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
@@ -1736,13 +1736,92 @@ test('WorkspaceRouter retrieves artifact content with security boundary checks',
 
     await assert.rejects(
       async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, evilArtifact.id),
-      /Access denied: artifact path .* is outside allowed workspace boundaries/,
+      /outside the allowed artifacts directory/,
     );
 
     await controller.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
     rmSync(workspacePath, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceRouter restricts artifact reads to the run artifacts directory', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'artifact-scope-test-'));
+  const workspacePath = mkdtempSync(join(tmpdir(), 'artifact-scope-ws-'));
+  const secretPath = join(tmpdir(), `artifact-scope-secret-${process.pid}.txt`);
+  try {
+    const runtime = bootstrapLocalCoreRuntime({ userDataPath, enableKnowledge: false, log: () => {} });
+    const controller = new LocalCoreController(userDataPath, runtime);
+
+    const workspaceId = 'ws-artifact-scope';
+    controller.store.upsertWorkspaceRegistryEntry({
+      workspaceId,
+      displayName: 'Artifact Scope Workspace',
+      path: workspacePath,
+      deviceId: 'local',
+      defaultRuntimeId: 'pi',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+
+    const runDir = join(workspacePath, '.agentdock', 'artifacts', 'run-scope-1');
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(join(runDir, 'report.html'), '<html><body>ok</body></html>', 'utf8');
+    writeFileSync(secretPath, 'secret content', 'utf8');
+    symlinkSync(secretPath, join(runDir, 'escape.html'));
+    writeFileSync(join(workspacePath, 'notes.txt'), 'internal notes', 'utf8');
+
+    const task = controller.workspaceRouter.createAgentTask({
+      workspaceId,
+      runtimeId: 'pi',
+      title: 'Artifact scope test',
+    });
+    const addArtifact = (title: string, path: string) => {
+      const updated = controller.workspaceRouter.updateAgentTask(task.taskId, {
+        artifact: { title, kind: 'file', path },
+      });
+      return updated.artifacts.find((a) => a.title === title)!;
+    };
+
+    const readable = addArtifact('Readable', '.agentdock/artifacts/run-scope-1/report.html');
+    const readableContent = await controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, readable.id);
+    assert.equal(readableContent.content, '<html><body>ok</body></html>');
+
+    const symlinkEscape = addArtifact('Escape', '.agentdock/artifacts/run-scope-1/escape.html');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, symlinkEscape.id),
+      (error: Error) => {
+        assert.match(error.message, /outside the allowed artifacts directory/);
+        assert.doesNotMatch(error.message, /escape\.html|run-scope-1/);
+        return true;
+      },
+    );
+
+    const workspaceFile = addArtifact('Notes', 'notes.txt');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, workspaceFile.id),
+      /outside the allowed artifacts directory/,
+    );
+
+    writeFileSync(join(runDir, 'huge.bin'), Buffer.alloc(10 * 1024 * 1024 + 1, 97));
+    const oversize = addArtifact('Oversize', '.agentdock/artifacts/run-scope-1/huge.bin');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, oversize.id),
+      /exceeds the maximum supported artifact size/,
+    );
+
+    const missing = addArtifact('Missing', '.agentdock/artifacts/run-scope-1/gone.html');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, missing.id),
+      /Artifact file not found/,
+    );
+
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+    rmSync(workspacePath, { recursive: true, force: true });
+    rmSync(secretPath, { force: true });
   }
 });
 
