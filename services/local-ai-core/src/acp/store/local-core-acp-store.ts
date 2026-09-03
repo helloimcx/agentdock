@@ -112,8 +112,10 @@ export class LocalCoreAcpStore {
   readonly cost: LocalCoreCostStore;
   readonly budgets: LocalCoreBudgetStore;
   readonly skillSources: LocalSkillSourceStore;
+  readonly userDataPath: string;
 
   constructor(userDataPath: string) {
+    this.userDataPath = userDataPath;
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
     const runtimeDir = dirname(dbPath);
     mkdirSync(dirname(dbPath), { recursive: true });

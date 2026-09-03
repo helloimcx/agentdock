@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
@@ -1654,3 +1654,240 @@ test('listWorkspaceRegistry batches active task counts and recent task ids acros
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
+
+test('WorkspaceRouter retrieves artifact content with security boundary checks', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'artifact-content-test-'));
+  const workspacePath = mkdtempSync(join(tmpdir(), 'workspace-artifact-test-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({ userDataPath, enableKnowledge: false, log: () => {} });
+    const controller = new LocalCoreController(userDataPath, runtime);
+
+    const workspaceId = 'ws-artifact-test';
+    controller.store.upsertWorkspaceRegistryEntry({
+      workspaceId,
+      displayName: 'Artifact Test Workspace',
+      path: workspacePath,
+      deviceId: 'local',
+      defaultRuntimeId: 'pi',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+
+    // Create artifact files inside workspace
+    const artifactsDir = join(workspacePath, '.agentdock', 'artifacts', 'run-test-123');
+    mkdirSync(artifactsDir, { recursive: true });
+
+    const htmlFile = join(artifactsDir, 'architecture.html');
+    const mdFile = join(artifactsDir, 'report.md');
+    writeFileSync(htmlFile, '<html><body><h1>Architecture</h1></body></html>', 'utf8');
+    writeFileSync(mdFile, '# System Report\n\nAll systems nominal.', 'utf8');
+
+    // Create task with artifacts
+    const task = controller.workspaceRouter.createAgentTask({
+      workspaceId,
+      runtimeId: 'pi',
+      title: 'Generate architecture diagram',
+    });
+
+    const updatedTask = controller.workspaceRouter.updateAgentTask(task.taskId, {
+      artifact: {
+        title: 'Architecture Diagram',
+        kind: 'html',
+        path: '.agentdock/artifacts/run-test-123/architecture.html',
+      },
+    });
+
+    const secondTask = controller.workspaceRouter.updateAgentTask(task.taskId, {
+      artifact: {
+        title: 'Markdown Report',
+        kind: 'markdown',
+        path: '.agentdock/artifacts/run-test-123/report.md',
+      },
+    });
+
+    const htmlArtifact = secondTask.artifacts.find((a) => a.title === 'Architecture Diagram')!;
+    const mdArtifact = secondTask.artifacts.find((a) => a.title === 'Markdown Report')!;
+
+    // Test successful retrieval
+    const htmlContent = await controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, htmlArtifact.id);
+    assert.equal(htmlContent.kind, 'html');
+    assert.equal(htmlContent.mimeType, 'text/html');
+    assert.equal(htmlContent.isBinary, false);
+    assert.equal(htmlContent.content, '<html><body><h1>Architecture</h1></body></html>');
+
+    const mdContent = await controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, mdArtifact.id);
+    assert.equal(mdContent.kind, 'markdown');
+    assert.equal(mdContent.mimeType, 'text/markdown');
+    assert.equal(mdContent.isBinary, false);
+    assert.equal(mdContent.content, '# System Report\n\nAll systems nominal.');
+
+    // Test path traversal security check
+    const outsideFile = join(tmpdir(), 'outside-secret.txt');
+    writeFileSync(outsideFile, 'secret content', 'utf8');
+
+    const evilTask = controller.workspaceRouter.updateAgentTask(task.taskId, {
+      artifact: {
+        title: 'Evil Traversal',
+        kind: 'file',
+        path: '../../../../../../../../../../../../../../../../tmp/outside-secret.txt',
+      },
+    });
+    const evilArtifact = evilTask.artifacts.find((a) => a.title === 'Evil Traversal')!;
+
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, evilArtifact.id),
+      /outside the allowed artifacts directory/,
+    );
+
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+    rmSync(workspacePath, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceRouter restricts artifact reads to the run artifacts directory', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'artifact-scope-test-'));
+  const workspacePath = mkdtempSync(join(tmpdir(), 'artifact-scope-ws-'));
+  const secretPath = join(tmpdir(), `artifact-scope-secret-${process.pid}.txt`);
+  try {
+    const runtime = bootstrapLocalCoreRuntime({ userDataPath, enableKnowledge: false, log: () => {} });
+    const controller = new LocalCoreController(userDataPath, runtime);
+
+    const workspaceId = 'ws-artifact-scope';
+    controller.store.upsertWorkspaceRegistryEntry({
+      workspaceId,
+      displayName: 'Artifact Scope Workspace',
+      path: workspacePath,
+      deviceId: 'local',
+      defaultRuntimeId: 'pi',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+
+    const runDir = join(workspacePath, '.agentdock', 'artifacts', 'run-scope-1');
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(join(runDir, 'report.html'), '<html><body>ok</body></html>', 'utf8');
+    writeFileSync(secretPath, 'secret content', 'utf8');
+    symlinkSync(secretPath, join(runDir, 'escape.html'));
+    writeFileSync(join(workspacePath, 'notes.txt'), 'internal notes', 'utf8');
+
+    const task = controller.workspaceRouter.createAgentTask({
+      workspaceId,
+      runtimeId: 'pi',
+      title: 'Artifact scope test',
+    });
+    const addArtifact = (title: string, path: string) => {
+      const updated = controller.workspaceRouter.updateAgentTask(task.taskId, {
+        artifact: { title, kind: 'file', path },
+      });
+      return updated.artifacts.find((a) => a.title === title)!;
+    };
+
+    const readable = addArtifact('Readable', '.agentdock/artifacts/run-scope-1/report.html');
+    const readableContent = await controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, readable.id);
+    assert.equal(readableContent.content, '<html><body>ok</body></html>');
+
+    const symlinkEscape = addArtifact('Escape', '.agentdock/artifacts/run-scope-1/escape.html');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, symlinkEscape.id),
+      (error: Error) => {
+        assert.match(error.message, /outside the allowed artifacts directory/);
+        assert.doesNotMatch(error.message, /escape\.html|run-scope-1/);
+        return true;
+      },
+    );
+
+    const workspaceFile = addArtifact('Notes', 'notes.txt');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, workspaceFile.id),
+      /outside the allowed artifacts directory/,
+    );
+
+    writeFileSync(join(runDir, 'huge.bin'), Buffer.alloc(10 * 1024 * 1024 + 1, 97));
+    const oversize = addArtifact('Oversize', '.agentdock/artifacts/run-scope-1/huge.bin');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, oversize.id),
+      /exceeds the maximum supported artifact size/,
+    );
+
+    const missing = addArtifact('Missing', '.agentdock/artifacts/run-scope-1/gone.html');
+    await assert.rejects(
+      async () => controller.workspaceRouter.getAgentTaskArtifactContent(task.taskId, missing.id),
+      /Artifact file not found/,
+    );
+
+    await controller.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+    rmSync(workspacePath, { recursive: true, force: true });
+    rmSync(secretPath, { force: true });
+  }
+});
+
+test('LocalCoreAcpBackend automatically scans and registers artifacts on run completion', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-artifact-auto-test-'));
+  const workspacePath = mkdtempSync(join(tmpdir(), 'acp-workspace-artifact-test-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const workspaceId = 'ws-acp-artifact';
+    store.upsertWorkspaceRegistryEntry({
+      workspaceId,
+      displayName: 'ACP Artifact Workspace',
+      path: workspacePath,
+      deviceId: 'local',
+      defaultRuntimeId: 'pi',
+      health: { status: 'healthy', summary: 'ok', issues: [] },
+      git: { isRepo: false },
+    });
+
+    const thread = store.createThread(workspaceId, 'Test Thread', 'pi');
+    const runId = 'run:acp-auto-test:123';
+    const task = store.createAgentTask({
+      workspaceId,
+      deviceId: 'local',
+      runtimeId: 'pi',
+      threadId: thread.id,
+      runId,
+      title: 'Generate architecture chart',
+      status: 'running',
+    });
+
+    // Simulate agent writing artifacts to .agentdock/artifacts/<runId>/
+    const artifactsDir = join(workspacePath, '.agentdock', 'artifacts', runId);
+    mkdirSync(artifactsDir, { recursive: true });
+    writeFileSync(join(artifactsDir, 'system-architecture.html'), '<html><body>Diagram</body></html>');
+    writeFileSync(join(artifactsDir, 'diff-changes.diff'), '+ added line\n- removed line');
+
+    // Trigger discovery via registerDiscoveredArtifacts (simulate backend run completion)
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap: new Map([[runId, thread.id]]),
+      emitBridge: () => {},
+      eventBus: { emit: () => {} } as any,
+      scheduler: {} as any,
+    });
+
+    (backend as any).registerDiscoveredArtifacts(task.taskId, workspacePath, runId);
+
+    const reloadedTask = store.getAgentTask(task.taskId)!;
+    assert.equal(reloadedTask.artifacts.length, 2);
+
+    const htmlArtifact = reloadedTask.artifacts.find((a) => a.title === 'system-architecture.html');
+    assert.ok(htmlArtifact);
+    assert.equal(htmlArtifact.kind, 'html');
+    assert.equal(htmlArtifact.metadata?.mimeType, 'text/html');
+
+    const diffArtifact = reloadedTask.artifacts.find((a) => a.title === 'diff-changes.diff');
+    assert.ok(diffArtifact);
+    assert.equal(diffArtifact.kind, 'diff');
+    assert.equal(diffArtifact.metadata?.mimeType, 'text/x-diff');
+
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+    rmSync(workspacePath, { recursive: true, force: true });
+  }
+});
+
+

@@ -1,5 +1,7 @@
 import type {
   AgentTask,
+  AgentTaskArtifact,
+  AgentTaskArtifactContent,
   AgentTaskCreateInput,
   AgentTaskListQuery,
   AgentTaskListResponse,
@@ -26,6 +28,9 @@ import type {
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
 } from '@cc/superai-contracts';
+import { inferArtifactKind, getArtifactMimeType } from '@cc/superai-contracts';
+import { existsSync, statSync, readFileSync, realpathSync } from 'node:fs';
+import { resolve, isAbsolute, join, sep, extname } from 'node:path';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import { DEFAULT_AGENT_MODE, normalizeAgentMode } from '../acp/local-core-slash-commands.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
@@ -40,6 +45,90 @@ import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
 
 export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
+
+const MAX_ARTIFACT_CONTENT_BYTES = 10 * 1024 * 1024;
+
+export class ArtifactContentError extends Error {
+  constructor(message: string, readonly status: 400 | 403 | 404 | 413) {
+    super(message);
+    this.name = 'ArtifactContentError';
+  }
+}
+
+const isInsideRoot = (candidate: string, root: string) =>
+  candidate === root || candidate.startsWith(root + sep);
+
+function resolveArtifactContentPath(
+  workspacePath: string | undefined,
+  userDataPath: string | undefined,
+  filePath: string,
+): { realPath: string; sizeBytes: number } {
+  const lexicalRoots = [
+    workspacePath ? join(resolve(workspacePath), '.agentdock', 'artifacts') : null,
+    userDataPath ? join(resolve(userDataPath), '.agentdock', 'artifacts') : null,
+  ].filter((root): root is string => Boolean(root));
+  const resolvedRoots: string[] = [];
+  for (const root of lexicalRoots) {
+    try {
+      resolvedRoots.push(realpathSync(root));
+    } catch {
+      // Artifacts root may not exist yet; the lexical boundary still applies.
+    }
+  }
+
+  let targetPath = filePath;
+  if (!isAbsolute(targetPath)) {
+    if (!workspacePath) {
+      throw new ArtifactContentError('Cannot resolve relative artifact path without a workspace root.', 400);
+    }
+    targetPath = resolve(workspacePath, targetPath);
+  } else {
+    targetPath = resolve(targetPath);
+  }
+
+  if (!lexicalRoots.some((root) => isInsideRoot(targetPath, root))) {
+    throw new ArtifactContentError('Artifact path is outside the allowed artifacts directory.', 403);
+  }
+
+  if (!existsSync(targetPath)) {
+    throw new ArtifactContentError('Artifact file not found.', 404);
+  }
+
+  let realPath: string;
+  try {
+    realPath = realpathSync(targetPath);
+  } catch {
+    throw new ArtifactContentError('Artifact file not found.', 404);
+  }
+
+  if (!resolvedRoots.some((root) => isInsideRoot(realPath, root))) {
+    throw new ArtifactContentError('Artifact path is outside the allowed artifacts directory.', 403);
+  }
+
+  const stats = statSync(realPath);
+  if (stats.isDirectory()) {
+    throw new ArtifactContentError('Artifact path is a directory.', 400);
+  }
+  if (stats.size > MAX_ARTIFACT_CONTENT_BYTES) {
+    throw new ArtifactContentError(`Artifact exceeds the maximum supported artifact size (${MAX_ARTIFACT_CONTENT_BYTES} bytes).`, 413);
+  }
+  return { realPath, sizeBytes: stats.size };
+}
+
+function buildArtifactMetadataContent(task: AgentTask, artifact: AgentTaskArtifact): AgentTaskArtifactContent {
+  const textContent = (artifact.metadata?.content as string) || artifact.summary || '';
+  return {
+    id: artifact.id,
+    taskId: task.taskId,
+    title: artifact.title,
+    kind: artifact.kind || 'text',
+    mimeType: (artifact.metadata?.mimeType as string) || 'text/plain',
+    content: textContent,
+    isBinary: false,
+    sizeBytes: Buffer.byteLength(textContent, 'utf8'),
+    url: artifact.url,
+  };
+}
 
 export class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
@@ -169,6 +258,56 @@ export class WorkspaceRouter {
 
   updateAgentTask(taskId: string, input: AgentTaskUpdateInput): AgentTask {
     return this.store.updateAgentTask(taskId, input);
+  }
+
+  async getAgentTaskArtifactContent(taskId: string, artifactId: string): Promise<AgentTaskArtifactContent> {
+    const task = this.store.getAgentTask(taskId);
+    if (!task) {
+      throw new ArtifactContentError(`Task not found: ${taskId}`, 404);
+    }
+    const artifact = task.artifacts?.find((a) => a.id === artifactId);
+    if (!artifact) {
+      throw new ArtifactContentError(`Artifact not found: ${artifactId} on task ${taskId}`, 404);
+    }
+
+    const filePath = artifact.path;
+    if (!filePath) {
+      return buildArtifactMetadataContent(task, artifact);
+    }
+
+    const workspace = this.store.getWorkspaceRegistryEntry(task.workspaceId);
+    const userDataPath = (this.store as { userDataPath?: string }).userDataPath;
+    const { realPath: realTargetPath, sizeBytes } = resolveArtifactContentPath(
+      workspace?.path,
+      userDataPath,
+      filePath,
+    );
+
+    const mimeType = (artifact.metadata?.mimeType as string) || getArtifactMimeType(realTargetPath);
+    const kind = artifact.kind && artifact.kind !== 'file' ? artifact.kind : inferArtifactKind(realTargetPath);
+    const isBinary = mimeType.startsWith('image/') && !mimeType.includes('svg');
+
+    let content: string;
+    if (isBinary) {
+      const buffer = readFileSync(realTargetPath);
+      content = buffer.toString('base64');
+    } else {
+      content = readFileSync(realTargetPath, 'utf8');
+    }
+
+    return {
+      id: artifact.id,
+      taskId: task.taskId,
+      title: artifact.title,
+      kind,
+      mimeType,
+      content,
+      isBinary,
+      sizeBytes,
+      extension: extname(realTargetPath).replace(/^\./, ''),
+      path: artifact.path,
+      url: artifact.url,
+    };
   }
 
   getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {

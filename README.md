@@ -102,6 +102,13 @@ flowchart LR
   - **Session 强指纹防污染**：ACP 会话管理器建立模型提供商启动指纹（`buildSessionProviderKey`）；当提供商凭证、Base URL 或 Model 变更时，自动失效并拒绝载入旧 Session，避免跨提供商旧端点残留导致的 401 认证异常。
   - **渠道交互式 `/provider` 指令**：支持在飞书/微信等渠道直接使用 `/provider current`、`/provider list`、`/provider use <id>` 与 `/provider reset` 进行渠道级 Provider 查询、切换与重置。
 
+### 2026-08-30
+
+- **支持 Agent 产物表面（Artifact Surface）与安全沙箱预览（Issue #114）**：
+  - **产物自动发现与登记**：ACP Run 执行收尾时自动扫描工作区 `.agentdock/artifacts/<runId>` 目录，自动识别工件类型（HTML / Markdown / Image / Diff / Code）并持久化至任务的 `artifacts_json`。
+  - **安全读取与服务 API**：新增 `/api/local/v1/tasks/:taskId/artifacts` 及 `/api/local/v1/tasks/:taskId/artifacts/:artifactId/content` 端点，读取严格限定在工作区与用户数据目录的 `.agentdock/artifacts` 根内（realpath 解析防符号链接穿越），并带 10MB 大小上限与 403/404/413 语义化错误。
+  - **多模态沙箱预览与界面联动**：新增 `ArtifactViewerDrawer` 与 `ArtifactViewer` 组件，提供具有安全隔离能力（`sandbox="allow-scripts"` 禁 same-origin，注入 CSP 禁外联）的自包含 HTML 架构图预览、富文本 Markdown、语法高亮 Diff、图片与代码查看器，并在 ThreadChat 会话顶部状态栏与 Run Trace 轨迹图中无缝联动展示。
+
 ### 2026-08-28
 
 - 事件监控支持 cron 时间窗（Issue #115 Phase 1）：

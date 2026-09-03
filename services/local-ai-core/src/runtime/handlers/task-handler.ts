@@ -1,6 +1,6 @@
 import type { RouteHandler } from '../server-helpers.js';
-import { json, readJsonBody } from '../server-helpers.js';
-import type { WorkspaceRouter } from '../../router/workspace-router.js';
+import { json, readJsonBody, jsonError } from '../server-helpers.js';
+import { ArtifactContentError, type WorkspaceRouter } from '../../router/workspace-router.js';
 import type { AgentTaskListQuery, AgentTaskCreateInput, AgentTaskUpdateInput } from '@cc/superai-contracts';
 import { validateBody } from '../request-validation.js';
 
@@ -39,5 +39,17 @@ export function registerTaskHandlers(
       approvalId: 'string', metadata: 'object',
     });
     json(res, 200, await workspaceRouter.updateAgentTask((route as { taskId: string }).taskId, body));
+  });
+  map.set('task.artifacts.list', async (route, _req, res) => {
+    const task = await workspaceRouter.getAgentTask((route as { taskId: string }).taskId);
+    json(res, 200, { artifacts: task.artifacts || [] });
+  });
+  map.set('task.artifact.content', async (route, _req, res) => {
+    const { taskId, artifactId } = route as { taskId: string; artifactId: string };
+    try {
+      json(res, 200, await workspaceRouter.getAgentTaskArtifactContent(taskId, artifactId));
+    } catch (error) {
+      jsonError(res, error instanceof ArtifactContentError ? error.status : 500, error);
+    }
   });
 }

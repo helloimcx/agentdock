@@ -148,12 +148,72 @@ export interface AgentTaskLogEntry {
 
 export interface AgentTaskArtifact {
   id: string;
-  kind: 'file' | 'diff' | 'url' | 'text' | (string & {});
+  kind: 'file' | 'diff' | 'url' | 'text' | 'html' | 'image' | 'markdown' | (string & {});
   title: string;
   path?: string;
   url?: string;
   summary?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface AgentTaskArtifactContent {
+  id: string;
+  taskId: string;
+  title: string;
+  kind: string;
+  mimeType: string;
+  content: string;
+  isBinary: boolean;
+  sizeBytes: number;
+  extension?: string;
+  path?: string;
+  url?: string;
+}
+
+export function inferArtifactKind(filenameOrPath: string): 'html' | 'markdown' | 'image' | 'diff' | 'file' {
+  const lower = String(filenameOrPath || '').toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+  if (
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.svg') ||
+    lower.endsWith('.webp')
+  ) {
+    return 'image';
+  }
+  if (lower.endsWith('.diff') || lower.endsWith('.patch')) return 'diff';
+  return 'file';
+}
+
+const ARTIFACT_MIME_BY_SUFFIX: ReadonlyArray<readonly [suffix: string, mime: string]> = [
+  ['.html', 'text/html'],
+  ['.htm', 'text/html'],
+  ['.md', 'text/markdown'],
+  ['.markdown', 'text/markdown'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.svg', 'image/svg+xml'],
+  ['.webp', 'image/webp'],
+  ['.diff', 'text/x-diff'],
+  ['.patch', 'text/x-diff'],
+  ['.json', 'application/json'],
+  ['.txt', 'text/plain'],
+  ['.log', 'text/plain'],
+  ['.js', 'text/javascript'],
+  ['.mjs', 'text/javascript'],
+  ['.ts', 'text/javascript'],
+  ['.css', 'text/css'],
+];
+
+export function getArtifactMimeType(filenameOrPath: string): string {
+  const lower = String(filenameOrPath || '').toLowerCase();
+  const match = ARTIFACT_MIME_BY_SUFFIX.find(([suffix]) => lower.endsWith(suffix));
+  return match ? match[1] : 'application/octet-stream';
 }
 
 export interface AgentTask {

@@ -1,5 +1,7 @@
 import type {
   AgentTask,
+  AgentTaskArtifact,
+  AgentTaskArtifactContent,
   AgentTaskCreateInput,
   AgentTaskListQuery,
   AgentTaskListResponse,
@@ -173,6 +175,14 @@ export function createAgentTask(input: AgentTaskCreateInput) {
 
 export function updateAgentTask(taskId: string, input: AgentTaskUpdateInput) {
   return coreRequest<AgentTask>('PATCH', `/tasks/${encodeURIComponent(taskId)}`, input);
+}
+
+export function listTaskArtifacts(taskId: string) {
+  return coreRequest<{ artifacts: AgentTaskArtifact[] }>('GET', `/tasks/${encodeURIComponent(taskId)}/artifacts`);
+}
+
+export function getTaskArtifactContent(taskId: string, artifactId: string) {
+  return coreRequest<AgentTaskArtifactContent>('GET', `/tasks/${encodeURIComponent(taskId)}/artifacts/${encodeURIComponent(artifactId)}/content`);
 }
 
 export function getWorkspaceSecuritySettings(workspaceId: string) {
