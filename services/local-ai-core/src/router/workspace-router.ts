@@ -570,16 +570,42 @@ export class WorkspaceRouter {
   }
 
   private resolveThreadBinding(workspaceId: string, threadId: string, channelRoute?: ChannelRoute) {
-    if (channelRoute) {
-      const platform = channelRoute.type?.replace(/^channel\./, '') || 'lark';
-      return this.store.getPlatformThreadBinding(
-        workspaceId,
-        channelRoute.channelId,
-        channelRoute.participantId || '',
-        platform,
-      );
+    const threadBinding = this.store.getPlatformThreadBindingByThreadId(threadId);
+    if (threadBinding) {
+      return threadBinding;
     }
-    return this.store.getPlatformThreadBindingByThreadId(threadId);
+    if (channelRoute) {
+      const explicitPlatform = typeof channelRoute.metadata?.platform === 'string'
+        ? channelRoute.metadata.platform
+        : '';
+      const platformCandidate = explicitPlatform
+        || (channelRoute.type?.startsWith('channel.') && channelRoute.type !== 'channel.chat'
+          ? channelRoute.type.replace(/^channel\./, '')
+          : '');
+      if (platformCandidate) {
+        const binding = this.store.getPlatformThreadBinding(
+          workspaceId,
+          channelRoute.channelId,
+          channelRoute.participantId || '',
+          platformCandidate,
+        );
+        if (binding) {
+          return binding;
+        }
+      }
+      for (const platform of ['lark', 'weixin']) {
+        const binding = this.store.getPlatformThreadBinding(
+          workspaceId,
+          channelRoute.channelId,
+          channelRoute.participantId || '',
+          platform,
+        );
+        if (binding) {
+          return binding;
+        }
+      }
+    }
+    return undefined;
   }
 
   private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = '', providerIdOverride = ''): Promise<WorkspaceRoute> {

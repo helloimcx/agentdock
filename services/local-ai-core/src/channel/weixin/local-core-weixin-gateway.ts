@@ -445,6 +445,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
         type: 'channel.chat',
         channelId: msg.chatId,
         participantId: msg.platformUserId,
+        metadata: { platform: 'weixin' },
       },
     });
     return;

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { delimiter, win32 } from 'node:path';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -140,7 +141,7 @@ export class LocalCoreAcpSessionCoordinator {
     );
     if (hasProviderMismatch && row?.acp_session_id) {
       this.options.log?.(
-        `[acp.session:${threadId}] provider configuration mismatch (stored=${row.acp_launch_config_key} current=${providerKey}); ` +
+        `[acp.session:${threadId}] provider configuration mismatch (stored=${this.sanitizeProviderKeyForLog(row.acp_launch_config_key)} current=${this.sanitizeProviderKeyForLog(providerKey)}); ` +
         `discarding stale session ${row.acp_session_id} to prevent provider/model pollution`,
       );
     }
@@ -361,12 +362,28 @@ export class LocalCoreAcpSessionCoordinator {
 
   private buildSessionProviderKey(config: LocalCoreProjectConfig) {
     const env = config.env || {};
+    const rawApiKey = env.OPENAI_API_KEY || env.HERMES_API_KEY || env.ANTHROPIC_API_KEY || '';
+    const keyHash = rawApiKey ? createHash('sha256').update(rawApiKey).digest('hex').slice(0, 16) : '';
     return JSON.stringify({
       agentType: config.agentType,
       model: config.model || '',
       baseUrl: env.OPENAI_BASE_URL || env.HERMES_BASE_URL || env.ANTHROPIC_BASE_URL || '',
-      apiKey: env.OPENAI_API_KEY || env.HERMES_API_KEY || env.ANTHROPIC_API_KEY || '',
+      keyHash,
     });
+  }
+
+  private sanitizeProviderKeyForLog(key?: string | null) {
+    if (!key) return 'none';
+    try {
+      const parsed = JSON.parse(key);
+      if (parsed && typeof parsed === 'object') {
+        const { apiKey: _removed, ...rest } = parsed as Record<string, unknown>;
+        return JSON.stringify(rest);
+      }
+    } catch {
+      // ignore
+    }
+    return 'fingerprint';
   }
 
   private resolveLaunchPermissionMode(threadId: string, permissionModeOverride = '') {

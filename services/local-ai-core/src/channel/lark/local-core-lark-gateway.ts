@@ -498,6 +498,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         type: 'channel.chat',
         channelId: msg.chatId,
         participantId: msg.platformUserId,
+        metadata: { platform: 'lark' },
       },
     });
     return; // { paired: true, threadId };

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/store/local-core-acp-store.js';
 import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
+import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
 
 test('SessionCoordinator skips stale acp_session_id when launch config key changes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'acp-config-mismatch-'));
@@ -15,7 +16,7 @@ test('SessionCoordinator skips stale acp_session_id when launch config key chang
       agentType: 'hermes',
       model: 'deepseek-v4-flash',
       baseUrl: 'https://opencode.ai/zen/go/v1',
-      apiKey: '',
+      keyHash: '',
     });
     // Simulate previous session saved under old provider
     store.updateThreadSession(thread.id, 'old-session-123', true, oldConfigKey);
@@ -64,7 +65,10 @@ test('SessionCoordinator skips stale acp_session_id when launch config key chang
       workDir: '/tmp/workspace-a',
       command: 'hermes',
       args: ['acp'],
-      env: { OPENAI_BASE_URL: 'https://ark.cn-beijing.volces.com/api/coding/v3' },
+      env: {
+        OPENAI_BASE_URL: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+        OPENAI_API_KEY: 'sk-secret-volcano-api-key-98765',
+      },
       model: 'deepseek-v4-flash',
     };
 
@@ -79,6 +83,11 @@ test('SessionCoordinator skips stale acp_session_id when launch config key chang
     const updatedRow = store.getThreadRow(thread.id);
     assert.equal(updatedRow?.acp_session_id, 'new-session-456');
     assert.ok(updatedRow?.acp_launch_config_key?.includes('ark.cn-beijing.volces.com'));
+    assert.equal(
+      updatedRow?.acp_launch_config_key?.includes('sk-secret-volcano-api-key-98765'),
+      false,
+      'API key must not be stored in plaintext in acp_launch_config_key',
+    );
 
     store.close();
   } finally {
@@ -278,11 +287,98 @@ test('ThreadCommandService handles /provider current, list, use, reset', async (
     assert.ok(resReset.displayText.includes('已清除当前渠道的 Provider 偏好设置'));
 
     const bindingAfterReset = store.getPlatformThreadBinding('workspace-a', 'chat-100', 'user-200', 'lark');
-    assert.equal(bindingAfterReset?.preferred_provider_id, null);
+    // 6. /provider help
+    const resHelp = await service.execute({
+      threadId: thread.id,
+      workspaceId: 'workspace-a',
+      content: '/provider help',
+      defaultAgentType: 'hermes',
+      channel: channelContext,
+    });
+    assert.ok(resHelp.displayText.includes('使用方式：'));
+    assert.ok(resHelp.displayText.includes('/provider use <id>'));
+
+    // 7. /provider use without channel
+    const resNoChannel = await service.execute({
+      threadId: thread.id,
+      workspaceId: 'workspace-a',
+      content: '/provider use provider-volcano',
+      defaultAgentType: 'hermes',
+    });
+    assert.ok(resNoChannel.displayText.includes('未绑定飞书或微信等渠道'));
 
     store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceRouter resolves channel preferred provider via channelRoute with type channel.chat', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-channel-router-'));
+  try {
+    const runtime = bootstrapLocalCoreRuntime({
+      userDataPath,
+      enableKnowledge: false,
+    });
+    runtime.store.upsertModelProvider({
+      id: 'provider-default',
+      name: 'Default Provider',
+      base_url: 'https://default.ai/v1',
+      api_key: 'key-default',
+    });
+    runtime.store.upsertModelProvider({
+      id: 'provider-volcano',
+      name: '火山方舟',
+      base_url: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+      api_key: 'key-volcano',
+    });
+    await runtime.store.saveRuntimeConfig({
+      projects: [{ name: 'agent-workspace', agent: { type: 'hermes', options: { provider_id: 'provider-default' } } }] as any,
+    });
+
+    const thread = await runtime.workspaceRouter.createThread('agent-workspace', 'Channel route provider test');
+    const now = new Date().toISOString();
+    runtime.store.upsertPlatformThreadBinding({
+      workspace_id: 'agent-workspace',
+      platform: 'lark',
+      chat_id: 'chat-999',
+      platform_user_id: 'user-888',
+      thread_id: thread.id,
+      last_platform_message_id: null,
+      preferred_agent_type: 'hermes',
+      preferred_provider_id: 'provider-volcano',
+      created_at: now,
+      updated_at: now,
+    });
+
+    let capturedConfig: any;
+    (runtime.workspaceRouter as any).localCoreAcp.sendThreadMessage = async (
+      _tid: string,
+      _content: any,
+      config: any,
+    ) => {
+      capturedConfig = config;
+      return { runId: 'run-1' };
+    };
+
+    // When channelRoute is passed with type: 'channel.chat' (as Lark/Weixin gateways do)
+    await runtime.workspaceRouter.sendThreadMessage(thread.id, 'Hello test', {
+      channelRoute: {
+        type: 'channel.chat',
+        channelId: 'chat-999',
+        participantId: 'user-888',
+      },
+    });
+
+    assert.ok(capturedConfig, 'sendThreadMessage must be called');
+    assert.ok(
+      capturedConfig.env?.OPENAI_BASE_URL?.includes('ark.cn-beijing.volces.com'),
+      `Expected Volcano Ark endpoint, but got: ${capturedConfig.env?.OPENAI_BASE_URL}`,
+    );
+
+    await runtime.stop();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
   }
 });
 

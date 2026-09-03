@@ -214,37 +214,73 @@ export class ThreadCommandService {
     }
   }
 
+  private resolveProviderState(workspaceId: string, channel?: ThreadCommandChannelContext) {
+    const defaultProviderId = this.options.getWorkspaceDefaultProviderId
+      ? this.options.getWorkspaceDefaultProviderId(workspaceId)
+      : '';
+    const binding = channel && this.options.getChannelBinding
+      ? this.options.getChannelBinding(workspaceId, channel.chatId, channel.platformUserId, channel.platform)
+      : undefined;
+    const channelProviderId = binding?.preferred_provider_id || '';
+    const currentProviderId = channelProviderId || defaultProviderId;
+    const currentProvider = currentProviderId && this.options.getModelProvider
+      ? this.options.getModelProvider(currentProviderId)
+      : undefined;
+    const defaultProvider = defaultProviderId && this.options.getModelProvider
+      ? this.options.getModelProvider(defaultProviderId)
+      : undefined;
+    const availableProviders = this.options.listModelProviders
+      ? this.options.listModelProviders()
+      : (currentProvider ? [currentProvider] : []);
+    return {
+      defaultProviderId,
+      channelProviderId,
+      currentProviderId,
+      currentProvider,
+      defaultProvider,
+      availableProviders,
+    };
+  }
+
   private executeProviderCommand(
     threadId: string,
     workspaceId: string,
     args: string[],
     channel?: ThreadCommandChannelContext,
   ) {
-    const defaultProviderId = this.options.getWorkspaceDefaultProviderId?.(workspaceId) || '';
-    const binding = channel
-      ? this.options.getChannelBinding?.(workspaceId, channel.chatId, channel.platformUserId, channel.platform)
-      : undefined;
-    const channelProviderId = binding?.preferred_provider_id || '';
-    const currentProviderId = channelProviderId || defaultProviderId;
-    const currentProvider = currentProviderId ? this.options.getModelProvider?.(currentProviderId) : undefined;
-    const defaultProvider = defaultProviderId ? this.options.getModelProvider?.(defaultProviderId) : undefined;
-    const availableProviders = this.options.listModelProviders?.() || (currentProvider ? [currentProvider] : []);
-
+    const state = this.resolveProviderState(workspaceId, channel);
     const [rawAction = '', ...rest] = args;
     const action = String(rawAction || '').trim().toLowerCase();
 
     if (!action || action === 'current') {
-      return this.formatProviderCurrent(channelProviderId, currentProvider, defaultProvider, currentProviderId, defaultProviderId);
+      return this.formatProviderCurrent(state.channelProviderId, state.currentProvider, state.defaultProvider, state.currentProviderId, state.defaultProviderId);
     }
     if (action === 'list') {
-      return this.formatProviderList(availableProviders);
+      return this.formatProviderList(state.availableProviders);
     }
     if (action === 'reset') {
-      return this.executeProviderReset(threadId, workspaceId, channel, channelProviderId, defaultProvider, defaultProviderId);
+      return this.executeProviderReset(threadId, workspaceId, channel, state.channelProviderId, state.defaultProvider, state.defaultProviderId);
+    }
+    if (action === 'help') {
+      return this.formatProviderHelp(state.currentProvider, state.defaultProvider);
     }
 
     const requestedId = (action === 'use' ? rest.join(' ') : args.join(' ')).trim();
-    return this.executeProviderUse(threadId, workspaceId, channel, requestedId, availableProviders, channelProviderId);
+    return this.executeProviderUse(threadId, workspaceId, channel, requestedId, state.availableProviders, state.channelProviderId);
+  }
+
+  private formatProviderHelp(currentProvider: any, defaultProvider: any) {
+    const currentDesc = currentProvider ? `${currentProvider.name} (${currentProvider.id})` : '未配置';
+    const defaultDesc = defaultProvider ? `${defaultProvider.name} (${defaultProvider.id})` : '未配置';
+    return [
+      '使用方式：',
+      '- `/provider current`：查看当前使用的 Provider 与工作区默认设置',
+      '- `/provider list`：查看所有可用的 Model Provider',
+      '- `/provider use <id>`：为当前渠道绑定指定的 Provider',
+      '- `/provider reset`：恢复当前渠道跟随工作区默认 Provider',
+      '',
+      `当前生效：${currentDesc} | 工作区默认：${defaultDesc}`,
+    ].join('\n');
   }
 
   private formatProviderCurrent(
@@ -288,6 +324,9 @@ export class ThreadCommandService {
     defaultProvider: any,
     defaultProviderId: string,
   ) {
+    if (!channel?.chatId || !channel.platformUserId) {
+      return '当前会话未绑定飞书或微信等渠道，无需重置。';
+    }
     if (!channelProviderId) {
       const defaultDesc = defaultProvider ? `${defaultProvider.name} (${defaultProvider.id})` : defaultProviderId;
       return `当前渠道未单独指定 Provider，已在跟随工作区默认：${defaultDesc}。`;
@@ -315,6 +354,10 @@ export class ThreadCommandService {
   ) {
     if (!requestedId) {
       return '请指定 Provider ID，例如：`/provider use provider-5`。使用 `/provider list` 查看可用 Provider。';
+    }
+
+    if (!channel?.chatId || !channel.platformUserId) {
+      return '当前会话未绑定飞书或微信等渠道。`/provider use` 用于设置渠道专用 Provider，桌面/Web 端会话默认使用工作区 Provider，请在工作区设置中切换默认 Provider。';
     }
 
     const matchedProvider = availableProviders.find(
