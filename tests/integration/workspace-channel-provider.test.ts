@@ -209,24 +209,15 @@ test('ThreadCommandService handles /provider current, list, use, reset', async (
       updated_at: now,
     });
 
-    const { ThreadCommandService } = await import('../../services/local-ai-core/src/thread/thread-command-service.js');
+    const { ThreadCommandService, createProviderCommandOptions } = await import('../../services/local-ai-core/src/thread/thread-command-service.js');
     const service = new ThreadCommandService({
       getThreadRow: (id) => store.getThreadRow(id),
       updateThreadAgentMode: (id, mode) => store.updateThreadAgentMode(id, mode),
       updateThreadAgentType: (id, type) => store.updateThreadAgentType(id, type),
       getLatestRunForThread: () => undefined,
       createAuditEvent: () => {},
-      listModelProviders: () => store.listModelProviders(),
-      getModelProvider: (id) => store.getModelProvider(id),
+      ...createProviderCommandOptions(store),
       getWorkspaceDefaultProviderId: () => 'provider-default',
-      getChannelBinding: (ws, chat, user, plat) => store.getPlatformThreadBinding(ws, chat, user, plat),
-      setChannelPreferredProvider: (input) => store.updatePlatformThreadPreferredProvider(
-        input.workspaceId,
-        input.chatId,
-        input.platformUserId,
-        input.providerId,
-        input.platform,
-      ),
     });
 
     // 1. /provider current when inheriting default
