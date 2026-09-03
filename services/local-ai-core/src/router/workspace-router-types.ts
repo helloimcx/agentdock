@@ -4,6 +4,7 @@ import type {
   AutomationEvaluation,
   AutomationRun,
   ChannelInboundMessageContent,
+  ChannelRoute,
   RuntimeConfigState,
   LocalCoreCapabilities,
   ThreadDetail,
@@ -173,4 +174,7 @@ export type WorkspaceThreadBackend = {
 export type WorkspaceThreadMessageOptions = {
   permissionMode?: string;
   runtimeEnv?: Record<string, string>;
+  channelRoute?: ChannelRoute;
+  providerIdOverride?: string;
+  agentTypeOverride?: string;
 };

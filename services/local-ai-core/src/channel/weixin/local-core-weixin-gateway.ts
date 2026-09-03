@@ -440,8 +440,15 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       msg.contextToken || msg.messageId,
       platformKey,
     );
-    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts));
-      return;
+    await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts), {
+      channelRoute: {
+        type: 'channel.chat',
+        channelId: msg.chatId,
+        participantId: msg.platformUserId,
+        metadata: { platform: 'weixin' },
+      },
+    });
+    return;
   }
 
 

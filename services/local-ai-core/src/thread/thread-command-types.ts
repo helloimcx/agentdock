@@ -1,4 +1,4 @@
-import type { AuditEvent } from '@cc/superai-contracts';
+import type { AuditEvent, DesktopModelProvider } from '@cc/superai-contracts';
 import type { LocalRunRow, LocalThreadRow } from '../acp/store/acp-store-types.js';
 
 export type ThreadCommandResult = {
@@ -28,6 +28,17 @@ export type ThreadCommandServiceOptions = {
     platformUserId: string;
     platform: string;
     agentType: string | null;
+  }) => void;
+  listModelProviders?: () => DesktopModelProvider[];
+  getModelProvider?: (providerId: string) => DesktopModelProvider | undefined;
+  getWorkspaceDefaultProviderId?: (workspaceId: string) => string;
+  getChannelBinding?: (workspaceId: string, chatId: string, platformUserId: string, platform?: string) => { preferred_provider_id?: string | null; preferred_agent_type?: string | null } | undefined;
+  setChannelPreferredProvider?: (input: {
+    workspaceId: string;
+    chatId: string;
+    platformUserId: string;
+    platform: string;
+    providerId: string | null;
   }) => void;
   log?: (message: string) => void;
 };

@@ -16,6 +16,7 @@ export const LOCAL_SLASH_COMMANDS: SlashCommandDefinition[] = [
   { names: ['stop'], usage: '/stop', summary: '停止当前正在运行的任务。', group: 'thread' },
   { names: ['mode'], usage: '/mode [default|auto|acceptEdits|dontAsk|plan|yolo]', summary: '查看或切换当前线程权限模式。', group: 'thread' },
   { names: ['agent'], usage: '/agent [list|current|use <agent-id>|reset]', summary: '查看或切换当前线程 Agent。', group: 'thread' },
+  { names: ['provider'], usage: '/provider [list|current|use <id>|reset]', summary: '查看或切换当前渠道 Provider。', group: 'thread' },
   { names: ['new'], usage: '/new [标题]', summary: '新建会话。', group: 'session' },
   { names: ['list', 'sessions'], usage: '/list', summary: '查看会话列表。', group: 'session' },
   { names: ['switch', 'sw'], usage: '/switch <编号 | id前缀 | 标题>', summary: '切换会话。', group: 'session' },
