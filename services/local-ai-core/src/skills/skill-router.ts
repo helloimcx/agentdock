@@ -14,6 +14,33 @@ export interface SkillRouterOptions {
   maxMatches?: number;
 }
 
+// Rules supplied via SkillRouterOptions come from the reviewed builtin set or
+// workspace-owned configuration and may use regex syntax. Rules derived from
+// third-party skill frontmatter are untrusted: their terms never compile to
+// RegExp (prompt-injection / ReDoS vector) and only ever match literally.
+interface SourcedRule {
+  rule: SkillRoutingRule;
+  trusted: boolean;
+}
+
+const REGEX_CACHE_LIMIT = 512;
+const REGEX_CACHE = new Map<string, RegExp | null>();
+
+function getCachedRegExp(source: string, flags = 'i'): RegExp | null {
+  const key = `${flags}\u0000${source}`;
+  const cached = REGEX_CACHE.get(key);
+  if (cached !== undefined) return cached;
+  let compiled: RegExp | null = null;
+  try {
+    compiled = new RegExp(source, flags);
+  } catch {
+    compiled = null;
+  }
+  if (REGEX_CACHE.size >= REGEX_CACHE_LIMIT) REGEX_CACHE.clear();
+  REGEX_CACHE.set(key, compiled);
+  return compiled;
+}
+
 export class SkillRouter {
   private readonly rules: SkillRoutingRule[];
   private readonly toolIndex: ToolIndex;
@@ -51,8 +78,8 @@ export class SkillRouter {
   }
 
   private evaluateSkill(query: string, skill: SkillInfo): SkillRouteMatch | null {
-    const ruleList = this.collectRulesForSkill(skill);
-    if (isSkillNegated(query, ruleList)) {
+    const ruleEntries = this.collectRulesForSkill(skill);
+    if (isSkillNegated(query, ruleEntries)) {
       return null;
     }
 
@@ -60,12 +87,12 @@ export class SkillRouter {
     const matchedRuleNotes: string[] = [];
     const requiredToolsSet = new Set<string>();
 
-    for (const rule of ruleList) {
+    for (const { rule, trusted } of ruleEntries) {
       if (rule.requiresTools) {
         for (const t of rule.requiresTools) requiredToolsSet.add(t);
       }
 
-      const evaluation = evaluateRule(query, rule);
+      const evaluation = evaluateRule(query, rule, trusted);
       if (evaluation.score > highestScore) {
         highestScore = evaluation.score;
       }
@@ -91,27 +118,27 @@ export class SkillRouter {
     };
   }
 
-  private collectRulesForSkill(skill: SkillInfo): SkillRoutingRule[] {
-    const rules: SkillRoutingRule[] = [];
+  private collectRulesForSkill(skill: SkillInfo): SourcedRule[] {
+    const entries: SourcedRule[] = [];
 
     for (const r of this.rules) {
       if (r.skillId === skill.id) {
-        rules.push(r);
+        entries.push({ rule: r, trusted: true });
       }
     }
 
     if (Array.isArray(skill.metadata?.rules)) {
       for (const r of skill.metadata.rules) {
-        rules.push({ ...r, skillId: skill.id });
+        entries.push({ rule: { ...r, skillId: skill.id }, trusted: false });
       }
     }
 
     const inferred = inferMetadataRule(skill);
     if (inferred) {
-      rules.push(inferred);
+      entries.push({ rule: inferred, trusted: false });
     }
 
-    return rules;
+    return entries;
   }
 }
 
@@ -135,41 +162,46 @@ function inferMetadataRule(skill: SkillInfo): SkillRoutingRule | null {
   };
 }
 
-function isSkillNegated(query: string, rules: SkillRoutingRule[]): boolean {
-  for (const rule of rules) {
-    if (rule.negativePatterns && isNegativeMatched(query, rule.negativePatterns)) {
+function isSkillNegated(query: string, entries: SourcedRule[]): boolean {
+  for (const { rule, trusted } of entries) {
+    if (rule.negativePatterns && isNegativeMatched(query, rule.negativePatterns, trusted)) {
       return true;
     }
   }
   return false;
 }
 
-function isNegativeMatched(query: string, patterns: string[]): boolean {
+function isNegativeMatched(query: string, patterns: string[], trusted: boolean): boolean {
   const lowerQuery = query.toLowerCase();
   for (const neg of patterns) {
-    try {
-      if (new RegExp(neg, 'i').test(query)) return true;
-    } catch {
+    if (!trusted) {
       if (lowerQuery.includes(neg.toLowerCase())) return true;
+      continue;
     }
+    const compiled = getCachedRegExp(neg);
+    if (compiled ? compiled.test(query) : lowerQuery.includes(neg.toLowerCase())) return true;
   }
   return false;
 }
 
-function evaluateRule(query: string, rule: SkillRoutingRule): { score: number; matchedNotes: string[] } {
+function evaluateRule(
+  query: string,
+  rule: SkillRoutingRule,
+  trusted: boolean,
+): { score: number; matchedNotes: string[] } {
   const lowerQuery = query.toLowerCase();
   let score = 0;
   const matchedNotes: string[] = [];
 
   if (rule.requiredGroups && rule.requiredGroups.length > 0) {
-    if (!checkRequiredGroups(query, lowerQuery, rule.requiredGroups)) {
+    if (!checkRequiredGroups(query, lowerQuery, rule.requiredGroups, trusted)) {
       return { score: 0, matchedNotes: [] };
     }
     score += 10;
     matchedNotes.push('required_groups');
   }
 
-  const terms = scoreTerms(query, lowerQuery, rule);
+  const terms = scoreTerms(query, lowerQuery, rule, trusted);
   score += terms.score;
   matchedNotes.push(...terms.matchedNotes);
 
@@ -180,9 +212,9 @@ function evaluateRule(query: string, rule: SkillRoutingRule): { score: number; m
   return { score, matchedNotes };
 }
 
-function checkRequiredGroups(query: string, lowerQuery: string, groups: string[][]): boolean {
+function checkRequiredGroups(query: string, lowerQuery: string, groups: string[][], trusted: boolean): boolean {
   for (const group of groups) {
-    const matched = group.some((item) => matchTerm(item, query, lowerQuery));
+    const matched = group.some((item) => matchTerm(item, query, lowerQuery, trusted));
     if (!matched) return false;
   }
   return true;
@@ -192,24 +224,23 @@ function scoreTerms(
   query: string,
   lowerQuery: string,
   rule: SkillRoutingRule,
+  trusted: boolean,
 ): { score: number; matchedNotes: string[] } {
   let score = 0;
   const matchedNotes: string[] = [];
 
   if (rule.patterns) {
     for (const pattern of rule.patterns) {
-      try {
-        if (new RegExp(pattern, 'i').test(query)) {
-          score += 10;
-          matchedNotes.push(`pattern:${pattern.slice(0, 30)}`);
-        }
-      } catch {}
+      if (matchesRuleTerm(pattern, query, lowerQuery, trusted)) {
+        score += 10;
+        matchedNotes.push(`pattern:${pattern.slice(0, 30)}`);
+      }
     }
   }
 
   if (rule.keywords) {
     for (const kw of rule.keywords) {
-      if (kw && matchTerm(kw, query, lowerQuery)) {
+      if (kw && matchTerm(kw, query, lowerQuery, trusted)) {
         score += 5;
         matchedNotes.push(`keyword:${kw}`);
       }
@@ -218,7 +249,7 @@ function scoreTerms(
 
   if (rule.domains) {
     for (const domain of rule.domains) {
-      if (domain && matchTerm(domain, query, lowerQuery)) {
+      if (domain && matchTerm(domain, query, lowerQuery, trusted)) {
         score += 3;
         matchedNotes.push(`domain:${domain}`);
       }
@@ -228,14 +259,20 @@ function scoreTerms(
   return { score, matchedNotes };
 }
 
-function matchTerm(term: string, query: string, lowerQuery: string): boolean {
-  if (!term) return false;
-  if (/^[a-zA-Z0-9_-]+$/.test(term)) {
-    return new RegExp(`\\b${term}\\b`, 'i').test(query);
-  }
-  try {
-    return new RegExp(term, 'i').test(query);
-  } catch {
+function matchesRuleTerm(term: string, query: string, lowerQuery: string, trusted: boolean): boolean {
+  if (trusted) {
+    const compiled = getCachedRegExp(term);
+    if (compiled) return compiled.test(query);
     return lowerQuery.includes(term.toLowerCase());
   }
+  return lowerQuery.includes(term.toLowerCase());
+}
+
+function matchTerm(term: string, query: string, lowerQuery: string, trusted: boolean): boolean {
+  if (!term) return false;
+  if (/^[a-zA-Z0-9_-]+$/.test(term)) {
+    const compiled = getCachedRegExp(`\\b${term}\\b`);
+    return compiled ? compiled.test(query) : lowerQuery.includes(term.toLowerCase());
+  }
+  return matchesRuleTerm(term, query, lowerQuery, trusted);
 }

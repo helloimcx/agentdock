@@ -1,4 +1,6 @@
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
+import { SkillRouter } from '../skills/skill-router.js';
+import type { SkillRouteMatch } from '@cc/superai-contracts/skills';
 
 const SCHEDULER_INSTRUCTION = [
   '[Scheduler Tools]',
@@ -152,7 +154,3 @@ export function composeAgentMessage(
     '[/User Message]',
   ].join('\n');
 }
-
-import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
-import { SkillRouter } from '../skills/skill-router.js';
-import type { SkillRouteMatch } from '@cc/superai-contracts/skills';
