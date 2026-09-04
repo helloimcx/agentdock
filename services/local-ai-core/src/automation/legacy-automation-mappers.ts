@@ -119,6 +119,7 @@ export function monitorToAutomationInput(input: ResolvedMonitorInput): LegacyAut
       kind: 'provider-event',
       sourceType: requireText(input.sourceType, 'Automation monitor sourceType'),
       sourceConfig: input.sourceConfig || {},
+      ...(input.schedule ? { schedule: input.schedule } : {}),
     },
     condition: { kind: 'expression', expression: monitorConditionExpression(input.condition) },
     action: {
@@ -164,6 +165,7 @@ export function automationToMonitor(
     enabled: automation.enabled,
     cooldownMs: automation.policies.cooldownMs,
     concurrencyPolicy: 'skip_if_running',
+    ...(automation.activation.schedule ? { schedule: automation.activation.schedule } : {}),
     ...(lastState ? { lastState } : {}),
     createdAt: automation.createdAt,
     updatedAt: automation.updatedAt,

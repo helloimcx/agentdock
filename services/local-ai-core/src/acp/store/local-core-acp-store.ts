@@ -112,8 +112,10 @@ export class LocalCoreAcpStore {
   readonly cost: LocalCoreCostStore;
   readonly budgets: LocalCoreBudgetStore;
   readonly skillSources: LocalSkillSourceStore;
+  readonly userDataPath: string;
 
   constructor(userDataPath: string) {
+    this.userDataPath = userDataPath;
     const dbPath = join(userDataPath, 'runtime', 'local-core.db');
     const runtimeDir = dirname(dbPath);
     mkdirSync(dirname(dbPath), { recursive: true });
@@ -228,10 +230,20 @@ export class LocalCoreAcpStore {
   }
 
   upsertModelProvider(input: DesktopModelProviderInput): DesktopModelProvider {
-    return this.modelProviders.upsert(input);
+    const existing = input.id ? this.modelProviders.get(input.id) : undefined;
+    const result = this.modelProviders.upsert(input);
+    if (existing && (existing.base_url !== result.base_url || existing.api_key !== result.api_key)) {
+      this.threads.clearAllSessions();
+    }
+    return result;
+  }
+
+  clearAllThreadSessions() {
+    this.threads.clearAllSessions();
   }
 
   deleteModelProvider(providerId: string) {
+    this.threads.clearAllSessions();
     return this.modelProviders.delete(providerId);
   }
 
@@ -676,8 +688,16 @@ export class LocalCoreAcpStore {
     this.threads.updateAgentType(threadId, agentType);
   }
 
-  updateThreadSession(threadId: string, sessionId: string, supportsLoad: boolean) {
-    this.threads.updateSession(threadId, sessionId, supportsLoad);
+  updateThreadSession(threadId: string, sessionId: string, supportsLoad: boolean, launchConfigKey?: string | null) {
+    this.threads.updateSession(threadId, sessionId, supportsLoad, launchConfigKey);
+  }
+
+  clearThreadSession(threadId: string) {
+    this.threads.clearSession(threadId);
+  }
+
+  clearWorkspaceThreadSessions(workspaceId: string) {
+    this.threads.clearWorkspaceSessions(workspaceId);
   }
 
   createPairingRequest(input: Omit<LocalPlatformPairingRow, 'platform'> & { platform?: string }) {
@@ -744,6 +764,16 @@ export class LocalCoreAcpStore {
     platform = 'lark',
   ) {
     this.platform.updatePlatformThreadPreferredAgent(workspaceId, chatId, platformUserId, agentType, platform);
+  }
+
+  updatePlatformThreadPreferredProvider(
+    workspaceId: string,
+    chatId: string,
+    platformUserId: string,
+    providerId: string | null,
+    platform = 'lark',
+  ) {
+    this.platform.updatePlatformThreadPreferredProvider(workspaceId, chatId, platformUserId, providerId, platform);
   }
 
   updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string, platform = 'lark') {

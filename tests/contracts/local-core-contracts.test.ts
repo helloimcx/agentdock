@@ -12,6 +12,8 @@ import {
   normalizeAutomationMonitorStatus,
   normalizeChannelContentPartType,
   normalizeApprovalRequestStatus,
+  inferArtifactKind,
+  getArtifactMimeType,
 } from '../../packages/contracts/src/index.js';
 
 test('scheduled job execution mode normalization accepts canonical aliases', () => {
@@ -115,3 +117,23 @@ test('approval request status normalization accepts canonical aliases', () => {
   assert.equal(normalizeApprovalRequestStatus('approve'), 'approved');
   assert.equal(normalizeApprovalRequestStatus('canceled'), 'cancelled');
 });
+
+test('inferArtifactKind correctly identifies file categories from extensions', () => {
+  assert.equal(inferArtifactKind('architecture.html'), 'html');
+  assert.equal(inferArtifactKind('report.md'), 'markdown');
+  assert.equal(inferArtifactKind('diagram.svg'), 'image');
+  assert.equal(inferArtifactKind('screenshot.png'), 'image');
+  assert.equal(inferArtifactKind('changes.diff'), 'diff');
+  assert.equal(inferArtifactKind('data.json'), 'file');
+  assert.equal(inferArtifactKind('unknown_file'), 'file');
+});
+
+test('getArtifactMimeType returns standard mime types', () => {
+  assert.equal(getArtifactMimeType('index.html'), 'text/html');
+  assert.equal(getArtifactMimeType('readme.markdown'), 'text/markdown');
+  assert.equal(getArtifactMimeType('logo.svg'), 'image/svg+xml');
+  assert.equal(getArtifactMimeType('photo.jpg'), 'image/jpeg');
+  assert.equal(getArtifactMimeType('patch.diff'), 'text/x-diff');
+  assert.equal(getArtifactMimeType('blob.bin'), 'application/octet-stream');
+});
+

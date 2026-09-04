@@ -87,6 +87,8 @@ export type LocalAiCoreRoute =
   | { name: 'tasks.create' }
   | { name: 'task.get'; taskId: string }
   | { name: 'task.update'; taskId: string }
+  | { name: 'task.artifacts.list'; taskId: string }
+  | { name: 'task.artifact.content'; taskId: string; artifactId: string }
   | { name: 'knowledge.sources.list' }
   | { name: 'knowledge.config.read' }
   | { name: 'knowledge.config.update' }
@@ -511,6 +513,26 @@ function parseAuditEventsRoute(method: string, segments: string[]): LocalAiCoreR
   return null;
 }
 
+function parseTaskSubresourceRoute(method: string, segments: string[], taskId: string): LocalAiCoreRoute | null {
+  if (segments.length === 2) {
+    if (method === 'GET') {
+      return { name: 'task.get', taskId };
+    }
+    if (method === 'PATCH') {
+      return { name: 'task.update', taskId };
+    }
+    return null;
+  }
+  if (segments.length === 3 && segments[2] === 'artifacts') {
+    return method === 'GET' ? { name: 'task.artifacts.list', taskId } : null;
+  }
+  if (segments.length === 5 && segments[2] === 'artifacts' && segments[4] === 'content') {
+    const artifactId = decodeURIComponent(segments[3] || '');
+    return method === 'GET' && artifactId ? { name: 'task.artifact.content', taskId, artifactId } : null;
+  }
+  return null;
+}
+
 function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   if (method === 'GET' && segments.length === 1) {
     return { name: 'tasks.list' };
@@ -519,16 +541,10 @@ function parseTasksRoute(method: string, segments: string[]): LocalAiCoreRoute |
     return { name: 'tasks.create' };
   }
   const taskId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
-  if (!taskId || segments.length !== 2) {
+  if (!taskId) {
     return null;
   }
-  if (method === 'GET') {
-    return { name: 'task.get', taskId };
-  }
-  if (method === 'PATCH') {
-    return { name: 'task.update', taskId };
-  }
-  return null;
+  return parseTaskSubresourceRoute(method, segments, taskId);
 }
 
 function parseKnowledgeRoute(method: string, segments: string[]): LocalAiCoreRoute | null {

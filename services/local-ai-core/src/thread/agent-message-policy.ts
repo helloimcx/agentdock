@@ -1,3 +1,5 @@
+import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
+
 const SCHEDULER_INSTRUCTION = [
   '[Scheduler Tools]',
   'If the user asks to create, view, edit, delete, or manually run a scheduled task for this conversation, use the Bash tool to run the local scheduler CLI.',
@@ -154,5 +156,3 @@ export function composeAgentMessage(
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { SkillRouter } from '../skills/skill-router.js';
 import type { SkillRouteMatch } from '@cc/superai-contracts/skills';
-
-

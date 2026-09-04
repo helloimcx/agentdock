@@ -2,12 +2,19 @@ import type {
   AutomationMonitor,
   AutomationMonitorCreateInput,
   AutomationMonitorEventSnapshot,
+  AutomationMonitorSchedule,
   AutomationMonitorUpdateInput,
   ScheduledJobRoute,
 } from '@cc/superai-contracts';
 import type { ChannelRuntime, EventBus, MonitorProviderRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+import {
+  assertSupportedTimezone,
+  compileCronExpression,
+  cronMatchesFields,
+  extractFieldsInTimezone,
+} from '../scheduler/cron.js';
 import {
   routeFromPlatformThreadBinding,
   routeWithPlatformInstance,
@@ -35,6 +42,20 @@ type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
   platform: NonNullable<AutomationMonitorCreateInput['platform']>;
   route: NonNullable<AutomationMonitorCreateInput['route']>;
 };
+
+// A monitor with a schedule only polls when the current wall clock (in the schedule's
+// timezone) matches the cron expression. Stored schedules are validated on create/update,
+// so fail-open here would only trigger on corrupted state — degrading to always-poll is
+// safer for a monitoring tool than silently dropping evaluations.
+export function isMonitorWithinSchedule(schedule: AutomationMonitorSchedule | undefined, now: Date): boolean {
+  if (!schedule) return true;
+  try {
+    const compiled = compileCronExpression(schedule.cron);
+    return cronMatchesFields(compiled, extractFieldsInTimezone(now, schedule.timezone));
+  } catch {
+    return true;
+  }
+}
 
 type AutomationMonitorServiceOptions = {
   store: LocalCoreAcpStore;
@@ -202,6 +223,7 @@ export class AutomationMonitorService {
 
   async createMonitor(input: AutomationMonitorCreateInput): Promise<AutomationMonitor> {
     const resolved = this.resolveCreateInput(input);
+    this.assertValidMonitorSchedule(resolved.schedule);
     this.providers.get(resolved.sourceType)?.validateConfig?.(resolved.sourceConfig || {});
     const mapped = monitorToAutomationInput(resolved);
     let monitor: AutomationMonitor | undefined;
@@ -230,6 +252,7 @@ export class AutomationMonitorService {
     this.options.automations.assertLegacyFacadesAvailable();
     const existing = this.getRequiredMonitor(monitorId);
     if (input.sourceConfig) this.providers.get(existing.sourceType)?.validateConfig?.(input.sourceConfig);
+    this.assertValidMonitorSchedule(input.schedule === null ? undefined : input.schedule);
     const resolved = this.resolveCreateInput({
       workspaceId: existing.workspaceId,
       title: input.title ?? existing.title,
@@ -242,6 +265,7 @@ export class AutomationMonitorService {
       executionMode: input.executionMode ?? existing.executionMode,
       enabled: input.enabled ?? existing.enabled,
       cooldownMs: input.cooldownMs ?? existing.cooldownMs,
+      schedule: input.schedule === undefined ? existing.schedule : input.schedule || undefined,
     });
     const mapped = monitorToAutomationInput(resolved);
     const { workspaceId: _workspaceId, originKind: _originKind, ...update } = mapped;
@@ -348,7 +372,9 @@ export class AutomationMonitorService {
       if (refreshSubscriptions) await this.refreshSubscriptions(generation);
       if (generation !== undefined && !this.isCurrentLifecycle(generation, 'running')) return;
       const monitors = this.listMonitors().filter((candidate) =>
-        candidate.enabled && !this.providers.get(candidate.sourceType)?.startMonitor
+        candidate.enabled
+        && !this.providers.get(candidate.sourceType)?.startMonitor
+        && isMonitorWithinSchedule(candidate.schedule, new Date())
       );
       let index = 0;
       const worker = async () => {
@@ -812,6 +838,17 @@ export class AutomationMonitorService {
   private async settleInFlight(): Promise<void> {
     while (this.inFlight.size > 0) {
       await Promise.allSettled([...this.inFlight]);
+    }
+  }
+
+  private assertValidMonitorSchedule(schedule: AutomationMonitorSchedule | undefined): void {
+    if (!schedule) return;
+    try {
+      compileCronExpression(schedule.cron);
+      assertSupportedTimezone(schedule.timezone);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Monitor schedule is invalid: ${message}`);
     }
   }
 

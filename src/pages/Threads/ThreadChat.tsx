@@ -1,15 +1,9 @@
-import { useMemo, useState } from 'react';
-import {
-  Activity,
-  Circle,
-  LoaderCircle,
-  MessageSquarePlus,
-  PanelLeft,
-  WifiOff,
-} from 'lucide-react';
-import { Button } from '@/components/ui';
+import { useEffect, useMemo, useState } from 'react';
+import { Circle } from 'lucide-react';
+import { runtime as runtimeApi } from '@cc/core-sdk';
+import type { AgentTask } from '@cc/superai-contracts';
 import { RunTimelineDrawer } from '@/components/traces/RunTimelineDrawer';
-import { formatRuntimePhase } from './thread-chat-model';
+import { ArtifactViewerDrawer } from '@/components/artifacts/ArtifactViewerDrawer';
 import {
   getVisibleProjects,
   getVisibleSessionGroups,
@@ -22,11 +16,15 @@ import { ThreadChatMessage } from './ThreadChatMessage';
 import { ThreadChatSidebar } from './ThreadChatSidebar';
 import { ThreadChatComposer } from './ThreadChatComposer';
 import { ThreadChatModals } from './ThreadChatModals';
+import { ThreadChatHeader } from './ThreadChatHeader';
+import { ThreadChatEmptyState } from './ThreadChatEmptyState';
 import { useThreadChatController } from './useThreadChatController';
 
 export default function ThreadChat() {
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [traceDrawerRunId, setTraceDrawerRunId] = useState<string | null>(null);
+  const [artifactDrawerOpen, setArtifactDrawerOpen] = useState(false);
+  const [activeTask, setActiveTask] = useState<AgentTask | null>(null);
   const {
     activeRunId,
     activeAgentMode,
@@ -103,6 +101,29 @@ export default function ThreadChat() {
   const composerPermissionCard = toComposerPermissionCard(pendingPermissionRequest);
   const isRuntimeStarting = runtime?.phase === 'starting';
 
+  useEffect(() => {
+    let active = true;
+    async function loadActiveTask() {
+      try {
+        const res = await runtimeApi.listAgentTasks({
+          workspaceId: selectedProject || undefined,
+          limit: 20,
+        });
+        if (!active) return;
+        const matched = res.tasks.find(
+          (t) => (activeRunId && t.runId === activeRunId) || (activeSessionId && t.threadId === activeSessionId)
+        );
+        setActiveTask(matched || null);
+      } catch {
+        if (active) setActiveTask(null);
+      }
+    }
+    loadActiveTask();
+    return () => {
+      active = false;
+    };
+  }, [activeRunId, activeSessionId, selectedProject, taskRunning]);
+
   if (loading) {
     return <div className="flex h-64 items-center justify-center text-sm text-slate-500 animate-pulse">正在加载桌面对话…</div>;
   }
@@ -136,93 +157,30 @@ export default function ThreadChat() {
             setSessionSearch={setSessionSearch}
           />
 
-          <section className="flex min-h-0 flex-col bg-white dark:bg-[#0b0d10]">
-            <div className="border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.06] sm:px-6 sm:py-4">
-              <div className="flex items-start gap-3">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setMobileSessionsOpen(true)}
-                  className="mt-0.5 h-9 w-9 shrink-0 rounded-xl px-0 md:hidden"
-                  aria-label="Open sessions"
-                >
-                  <PanelLeft size={16} />
-                </Button>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium tracking-[0.16em] text-slate-400 dark:text-slate-500">当前会话</p>
-                  <h2
-                    className="mt-1 truncate text-[1.75rem] font-semibold leading-tight text-slate-900 dark:text-white sm:mt-2 sm:text-[1.95rem] sm:leading-none"
-                    data-testid="desktop-chat-active-title"
-                  >
-                    {activeSessionName || branding.activeConversationFallback}
-                  </h2>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                {selectedProject ? (
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 dark:bg-white/[0.05] dark:text-slate-300">
-                    {selectedProject}
-                  </span>
-                ) : null}
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:bg-white/[0.05] dark:text-slate-400">
-                  {formatRuntimePhase(runtime?.phase)}
-                </span>
-                {transportReady ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary dark:text-primary">
-                    <Circle size={6} className="fill-current" /> {branding.runtimeOnlineLabel}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400">
-                    <WifiOff size={12} /> {branding.runtimeOfflineLabel}
-                  </span>
-                )}
-                {showSessionKey && activeSessionKey ? (
-                  <span className="truncate text-[11px] text-slate-400 dark:text-slate-500">{activeSessionKey}</span>
-                ) : null}
-                {activeRunId ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setTraceDrawerRunId(activeRunId)}
-                    className="h-6 text-[11px] px-2 text-primary hover:bg-primary/10"
-                  >
-                    <Activity className="mr-1 h-3 w-3" /> Trace 轨迹
-                  </Button>
-                ) : null}
-              </div>
-            </div>
+          <section className="flex h-full min-h-0 flex-col bg-white/70 dark:bg-white/[0.02]">
+            <ThreadChatHeader
+              activeSessionKey={activeSessionKey}
+              activeSessionName={activeSessionName}
+              activeRunId={activeRunId}
+              activeTask={activeTask}
+              branding={branding}
+              runtime={runtime}
+              selectedProject={selectedProject}
+              showSessionKey={showSessionKey}
+              taskHint={taskHint}
+              taskRunning={taskRunning}
+              transportReady={transportReady}
+              onOpenArtifacts={() => setArtifactDrawerOpen(true)}
+              onOpenMobileSessions={() => setMobileSessionsOpen(true)}
+              onOpenTrace={(runId) => setTraceDrawerRunId(runId)}
+            />
 
             <div className="flex-1 overflow-y-auto px-3 py-4 [scrollbar-gutter:stable] sm:px-6 sm:py-5">
               {renderedMessages.length === 0 ? (
-                <div className="flex h-full min-h-[18rem] items-center justify-center">
-                  <div className="w-full max-w-2xl rounded-[24px] border border-slate-200 bg-[#fbfbfd] px-5 py-8 text-center dark:border-white/[0.06] dark:bg-white/[0.03] sm:px-8 sm:py-10">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <MessageSquarePlus size={22} />
-                    </div>
-                    <h3 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">开始一段新的桌面对话</h3>
-                    <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      {selectedProject
-                        ? `当前项目是 ${selectedProject}。直接提问即可创建会话并开始对话。`
-                        : '先在左侧选择项目，然后直接输入你的问题。'}
-                    </p>
-                    <div className="mt-4 flex flex-wrap justify-center gap-2">
-                      {selectedKnowledgeBases.length > 0 ? (
-                        selectedKnowledgeBases.map((base) => (
-                          <span
-                            key={base.id}
-                            className="rounded-full bg-primary/10 px-3 py-1 text-xs text-primary dark:bg-primary/10 dark:text-primary"
-                          >
-                            {base.name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500 dark:bg-white/[0.05] dark:text-slate-400">
-                          当前未限制知识库范围
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <ThreadChatEmptyState
+                  selectedProject={selectedProject}
+                  selectedKnowledgeBases={selectedKnowledgeBases}
+                />
               ) : (
                 <div className="mx-auto w-full max-w-4xl space-y-5">
                   {renderedMessages.map((message) => {
@@ -303,6 +261,15 @@ export default function ThreadChat() {
         onClose={() => setTraceDrawerRunId(null)}
         runId={traceDrawerRunId}
       />
+
+      {activeTask && activeTask.artifacts && activeTask.artifacts.length > 0 ? (
+        <ArtifactViewerDrawer
+          open={artifactDrawerOpen}
+          onClose={() => setArtifactDrawerOpen(false)}
+          taskId={activeTask.taskId}
+          artifacts={activeTask.artifacts}
+        />
+      ) : null}
     </>
   );
 }

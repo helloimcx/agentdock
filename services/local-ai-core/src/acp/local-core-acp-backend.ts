@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join, extname } from 'node:path';
 import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
+  inferArtifactKind,
+  getArtifactMimeType,
 } from '@cc/superai-contracts';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
 import type { EventBus } from '@cc/plugin-sdk';
@@ -23,6 +27,7 @@ import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
+import { createProviderCommandOptions } from '../thread/thread-command-service.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
@@ -171,6 +176,7 @@ export class LocalCoreAcpBackend {
         setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
         closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
         interruptRun: (runId) => this.sessionCoordinator.interruptRun(runId),
+        ...createProviderCommandOptions(this.options.store),
         log: options.log,
       },
     });
@@ -639,6 +645,8 @@ export class LocalCoreAcpBackend {
       this.turnCoordinator.endRun(runId, nextStatus === 'interrupted' ? 'failed' : 'completed');
       const task = this.options.store.getAgentTaskByRunId(runId);
       if (task) {
+        const workspaceDir = row.workspace_id ? this.options.store.getWorkspaceRegistryEntry(row.workspace_id)?.path : undefined;
+        this.registerDiscoveredArtifacts(task.taskId, workspaceDir || config.workDir, runId);
         this.options.store.updateAgentTask(task.taskId, {
           status: nextStatus === 'interrupted' ? 'cancelled' : 'completed',
           summary: result?.stopReason === 'cancelled' ? 'Request cancelled.' : 'Task completed.',
@@ -673,6 +681,8 @@ export class LocalCoreAcpBackend {
       this.turnCoordinator.endRun(runId, 'failed');
       const task = this.options.store.getAgentTaskByRunId(runId);
       if (task) {
+        const workspaceDir = row.workspace_id ? this.options.store.getWorkspaceRegistryEntry(row.workspace_id)?.path : undefined;
+        this.registerDiscoveredArtifacts(task.taskId, workspaceDir || config.workDir, runId);
         this.options.store.updateAgentTask(task.taskId, {
           status: 'failed',
           error: errorInfo.message,
@@ -810,6 +820,41 @@ export class LocalCoreAcpBackend {
         },
       },
     });
+  }
+
+  private registerDiscoveredArtifacts(taskId: string, workspaceDir?: string, runId?: string) {
+    if (!taskId || !workspaceDir || !runId) return;
+    const artifactsDir = join(workspaceDir, '.agentdock', 'artifacts', runId);
+    if (!existsSync(artifactsDir)) return;
+    try {
+      const entries = readdirSync(artifactsDir, { withFileTypes: true });
+      const task = this.options.store.getAgentTask(taskId);
+      const existingPaths = new Set(task?.artifacts?.map((a) => a.path).filter(Boolean));
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const relPath = join('.agentdock', 'artifacts', runId, entry.name);
+        if (existingPaths.has(relPath)) continue;
+        const fullPath = join(artifactsDir, entry.name);
+        const stats = statSync(fullPath);
+        const kind = inferArtifactKind(entry.name);
+        const mimeType = getArtifactMimeType(entry.name);
+        this.options.store.updateAgentTask(taskId, {
+          artifact: {
+            title: entry.name,
+            kind,
+            path: relPath,
+            summary: `Artifact: ${entry.name}`,
+            metadata: {
+              mimeType,
+              sizeBytes: stats.size,
+              extension: extname(entry.name).replace(/^\./, ''),
+            },
+          },
+        });
+      }
+    } catch (err) {
+      this.options.log?.(`Failed to scan run artifacts for ${runId}: ${String(err)}`);
+    }
   }
 
   private emitBridgeEvent(event: DesktopBridgeEvent) {

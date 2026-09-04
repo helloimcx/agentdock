@@ -14,7 +14,7 @@ import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
 import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
 import { automationMonitorToScheduledJob } from '../automation/automation-schedule-utils.js';
-import { parseDurationMs, parseMonitorCondition } from './monitor-cli-parsers.js';
+import { parseDurationMs, parseMonitorCondition, parseMonitorSchedule } from './monitor-cli-parsers.js';
 import { formatSafeError } from '../kernel/local-core-errors.js';
 import { runSkillDomain } from './skill-cli-handlers.js';
 import type { StdIo, ParsedFlags, CliContext } from './cli-helpers.js';
@@ -315,6 +315,9 @@ async function handleMonitorAdd(flags: Map<string, string[]>, env: NodeJS.Proces
   const promptTemplate = getRequiredFlag(flags, 'message');
   const condition = parseMonitorCondition(getRequiredFlag(flags, 'condition'));
   const sourceConfig = buildSourceConfig(sourceType, flags);
+  const cronFlag = getFlag(flags, 'cron');
+  const timezoneFlag = getFlag(flags, 'timezone');
+  if (timezoneFlag && !cronFlag) throw new Error('--timezone requires --cron.');
   const monitor = await request<AutomationMonitor>(context.baseUrl, 'POST', '/automation/monitors', {
     workspaceId: context.workspaceId,
     ...(context.threadId ? { threadId: context.threadId } : {}),
@@ -325,6 +328,7 @@ async function handleMonitorAdd(flags: Map<string, string[]>, env: NodeJS.Proces
     promptTemplate,
     executionMode: getMonitorExecutionMode(flags),
     cooldownMs: parseDurationMs(getFlag(flags, 'cooldown') || '15m'),
+    ...(cronFlag ? { schedule: parseMonitorSchedule(cronFlag, timezoneFlag) } : {}),
     enabled: true,
   });
   print(json, io.stdout, presentMonitor(monitor), [
@@ -374,12 +378,17 @@ async function handleMonitorEdit(monitorId: string, flags: Map<string, string[]>
   const enabled = getOptionalBooleanFlag(flags, 'enabled');
   const executionMode = getFlag(flags, 'execution-mode');
   const cooldown = getFlag(flags, 'cooldown');
+  const cronFlag = getFlag(flags, 'cron');
+  const timezoneFlag = getFlag(flags, 'timezone');
+  if (timezoneFlag && !cronFlag) throw new Error('--timezone requires --cron.');
   if (title) input.title = title;
   if (typeof promptTemplate === 'string' && promptTemplate) input.promptTemplate = promptTemplate;
   if (condition) input.condition = parseMonitorCondition(condition);
   if (typeof enabled === 'boolean') input.enabled = enabled;
   if (executionMode) input.executionMode = normalizeScheduledJobExecutionMode(executionMode);
   if (cooldown) input.cooldownMs = parseDurationMs(cooldown);
+  if (cronFlag === 'off') input.schedule = null;
+  else if (cronFlag) input.schedule = parseMonitorSchedule(cronFlag, timezoneFlag);
   if (Object.keys(input).length === 0) {
     throw new Error('monitor edit requires at least one editable field.');
   }
@@ -623,10 +632,10 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler del <job-id> [--json]',
     '  lac scheduler run <job-id> [--json]',
-    '  lac monitor add --title "<title>" --source stock.quote --symbol <symbol> --condition "change_percent >= 3" --message "<text>" [--cooldown 15m] [--execution-mode same-thread|side-thread] [--json]',
+    '  lac monitor add --title "<title>" --source stock.quote --symbol <symbol> --condition "change_percent >= 3" --message "<text>" [--cooldown 15m] [--cron "<expr>"] [--timezone <tz>] [--execution-mode same-thread|side-thread] [--json]',
     '  lac monitor list [--workspace <id>] [--thread [<id>]] [--json]',
     '  lac monitor info <monitor-id> [--json]',
-    '  lac monitor edit <monitor-id> [--title "<title>"] [--condition "<expr>"] [--message "<text>"] [--enabled true|false] [--cooldown 15m] [--execution-mode same-thread|side-thread] [--json]',
+    '  lac monitor edit <monitor-id> [--title "<title>"] [--condition "<expr>"] [--message "<text>"] [--enabled true|false] [--cooldown 15m] [--cron "<expr>"|off] [--timezone <tz>] [--execution-mode same-thread|side-thread] [--json]',
     '  lac monitor del <monitor-id> [--json]',
     '  lac monitor run <monitor-id> [--json]',
     '  lac automation add --title "<title>" --script-id <script-id> --script-version <approved-version-id> --interval <duration> --message "<prompt>" [--json]',
@@ -680,6 +689,7 @@ function formatMonitorDetails(monitor: AutomationMonitor, latestRun?: Automation
     `Source: ${monitor.sourceType}`,
     `Condition: ${formatCondition(monitor.condition)}`,
     `Cooldown: ${monitor.cooldownMs}ms`,
+    ...(monitor.schedule ? [`Schedule: ${monitor.schedule.cron} (${monitor.schedule.timezone})`] : []),
     `Enabled: ${monitor.enabled ? 'true' : 'false'}`,
     `Message: ${monitor.promptTemplate}`,
     latestRun ? `Latest run: ${latestRun.status} @ ${latestRun.triggeredAt}` : 'Latest run: none',

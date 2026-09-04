@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 interface BadgeProps {
   children: React.ReactNode;
   variant?: 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'destructive' | 'outline' | 'info';
+  className?: string;
 }
 
 const variants = {
@@ -18,12 +19,13 @@ const variants = {
   info: 'border-transparent bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200',
 };
 
-export function Badge({ children, variant = 'default' }: BadgeProps) {
+export function Badge({ children, variant = 'default', className }: BadgeProps) {
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-        variants[variant]
+        variants[variant],
+        className
       )}
     >
       {children}

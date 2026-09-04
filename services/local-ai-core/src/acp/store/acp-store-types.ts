@@ -14,6 +14,7 @@ export type LocalThreadRow = {
   acp_session_id: string | null;
   acp_supports_load: number;
   agent_mode: string;
+  acp_launch_config_key?: string | null;
 };
 
 export type LocalMessageRow = {
@@ -301,6 +302,7 @@ export type LocalPlatformThreadBindingRow = {
   thread_id: string;
   last_platform_message_id: string | null;
   preferred_agent_type?: string | null;
+  preferred_provider_id?: string | null;
   created_at: string;
   updated_at: string;
 };

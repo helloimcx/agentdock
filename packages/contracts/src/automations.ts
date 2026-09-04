@@ -7,7 +7,12 @@ export type AutomationActivation =
   | { kind: 'cron'; expression: string; timezone: string }
   | { kind: 'once'; runAt: string }
   | { kind: 'interval'; intervalMs: number }
-  | { kind: 'provider-event'; sourceType: string; sourceConfig: Record<string, unknown> };
+  | { kind: 'provider-event'; sourceType: string; sourceConfig: Record<string, unknown>; schedule?: AutomationMonitorSchedule };
+
+export interface AutomationMonitorSchedule {
+  cron: string;
+  timezone: string;
+}
 
 export type AutomationCondition =
   | { kind: 'always' }
@@ -305,6 +310,15 @@ function normalizeRoute(value: unknown): ScheduledJobRoute {
   return normalized;
 }
 
+export function normalizeAutomationMonitorSchedule(value: unknown, label = 'Automation monitor schedule'): AutomationMonitorSchedule | undefined {
+  if (value === undefined || value === null) return undefined;
+  const input = asRecord(value, label);
+  return {
+    cron: requiredString(input.cron, `${label} cron`),
+    timezone: requiredString(input.timezone, `${label} timezone`),
+  };
+}
+
 export function normalizeAutomationActivation(value: unknown): AutomationActivation {
   const input = asRecord(value, 'Automation activation');
   switch (input.kind) {
@@ -321,12 +335,16 @@ export function normalizeAutomationActivation(value: unknown): AutomationActivat
       if (intervalMs === 0) throw new Error('Automation intervalMs must be greater than zero.');
       return { kind: 'interval', intervalMs };
     }
-    case 'provider-event':
-      return {
+    case 'provider-event': {
+      const activation: AutomationActivation = {
         kind: 'provider-event',
         sourceType: requiredString(input.sourceType, 'Automation provider sourceType'),
         sourceConfig: asRecord(input.sourceConfig, 'Automation provider sourceConfig'),
       };
+      const schedule = normalizeAutomationMonitorSchedule(input.schedule, 'Automation provider-event schedule');
+      if (schedule) activation.schedule = schedule;
+      return activation;
+    }
     default:
       throw new Error('Automation activation kind must be cron, once, interval, or provider-event.');
   }

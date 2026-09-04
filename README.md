@@ -95,13 +95,33 @@ flowchart LR
 
 ## New
 
+### 2026-09-03
+
+- 发布 AgentDock 0.1.81：定时任务与渠道会话 LLM Provider 动态继承与会话指纹隔离：
+  - **Workspace + Channel Provider 层次继承模型**：定时任务与渠道消息严格跟随当前工作区与渠道绑定的 Provider 配置；支持渠道级独立覆写（`preferred_provider_id`），未单独覆写时严格继承工作区默认配置，确保提供商切换实时生效。
+  - **Session 强指纹防污染**：ACP 会话管理器建立模型提供商启动指纹（`buildSessionProviderKey`）；当提供商凭证、Base URL 或 Model 变更时，自动失效并拒绝载入旧 Session，避免跨提供商旧端点残留导致的 401 认证异常。
+  - **渠道交互式 `/provider` 指令**：支持在飞书/微信等渠道直接使用 `/provider current`、`/provider list`、`/provider use <id>` 与 `/provider reset` 进行渠道级 Provider 查询、切换与重置。
+
 ### 2026-09-01
 
 - 确定性技能路由层与外部工具可用性索引（Issue #122）：
-  - **确定性技能路由引擎（Skill Router）**：在 Local AI Core 内置高性能规则意图打分引擎，支持在 Skill 元数据与集中规则中配置正则模式（`patterns`）、关键词（`keywords`）、否定排他规则（`negativePatterns`）、连词组约束（`requiredGroups`）与优先级（`priority`），杜绝全量提示词膨胀与模型玄学猜测。
+  - **确定性技能路由引擎（Skill Router）**：在 Local AI Core 内置高性能规则意图打分引擎，支持在工作区级集中规则中配置正则模式（`patterns`）、关键词（`keywords`）、否定排他规则（`negativePatterns`）、连词组约束（`requiredGroups`）与优先级（`priority`），杜绝全量提示词膨胀与模型玄学猜测。第三方 Skill frontmatter 元数据（triggers/domains/keywords 等）仅按字面量参与匹配，不作为正则编译，避免提示词注入与 ReDoS 风险。
   - **宿主机外部工具可用性探测（Tool-Index）**：在技能执行前自动探测宿主机 PATH 中的可执行依赖（`requires-tools`），检测结果带缓存与平台兼容；若工具缺失则标记状态并输出指引，防止 Agent 产生幻觉调用。
-  - **消息装配策略解耦与全量 CI 回归守护**：重构 `agent-message-policy`，支持命中的多技能动态装配，100% 保持向后兼容；配套 19 个典型问答场景（中英文、否定式、复合任务、工具依赖等）的回归测试套件进入持续集成门禁。
+  - **消息装配策略解耦与全量 CI 回归守护**：重构 `agent-message-policy`，支持命中的多技能动态装配，兼容既有行为（否定式查询不再注入股票技能内容）；配套 19 个典型问答场景（中英文、否定式、复合任务、工具依赖等）的回归测试套件进入持续集成门禁。
   - **REST API 与 UI 路由调试器**：新增 `/skills/route` API 与 Core SDK `skills.route()` 支持；在 Skills 页面新增「路由调试」可视化弹窗，支持实时输入提示词测试技能命中、规则匹配得分与外部工具就绪状态。
+
+### 2026-08-30
+
+- **支持 Agent 产物表面（Artifact Surface）与安全沙箱预览（Issue #114）**：
+  - **产物自动发现与登记**：ACP Run 执行收尾时自动扫描工作区 `.agentdock/artifacts/<runId>` 目录，自动识别工件类型（HTML / Markdown / Image / Diff / Code）并持久化至任务的 `artifacts_json`。
+  - **安全读取与服务 API**：新增 `/api/local/v1/tasks/:taskId/artifacts` 及 `/api/local/v1/tasks/:taskId/artifacts/:artifactId/content` 端点，读取严格限定在工作区与用户数据目录的 `.agentdock/artifacts` 根内（realpath 解析防符号链接穿越），并带 10MB 大小上限与 403/404/413 语义化错误。
+  - **多模态沙箱预览与界面联动**：新增 `ArtifactViewerDrawer` 与 `ArtifactViewer` 组件，提供具有安全隔离能力（`sandbox="allow-scripts"` 禁 same-origin，注入 CSP 禁外联）的自包含 HTML 架构图预览、富文本 Markdown、语法高亮 Diff、图片与代码查看器，并在 ThreadChat 会话顶部状态栏与 Run Trace 轨迹图中无缝联动展示。
+
+### 2026-08-28
+
+- 事件监控支持 cron 时间窗（Issue #115 Phase 1）：
+  - **定时评估窗口**：`lac monitor add/edit` 新增 `--cron "<expr>"` 与 `--timezone <tz>`（默认 `Asia/Shanghai`），监控仅在匹配的时间窗内轮询评估（如每交易日 11 点检查、`edit --cron off` 清除窗口），窗口外不再空转轮询，降低行情源限流风险。
+  - **向后兼容**：未配置时间窗的监控保持 24×7 轮询行为不变；`monitor info` 输出新增 Schedule 行；交易日历门控留待后续阶段。
 
 ### 2026-08-27
 

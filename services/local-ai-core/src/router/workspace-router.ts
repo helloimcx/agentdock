@@ -1,5 +1,7 @@
 import type {
   AgentTask,
+  AgentTaskArtifact,
+  AgentTaskArtifactContent,
   AgentTaskCreateInput,
   AgentTaskListQuery,
   AgentTaskListResponse,
@@ -12,6 +14,7 @@ import type {
   AuditEventListQuery,
   AuditEventListResponse,
   ChannelInboundMessageContent,
+  ChannelRoute,
   CommandRiskClassification,
   DesktopBridgeEvent,
   LocalCoreCapabilities,
@@ -25,6 +28,9 @@ import type {
   WorkspaceStreamingProbeResult,
   WorkspaceSummary,
 } from '@cc/superai-contracts';
+import { inferArtifactKind, getArtifactMimeType } from '@cc/superai-contracts';
+import { existsSync, statSync, readFileSync, realpathSync } from 'node:fs';
+import { resolve, isAbsolute, join, sep, extname } from 'node:path';
 import { LocalCoreAcpBackend } from '../acp/local-core-acp-backend.js';
 import { DEFAULT_AGENT_MODE, normalizeAgentMode } from '../acp/local-core-slash-commands.js';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
@@ -34,10 +40,95 @@ import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions, WorkspaceT
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 import { projectWorkspaceId } from '../runtime/workspace-project-registry.js';
 import { composeAgentMessage } from '../thread/agent-message-policy.js';
+import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
 
 export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
+
+const MAX_ARTIFACT_CONTENT_BYTES = 10 * 1024 * 1024;
+
+export class ArtifactContentError extends Error {
+  constructor(message: string, readonly status: 400 | 403 | 404 | 413) {
+    super(message);
+    this.name = 'ArtifactContentError';
+  }
+}
+
+const isInsideRoot = (candidate: string, root: string) =>
+  candidate === root || candidate.startsWith(root + sep);
+
+function resolveArtifactContentPath(
+  workspacePath: string | undefined,
+  userDataPath: string | undefined,
+  filePath: string,
+): { realPath: string; sizeBytes: number } {
+  const lexicalRoots = [
+    workspacePath ? join(resolve(workspacePath), '.agentdock', 'artifacts') : null,
+    userDataPath ? join(resolve(userDataPath), '.agentdock', 'artifacts') : null,
+  ].filter((root): root is string => Boolean(root));
+  const resolvedRoots: string[] = [];
+  for (const root of lexicalRoots) {
+    try {
+      resolvedRoots.push(realpathSync(root));
+    } catch {
+      // Artifacts root may not exist yet; the lexical boundary still applies.
+    }
+  }
+
+  let targetPath = filePath;
+  if (!isAbsolute(targetPath)) {
+    if (!workspacePath) {
+      throw new ArtifactContentError('Cannot resolve relative artifact path without a workspace root.', 400);
+    }
+    targetPath = resolve(workspacePath, targetPath);
+  } else {
+    targetPath = resolve(targetPath);
+  }
+
+  if (!lexicalRoots.some((root) => isInsideRoot(targetPath, root))) {
+    throw new ArtifactContentError('Artifact path is outside the allowed artifacts directory.', 403);
+  }
+
+  if (!existsSync(targetPath)) {
+    throw new ArtifactContentError('Artifact file not found.', 404);
+  }
+
+  let realPath: string;
+  try {
+    realPath = realpathSync(targetPath);
+  } catch {
+    throw new ArtifactContentError('Artifact file not found.', 404);
+  }
+
+  if (!resolvedRoots.some((root) => isInsideRoot(realPath, root))) {
+    throw new ArtifactContentError('Artifact path is outside the allowed artifacts directory.', 403);
+  }
+
+  const stats = statSync(realPath);
+  if (stats.isDirectory()) {
+    throw new ArtifactContentError('Artifact path is a directory.', 400);
+  }
+  if (stats.size > MAX_ARTIFACT_CONTENT_BYTES) {
+    throw new ArtifactContentError(`Artifact exceeds the maximum supported artifact size (${MAX_ARTIFACT_CONTENT_BYTES} bytes).`, 413);
+  }
+  return { realPath, sizeBytes: stats.size };
+}
+
+function buildArtifactMetadataContent(task: AgentTask, artifact: AgentTaskArtifact): AgentTaskArtifactContent {
+  const textContent = (artifact.metadata?.content as string) || artifact.summary || '';
+  return {
+    id: artifact.id,
+    taskId: task.taskId,
+    title: artifact.title,
+    kind: artifact.kind || 'text',
+    mimeType: (artifact.metadata?.mimeType as string) || 'text/plain',
+    content: textContent,
+    isBinary: false,
+    sizeBytes: Buffer.byteLength(textContent, 'utf8'),
+    url: artifact.url,
+  };
+}
 
 export class WorkspaceRouter {
   private readonly store: LocalCoreAcpStore;
@@ -169,6 +260,56 @@ export class WorkspaceRouter {
     return this.store.updateAgentTask(taskId, input);
   }
 
+  async getAgentTaskArtifactContent(taskId: string, artifactId: string): Promise<AgentTaskArtifactContent> {
+    const task = this.store.getAgentTask(taskId);
+    if (!task) {
+      throw new ArtifactContentError(`Task not found: ${taskId}`, 404);
+    }
+    const artifact = task.artifacts?.find((a) => a.id === artifactId);
+    if (!artifact) {
+      throw new ArtifactContentError(`Artifact not found: ${artifactId} on task ${taskId}`, 404);
+    }
+
+    const filePath = artifact.path;
+    if (!filePath) {
+      return buildArtifactMetadataContent(task, artifact);
+    }
+
+    const workspace = this.store.getWorkspaceRegistryEntry(task.workspaceId);
+    const userDataPath = (this.store as { userDataPath?: string }).userDataPath;
+    const { realPath: realTargetPath, sizeBytes } = resolveArtifactContentPath(
+      workspace?.path,
+      userDataPath,
+      filePath,
+    );
+
+    const mimeType = (artifact.metadata?.mimeType as string) || getArtifactMimeType(realTargetPath);
+    const kind = artifact.kind && artifact.kind !== 'file' ? artifact.kind : inferArtifactKind(realTargetPath);
+    const isBinary = mimeType.startsWith('image/') && !mimeType.includes('svg');
+
+    let content: string;
+    if (isBinary) {
+      const buffer = readFileSync(realTargetPath);
+      content = buffer.toString('base64');
+    } else {
+      content = readFileSync(realTargetPath, 'utf8');
+    }
+
+    return {
+      id: artifact.id,
+      taskId: task.taskId,
+      title: artifact.title,
+      kind,
+      mimeType,
+      content,
+      isBinary,
+      sizeBytes,
+      extension: extname(realTargetPath).replace(/^\./, ''),
+      path: artifact.path,
+      url: artifact.url,
+    };
+  }
+
   getWorkspaceSecuritySettings(workspaceId: string): WorkspaceSecuritySettings {
     return this.store.getWorkspaceSecuritySettings(workspaceId);
   }
@@ -262,14 +403,14 @@ export class WorkspaceRouter {
     const { workspaceId } = decodeThreadId(threadId);
     const route = isLocalSlashCommand(content)
       ? await this.getWorkspaceRoute(workspaceId)
-      : await this.getThreadWorkspaceRoute(threadId, workspaceId);
-    const preparedContent = await this.prepareAgentMessage(threadId, content);
+      : await this.getThreadWorkspaceRoute(threadId, workspaceId, options);
+    const preparedContent = await this.prepareAgentMessage(threadId, content, route.config.workDir);
     return this.localCoreAcp.sendThreadMessage(threadId, preparedContent, route.config, options);
   }
 
-  async sendThreadAction(threadId: string, content: string) {
+  async sendThreadAction(threadId: string, content: string, options?: WorkspaceThreadMessageOptions) {
     const { workspaceId } = decodeThreadId(threadId);
-    const route = await this.getThreadWorkspaceRoute(threadId, workspaceId);
+    const route = await this.getThreadWorkspaceRoute(threadId, workspaceId, options);
     return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
   }
 
@@ -327,7 +468,7 @@ export class WorkspaceRouter {
     };
   }
 
-  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent) {
+  private async prepareAgentMessage(threadId: string, content: string | ChannelInboundMessageContent, workspacePath: string) {
     const displayText = typeof content === 'string' ? content : content.displayText;
     if (displayText.trim().startsWith('/')) {
       return content;
@@ -338,7 +479,9 @@ export class WorkspaceRouter {
           .filter((base) => selectedIds.has(base.id))
           .map(({ id, name }) => ({ id, name }))
       : [];
-    const wrapped = composeAgentMessage(displayText, knowledgeBases);
+    // Honor workspace > user > builtin skill precedence so workspace-scoped
+    // overrides of condition-trigger / stock-monitor are the ones injected.
+    const wrapped = composeAgentMessage(displayText, knowledgeBases, new ManagedSkillCatalog({ workspacePath }));
     return typeof content === 'string'
       ? wrapped
       : createChannelThreadMessageInput(wrapped, content.contentParts);
@@ -549,20 +692,62 @@ export class WorkspaceRouter {
     }
   }
 
-  private async getThreadWorkspaceRoute(threadId: string, workspaceId: string): Promise<WorkspaceRoute> {
-    const defaultRoute = await this.getWorkspaceRoute(workspaceId);
+  private async getThreadWorkspaceRoute(
+    threadId: string,
+    workspaceId: string,
+    options?: WorkspaceThreadMessageOptions,
+  ): Promise<WorkspaceRoute> {
     const row = this.store.getThreadRow(threadId);
     const threadAgentType = String(row?.agent_type || '').trim().toLowerCase();
-    const route = !threadAgentType || threadAgentType === defaultRoute.agentType
-      ? defaultRoute
-      : await this.getWorkspaceRoute(workspaceId, threadAgentType);
+    const binding = this.resolveThreadBinding(workspaceId, threadId, options?.channelRoute);
+    const effectiveAgentType = options?.agentTypeOverride
+      || (binding?.preferred_agent_type && binding.preferred_agent_type !== threadAgentType ? binding.preferred_agent_type : '');
+    const effectiveProviderId = options?.providerIdOverride || binding?.preferred_provider_id || '';
+    const route = await this.getWorkspaceRoute(workspaceId, effectiveAgentType, effectiveProviderId);
     const externalThread = this.store.getExternalThreadByThreadId(threadId);
-    return externalThread
-      ? withThreadWorkspacePath(route, externalThread.workspacePath)
-      : route;
+    return externalThread ? withThreadWorkspacePath(route, externalThread.workspacePath) : route;
   }
 
-  private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = ''): Promise<WorkspaceRoute> {
+  private resolveThreadBinding(workspaceId: string, threadId: string, channelRoute?: ChannelRoute) {
+    const threadBinding = this.store.getPlatformThreadBindingByThreadId(threadId);
+    if (threadBinding) {
+      return threadBinding;
+    }
+    if (channelRoute) {
+      const explicitPlatform = typeof channelRoute.metadata?.platform === 'string'
+        ? channelRoute.metadata.platform
+        : '';
+      const platformCandidate = explicitPlatform
+        || (channelRoute.type?.startsWith('channel.') && channelRoute.type !== 'channel.chat'
+          ? channelRoute.type.replace(/^channel\./, '')
+          : '');
+      if (platformCandidate) {
+        const binding = this.store.getPlatformThreadBinding(
+          workspaceId,
+          channelRoute.channelId,
+          channelRoute.participantId || '',
+          platformCandidate,
+        );
+        if (binding) {
+          return binding;
+        }
+      }
+      for (const platform of ['lark', 'weixin']) {
+        const binding = this.store.getPlatformThreadBinding(
+          workspaceId,
+          channelRoute.channelId,
+          channelRoute.participantId || '',
+          platform,
+        );
+        if (binding) {
+          return binding;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private async getWorkspaceRoute(workspaceId: string, agentTypeOverride = '', providerIdOverride = ''): Promise<WorkspaceRoute> {
     const configState = await this.options.readRuntimeConfig();
     const projects = this.withWorkspaceIds(
       Array.isArray(configState.config?.projects) ? configState.config.projects : [],
@@ -572,7 +757,13 @@ export class WorkspaceRouter {
       config: { ...configState.config, projects },
     };
     const matched = projects.find((project) => projectWorkspaceId(project) === workspaceId);
-    const project = matched && agentTypeOverride ? withAgentTypeOverride(matched, agentTypeOverride) : matched;
+    let project = matched;
+    if (project && agentTypeOverride) {
+      project = withAgentTypeOverride(project, agentTypeOverride);
+    }
+    if (project && providerIdOverride) {
+      project = withProviderOverride(project, providerIdOverride);
+    }
     const route = project ? this.resolveProjectRoute(projectedConfigState, project) : null;
     if (!matched || !route) {
       throw new Error(`Workspace "${workspaceId}" is not configured as a Local AI Core ACP workspace.`);
@@ -583,6 +774,15 @@ export class WorkspaceRouter {
   async getWorkspaceAgentType(workspaceId: string): Promise<string> {
     const route = await this.getWorkspaceRoute(workspaceId);
     return route.agentType;
+  }
+
+  async getWorkspaceDefaultProviderId(workspaceId: string): Promise<string> {
+    const configState = await this.options.readRuntimeConfig();
+    const projects = this.withWorkspaceIds(
+      Array.isArray(configState.config?.projects) ? configState.config.projects : [],
+    );
+    const matched = projects.find((project) => projectWorkspaceId(project) === workspaceId);
+    return String(matched?.agent?.options?.provider_id || '').trim();
   }
 
   private async listLocalCoreProjects() {
@@ -659,6 +859,22 @@ export function createWorkspaceRouter(options: WorkspaceRouterOptions) {
   return new WorkspaceRouter(options);
 }
 
+function withProviderOverride(project: DesktopProjectConfig, providerId: string): DesktopProjectConfig {
+  const options = project.agent?.options && typeof project.agent.options === 'object'
+    ? { ...(project.agent.options as Record<string, unknown>) }
+    : {};
+  return {
+    ...project,
+    agent: {
+      ...(project.agent || {}),
+      options: {
+        ...options,
+        provider_id: providerId,
+      },
+    },
+  };
+}
+
 function withAgentTypeOverride(project: DesktopProjectConfig, agentType: string): DesktopProjectConfig {
   const options = project.agent?.options && typeof project.agent.options === 'object'
     ? { ...(project.agent.options as Record<string, unknown>) }
@@ -700,6 +916,8 @@ function isLocalSlashCommand(content: string | ChannelInboundMessageContent) {
   const normalized = text.trim().toLowerCase();
   return normalized === '/agent'
     || normalized.startsWith('/agent ')
+    || normalized === '/provider'
+    || normalized.startsWith('/provider ')
     || normalized === '/mode'
     || normalized.startsWith('/mode ');
 }

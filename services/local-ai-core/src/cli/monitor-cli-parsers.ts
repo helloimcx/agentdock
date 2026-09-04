@@ -1,4 +1,4 @@
-import type { AutomationMonitorCondition } from '@cc/superai-contracts';
+import type { AutomationMonitorCondition, AutomationMonitorSchedule } from '@cc/superai-contracts';
 import { normalizeAutomationMonitorConditionOperator } from '@cc/superai-contracts';
 
 export function parseMonitorCondition(value: string): AutomationMonitorCondition {
@@ -33,5 +33,16 @@ export function parseDurationMs(value: string) {
   const unit = String(match[2] || 'ms').toLowerCase();
   const multiplier = unit === 'h' ? 60 * 60 * 1000 : unit === 'm' ? 60 * 1000 : unit === 's' ? 1000 : 1;
   return Math.round(amount * multiplier);
+}
+
+export function parseMonitorSchedule(cron: string, timezone: string | undefined): AutomationMonitorSchedule {
+  const expression = String(cron || '').trim();
+  if (!expression) {
+    throw new Error('Monitor schedule cron expression must not be empty. Use "off" in monitor edit to clear it.');
+  }
+  return {
+    cron: expression,
+    timezone: String(timezone || 'Asia/Shanghai').trim() || 'Asia/Shanghai',
+  };
 }
 

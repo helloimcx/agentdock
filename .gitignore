@@ -40,3 +40,6 @@ weixin-monitor/
 
 .agentdock-core/
 tmp/
+
+# Machine-local agent skill symlinks.
+.agents/
