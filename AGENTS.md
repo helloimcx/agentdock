@@ -31,6 +31,21 @@ The codebase uses TypeScript with `strict` mode enabled and the `@` alias for `s
 ## Architecture Boundaries
 Keep the directory structure intentional, with clear ownership and single-purpose modules. Page components should orchestrate UI and data flow, shared components should stay presentation-focused, stores should own state transitions, API modules should isolate transport concerns, and Electron or Local AI Core logic should not leak into renderer code except through shared contracts. Keep dependencies pointing from low level to high level: low-level modules (shared contracts, SDKs, kernel interfaces) must never depend on higher-level modules (UI pages, components, specific plugins, or desktop shell code), and lower renderer layers (stores/API) must not depend on UI page views. Prefer small, cohesive files over broad utility modules, and move reusable behavior to the nearest appropriate shared layer only after a real second use appears. When a code file exceeds 1000 lines, consider splitting it. Keep agent runtime quirks in `services/local-ai-core/src/agents/<agent-id>/` first, and only move behavior into shared ACP/router/storage/renderer layers when the invariant truly applies across agents.
 
+<!-- project-setup:architecture-maintenance:start -->
+## Architecture maintenance
+
+Before implementation, classify Architecture Impact as `Required` or `None`.
+Use `Required` when a change alters module or service responsibilities,
+dependency direction or public protocols, data ownership or flow,
+trust, deployment, process, or network boundaries, external integrations,
+synchronous/asynchronous communication, or adds, removes, splits, or merges
+an architectural component.
+
+When `Required`, read and follow `docs/architecture/maintenance.md` before
+implementation. Completion requires the current architecture facts, one
+change record, provider artifacts and validation, and the README diagram to agree.
+<!-- project-setup:architecture-maintenance:end -->
+
 Architecture and flow diagrams live under `docs/architecture/` as typed Archify JSON specs (`system-architecture.json`, `*.workflow.json`, `*.sequence.json`, `*.lifecycle.json`). Update corresponding diagram specs alongside architectural or core workflow changes, validate via `pnpm lint:arch`, deliver showcase HTML/PNG artifacts, and keep `README.md` and `docs/architecture/overview.md` linked.
 
 When designing or connecting multi-entity models (such as `AutomationRun` wrapping an underlying `acpRunId`, or channel sessions wrapping threads), maintain clear semantic separation between the outer wrapper ID and the inner execution ID. Avoid treating all identifiers as generic strings. Downstream APIs and UI components must explicitly document and consume the precise target ID domain, and backend lookup methods should implement defensive alias resolution where cross-entity lookups are plausible.

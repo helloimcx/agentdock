@@ -11,6 +11,12 @@ AgentDock now runs as a Local AI Core-first desktop app:
 
 There is no `cc-connect` runtime, management API, or bridge compatibility path in the active architecture.
 
+架构事实与治理规范：
+- 架构事实与系统边界：[docs/architecture.md](../architecture.md)
+- 架构维护策略：[docs/architecture/maintenance.md](maintenance.md)
+- 图表 Provider 配置：[docs/architecture/diagram-provider.yaml](diagram-provider.yaml)
+- 语义变更历史：[docs/architecture/changes/](changes/)
+
 ## Top-Level Flow
 
 <p align="center">
