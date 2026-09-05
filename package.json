@@ -46,6 +46,8 @@
     "lint:file-size": "node scripts/lint-file-size.mjs",
     "lint:function-length": "node scripts/lint-function-length.mjs",
     "lint:gates": "node scripts/lint-circular.mjs --fail && JSCPD_MIN_LINES=10 JSCPD_MIN_TOKENS=60 node scripts/lint-duplicate.mjs --fail && node scripts/lint-dead-code.mjs --fail --max-count 171 && node scripts/lint-file-size.mjs --fail && node scripts/lint-function-length.mjs --fail --max-count 45 && pnpm lint:complexity:gate",
+    "verify": "pnpm typecheck && pnpm lint:gates && pnpm lint:arch && pnpm test && pnpm coverage",
+    "qa": "pnpm verify",
     "e2e:smoke": "pnpm build && node scripts/e2e-smoke.mjs",
     "e2e:compose": "node scripts/e2e-compose.mjs",
     "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64",

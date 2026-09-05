@@ -15,6 +15,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 core 启动；React/Web 通过 API client 访问 Local AI Core；Local AI Core 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时任务、知识库、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Local AI Core 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。
 
+<!-- project-setup:architecture-diagram:start -->
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/system-architecture.dark.png">
@@ -23,6 +24,9 @@ AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、Open
 </p>
 
 > 💡 **交互式架构图**：可在浏览器中直接打开 [docs/architecture/system-architecture.html](docs/architecture/system-architecture.html)，体验深浅色切换、分步引导导览（01 桌面通信 / 02 会话与沙箱 / 03 调度与渠道）、节点高亮与路径追踪。
+> 
+> 架构事实与规范参见 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [架构变更历史](docs/architecture/changes/)。
+<!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
 

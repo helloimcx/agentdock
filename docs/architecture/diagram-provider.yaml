@@ -1,0 +1,25 @@
+schema_version: 1
+provider:
+  preferred: archify
+  active: archify
+  fallback: mermaid
+capabilities:
+  validate: required
+  render_readme: required
+  compare: preferred
+outputs:
+  readme: docs/architecture/system-architecture.light.png
+  readme_dark: docs/architecture/system-architecture.dark.png
+  interactive: docs/architecture/system-architecture.html
+  history: docs/architecture/changes
+provider_files:
+  source: docs/architecture/system-architecture.json
+  matrix:
+    - docs/architecture/system-architecture.json
+    - docs/architecture/acp-session-flow.sequence.json
+    - docs/architecture/agent-run.lifecycle.json
+    - docs/architecture/scheduled-delivery-workflow.json
+    - docs/architecture/skill-router.workflow.json
+  receipt: null
+readme:
+  mode: static-image
