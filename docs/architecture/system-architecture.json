@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AgentDock 系统架构图",
+    "locale": "zh-CN",
+    "output": "docs/architecture/system-architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "desktop-and-core",
+        "label": "桌面端与核心服务通信",
+        "focus": ["electron", "renderer", "core_api", "kernel"],
+        "note": "Electron 壳启动伴生 Core，React 渲染层通过 HTTP/SSE 驱动会话"
+      },
+      {
+        "id": "agent-execution",
+        "label": "Agent 会话与沙箱执行",
+        "focus": ["kernel", "acp_engine", "local_agents", "opensandbox"],
+        "note": "ACP 协议运行时统一调度本地进程与 OpenSandbox 云端隔离容器"
+      },
+      {
+        "id": "automation-channels",
+        "label": "自动化调度与渠道打通",
+        "focus": ["channels", "core_api", "kernel", "scheduler"],
+        "note": "支持定时任务触发、飞书与微信双向消息流及结果主动投递"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "electron",
+      "type": "backend",
+      "label": "Electron 桌面壳",
+      "sublabel": "生命周期与窗口管理",
+      "pos": [50, 120],
+      "size": [150, 60]
+    },
+    {
+      "id": "renderer",
+      "type": "frontend",
+      "label": "React 渲染端",
+      "sublabel": "桌面 UI · 聊天界面 · SDK",
+      "pos": [50, 240],
+      "size": [150, 60]
+    },
+    {
+      "id": "channels",
+      "type": "messagebus",
+      "label": "渠道接入网关",
+      "sublabel": "飞书 / 企业微信 Ingress",
+      "pos": [50, 400],
+      "size": [150, 60]
+    },
+    {
+      "id": "external_client",
+      "type": "external",
+      "label": "外部系统 / API",
+      "sublabel": "/external/* · 任务接入",
+      "pos": [50, 520],
+      "size": [150, 60]
+    },
+    {
+      "id": "core_api",
+      "type": "backend",
+      "label": "Core API 路由层",
+      "sublabel": "/api/local/v1 · 统一网关",
+      "pos": [330, 295],
+      "size": [160, 70]
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite 本地持久化",
+      "sublabel": "工作区 · 线程历史 · 产物",
+      "pos": [600, 120],
+      "size": [160, 60]
+    },
+    {
+      "id": "kernel",
+      "type": "backend",
+      "label": "Core 内核与插件",
+      "sublabel": "路由调度 · 意图打分 · 策略",
+      "pos": [600, 295],
+      "size": [160, 70]
+    },
+    {
+      "id": "knowledge",
+      "type": "database",
+      "label": "向量知识库引擎",
+      "sublabel": "ai_vector · 分块检索",
+      "pos": [600, 510],
+      "size": [160, 60]
+    },
+    {
+      "id": "acp_engine",
+      "type": "backend",
+      "label": "ACP 会话运行时",
+      "sublabel": "会话管理 · 权限治理 · 桥接",
+      "pos": [870, 200],
+      "size": [160, 64]
+    },
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "定时与自动化调度",
+      "sublabel": "Cron 触发 · 自动化任务链",
+      "pos": [870, 420],
+      "size": [160, 64]
+    },
+    {
+      "id": "local_agents",
+      "type": "backend",
+      "label": "本地 Agent 运行时",
+      "sublabel": "Codex / Claude / Pi / Hermes",
+      "pos": [1140, 140],
+      "size": [160, 64]
+    },
+    {
+      "id": "opensandbox",
+      "type": "cloud",
+      "label": "OpenSandbox 容器",
+      "sublabel": "隔离容器 · 状态挂载 · NDJSON",
+      "pos": [1140, 320],
+      "size": [160, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "桌面客户端 (AgentDock Desktop)",
+      "wraps": ["electron", "renderer"],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "Local AI Core (本地服务进程 127.0.0.1:9831)",
+      "wraps": ["core_api", "sqlite", "kernel", "knowledge", "acp_engine", "scheduler"],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "云端沙箱隔离区 (Cloud Sandbox)",
+      "wraps": ["opensandbox"],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    {
+      "id": "electron-to-core",
+      "from": "electron",
+      "to": "core_api",
+      "toSide": "top",
+      "label": "伴生拉起",
+      "variant": "dashed"
+    },
+    {
+      "id": "renderer-to-core",
+      "from": "renderer",
+      "to": "core_api",
+      "label": "REST & SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "channels-to-core",
+      "from": "channels",
+      "to": "core_api",
+      "label": "Webhook 接入"
+    },
+    {
+      "id": "external-to-core",
+      "from": "external_client",
+      "to": "core_api",
+      "toSide": "bottom",
+      "label": "API 调用"
+    },
+    {
+      "id": "core-to-kernel",
+      "from": "core_api",
+      "to": "kernel",
+      "label": "请求路由",
+      "variant": "emphasis"
+    },
+    {
+      "id": "kernel-to-sqlite",
+      "from": "kernel",
+      "to": "sqlite",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "label": "状态持久化"
+    },
+    {
+      "id": "kernel-to-knowledge",
+      "from": "kernel",
+      "to": "knowledge",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "向量检索",
+      "labelDy": 30
+    },
+    {
+      "id": "kernel-to-acp",
+      "from": "kernel",
+      "to": "acp_engine",
+      "label": "驱动会话",
+      "variant": "emphasis"
+    },
+    {
+      "id": "kernel-to-scheduler",
+      "from": "kernel",
+      "to": "scheduler",
+      "label": "注册任务"
+    },
+    {
+      "id": "scheduler-to-acp",
+      "from": "scheduler",
+      "to": "acp_engine",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "label": "触发 Run"
+    },
+    {
+      "id": "acp-to-local",
+      "from": "acp_engine",
+      "to": "local_agents",
+      "label": "stdio 通道"
+    },
+    {
+      "id": "acp-to-sandbox",
+      "from": "acp_engine",
+      "to": "opensandbox",
+      "label": "NDJSON 桥接",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "多端接入与桌面外壳",
+      "items": [
+        "Electron 仅负责桌面窗口生命周期与伴生 Local AI Core 拉起",
+        "React 19 渲染端通过 Core SDK 访问 REST API 与实时 SSE 流",
+        "内置原生飞书与企业微信渠道网关，支持双向消息会话"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Local AI Core 核心层",
+      "items": [
+        "统一管理 Workspace 隔离、Thread 线程、Run 执行与工件产物",
+        "确定性技能路由引擎（Skill Router）与权限动态继承",
+        "内置 SQLite 本地持久化与基于 ai_vector 的知识库向量检索"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "执行环境与安全沙箱",
+      "items": [
+        "ACP 协议运行时解耦多种本地模型（Codex/Claude/Pi/Hermes）",
+        "支持基于 OpenSandbox 的云端安全隔离容器与状态持久挂载",
+        "定时调度器打通自动化执行与渠道消息流式结果主动投递"
+      ]
+    }
+  ]
+}

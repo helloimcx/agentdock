@@ -15,71 +15,14 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 core 启动；React/Web 通过 API client 访问 Local AI Core；Local AI Core 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时任务、知识库、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Local AI Core 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。
 
-```mermaid
----
-config:
-  theme: base
-  themeVariables:
-    primaryColor: "#eef6ff"
-    primaryBorderColor: "#2563eb"
-    lineColor: "#64748b"
-    textColor: "#0f172a"
----
-flowchart LR
-  Web["AgentDock Web<br/>apps/shell-web"]
-  External["外部系统 / Agent API Client"]
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/system-architecture.dark.png">
+    <img alt="AgentDock 系统架构图" src="docs/architecture/system-architecture.light.png" width="100%">
+  </picture>
+</p>
 
-  subgraph Desktop["AgentDock Desktop"]
-    direction LR
-    Electron["Electron Shell<br/>窗口 / 本地 Core 启动"]
-    Renderer["React Renderer<br/>桌面 UI / API Client"]
-  end
-
-  subgraph Core["Local AI Core"]
-    direction TB
-    CoreApi["HTTP API / SSE<br/>/api/local/v1"]
-    ExternalApi["External Agent API<br/>/external/* · /openai/chat/completions"]
-    Kernel["Kernel & Plugin Registry"]
-    Router["Workspace Router<br/>workspace · thread · run"]
-    Acp["ACP Runtime<br/>stdio 或 HTTP NDJSON bridge"]
-    Scheduler["Scheduler / Automation"]
-    Knowledge["Knowledge Runtime"]
-    Channels["Lark / 微信 Channel Gateway"]
-  end
-
-  subgraph Sandbox["Cloud Sandbox Mode"]
-    direction TB
-    OpenSandbox["OpenSandbox Server"]
-    Container["Sandbox Container<br/>agent runtime + HTTP NDJSON ACP bridge"]
-    State["workspace mount / agent state mount"]
-  end
-
-  Agents["本地 Agent Runtime<br/>Codex / Claude Code / Hermes / Pi / opencode"]
-  Contracts["共享契约<br/>shared/ · packages/contracts/"]
-  CoreSdk["Core SDK<br/>packages/core-sdk/"]
-  PluginSdk["Plugin SDK<br/>packages/plugin-sdk/"]
-
-  Web --> CoreApi
-  External --> ExternalApi
-  Electron --> Renderer --> CoreApi
-  Electron -.启动 / 管理.-> CoreApi
-  CoreApi --> ExternalApi
-  CoreApi --> Kernel --> Router
-  Router --> Acp
-  Router --> Scheduler
-  Router --> Knowledge
-  Kernel --> Channels
-  Acp --> Agents
-  Acp --> OpenSandbox --> Container
-  Container --> State
-  Container -.HTTP NDJSON ACP.-> Acp
-  Scheduler --> Channels
-
-  Contracts -.-> Renderer
-  Contracts -.-> CoreApi
-  CoreSdk -.-> Renderer
-  PluginSdk -.-> Kernel
-```
+> 💡 **交互式架构图**：可在浏览器中直接打开 [docs/architecture/system-architecture.html](docs/architecture/system-architecture.html)，体验深浅色切换、分步引导导览（01 桌面通信 / 02 会话与沙箱 / 03 调度与渠道）、节点高亮与路径追踪。
 
 后台关键模块说明：
 
