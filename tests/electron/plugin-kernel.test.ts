@@ -291,8 +291,8 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
       'hermes',
     ]);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.channels, ['localcore-acp', 'lark', 'weixin']);
-    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, ['ai-vector']);
-    assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, true);
+    assert.deepEqual(runtime.kernel.getCapabilitySnapshot().adapters.knowledgeProviders, []);
+    assert.equal(runtime.kernel.getCapabilitySnapshot().adapters.knowledge, false);
     assert.deepEqual(runtime.kernel.getCapabilitySnapshot().scheduler, {
       enabled: true,
       triggerTypes: ['cron', 'once'],
@@ -737,7 +737,7 @@ test('runtime bootstrap knowledge capabilities come from the selected provider p
 
     assert.deepEqual(
       enabledRuntime.kernel.getCapabilitySnapshot().snapshot.knowledge.map((capability) => capability.sourceType),
-      ['ai-vector'],
+      ['noop'],
     );
     assert.deepEqual(disabledRuntime.kernel.getCapabilitySnapshot().snapshot.knowledge, [
       {

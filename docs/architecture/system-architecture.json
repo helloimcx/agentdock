@@ -85,14 +85,6 @@
       "size": [160, 70]
     },
     {
-      "id": "knowledge",
-      "type": "database",
-      "label": "向量知识库引擎",
-      "sublabel": "ai_vector · 分块检索",
-      "pos": [600, 510],
-      "size": [160, 60]
-    },
-    {
       "id": "acp_engine",
       "type": "backend",
       "label": "ACP 会话运行时",
@@ -135,7 +127,7 @@
     {
       "kind": "region",
       "label": "Local AI Core (本地服务进程 127.0.0.1:9831)",
-      "wraps": ["core_api", "sqlite", "kernel", "knowledge", "acp_engine", "scheduler"],
+      "wraps": ["core_api", "sqlite", "kernel", "acp_engine", "scheduler"],
       "pad": 24
     },
     {
@@ -190,15 +182,6 @@
       "label": "状态持久化"
     },
     {
-      "id": "kernel-to-knowledge",
-      "from": "kernel",
-      "to": "knowledge",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "label": "向量检索",
-      "labelDy": 30
-    },
-    {
       "id": "kernel-to-acp",
       "from": "kernel",
       "to": "acp_engine",
@@ -249,7 +232,7 @@
       "items": [
         "统一管理 Workspace 隔离、Thread 线程、Run 执行与工件产物",
         "确定性技能路由引擎（Skill Router）与权限动态继承",
-        "内置 SQLite 本地持久化与基于 ai_vector 的知识库向量检索"
+        "内置 SQLite 本地持久化与工作区会话状态管理"
       ]
     },
     {

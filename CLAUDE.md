@@ -63,7 +63,7 @@ The core backend runtime with these subsystems:
 - **CLI** (`src/cli/`): Command-line entry point
 - **Channel** (`src/channel/`): shared channel contracts plus isolated Lark/Feishu and WeChat gateway implementations
 - **Kernel** (`src/kernel/`): Bootstrap, event bus, lifecycle, plugin registry, capability registry
-- **Plugins** (`src/plugins/builtin/`): Built-in plugins with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`, `knowledge.ai-vector`)
+- **Plugins** (`src/plugins/builtin/`): Built-in plugins with lowercase dotted IDs (e.g., `channel.lark`, `scheduler.cron`, `knowledge.noop`)
 - **Router** (`src/router/`): Workspace routing and route configuration
 - **Runtime** (`src/runtime/`): Core controller (lifecycle/config/events), HTTP server with per-domain route handlers, channel service, external service, runtime state and detection
 - **Scheduler** (`src/scheduler/`): Cron-based task scheduling with platform-specific adapters (Lark, WeChat)
@@ -73,7 +73,7 @@ The core backend runtime with these subsystems:
 
 - **contracts**: Local Core type definitions
 - **core-sdk**: Client SDK for Local AI Core APIs
-- **knowledge-api**: AI vector provider, SQLite store, thread knowledge store
+- **knowledge-api**: Noop knowledge provider, thread attachment store
 - **plugin-sdk**: Plugin contracts and runtime types
 
 ### Renderer Structure (`src/`)
