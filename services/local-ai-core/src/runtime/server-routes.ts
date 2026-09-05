@@ -117,6 +117,7 @@ export type LocalAiCoreRoute =
   | { name: 'skills.sources' }
   | { name: 'skills.toggle' }
   | { name: 'skills.scan' }
+  | { name: 'skills.route' }
   | { name: 'capabilities.read' }
   | { name: 'capabilities.snapshot' }
   | { name: 'diagnostics.errors' }
@@ -583,6 +584,7 @@ function parseSkillsRoute(method: string, segments: string[]): LocalAiCoreRoute 
     if (segments[1] === 'sources' && method === 'GET') return { name: 'skills.sources' };
     if (segments[1] === 'toggle' && method === 'POST') return { name: 'skills.toggle' };
     if (segments[1] === 'scan' && (method === 'GET' || method === 'POST')) return { name: 'skills.scan' };
+    if (segments[1] === 'route' && (method === 'GET' || method === 'POST')) return { name: 'skills.route' };
     if (method === 'GET') return { name: 'skills.get', skillId: decodeURIComponent(segments[1]) };
   }
   return null;

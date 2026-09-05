@@ -105,6 +105,7 @@ function useSkillModalsState() {
   const [installRef, setInstallRef] = useState('');
   const [installScope, setInstallScope] = useState<'user' | 'workspace'>('user');
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showRouteModal, setShowRouteModal] = useState(false);
 
   return {
     selectedSkill,
@@ -119,6 +120,8 @@ function useSkillModalsState() {
     setInstallScope,
     showNewModal,
     setShowNewModal,
+    showRouteModal,
+    setShowRouteModal,
   };
 }
 

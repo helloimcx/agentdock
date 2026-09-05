@@ -31,6 +31,7 @@ import type {
 } from '@cc/superai-contracts/skills';
 import { cn } from '@/lib/utils';
 import { useSkillsPageController, type NoticeState } from './useSkillsPageController';
+import { SkillRouteDebugModal } from './SkillRouteDebugModal';
 
 export default function SkillsPage() {
   const ctrl = useSkillsPageController();
@@ -47,6 +48,7 @@ export default function SkillsPage() {
         onRefresh={ctrl.fetchSkills}
         onVerify={ctrl.handleVerifySkills}
         onScan={ctrl.handleScanSkills}
+        onOpenRouteDebug={() => ctrl.setShowRouteModal(true)}
         onOpenInstall={() => ctrl.setShowInstallModal(true)}
         onOpenNew={() => ctrl.setShowNewModal(true)}
       />
@@ -131,6 +133,13 @@ export default function SkillsPage() {
           }}
         />
       )}
+
+      {ctrl.showRouteModal && (
+        <SkillRouteDebugModal
+          open={ctrl.showRouteModal}
+          onClose={() => ctrl.setShowRouteModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -145,6 +154,7 @@ function SkillsPageHeader(props: {
   onRefresh: () => void;
   onVerify: () => void;
   onScan: () => void;
+  onOpenRouteDebug: () => void;
   onOpenInstall: () => void;
   onOpenNew: () => void;
 }) {
@@ -202,6 +212,15 @@ function SkillsPageHeader(props: {
           >
             <ShieldAlert className={cn('mr-1.5 h-4 w-4 text-emerald-500', props.scanning && 'animate-spin')} />
             {props.scanning ? '体检中…' : '安全体检'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={props.onOpenRouteDebug}
+            title="测试任务意图与技能路由命中 (Issue #122)"
+          >
+            <Sparkles className="mr-1.5 h-4 w-4 text-amber-500" />
+            路由调试
           </Button>
           <Button variant="outline" size="sm" onClick={props.onOpenInstall}>
             <FolderGit2 className="mr-1.5 h-4 w-4" />

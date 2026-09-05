@@ -8,7 +8,7 @@ import {
   LOCALCORE_ACP_AGENT_TYPE,
 } from '@cc/superai-contracts';
 import { resolveAgentRuntimeDefinition } from '../agents/index.js';
-import { getPathEnv } from './env-utils.js';
+import { resolveExecutableCommand as resolveCommand } from './env-utils.js';
 
 export interface AgentRuntimeDetectionOptions {
   env?: NodeJS.ProcessEnv;
@@ -155,46 +155,6 @@ function collectConfiguredAgentCommands(config?: DesktopConnectConfig | null) {
     }
   }
   return commands;
-}
-
-function resolveCommand(command: string, env: NodeJS.ProcessEnv) {
-  const normalized = command.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (isAbsolute(normalized) || normalized.includes('/') || normalized.includes('\\')) {
-    return isExecutableFile(normalized) ? normalized : null;
-  }
-
-  for (const dir of getPathEnv(env).split(delimiter).filter(Boolean)) {
-    for (const candidate of commandCandidates(normalized, env)) {
-      const fullPath = join(dir, candidate);
-      if (isExecutableFile(fullPath)) {
-        return fullPath;
-      }
-    }
-  }
-  return null;
-}
-
-function commandCandidates(command: string, env: NodeJS.ProcessEnv) {
-  if (process.platform !== 'win32' || /\.[a-z0-9]+$/i.test(command)) {
-    return [command];
-  }
-  const extensions = String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
-    .split(';')
-    .map((ext) => ext.trim())
-    .filter(Boolean);
-  return [command, ...extensions.map((ext) => `${command}${ext}`)];
-}
-
-function isExecutableFile(path: string) {
-  try {
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function detectRuntimeVersion(

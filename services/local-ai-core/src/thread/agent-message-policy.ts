@@ -1,4 +1,6 @@
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
+import { SkillRouter } from '../skills/skill-router.js';
+import type { SkillRouteMatch } from '@cc/superai-contracts/skills';
 
 const SCHEDULER_INSTRUCTION = [
   '[Scheduler Tools]',
@@ -71,32 +73,80 @@ function formatKnowledgeBlock(knowledgeBases: AgentMessageKnowledgeBase[]): stri
   ];
 }
 
-function resolveConditionBlocks(content: string, catalog: ManagedSkillCatalog): string[] {
-  if (!isConditionAutomationRequest(content)) return [];
+function formatConditionTriggerBlock(catalog: ManagedSkillCatalog): string[] {
   const skill = catalog.get('condition-trigger')?.content || '';
   if (!skill) return [];
   const helper = catalog.getHelperPath('condition-trigger', 'scripts/register-condition-trigger.sh') || '';
-  return ['', '[Condition Trigger Skill]', skill, '[/Condition Trigger Skill]', '[Condition Trigger Helper]', helper, '[/Condition Trigger Helper]'];
+  return [
+    '',
+    '[Condition Trigger Skill]',
+    skill,
+    '[/Condition Trigger Skill]',
+    '[Condition Trigger Helper]',
+    helper,
+    '[/Condition Trigger Helper]',
+  ];
 }
 
-function resolveStockBlock(content: string, catalog: ManagedSkillCatalog): string[] {
-  if (!isStockMonitorRequest(content)) return [];
+function formatStockMonitorBlock(catalog: ManagedSkillCatalog): string[] {
   const skill = catalog.get('stock-monitor')?.content || '';
   return skill ? ['', '[Stock Monitor Skill]', skill, '[/Stock Monitor Skill]'] : [];
 }
 
-export function composeAgentMessage(content: string, knowledgeBases: AgentMessageKnowledgeBase[] = [], catalog = new ManagedSkillCatalog()) {
+function formatGenericSkillBlock(match: SkillRouteMatch, catalog: ManagedSkillCatalog): string[] {
+  const skill = catalog.get(match.skillId)?.content || '';
+  if (!skill) return [];
+  const blocks = ['', `[Skill: ${match.name}]`, skill, `[/Skill: ${match.name}]`];
+  if (!match.available && match.missingTools.length > 0) {
+    blocks.push(
+      `[Tool Requirement Notice]: Skill "${match.name}" requires tool(s) not found on PATH: ${match.missingTools.join(', ')}.`,
+    );
+  }
+  return blocks;
+}
+
+function resolveRoutedSkillBlocks(selectedSkills: SkillRouteMatch[], catalog: ManagedSkillCatalog): string[] {
+  const blocks: string[] = [];
+  for (const match of selectedSkills) {
+    if (match.skillId === 'condition-trigger') {
+      blocks.push(...formatConditionTriggerBlock(catalog));
+    } else if (match.skillId === 'stock-monitor') {
+      blocks.push(...formatStockMonitorBlock(catalog));
+    } else {
+      blocks.push(...formatGenericSkillBlock(match, catalog));
+    }
+  }
+  return blocks;
+}
+
+export function composeAgentMessage(
+  content: string,
+  knowledgeBases: AgentMessageKnowledgeBase[] = [],
+  catalog = new ManagedSkillCatalog(),
+  router = new SkillRouter(),
+) {
   if (content.trim().startsWith('/')) {
     return content;
   }
+
+  let skills = catalog.listSkills();
+  if (!skills.some((s) => s.id === 'condition-trigger') && catalog.get('condition-trigger')) {
+    skills = [...skills, { id: 'condition-trigger', name: 'condition-trigger', description: '', scope: 'builtin', path: '', enabled: true, overridden: false }];
+  }
+  if (!skills.some((s) => s.id === 'stock-monitor') && catalog.get('stock-monitor')) {
+    skills = [...skills, { id: 'stock-monitor', name: 'stock-monitor', description: '', scope: 'builtin', path: '', enabled: true, overridden: false }];
+  }
+
+  const routeResult = router.route(content, skills);
+  const skillBlocks = resolveRoutedSkillBlocks(routeResult.selectedSkills, catalog);
+
   return [
     SCHEDULER_INSTRUCTION,
     '',
     MONITOR_INSTRUCTION,
     '',
     CHANNEL_INSTRUCTION,
-    ...resolveConditionBlocks(content, catalog),
-    ...resolveStockBlock(content, catalog),
+    ...skillBlocks,
     ...formatKnowledgeBlock(knowledgeBases),
     '',
     '[User Message]',
@@ -104,27 +154,3 @@ export function composeAgentMessage(content: string, knowledgeBases: AgentMessag
     '[/User Message]',
   ].join('\n');
 }
-
-function isStockMonitorRequest(content: string) {
-  const normalized = content.toLowerCase();
-  const englishStock = /\b(?:stock|stocks|ticker|quote|quotes|bollinger|dividend|erp|shares|market[-\s]?watch)\b/.test(normalized);
-  const englishIntent = /\b(?:monitor|alert|watch|track|buy|sell|price|condition|metric|strategy|capability|capabilities)\b/.test(normalized);
-  const chineseStock = /股票|盯盘|看盘|行情|个股|美股|港股|A股|证券|标的|涨跌幅|布林带|布林线|股息率|分红|股债利差|财报|价格预警|行情预警/.test(content);
-  const stockCodeWithAction = /(?:\b[0-9]{5,6}\b|\b[A-Z]{1,5}\b).*(?:监控|盯盘|预警|行情|走势|股价)/.test(content)
-    || /(?:监控|盯盘|预警|行情|走势|股价).*(?:\b[0-9]{5,6}\b|\b[A-Z]{1,5}\b)/.test(content);
-  return (englishStock && englishIntent) || chineseStock || stockCodeWithAction;
-}
-
-function isConditionAutomationRequest(content: string) {
-  const normalized = content.toLowerCase();
-  const englishCondition = /\b(?:condition(?:al)?|script[-\s]?(?:based|backed)?)\b/.test(normalized);
-  const englishAutomation = /\b(?:automation|monitor|task|schedule)\b/.test(normalized);
-  const englishRequest = /\b(?:create|add|set(?:\s+up)?|configure|build|author)\b/.test(normalized);
-  const englishNegation = /\b(?:do not|don't|dont|never|without).{0,24}\b(?:create|add|set(?:\s+up)?|configure|build|author)\b/.test(normalized);
-  const chineseCondition = /条件自动化|条件触发|脚本条件/.test(content);
-  const chineseRequest = /创建|新建|设置|添加|建立|配置|制作|实现/.test(content);
-  const chineseNegation = /(?:不要|不需要|无需|别|仅|只是|不想).{0,8}(?:创建|新建|设置|添加|建立|配置|制作|实现)/.test(content);
-  return (englishCondition && englishAutomation && englishRequest && !englishNegation) || (chineseCondition && chineseRequest && !chineseNegation);
-}
-
-
