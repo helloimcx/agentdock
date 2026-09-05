@@ -22,6 +22,17 @@ Phase 0 establishes where core product state belongs so renderer, Electron, Loca
 | UI state | Renderer | Local component/store types | Own transient view state | None |
 | Desktop window state | Electron | Electron-local types | None | Own shell lifecycle |
 
+## Run 执行状态机生命周期 (Task & Run Lifecycle)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="agent-run-lifecycle.dark.png">
+    <img alt="AgentDock Task 与 Run 执行状态机" src="agent-run-lifecycle.light.png" width="100%">
+  </picture>
+</p>
+
+> 💡 **交互式状态机**：可在浏览器中打开 [agent-run-lifecycle.html](agent-run-lifecycle.html)，体验动态状态跃迁轨迹、分步引导导览与深浅色切换。
+
 ## Boundary Rules
 
 - Local AI Core owns durable product state and exposes it through `/api/local/v1/*`.

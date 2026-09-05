@@ -67,20 +67,15 @@ Do not duplicate platform string parsing in controllers, adapters, CLI commands,
 
 ## Execution And Delivery Flow
 
-```mermaid
-flowchart TD
-  Tick[SchedulerService due tick] --> Adapter[Platform scheduler adapter]
-  Adapter --> Policy[ExecutionPolicy resolveTarget]
-  Policy --> Bridge[ScheduledBridgeSession open]
-  Bridge --> Executor[ScheduledConversationExecutor]
-  Executor --> ACP[WorkspaceRouter / ACP backend]
-  ACP --> Events[ACP bridge events]
-  Events --> Channel[Channel runtime bridge]
-  Channel --> Target[Lark or Weixin chat]
-  ACP --> Reply[Final assistant reply]
-  Reply --> Run[scheduled_job_runs result]
-  Run --> Close[ScheduledBridgeSession close]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="scheduled-delivery-workflow.dark.png">
+    <img alt="AgentDock 定时调度与渠道主动投递流程" src="scheduled-delivery-workflow.light.png" width="100%">
+  </picture>
+</p>
+
+> 💡 **交互式工作流**：可在浏览器中打开 [scheduled-delivery-workflow.html](scheduled-delivery-workflow.html)，体验动态事件流向轨迹、分步引导导览与深浅色切换。
+
 
 `ScheduledConversationExecutor` injects runtime environment for scheduled ACP sessions based on the resolved target:
 

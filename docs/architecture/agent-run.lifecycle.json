@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "AgentDock Task 与 Run 执行状态机",
+    "locale": "zh-CN",
+    "output": "docs/architecture/agent-run-lifecycle.html",
+    "viewBox": [980, 660],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-flow",
+        "label": "标准执行生命周期",
+        "focus": ["queued", "preparing", "running", "finalizing", "completed"],
+        "note": "请求从排队、环境装配、ACP 推理执行到产物落盘收尾的标准主轨"
+      },
+      {
+        "id": "permission-gate",
+        "label": "权限阻断与等待确认",
+        "focus": ["running", "waiting_permission", "blocked", "canceled"],
+        "note": "执行敏感操作时挂起状态机，等待授权后恢复或拒绝后取消"
+      },
+      {
+        "id": "recovery-and-terminal",
+        "label": "异常重试与终态退出",
+        "focus": ["running", "failed", "timed_out", "canceled"],
+        "note": "区分可恢复异常自动重试与超时/用户主动终止的不可逆终态"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "执行主链路 (Main Lifecycle)" },
+    { "id": "waiting", "label": "权限阻断与等待 (Pause & Wait)" },
+    { "id": "exceptions", "label": "异常与恢复环 (Recovery Loop)" },
+    { "id": "terminal", "label": "终止终态 (Terminal Exits)" }
+  ],
+  "states": [
+    { "id": "queued", "type": "start", "label": "排队中 (Queued)", "sublabel": "请求接收等待调度", "lane": "main", "col": 0, "step": "01", "tag": "entry" },
+    { "id": "preparing", "type": "active", "label": "准备中 (Preparing)", "sublabel": "沙箱与会话建立", "lane": "main", "col": 1, "step": "02", "tag": "init" },
+    { "id": "running", "type": "active", "label": "执行中 (Running)", "sublabel": "模型推理与工具调用", "lane": "main", "col": 2, "step": "03", "tag": "work" },
+    { "id": "finalizing", "type": "decision", "label": "收尾中 (Finalizing)", "sublabel": "工件扫描与状态核验", "lane": "main", "col": 3, "step": "04", "tag": "verify" },
+    { "id": "completed", "type": "success", "label": "已完成 (Completed)", "sublabel": "响应交付与产物落盘", "lane": "main", "col": 4, "step": "05", "tag": "done" },
+    { "id": "waiting_permission", "type": "waiting", "label": "等待授权 (Waiting)", "sublabel": "敏感工具卡片阻断", "lane": "waiting", "col": 0, "tag": "pause" },
+    { "id": "blocked", "type": "waiting", "label": "等待输入 (Blocked)", "sublabel": "缺少参数或心跳异常", "lane": "waiting", "col": 1, "tag": "wait" },
+    { "id": "failed", "type": "failure", "label": "执行失败 (Failed)", "sublabel": "可重试运行异常", "lane": "exceptions", "col": 0, "yOffset": 78, "tag": "retryable" },
+    { "id": "canceled", "type": "failure", "label": "已取消 (Canceled)", "sublabel": "用户主动终止", "lane": "terminal", "col": 0, "tag": "terminal" },
+    { "id": "timed_out", "type": "failure", "label": "超时终止 (Timed Out)", "sublabel": "心跳失联超时熔断", "lane": "terminal", "col": 1, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "permission-needed", "from": "running", "to": "waiting_permission", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight" },
+    { "id": "run-blocked", "from": "finalizing", "to": "blocked", "variant": "default", "route": "drop" },
+    { "id": "running-failed", "from": "running", "to": "failed", "variant": "security", "fromSide": "left", "toSide": "left", "via": [[320, 157], [320, 385]] },
+    { "id": "failed-retry", "from": "failed", "to": "running", "variant": "emphasis", "fromSide": "left", "toSide": "top", "via": [[20, 385], [20, 80], [402, 80]] },
+    { "id": "permission-cancel", "from": "waiting_permission", "to": "canceled", "variant": "security", "fromSide": "bottom", "toSide": "top", "via": [[480, 336], [480, 432], [402, 432]] },
+    { "id": "block-timeout", "from": "blocked", "to": "timed_out", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "单向主轨驱动",
+      "items": [
+        "Run 遵循严格的五阶段线性主轨推进：Queued ➡️ Preparing ➡️ Running ➡️ Finalizing ➡️ Completed",
+        "生命周期由 Local AI Core 状态机统管，状态跃迁实时持久化至 SQLite 并发射 SSE 事件"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "权限阻断与非终态等待",
+      "items": [
+        "遇敏感工具调用时挂起为 Waiting 状态，属于非终止态，保持容器和会话环境活跃",
+        "用户授权后无缝恢复执行；若用户主动拒绝或超时未响应则转移至不可逆终态"
+      ]
+    }
+  ]
+}

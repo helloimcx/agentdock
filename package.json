@@ -39,6 +39,7 @@
     "coverage": "node scripts/coverage.mjs",
     "lint:complexity": "eslint . --format stylish",
     "lint:complexity:gate": "eslint . --format stylish --max-warnings 108",
+    "lint:arch": "node scripts/lint-architecture.mjs",
     "lint:circular": "node scripts/lint-circular.mjs",
     "lint:dead-code": "node scripts/lint-dead-code.mjs",
     "lint:duplicate": "node scripts/lint-duplicate.mjs",

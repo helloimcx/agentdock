@@ -13,24 +13,27 @@ There is no `cc-connect` runtime, management API, or bridge compatibility path i
 
 ## Top-Level Flow
 
-```mermaid
-flowchart LR
-  U[User] --> R[React Renderer]
-  X[External System] --> EXT[External Agent API]
-  R --> DP[Desktop API Provider]
-  DP -->|electron| E[Electron Shell]
-  DP -->|local_core| C[Local AI Core HTTP/SSE]
-  EXT --> C
-  E --> C
-  C --> ACP[ACP Agent Backends]
-  C --> SB[OpenSandbox HTTP NDJSON Bridge]
-  C --> KB[Knowledge Provider]
-  C --> SCHED[Scheduler]
-  C --> CH[Native Channel Gateways]
-  SB --> ACP
-  SCHED --> ACP
-  SCHED --> CH
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="system-architecture.dark.png">
+    <img alt="AgentDock 系统架构图" src="system-architecture.light.png" width="100%">
+  </picture>
+</p>
+
+> 💡 **交互式架构图**：可在浏览器中打开 [system-architecture.html](system-architecture.html)，体验深浅色切换、分步引导导览（01 桌面通信 / 02 会话与沙箱 / 03 调度与渠道）、节点高亮与路径追踪。
+
+## 架构资产矩阵 (Architecture-as-Code Matrix)
+
+AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pnpm lint:arch` 在持续集成中严格校验：
+
+| 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
+|---|---|---|---|---|---|
+| **L1 全局系统** | 端到端系统架构 | `architecture` | [交互全景图](system-architecture.html) · [PNG](system-architecture.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
+| **L2 核心流程** | 定时调度与渠道主动投递 | `workflow` | [调度工作流](scheduled-delivery-workflow.html) · [PNG](scheduled-delivery-workflow.png) | [`scheduled-delivery-workflow.json`](scheduled-delivery-workflow.json) | [定时投递架构](scheduled-delivery.md) |
+| **L2 核心流程** | ACP 会话与沙箱桥接时序 | `sequence` | [通信时序图](acp-session-flow.html) · [PNG](acp-session-flow.png) | [`acp-session-flow.sequence.json`](acp-session-flow.sequence.json) | [ACP 协议运行时](acp-protocol.md) |
+| **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [PNG](skill-router.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |
+| **L3 状态模型** | Agent Run 执行状态机 | `lifecycle` | [状态转移图](agent-run-lifecycle.html) · [PNG](agent-run-lifecycle.png) | [`agent-run.lifecycle.json`](agent-run.lifecycle.json) | [状态所有权](state-ownership.md) |
+
 
 ## Main Layers
 

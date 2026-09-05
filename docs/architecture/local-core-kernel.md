@@ -37,6 +37,17 @@ flowchart TD
   Kernel --> Lifecycle["kernel.lifecycle.startAll / stopAll"]
 ```
 
+## 技能路由与工具探测工作流 (Skill Router & Tool Indexing)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="skill-router.dark.png">
+    <img alt="AgentDock 确定性技能路由与工具探测工作流" src="skill-router.light.png" width="100%">
+  </picture>
+</p>
+
+> 💡 **交互式工作流**：可在浏览器中打开 [skill-router.html](skill-router.html)，体验动态事件流向轨迹、分步引导导览与深浅色切换。
+
 ## 运行时关系
 
 `LocalCoreController` 不直接构造具体 agent、channel 或 knowledge 实现。它接收 `bootstrapLocalCoreRuntime` 返回的 runtime bundle，然后把 HTTP API、SSE 事件和业务调用委托给 `WorkspaceRouter`、`SchedulerService`、channel runtime 或 knowledge provider。

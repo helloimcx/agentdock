@@ -1,0 +1,220 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentDock 确定性技能路由与工具探测工作流",
+    "locale": "zh-CN",
+    "output": "docs/architecture/skill-router.html",
+    "quality_profile": "showcase",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "intent-scoring",
+        "label": "意图匹配与否定过滤",
+        "focus": ["user_prompt", "pattern_match", "negative_filter", "candidate_select"],
+        "note": "基于正则、关键词与连词规则进行意图打分，杜绝模型玄学猜测"
+      },
+      {
+        "id": "tool-probing",
+        "label": "宿主机依赖探测",
+        "focus": ["candidate_select", "tool_probe", "tool_check", "missing_notice"],
+        "note": "执行前探测宿主机 PATH 依赖，避免 Agent 幻觉调用不可用工具"
+      },
+      {
+        "id": "policy-assembly",
+        "label": "消息策略装配与交付",
+        "focus": ["tool_check", "policy_assemble", "agent_dispatch"],
+        "note": "动态装配技能提示词与工具声明，交付 ACP 会话精准执行"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "ingress", "label": "输入与接入层 (Input & Trigger)" },
+    { "id": "router", "label": "确定性路由核心 (Skill Router Core)" },
+    { "id": "assembler", "label": "依赖探测与策略装配 (Tools & Policy)" }
+  ],
+  "phases": [
+    { "id": "matching_phase", "label": "意图打分与筛除", "fromCol": 0, "toCol": 2 },
+    { "id": "probing_phase", "label": "依赖探测与校验", "fromCol": 3, "toCol": 4, "variant": "emphasis" },
+    { "id": "assembly_phase", "label": "策略装配与分派", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "user_prompt",
+    "pattern_match",
+    "negative_filter",
+    "candidate_select",
+    "tool_probe",
+    "tool_check",
+    "policy_assemble",
+    "agent_dispatch"
+  ],
+  "nodes": [
+    {
+      "id": "user_prompt",
+      "lane": "ingress",
+      "col": 0,
+      "type": "frontend",
+      "label": "用户提示词输入",
+      "sublabel": "对话消息或路由调试",
+      "width": 140
+    },
+    {
+      "id": "pattern_match",
+      "lane": "router",
+      "col": 1,
+      "type": "backend",
+      "label": "规则意图打分",
+      "sublabel": "patterns / keywords 匹配",
+      "width": 140
+    },
+    {
+      "id": "negative_filter",
+      "lane": "router",
+      "col": 2,
+      "type": "security",
+      "label": "否定排他过滤",
+      "sublabel": "negativePatterns 规则筛除",
+      "width": 140
+    },
+    {
+      "id": "candidate_select",
+      "lane": "router",
+      "col": 3,
+      "type": "backend",
+      "label": "候选技能裁定",
+      "sublabel": "priority 排序选定技能",
+      "width": 140
+    },
+    {
+      "id": "tool_probe",
+      "lane": "assembler",
+      "col": 3,
+      "type": "backend",
+      "label": "PATH 工具探测",
+      "sublabel": "requires-tools 缓存探测",
+      "width": 140
+    },
+    {
+      "id": "tool_check",
+      "lane": "assembler",
+      "col": 4,
+      "type": "security",
+      "label": "可用性判定",
+      "sublabel": "依赖是否就绪",
+      "width": 140
+    },
+    {
+      "id": "missing_notice",
+      "lane": "ingress",
+      "col": 4,
+      "type": "external",
+      "label": "缺失告警与指引",
+      "sublabel": "输出依赖安装修复建议",
+      "width": 140
+    },
+    {
+      "id": "policy_assemble",
+      "lane": "assembler",
+      "col": 5,
+      "type": "backend",
+      "label": "动态装配 Policy",
+      "sublabel": "注入技能元数据与提示词",
+      "width": 140
+    },
+    {
+      "id": "agent_dispatch",
+      "lane": "ingress",
+      "col": 5,
+      "type": "backend",
+      "label": "交付 Agent 执行",
+      "sublabel": "ACP 会话精准就绪",
+      "width": 140
+    }
+  ],
+  "edges": [
+    {
+      "id": "prompt-to-match",
+      "from": "user_prompt",
+      "to": "pattern_match",
+      "label": "输入意图",
+      "variant": "default"
+    },
+    {
+      "id": "match-to-filter",
+      "from": "pattern_match",
+      "to": "negative_filter",
+      "label": "候选初筛",
+      "variant": "emphasis"
+    },
+    {
+      "id": "filter-to-select",
+      "from": "negative_filter",
+      "to": "candidate_select",
+      "label": "排他通过",
+      "variant": "emphasis"
+    },
+    {
+      "id": "select-to-probe",
+      "from": "candidate_select",
+      "to": "tool_probe",
+      "label": "依赖检查",
+      "variant": "default"
+    },
+    {
+      "id": "probe-to-check",
+      "from": "tool_probe",
+      "to": "tool_check",
+      "label": "探测结果",
+      "variant": "emphasis"
+    },
+    {
+      "id": "check-to-missing",
+      "from": "tool_check",
+      "to": "missing_notice",
+      "label": "工具缺失",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "check-to-assemble",
+      "from": "tool_check",
+      "to": "policy_assemble",
+      "label": "就绪放行",
+      "variant": "emphasis"
+    },
+    {
+      "id": "missing-to-assemble",
+      "from": "missing_notice",
+      "to": "policy_assemble",
+      "label": "降级提示",
+      "variant": "dashed"
+    },
+    {
+      "id": "assemble-to-dispatch",
+      "from": "policy_assemble",
+      "to": "agent_dispatch",
+      "label": "精准装配",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "确定性意图打分",
+      "items": [
+        "工作区集中规则优先：正则（patterns）、关键词（keywords）与连词组约束（requiredGroups）",
+        "否定排他规则（negativePatterns）筛除无关技能，彻底杜绝全量提示词膨胀与玄学匹配",
+        "第三方 Skill frontmatter 元数据严格按字面量匹配，杜绝 ReDoS 与提示词注入风险"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "宿主依赖与策略解耦",
+      "items": [
+        "执行前自动探测宿主机 PATH 中的可执行依赖（requires-tools），带平台兼容缓存",
+        "工具缺失时输出精准安装指引，防范 Agent 产生幻觉调用并支持优雅降级",
+        "通过 agent-message-policy 解耦多技能装配，保持 100% 测试套件回归守护"
+      ]
+    }
+  ]
+}

@@ -25,6 +25,16 @@ flowchart TD
   EventBus --> Channels["Channel gateways"]
 ```
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="acp-session-flow.dark.png">
+    <img alt="AgentDock ACP 会话与沙箱通信时序" src="acp-session-flow.light.png" width="100%">
+  </picture>
+</p>
+
+> 💡 **交互式时序图**：可在浏览器中打开 [acp-session-flow.html](acp-session-flow.html)，体验动态事件流向轨迹、分步引导导览与深浅色切换。
+
+
 ## Scope
 
 AgentDock uses ACP over newline-delimited JSON-RPC 2.0 on a child process stdio stream. One JSON object is written per line.

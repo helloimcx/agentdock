@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "AgentDock ACP 会话与沙箱通信时序",
+    "locale": "zh-CN",
+    "output": "docs/architecture/acp-session-flow.html",
+    "viewBox": [820, 560],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "session-init",
+        "label": "会话初始化与沙箱拉起",
+        "focus": ["client", "core_api", "acp_mgr", "sandbox"],
+        "note": "请求进入后由 ACP 运行时按需启动 OpenSandbox 容器并建立桥接"
+      },
+      {
+        "id": "streaming-and-permission",
+        "label": "双向流式与权限审批",
+        "focus": ["client", "core_api", "acp_mgr", "agent_runtime"],
+        "note": "推理过程与工具调用实时通过 SSE 流式反馈，遇敏感操作触发卡片拦截"
+      },
+      {
+        "id": "finalize-and-artifact",
+        "label": "产物登记与会话收尾",
+        "focus": ["agent_runtime", "acp_mgr", "client"],
+        "note": "执行收尾时自动扫描产物并持久化至 SQLite，发出最终完成事件"
+      }
+    ]
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Client 终端", "sublabel": "桌面 / 渠道" },
+    { "id": "core_api", "type": "backend", "label": "Core API", "sublabel": "HTTP & SSE" },
+    { "id": "acp_mgr", "type": "backend", "label": "ACP Runtime", "sublabel": "会话管理治理" },
+    { "id": "sandbox", "type": "cloud", "label": "OpenSandbox", "sublabel": "容器隔离服务" },
+    { "id": "agent_runtime", "type": "backend", "label": "Agent 引擎", "sublabel": "Codex / Claude" }
+  ],
+  "segments": [
+    { "from": 145, "to": 274, "label": "会话初始化与沙箱拉起" },
+    { "from": 282, "to": 422, "label": "双向流式推理与权限审批" },
+    { "from": 430, "to": 482, "label": "产物登记与会话收尾" }
+  ],
+  "messages": [
+    { "from": "client", "to": "core_api", "y": 168, "label": "POST /runs (发起会话)", "variant": "emphasis" },
+    { "from": "core_api", "to": "acp_mgr", "y": 198, "label": "ensureSession(workspace, thread)", "variant": "emphasis" },
+    { "from": "acp_mgr", "to": "sandbox", "y": 228, "label": "POST /sandboxes (创建隔离容器)", "variant": "default" },
+    { "from": "sandbox", "to": "acp_mgr", "y": 258, "label": "201 Created (NDJSON 就绪)", "variant": "return" },
+    { "from": "core_api", "to": "client", "y": 288, "label": "200 OK + per-run SSE URL", "variant": "return" },
+    { "from": "acp_mgr", "to": "agent_runtime", "y": 318, "label": "sendPrompt(context, tools)", "variant": "default" },
+    { "from": "agent_runtime", "to": "acp_mgr", "y": 348, "label": "Chunk: 思考与工具调用", "variant": "dashed" },
+    { "from": "acp_mgr", "to": "client", "y": 378, "label": "SSE: 实时进度与审批卡片", "variant": "security" },
+    { "from": "client", "to": "acp_mgr", "y": 408, "label": "POST /permissions/grant", "variant": "security" },
+    { "from": "agent_runtime", "to": "acp_mgr", "y": 438, "label": "RunFinished + 产物元数据", "variant": "return" },
+    { "from": "acp_mgr", "to": "client", "y": 468, "label": "SSE: run_completed (最终响应)", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "core_api", "from": 164, "to": 292, "type": "backend" },
+    { "participant": "acp_mgr", "from": 194, "to": 262, "type": "backend" },
+    { "participant": "sandbox", "from": 224, "to": 262, "type": "cloud" },
+    { "participant": "agent_runtime", "from": 314, "to": 442, "type": "backend" },
+    { "participant": "acp_mgr", "from": 314, "to": 472, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "双重运行模式解耦",
+      "items": [
+        "本地模式通过 stdio 管道直连本地 Agent 进程",
+        "云端沙箱通过 OpenSandbox 动态启动隔离容器并建立 HTTP NDJSON 桥接",
+        "统一通过 ACP (Agent Client Protocol) 规范抹平底层模型协议差异"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "安全阻断与全链路 SSE",
+      "items": [
+        "破坏性工具调用触发安全审批卡片并挂起状态机，等待用户授权",
+        "独立 SSE 链路保障实时事件流式触达，并在执行收尾时自动登记工件产物"
+      ]
+    }
+  ]
+}

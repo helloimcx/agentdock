@@ -1,0 +1,237 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentDock 定时调度与渠道主动投递流程",
+    "locale": "zh-CN",
+    "output": "docs/architecture/scheduled-delivery-workflow.html",
+    "quality_profile": "showcase",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "trigger-and-policy",
+        "label": "触发与策略决策",
+        "focus": ["cron_tick", "adapter_select", "policy_resolve", "bridge_open"],
+        "note": "从 Cron 定时轮询到渠道与执行策略的动态解析"
+      },
+      {
+        "id": "acp-execution",
+        "label": "会话装配与 ACP 执行",
+        "focus": ["policy_resolve", "executor_init", "acp_run", "final_reply"],
+        "note": "注入环境变量、动态继承 Provider 配置并驱动模型会话"
+      },
+      {
+        "id": "channel-delivery",
+        "label": "渠道流式主动投递",
+        "focus": ["bridge_open", "acp_run", "channel_stream", "channel_target", "final_reply"],
+        "note": "ACP 执行事件、进度卡片与最终回复通过网关流式推送到群聊"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "scheduler", "label": "调度与策略管理 (Scheduler & Policy)" },
+    { "id": "acp", "label": "会话执行环境 (ACP Runtime)" },
+    { "id": "channel", "label": "渠道网关与投递 (Channel Gateway)" }
+  ],
+  "phases": [
+    { "id": "trigger_phase", "label": "触发与路由解析", "fromCol": 0, "toCol": 1 },
+    { "id": "session_phase", "label": "会话装配与桥接", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "delivery_phase", "label": "执行与流式投递", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "cron_tick",
+    "adapter_select",
+    "policy_resolve",
+    "executor_init",
+    "acp_run",
+    "final_reply",
+    "lifecycle_finish"
+  ],
+  "nodes": [
+    {
+      "id": "cron_tick",
+      "lane": "scheduler",
+      "col": 0,
+      "type": "backend",
+      "label": "Cron 轮询触发",
+      "sublabel": "Due Polling 到期检查",
+      "width": 140
+    },
+    {
+      "id": "adapter_select",
+      "lane": "scheduler",
+      "col": 1,
+      "type": "backend",
+      "label": "平台适配器选择",
+      "sublabel": "Local / Lark / Weixin",
+      "width": 140
+    },
+    {
+      "id": "policy_resolve",
+      "lane": "scheduler",
+      "col": 2,
+      "type": "security",
+      "label": "执行策略决策",
+      "sublabel": "thread-only / bridge-stream",
+      "width": 140
+    },
+    {
+      "id": "bridge_open",
+      "lane": "channel",
+      "col": 2,
+      "type": "messagebus",
+      "label": "打开 Bridge Session",
+      "sublabel": "绑定渠道实例与路由",
+      "width": 140
+    },
+    {
+      "id": "executor_init",
+      "lane": "acp",
+      "col": 3,
+      "type": "backend",
+      "label": "ConversationExecutor",
+      "sublabel": "注入环境变量与指纹",
+      "width": 140
+    },
+    {
+      "id": "acp_run",
+      "lane": "acp",
+      "col": 4,
+      "type": "backend",
+      "label": "ACP 会话执行",
+      "sublabel": "驱动模型推理与工具",
+      "width": 140
+    },
+    {
+      "id": "channel_stream",
+      "lane": "channel",
+      "col": 4,
+      "type": "messagebus",
+      "label": "流式事件推送",
+      "sublabel": "工具进度与思考过程",
+      "width": 140
+    },
+    {
+      "id": "final_reply",
+      "lane": "acp",
+      "col": 5,
+      "type": "backend",
+      "label": "最终响应就绪",
+      "sublabel": "完成回复与产物落盘",
+      "width": 140
+    },
+    {
+      "id": "channel_target",
+      "lane": "channel",
+      "col": 5,
+      "type": "external",
+      "label": "飞书 / 微信群聊",
+      "sublabel": "终端用户实时接收",
+      "width": 140
+    },
+    {
+      "id": "lifecycle_finish",
+      "lane": "scheduler",
+      "col": 5,
+      "type": "database",
+      "label": "持久化运行记录",
+      "sublabel": "更新 scheduled_job_runs",
+      "width": 140
+    }
+  ],
+  "edges": [
+    {
+      "id": "tick-to-adapter",
+      "from": "cron_tick",
+      "to": "adapter_select",
+      "label": "到期任务",
+      "variant": "default"
+    },
+    {
+      "id": "adapter-to-policy",
+      "from": "adapter_select",
+      "to": "policy_resolve",
+      "label": "解析路由",
+      "variant": "emphasis"
+    },
+    {
+      "id": "policy-to-bridge",
+      "from": "policy_resolve",
+      "to": "bridge_open",
+      "label": "渠道任务",
+      "variant": "emphasis"
+    },
+    {
+      "id": "policy-to-executor",
+      "from": "policy_resolve",
+      "to": "executor_init",
+      "variant": "default"
+    },
+    {
+      "id": "bridge-to-executor",
+      "from": "bridge_open",
+      "to": "executor_init",
+      "label": "绑定就绪",
+      "variant": "dashed"
+    },
+    {
+      "id": "executor-to-acp",
+      "from": "executor_init",
+      "to": "acp_run",
+      "label": "发起 Run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "acp-to-stream",
+      "from": "acp_run",
+      "to": "channel_stream",
+      "label": "流式事件",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stream-to-target",
+      "from": "channel_stream",
+      "to": "channel_target",
+      "label": "实时卡片",
+      "variant": "emphasis"
+    },
+    {
+      "id": "acp-to-final",
+      "from": "acp_run",
+      "to": "final_reply",
+      "variant": "default"
+    },
+    {
+      "id": "final-to-target",
+      "from": "final_reply",
+      "to": "channel_target",
+      "label": "最终投递",
+      "variant": "emphasis"
+    },
+    {
+      "id": "final-to-lifecycle",
+      "from": "final_reply",
+      "to": "lifecycle_finish",
+      "label": "记录结果",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "触发与策略解耦",
+      "items": [
+        "SchedulerService 负责 Cron 到期轮询与防重并发检查",
+        "平台适配器解析渠道类型与实例 ID，策略引擎裁定本地执行或渠道桥接"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "执行与渠道流式交付",
+      "items": [
+        "ConversationExecutor 注入环境变量并建立与飞书/微信网关的生命周期绑定",
+        "ACP 执行过程、工具进度与最终卡片实时推送到群聊，执行结束自动持久化状态"
+      ]
+    }
+  ]
+}
