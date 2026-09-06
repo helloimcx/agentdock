@@ -3,7 +3,6 @@ import { dirname, join } from 'node:path';
 import type {
   DesktopSettings,
   DesktopSettingsInput,
-  KnowledgeConfig,
 } from '@cc/superai-contracts';
 import { AgentDockRotatingLogger, inferLogLevel, type AgentDockLogEntry, type AgentDockLogFile } from '../kernel/rotating-logger.js';
 
@@ -29,8 +28,6 @@ export interface LocalCoreRuntimeState {
   readonly logPath: string;
   getSettings(): DesktopSettings;
   saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
-  getKnowledgeConfig(): KnowledgeConfig;
-  updateKnowledgeConfig(input: Partial<KnowledgeConfig>): Promise<KnowledgeConfig>;
   getLogs(limit?: number): string[];
   getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
   pushLog(message: string): void;
@@ -96,22 +93,6 @@ class FileBackedLocalCoreRuntimeState implements LocalCoreRuntimeState {
     };
     this.persistSettings();
     return this.settings;
-  }
-
-  getKnowledgeConfig(): KnowledgeConfig {
-    return this.settings.knowledge;
-  }
-
-  async updateKnowledgeConfig(input: Partial<KnowledgeConfig>): Promise<KnowledgeConfig> {
-    this.settings = {
-      ...this.settings,
-      knowledge: {
-        ...this.settings.knowledge,
-        ...input,
-      },
-    };
-    this.persistSettings();
-    return this.settings.knowledge;
   }
 
   getLogs(limit = 200): string[] {
