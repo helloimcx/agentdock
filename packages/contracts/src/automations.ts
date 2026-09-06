@@ -23,6 +23,12 @@ export interface AutomationAction {
   kind: 'agent-prompt';
   promptTemplate: string;
   executionMode: 'same-thread' | 'side-thread';
+  workflowTemplate?: 'direct' | 'deep-analysis';
+  retrospectiveDelayHours?: number;
+  retrospectiveTarget?: {
+    monitorId: string;
+    decisionId: string;
+  };
 }
 
 export interface AutomationDelivery {
