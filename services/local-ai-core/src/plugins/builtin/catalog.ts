@@ -1,9 +1,8 @@
-import type { DesktopConnectConfig, KnowledgeConfig } from '@cc/superai-contracts';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
 import type {
   AgentPlugin,
   ChannelPlugin,
   ChannelRuntime,
-  KnowledgePlugin,
   MonitorPlugin,
   RuntimePlugin,
   SchedulerPlugin,
@@ -60,15 +59,6 @@ export function createRuntimeChannelPlugins(options: {
     lark: createBuiltinLarkChannelPlugin(options),
     weixin: createBuiltinWeixinChannelPlugin(options),
   };
-}
-
-export function createRuntimeKnowledgePlugin(_options?: {
-  enableKnowledge?: boolean;
-  userDataPath?: string;
-  getConfig?: () => KnowledgeConfig;
-  setConfig?: (input: Partial<KnowledgeConfig>) => Promise<KnowledgeConfig> | KnowledgeConfig;
-}): KnowledgePlugin {
-  return createBuiltinNoopKnowledgePlugin();
 }
 
 export function createRuntimeSchedulerPlugins(options: {
