@@ -21,6 +21,8 @@ type MonitorFormState = {
   symbol: string;
   condition: string;
   promptTemplate: string;
+  workflowTemplate: 'direct' | 'deep-analysis';
+  retrospectiveDelayHours: string;
   cooldownMinutes: string;
   executionMode: 'same-thread' | 'side-thread';
   enabled: boolean;
@@ -33,6 +35,8 @@ const DEFAULT_FORM: MonitorFormState = {
   symbol: '',
   condition: 'abs_change_percent >= 3',
   promptTemplate: '',
+  workflowTemplate: 'direct',
+  retrospectiveDelayHours: '24',
   cooldownMinutes: '15',
   executionMode: 'side-thread',
   enabled: true,
@@ -73,6 +77,8 @@ function toForm(monitor?: Monitor | null): MonitorFormState {
     symbol: String(monitor.sourceConfig.symbol || ''),
     condition: conditionToText(monitor),
     promptTemplate: monitor.promptTemplate,
+    workflowTemplate: monitor.workflowTemplate || 'direct',
+    retrospectiveDelayHours: String(monitor.retrospectiveDelayHours ?? 24),
     cooldownMinutes: String(Math.round(monitor.cooldownMs / 60000)),
     executionMode: monitor.executionMode as MonitorFormState['executionMode'],
     enabled: monitor.enabled,
@@ -89,6 +95,8 @@ function toPayload(form: MonitorFormState): MonitorCreateInput {
     sourceConfig: sourceDefinitions[form.sourceType].buildConfig(form),
     condition,
     promptTemplate: form.promptTemplate,
+    workflowTemplate: form.workflowTemplate,
+    retrospectiveDelayHours: form.workflowTemplate === 'deep-analysis' ? Math.max(1, Number(form.retrospectiveDelayHours || '24')) : undefined,
     executionMode: form.executionMode,
     cooldownMs: Math.max(0, Number(form.cooldownMinutes || '0') * 60000),
     enabled: form.enabled,
@@ -209,6 +217,9 @@ export default function MonitorList() {
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">{monitor.title}</span>
                     <Badge variant={monitor.enabled ? 'success' : 'default'}>{monitor.enabled ? t('monitors.enabled') : 'disabled'}</Badge>
+                    {monitor.workflowTemplate === 'deep-analysis' && (
+                      <Badge variant="info">Deep Analysis</Badge>
+                    )}
                     <Badge variant="default">{monitor.sourceType}</Badge>
                     <Badge variant="default">{monitor.platform}</Badge>
                     {monitor.lastStatus && <Badge variant={monitor.lastStatus === 'failed' ? 'danger' : 'default'}>{monitor.lastStatus}</Badge>}
@@ -218,6 +229,9 @@ export default function MonitorList() {
                     <span><strong>Subject:</strong> {sourceDefinitions['stock.quote'].renderSummary(monitor)}</span>
                     <span><strong>Condition:</strong> {conditionToText(monitor)}</span>
                     <span><strong>Execution:</strong> {monitor.executionMode}</span>
+                    {monitor.workflowTemplate === 'deep-analysis' && (
+                      <span><strong>Retrospective:</strong> T+{monitor.retrospectiveDelayHours ?? 24}h</span>
+                    )}
                     <span><strong>Cooldown:</strong> {Math.round(monitor.cooldownMs / 60000)}m</span>
                     {monitor.lastTriggeredAt && <span><strong>{t('monitors.lastRun')}:</strong> {formatTime(monitor.lastTriggeredAt)}</span>}
                   </div>
@@ -277,7 +291,30 @@ export default function MonitorList() {
             <p className="text-xs text-amber-700 dark:text-amber-200">Condition should look like metric &gt;= value or a boolean expression.</p>
           ) : null}
           <div className="grid grid-cols-2 gap-3">
-            <Input label={t('monitors.cooldown')} value={form.cooldownMinutes} onChange={(event) => setForm({ ...form, cooldownMinutes: event.target.value })} />
+            <Select
+              label="Workflow"
+              value={form.workflowTemplate}
+              onChange={(event) => setForm({ ...form, workflowTemplate: event.target.value as MonitorFormState['workflowTemplate'] })}
+            >
+              <option value="direct">Direct (Standard alert)</option>
+              <option value="deep-analysis">Deep Analysis (Bull/Bear debate)</option>
+            </Select>
+            {form.workflowTemplate === 'deep-analysis' ? (
+              <Input
+                label="Retro delay (hours)"
+                type="number"
+                min="1"
+                value={form.retrospectiveDelayHours}
+                onChange={(event) => setForm({ ...form, retrospectiveDelayHours: event.target.value })}
+              />
+            ) : (
+              <Input label={t('monitors.cooldown')} value={form.cooldownMinutes} onChange={(event) => setForm({ ...form, cooldownMinutes: event.target.value })} />
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {form.workflowTemplate === 'deep-analysis' ? (
+              <Input label={t('monitors.cooldown')} value={form.cooldownMinutes} onChange={(event) => setForm({ ...form, cooldownMinutes: event.target.value })} />
+            ) : null}
             <Select label="Execution" value={form.executionMode} onChange={(event) => setForm({ ...form, executionMode: event.target.value as MonitorFormState['executionMode'] })}>
               <option value="side-thread">side-thread</option>
               <option value="same-thread">same-thread</option>

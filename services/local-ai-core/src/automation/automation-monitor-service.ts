@@ -266,6 +266,8 @@ export class AutomationMonitorService {
       enabled: input.enabled ?? existing.enabled,
       cooldownMs: input.cooldownMs ?? existing.cooldownMs,
       schedule: input.schedule === undefined ? existing.schedule : input.schedule || undefined,
+      workflowTemplate: input.workflowTemplate ?? existing.workflowTemplate,
+      retrospectiveDelayHours: input.retrospectiveDelayHours === null ? undefined : (input.retrospectiveDelayHours ?? existing.retrospectiveDelayHours),
     });
     const mapped = monitorToAutomationInput(resolved);
     const { workspaceId: _workspaceId, originKind: _originKind, ...update } = mapped;
