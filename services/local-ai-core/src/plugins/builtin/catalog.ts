@@ -23,7 +23,6 @@ import {
 import { createBuiltinStockMonitorPlugin } from './monitor-stock-plugin.js';
 import { createBuiltinLarkChannelPlugin } from './channel-lark-plugin.js';
 import { createBuiltinWeixinChannelPlugin } from './channel-weixin-plugin.js';
-import { createBuiltinAiVectorKnowledgePlugin } from './knowledge-ai-vector-plugin.js';
 import { createBuiltinNoopKnowledgePlugin } from './knowledge-noop-plugin.js';
 import { createBuiltinCronSchedulerPlugin } from './scheduler-cron-plugin.js';
 import { createBuiltinLarkSchedulerPlugin } from './scheduler-lark-plugin.js';
@@ -63,19 +62,13 @@ export function createRuntimeChannelPlugins(options: {
   };
 }
 
-export function createRuntimeKnowledgePlugin(options: {
+export function createRuntimeKnowledgePlugin(_options?: {
   enableKnowledge?: boolean;
-  userDataPath: string;
-  getConfig: () => KnowledgeConfig;
-  setConfig: (input: Partial<KnowledgeConfig>) => Promise<KnowledgeConfig> | KnowledgeConfig;
+  userDataPath?: string;
+  getConfig?: () => KnowledgeConfig;
+  setConfig?: (input: Partial<KnowledgeConfig>) => Promise<KnowledgeConfig> | KnowledgeConfig;
 }): KnowledgePlugin {
-  return options.enableKnowledge === false
-    ? createBuiltinNoopKnowledgePlugin()
-    : createBuiltinAiVectorKnowledgePlugin({
-        userDataPath: options.userDataPath,
-        getConfig: options.getConfig,
-        setConfig: options.setConfig,
-      });
+  return createBuiltinNoopKnowledgePlugin();
 }
 
 export function createRuntimeSchedulerPlugins(options: {
