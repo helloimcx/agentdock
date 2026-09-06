@@ -42,6 +42,13 @@ AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、Open
 
 ## New
 
+### 2026-09-05
+
+- 开放式 Monitor 事件总线与 Inbound Webhook 触发器支持（Issue #102）：
+  - **Inbound Webhook 接入网关**：在 Local AI Core 新增 `POST /api/local/v1/automation/hooks/:hookId` 端点，支持通过 HTTP 接收外部系统（CI/CD、GitHub、告警中心等）推送的离散事件，并支持 Bearer Token、`X-Hook-Token` 请求头与 Query 参数鉴权。
+  - **离散事件语义与通用条件匹配**：支持 `always` 无条件触发与属性匹配表达式（如 `event == "deploy"` 或 `status == "failed"`）；对 Webhook 事件绕过传统轮询的上升沿去重，确保离散事件按需执行，同时完整保留 `cooldownMs` 防雪崩冷却保护。
+  - **CLI 与 UI 完整支持**：`lac monitor add --source webhook` 支持自动生成加密安全的 Hook ID 与 Token 并输出直接可用的 curl 调用命令；桌面端自动化监控列表支持 Webhook 监控创建、编辑与一键复制触发命令。
+
 ### 2026-09-03
 
 - 发布 AgentDock 0.1.81：定时任务与渠道会话 LLM Provider 动态继承与会话指纹隔离：
