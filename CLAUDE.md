@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+<!-- project-setup:shared-agent-rules:start -->
+@AGENTS.md
+<!-- project-setup:shared-agent-rules:end -->
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
