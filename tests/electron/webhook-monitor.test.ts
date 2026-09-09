@@ -432,3 +432,64 @@ test('automation.monitor.decisions resolves public short monitor ids to internal
   }
 });
 
+test('automation.monitor.decisions reads persisted decisions after restart from the workspace dir', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Restarted Decision Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'restart-hook', token: 'sec-restart' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Analyze the webhook event.',
+    });
+
+    const workspacePath = join(context.path, 'workspace');
+    const writer = new DecisionLogService({ getWorkspacePath: () => workspacePath });
+    await writer.appendDecision({
+      id: 'dec_a1b2c3d4e5f60718',
+      monitorId: monitor.id,
+      workspaceId: 'workspace-a',
+      runId: `run:agentdock::${monitor.id}:1756950000001`,
+      threadId: 'thread:workspace-a::11111111-2222-3333-4444-555555555555',
+      action: 'HOLD',
+      confidence: 55,
+      thesis: 'Wait for band retest.',
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: [],
+      dataSnapshot: { symbol: 'MSFT' },
+      createdAt: '2026-09-10T08:00:00.000Z',
+      retrospectiveStatus: 'pending',
+    }, workspacePath);
+
+    const reader = new DecisionLogService({ getWorkspacePath: () => workspacePath });
+    const handlers = new Map<string, RouteHandler>();
+    registerAutomationHandlers(handlers, context.monitors, reader);
+    const handler = handlers.get('automation.monitor.decisions');
+    assert.ok(handler, 'automation.monitor.decisions handler must be registered');
+
+    const res = {
+      statusCode: 200,
+      bodyData: '',
+      setHeader() {},
+      writeHead(code: number) { this.statusCode = code; },
+      end(data?: unknown) { this.bodyData = String(data || ''); },
+      get body() { return this.bodyData ? JSON.parse(this.bodyData) : null; },
+    };
+    await handler(
+      { name: 'automation.monitor.decisions', monitorId: monitor.id } as any,
+      {} as any,
+      res as any,
+      new URL(`http://127.0.0.1/api/local/v1/automation/monitors/${monitor.id}/decisions`),
+    );
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.data.decisions.length, 1);
+    assert.equal(res.body.data.decisions[0].id, 'dec_a1b2c3d4e5f60718');
+    assert.equal(res.body.data.decisions[0].action, 'HOLD');
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+

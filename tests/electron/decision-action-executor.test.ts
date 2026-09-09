@@ -208,9 +208,114 @@ Phase 3: Final Adjudication
     assert.match(updatedLogContent, /Bollinger lower band is reliable for AAPL\./);
 
     // Verify prior lessons can now be read
-    const lessons = await decisionLogService.getPriorLessons('mon_test_apple', tempDir);
+    const lessons = await decisionLogService.getPriorLessons('mon_test_apple', 'ws_test', tempDir);
     assert.equal(lessons.length, 1);
     assert.equal(lessons[0], 'Bollinger lower band is reliable for AAPL.');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('deep-analysis run includes disk-persisted lessons via workspaceId resolution', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'agentdock-executor-lessons-test-'));
+  try {
+    const workspacePathFor = (id: string) => (id === 'ws_test' ? tempDir : undefined);
+    const writer = new DecisionLogService({ getWorkspacePath: workspacePathFor });
+    const decision = {
+      id: 'dec_5f6e7d8c9b0a1f2e',
+      monitorId: 'mon_test_tsla',
+      workspaceId: 'ws_test',
+      action: 'SELL' as const,
+      confidence: 65,
+      thesis: 'Rally into resistance fades.',
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: ['Resistance holds above 260'],
+      dataSnapshot: { latestPrice: 258.4 },
+      createdAt: new Date().toISOString(),
+      retrospectiveStatus: 'pending' as const,
+    };
+    await writer.appendDecision(decision);
+    await writer.recordRetrospective(decision.monitorId, decision.id, {
+      accuracy: 'correct',
+      realizedOutcome: 'TSLA faded 4% from resistance.',
+      reflection: 'Resistance retest logic held.',
+      lessons: ['Bollinger upper band is reliable for TSLA.'],
+    });
+
+    let sentMessage = '';
+    const mockStore = {
+      getPlatformThreadBinding: () => undefined,
+      getWorkspaceRegistryEntry: (id: string) => (id === 'ws_test' ? { id, path: tempDir } : undefined),
+      getRun: () => ({ status: 'completed', completed_at: new Date().toISOString() }),
+    } as any;
+    const mockWorkspaceRouter = {
+      listThreads: async () => [],
+      createThread: async () => ({ id: 'th_mock_456', title: 'Test Thread' }),
+      getWorkspaceAgentType: async () => 'mock-agent',
+      sendThreadMessage: async (_threadId: string, message: string) => {
+        sentMessage = message;
+        return { runId: 'run_mock_789' };
+      },
+      getThread: async () => ({
+        id: 'th_mock_456',
+        messages: [
+          { id: 'msg_1', role: 'assistant', kind: 'final', content: 'Neutral analysis with no decision block.' },
+        ],
+      }),
+      interruptRun: async () => {},
+    } as any;
+
+    const executor = new AutomationActionExecutor({
+      store: mockStore,
+      getWorkspaceRouter: () => mockWorkspaceRouter,
+      getChannelRuntime: () => undefined,
+      decisionLogService: new DecisionLogService({ getWorkspacePath: workspacePathFor }),
+    });
+
+    const automation: AutomationDefinition = {
+      id: 'mon_test_tsla',
+      workspaceId: 'ws_test',
+      title: 'TSLA Resistance Watch',
+      enabled: true,
+      health: 'healthy',
+      activation: {
+        kind: 'provider-event',
+        sourceType: 'stock.quote',
+        sourceConfig: { symbol: 'TSLA' },
+      },
+      condition: { kind: 'always' },
+      action: {
+        kind: 'agent-prompt',
+        promptTemplate: 'Analyze {{symbol}}.',
+        executionMode: 'side-thread',
+        workflowTemplate: 'deep-analysis',
+      },
+      delivery: { platform: 'local', route: { type: 'local.thread', channelId: 'ws_test' } },
+      policies: { concurrency: 'skip-if-running', cooldownMs: 0 },
+      consecutiveEvaluationFailures: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      originKind: 'automation-monitor',
+    };
+
+    await executor.execute({
+      automation,
+      evaluation: {
+        id: 'eval_mock_2',
+        automationId: automation.id,
+        status: 'finished',
+        activationKind: 'provider-event',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        conditionOutcome: 'matched',
+        triggerDecision: 'triggered',
+      },
+      promptVariables: { symbol: 'TSLA', latestPrice: 258.4 },
+    });
+
+    assert.match(sentMessage, /GROUNDED DATA CONTRACT/);
+    assert.match(sentMessage, /Bollinger upper band is reliable for TSLA\./);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

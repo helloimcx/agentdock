@@ -87,7 +87,7 @@ async function resolveExecutionPrompt(
   if (automation.action.workflowTemplate !== 'deep-analysis') {
     return basePrompt;
   }
-  const priorLessons = await decisionService.getPriorLessons(automation.id, workspacePath);
+  const priorLessons = await decisionService.getPriorLessons(automation.id, automation.workspaceId, workspacePath);
   return composeDeepAnalysisPrompt(basePrompt, input.promptVariables, priorLessons, automation.title);
 }
 
@@ -124,7 +124,11 @@ async function openExecutionBridge(
 }
 
 export class AutomationActionExecutor {
-  constructor(private readonly options: AutomationActionExecutorOptions) {}
+  private readonly decisionService: DecisionLogService;
+
+  constructor(private readonly options: AutomationActionExecutorOptions) {
+    this.decisionService = options.decisionLogService ?? new DecisionLogService(options.store);
+  }
 
   async execute(
     input: AutomationActionExecutionInput,
@@ -136,11 +140,9 @@ export class AutomationActionExecutor {
     const workspaceRouter = this.options.getWorkspaceRouter();
     const threadId = await this.resolveThread(automation);
     const workspacePath = this.options.store.getWorkspaceRegistryEntry?.(automation.workspaceId)?.path;
-    const decisionService = this.options.decisionLogService
-      || new DecisionLogService({ getWorkspacePath: (id) => this.options.store.getWorkspaceRegistryEntry?.(id)?.path });
 
     const isDeepAnalysis = automation.action.workflowTemplate === 'deep-analysis';
-    const prompt = await resolveExecutionPrompt(automation, input, decisionService, workspacePath);
+    const prompt = await resolveExecutionPrompt(automation, input, this.decisionService, workspacePath);
 
     const bridge = await openExecutionBridge(
       automation,
@@ -170,7 +172,7 @@ export class AutomationActionExecutor {
         runId: sendResult.runId,
         threadId,
         dataSnapshot: input.promptVariables,
-        decisionService,
+        decisionService: this.decisionService,
         workspacePath,
         isDeepAnalysis,
         getAutomationService: this.options.getAutomationService,

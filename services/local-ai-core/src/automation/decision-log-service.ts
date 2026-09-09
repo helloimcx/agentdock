@@ -125,12 +125,12 @@ export class DecisionLogService {
     }
   }
 
-  async listDecisions(monitorId: string, explicitWorkspacePath?: string): Promise<AutomationDecisionRecord[]> {
+  async listDecisions(monitorId: string, workspaceId?: string, explicitWorkspacePath?: string): Promise<AutomationDecisionRecord[]> {
     const fromMemory = this.memoryRecords.get(monitorId);
     if (fromMemory && fromMemory.length > 0) return fromMemory;
 
     // Parse from disk if available
-    const filePath = this.resolveFilePath(monitorId, undefined, explicitWorkspacePath);
+    const filePath = this.resolveFilePath(monitorId, workspaceId, explicitWorkspacePath);
     if (!existsSync(filePath)) return [];
 
     try {
@@ -141,8 +141,8 @@ export class DecisionLogService {
     }
   }
 
-  async getPriorLessons(monitorId: string, explicitWorkspacePath?: string): Promise<string[]> {
-    const decisions = await this.listDecisions(monitorId, explicitWorkspacePath);
+  async getPriorLessons(monitorId: string, workspaceId?: string, explicitWorkspacePath?: string): Promise<string[]> {
+    const decisions = await this.listDecisions(monitorId, workspaceId, explicitWorkspacePath);
     const lessons: string[] = [];
     for (const d of decisions) {
       if (d.retrospectiveOutcome?.lessons) {
