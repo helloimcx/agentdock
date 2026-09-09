@@ -92,8 +92,11 @@ export function registerAutomationHandlers(
     }
     // Decisions are keyed under the internal monitor id; the API accepts the
     // public short id (or the internal id) so resolve before lookup.
-    const resolvedId = automationMonitors.resolveRequiredMonitorId(monitorId);
-    json(res, 200, { decisions: await decisionLogService.listDecisions(resolvedId) });
+    const monitor = automationMonitors.getMonitor(monitorId);
+    if (!monitor) {
+      throw new Error(`Automation monitor not found: ${monitorId}`);
+    }
+    json(res, 200, { decisions: await decisionLogService.listDecisions(monitor.id, monitor.workspaceId) });
   });
   map.set('automation.hooks.trigger', async (route, req, res, url) => {
     const hookId = (route as { hookId: string }).hookId;
