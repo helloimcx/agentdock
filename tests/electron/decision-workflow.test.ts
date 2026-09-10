@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -185,6 +185,147 @@ test('DecisionLogService records decisions and retrospectives to markdown log', 
     const lessons = await service.getPriorLessons(monitorId);
     assert.equal(lessons.length, 1);
     assert.equal(lessons[0], 'Weekly Bollinger lower band is highly predictive for AAPL.');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('DecisionLogService lists disk-persisted decisions newest-first including the first logged section', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'agentdock-decision-order-test-'));
+  try {
+    const writer = new DecisionLogService({ rootDir: tempDir });
+    const monitorId = 'mon_test_order';
+    await writer.appendDecision({
+      id: 'dec_first_0001',
+      monitorId,
+      workspaceId: 'ws_test',
+      action: 'BUY',
+      confidence: 60,
+      thesis: 'First entry at the lower band.',
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: [],
+      dataSnapshot: {},
+      createdAt: '2026-09-11T08:00:00.000Z',
+      retrospectiveStatus: 'pending',
+    });
+    await writer.appendDecision({
+      id: 'dec_second_002',
+      monitorId,
+      workspaceId: 'ws_test',
+      action: 'HOLD',
+      confidence: 50,
+      thesis: 'Waiting for the retest.',
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: [],
+      dataSnapshot: {},
+      createdAt: '2026-09-11T09:00:00.000Z',
+      retrospectiveStatus: 'pending',
+    });
+
+    const reader = new DecisionLogService({ rootDir: tempDir });
+    const decisions = await reader.listDecisions(monitorId);
+    assert.equal(decisions.length, 2);
+    assert.equal(decisions[0].id, 'dec_second_002');
+    assert.equal(decisions[1].id, 'dec_first_0001');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('DecisionLogService bounds retained decisions and always keeps pending retrospectives', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'agentdock-decision-retention-test-'));
+  try {
+    const service = new DecisionLogService({ rootDir: tempDir });
+    const monitorId = 'mon_test_retention';
+    const record = (index: number, status: 'pending' | 'completed') => ({
+      id: `dec_retention_${String(index).padStart(4, '0')}`,
+      monitorId,
+      workspaceId: 'ws_test',
+      action: 'WATCH' as const,
+      confidence: 50,
+      thesis: `Decision ${index}.`,
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: [],
+      dataSnapshot: {},
+      createdAt: new Date(Date.parse('2026-09-11T00:00:00.000Z') + index * 60_000).toISOString(),
+      retrospectiveStatus: status,
+      ...(status === 'completed' ? {
+        retrospectiveOutcome: {
+          accuracy: 'correct' as const,
+          realizedOutcome: `Outcome ${index}.`,
+          reflection: `Reflection ${index}.`,
+          lessons: [],
+        },
+      } : {}),
+    });
+
+    // First record stays pending forever; the rest complete their retrospectives.
+    await service.appendDecision(record(0, 'pending'));
+    for (let index = 1; index <= 104; index++) {
+      const current = record(index, 'completed');
+      await service.appendDecision(current);
+      await service.recordRetrospective(monitorId, current.id, {
+        accuracy: 'correct',
+        realizedOutcome: `Outcome ${index}.`,
+        reflection: `Reflection ${index}.`,
+        lessons: [],
+      });
+    }
+
+    const reader = new DecisionLogService({ rootDir: tempDir });
+    const decisions = await reader.listDecisions(monitorId);
+    const completed = decisions.filter((d) => d.retrospectiveStatus === 'completed');
+    assert.equal(completed.length, 100, 'completed decisions are capped at 100');
+    assert.ok(decisions.some((d) => d.id === 'dec_retention_0000'), 'pending-retrospective decision is always retained');
+    assert.ok(!decisions.some((d) => d.id === 'dec_retention_0001'), 'oldest completed decision is evicted');
+    assert.ok(decisions.some((d) => d.id === 'dec_retention_0104'), 'newest decision is retained');
+    assert.equal(decisions[0].id, 'dec_retention_0104', 'list is newest-first');
+
+    // The in-memory path enforces the same retention policy as disk.
+    const inMemory = await service.listDecisions(monitorId);
+    assert.equal(inMemory.filter((d) => d.retrospectiveStatus === 'completed').length, 100);
+    assert.ok(inMemory.some((d) => d.id === 'dec_retention_0000'));
+
+    // Never-retrospected (pending) decisions are bounded by the total cap too.
+    const floodMonitorId = 'mon_test_flood';
+    const floodRecord = (index: number) => ({
+      id: `dec_flood_${String(index).padStart(4, '0')}`,
+      monitorId: floodMonitorId,
+      workspaceId: 'ws_test',
+      action: 'WATCH' as const,
+      confidence: 50,
+      thesis: `Flood ${index}.`,
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: [],
+      dataSnapshot: {},
+      createdAt: new Date(Date.parse('2026-09-11T00:00:00.000Z') + index * 60_000).toISOString(),
+      retrospectiveStatus: 'pending' as const,
+    });
+    for (let index = 0; index < 205; index++) {
+      await service.appendDecision(floodRecord(index));
+    }
+    const floodMemory = await service.listDecisions(floodMonitorId);
+    assert.equal(floodMemory.length, 200, 'pending-only logs are capped at the total limit');
+    assert.equal(floodMemory[0].id, 'dec_flood_0204');
+    const floodDisk = await new DecisionLogService({ rootDir: tempDir }).listDecisions(floodMonitorId);
+    assert.equal(floodDisk.length, 200);
+    assert.ok(!floodDisk.some((d) => d.id === 'dec_flood_0000'), 'oldest pending decision is evicted');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('DecisionLogService reads do not create the decisions directory', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'agentdock-decision-readonly-test-'));
+  try {
+    const reader = new DecisionLogService({ rootDir: tempDir });
+    const decisions = await reader.listDecisions('mon_test_missing');
+    assert.equal(decisions.length, 0);
+    assert.equal(existsSync(join(tempDir, '.agentdock')), false, 'no .agentdock directory is created by reads');
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
