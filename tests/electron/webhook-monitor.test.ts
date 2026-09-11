@@ -205,6 +205,43 @@ test('triggerWebhook token compare rejects wrong-length tokens with 401', async 
   }
 });
 
+test('authenticateWebhook enforces hook existence, enabled state, and token before any payload work', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Pre-Auth Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'pre-auth-hook', token: 'sec-pre-auth' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+
+    assert.throws(
+      () => context.monitors.authenticateWebhook('missing-hook', 'sec-pre-auth'),
+      (error: unknown) => error instanceof WebhookTriggerError && error.status === 404,
+    );
+    assert.throws(
+      () => context.monitors.authenticateWebhook('pre-auth-hook', 'wrong'),
+      (error: unknown) => error instanceof WebhookTriggerError && error.status === 401,
+    );
+    assert.throws(
+      () => context.monitors.authenticateWebhook('pre-auth-hook', undefined),
+      (error: unknown) => error instanceof WebhookTriggerError && error.status === 401,
+    );
+    await context.monitors.updateMonitor(monitor.id, { enabled: false });
+    assert.throws(
+      () => context.monitors.authenticateWebhook('pre-auth-hook', 'sec-pre-auth'),
+      (error: unknown) => error instanceof WebhookTriggerError && error.status === 400,
+    );
+    await context.monitors.updateMonitor(monitor.id, { enabled: true });
+    assert.doesNotThrow(() => context.monitors.authenticateWebhook('pre-auth-hook', 'sec-pre-auth'));
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
 test('triggerWebhook rejects when monitor is disabled', async () => {
   const context = fixture();
   try {
@@ -357,6 +394,113 @@ test('HTTP automation.hooks.trigger handler supports Bearer, X-Hook-Token, and q
     context.close();
   }
 });
+
+test('webhook trigger authenticates before consuming the request body', async () => {
+  const context = fixture();
+  try {
+    await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Auth Order Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'auth-order-hook', token: 'sec-order' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+
+    const handlers = new Map<string, RouteHandler>();
+    registerAutomationHandlers(handlers, context.monitors);
+    const handler = handlers.get('automation.hooks.trigger');
+    assert.ok(handler, 'automation.hooks.trigger handler must be registered');
+
+    function mockReq(body: unknown, headers: Record<string, string>) {
+      const stream = Readable.from(Buffer.from(JSON.stringify(body))) as any;
+      stream.headers = headers;
+      return stream;
+    }
+
+    // Invalid token + oversized payload: the 401 must win before the body is
+    // buffered or the 1 MiB cap produces a 400.
+    const oversized = { event: 'x'.repeat(2 << 20) };
+    const res = mockJsonRes();
+    await handler(
+      { name: 'automation.hooks.trigger', hookId: 'auth-order-hook' } as any,
+      mockReq(oversized, { authorization: 'Bearer wrong' }),
+      res as any,
+      new URL('http://127.0.0.1/api/local/v1/automation/hooks/auth-order-hook'),
+    );
+    assert.equal(res.statusCode, 401);
+    assert.match(String(res.body?.error || ''), /Invalid or missing webhook token/);
+
+    // Valid token + oversized payload still surfaces the body-cap 400 via the
+    // central request-validation mapping (rejected, not stored or executed).
+    const resTooLarge = mockJsonRes();
+    await assert.rejects(
+      () => handler(
+        { name: 'automation.hooks.trigger', hookId: 'auth-order-hook' } as any,
+        mockReq(oversized, { authorization: 'Bearer sec-order' }),
+        resTooLarge as any,
+        new URL('http://127.0.0.1/api/local/v1/automation/hooks/auth-order-hook'),
+      ),
+      /Request body exceeds/,
+    );
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
+test('automation.monitor.delete forgets the monitor decision memory', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Forgotten Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'forget-hook', token: 'sec-forget' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+
+    // Route the delete through the public short id so the test proves the
+    // handler resolves it to the internal id used as the decision-memory key.
+    const publicId = toPublicAutomationMonitorId(monitor.id);
+    assert.notEqual(publicId, monitor.id);
+
+    const forgotten: string[] = [];
+    const decisionService = {
+      listDecisions: async () => [],
+      forgetMonitor: (monitorId: string) => { forgotten.push(monitorId); },
+    };
+    const handlers = new Map<string, RouteHandler>();
+    registerAutomationHandlers(handlers, context.monitors, decisionService as any);
+    const handler = handlers.get('automation.monitor.delete');
+    assert.ok(handler, 'automation.monitor.delete handler must be registered');
+
+    const res = mockJsonRes();
+    await handler(
+      { name: 'automation.monitor.delete', monitorId: publicId } as any,
+      {} as any,
+      res as any,
+      new URL(`http://127.0.0.1/api/local/v1/automation/monitors/${publicId}`),
+    );
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(forgotten, [monitor.id]);
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
+function mockJsonRes() {
+  return {
+    statusCode: 200,
+    bodyData: '',
+    setHeader() {},
+    writeHead(code: number) { this.statusCode = code; },
+    end(data?: unknown) { this.bodyData = String(data || ''); },
+    get body() { return this.bodyData ? JSON.parse(this.bodyData) : null; },
+  };
+}
 
 test('parseMonitorCondition correctly parses quoted string literals without double escaping', () => {
   const parsed = parseMonitorCondition('status == "failed"');

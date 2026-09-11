@@ -387,26 +387,20 @@ export class AutomationMonitorService {
     return evaluated;
   }
 
-  async triggerWebhook(hookId: string, payload: unknown, token?: string): Promise<{
+  async triggerWebhook(hookId: string, payload: unknown, token?: string, authenticated?: AutomationMonitor): Promise<{
     success: boolean;
     monitorId: string;
     run: AutomationMonitorRun;
     decision: string;
   }> {
     const cleanHookId = String(hookId || '').trim();
-    const monitor = this.getMonitorByHookId(cleanHookId);
-    if (!monitor) {
-      throw new WebhookTriggerError(`Webhook monitor not found: ${cleanHookId}`, 404);
-    }
-    if (!monitor.enabled) {
-      throw new WebhookTriggerError(`Webhook monitor is disabled: ${cleanHookId}`, 400);
-    }
-
-    const expectedToken = String(monitor.sourceConfig?.token || '').trim();
-    const cleanToken = String(token || '').trim();
-    if (!cleanToken || !expectedToken || !webhookTokenEquals(cleanToken, expectedToken)) {
-      throw new WebhookTriggerError('Invalid or missing webhook token.', 401);
-    }
+    // Reuse an already-authenticated monitor only when it demonstrably maps to
+    // this hookId; otherwise fall back to the full authentication path.
+    const monitor = (authenticated
+      && authenticated.sourceType === 'webhook'
+      && (authenticated.sourceConfig?.hookId === cleanHookId || authenticated.id === cleanHookId))
+      ? authenticated
+      : this.authenticateWebhook(cleanHookId, token);
 
     const body = (typeof payload === 'object' && payload !== null)
       ? payload as Record<string, unknown>
@@ -438,6 +432,29 @@ export class AutomationMonitorService {
       run,
       decision,
     };
+  }
+
+  // Pre-flight hook authentication (existence, enabled state, token) so the
+  // HTTP layer can reject before reading the request body.
+  authenticateWebhook(hookId: string, token?: string): AutomationMonitor {
+    const cleanHookId = String(hookId || '').trim();
+    const monitor = this.getMonitorByHookId(cleanHookId);
+    if (!monitor) {
+      throw new WebhookTriggerError(`Webhook monitor not found: ${cleanHookId}`, 404);
+    }
+    if (!monitor.enabled) {
+      throw new WebhookTriggerError(`Webhook monitor is disabled: ${cleanHookId}`, 400);
+    }
+    this.assertWebhookToken(monitor, token);
+    return monitor;
+  }
+
+  private assertWebhookToken(monitor: AutomationMonitor, token?: string): void {
+    const expectedToken = String(monitor.sourceConfig?.token || '').trim();
+    const cleanToken = String(token || '').trim();
+    if (!cleanToken || !expectedToken || !webhookTokenEquals(cleanToken, expectedToken)) {
+      throw new WebhookTriggerError('Invalid or missing webhook token.', 401);
+    }
   }
 
   listMonitorsForThread(threadId: string): AutomationMonitor[] {

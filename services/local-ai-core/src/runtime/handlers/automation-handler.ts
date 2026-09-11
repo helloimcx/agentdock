@@ -82,7 +82,11 @@ export function registerAutomationHandlers(
     json(res, 200, await automationMonitors.updateMonitor((route as { monitorId: string }).monitorId, body));
   });
   map.set('automation.monitor.delete', async (route, _req, res) => {
-    json(res, 200, await automationMonitors.deleteMonitor((route as { monitorId: string }).monitorId));
+    const monitorId = (route as { monitorId: string }).monitorId;
+    const internalId = automationMonitors.resolveRequiredMonitorId(monitorId);
+    const result = await automationMonitors.deleteMonitor(internalId);
+    decisionLogService?.forgetMonitor(internalId);
+    json(res, 200, result);
   });
   map.set('automation.monitor.decisions', async (route, _req, res) => {
     const monitorId = (route as { monitorId: string }).monitorId;
@@ -101,10 +105,23 @@ export function registerAutomationHandlers(
   map.set('automation.hooks.trigger', async (route, req, res, url) => {
     const hookId = (route as { hookId: string }).hookId;
     const token = extractWebhookToken(req, url);
+
+    // Authenticate before consuming the request body so unauthenticated
+    // requests never pay (or abuse) the full 1 MiB buffering cost. The body
+    // read stays outside the catch: RequestValidationError must still reach
+    // the central handler for its 400 mapping.
+    let monitor: ReturnType<typeof automationMonitors.authenticateWebhook>;
+    try {
+      monitor = automationMonitors.authenticateWebhook(hookId, token);
+    } catch (error) {
+      handleWebhookError(res, error);
+      return;
+    }
+
     const payload = await readWebhookPayload(req);
 
     try {
-      const result = await automationMonitors.triggerWebhook(hookId, payload, token);
+      const result = await automationMonitors.triggerWebhook(hookId, payload, token, monitor);
       rawJson(res, 200, result);
     } catch (error) {
       handleWebhookError(res, error);
