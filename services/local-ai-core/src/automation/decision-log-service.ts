@@ -156,6 +156,10 @@ export class DecisionLogService {
     }
     return lessons.slice(0, 10);
   }
+
+  forgetMonitor(monitorId: string): void {
+    this.memoryRecords.delete(monitorId);
+  }
 }
 
 function appendBulletList(lines: string[], heading: string, items?: string[]): void {
