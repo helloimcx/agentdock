@@ -9,6 +9,7 @@ import {
 import { resolveAgentRuntimeDefinition, type AgentRuntimeDefinition } from '../agents/registry.js';
 import { collectProviderEnv as collectSharedProviderEnv } from '../agents/shared/launch-utils.js';
 import { prepareAgentExecutionLaunch } from '../execution/agent-execution-backend.js';
+import { StandardsService } from '../standards/standards-service.js';
 
 export function normalizePlatformTypes(project?: DesktopProjectConfig | null) {
   return Array.isArray(project?.platforms)
@@ -156,5 +157,10 @@ export function toLocalCoreProjectConfig(configState: RuntimeConfigState, projec
     model,
     mcpServers: normalizeMcpServerOptions(project.agent?.options?.mcp_servers),
   };
+  try {
+    new StandardsService().ensureWorkspaceMaterialized(workDir, project);
+  } catch {
+    // Non-blocking materialization guarantee
+  }
   return prepareAgentExecutionLaunch({ configState, project, launchConfig });
 }

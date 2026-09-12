@@ -70,6 +70,8 @@ Key capabilities:
    - `/api/local/v1/runs/*`: ACP agent execution runs and streaming events
    - `/api/local/v1/scheduler/*`: Recurring cron jobs and automated delivery
    - `/api/local/v1/automation/hooks/:hookId`: External inbound webhook triggers for event-driven monitors
+   - `/api/local/v1/standards/*`: Standard packs catalog, AST security scanning, and installation
+   - `/api/local/v1/workspaces/:workspaceId/standards/*`: Workspace standards configuration, materialization, and tech stack detection
    - `/api/local/v1/external/*`: External programmatic integration and per-run SSE streaming
 4. **Channel Gateway Webhooks**: Inbound poller and webhooks for enterprise messaging channels (Lark, WeChat Work).
 
@@ -89,6 +91,7 @@ Key capabilities:
 | **Sandbox Manager**| `services/local-ai-core/src/sandbox/` | Spawns and manages Docker or OpenSandbox containers for isolated code execution. | `services/local-ai-core/src/sandbox/` |
 | **Shared Contracts**| `shared/`, `packages/superai-contracts/` | Cross-process type definitions, shared enums, and API interfaces. | `shared/desktop.ts`, `packages/superai-contracts/` |
 | **Plugin SDK** | `packages/plugin-sdk/` | Extension contracts and interfaces for Local AI Core plugins. | `packages/plugin-sdk/` |
+| **Standards Layer** | `services/local-ai-core/src/standards/` | Multi-scope rule packs (builtin/user/workspace), AST security scan gate (T01-T04), Ponytail decision ladder, conditional rule rendering, and non-destructive marker materialization into AGENTS.md/CLAUDE.md. | `services/local-ai-core/src/standards/` |
 
 ---
 

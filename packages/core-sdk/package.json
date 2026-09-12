@@ -15,6 +15,11 @@
     "./scheduler": "./src/scheduler.ts",
     "./automation": "./src/automation.ts",
     "./automations": "./src/automations.ts",
-    "./knowledge": "./src/knowledge.ts"
+    "./knowledge": "./src/knowledge.ts",
+    "./skills": "./src/skills.ts",
+    "./traces": "./src/traces.ts",
+    "./costs": "./src/costs.ts",
+    "./budgets": "./src/budgets.ts",
+    "./standards": "./src/standards.ts"
   }
 }

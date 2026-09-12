@@ -18,6 +18,7 @@ import { automationMonitorToScheduledJob } from '../automation/automation-schedu
 import { parseDurationMs, parseMonitorCondition, parseMonitorSchedule, parseRetroDelayHours } from './monitor-cli-parsers.js';
 import { formatSafeError } from '../kernel/local-core-errors.js';
 import { runSkillDomain } from './skill-cli-handlers.js';
+import { runRulesDomain } from './standards-cli-handlers.js';
 import type { StdIo, ParsedFlags, CliContext } from './cli-helpers.js';
 import {
   request,
@@ -50,6 +51,9 @@ export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.en
         return await runSchedulerDomain(action, maybeId, flags, env, io, json);
       case 'skill':
         return await runSkillDomain(action, maybeId, flags, env, io, json);
+      case 'rules':
+      case 'standards':
+        return await runRulesDomain(action, maybeId, flags, env, io, json);
       default:
         printUsage(io.stderr);
         return 2;
@@ -708,6 +712,13 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac script test-approval|test|enable-approval|revoke <version-id> --actor <actor> [--json]',
     '  lac script approve|reject <version-id> --approval <approval-id> --actor <actor> [--json]',
     '  lac channel send-file --path "<file>" [--target <chat-or-user-id>] [--workspace <id>] [--workspace-path <path>] [--platform lark] [--name <filename>] [--json]',
+    '  lac rules list [--workspace <id>] [--json]',
+    '  lac rules add <target> [--scope user|workspace] [--force] [--workspace <id>] [--json]',
+    '  lac rules remove <pack-id> [--scope user|workspace] [--json]',
+    '  lac rules scan <file|pack-id> [--json]',
+    '  lac rules materialize [--workspace <id>] [--unattended] [--json]',
+    '  lac rules set-intensity <off|lite|full|ultra> [--workspace <id>] [--json]',
+    '  lac rules detect [--workspace <id>] [--json]',
   ].join('\n') + '\n');
 }
 

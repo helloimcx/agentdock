@@ -12,7 +12,7 @@ import {
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
 } from '@cc/superai-contracts';
-import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
+import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection, StandardsSection } from './workspace-sections';
 import {
   CUSTOM_SELECT_VALUE,
   PLATFORM_TYPE_OPTIONS,
@@ -356,6 +356,7 @@ const PROJECT_TABS: Array<[ProjectTab, string]> = [
   ['platforms', '平台接入'],
   ['sandbox', '云端模式'],
   ['mcp', 'MCP'],
+  ['standards', '编码规范'],
 ];
 
 type ProjectTabContentProps = {
@@ -407,7 +408,10 @@ function ProjectTabContent({
       />
     );
   }
-  return <McpServersSection project={project} updateProject={updateProject} />;
+  if (projectTab === 'mcp') {
+    return <McpServersSection project={project} updateProject={updateProject} />;
+  }
+  return <StandardsSection project={project} updateProject={updateProject} />;
 }
 
 export function ProjectDetails({

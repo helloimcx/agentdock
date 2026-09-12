@@ -57,6 +57,8 @@ import { registerProviderHandlers } from './handlers/provider-handler.js';
 import { registerChannelHandlers } from './handlers/channel-handler.js';
 import { registerExternalHandlers } from './handlers/external-handler.js';
 import { CostService } from '../cost/cost-service.js';
+import { StandardsService } from '../standards/standards-service.js';
+import { registerStandardsHandlers } from './handlers/standards-handler.js';
 import {
   registerOpenAiHandler,
   OpenAiChatCompletionStreamAdapter,
@@ -94,6 +96,7 @@ export interface LocalAiCoreServerBindings {
   readonly kernel: LocalCoreKernel;
   readonly errorReporter: LocalCoreErrorReporter;
   readonly skillCatalog?: ManagedSkillCatalog;
+  readonly standardsService?: StandardsService;
 }
 
 interface LocalAiCoreServerOptions {
@@ -196,6 +199,7 @@ export class LocalAiCoreServer {
     registerProviderHandlers(this.handlers, b.store);
     registerChannelHandlers(this.handlers, b.channelService);
     registerExternalHandlers(this.handlers, b.externalService, (runId, res) => this.attachExternalRunSseClient(runId, res));
+    registerStandardsHandlers(this.handlers, b.standardsService || new StandardsService(), b.workspaceRouter);
 
     const openAiReg: OpenAiStreamRegistration = {
       addAdapter: (runId, adapter) => {

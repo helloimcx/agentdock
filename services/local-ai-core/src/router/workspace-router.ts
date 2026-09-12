@@ -22,6 +22,7 @@ import type {
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
   DesktopProjectConfig,
+  DesktopStandardsOptions,
   ThreadDetail,
   ThreadSummary,
   WorkspaceRegistryEntry,
@@ -783,6 +784,68 @@ export class WorkspaceRouter {
     );
     const matched = projects.find((project) => projectWorkspaceId(project) === workspaceId);
     return String(matched?.agent?.options?.provider_id || '').trim();
+  }
+
+  async getWorkspaceProject(workspaceId: string): Promise<DesktopProjectConfig | undefined> {
+    const configState = await this.options.readRuntimeConfig();
+    const projects = this.withWorkspaceIds(
+      Array.isArray(configState.config?.projects) ? configState.config.projects : [],
+    );
+    return projects.find((project) => projectWorkspaceId(project) === workspaceId);
+  }
+
+  async resolveWorkspacePath(workspaceId: string): Promise<string | undefined> {
+    const reg = this.store.getWorkspaceRegistryEntry(workspaceId);
+    if (reg?.path) return reg.path;
+    const project = await this.getWorkspaceProject(workspaceId);
+    const workDir = project?.agent?.options?.work_dir;
+    return typeof workDir === 'string' ? workDir : undefined;
+  }
+
+  async updateWorkspaceStandards(workspaceId: string, standards: DesktopStandardsOptions): Promise<DesktopStandardsOptions> {
+    const configState = await this.options.readRuntimeConfig();
+    const currentProjects = Array.isArray(configState.config?.projects) ? configState.config.projects : [];
+    const existing = currentProjects.find((project) => (projectWorkspaceId(project) || project.name) === workspaceId);
+    let projects: DesktopProjectConfig[];
+    if (existing) {
+      projects = currentProjects.map((project) => {
+        const pId = projectWorkspaceId(project) || project.name;
+        if (pId === workspaceId) {
+          return {
+            ...project,
+            agent: {
+              ...project.agent,
+              options: {
+                ...project.agent?.options,
+                standards,
+              },
+            },
+          };
+        }
+        return project;
+      });
+    } else {
+      const reg = this.store.getWorkspaceRegistryEntry(workspaceId);
+      if (reg) {
+        const newProject: DesktopProjectConfig = {
+          workspace_id: workspaceId,
+          name: reg.displayName || workspaceId,
+          agent: {
+            type: 'localcore-acp',
+            options: { standards },
+          },
+          platforms: [],
+        };
+        projects = [...currentProjects, newProject];
+      } else {
+        projects = currentProjects;
+      }
+    }
+    this.store.saveRuntimeConfig({
+      ...configState.config,
+      projects,
+    });
+    return standards;
   }
 
   private async listLocalCoreProjects() {

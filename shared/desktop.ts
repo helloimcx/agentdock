@@ -693,6 +693,19 @@ export interface DesktopMcpServerOptions {
   enabled?: boolean;
 }
 
+export type DesktopStandardsIntensity = 'off' | 'lite' | 'full' | 'ultra';
+
+export interface DesktopStandardsOptions {
+  enabled?: boolean;
+  intensity?: DesktopStandardsIntensity;
+  active_packs?: string[];
+  auto_detect_stack?: boolean;
+  custom_rules?: string;
+  target_files?: string[];
+  last_materialized_at?: string;
+  last_content_hash?: string;
+}
+
 export interface DesktopProjectConfig {
   /** Stable Local AI Core identity. Display-name changes must not change this value. */
   workspace_id?: string;
@@ -703,6 +716,7 @@ export interface DesktopProjectConfig {
       provider_id?: string;
       sandbox?: DesktopSandboxOptions;
       mcp_servers?: DesktopMcpServerOptions[];
+      standards?: DesktopStandardsOptions;
     };
     /** @deprecated Providers are stored independently and projects should reference options.provider_id. */
     providers?: DesktopProviderConfig[];

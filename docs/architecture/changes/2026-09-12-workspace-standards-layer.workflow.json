@@ -1,0 +1,169 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentDock 工作区常驻编码规范层与多 Agent 指令材料化流水线",
+    "locale": "zh-CN",
+    "output": "docs/architecture/changes/2026-09-12-workspace-standards-layer.html",
+    "quality_profile": "showcase",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "ingress-and-scan",
+        "label": "规则包接入与安全门禁",
+        "focus": ["pack_sources", "stack_detector", "security_gate", "ponytail_ladder"],
+        "note": "多语言规则包及设计规范统一接入，强制通过 #93 静态注入扫描门禁"
+      },
+      {
+        "id": "materialization-pipeline",
+        "label": "决策阶梯与锚点材料化",
+        "focus": ["ponytail_ladder", "materializer_engine", "agent_instruction_files"],
+        "note": "Ponytail 5 级决策阶梯排序，<important if> 动静两阶段裁剪，无损写入各 Agent 原生指令"
+      },
+      {
+        "id": "agent-consumption",
+        "label": "多 Agent 零开销生效",
+        "focus": ["materializer_engine", "agent_instruction_files"],
+        "note": "Claude Code/Pi/Codex/OpenCode/Cursor 原生消费对应指令文件，无需额外运行时代理"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "sources", "label": "规则源与技术栈感知 (Packs & Detection)" },
+    { "id": "governance", "label": "控制面安全与决策阶梯 (Governance & Safety)" },
+    { "id": "materializer", "label": "材料化与受管文件 (Materialization & Agents)" }
+  ],
+  "phases": [
+    { "id": "phase_discovery", "label": "规则采集与技术栈感知", "fromCol": 0, "toCol": 1 },
+    { "id": "phase_governance", "label": "安全扫描与阶梯分级", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "phase_materialize", "label": "锚点保护与无损写入", "fromCol": 4, "toCol": 4 },
+    { "id": "phase_consumption", "label": "多 Agent 原生遵循", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "pack_sources",
+    "stack_detector",
+    "security_gate",
+    "ponytail_ladder",
+    "materializer_engine",
+    "agent_instruction_files"
+  ],
+  "nodes": [
+    {
+      "id": "pack_sources",
+      "lane": "sources",
+      "col": 0,
+      "type": "frontend",
+      "label": "多源规范规则包",
+      "sublabel": "Go指南 · 设计MD · 规则集",
+      "width": 140
+    },
+    {
+      "id": "stack_detector",
+      "lane": "sources",
+      "col": 1,
+      "type": "backend",
+      "label": "技术栈特征嗅探",
+      "sublabel": "TS / React / Python 探测",
+      "width": 140
+    },
+    {
+      "id": "security_gate",
+      "lane": "governance",
+      "col": 2,
+      "type": "security",
+      "label": "#93 提示词安检门禁",
+      "sublabel": "T01 劫持与恶意载荷拦截",
+      "width": 140
+    },
+    {
+      "id": "ponytail_ladder",
+      "lane": "governance",
+      "col": 3,
+      "type": "backend",
+      "label": "Ponytail 决策阶梯",
+      "sublabel": "安全豁免与四档强度分级",
+      "width": 140
+    },
+    {
+      "id": "materializer_engine",
+      "lane": "materializer",
+      "col": 4,
+      "type": "backend",
+      "label": "锚点无损材料化引擎",
+      "sublabel": "Marker 保护与原子写入",
+      "width": 140
+    },
+    {
+      "id": "agent_instruction_files",
+      "lane": "materializer",
+      "col": 5,
+      "type": "database",
+      "label": "受管 Agent 规范文件",
+      "sublabel": "AGENTS / CLAUDE.md 等",
+      "width": 140
+    }
+  ],
+  "edges": [
+    {
+      "id": "sources-to-detector",
+      "from": "pack_sources",
+      "to": "stack_detector",
+      "label": "加载规则包",
+      "variant": "default"
+    },
+    {
+      "id": "detector-to-security",
+      "from": "stack_detector",
+      "to": "security_gate",
+      "label": "推荐/激活包流转",
+      "variant": "default"
+    },
+    {
+      "id": "security-to-ladder",
+      "from": "security_gate",
+      "to": "ponytail_ladder",
+      "label": "安全审计放行 (0 High/Crit)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ladder-to-materializer",
+      "from": "ponytail_ladder",
+      "to": "materializer_engine",
+      "label": "装配阶梯与条件剪枝",
+      "variant": "emphasis"
+    },
+    {
+      "id": "materializer-to-files",
+      "from": "materializer_engine",
+      "to": "agent_instruction_files",
+      "label": "保留手写内容 · 幂等更新",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "常驻规范层 (Always-Loaded Standards)",
+      "items": [
+        "与按需加载的 Skills (SKILL.md) 互补，将全局编码准则常驻注入 Agent 上下文",
+        "涵盖 JetBrains go-modern-guidelines、VoltAgent awesome-design-md 及通用架构防腐准则"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Ponytail 决策阶梯与强度分级",
+      "items": [
+        "5 级阶梯裁决权衡：安全边界 > 正确性与架构 > 极简实现 > 性能 > 风格",
+        "支持 lite / full / ultra / off 四档强度，严格内建不可削减的安全豁免条款 (Safety Carve-Out)"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "锚点保护与条件激活 (<important if>)",
+      "items": [
+        "定界符保护：<!-- agentdock:standards:start/end --> 确保用户外部手写内容 100% 绝对不受损",
+        "静态剪枝消灭无效 Token，运行时语义标签使 Agent 在敏感边界与无人值守场景精准聚焦"
+      ]
+    }
+  ]
+}

@@ -120,6 +120,15 @@ export type LocalAiCoreRoute =
   | { name: 'skills.toggle' }
   | { name: 'skills.scan' }
   | { name: 'skills.route' }
+  | { name: 'standards.packs.list' }
+  | { name: 'standards.packs.get'; packId: string }
+  | { name: 'standards.packs.install' }
+  | { name: 'standards.packs.scan' }
+  | { name: 'standards.packs.remove'; packId: string }
+  | { name: 'workspaces.standards.get'; workspaceId: string }
+  | { name: 'workspaces.standards.update'; workspaceId: string }
+  | { name: 'workspaces.standards.materialize'; workspaceId: string }
+  | { name: 'workspaces.standards.detect'; workspaceId: string }
   | { name: 'capabilities.read' }
   | { name: 'capabilities.snapshot' }
   | { name: 'diagnostics.errors' }
@@ -211,6 +220,7 @@ const SEGMENT_ROUTE_PARSERS: Record<string, SegmentRouteParser> = {
   tasks: parseTasksRoute,
   knowledge: parseKnowledgeRoute,
   skills: parseSkillsRoute,
+  standards: parseStandardsRoute,
   capabilities: parseCapabilitiesRoute,
   diagnostics: parseDiagnosticsRoute,
   plugins: parsePluginsRoute,
@@ -463,6 +473,34 @@ function parseWorkspacesRoute(method: string, segments: string[]): LocalAiCoreRo
   const workspaceId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
   if (method === 'POST' && workspaceId && segments.length === 3 && segments[2] === 'streaming-probe') {
     return { name: 'workspace.streaming-probe', workspaceId };
+  }
+  if (workspaceId && segments.length >= 3 && segments[2] === 'standards') {
+    if (segments.length === 3) {
+      if (method === 'GET') return { name: 'workspaces.standards.get', workspaceId };
+      if (method === 'PUT' || method === 'POST') return { name: 'workspaces.standards.update', workspaceId };
+    }
+    if (segments.length === 4 && segments[3] === 'materialize' && method === 'POST') {
+      return { name: 'workspaces.standards.materialize', workspaceId };
+    }
+    if (segments.length === 4 && segments[3] === 'detect' && (method === 'GET' || method === 'POST')) {
+      return { name: 'workspaces.standards.detect', workspaceId };
+    }
+  }
+  return null;
+}
+
+function parseStandardsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
+  if (segments.length === 1 || (segments.length === 2 && segments[1] === 'packs')) {
+    if (method === 'GET') return { name: 'standards.packs.list' };
+    if (method === 'POST') return { name: 'standards.packs.install' };
+  }
+  if (segments.length === 3 && segments[1] === 'packs' && segments[2] === 'scan' && method === 'POST') {
+    return { name: 'standards.packs.scan' };
+  }
+  if (segments.length === 3 && segments[1] === 'packs') {
+    const packId = decodeURIComponent(segments[2] || '');
+    if (method === 'GET') return { name: 'standards.packs.get', packId };
+    if (method === 'DELETE') return { name: 'standards.packs.remove', packId };
   }
   return null;
 }
