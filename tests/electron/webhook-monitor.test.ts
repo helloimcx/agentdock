@@ -576,6 +576,77 @@ test('automation.monitor.decisions resolves public short monitor ids to internal
   }
 });
 
+test('automation.monitor.decisions resolves identity without eager evaluation queries', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Identity Resolution Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'identity-hook', token: 'sec-identity' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Analyze the webhook event.',
+    });
+
+    const workspacePath = join(context.path, 'workspace');
+    const decisionService = new DecisionLogService({ getWorkspacePath: () => workspacePath });
+    await decisionService.appendDecision({
+      id: 'dec_b4c5d6e7f8091223',
+      monitorId: monitor.id,
+      workspaceId: 'workspace-a',
+      runId: `run:agentdock::${monitor.id}:1756950000002`,
+      threadId: 'thread:workspace-a::11111111-2222-3333-4444-555555555555',
+      action: 'WATCH',
+      confidence: 50,
+      thesis: 'Identity-only resolution.',
+      bullPoints: [],
+      bearPoints: [],
+      keyAssumptions: [],
+      dataSnapshot: {},
+      createdAt: '2026-09-13T08:00:00.000Z',
+      retrospectiveStatus: 'pending',
+    });
+
+    const handlers = new Map<string, RouteHandler>();
+    registerAutomationHandlers(handlers, context.monitors, decisionService);
+    const handler = handlers.get('automation.monitor.decisions');
+    assert.ok(handler, 'automation.monitor.decisions handler must be registered');
+
+    // Identity resolution must not pay getMonitor's eager evaluation/run/state
+    // queries: the decisions drawer only needs the internal id + workspaceId.
+    const automations = context.automations as any;
+    const eager = { evaluations: 0, runs: 0, state: 0 };
+    for (const [method, counter] of [
+      ['listEvaluations', 'evaluations'],
+      ['listRuns', 'runs'],
+      ['getLatestEvaluationWithState', 'state'],
+    ] as const) {
+      const original = automations[method].bind(context.automations);
+      automations[method] = (...args: unknown[]) => {
+        eager[counter] += 1;
+        return original(...args);
+      };
+    }
+
+    const publicId = toPublicAutomationMonitorId(monitor.id);
+    assert.notEqual(publicId, monitor.id);
+    const res = mockJsonRes();
+    await handler(
+      { name: 'automation.monitor.decisions', monitorId: publicId } as any,
+      {} as any,
+      res as any,
+      new URL(`http://127.0.0.1/api/local/v1/automation/monitors/${publicId}/decisions`),
+    );
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.data.decisions.length, 1);
+    assert.equal(res.body.data.decisions[0].id, 'dec_b4c5d6e7f8091223');
+    assert.deepEqual(eager, { evaluations: 0, runs: 0, state: 0 });
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
 test('automation.monitor.decisions reads persisted decisions after restart from the workspace dir', async () => {
   const context = fixture();
   try {
