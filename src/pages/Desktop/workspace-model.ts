@@ -39,7 +39,7 @@ export type Notice = {
   message: string;
 };
 
-export type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox' | 'mcp' | 'standards';
+export type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox' | 'mcp' | 'standards' | 'memory';
 
 export type PlatformDialogState = {
   index: number | null;

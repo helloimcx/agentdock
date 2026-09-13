@@ -174,6 +174,12 @@ export class ThreadCommandService {
         this.options.closeThreadSession?.(threadId);
       }
       this.persistChannelPreferredAgent(channel, workspaceId, null);
+      const handoff = this.options.createHandoffOnAgentSwitch?.({
+        threadId,
+        fromAgent: currentAgent,
+        toAgent: defaultAgent,
+      });
+      const handoffNote = handoff ? '\n已生成会话交接摘要，后续任务将自动承接上下文。' : '';
       this.options.createAuditEvent({
         type: 'agent.changed',
         workspaceId,
@@ -181,7 +187,7 @@ export class ThreadCommandService {
         summary: `Thread agent reset to ${defaultAgent}.`,
         metadata: { threadId, agentType: defaultAgent, previousAgentType: currentAgent },
       });
-      return `已清除当前线程 Agent 设置。\n当前线程将回到默认 Agent：${defaultAgent}。`;
+      return `已清除当前线程 Agent 设置。\n当前线程将回到默认 Agent：${defaultAgent}。${handoffNote}`;
     }
 
     const rawRequested = action === 'use' ? rest.join(' ').trim() : args.join(' ').trim();
@@ -208,6 +214,12 @@ export class ThreadCommandService {
       this.options.closeThreadSession?.(threadId);
     }
     this.persistChannelPreferredAgent(channel, workspaceId, canonicalAgent);
+    const handoff = this.options.createHandoffOnAgentSwitch?.({
+      threadId,
+      fromAgent: currentAgent,
+      toAgent: canonicalAgent,
+    });
+    const handoffNote = handoff ? '\n已生成会话交接摘要，后续任务将自动承接上下文。' : '';
     const runningNote = activeRun
       ? `\n当前正在运行的任务仍会继续使用 ${currentAgent}，下一轮开始生效。`
       : '';
@@ -218,7 +230,7 @@ export class ThreadCommandService {
       summary: `Thread agent changed to ${canonicalAgent}.`,
       metadata: { threadId, agentType: canonicalAgent, previousAgentType: currentAgent },
     });
-    return `已将当前线程 Agent 切换为 ${canonicalAgent}。\n后续消息将使用 ${canonicalAgent} 处理。${runningNote}`;
+    return `已将当前线程 Agent 切换为 ${canonicalAgent}。\n后续消息将使用 ${canonicalAgent} 处理。${handoffNote}${runningNote}`;
   }
 
   private persistChannelPreferredAgent(
