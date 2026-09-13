@@ -7,10 +7,10 @@ import type {
   StandardPackScanReport,
   WorkspaceStandardsConfig,
   MaterializeStandardsResult,
-  RuleIntensityLevel,
   RulePackScope,
 } from '@cc/superai-contracts/standards';
-import type { DesktopProjectConfig } from '@cc/superai-contracts';
+import { DEFAULT_STANDARDS_TARGET_FILES, DEFAULT_STANDARDS_INTENSITY } from '@cc/superai-contracts/standards';
+import type { DesktopProjectConfig, DesktopStandardsOptions } from '@cc/superai-contracts';
 import {
   scanSkillContent,
   summarizeFindings,
@@ -43,6 +43,23 @@ function validatePackId(packId: string): string {
 
 export interface StandardsServiceOptions {
   userStandardsDir?: string;
+}
+
+// Single mapping from the desktop project's snake_case standards options to
+// the runtime WorkspaceStandardsConfig; callers previously duplicated this
+// (with drifting targetFiles defaults) across handler and service code.
+export function standardsConfigFromOptions(
+  rawOptions?: DesktopStandardsOptions,
+): WorkspaceStandardsConfig | undefined {
+  if (!rawOptions) return undefined;
+  return {
+    enabled: rawOptions.enabled !== false,
+    intensity: rawOptions.intensity || DEFAULT_STANDARDS_INTENSITY,
+    activePacks: rawOptions.active_packs || ['general'],
+    autoDetectStack: rawOptions.auto_detect_stack !== false,
+    customRules: rawOptions.custom_rules,
+    targetFiles: rawOptions.target_files || [...DEFAULT_STANDARDS_TARGET_FILES],
+  };
 }
 
 export class StandardsService {
@@ -268,68 +285,52 @@ export class StandardsService {
       return null;
     }
 
-    const config: WorkspaceStandardsConfig = {
-      enabled: true,
-      intensity: (rawOptions.intensity as RuleIntensityLevel) || 'full',
-      activePacks: rawOptions.active_packs || ['general'],
-      autoDetectStack: rawOptions.auto_detect_stack !== false,
-      customRules: rawOptions.custom_rules,
-      targetFiles: rawOptions.target_files || ['AGENTS.md', 'CLAUDE.md'],
-    };
-
     return this.materialize({
       workspacePath,
       workspaceId: project?.workspace_id || project?.name,
-      config,
+      config: standardsConfigFromOptions(rawOptions),
     });
   }
 
   private scanDirectoryPacks(dir: string, scope: RulePackScope, map: Map<string, StandardPackInfo>) {
+    this.forEachPackFileInDir(dir, (meta, filePath) => {
+      map.set(meta.id, {
+        id: meta.id,
+        name: meta.name,
+        language: meta.language,
+        description: meta.description,
+        version: meta.version,
+        scope,
+        path: filePath,
+        enabled: true,
+        ruleCount: meta.rules?.length || 0,
+        tags: meta.tags,
+      });
+    });
+  }
+
+  private loadPacksFromDir(dir: string, map: Map<string, StandardPackMetadata>) {
+    this.forEachPackFileInDir(dir, (meta) => {
+      map.set(meta.id, meta);
+    });
+  }
+
+  // Later callers overwrite earlier map entries, which is what gives
+  // workspace-scope packs precedence over user-scope packs with the same id.
+  private forEachPackFileInDir(dir: string, visit: (meta: StandardPackMetadata, filePath: string) => void): void {
     if (!existsSync(dir)) return;
     try {
       const files = readdirSync(dir).filter((f) => f.endsWith('.md'));
       for (const file of files) {
         try {
           const filePath = join(dir, file);
-          const content = readFileSync(filePath, 'utf8');
-          const meta = parseStandardPack(content);
-          map.set(meta.id, {
-            id: meta.id,
-            name: meta.name,
-            language: meta.language,
-            description: meta.description,
-            version: meta.version,
-            scope,
-            path: filePath,
-            enabled: true,
-            ruleCount: meta.rules?.length || 0,
-            tags: meta.tags,
-          });
+          visit(parseStandardPack(readFileSync(filePath, 'utf8')), filePath);
         } catch {
-          // ignore corrupt file
+          // ignore corrupt pack files
         }
       }
     } catch {
       // ignore readdir errors
-    }
-  }
-
-  private loadPacksFromDir(dir: string, map: Map<string, StandardPackMetadata>) {
-    if (!existsSync(dir)) return;
-    try {
-      const files = readdirSync(dir).filter((f) => f.endsWith('.md'));
-      for (const file of files) {
-        try {
-          const filePath = join(dir, file);
-          const content = readFileSync(filePath, 'utf8');
-          const meta = parseStandardPack(content);
-          map.set(meta.id, meta);
-        } catch {
-          // ignore
-        }
-      }
-    } catch {
-      // ignore
     }
   }
 }
