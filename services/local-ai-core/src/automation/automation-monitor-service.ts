@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type {
+  AutomationDefinition,
   AutomationMonitor,
   AutomationMonitorCreateInput,
   AutomationMonitorEventSnapshot,
@@ -205,9 +206,8 @@ export class AutomationMonitorService {
   }
 
   getMonitor(monitorId: string): AutomationMonitor | undefined {
-    const resolved = this.resolveMonitorId(monitorId);
-    const automation = resolved ? this.options.automations.get(resolved) : undefined;
-    return automation?.originKind === 'automation-monitor'
+    const automation = this.resolveMonitorAutomation(monitorId);
+    return automation
       ? automationToMonitor(
         automation,
         latestFinishedEvaluation(this.options.automations.listEvaluations(automation.id)),
@@ -684,14 +684,15 @@ export class AutomationMonitorService {
             callbackLifecycleGeneration === undefined
             || !this.isCurrentLifecycle(callbackLifecycleGeneration, 'running')
           ) return;
-          const latest = this.getMonitor(monitor.id);
+          // Guard directly on the definition: getMonitor would run four more
+          // queries only to read `enabled` (a passthrough of automation.enabled).
           const definition = this.options.automations.get(monitor.id);
           if (
-            latest?.enabled
-            && definition?.health !== 'blocked'
+            definition?.enabled
+            && definition.health !== 'blocked'
             && this.subscriptionHandles.has(monitor.id)
           ) {
-            await this.evaluateEvent(latest.id, event, {
+            await this.evaluateEvent(monitor.id, event, {
               kind: 'subscription', generation, lifecycleGeneration: callbackLifecycleGeneration,
             });
           }
@@ -967,14 +968,25 @@ export class AutomationMonitorService {
     return monitor;
   }
 
-  private resolveMonitorId(monitorId: string): string {
+  private resolveMonitorAutomation(monitorId: string): AutomationDefinition | undefined {
     const direct = this.options.automations.get(monitorId);
-    if (direct?.originKind === 'automation-monitor') return direct.id;
+    if (direct?.originKind === 'automation-monitor') return direct;
     const matches = this.options.automations.list().filter((automation) =>
       automation.originKind === 'automation-monitor' && toPublicAutomationMonitorId(automation.id) === monitorId
     );
     if (matches.length > 1) throw new Error(`Automation monitor id is ambiguous: ${monitorId}`);
-    return matches[0]?.id || '';
+    return matches[0];
+  }
+
+  private resolveMonitorId(monitorId: string): string {
+    return this.resolveMonitorAutomation(monitorId)?.id || '';
+  }
+
+  // Identity-only resolution for callers that need (internal id, workspaceId)
+  // but not the eager evaluation/run/state queries getMonitor performs.
+  getMonitorIdentity(monitorId: string): { id: string; workspaceId: string } | undefined {
+    const automation = this.resolveMonitorAutomation(monitorId);
+    return automation ? { id: automation.id, workspaceId: automation.workspaceId } : undefined;
   }
 
   resolveRequiredMonitorId(monitorId: string): string {
