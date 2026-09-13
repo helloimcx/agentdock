@@ -1,15 +1,15 @@
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
 import type { StandardsService } from '../../standards/standards-service.js';
+import { standardsConfigFromOptions, StandardSecurityError } from '../../standards/standards-service.js';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import { detectWorkspaceTechStack } from '../../standards/standards-detector.js';
 import type { DesktopStandardsOptions } from '@cc/superai-contracts';
+import { DEFAULT_STANDARDS_TARGET_FILES, DEFAULT_STANDARDS_INTENSITY } from '@cc/superai-contracts/standards';
 import type {
   InstallStandardPackInput,
-  RuleIntensityLevel,
   WorkspaceStandardsConfig,
 } from '@cc/superai-contracts/standards';
-import { StandardSecurityError } from '../../standards/standards-service.js';
 
 export function registerStandardsHandlers(
   map: Map<string, RouteHandler>,
@@ -41,19 +41,9 @@ function registerPackQueryHandlers(
     let workspaceConfig: WorkspaceStandardsConfig | undefined;
 
     if (workspaceId) {
-      if (!workspacePath) workspacePath = await workspaceRouter.resolveWorkspacePath(workspaceId);
       const project = await workspaceRouter.getWorkspaceProject(workspaceId);
-      if (project?.agent?.options?.standards) {
-        const std = project.agent.options.standards;
-        workspaceConfig = {
-          enabled: std.enabled !== false,
-          intensity: (std.intensity as RuleIntensityLevel) || 'full',
-          activePacks: std.active_packs || ['general'],
-          autoDetectStack: std.auto_detect_stack !== false,
-          customRules: std.custom_rules,
-          targetFiles: std.target_files,
-        };
-      }
+      if (!workspacePath) workspacePath = await workspaceRouter.resolveWorkspacePath(workspaceId, project);
+      workspaceConfig = standardsConfigFromOptions(project?.agent?.options?.standards);
     }
 
     const packs = standardsService.listPacks({ workspacePath, workspaceConfig });
@@ -155,14 +145,14 @@ function registerWorkspaceStandardsCrudHandlers(
   map.set('workspaces.standards.get', async (route, _req, res) => {
     const workspaceId = (route as { workspaceId: string }).workspaceId;
     const project = await workspaceRouter.getWorkspaceProject(workspaceId);
-    const workspacePath = await workspaceRouter.resolveWorkspacePath(workspaceId);
+    const workspacePath = await workspaceRouter.resolveWorkspacePath(workspaceId, project);
 
     const standards = project?.agent?.options?.standards || {
       enabled: true,
-      intensity: 'full',
+      intensity: DEFAULT_STANDARDS_INTENSITY,
       active_packs: ['general'],
       auto_detect_stack: true,
-      target_files: ['AGENTS.md', 'CLAUDE.md'],
+      target_files: [...DEFAULT_STANDARDS_TARGET_FILES],
     };
 
     const detectedStacks = workspacePath
@@ -188,14 +178,7 @@ function registerWorkspaceStandardsCrudHandlers(
         materialized = standardsService.materialize({
           workspacePath,
           workspaceId,
-          config: {
-            enabled: true,
-            intensity: (updated.intensity as RuleIntensityLevel) || 'full',
-            activePacks: updated.active_packs || ['general'],
-            autoDetectStack: updated.auto_detect_stack !== false,
-            customRules: updated.custom_rules,
-            targetFiles: updated.target_files || ['AGENTS.md', 'CLAUDE.md'],
-          },
+          config: standardsConfigFromOptions(updated),
         });
       } catch (err: any) {
         if (err instanceof StandardSecurityError) {
@@ -219,27 +202,20 @@ function registerWorkspaceStandardsActionHandlers(
   map.set('workspaces.standards.materialize', async (route, req, res) => {
     const workspaceId = (route as { workspaceId: string }).workspaceId;
     const body = (await readJsonBody(req)) as { unattended?: boolean } | null;
-    const workspacePath = await workspaceRouter.resolveWorkspacePath(workspaceId);
+    const project = await workspaceRouter.getWorkspaceProject(workspaceId);
+    const workspacePath = await workspaceRouter.resolveWorkspacePath(workspaceId, project);
     if (!workspacePath) {
       json(res, 404, { error: `Workspace "${workspaceId}" path not found.` });
       return;
     }
 
-    const project = await workspaceRouter.getWorkspaceProject(workspaceId);
     const std = project?.agent?.options?.standards;
 
     try {
       const result = standardsService.materialize({
         workspacePath,
         workspaceId,
-        config: {
-          enabled: std?.enabled !== false,
-          intensity: (std?.intensity as RuleIntensityLevel) || 'full',
-          activePacks: std?.active_packs || ['general'],
-          autoDetectStack: std?.auto_detect_stack !== false,
-          customRules: std?.custom_rules,
-          targetFiles: std?.target_files || ['AGENTS.md', 'CLAUDE.md'],
-        },
+        config: standardsConfigFromOptions(std),
         unattended: body?.unattended,
       });
 
