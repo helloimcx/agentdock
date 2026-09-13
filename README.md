@@ -42,6 +42,14 @@ AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、Open
 
 ## New
 
+### 2026-09-12
+
+- **工作区多 Agent 编码规范层（Issue #117）**：
+  - **规范材料化与非破坏性标记保证**：自动将技术栈最佳实践与架构不变式材料化至工作区目标文件（`AGENTS.md`、`CLAUDE.md`、`.cursorrules`），采用唯一标记块 `<!-- agentdock:standards:start/end -->`，100% 保持用户手写指令原样。
+  - **Ponytail 决策阶梯与 4 级强度控制 (`off/lite/full/ultra`)**：内置 5 级决策优先级（系统完整性 > 架构边界 > 极简与最小差异 > 实测性能 > 格式风格），支持动态调节规范注入强度与 `<important if>` 条件规则激活。
+  - **多范围规范包与供应链安全扫描门禁**：支持内置 (builtin)、用户全局 (`~/.agentdock/standards/`) 与工作区私有 (`.agentdock/standards/`) 三层规范包，内置 T01-T04 AST 恶意指令安全扫描门禁。
+  - **全链路 CLI、REST API 与桌面可视化配置**：提供 `lac rules` 命令行套件、全套 REST API 路由，以及桌面项目配置中的「编码规范」可视化面板，支持一键技术栈智能识别与即时材料化。
+
 ### 2026-09-06
 
 - **事件触发型监控深度决策工作流（Issue #112）**：

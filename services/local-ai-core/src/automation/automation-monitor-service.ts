@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type {
   AutomationDefinition,
   AutomationMonitor,
@@ -46,19 +46,13 @@ type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
   route: NonNullable<AutomationMonitorCreateInput['route']>;
 };
 
-// A monitor with a schedule only polls when the current wall clock (in the schedule's
-// timezone) matches the cron expression. Stored schedules are validated on create/update,
-// so fail-open here would only trigger on corrupted state — degrading to always-poll is
-// safer for a monitoring tool than silently dropping evaluations.
-export function isMonitorWithinSchedule(schedule: AutomationMonitorSchedule | undefined, now: Date): boolean {
-  if (!schedule) return true;
-  try {
-    const compiled = compileCronExpression(schedule.cron);
-    return cronMatchesFields(compiled, extractFieldsInTimezone(now, schedule.timezone));
-  } catch {
-    return true;
-  }
-}
+import {
+  WebhookTriggerError,
+  webhookTokenEquals,
+  isMonitorWithinSchedule,
+} from './automation-monitor-helpers.js';
+
+export { WebhookTriggerError, isMonitorWithinSchedule };
 
 type AutomationMonitorServiceOptions = {
   store: LocalCoreAcpStore;
@@ -73,21 +67,6 @@ type AutomationMonitorServiceOptions = {
 };
 const PROVIDER_EVENT_CONCURRENCY = 4;
 type MonitorLifecycleState = 'starting' | 'running' | 'stopping' | 'stopped';
-
-export class WebhookTriggerError extends Error {
-  constructor(message: string, readonly status: 400 | 401 | 404) {
-    super(message);
-    this.name = 'WebhookTriggerError';
-  }
-}
-
-// Hashing both sides first keeps the comparison constant-time regardless of
-// token length, so a wrong-length guess cannot short-circuit or throw.
-function webhookTokenEquals(provided: string, expected: string): boolean {
-  const providedDigest = createHash('sha256').update(provided).digest();
-  const expectedDigest = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(providedDigest, expectedDigest);
-}
 
 export class AutomationMonitorService {
   private timer: NodeJS.Timeout | null = null;

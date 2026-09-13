@@ -60,7 +60,8 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 
 - lives in `services/local-ai-core/`
 - exposes `/api/local/v1/*`
-- owns thread routing, SQLite persistence, ACP streaming, scheduler execution, channel ingress/delivery, sandbox launch, and external API mappings
+- owns thread routing, SQLite persistence, ACP streaming, scheduler execution, channel ingress/delivery, sandbox launch, coding standards materialization, and external API mappings
+- provides multi-scope rule pack loading, security scan gates (T01-T04), Ponytail 5-level decision ladder rendering, and non-destructive materialization into target instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`)
 
 Local AI Core exposes external run APIs under `/api/local/v1/external/*`:
 

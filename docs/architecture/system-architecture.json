@@ -55,7 +55,7 @@
     {
       "id": "external_client",
       "type": "external",
-      "label": "外部系统 / API · Webhook",
+      "label": "外部系统 / Webhook",
       "sublabel": "/external/* · Webhook 接入",
       "pos": [50, 520],
       "size": [150, 60]

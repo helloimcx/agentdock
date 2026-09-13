@@ -18,6 +18,7 @@ import type {
   DesktopProjectConfig,
   DesktopProviderConfig,
   DesktopSandboxOptions,
+  DesktopStandardsOptions,
 } from '@cc/superai-contracts';
 
 export {
@@ -38,7 +39,7 @@ export type Notice = {
   message: string;
 };
 
-export type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox' | 'mcp';
+export type ProjectTab = 'basic' | 'providers' | 'platforms' | 'sandbox' | 'mcp' | 'standards';
 
 export type PlatformDialogState = {
   index: number | null;
@@ -259,3 +260,44 @@ export function fromSandboxForm(input: SandboxForm): DesktopSandboxOptions {
     memory: input.memory.trim() || defaultSandboxForm.memory,
   };
 }
+
+export type StandardsForm = {
+  enabled: boolean;
+  intensity: 'off' | 'lite' | 'full' | 'ultra';
+  active_packs: string[];
+  auto_detect_stack: boolean;
+  custom_rules: string;
+  target_files: string[];
+};
+
+const defaultStandardsForm: StandardsForm = {
+  enabled: true,
+  intensity: 'full',
+  active_packs: ['general'],
+  auto_detect_stack: true,
+  custom_rules: '',
+  target_files: ['AGENTS.md', 'CLAUDE.md'],
+};
+
+export function toStandardsForm(input?: DesktopStandardsOptions): StandardsForm {
+  return {
+    enabled: input?.enabled !== false,
+    intensity: input?.intensity || 'full',
+    active_packs: input?.active_packs || ['general'],
+    auto_detect_stack: input?.auto_detect_stack !== false,
+    custom_rules: input?.custom_rules || '',
+    target_files: input?.target_files || ['AGENTS.md', 'CLAUDE.md'],
+  };
+}
+
+export function fromStandardsForm(input: StandardsForm): DesktopStandardsOptions {
+  return {
+    enabled: input.enabled,
+    intensity: input.intensity,
+    active_packs: input.active_packs,
+    auto_detect_stack: input.auto_detect_stack,
+    custom_rules: input.custom_rules || undefined,
+    target_files: input.target_files,
+  };
+}
+
