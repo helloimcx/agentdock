@@ -50,6 +50,37 @@ test('condition helper path is catalog-owned and remains valid outside the repos
   assert.equal(existsSync(helperPath), true);
 });
 
+test('agent message policy injects pending handoff delimiter when provided', () => {
+  const message = composeAgentMessage(
+    'Please continue the refactoring',
+    [],
+    undefined,
+    undefined,
+    {
+      threadId: 'thread:test::001',
+      runId: 'run:101',
+      fromAgent: 'claude-code',
+      toAgent: 'codex',
+      summary: 'Completed database migration',
+      decisions: ['Use SQLite FTS5'],
+      openQuestions: ['Vector search support?'],
+      nextSteps: ['Run tests'],
+      artifacts: ['src/db.ts'],
+    },
+  );
+
+  assert.match(message, /\[Session Handoff from claude-code to codex\]/);
+  assert.match(message, /Source Run: run:101/);
+  assert.match(message, /Summary: Completed database migration/);
+  assert.match(message, /Key Decisions:\n- Use SQLite FTS5/);
+  assert.match(message, /Artifacts & Modified Files:\n- src\/db\.ts/);
+  assert.match(message, /Open Questions \/ Pending Issues:\n- Vector search support\?/);
+  assert.match(message, /Suggested Next Steps:\n- Run tests/);
+  assert.match(message, /\[\/Session Handoff\]/);
+  assert.match(message, /\[User Message\]\nPlease continue the refactoring\n\[\/User Message\]/);
+});
+
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+

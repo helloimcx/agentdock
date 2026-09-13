@@ -42,6 +42,14 @@ AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、Open
 
 ## New
 
+### 2026-09-13
+
+- **工作区项目工作记忆与跨 Agent 会话确定性交接（Issue #86）**：
+  - **确定性会话提炼与无缝交接（0 额外模型调用、<2ms 提炼）**：在线程内通过 `/agent use <agent>` 切换 Agent 或 `/agent reset` 时，由 Local AI Core 自动从 Trace 与最近会话中提炼结构化交接包（摘要、已做决策、未决疑问、下一步规划、产物文件），写入 `session_handoffs` 并以前置定界符注入新 Agent 首条提示词。
+  - **工作区持久化记忆 Wiki (`.agentdock/memory/`)**：纯 Markdown + YAML frontmatter 目录组织（`_rules/`、`decisions/`、`procedures/`、`gotchas/`），与 SQLite FTS5 全文检索引擎双向同步，无缝兼容 Obsidian 与版本控制。
+  - **Managed Skill `memory` 与 CLI 套件**：内置 `memory` 技能赋予 Agent 自主 `memory_query` 与 `memory_write_page` 检索和记录项目知识的能力；新增 `lac memory (list|get|write|del|sync)` 命令行套件。
+  - **桌面端可视化交互**：会话聊天流内支持结构化 `<SessionHandoffCard />` 折叠卡片，工作区面板新增「工作记忆」标签页，支持分类筛选、全文快速搜索、实时渲染与在线编辑。
+
 ### 2026-09-12
 
 - **工作区多 Agent 编码规范层（Issue #117）**：

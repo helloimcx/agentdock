@@ -59,7 +59,16 @@ export type LocalAiCoreRoute =
   | { name: 'thread.delete'; threadId: string }
   | { name: 'thread.messages.send'; threadId: string }
   | { name: 'thread.actions.send'; threadId: string }
+  | { name: 'thread.handoffs.list'; threadId: string }
+  | { name: 'thread.handoffs.pending'; threadId: string }
+  | { name: 'workspace.memory.pages.list'; workspaceId: string }
+  | { name: 'workspace.memory.pages.get'; workspaceId: string; category: string; slug: string }
+  | { name: 'workspace.memory.pages.write'; workspaceId: string }
+  | { name: 'workspace.memory.pages.delete'; workspaceId: string; category: string; slug: string }
+  | { name: 'workspace.memory.query'; workspaceId: string }
+  | { name: 'workspace.memory.sync'; workspaceId: string }
   | { name: 'run.interrupt'; runId: string }
+
   | { name: 'runs.trace.get'; runId: string }
   | { name: 'runs.spans.list'; runId: string }
   | { name: 'costs.summary' }
@@ -448,8 +457,15 @@ function parseThreadsRoute(method: string, segments: string[]): LocalAiCoreRoute
   if (method === 'POST' && segments.length === 3 && segments[2] === 'actions') {
     return { name: 'thread.actions.send', threadId };
   }
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'handoffs') {
+    return { name: 'thread.handoffs.list', threadId };
+  }
+  if (method === 'GET' && segments.length === 4 && segments[2] === 'handoffs' && segments[3] === 'pending') {
+    return { name: 'thread.handoffs.pending', threadId };
+  }
   return null;
 }
+
 
 function parseRunsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   const runId = segments.length >= 2 ? decodeURIComponent(segments[1] || '') : '';
@@ -486,8 +502,27 @@ function parseWorkspacesRoute(method: string, segments: string[]): LocalAiCoreRo
       return { name: 'workspaces.standards.detect', workspaceId };
     }
   }
+  if (workspaceId && segments.length >= 3 && segments[2] === 'memory') {
+    if (segments.length === 4 && segments[3] === 'pages') {
+      if (method === 'GET') return { name: 'workspace.memory.pages.list', workspaceId };
+      if (method === 'POST') return { name: 'workspace.memory.pages.write', workspaceId };
+    }
+    if (segments.length === 4 && segments[3] === 'query' && method === 'GET') {
+      return { name: 'workspace.memory.query', workspaceId };
+    }
+    if (segments.length === 4 && segments[3] === 'sync' && method === 'POST') {
+      return { name: 'workspace.memory.sync', workspaceId };
+    }
+    if (segments.length === 6 && segments[3] === 'pages') {
+      const category = decodeURIComponent(segments[4] || '');
+      const slug = decodeURIComponent(segments[5] || '');
+      if (method === 'GET') return { name: 'workspace.memory.pages.get', workspaceId, category, slug };
+      if (method === 'DELETE') return { name: 'workspace.memory.pages.delete', workspaceId, category, slug };
+    }
+  }
   return null;
 }
+
 
 function parseStandardsRoute(method: string, segments: string[]): LocalAiCoreRoute | null {
   if (segments.length === 1 || (segments.length === 2 && segments[1] === 'packs')) {

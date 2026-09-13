@@ -20,6 +20,7 @@
     "./traces": "./src/traces.ts",
     "./costs": "./src/costs.ts",
     "./budgets": "./src/budgets.ts",
-    "./standards": "./src/standards.ts"
+    "./standards": "./src/standards.ts",
+    "./memory": "./src/memory.ts"
   }
 }

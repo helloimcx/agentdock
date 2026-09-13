@@ -1,6 +1,8 @@
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { SkillRouter } from '../skills/skill-router.js';
 import type { SkillRouteMatch } from '@cc/superai-contracts/skills';
+import { formatSessionHandoffDelimiter, type SessionHandoffPayload } from '@cc/superai-contracts/handoff';
+
 
 const SCHEDULER_INSTRUCTION = [
   '[Scheduler Tools]',
@@ -124,6 +126,7 @@ export function composeAgentMessage(
   knowledgeBases: AgentMessageKnowledgeBase[] = [],
   catalog = new ManagedSkillCatalog(),
   router = new SkillRouter(),
+  pendingHandoff?: SessionHandoffPayload | null,
 ) {
   if (content.trim().startsWith('/')) {
     return content;
@@ -140,7 +143,7 @@ export function composeAgentMessage(
   const routeResult = router.route(content, skills);
   const skillBlocks = resolveRoutedSkillBlocks(routeResult.selectedSkills, catalog);
 
-  return [
+  const blocks: string[] = [
     SCHEDULER_INSTRUCTION,
     '',
     MONITOR_INSTRUCTION,
@@ -148,9 +151,19 @@ export function composeAgentMessage(
     CHANNEL_INSTRUCTION,
     ...skillBlocks,
     ...formatKnowledgeBlock(knowledgeBases),
+  ];
+
+  if (pendingHandoff) {
+    blocks.push('', formatSessionHandoffDelimiter(pendingHandoff));
+  }
+
+  blocks.push(
     '',
     '[User Message]',
     content,
     '[/User Message]',
-  ].join('\n');
+  );
+
+  return blocks.join('\n');
 }
+

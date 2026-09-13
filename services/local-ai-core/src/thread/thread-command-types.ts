@@ -40,5 +40,10 @@ export type ThreadCommandServiceOptions = {
     platform: string;
     providerId: string | null;
   }) => void;
+  createHandoffOnAgentSwitch?: (input: {
+    threadId: string;
+    fromAgent: string;
+    toAgent: string;
+  }) => unknown;
   log?: (message: string) => void;
 };
