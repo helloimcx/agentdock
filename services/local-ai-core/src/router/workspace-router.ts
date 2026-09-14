@@ -740,10 +740,10 @@ export class WorkspaceRouter {
     return projects.find((project) => projectWorkspaceId(project) === workspaceId);
   }
 
-  async resolveWorkspacePath(workspaceId: string): Promise<string | undefined> {
+  async resolveWorkspacePath(workspaceId: string, knownProject?: DesktopProjectConfig): Promise<string | undefined> {
     const reg = this.store.getWorkspaceRegistryEntry(workspaceId);
     if (reg?.path) return reg.path;
-    const project = await this.getWorkspaceProject(workspaceId);
+    const project = knownProject ?? (await this.getWorkspaceProject(workspaceId));
     const workDir = project?.agent?.options?.work_dir;
     return typeof workDir === 'string' ? workDir : undefined;
   }
