@@ -472,6 +472,55 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_skill_sources_repo ON skill_sources (source_repo);
     CREATE INDEX IF NOT EXISTS idx_skill_sources_workspace ON skill_sources (workspace_id);
+    CREATE TABLE IF NOT EXISTS session_handoffs (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      summary TEXT NOT NULL,
+      decisions_json TEXT NOT NULL DEFAULT '[]',
+      open_questions_json TEXT NOT NULL DEFAULT '[]',
+      next_steps_json TEXT NOT NULL DEFAULT '[]',
+      artifacts_json TEXT NOT NULL DEFAULT '[]',
+      tool_summary_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      consumed_at TEXT,
+      consumed_by_run_id TEXT,
+      FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_handoffs_thread_status ON session_handoffs (thread_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_session_handoffs_run ON session_handoffs (run_id);
+    CREATE TABLE IF NOT EXISTS workspace_memory_pages (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      title TEXT NOT NULL,
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      summary TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL,
+      raw_markdown TEXT NOT NULL,
+      author TEXT,
+      mtime_ms INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(workspace_id, category, slug)
+    );
+    CREATE INDEX IF NOT EXISTS idx_workspace_memory_workspace_cat ON workspace_memory_pages (workspace_id, category);
+    CREATE INDEX IF NOT EXISTS idx_workspace_memory_updated ON workspace_memory_pages (workspace_id, updated_at DESC);
+    CREATE VIRTUAL TABLE IF NOT EXISTS workspace_memory_fts USING fts5(
+      page_id UNINDEXED,
+      workspace_id UNINDEXED,
+      title,
+      category,
+      tags,
+      summary,
+      content,
+      tokenize='porter unicode61'
+    );
   `);
   ensureColumn(db, 'messages', 'tool_call_json', 'TEXT');
   ensureColumn(db, 'messages', 'bridge_kind', 'TEXT');

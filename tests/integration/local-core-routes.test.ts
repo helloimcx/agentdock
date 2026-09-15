@@ -302,3 +302,46 @@ test('local core route parser keeps platform write routes distinct', () => {
   });
   assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/platforms/lark/pairings/qrcode'), null);
 });
+
+test('local core route parser handles thread handoffs and workspace memory routes', () => {
+  // Thread handoffs
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/threads/thread-1/handoffs'), {
+    name: 'thread.handoffs.list',
+    threadId: 'thread-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/threads/thread-1/handoffs/pending'), {
+    name: 'thread.handoffs.pending',
+    threadId: 'thread-1',
+  });
+
+  // Workspace memory
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/ws-1/memory/pages'), {
+    name: 'workspace.memory.pages.list',
+    workspaceId: 'ws-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/workspaces/ws-1/memory/pages'), {
+    name: 'workspace.memory.pages.write',
+    workspaceId: 'ws-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/ws-1/memory/pages/decisions/use-fts5'), {
+    name: 'workspace.memory.pages.get',
+    workspaceId: 'ws-1',
+    category: 'decisions',
+    slug: 'use-fts5',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('DELETE', '/api/local/v1/workspaces/ws-1/memory/pages/decisions/use-fts5'), {
+    name: 'workspace.memory.pages.delete',
+    workspaceId: 'ws-1',
+    category: 'decisions',
+    slug: 'use-fts5',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/ws-1/memory/query'), {
+    name: 'workspace.memory.query',
+    workspaceId: 'ws-1',
+  });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/workspaces/ws-1/memory/sync'), {
+    name: 'workspace.memory.sync',
+    workspaceId: 'ws-1',
+  });
+});
+

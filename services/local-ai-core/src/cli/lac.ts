@@ -19,6 +19,7 @@ import { parseDurationMs, parseMonitorCondition, parseMonitorSchedule, parseRetr
 import { formatSafeError } from '../kernel/local-core-errors.js';
 import { runSkillDomain } from './skill-cli-handlers.js';
 import { runRulesDomain } from './standards-cli-handlers.js';
+import { runMemoryDomain } from './memory-cli-handlers.js';
 import type { StdIo, ParsedFlags, CliContext } from './cli-helpers.js';
 import {
   request,
@@ -33,31 +34,46 @@ import {
   DEFAULT_BASE_URL,
 } from './cli-helpers.js';
 
+async function dispatchDomain(
+  domain: string,
+  action: string,
+  maybeId: string,
+  flags: ParsedFlags,
+  env: NodeJS.ProcessEnv,
+  io: StdIo,
+  json: boolean,
+): Promise<number> {
+  switch (domain) {
+    case 'channel':
+      return await runChannelDomain(action, flags, env, io, json);
+    case 'monitor':
+      return await runMonitorDomain(action, maybeId, flags, env, io, json);
+    case 'automation':
+      return await runAutomationDomain(action, maybeId, flags, env, io, json);
+    case 'script':
+      return await runScriptDomain(action, maybeId, flags, env, io, json);
+    case 'scheduler':
+      return await runSchedulerDomain(action, maybeId, flags, env, io, json);
+    case 'skill':
+      return await runSkillDomain(action, maybeId, flags, env, io, json);
+    case 'rules':
+    case 'standards':
+      return await runRulesDomain(action, maybeId, flags, env, io, json);
+    case 'memory':
+      return await runMemoryDomain(action, maybeId, flags, env, io, json);
+    default:
+      printUsage(io.stderr);
+      return 2;
+  }
+}
+
 export async function runCli(argv: string[], env: NodeJS.ProcessEnv = process.env, io: StdIo = process) {
   try {
     const { positionals, flags } = parseArgs(argv);
     const [domain = '', action = '', maybeId = ''] = positionals;
     const json = getBooleanFlag(flags, 'json', false);
-    switch (domain) {
-      case 'channel':
-        return await runChannelDomain(action, flags, env, io, json);
-      case 'monitor':
-        return await runMonitorDomain(action, maybeId, flags, env, io, json);
-      case 'automation':
-        return await runAutomationDomain(action, maybeId, flags, env, io, json);
-      case 'script':
-        return await runScriptDomain(action, maybeId, flags, env, io, json);
-      case 'scheduler':
-        return await runSchedulerDomain(action, maybeId, flags, env, io, json);
-      case 'skill':
-        return await runSkillDomain(action, maybeId, flags, env, io, json);
-      case 'rules':
-      case 'standards':
-        return await runRulesDomain(action, maybeId, flags, env, io, json);
-      default:
-        printUsage(io.stderr);
-        return 2;
-    }
+    return await dispatchDomain(domain, action, maybeId, flags, env, io, json);
+
   } catch (err: any) {
     io.stderr.write(`lac CLI error: ${err.message}\n`);
     return 1;
@@ -719,8 +735,15 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac rules materialize [--workspace <id>] [--unattended] [--json]',
     '  lac rules set-intensity <off|lite|full|ultra> [--workspace <id>] [--json]',
     '  lac rules detect [--workspace <id>] [--json]',
+    '  lac memory list [--category <cat>] [--json]',
+    '  lac memory get <category>/<slug> [--json]',
+    '  lac memory query "<text>" [--category <cat>] [--tag <tag>] [--limit <n>] [--json]',
+    '  lac memory write --slug <slug> --title "<title>" [--category <cat>] [--summary "<desc>"] [--tags "<t1,t2>"] [--content "<text>" | --file <path>] [--json]',
+    '  lac memory del <category>/<slug> [--json]',
+    '  lac memory sync [--json]',
   ].join('\n') + '\n');
 }
+
 
 function formatJobLine(job: ScheduledJob) {
   const schedule = job.triggerType === 'cron' ? job.cronExpr || '' : job.runAt || '';

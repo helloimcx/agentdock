@@ -29,7 +29,9 @@ import { createProviderCommandOptions } from '../../thread/thread-command-servic
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
 import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
+import { distillSessionHandoff } from '../../acp/session-handoff-distiller.js';
 import { LocalCoreError } from '../../kernel/local-core-errors.js';
+
 import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
 
 export interface GatewayOptions {
@@ -137,7 +139,31 @@ export abstract class BaseChannelGateway<
         },
         closeThreadSession: (threadId) => options.getWorkspaceRouter().closeThreadSession(threadId),
         interruptRun: (runId) => options.getWorkspaceRouter().interruptRun(runId),
+        createHandoffOnAgentSwitch: ({ threadId, fromAgent, toAgent }) => {
+          const latestRun = options.store.getLatestRunForThread(threadId);
+          const spans = latestRun ? options.store.trace.listRunSpans(latestRun.id) : [];
+          const thread = options.store.getThread(threadId, []);
+          const messages = thread ? thread.messages : [];
+          const payload = distillSessionHandoff({
+            threadId,
+            fromAgent,
+            toAgent,
+            lastRunId: latestRun?.id,
+            messages,
+            spans,
+          });
+          return options.store.sessionHandoffs.createHandoff({
+            threadId,
+            runId: latestRun?.id,
+            fromAgent,
+            toAgent,
+            payload,
+            status: 'pending',
+          });
+        },
+
         setChannelPreferredAgent: (input) => options.store.updatePlatformThreadPreferredAgent(
+
           input.workspaceId,
           input.chatId,
           input.platformUserId,

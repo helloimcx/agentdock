@@ -11,6 +11,8 @@
     "./scheduler": "./src/scheduler.ts",
     "./automation": "./src/automation.ts",
     "./automations": "./src/automations.ts",
-    "./knowledge": "./src/knowledge.ts"
+    "./knowledge": "./src/knowledge.ts",
+    "./handoff": "./src/handoff.ts",
+    "./memory": "./src/memory.ts"
   }
 }

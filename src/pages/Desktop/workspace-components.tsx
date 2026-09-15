@@ -13,9 +13,11 @@ import {
   type DesktopSandboxRuntimeImage,
 } from '@cc/superai-contracts';
 import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection, StandardsSection } from './workspace-sections';
+import { WorkspaceMemorySection } from './WorkspaceMemorySection';
 import {
   CUSTOM_SELECT_VALUE,
   PLATFORM_TYPE_OPTIONS,
+  desktopProjectWorkspaceId,
   getSelectValue,
   toSandboxForm,
   workDirLabel,
@@ -357,6 +359,7 @@ const PROJECT_TABS: Array<[ProjectTab, string]> = [
   ['sandbox', '云端模式'],
   ['mcp', 'MCP'],
   ['standards', '编码规范'],
+  ['memory', '工作记忆'],
 ];
 
 type ProjectTabContentProps = {
@@ -411,7 +414,10 @@ function ProjectTabContent({
   if (projectTab === 'mcp') {
     return <McpServersSection project={project} updateProject={updateProject} />;
   }
-  return <StandardsSection project={project} updateProject={updateProject} />;
+  if (projectTab === 'standards') {
+    return <StandardsSection project={project} updateProject={updateProject} />;
+  }
+  return <WorkspaceMemorySection workspaceId={desktopProjectWorkspaceId(project)} />;
 }
 
 export function ProjectDetails({

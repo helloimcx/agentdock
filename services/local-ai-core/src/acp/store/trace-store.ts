@@ -116,12 +116,15 @@ export class LocalCoreTraceStore {
   }
 
   listRunSpans(runId: string, options: { limit?: number; offset?: number } = {}): RunSpan[] {
+    if (!runId) return [];
     const actualRunId = this.resolveActualRunId(runId);
+    if (!actualRunId) return [];
     const limit = options.limit || 500;
     const offset = options.offset || 0;
     const rows = (this.db.prepare('SELECT * FROM run_spans WHERE run_id = ? ORDER BY started_at ASC LIMIT ? OFFSET ?').all(actualRunId, limit, offset) as unknown) as LocalRunSpanRow[];
     return rows.map(mapRunSpanRow);
   }
+
 
   getRunTraceSummary(runId: string): RunTraceSummary | undefined {
     const actualRunId = this.resolveActualRunId(runId);
