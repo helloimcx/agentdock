@@ -1,14 +1,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import {
   WorkspaceMemoryService,
+  MemoryPathError,
   parseMemoryMarkdown,
   serializeMemoryMarkdown,
 } from '../../services/local-ai-core/src/memory/workspace-memory-service.js';
+import type { LocalCoreWorkspaceMemoryStore } from '../../services/local-ai-core/src/acp/store/workspace-memory-store.js';
+
+function assertMemoryPathError(status: 400 | 403 | 404, pattern?: RegExp) {
+  return (error: unknown): boolean => {
+    assert.ok(error instanceof MemoryPathError, `expected MemoryPathError, got: ${String(error)}`);
+    const memoryError = error as MemoryPathError;
+    assert.equal(memoryError.status, status);
+    if (pattern) {
+      assert.match(memoryError.message, pattern);
+    }
+    return true;
+  };
+}
+
+function memoryServiceFixture(): {
+  workspacePath: string;
+  outsidePath: string;
+  service: WorkspaceMemoryService;
+  store: LocalCoreWorkspaceMemoryStore;
+  close: () => void;
+} {
+  const workspacePath = mkdtempSync(join(tmpdir(), 'ws-mem-guard-'));
+  const outsidePath = mkdtempSync(join(tmpdir(), 'ws-mem-outside-'));
+  const userDataPath = mkdtempSync(join(tmpdir(), 'ws-mem-guard-userdata-'));
+  const facade = new LocalCoreAcpStore(userDataPath);
+  const service = new WorkspaceMemoryService({
+    store: facade.workspaceMemory,
+    getWorkspacePath: () => workspacePath,
+  });
+  return {
+    workspacePath,
+    outsidePath,
+    service,
+    store: facade.workspaceMemory,
+    close: () => {
+      facade.close();
+      rmSync(workspacePath, { recursive: true, force: true });
+      rmSync(outsidePath, { recursive: true, force: true });
+      rmSync(userDataPath, { recursive: true, force: true });
+    },
+  };
+}
 
 test('parseMemoryMarkdown and serializeMemoryMarkdown roundtrip', () => {
   const serialized = serializeMemoryMarkdown({
@@ -128,6 +171,107 @@ test('WorkspaceMemoryService lifecycle: write, get, query, sync, and delete', as
     store.close();
     rmSync(tmpDir, { recursive: true, force: true });
     rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test('getPage rejects a symlinked memory page planted like a git-clone payload', async () => {
+  const fx = memoryServiceFixture();
+  try {
+    const memoryRoot = await fx.service.ensureMemoryStructure(fx.workspacePath);
+    const secret = join(fx.outsidePath, 'secret.md');
+    writeFileSync(secret, 'TOPSECRET outside the workspace', 'utf8');
+    symlinkSync(secret, join(memoryRoot, 'decisions', 'leak.md'));
+
+    await assert.rejects(
+      () => fx.service.getPage(fx.workspacePath, 'decisions', 'leak'),
+      assertMemoryPathError(403, /symbolic link/i),
+    );
+    // The outside-file content must never be ingested into SQLite/FTS5.
+    assert.equal(fx.service.queryPages(fx.workspacePath, { query: 'TOPSECRET' }).length, 0);
+  } finally {
+    fx.close();
+  }
+});
+
+test('getPage rejects reads that resolve through a symlinked category directory', async () => {
+  const fx = memoryServiceFixture();
+  try {
+    const memoryRoot = await fx.service.ensureMemoryStructure(fx.workspacePath);
+    const outsideDir = join(fx.outsidePath, 'exfil');
+    mkdirSync(outsideDir, { recursive: true });
+    writeFileSync(join(outsideDir, 'leak.md'), 'TOPSECRET via category symlink', 'utf8');
+    rmSync(join(memoryRoot, 'decisions'), { recursive: true });
+    symlinkSync(outsideDir, join(memoryRoot, 'decisions'));
+
+    await assert.rejects(
+      () => fx.service.getPage(fx.workspacePath, 'decisions', 'leak'),
+      assertMemoryPathError(403),
+    );
+    assert.equal(existsSync(join(outsideDir, 'leak.md')), true);
+    assert.equal(fx.service.queryPages(fx.workspacePath, { query: 'TOPSECRET' }).length, 0);
+  } finally {
+    fx.close();
+  }
+});
+
+test('writePage refuses to create pages through a symlinked category directory', async () => {
+  const fx = memoryServiceFixture();
+  try {
+    const memoryRoot = await fx.service.ensureMemoryStructure(fx.workspacePath);
+    const outsideDir = join(fx.outsidePath, 'planted');
+    mkdirSync(outsideDir, { recursive: true });
+    rmSync(join(memoryRoot, '_rules'), { recursive: true });
+    symlinkSync(outsideDir, join(memoryRoot, '_rules'));
+
+    await assert.rejects(
+      () => fx.service.writePage(fx.workspacePath, {
+        category: '_rules',
+        slug: 'evil',
+        title: 'Evil',
+        content: 'written outside the workspace',
+      }),
+      assertMemoryPathError(403),
+    );
+    assert.equal(existsSync(join(outsideDir, 'evil.md')), false);
+  } finally {
+    fx.close();
+  }
+});
+
+test('deletePage does not remove outside files through a symlinked category directory', async () => {
+  const fx = memoryServiceFixture();
+  try {
+    const memoryRoot = await fx.service.ensureMemoryStructure(fx.workspacePath);
+    const outsideDir = join(fx.outsidePath, 'victim');
+    mkdirSync(outsideDir, { recursive: true });
+    const victimFile = join(outsideDir, 'leak.md');
+    writeFileSync(victimFile, 'must survive', 'utf8');
+    rmSync(join(memoryRoot, 'decisions'), { recursive: true });
+    symlinkSync(outsideDir, join(memoryRoot, 'decisions'));
+
+    await assert.rejects(
+      () => fx.service.deletePage(fx.workspacePath, 'decisions', 'leak'),
+      assertMemoryPathError(403),
+    );
+    assert.equal(existsSync(victimFile), true);
+  } finally {
+    fx.close();
+  }
+});
+
+test('ensureMemoryStructure rejects a symlinked memory root', async () => {
+  const fx = memoryServiceFixture();
+  try {
+    const agentdockDir = join(fx.workspacePath, '.agentdock');
+    mkdirSync(agentdockDir, { recursive: true });
+    symlinkSync(fx.outsidePath, join(agentdockDir, 'memory'));
+
+    await assert.rejects(
+      () => fx.service.ensureMemoryStructure(fx.workspacePath),
+      assertMemoryPathError(403),
+    );
+  } finally {
+    fx.close();
   }
 });
 

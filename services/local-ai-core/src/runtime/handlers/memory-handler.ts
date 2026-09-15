@@ -1,6 +1,7 @@
 import type { RouteHandler } from '../server-helpers.js';
 import { json, jsonError, readJsonBody } from '../server-helpers.js';
 import type { WorkspaceMemoryService } from '../../memory/workspace-memory-service.js';
+import { MemoryPathError } from '../../memory/workspace-memory-service.js';
 import type { MemoryPageWriteInput } from '@cc/superai-contracts/memory';
 import { normalizeMemoryCategory } from '@cc/superai-contracts/memory';
 import { validateBody } from '../request-validation.js';
@@ -18,37 +19,49 @@ export function registerMemoryHandlers(
 
   map.set('workspace.memory.pages.get', async (route, _req, res) => {
     const { workspaceId, category, slug } = route as { workspaceId: string; category: string; slug: string };
-    const page = await memoryService.getPage(workspaceId, category, slug);
-    if (!page) {
-      jsonError(res, 404, new Error(`Memory page "${category}/${slug}" not found in workspace "${workspaceId}".`));
-      return;
+    try {
+      const page = await memoryService.getPage(workspaceId, category, slug);
+      if (!page) {
+        jsonError(res, 404, new Error(`Memory page "${category}/${slug}" not found in workspace "${workspaceId}".`));
+        return;
+      }
+      json(res, 200, { page });
+    } catch (error) {
+      jsonError(res, error instanceof MemoryPathError ? error.status : 500, error);
     }
-    json(res, 200, { page });
   });
 
   map.set('workspace.memory.pages.write', async (route, req, res) => {
     const workspaceId = (route as { workspaceId: string }).workspaceId;
-    const body = validateBody<MemoryPageWriteInput>(await readJsonBody(req), {
-      category: { kind: 'string', required: true },
-      slug: { kind: 'string', required: true },
-      title: { kind: 'string', required: true },
-      content: { kind: 'string', required: true },
-      tags: { kind: 'array', required: false, elementKind: 'string' },
-      summary: 'string',
-      author: 'string',
-    });
-    const normalizedCategory = normalizeMemoryCategory(body.category);
-    const page = await memoryService.writePage(workspaceId, {
-      ...body,
-      category: normalizedCategory,
-    });
-    json(res, 200, { page });
+    try {
+      const body = validateBody<MemoryPageWriteInput>(await readJsonBody(req), {
+        category: { kind: 'string', required: true },
+        slug: { kind: 'string', required: true },
+        title: { kind: 'string', required: true },
+        content: { kind: 'string', required: true },
+        tags: { kind: 'array', required: false, elementKind: 'string' },
+        summary: 'string',
+        author: 'string',
+      });
+      const normalizedCategory = normalizeMemoryCategory(body.category);
+      const page = await memoryService.writePage(workspaceId, {
+        ...body,
+        category: normalizedCategory,
+      });
+      json(res, 200, { page });
+    } catch (error) {
+      jsonError(res, error instanceof MemoryPathError ? error.status : 500, error);
+    }
   });
 
   map.set('workspace.memory.pages.delete', async (route, _req, res) => {
     const { workspaceId, category, slug } = route as { workspaceId: string; category: string; slug: string };
-    const deleted = await memoryService.deletePage(workspaceId, category, slug);
-    json(res, 200, { deleted });
+    try {
+      const deleted = await memoryService.deletePage(workspaceId, category, slug);
+      json(res, 200, { deleted });
+    } catch (error) {
+      jsonError(res, error instanceof MemoryPathError ? error.status : 500, error);
+    }
   });
 
   map.set('workspace.memory.query', async (route, _req, res, url) => {
@@ -64,7 +77,11 @@ export function registerMemoryHandlers(
 
   map.set('workspace.memory.sync', async (route, _req, res) => {
     const workspaceId = (route as { workspaceId: string }).workspaceId;
-    const result = await memoryService.syncWorkspace(workspaceId);
-    json(res, 200, result);
+    try {
+      const result = await memoryService.syncWorkspace(workspaceId);
+      json(res, 200, result);
+    } catch (error) {
+      jsonError(res, error instanceof MemoryPathError ? error.status : 500, error);
+    }
   });
 }
