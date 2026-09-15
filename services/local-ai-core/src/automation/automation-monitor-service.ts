@@ -307,15 +307,17 @@ export class AutomationMonitorService {
     ) {
       return this.disableSubscriptionTransaction(existing, update);
     }
-    const monitor = automationToMonitor(this.options.automations.updateFromLegacy(this.resolveRequiredMonitorId(monitorId), update));
+    // existing.id is the already-resolved internal id; resolving monitorId again
+    // would repeat the public-short-id automations.list() scan per request.
+    const monitor = automationToMonitor(this.options.automations.updateFromLegacy(existing.id, update));
     await this.ensureSubscription(monitor);
     return monitor;
   }
 
   async deleteMonitor(monitorId: string): Promise<{ deleted: boolean }> {
     this.options.automations.assertLegacyFacadesAvailable();
-    const resolved = this.resolveRequiredMonitorId(monitorId);
-    const existing = this.getRequiredMonitor(resolved);
+    const existing = this.getRequiredMonitor(monitorId);
+    const resolved = existing.id;
     await this.stopSubscription(resolved);
     try {
       return this.options.automations.delete(resolved);

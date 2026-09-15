@@ -12,6 +12,8 @@ import {
   STANDARDS_MARKER_START,
   STANDARDS_MARKER_END,
   DEFAULT_STANDARDS_TARGET_FILES,
+  DEFAULT_STANDARDS_INTENSITY,
+  DEFAULT_STANDARDS_ACTIVE_PACKS,
 } from '@cc/superai-contracts/standards';
 import { renderStandardsContent } from './standards-rule-parser.js';
 import { CURATED_STANDARD_PACKS } from './curated-standards.js';
@@ -136,8 +138,8 @@ export function materializeWorkspaceStandards(options: {
   unattended?: boolean;
 }): MaterializeStandardsResult {
   const { workspacePath, workspaceId, config, packs = CURATED_STANDARD_PACKS, unattended } = options;
-  const intensity = config?.intensity || 'full';
-  const activePackIds = new Set(config?.activePacks || ['general']);
+  const intensity = config?.intensity || DEFAULT_STANDARDS_INTENSITY;
+  const activePackIds = new Set(config?.activePacks || [...DEFAULT_STANDARDS_ACTIVE_PACKS]);
   const activePacks = packs.filter((p) => activePackIds.has(p.id));
 
   const rendered = renderStandardsContent({
