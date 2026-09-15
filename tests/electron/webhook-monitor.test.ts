@@ -708,3 +708,36 @@ test('automation.monitor.decisions reads persisted decisions after restart from 
   }
 });
 
+
+test('updateMonitor and deleteMonitor resolve a public short id exactly once', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Resolution Probe Hook',
+      sourceType: 'webhook',
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Probe {{payload.x}}',
+      enabled: false,
+    });
+    const publicId = toPublicAutomationMonitorId(monitor.id);
+    let listCalls = 0;
+    const originalList = context.automations.list.bind(context.automations);
+    (context.automations as unknown as { list: (...args: unknown[]) => unknown }).list = (...args: unknown[]) => {
+      listCalls += 1;
+      return originalList(...(args as Parameters<typeof originalList>));
+    };
+
+    await context.monitors.updateMonitor(publicId, { title: 'Renamed Probe Hook' });
+    assert.equal(listCalls, 1, 'updateMonitor must resolve the monitor automation exactly once');
+    assert.equal((await context.monitors.getMonitor(publicId))?.title, 'Renamed Probe Hook');
+
+    listCalls = 0;
+    const deleted = await context.monitors.deleteMonitor(publicId);
+    assert.equal(listCalls, 1, 'deleteMonitor must resolve the monitor automation exactly once');
+    assert.equal(deleted.deleted, true);
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});

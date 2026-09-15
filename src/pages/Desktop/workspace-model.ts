@@ -2,6 +2,9 @@ import {
   CUSTOM_SELECT_VALUE,
   DEFAULT_DESKTOP_AGENT_TYPE,
   DEFAULT_SANDBOX_PROVIDER_ID,
+  DEFAULT_STANDARDS_ACTIVE_PACKS,
+  DEFAULT_STANDARDS_INTENSITY,
+  DEFAULT_STANDARDS_TARGET_FILES,
   defaultSandboxRuntimeImage,
   normalizeDesktopAgentModel,
   PROVIDER_PRESETS,
@@ -272,21 +275,21 @@ export type StandardsForm = {
 
 const defaultStandardsForm: StandardsForm = {
   enabled: true,
-  intensity: 'full',
-  active_packs: ['general'],
+  intensity: DEFAULT_STANDARDS_INTENSITY,
+  active_packs: [...DEFAULT_STANDARDS_ACTIVE_PACKS],
   auto_detect_stack: true,
   custom_rules: '',
-  target_files: ['AGENTS.md', 'CLAUDE.md'],
+  target_files: [...DEFAULT_STANDARDS_TARGET_FILES],
 };
 
 export function toStandardsForm(input?: DesktopStandardsOptions): StandardsForm {
   return {
     enabled: input?.enabled !== false,
-    intensity: input?.intensity || 'full',
-    active_packs: input?.active_packs || ['general'],
+    intensity: input?.intensity || DEFAULT_STANDARDS_INTENSITY,
+    active_packs: input?.active_packs || [...DEFAULT_STANDARDS_ACTIVE_PACKS],
     auto_detect_stack: input?.auto_detect_stack !== false,
     custom_rules: input?.custom_rules || '',
-    target_files: input?.target_files || ['AGENTS.md', 'CLAUDE.md'],
+    target_files: input?.target_files || [...DEFAULT_STANDARDS_TARGET_FILES],
   };
 }
 
