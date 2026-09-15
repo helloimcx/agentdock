@@ -5,7 +5,7 @@ import { standardsConfigFromOptions, StandardSecurityError } from '../../standar
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import { detectWorkspaceTechStack } from '../../standards/standards-detector.js';
 import type { DesktopStandardsOptions } from '@cc/superai-contracts';
-import { DEFAULT_STANDARDS_TARGET_FILES, DEFAULT_STANDARDS_INTENSITY } from '@cc/superai-contracts/standards';
+import { DEFAULT_STANDARDS_TARGET_FILES, DEFAULT_STANDARDS_INTENSITY, DEFAULT_STANDARDS_ACTIVE_PACKS } from '@cc/superai-contracts/standards';
 import type {
   InstallStandardPackInput,
   WorkspaceStandardsConfig,
@@ -150,7 +150,7 @@ function registerWorkspaceStandardsCrudHandlers(
     const standards = project?.agent?.options?.standards || {
       enabled: true,
       intensity: DEFAULT_STANDARDS_INTENSITY,
-      active_packs: ['general'],
+      active_packs: [...DEFAULT_STANDARDS_ACTIVE_PACKS],
       auto_detect_stack: true,
       target_files: [...DEFAULT_STANDARDS_TARGET_FILES],
     };

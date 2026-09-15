@@ -109,6 +109,7 @@ export interface DetectedTechStack {
 }
 
 export const DEFAULT_STANDARDS_INTENSITY: RuleIntensityLevel = 'full';
+export const DEFAULT_STANDARDS_ACTIVE_PACKS: readonly string[] = ['general'] as const;
 export const DEFAULT_STANDARDS_TARGET_FILES: readonly string[] = ['AGENTS.md', 'CLAUDE.md'] as const;
 export const STANDARDS_MARKER_START = '<!-- agentdock:standards:start -->';
 export const STANDARDS_MARKER_END = '<!-- agentdock:standards:end -->';

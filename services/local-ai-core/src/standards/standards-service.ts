@@ -9,7 +9,7 @@ import type {
   MaterializeStandardsResult,
   RulePackScope,
 } from '@cc/superai-contracts/standards';
-import { DEFAULT_STANDARDS_TARGET_FILES, DEFAULT_STANDARDS_INTENSITY } from '@cc/superai-contracts/standards';
+import { DEFAULT_STANDARDS_TARGET_FILES, DEFAULT_STANDARDS_INTENSITY, DEFAULT_STANDARDS_ACTIVE_PACKS } from '@cc/superai-contracts/standards';
 import type { DesktopProjectConfig, DesktopStandardsOptions } from '@cc/superai-contracts';
 import {
   scanSkillContent,
@@ -55,7 +55,7 @@ export function standardsConfigFromOptions(
   return {
     enabled: rawOptions.enabled !== false,
     intensity: rawOptions.intensity || DEFAULT_STANDARDS_INTENSITY,
-    activePacks: rawOptions.active_packs || ['general'],
+    activePacks: rawOptions.active_packs || [...DEFAULT_STANDARDS_ACTIVE_PACKS],
     autoDetectStack: rawOptions.auto_detect_stack !== false,
     customRules: rawOptions.custom_rules,
     targetFiles: rawOptions.target_files || [...DEFAULT_STANDARDS_TARGET_FILES],
@@ -131,7 +131,7 @@ export class StandardsService {
     return Array.from(packMap.values()).map((p) => ({
       ...p,
       enabled: activeSet ? activeSet.has(p.id) : p.enabled,
-      intensity: options.workspaceConfig?.intensity || 'full',
+      intensity: options.workspaceConfig?.intensity || DEFAULT_STANDARDS_INTENSITY,
     }));
   }
 
