@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
-import { resolve, dirname, basename, join, sep } from 'node:path';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { resolve, basename, join, sep } from 'node:path';
 import { createHash } from 'node:crypto';
+import { atomicWriteFileSync } from '../kernel/atomic-write.js';
 import type {
   RuleIntensityLevel,
   WorkspaceStandardsConfig,
@@ -19,25 +20,6 @@ import { renderStandardsContent } from './standards-rule-parser.js';
 import { CURATED_STANDARD_PACKS } from './curated-standards.js';
 
 const MARKER_REGEX = new RegExp(`${STANDARDS_MARKER_START}[\\s\\S]*?${STANDARDS_MARKER_END}`);
-
-function atomicWriteFileSync(filePath: string, content: string): void {
-  const dir = dirname(filePath);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  writeFileSync(tempPath, content, 'utf8');
-  try {
-    renameSync(tempPath, filePath);
-  } catch (err) {
-    try {
-      if (existsSync(tempPath)) unlinkSync(tempPath);
-    } catch {
-      // ignore cleanup error
-    }
-    throw err;
-  }
-}
 
 function resolveSafeTargetFilePath(workspacePath: string, filename: string): string {
   const trimmed = filename.trim();
