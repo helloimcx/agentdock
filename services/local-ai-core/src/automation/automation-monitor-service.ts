@@ -293,18 +293,11 @@ export class AutomationMonitorService {
     if (input.sourceConfig) {
       return this.updateSourceConfigTransaction(existing, update, resolved.sourceConfig || {});
     }
-    if (
-      !existing.enabled
-      && resolved.enabled
-      && this.providers.get(existing.sourceType)?.startMonitor
-    ) {
+    const startable = this.providers.get(existing.sourceType)?.startMonitor;
+    if (startable && !existing.enabled && resolved.enabled) {
       return this.enableSubscriptionTransaction(existing, update, resolved.sourceConfig || {});
     }
-    if (
-      existing.enabled
-      && !resolved.enabled
-      && this.providers.get(existing.sourceType)?.startMonitor
-    ) {
+    if (startable && existing.enabled && !resolved.enabled) {
       return this.disableSubscriptionTransaction(existing, update);
     }
     // existing.id is the already-resolved internal id; resolving monitorId again
@@ -964,10 +957,17 @@ export class AutomationMonitorService {
     };
   }
 
+  // Lifecycle/run paths only need identity, definition fields, and lastState;
+  // skipping the eager evaluation/run listings saves two store queries per call.
   private getRequiredMonitor(monitorId: string): AutomationMonitor {
-    const monitor = this.getMonitor(monitorId);
-    if (!monitor) throw new Error(`Automation monitor not found: ${monitorId}`);
-    return monitor;
+    const automation = this.resolveMonitorAutomation(monitorId);
+    if (!automation) throw new Error(`Automation monitor not found: ${monitorId}`);
+    return automationToMonitor(
+      automation,
+      undefined,
+      undefined,
+      this.options.automations.getLatestEvaluationWithState(automation.id),
+    );
   }
 
   private resolveMonitorAutomation(monitorId: string): AutomationDefinition | undefined {

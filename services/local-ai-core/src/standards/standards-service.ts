@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { atomicWriteFileSync } from '../kernel/atomic-write.js';
 import { resolve, join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import type {
@@ -206,12 +207,8 @@ export class StandardsService {
         ? join(input.workspacePath, '.agentdock', 'standards')
         : this.userStandardsDir;
 
-    if (!existsSync(targetDir)) {
-      mkdirSync(targetDir, { recursive: true });
-    }
-
     const filePath = join(targetDir, `${packId}.md`);
-    writeFileSync(filePath, rawContent, 'utf8');
+    atomicWriteFileSync(filePath, rawContent);
 
     return {
       id: packId,

@@ -1,6 +1,6 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { atomicWriteFileSync } from '../kernel/atomic-write.js';
 import type {
   MemoryCategory,
   MemoryPage,
@@ -168,13 +168,6 @@ function assertRealPagePath(wsDir: string, category: string, slug: string, fileP
       403,
     );
   }
-}
-
-function atomicWriteFileSync(filePath: string, content: string): void {
-  mkdirSync(dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
-  writeFileSync(tmpPath, content, 'utf8');
-  renameSync(tmpPath, filePath);
 }
 
 export class WorkspaceMemoryService {
