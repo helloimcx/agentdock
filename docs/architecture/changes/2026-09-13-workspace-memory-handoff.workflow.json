@@ -1,0 +1,178 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentDock 工作区记忆 Wiki 与按需跨 Agent 会话交接流水线",
+    "locale": "zh-CN",
+    "output": "docs/architecture/changes/2026-09-13-workspace-memory-handoff.html",
+    "quality_profile": "showcase",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "cross-agent-handoff",
+        "label": "按需跨 Agent 会话交接通路",
+        "focus": ["agent_switch_event", "deterministic_distiller", "session_handoff_store", "prompt_injector", "new_agent_execution"],
+        "note": "仅在 /agent use 切换时按需触发纯本地确定性提炼（零 LLM 开销），新 Agent 首条消息自动注入交接书"
+      },
+      {
+        "id": "workspace-memory-wiki",
+        "label": "项目工作记忆与双向同步",
+        "focus": ["fs_memory_markdown", "workspace_memory_store", "managed_memory_skill", "workspace_memory_ui"],
+        "note": "纯 Markdown 存储 + SQLite FTS5 秒级检索，支持 Obsidian 双向同步与 Agent 自主读写"
+      },
+      {
+        "id": "end-to-end-loop",
+        "label": "端到端记忆闭环",
+        "focus": ["agent_switch_event", "deterministic_distiller", "session_handoff_store", "prompt_injector", "managed_memory_skill", "fs_memory_markdown", "workspace_memory_store"],
+        "note": "从 Agent 切换交接书到工作区活体记忆 Wiki 的完整沉淀闭环"
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "acp_lifecycle", "label": "Agent 切换与交接生命周期 (Switch & Handoff)" },
+    { "id": "core_storage", "label": "核心存储与检索索引 (Storage & FTS Index)" },
+    { "id": "workspace_wiki", "label": "工作区记忆与技能 (Workspace Wiki & Skills)" }
+  ],
+  "phases": [
+    { "id": "phase_agent_switch", "label": "Agent 切换与确定性提炼", "fromCol": 0, "toCol": 1 },
+    { "id": "phase_store_and_index", "label": "结构化存盘与 FTS 索引", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "phase_inject_and_query", "label": "新 Agent 注入与自主检索", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "agent_switch_event",
+    "deterministic_distiller",
+    "session_handoff_store",
+    "prompt_injector",
+    "new_agent_execution"
+  ],
+  "nodes": [
+    {
+      "id": "agent_switch_event",
+      "lane": "acp_lifecycle",
+      "col": 0,
+      "type": "backend",
+      "label": "Agent 切换触发事件",
+      "sublabel": "/agent use 或切换设置",
+      "width": 140
+    },
+    {
+      "id": "deterministic_distiller",
+      "lane": "acp_lifecycle",
+      "col": 1,
+      "type": "backend",
+      "label": "确定性交接提炼器",
+      "sublabel": "Trace 抽取 · 零 LLM 开销",
+      "width": 150
+    },
+    {
+      "id": "session_handoff_store",
+      "lane": "core_storage",
+      "col": 2,
+      "type": "database",
+      "label": "SQLite Handoff 仓储",
+      "sublabel": "pending 状态与生命周期",
+      "width": 145
+    },
+    {
+      "id": "workspace_memory_store",
+      "lane": "core_storage",
+      "col": 3,
+      "type": "database",
+      "label": "Memory FTS5 索引",
+      "sublabel": "FTS5 检索 · 增量同步",
+      "width": 145
+    },
+    {
+      "id": "fs_memory_markdown",
+      "lane": "workspace_wiki",
+      "col": 2,
+      "type": "database",
+      "label": "物理 Markdown 目录",
+      "sublabel": ".agentdock/memory/ (4类)",
+      "width": 150
+    },
+    {
+      "id": "prompt_injector",
+      "lane": "acp_lifecycle",
+      "col": 4,
+      "type": "backend",
+      "label": "Prompt 前置注入器",
+      "sublabel": "[Session Handoff] 定界",
+      "width": 145
+    },
+    {
+      "id": "new_agent_execution",
+      "lane": "acp_lifecycle",
+      "col": 5,
+      "type": "frontend",
+      "label": "新 Agent 无缝续跑",
+      "sublabel": "消除断崖 · consumed 翻转",
+      "width": 150
+    },
+    {
+      "id": "managed_memory_skill",
+      "lane": "workspace_wiki",
+      "col": 4,
+      "type": "backend",
+      "label": "Memory Managed Skill",
+      "sublabel": "memory_query / write",
+      "width": 145
+    },
+    {
+      "id": "workspace_memory_ui",
+      "lane": "workspace_wiki",
+      "col": 5,
+      "type": "frontend",
+      "label": "Workspace Memory UI",
+      "sublabel": "树形目录 · 搜索 · 编辑",
+      "width": 145
+    }
+  ],
+  "edges": [
+    {
+      "from": "agent_switch_event",
+      "to": "deterministic_distiller",
+      "label": "切换时按需触发"
+    },
+    {
+      "from": "deterministic_distiller",
+      "to": "session_handoff_store",
+      "label": "存为 pending"
+    },
+    {
+      "from": "session_handoff_store",
+      "to": "prompt_injector",
+      "label": "新 Agent 首条消息读取"
+    },
+    {
+      "from": "prompt_injector",
+      "to": "new_agent_execution",
+      "label": "注入交接书并翻转状态"
+    },
+    {
+      "from": "fs_memory_markdown",
+      "to": "workspace_memory_store",
+      "label": "mtime 增量双向同步"
+    },
+    {
+      "from": "workspace_memory_store",
+      "to": "managed_memory_skill",
+      "label": "FTS5 检索响应"
+    },
+    {
+      "from": "managed_memory_skill",
+      "to": "fs_memory_markdown",
+      "label": "Agent 经验写盘"
+    },
+    {
+      "from": "workspace_memory_store",
+      "to": "workspace_memory_ui",
+      "label": "目录与检索"
+    },
+    {
+      "from": "workspace_memory_ui",
+      "to": "fs_memory_markdown",
+      "label": "用户保存修改"
+    }
+  ]
+}

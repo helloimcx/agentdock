@@ -91,6 +91,8 @@ import { LocalModelProviderStore } from './model-provider-store.js';
 import { LocalExternalStore } from './external-store.js';
 import { LocalRuntimeConfigStore } from './runtime-config-store.js';
 import { LocalSkillSourceStore } from './skill-source-store.js';
+import { LocalCoreSessionHandoffStore } from './session-handoff-store.js';
+import { LocalCoreWorkspaceMemoryStore } from './workspace-memory-store.js';
 import type { SkillSource, SkillScope } from '@cc/superai-contracts/skills';
 
 export class LocalCoreAcpStore {
@@ -112,6 +114,8 @@ export class LocalCoreAcpStore {
   readonly cost: LocalCoreCostStore;
   readonly budgets: LocalCoreBudgetStore;
   readonly skillSources: LocalSkillSourceStore;
+  readonly sessionHandoffs: LocalCoreSessionHandoffStore;
+  readonly workspaceMemory: LocalCoreWorkspaceMemoryStore;
   readonly userDataPath: string;
 
   constructor(userDataPath: string) {
@@ -141,6 +145,8 @@ export class LocalCoreAcpStore {
     this.platform = new LocalPlatformStore(this.db);
     this.modelProviders = new LocalModelProviderStore(this.db);
     this.external = new LocalExternalStore(this.db);
+    this.sessionHandoffs = new LocalCoreSessionHandoffStore(this.db);
+    this.workspaceMemory = new LocalCoreWorkspaceMemoryStore(this.db);
     ensureLocalCoreAcpSchema(this.db);
     this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
   }

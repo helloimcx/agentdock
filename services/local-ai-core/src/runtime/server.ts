@@ -59,6 +59,9 @@ import { registerExternalHandlers } from './handlers/external-handler.js';
 import { CostService } from '../cost/cost-service.js';
 import { StandardsService } from '../standards/standards-service.js';
 import { registerStandardsHandlers } from './handlers/standards-handler.js';
+import { WorkspaceMemoryService } from '../memory/workspace-memory-service.js';
+import { registerMemoryHandlers } from './handlers/memory-handler.js';
+
 import {
   registerOpenAiHandler,
   OpenAiChatCompletionStreamAdapter,
@@ -97,6 +100,7 @@ export interface LocalAiCoreServerBindings {
   readonly errorReporter: LocalCoreErrorReporter;
   readonly skillCatalog?: ManagedSkillCatalog;
   readonly standardsService?: StandardsService;
+  readonly memoryService?: WorkspaceMemoryService;
 }
 
 interface LocalAiCoreServerOptions {
@@ -200,6 +204,19 @@ export class LocalAiCoreServer {
     registerChannelHandlers(this.handlers, b.channelService);
     registerExternalHandlers(this.handlers, b.externalService, (runId, res) => this.attachExternalRunSseClient(runId, res));
     registerStandardsHandlers(this.handlers, b.standardsService || new StandardsService(), b.workspaceRouter);
+
+    const memoryService = b.memoryService || (b.store?.workspaceMemory && b.workspaceRouter
+      ? new WorkspaceMemoryService({
+          store: b.store.workspaceMemory,
+          getWorkspacePath: async (workspaceId: string) => {
+            return b.workspaceRouter.resolveWorkspacePath(workspaceId);
+          },
+        })
+      : undefined);
+    if (memoryService) {
+      registerMemoryHandlers(this.handlers, memoryService);
+    }
+
 
     const openAiReg: OpenAiStreamRegistration = {
       addAdapter: (runId, adapter) => {

@@ -1,4 +1,5 @@
 import type {
+  SessionHandoffRecord,
   ThreadDetail,
   ThreadSummary,
   WorkspaceRegistryEntry,
@@ -60,4 +61,18 @@ export function sendAction(threadId: string, content: string) {
 
 export function interruptRun(runId: string) {
   return coreRequest<{ interrupted: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/interrupt`);
+}
+
+export function listThreadHandoffs(threadId: string) {
+  return coreRequest<{ handoffs: SessionHandoffRecord[] }>(
+    'GET',
+    `/threads/${encodeURIComponent(threadId)}/handoffs`,
+  );
+}
+
+export function getPendingThreadHandoff(threadId: string) {
+  return coreRequest<{ handoff: SessionHandoffRecord | null }>(
+    'GET',
+    `/threads/${encodeURIComponent(threadId)}/handoffs/pending`,
+  );
 }

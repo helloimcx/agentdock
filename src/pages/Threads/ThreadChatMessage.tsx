@@ -13,6 +13,8 @@ import {
 import { Button } from '@/components/ui';
 import { ChatMarkdown } from '@/components/chat/ChatMarkdown';
 import { cn } from '@/lib/utils';
+import { extractSessionHandoffDelimiter } from '@cc/superai-contracts';
+import { SessionHandoffCard } from './SessionHandoffCard';
 import { formatMessageTimestamp, type ChatMessage } from './thread-chat-model';
 import {
   parsePermissionCardContent,
@@ -168,6 +170,9 @@ export function ThreadChatMessage({
   const isProgress = !isUser && !isSystem && message.kind === 'progress';
   const toolResultCard = !isUser ? toolCallToResultCard(message.toolCall) : null;
   const isToolResult = Boolean(toolResultCard);
+  const handoffExtracted = message.content ? extractSessionHandoffDelimiter(message.content) : null;
+  const contentToDisplay = handoffExtracted ? handoffExtracted.remainingText : message.content;
+
   return (
     <div className={cn('flex gap-3 sm:gap-4', isUser ? 'justify-end' : 'justify-start')}>
       {!isUser ? (
@@ -226,15 +231,22 @@ export function ThreadChatMessage({
               <span data-testid="desktop-chat-message-timestamp">{formatMessageTimestamp(message.timestamp)}</span>
             ) : null}
           </div>
+          {handoffExtracted ? (
+            <SessionHandoffCard
+              fromAgent={handoffExtracted.handoff.fromAgent}
+              toAgent={handoffExtracted.handoff.toAgent}
+              body={handoffExtracted.handoff.body}
+            />
+          ) : null}
           {!isUser && message.preview && message.previewPlainText ? (
             <div className="whitespace-pre-wrap break-words text-[13px] leading-6 text-inherit">
-              {message.content}
+              {contentToDisplay}
             </div>
           ) : toolResultCard ? (
             <ToolResultCardView card={toolResultCard} />
-          ) : (
-            <ChatMarkdown content={message.content} isUser={isUser} />
-          )}
+          ) : contentToDisplay ? (
+            <ChatMarkdown content={contentToDisplay} isUser={isUser} />
+          ) : null}
           {!isUser && message.actions && message.actions.length > 0 ? (
             <div className="mt-4 space-y-2">
               {message.actions.map((row, rowIndex) => (

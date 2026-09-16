@@ -28,6 +28,8 @@ import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
 import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { createProviderCommandOptions } from '../thread/thread-command-service.js';
+import { distillSessionHandoff } from './session-handoff-distiller.js';
+
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
@@ -176,8 +178,32 @@ export class LocalCoreAcpBackend {
         setThreadMode: (threadId, mode) => this.sessionCoordinator.setThreadMode(threadId, mode),
         closeThreadSession: (threadId) => this.sessionCoordinator.closeThreadSession(threadId),
         interruptRun: (runId) => this.sessionCoordinator.interruptRun(runId),
+        createHandoffOnAgentSwitch: ({ threadId, fromAgent, toAgent }) => {
+          const latestRun = this.options.store.getLatestRunForThread(threadId);
+          const spans = latestRun ? this.options.store.trace.listRunSpans(latestRun.id) : [];
+          const thread = this.options.store.getThread(threadId, []);
+          const messages = thread ? thread.messages : [];
+          const payload = distillSessionHandoff({
+            threadId,
+            fromAgent,
+            toAgent,
+            lastRunId: latestRun?.id,
+            messages,
+            spans,
+          });
+          return this.options.store.sessionHandoffs.createHandoff({
+            threadId,
+            runId: latestRun?.id,
+            fromAgent,
+            toAgent,
+            payload,
+            status: 'pending',
+          });
+        },
+
         ...createProviderCommandOptions(this.options.store),
         log: options.log,
+
       },
     });
     this.responseProcessor = new LocalCoreAcpResponseProcessor({

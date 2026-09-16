@@ -46,7 +46,14 @@ export function registerThreadHandlers(
     const body = validateBody<{ content: string }>(await readJsonBody(req), { content: { kind: 'string', required: true } });
     json(res, 200, await workspaceRouter.sendThreadAction((route as { threadId: string }).threadId, body.content));
   });
+  map.set('thread.handoffs.list', async (route, _req, res) => {
+    json(res, 200, { handoffs: workspaceRouter.listThreadHandoffs((route as { threadId: string }).threadId) });
+  });
+  map.set('thread.handoffs.pending', async (route, _req, res) => {
+    json(res, 200, { handoff: workspaceRouter.getPendingThreadHandoff((route as { threadId: string }).threadId) || null });
+  });
   map.set('run.interrupt', async (route, _req, res) => {
     json(res, 200, await workspaceRouter.interruptRun((route as { runId: string }).runId));
   });
+
 }
