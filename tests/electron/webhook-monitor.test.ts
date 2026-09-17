@@ -52,6 +52,7 @@ function fixture(execute?: (automationId: string) => Promise<void>) {
     eventBus,
     automations,
     monitors,
+    webhookProvider,
     executedActions,
     close() {
       store.close();
@@ -745,6 +746,42 @@ test('updateMonitor and deleteMonitor resolve a public short id exactly once', a
     const deleted = await context.monitors.deleteMonitor(publicId);
     assert.equal(listCalls, 1, 'deleteMonitor must resolve the monitor automation exactly once');
     assert.equal(deleted.deleted, true);
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
+test('updateMonitor plain path preserves lastState for subscription restarts', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'State Continuity Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'state-hook', token: 'sec-state' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Analyze the webhook event.',
+      enabled: true,
+    });
+
+    // The webhook provider has no startMonitor, so installs after createMonitor
+    // miss the create-time (no-op) path and capture only the update-time restart.
+    const captured: Array<{ lastState?: string } | undefined> = [];
+    (context.webhookProvider as unknown as Record<string, unknown>).startMonitor = async (input: unknown) => {
+      captured.push(input as { lastState?: string });
+      return { stop: async () => {} };
+    };
+
+    const automations = context.automations as unknown as Record<string, unknown>;
+    automations.getLatestEvaluationWithState = () => ({ id: 'eval-state-stub', status: 'finished', nextState: { lastEventId: 'evt-42' } });
+
+    const publicId = toPublicAutomationMonitorId(monitor.id);
+    await context.monitors.updateMonitor(publicId, { title: 'State Continuity Hook v2' });
+
+    assert.equal((await context.monitors.getMonitor(publicId))?.title, 'State Continuity Hook v2');
+    assert.equal(captured.length, 1, 'plain-path update must start exactly one fresh handle when none exists');
+    assert.deepEqual(captured[0]?.lastState, { lastEventId: 'evt-42' }, 'restarted subscription must receive the persisted lastState');
   } finally {
     await context.monitors.stop();
     context.close();
