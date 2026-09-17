@@ -300,9 +300,8 @@ export class AutomationMonitorService {
     if (startable && existing.enabled && !resolved.enabled) {
       return this.disableSubscriptionTransaction(existing, update);
     }
-    // existing.id is the already-resolved internal id; resolving monitorId again
-    // would repeat the public-short-id automations.list() scan per request.
-    const monitor = automationToMonitor(this.options.automations.updateFromLegacy(existing.id, update));
+    this.options.automations.updateFromLegacy(existing.id, update);
+    const monitor = this.getRequiredMonitor(existing.id);
     await this.ensureSubscription(monitor);
     return monitor;
   }
