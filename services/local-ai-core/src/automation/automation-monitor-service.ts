@@ -5,7 +5,6 @@ import type {
   AutomationMonitorCreateInput,
   AutomationMonitorEventSnapshot,
   AutomationMonitorRun,
-  AutomationMonitorSchedule,
   AutomationMonitorUpdateInput,
   ScheduledJobRoute,
 } from '@cc/superai-contracts';
@@ -13,11 +12,10 @@ import type { ChannelRuntime, EventBus, MonitorProviderRuntime } from '@cc/plugi
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import {
-  assertSupportedTimezone,
-  compileCronExpression,
   cronMatchesFields,
   extractFieldsInTimezone,
 } from '../scheduler/cron.js';
+import { assertValidMonitorSchedule, prepareMonitorInput } from './automation-monitor-input.js';
 import {
   routeFromPlatformThreadBinding,
   routeWithPlatformInstance,
@@ -225,24 +223,10 @@ export class AutomationMonitorService {
     );
   }
 
-  private prepareMonitorInput(input: AutomationMonitorCreateInput): AutomationMonitorCreateInput {
-    if (input.sourceType === 'webhook') {
-      const sourceConfig = { ...(input.sourceConfig || {}) };
-      if (!sourceConfig.hookId || typeof sourceConfig.hookId !== 'string' || !sourceConfig.hookId.trim()) {
-        sourceConfig.hookId = `wh_${randomBytes(6).toString('hex')}`;
-      }
-      if (!sourceConfig.token || typeof sourceConfig.token !== 'string' || !sourceConfig.token.trim()) {
-        sourceConfig.token = `whsec_${randomBytes(16).toString('hex')}`;
-      }
-      return { ...input, sourceConfig };
-    }
-    return input;
-  }
-
   async createMonitor(input: AutomationMonitorCreateInput): Promise<AutomationMonitor> {
-    const prepared = this.prepareMonitorInput(input);
+    const prepared = prepareMonitorInput(input);
     const resolved = this.resolveCreateInput(prepared);
-    this.assertValidMonitorSchedule(resolved.schedule);
+    assertValidMonitorSchedule(resolved.schedule);
     this.providers.get(resolved.sourceType)?.validateConfig?.(resolved.sourceConfig || {});
     const mapped = monitorToAutomationInput(resolved);
     let monitor: AutomationMonitor | undefined;
@@ -271,7 +255,7 @@ export class AutomationMonitorService {
     this.options.automations.assertLegacyFacadesAvailable();
     const existing = this.getRequiredMonitor(monitorId);
     if (input.sourceConfig) this.providers.get(existing.sourceType)?.validateConfig?.(input.sourceConfig);
-    this.assertValidMonitorSchedule(input.schedule === null ? undefined : input.schedule);
+    assertValidMonitorSchedule(input.schedule === null ? undefined : input.schedule);
     const resolved = this.resolveCreateInput({
       workspaceId: existing.workspaceId,
       title: input.title ?? existing.title,
@@ -924,17 +908,6 @@ export class AutomationMonitorService {
   private async settleInFlight(): Promise<void> {
     while (this.inFlight.size > 0) {
       await Promise.allSettled([...this.inFlight]);
-    }
-  }
-
-  private assertValidMonitorSchedule(schedule: AutomationMonitorSchedule | undefined): void {
-    if (!schedule) return;
-    try {
-      compileCronExpression(schedule.cron);
-      assertSupportedTimezone(schedule.timezone);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Monitor schedule is invalid: ${message}`);
     }
   }
 
