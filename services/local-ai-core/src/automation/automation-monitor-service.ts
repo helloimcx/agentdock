@@ -218,9 +218,12 @@ export class AutomationMonitorService {
   getMonitorByHookId(hookId: string): AutomationMonitor | undefined {
     const clean = String(hookId || '').trim();
     if (!clean) return undefined;
-    return this.listMonitors().find((m) =>
-      m.sourceType === 'webhook' && (m.sourceConfig?.hookId === clean || m.id === clean)
-    );
+    if (clean.startsWith('monitor:')) {
+      const monitor = this.getMonitor(clean);
+      if (monitor?.sourceType === 'webhook') return monitor;
+    }
+    const byHook = this.options.automations.findMonitorIdByHookId(clean);
+    return byHook ? this.getRequiredMonitor(byHook) : undefined;
   }
 
   async createMonitor(input: AutomationMonitorCreateInput): Promise<AutomationMonitor> {

@@ -117,6 +117,10 @@ export class AutomationService {
     return this.options.store.getAutomation(automationId);
   }
 
+  findMonitorIdByHookId(hookId: string): string | undefined {
+    return this.options.store.findAutomationMonitorIdByHookId(hookId);
+  }
+
   create(input: AutomationCreateInput): AutomationDefinition {
     const updated = this.options.store.createAutomationAtomically(input, (automation) => ({
       nextCheckAt: calculateInitialNextCheckAt(automation, this.now()),
