@@ -243,6 +243,82 @@ test('authenticateWebhook enforces hook existence, enabled state, and token befo
   }
 });
 
+test('getMonitorByHookId resolves a hook without scanning all monitors', async () => {
+  const context = fixture();
+  try {
+    const monitor = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Hook Lookup Scanner',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'scanner-hook', token: 'sec-scanner' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Hook Lookup Scanner Github Clash',
+      sourceType: 'github',
+      sourceConfig: { hookId: 'scanner-hook', token: 'sec-clash' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Github Only Hook',
+      sourceType: 'github',
+      sourceConfig: { hookId: 'solo-github-hook', token: 'sec-solo' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+
+    const automations = context.automations as unknown as Record<string, unknown>;
+    const countCalls = (method: string) => {
+      const original = (automations[method] as (...args: unknown[]) => unknown).bind(context.automations);
+      let calls = 0;
+      automations[method] = (...args: unknown[]) => {
+        calls += 1;
+        return original(...args);
+      };
+      return () => calls;
+    };
+    const listCalls = countCalls('list');
+    const runCalls = countCalls('listRuns');
+    const evaluationCalls = countCalls('listEvaluations');
+
+    const resolved = context.monitors.getMonitorByHookId('scanner-hook');
+    assert.equal(resolved?.id, monitor.id, 'a shared hookId must resolve to the webhook monitor, not a newer non-webhook one');
+    assert.equal(resolved?.sourceConfig?.hookId, 'scanner-hook');
+    assert.equal(
+      context.monitors.getMonitorByHookId('solo-github-hook'),
+      undefined,
+      'hookIds held only by non-webhook monitors must not authenticate',
+    );
+    assert.equal(context.monitors.getMonitorByHookId('missing-hook'), undefined);
+    assert.equal(listCalls(), 0, 'hook resolution must hit the store index, not enumerate every monitor');
+    assert.equal(runCalls(), 0, 'hook resolution must not eagerly load the run history');
+    assert.equal(evaluationCalls(), 0, 'hook resolution must not eagerly load the evaluation history');
+
+    const prefixed = await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Prefixed Custom Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'monitor:custom-hook', token: 'sec-prefixed' },
+      condition: { metric: 'always', operator: '==', value: true },
+      promptTemplate: 'Hello',
+    });
+    assert.equal(
+      context.monitors.getMonitorByHookId('monitor:custom-hook')?.id,
+      prefixed.id,
+      'a custom hookId colliding with the internal id prefix must still resolve by hook',
+    );
+  } finally {
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
 test('triggerWebhook rejects when monitor is disabled', async () => {
   const context = fixture();
   try {

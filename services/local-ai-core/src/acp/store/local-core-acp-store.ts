@@ -446,6 +446,10 @@ export class LocalCoreAcpStore {
     return this.automations.get(automationId);
   }
 
+  findAutomationMonitorIdByHookId(hookId: string): string | undefined {
+    return this.automations.findMonitorIdByHookId(hookId);
+  }
+
   getAutomationNextCheckAt(automationId: string): string | null {
     return this.automations.getNextCheckAt(automationId);
   }

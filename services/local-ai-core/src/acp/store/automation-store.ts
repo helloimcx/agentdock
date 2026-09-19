@@ -102,6 +102,19 @@ export class LocalAutomationStore {
     return row ? rowToDefinition(row) : undefined;
   }
 
+  findMonitorIdByHookId(hookId: string): string | undefined {
+    const row = this.db.prepare(`
+      SELECT id
+      FROM automations
+      WHERE origin_kind = 'automation-monitor'
+        AND json_extract(activation_json, '$.sourceType') = 'webhook'
+        AND json_extract(activation_json, '$.sourceConfig.hookId') = ?
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).get(hookId) as { id: string } | undefined;
+    return row?.id;
+  }
+
   create(input: AutomationCreateInput): AutomationDefinition {
     return this.createWithOrigin(input, 'native');
   }
