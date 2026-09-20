@@ -196,6 +196,14 @@ export class AutomationService {
     return this.options.store.listAutomationEvaluations(automationId);
   }
 
+  getLatestEvaluation(automationId: string): AutomationEvaluation | undefined {
+    return this.options.store.getLatestAutomationEvaluation(automationId);
+  }
+
+  getRunByEvaluation(evaluationId: string): AutomationRun | undefined {
+    return this.options.store.getAutomationRunByEvaluation(evaluationId);
+  }
+
   getLatestEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
     return this.options.store.getLatestAutomationEvaluationWithState(automationId);
   }

@@ -276,6 +276,17 @@ export class LocalAutomationStore {
     return rows.map((row) => rowToEvaluation(row));
   }
 
+  getLatestEvaluation(automationId: string): AutomationEvaluation | undefined {
+    const row = this.db.prepare(`
+      SELECT ${EVALUATION_COLUMNS}
+      FROM automation_evaluations
+      WHERE automation_id = ?
+      ORDER BY started_at DESC, id DESC
+      LIMIT 1
+    `).get(automationId) as LocalAutomationEvaluationRow | undefined;
+    return row ? rowToEvaluation(row) : undefined;
+  }
+
   getLatestEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
     const row = this.db.prepare(`
       SELECT ${EVALUATION_COLUMNS}
@@ -511,7 +522,7 @@ export class LocalAutomationStore {
     return row ? rowToRun(row) : undefined;
   }
 
-  private getRunByEvaluation(evaluationId: string): AutomationRun | undefined {
+  getRunByEvaluation(evaluationId: string): AutomationRun | undefined {
     const row = this.db.prepare(`SELECT ${RUN_COLUMNS} FROM automation_runs WHERE evaluation_id = ?`)
       .get(evaluationId) as LocalAutomationRunRow | undefined;
     return row ? rowToRun(row) : undefined;

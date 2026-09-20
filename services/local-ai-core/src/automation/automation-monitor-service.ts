@@ -381,7 +381,7 @@ export class AutomationMonitorService {
     };
 
     const run = await this.runMonitorNow(monitor.id, event);
-    const latestEval = this.options.automations.listEvaluations(monitor.id)[0];
+    const latestEval = this.options.automations.getLatestEvaluation(monitor.id);
     const decision = latestEval?.conditionOutcome === 'not_matched'
       ? 'not_matched'
       : (latestEval?.triggerDecision ?? (run.status === 'succeeded' || run.status === 'running' || run.status === 'queued' ? 'triggered' : run.status));
@@ -555,7 +555,7 @@ export class AutomationMonitorService {
         && admission.lifecycleGeneration !== undefined
         && !this.isCurrentLifecycle(admission.lifecycleGeneration, 'running')
       ) return undefined;
-      const run = this.options.automations.listRuns(monitorId).find((candidate) => candidate.evaluationId === evaluation.id);
+      const run = this.options.automations.getRunByEvaluation(evaluation.id);
       return automationToMonitorRun(evaluation, run);
     } finally {
       this.releaseProviderEventPermit();

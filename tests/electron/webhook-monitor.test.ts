@@ -170,6 +170,45 @@ test('triggerWebhook authenticates token and evaluates condition', async () => {
   }
 });
 
+test('triggerWebhook decides from a latest-evaluation lookup instead of the full history', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalListEvaluations = automations.listEvaluations;
+  try {
+    await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'History Read Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'history-read', token: 'sec-history' },
+      condition: { metric: 'expression', operator: '==', value: true, expression: 'status == "failed"' },
+      promptTemplate: 'Analyze failure for {{payload.service}}',
+      cooldownMs: 60_000,
+    });
+
+    // Any decision-path read of the full history would take [0] and see this
+    // stale sentinel, flipping the asserted decisions — even from inside an
+    // error-swallowing caller that a throwing stub could not catch.
+    automations.listEvaluations = () => [{
+      id: 'automation-evaluation:stale-sentinel',
+      automationId: 'automation:stale-sentinel',
+      status: 'finished',
+      activationKind: 'provider-event',
+      conditionOutcome: 'not_matched',
+      triggerDecision: 'skipped_cooldown',
+    }];
+
+    const match = await context.monitors.triggerWebhook('history-read', { status: 'failed' }, 'sec-history');
+    assert.equal(match.decision, 'triggered');
+    const cooldown = await context.monitors.triggerWebhook('history-read', { status: 'failed' }, 'sec-history');
+    assert.equal(cooldown.decision, 'skipped_cooldown');
+    assert.equal(context.executedActions.length, 1);
+  } finally {
+    automations.listEvaluations = originalListEvaluations;
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
 test('triggerWebhook token compare rejects wrong-length tokens with 401', async () => {
   const context = fixture();
   try {
