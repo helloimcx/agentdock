@@ -633,6 +633,14 @@ export class LocalCoreAcpStore {
     return this.automations.listEvaluations(automationId);
   }
 
+  getLatestAutomationEvaluation(automationId: string): AutomationEvaluation | undefined {
+    return this.automations.getLatestEvaluation(automationId);
+  }
+
+  getAutomationRunByEvaluation(evaluationId: string): AutomationRun | undefined {
+    return this.automations.getRunByEvaluation(evaluationId);
+  }
+
   getLatestAutomationEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
     return this.automations.getLatestEvaluationWithState(automationId);
   }
