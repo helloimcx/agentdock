@@ -246,6 +246,8 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_created
       ON automation_runs (automation_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_status
+      ON automation_runs (automation_id, status);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_runs_evaluation_unique ON automation_runs (evaluation_id);
     CREATE TABLE IF NOT EXISTS automation_scripts (
       id TEXT PRIMARY KEY,

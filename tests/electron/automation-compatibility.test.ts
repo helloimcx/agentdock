@@ -165,6 +165,30 @@ test('scheduler facade writes and runs only unified records while projecting leg
   } finally { context.close(); }
 });
 
+test('runJobNow resolves the run by evaluation id without reading the full run history', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalListRuns = automations.listRuns;
+  try {
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1', threadId: 'thread-1', triggerType: 'once', runAt: '2099-01-01T00:00:00.000Z',
+      promptTemplate: 'hello', description: 'Point lookup', enabled: true,
+    });
+    // An empty stub makes a listRuns().find(evaluationId ===) lookup lose the
+    // real run row and project the evaluation id instead — so this pin also
+    // fails if the point lookup regresses into a history scan.
+    automations.listRuns = () => [];
+    const run = await context.jobs.runJobNow(job.id);
+    assert.ok(run.id.startsWith('automation-run:'), `expected run row id, got ${run.id}`);
+    assert.equal(run.status, 'succeeded');
+    assert.equal(run.runId, 'run-1');
+    assert.equal(context.actions.length, 1);
+  } finally {
+    automations.listRuns = originalListRuns;
+    context.close();
+  }
+});
+
 test('scheduler empty description survives unified persistence and reopen', () => {
   const context = fixture();
   const path = context.path;
