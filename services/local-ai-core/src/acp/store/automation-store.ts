@@ -63,6 +63,9 @@ const EVALUATION_COLUMNS = `
   id, automation_id, status, activation_kind, script_version_id, started_at, finished_at, evaluation_json
 `;
 const RUN_COLUMNS = 'id, automation_id, evaluation_id, status, created_at, run_json';
+// Startup recovery (reconcileInterruptedRuns) and the actionRunning gate
+// (hasActiveRun) must agree on which run statuses count as active.
+const ACTIVE_RUN_STATUSES = "'queued', 'running'";
 
 export class LocalAutomationStore {
   constructor(private readonly db: DatabaseSync) {}
@@ -432,7 +435,7 @@ export class LocalAutomationStore {
     const rows = this.db.prepare(`
       SELECT ${RUN_COLUMNS}
       FROM automation_runs
-      WHERE status IN ('queued', 'running')
+      WHERE status IN (${ACTIVE_RUN_STATUSES})
       ORDER BY created_at, id
     `).all() as LocalAutomationRunRow[];
     return rows.map((row) => this.updateRun(row.id, {
@@ -526,6 +529,16 @@ export class LocalAutomationStore {
     const row = this.db.prepare(`SELECT ${RUN_COLUMNS} FROM automation_runs WHERE evaluation_id = ?`)
       .get(evaluationId) as LocalAutomationRunRow | undefined;
     return row ? rowToRun(row) : undefined;
+  }
+
+  hasActiveRun(automationId: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1
+      FROM automation_runs
+      WHERE automation_id = ? AND status IN (${ACTIVE_RUN_STATUSES})
+      LIMIT 1
+    `).get(automationId);
+    return row !== undefined;
   }
 
   private requireDefinition(id: string): AutomationDefinition {

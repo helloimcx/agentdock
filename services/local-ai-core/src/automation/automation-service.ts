@@ -204,6 +204,10 @@ export class AutomationService {
     return this.options.store.getAutomationRunByEvaluation(evaluationId);
   }
 
+  hasActiveRun(automationId: string): boolean {
+    return this.options.store.hasActiveAutomationRun(automationId);
+  }
+
   getLatestEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
     return this.options.store.getLatestAutomationEvaluationWithState(automationId);
   }
@@ -506,8 +510,7 @@ export class AutomationService {
   ): Promise<AutomationEvaluation> {
     const startedAt = context ? new Date(context.occurredAt) : this.now();
     const running = this.createEvaluation(automation, startedAt);
-    const actionRunning = this.listRuns(automation.id)
-      .some((run) => run.status === 'queued' || run.status === 'running');
+    const actionRunning = this.hasActiveRun(automation.id);
     const coolingDown = automation.lastTriggeredAt !== undefined
       && startedAt.getTime() < Date.parse(automation.lastTriggeredAt) + automation.policies.cooldownMs;
     const payload = context?.payload || {};

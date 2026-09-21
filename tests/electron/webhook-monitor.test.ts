@@ -209,6 +209,42 @@ test('triggerWebhook decides from a latest-evaluation lookup instead of the full
   }
 });
 
+test('webhook evaluation checks active runs without reading the full run history', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalListRuns = automations.listRuns;
+  try {
+    await context.monitors.createMonitor({
+      workspaceId: 'workspace-a',
+      title: 'Active Run Hook',
+      sourceType: 'webhook',
+      sourceConfig: { hookId: 'active-run', token: 'sec-active' },
+      condition: { metric: 'expression', operator: '==', value: true, expression: 'status == "failed"' },
+      promptTemplate: 'Analyze failure for {{payload.service}}',
+      cooldownMs: 60_000,
+    });
+
+    // A stale 'running' sentinel in the run history would flip the decision to
+    // skipped_action_running if the admission check still scanned the full
+    // history instead of asking the store for an active run.
+    automations.listRuns = () => [{
+      id: 'automation-run:stale-sentinel',
+      automationId: 'automation:stale-sentinel',
+      evaluationId: 'automation-evaluation:stale-sentinel',
+      status: 'running',
+      createdAt: '2026-09-22T00:00:00.000Z',
+    }];
+
+    const match = await context.monitors.triggerWebhook('active-run', { status: 'failed' }, 'sec-active');
+    assert.equal(match.decision, 'triggered');
+    assert.equal(context.executedActions.length, 1);
+  } finally {
+    automations.listRuns = originalListRuns;
+    await context.monitors.stop();
+    context.close();
+  }
+});
+
 test('triggerWebhook token compare rejects wrong-length tokens with 401', async () => {
   const context = fixture();
   try {

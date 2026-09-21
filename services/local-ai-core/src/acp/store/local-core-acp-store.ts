@@ -641,6 +641,10 @@ export class LocalCoreAcpStore {
     return this.automations.getRunByEvaluation(evaluationId);
   }
 
+  hasActiveAutomationRun(automationId: string): boolean {
+    return this.automations.hasActiveRun(automationId);
+  }
+
   getLatestAutomationEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
     return this.automations.getLatestEvaluationWithState(automationId);
   }

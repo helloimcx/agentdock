@@ -133,7 +133,7 @@ export class ScheduledJobApplicationService {
     this.options.automations.assertLegacyFacadesAvailable();
     const resolved = this.resolveRequiredJobId(jobId);
     const evaluation = await this.options.automations.checkNow(resolved);
-    const run = this.options.automations.listRuns(resolved).find((candidate) => candidate.evaluationId === evaluation.id);
+    const run = this.options.automations.getRunByEvaluation(evaluation.id);
     return automationToScheduledJobRun(evaluation, run);
   }
 
