@@ -10,7 +10,6 @@ import type { AutomationService } from '../automation/automation-service.js';
 import {
   automationToScheduledJob,
   automationToScheduledJobRun,
-  latestAutomationRun,
   scheduledJobToAutomationInput,
 } from '../automation/legacy-automation-mappers.js';
 import type { SchedulerService } from './scheduler-service.js';
@@ -72,7 +71,7 @@ export class ScheduledJobApplicationService {
     const resolved = this.resolveJobId(jobId);
     const automation = resolved ? this.options.automations.get(resolved) : undefined;
     return automation?.originKind === 'scheduled-job'
-      ? automationToScheduledJob(automation, latestAutomationRun(this.options.automations.listRuns(automation.id)))
+      ? automationToScheduledJob(automation, this.options.automations.getLatestRun(automation.id))
       : undefined;
   }
 

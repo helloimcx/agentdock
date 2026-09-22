@@ -189,6 +189,62 @@ test('runJobNow resolves the run by evaluation id without reading the full run h
   }
 });
 
+test('getJob reads the latest run without scanning the full run history', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalListRuns = automations.listRuns;
+  try {
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1', threadId: 'thread-1', triggerType: 'once', runAt: '2099-01-01T00:00:00.000Z',
+      promptTemplate: 'hello', description: 'Latest run pin', enabled: true,
+    });
+    await context.jobs.runJobNow(job.id);
+    // runs[0] of a history scan would be this stale failed sentinel, flipping
+    // lastStatus — a point lookup must read the real latest run instead.
+    automations.listRuns = () => [{
+      id: 'automation-run:stale-sentinel',
+      automationId: job.id,
+      evaluationId: 'automation-evaluation:stale-sentinel',
+      status: 'failed',
+      createdAt: '2026-09-23T00:00:00.000Z',
+    }];
+    const view = context.jobs.getJob(job.id);
+    assert.equal(view?.lastStatus, 'succeeded');
+  } finally {
+    automations.listRuns = originalListRuns;
+    context.close();
+  }
+});
+
+test('definition events project the latest run without scanning the full run history', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalListRuns = automations.listRuns;
+  const projected: string[] = [];
+  context.eventBus.on('scheduler.job.updated', (payload) => projected.push(payload.lastStatus ?? ''));
+  try {
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1', threadId: 'thread-1', triggerType: 'once', runAt: '2099-01-01T00:00:00.000Z',
+      promptTemplate: 'hello', description: 'Projection pin', enabled: true,
+    });
+    await context.jobs.runJobNow(job.id);
+    automations.listRuns = () => [{
+      id: 'automation-run:stale-sentinel',
+      automationId: job.id,
+      evaluationId: 'automation-evaluation:stale-sentinel',
+      status: 'failed',
+      createdAt: '2026-09-23T00:00:00.000Z',
+    }];
+    projected.length = 0;
+    context.jobs.updateJob(job.id, { description: 'Projection pin updated' });
+    assert.equal(projected.length, 1);
+    assert.equal(projected[0], 'succeeded');
+  } finally {
+    automations.listRuns = originalListRuns;
+    context.close();
+  }
+});
+
 test('scheduler empty description survives unified persistence and reopen', () => {
   const context = fixture();
   const path = context.path;
