@@ -686,6 +686,10 @@ export class LocalCoreAcpStore {
     return this.automations.listRuns(automationId);
   }
 
+  getLatestAutomationRun(automationId: string): AutomationRun | undefined {
+    return this.automations.getLatestRun(automationId);
+  }
+
   reconcileInterruptedAutomationRuns(reason: string, finishedAt: string): AutomationRun[] {
     return this.automations.reconcileInterruptedRuns(reason, finishedAt);
   }

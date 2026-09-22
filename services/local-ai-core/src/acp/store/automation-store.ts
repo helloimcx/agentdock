@@ -358,6 +358,17 @@ export class LocalAutomationStore {
     return rows.map((row) => rowToRun(row));
   }
 
+  getLatestRun(automationId: string): AutomationRun | undefined {
+    const row = this.db.prepare(`
+      SELECT ${RUN_COLUMNS}
+      FROM automation_runs
+      WHERE automation_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).get(automationId) as LocalAutomationRunRow | undefined;
+    return row ? rowToRun(row) : undefined;
+  }
+
   listLatestFinishedEvaluationByOrigin(
     originKind: Exclude<NonNullable<AutomationDefinition['originKind']>, 'native'>,
     workspaceId?: string,

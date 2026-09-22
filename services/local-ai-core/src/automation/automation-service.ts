@@ -96,7 +96,7 @@ export class AutomationService {
       options.eventBus,
       {
         getAutomation: (id) => this.get(id),
-        listRuns: (id) => this.listRuns(id),
+        getLatestRun: (id) => this.getLatestRun(id),
         listEvaluations: (id) => this.listEvaluations(id),
         getLatestEvaluationWithState: (id) => this.getLatestEvaluationWithState(id),
       },
@@ -214,6 +214,10 @@ export class AutomationService {
 
   listRuns(automationId: string): AutomationRun[] {
     return this.options.store.listAutomationRuns(automationId);
+  }
+
+  getLatestRun(automationId: string): AutomationRun | undefined {
+    return this.options.store.getLatestAutomationRun(automationId);
   }
 
   listLatestFinishedEvaluationByOrigin(

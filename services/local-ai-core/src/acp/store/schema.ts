@@ -244,8 +244,9 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
       FOREIGN KEY (evaluation_id) REFERENCES automation_evaluations(id) ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_created
-      ON automation_runs (automation_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_created_id
+      ON automation_runs (automation_id, created_at DESC, id DESC);
+    DROP INDEX IF EXISTS idx_automation_runs_automation_created;
     CREATE INDEX IF NOT EXISTS idx_automation_runs_automation_status
       ON automation_runs (automation_id, status);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_runs_evaluation_unique ON automation_runs (evaluation_id);
