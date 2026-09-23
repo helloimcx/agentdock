@@ -637,6 +637,10 @@ export class LocalCoreAcpStore {
     return this.automations.getLatestEvaluation(automationId);
   }
 
+  getAutomationEvaluation(evaluationId: string): AutomationEvaluation | undefined {
+    return this.automations.getEvaluation(evaluationId);
+  }
+
   getAutomationRunByEvaluation(evaluationId: string): AutomationRun | undefined {
     return this.automations.getRunByEvaluation(evaluationId);
   }

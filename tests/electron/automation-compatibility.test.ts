@@ -245,6 +245,37 @@ test('definition events project the latest run without scanning the full run his
   }
 });
 
+test('run events project their evaluation without scanning the full evaluation history', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalListEvaluations = automations.listEvaluations;
+  const projected: string[] = [];
+  context.eventBus.on('scheduler.run.updated', (payload) => projected.push(payload.jobId));
+  try {
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1', threadId: 'thread-1', triggerType: 'once', runAt: '2099-01-01T00:00:00.000Z',
+      promptTemplate: 'hello', description: 'Run projection pin', enabled: true,
+    });
+    await context.jobs.runJobNow(job.id);
+    // With this stub a listEvaluations().find(evaluationId ===) scan finds no
+    // matching row and silently drops the projection — a point lookup by
+    // evaluation id must keep emitting from the real evaluation.
+    automations.listEvaluations = () => [{
+      id: 'automation-evaluation:stale-sentinel',
+      automationId: job.id,
+      status: 'finished',
+      startedAt: '2026-09-24T00:00:00.000Z',
+    }];
+    projected.length = 0;
+    await context.jobs.runJobNow(job.id);
+    assert.ok(projected.length >= 1);
+    assert.ok(projected.every((jobId) => jobId === job.id));
+  } finally {
+    automations.listEvaluations = originalListEvaluations;
+    context.close();
+  }
+});
+
 test('scheduler empty description survives unified persistence and reopen', () => {
   const context = fixture();
   const path = context.path;

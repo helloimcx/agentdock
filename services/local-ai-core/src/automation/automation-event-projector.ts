@@ -26,6 +26,7 @@ export interface EvaluationContext {
 export interface AutomationEventProjectorStoreDelegate {
   getAutomation: (automationId: string) => AutomationDefinition | undefined;
   getLatestRun: (automationId: string) => AutomationRun | undefined;
+  getEvaluation: (evaluationId: string) => AutomationEvaluation | undefined;
   listEvaluations: (automationId: string) => AutomationEvaluation[];
   getLatestEvaluationWithState: (automationId: string) => AutomationEvaluation | undefined;
 }
@@ -70,8 +71,9 @@ export class AutomationEventProjector {
     this.emitEvent({ type: 'automation.run.updated', payload: run });
     try {
       const automation = this.store.getAutomation(run.automationId);
-      const evaluation = this.store.listEvaluations(run.automationId).find((candidate) => candidate.id === run.evaluationId);
-      if (!automation || !evaluation) return;
+      if (!automation || automation.originKind === 'native') return;
+      const evaluation = this.store.getEvaluation(run.evaluationId);
+      if (evaluation?.automationId !== run.automationId) return;
       if (automation.originKind === 'scheduled-job') {
         this.emitEvent({ type: 'scheduler.run.updated', payload: automationToScheduledJobRun(evaluation, run) });
       } else if (automation.originKind === 'automation-monitor') {

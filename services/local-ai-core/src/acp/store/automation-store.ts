@@ -524,7 +524,7 @@ export class LocalAutomationStore {
     return Number(result.changes);
   }
 
-  private getEvaluation(id: string): AutomationEvaluation | undefined {
+  getEvaluation(id: string): AutomationEvaluation | undefined {
     const row = this.db.prepare(`SELECT ${EVALUATION_COLUMNS} FROM automation_evaluations WHERE id = ?`)
       .get(id) as LocalAutomationEvaluationRow | undefined;
     return row ? rowToEvaluation(row) : undefined;
