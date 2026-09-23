@@ -97,6 +97,7 @@ export class AutomationService {
       {
         getAutomation: (id) => this.get(id),
         getLatestRun: (id) => this.getLatestRun(id),
+        getEvaluation: (id) => this.getEvaluation(id),
         listEvaluations: (id) => this.listEvaluations(id),
         getLatestEvaluationWithState: (id) => this.getLatestEvaluationWithState(id),
       },
@@ -198,6 +199,10 @@ export class AutomationService {
 
   getLatestEvaluation(automationId: string): AutomationEvaluation | undefined {
     return this.options.store.getLatestAutomationEvaluation(automationId);
+  }
+
+  getEvaluation(evaluationId: string): AutomationEvaluation | undefined {
+    return this.options.store.getAutomationEvaluation(evaluationId);
   }
 
   getRunByEvaluation(evaluationId: string): AutomationRun | undefined {
