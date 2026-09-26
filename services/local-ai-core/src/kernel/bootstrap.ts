@@ -45,7 +45,7 @@ import { AutomationActionExecutor } from '../automation/automation-action-execut
 import { DecisionLogService } from '../automation/decision-log-service.js';
 import { AutomationService } from '../automation/automation-service.js';
 import { CostService } from '../cost/cost-service.js';
-import { setDefaultTimezone } from '../automation/legacy-automation-mappers.js';
+import { resolveDefaultTimezone, setDefaultTimezone } from '../automation/legacy-automation-mappers.js';
 
 export interface LocalCoreKernel {
   context: PluginContext;
@@ -316,7 +316,7 @@ export function bootstrapLocalCoreRuntime(options: {
   // Default legacy cron jobs to the host's local timezone so they fire at the wall
   // clock the user wrote (e.g. a job written as "0 1 * * *" runs at 1 AM server time).
   // Matches the behavior of the old SchedulerService, which matched in local time.
-  setDefaultTimezone(resolveHostTimezone());
+  setDefaultTimezone(resolveDefaultTimezone());
   automations = new AutomationService({
     store,
     actionExecutor: automationActionExecutor,
@@ -391,12 +391,3 @@ export function bootstrapLocalCoreRuntime(options: {
   };
 }
 
-// The host machine's IANA timezone. Falls back to UTC if the runtime cannot determine it.
-function resolveHostTimezone(): string {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return tz && tz.length > 0 ? tz : 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}

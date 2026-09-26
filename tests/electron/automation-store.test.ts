@@ -7,6 +7,10 @@ import test from 'node:test';
 import type { AutomationCreateInput } from '../../packages/contracts/src/automations.js';
 import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
 import { LocalAutomationStore } from '../../services/local-ai-core/src/acp/store/automation-store.js';
+import {
+  resolveDefaultTimezone,
+  setDefaultTimezone,
+} from '../../services/local-ai-core/src/automation/legacy-automation-mappers.js';
 
 function createInput(overrides: Partial<AutomationCreateInput> = {}): AutomationCreateInput {
   return {
@@ -908,6 +912,33 @@ test('imports legacy scheduled jobs and monitors once while preserving IDs and o
       assert.deepEqual(retainedStateEvaluation.nextState, legacyState);
     }
   } finally {
+    context.close();
+  }
+});
+
+test('imports legacy cron jobs in the legacy wall-clock timezone, not UTC', () => {
+  const context = fixture();
+  const restoreTimezone = resolveDefaultTimezone();
+  try {
+    setDefaultTimezone('Asia/Shanghai');
+    const scheduled = context.facade.createScheduledJob({
+      workspaceId: 'workspace-1',
+      platform: 'local',
+      route: { type: 'local.thread', channelId: 'workspace-1' },
+      executionMode: 'same-thread',
+      triggerType: 'cron',
+      cronExpr: '0 1 * * *',
+      promptTemplate: 'Run nightly digest',
+      description: 'Nightly digest',
+    });
+    assert.deepEqual(context.store.importLegacyRecords(), { scheduled: 1, monitors: 0 });
+    assert.deepEqual(context.store.get(scheduled.id)?.activation, {
+      kind: 'cron',
+      expression: '0 1 * * *',
+      timezone: 'Asia/Shanghai',
+    });
+  } finally {
+    setDefaultTimezone(restoreTimezone);
     context.close();
   }
 });

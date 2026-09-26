@@ -25,7 +25,7 @@ import { validateRestrictedExpression } from './condition-evaluator.js';
 // default to the host's IANA timezone (falling back to UTC) to preserve that behavior.
 // Resolves lazily so environments without full IANA data still boot.
 let defaultTimezone: string | undefined;
-function resolveDefaultTimezone(): string {
+export function resolveDefaultTimezone(): string {
   if (defaultTimezone) return defaultTimezone;
   try {
     const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -57,12 +57,16 @@ export type LegacyAutomationCreateInput = AutomationCreateInput & {
   legacyMetadata?: AutomationDefinition['legacyMetadata'];
 };
 
+export function legacyCronActivation(expression: string): { kind: 'cron'; expression: string; timezone: string } {
+  return { kind: 'cron', expression, timezone: resolveDefaultTimezone() };
+}
+
 export function scheduledJobToAutomationInput(input: ResolvedScheduledJobInput): LegacyAutomationCreateInput {
   const triggerType = normalizeScheduledJobTriggerType(input.triggerType);
   const activation = triggerType === 'once'
     ? { kind: 'once' as const, runAt: requireText(input.runAt, 'Scheduled job runAt') }
       : triggerType === 'cron'
-      ? { kind: 'cron' as const, expression: requireText(input.cronExpr, 'Scheduled job cronExpr'), timezone: resolveDefaultTimezone() }
+      ? legacyCronActivation(requireText(input.cronExpr, 'Scheduled job cronExpr'))
       : fail(`Unsupported scheduled job trigger type: ${triggerType}`);
   return {
     workspaceId: requireText(input.workspaceId, 'Scheduled job workspaceId'),
