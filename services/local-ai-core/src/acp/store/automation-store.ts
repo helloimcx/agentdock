@@ -18,6 +18,7 @@ import type {
   LocalScheduledJobRow,
 } from './acp-store-types.js';
 import { SqlPredicateBuilder } from './utils.js';
+import { legacyCronActivation } from '../../automation/legacy-automation-mappers.js';
 import {
   assertIsoTimestamp,
   normalizeDefinition,
@@ -671,7 +672,7 @@ export class LocalAutomationStore {
     const consumedOnce = row.trigger_type === 'once' && Boolean(row.last_run_at || row.last_status);
     const activation = row.trigger_type === 'once'
       ? { kind: 'once' as const, runAt: row.run_at }
-      : { kind: 'cron' as const, expression: row.cron_expr, timezone: 'UTC' };
+      : legacyCronActivation(row.cron_expr ?? '');
     const route = scheduledJobRouteFromRow(row);
     const definition = normalizeDefinition({
       id: row.id,
