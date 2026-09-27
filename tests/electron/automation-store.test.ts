@@ -10,7 +10,7 @@ import { LocalAutomationStore } from '../../services/local-ai-core/src/acp/store
 import {
   resolveDefaultTimezone,
   setDefaultTimezone,
-} from '../../services/local-ai-core/src/automation/legacy-automation-mappers.js';
+} from '../../services/local-ai-core/src/scheduler/cron.js';
 
 function createInput(overrides: Partial<AutomationCreateInput> = {}): AutomationCreateInput {
   return {

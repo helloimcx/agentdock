@@ -45,7 +45,7 @@ import { AutomationActionExecutor } from '../automation/automation-action-execut
 import { DecisionLogService } from '../automation/decision-log-service.js';
 import { AutomationService } from '../automation/automation-service.js';
 import { CostService } from '../cost/cost-service.js';
-import { resolveDefaultTimezone, setDefaultTimezone } from '../automation/legacy-automation-mappers.js';
+import { resolveDefaultTimezone, setDefaultTimezone } from '../scheduler/cron.js';
 
 export interface LocalCoreKernel {
   context: PluginContext;
