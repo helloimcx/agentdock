@@ -414,3 +414,25 @@ export function assertSupportedTimezone(timezone: string): void {
     throw new Error(`Automation scheduling received an unsupported timezone: ${timezone}`);
   }
 }
+
+// The timezone used for cron expressions created through the legacy scheduler facade.
+// The old SchedulerService interpreted cron in the server's local wall clock, so we
+// default to the host's IANA timezone (falling back to UTC) to preserve that behavior.
+// Resolves lazily so environments without full IANA data still boot.
+let defaultTimezone: string | undefined;
+export function resolveDefaultTimezone(): string {
+  if (defaultTimezone) return defaultTimezone;
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    defaultTimezone = detected && isValidTimezone(detected) ? detected : 'UTC';
+  } catch {
+    defaultTimezone = 'UTC';
+  }
+  return defaultTimezone;
+}
+
+/** Override the default timezone used for legacy cron jobs (e.g. from runtime config). */
+export function setDefaultTimezone(timezone: string): void {
+  assertSupportedTimezone(timezone);
+  defaultTimezone = timezone;
+}
