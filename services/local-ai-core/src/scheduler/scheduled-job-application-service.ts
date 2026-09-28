@@ -218,8 +218,8 @@ export class ScheduledJobApplicationService {
   private resolveJobId(jobId: string): string {
     const direct = this.options.automations.get(jobId);
     if (direct?.originKind === 'scheduled-job') return direct.id;
-    const matches = this.options.automations.list()
-      .filter((automation) => automation.originKind === 'scheduled-job' && toPublicScheduledJobId(automation.id) === jobId);
+    const matches = this.options.automations.list(undefined, 'scheduled-job')
+      .filter((automation) => toPublicScheduledJobId(automation.id) === jobId);
     if (matches.length > 1) throw new Error(`Scheduled job id is ambiguous: ${jobId}`);
     return matches[0]?.id || '';
   }

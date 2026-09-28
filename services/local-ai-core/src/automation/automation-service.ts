@@ -49,6 +49,9 @@ export {
 } from './automation-schedule-utils.js';
 
 const DUE_LOOP_INTERVAL_MS = 30_000;
+// Retention pruning scans the whole evaluations table; hourly is far below the
+// 30-day retention granularity and keeps empty ticks cheap.
+const PRUNE_INTERVAL_MS = 60 * 60_000;
 const DEFAULT_MAX_CONCURRENCY = 4;
 const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
@@ -83,6 +86,7 @@ export class AutomationService {
   private runtimeStatus: AutomationServiceRuntimeStatus = { status: 'stopped' };
   private stopping = false;
   private lifecycleGeneration = 0;
+  private lastPruneAt = Number.NEGATIVE_INFINITY;
   private scriptProtocolRunner: (Pick<ScriptProtocolRunner, 'run'> & Partial<Pick<ScriptProtocolRunner, 'runTest'>>) | undefined;
   private readonly eventProjector: AutomationEventProjector;
 
@@ -282,10 +286,11 @@ export class AutomationService {
       );
       for (const run of recovered) this.eventProjector.emitRun(run);
       const missingNextCheckAt = this.options.store.listAutomationIdsMissingNextCheckAt();
-      for (const automation of this.list()) {
+      for (const automationId of missingNextCheckAt) {
+        const automation = this.get(automationId);
         if (
-          shouldPollAutomation(automation, this.options.ownershipPolicy)
-          && missingNextCheckAt.has(automation.id)
+          automation
+          && shouldPollAutomation(automation, this.options.ownershipPolicy)
           && !isAutomationConsumedOnce(automation, (id) => this.listEvaluations(id))
         ) {
           this.persistInitialNextCheck(automation);
@@ -452,9 +457,9 @@ export class AutomationService {
     const now = this.now();
     const due: AutomationDefinition[] = [];
     const dueIds = this.options.store.listDueAutomationIds(now);
-    for (const automation of this.list()) {
-      if (!shouldPollAutomation(automation, this.options.ownershipPolicy)) continue;
-      if (dueIds.has(automation.id)) {
+    for (const automationId of dueIds) {
+      const automation = this.get(automationId);
+      if (automation && shouldPollAutomation(automation, this.options.ownershipPolicy)) {
         due.push(automation);
       }
     }
@@ -470,7 +475,10 @@ export class AutomationService {
     const workerCount = Math.min(due.length, this.options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
     if (!this.stopping && generation === this.lifecycleGeneration) {
-      this.options.store.pruneAutomationEvaluations(now);
+      if (now.getTime() - this.lastPruneAt >= PRUNE_INTERVAL_MS) {
+        this.lastPruneAt = now.getTime();
+        this.options.store.pruneAutomationEvaluations(now);
+      }
     }
   }
 

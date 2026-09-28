@@ -947,8 +947,8 @@ export class AutomationMonitorService {
   private resolveMonitorAutomation(monitorId: string): AutomationDefinition | undefined {
     const direct = this.options.automations.get(monitorId);
     if (direct?.originKind === 'automation-monitor') return direct;
-    const matches = this.options.automations.list().filter((automation) =>
-      automation.originKind === 'automation-monitor' && toPublicAutomationMonitorId(automation.id) === monitorId
+    const matches = this.options.automations.list(undefined, 'automation-monitor').filter((automation) =>
+      toPublicAutomationMonitorId(automation.id) === monitorId
     );
     if (matches.length > 1) throw new Error(`Automation monitor id is ambiguous: ${monitorId}`);
     return matches[0];

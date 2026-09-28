@@ -276,6 +276,28 @@ test('run events project their evaluation without scanning the full evaluation h
   }
 });
 
+test('due tick resolves automations with point lookups instead of full-list scans', async () => {
+  const context = fixture();
+  const automations = context.automations as unknown as Record<string, unknown>;
+  const originalList = automations.list;
+  try {
+    const job = context.jobs.createJob({
+      workspaceId: 'workspace-1', threadId: 'thread-1', triggerType: 'once', runAt: '2020-01-01T00:00:00.000Z',
+      promptTemplate: 'hello', description: 'Due tick pin', enabled: true,
+    });
+    // With this stub a full-list tick scan finds no candidates and silently
+    // drops the due run — resolving each due id with a point lookup must
+    // still execute it.
+    automations.list = () => [];
+    await context.automations.tick();
+    assert.ok(context.actions.length >= 1);
+    assert.ok(context.actions.every((action) => action.automationId === job.id));
+  } finally {
+    automations.list = originalList;
+    context.close();
+  }
+});
+
 test('scheduler empty description survives unified persistence and reopen', () => {
   const context = fixture();
   const path = context.path;
