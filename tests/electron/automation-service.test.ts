@@ -631,13 +631,18 @@ test('stop prevents workers from admitting more queued automations', async () =>
 test('timer tick failures are handled, sanitized, and degrade the service', async () => {
   const logs: string[] = [];
   const errors: string[] = [];
-  const context = fixture({ log: (message) => logs.push(message) });
+  let clockMs = NOW.getTime();
+  const context = fixture({
+    log: (message) => logs.push(message),
+    clock: () => new Date(clockMs),
+  });
   context.eventBus.on('localcore.error', (event) => errors.push(String(event.error || '')));
   try {
     await context.service.start();
     context.store.pruneAutomationEvaluations = () => {
       throw new Error(`TOKEN=top-secret\u001b[31m ${'x'.repeat(3_000)}`);
     };
+    clockMs += 2 * 60 * 60 * 1000;
     context.timerHandler!();
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
@@ -653,11 +658,11 @@ test('timer tick failures are handled, sanitized, and degrade the service', asyn
 
 test('unexpected startup initialization failure leaves the service retryable', async () => {
   const context = fixture();
-  const originalList = context.store.listAutomations.bind(context.store);
+  const originalMissing = context.store.listAutomationIdsMissingNextCheckAt.bind(context.store);
   let fail = true;
-  context.store.listAutomations = (workspaceId?: string) => {
+  context.store.listAutomationIdsMissingNextCheckAt = () => {
     if (fail) throw new Error('temporary initialization failure');
-    return originalList(workspaceId);
+    return originalMissing();
   };
   try {
     await assert.rejects(() => context.service.start(), /temporary initialization failure/);
@@ -895,10 +900,11 @@ test('concurrent start calls share one initialization and one working timer', as
     prunes += 1;
     return originalPrune(now);
   };
+  let clockMs = NOW.getTime();
   const service = new AutomationService({
     store: context.store,
     eventBus: context.eventBus,
-    clock: () => new Date(NOW),
+    clock: () => new Date(clockMs),
     actionExecutor: { async execute() { return { threadId: 't', acpRunId: 'r' }; } },
     setInterval: (handler) => {
       timers += 1;
@@ -912,6 +918,7 @@ test('concurrent start calls share one initialization and one working timer', as
     assert.equal(imports, 1);
     assert.equal(timers, 1);
     assert.equal(prunes, 1);
+    clockMs += 2 * 60 * 60 * 1000;
     timerHandler!();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(prunes, 2);
