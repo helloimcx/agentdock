@@ -168,12 +168,7 @@ export class SchedulerService extends EventEmitter {
 
   private resolveJobId(jobId: string) {
     if (this.options.automations) {
-      const direct = this.options.automations.get(jobId);
-      if (direct?.originKind === 'scheduled-job') return direct.id;
-      const matches = this.options.automations.list(undefined, 'scheduled-job')
-        .filter((automation) => toPublicScheduledJobId(automation.id) === jobId);
-      if (matches.length > 1) throw new Error(`Scheduled job id is ambiguous: ${jobId}`);
-      return matches[0]?.id || '';
+      return this.options.automations.resolveByPublicId(jobId, 'scheduled-job')?.id || '';
     }
     if (this.options.store.getScheduledJob(jobId)) {
       return jobId;
