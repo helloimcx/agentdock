@@ -13,7 +13,6 @@ import {
   scheduledJobToAutomationInput,
 } from '../automation/legacy-automation-mappers.js';
 import type { SchedulerService } from './scheduler-service.js';
-import { toPublicScheduledJobId } from './job-id.js';
 import {
   routeFromPlatformThreadBinding,
   routeTypeForPlatform,
@@ -216,12 +215,7 @@ export class ScheduledJobApplicationService {
   }
 
   private resolveJobId(jobId: string): string {
-    const direct = this.options.automations.get(jobId);
-    if (direct?.originKind === 'scheduled-job') return direct.id;
-    const matches = this.options.automations.list(undefined, 'scheduled-job')
-      .filter((automation) => toPublicScheduledJobId(automation.id) === jobId);
-    if (matches.length > 1) throw new Error(`Scheduled job id is ambiguous: ${jobId}`);
-    return matches[0]?.id || '';
+    return this.options.automations.resolveByPublicId(jobId, 'scheduled-job')?.id || '';
   }
 
   private resolveRequiredJobId(jobId: string): string {

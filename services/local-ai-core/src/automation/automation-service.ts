@@ -28,6 +28,8 @@ import {
 import { createAnthropicSandboxRunner } from './scripts/anthropic-sandbox-runner.js';
 import { evaluateExpression } from './condition-evaluator.js';
 import { nextActivationAt } from './automation-trigger-engine.js';
+import { toPublicAutomationMonitorId } from './monitor-id.js';
+import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import type { AutomationActionExecutor } from './automation-action-executor.js';
 import type { LegacyAutomationCreateInput } from './legacy-automation-mappers.js';
 import {
@@ -58,6 +60,14 @@ const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI C
 
 type TimerHandle = unknown;
 type ActionExecutor = Pick<AutomationActionExecutor, 'execute'>;
+
+const PUBLIC_ID_RESOLUTION: Record<
+  'automation-monitor' | 'scheduled-job',
+  { toPublicId: (id: string) => string; label: string }
+> = {
+  'automation-monitor': { toPublicId: toPublicAutomationMonitorId, label: 'monitor' },
+  'scheduled-job': { toPublicId: toPublicScheduledJobId, label: 'scheduled job' },
+};
 
 export interface AutomationServiceOptions {
   store: LocalCoreAcpStore;
@@ -120,6 +130,22 @@ export class AutomationService {
 
   get(automationId: string): AutomationDefinition | undefined {
     return this.options.store.getAutomation(automationId);
+  }
+
+  /**
+   * Resolves a legacy facade id that may be the internal id or its public
+   * short form. Throws when a short id matches more than one automation.
+   */
+  resolveByPublicId(
+    rawId: string,
+    originKind: 'automation-monitor' | 'scheduled-job',
+  ): AutomationDefinition | undefined {
+    const { toPublicId, label } = PUBLIC_ID_RESOLUTION[originKind];
+    const direct = this.get(rawId);
+    if (direct?.originKind === originKind) return direct;
+    const matches = this.list(undefined, originKind).filter((automation) => toPublicId(automation.id) === rawId);
+    if (matches.length > 1) throw new Error(`Automation ${label} id is ambiguous: ${rawId}`);
+    return matches[0];
   }
 
   findMonitorIdByHookId(hookId: string): string | undefined {

@@ -36,7 +36,6 @@ import {
   PROVIDER_LIFECYCLE_BLOCK_PREFIX,
   providerLifecycleBlockReason,
 } from './automation-service.js';
-import { toPublicAutomationMonitorId } from './monitor-id.js';
 
 type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
   platform: NonNullable<AutomationMonitorCreateInput['platform']>;
@@ -945,13 +944,7 @@ export class AutomationMonitorService {
   }
 
   private resolveMonitorAutomation(monitorId: string): AutomationDefinition | undefined {
-    const direct = this.options.automations.get(monitorId);
-    if (direct?.originKind === 'automation-monitor') return direct;
-    const matches = this.options.automations.list(undefined, 'automation-monitor').filter((automation) =>
-      toPublicAutomationMonitorId(automation.id) === monitorId
-    );
-    if (matches.length > 1) throw new Error(`Automation monitor id is ambiguous: ${monitorId}`);
-    return matches[0];
+    return this.options.automations.resolveByPublicId(monitorId, 'automation-monitor');
   }
 
   private resolveMonitorId(monitorId: string): string {
