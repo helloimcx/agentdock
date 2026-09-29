@@ -50,3 +50,21 @@ The issue's suggested v1 is a stdio closed loop: bind one workspace at bridge st
 - `pnpm test` (typecheck, renderer + electron builds, Node.js test runner, BDD): recorded in the PR description
 - `pnpm lint:gates` members run individually (circular, duplicate, file-size, function-length, complexity): recorded in the PR description
 - `pnpm lint:arch`: `[BLOCKED]` (archify CLI unavailable locally)
+
+## Review Fix — 2026-09-30 (PR #156 REQUEST_CHANGES round)
+
+Addressed the automated review on PR #156 (HEAD `3ab32eb`):
+
+- **Daemon event-flow amendment (additive)**: the kernel bus's `run.failed` / `run.completed` domain events are now forwarded to the public `/api/local/v1/events` SSE stream (`local-core-controller.ts` subscribes both types onto a new `agent-run` controller channel; `runtime/server.ts` broadcasts them; `packages/contracts/src/local-core.ts` adds the two `LocalCoreEvent` union members mirroring `DomainEventPayloadMap`). Previously these events never left the bus, so bridge consumers (and any other SSE consumer) could not observe run lifecycle outcomes. Existing SSE clients dispatch by `switch (event.type)` and ignore unknown types, so the two new event types are backward-compatible.
+- **Bridge failure semantics**: the ACP bridge now consumes `run.failed` (marks the turn failed, surfaces `[error] ...` as a thought chunk, and resolves the prompt as `refusal` on the terminal `typing_stop`/`run.completed`) and `run.completed` (authoritative `end_turn`/`cancelled` resolution). The failure path was previously dead in production: failures rendered as ordinary assistant text with `end_turn`.
+- **Turn registration race**: `PendingTurn` is registered per-session synchronously before the `POST /threads/:id/messages` call (serializing the busy check), and run-scoped events arriving before the POST response resolves are buffered per-run (bounded: 100 events/run, 200 runs FIFO) and replayed once the runId registers. A terminal `typing_stop` in that window no longer hangs the session as permanently busy.
+- **Empty `runId` (slash commands)**: now resolves the prompt as `end_turn` (the command executed without an agent run) instead of `refusal`; genuine send failures (HTTP errors) resolve as `refusal` with the error surfaced.
+- **SSE reconnect**: `LocalCoreApiClient.streamEvents` reconnects with bounded exponential backoff (1s→16s, reset after 30s of stable connection); the bridge fails pending prompts as `refusal` if the stream stays down beyond a disconnect grace period (default 30s).
+- **Gate hygiene**: removed the three PR-added dead exports (`parseSseFrame`, `RunBridgeEvent`, `AcpRpcError`); raised the `lint:dead-code` gate baseline `--max-count` 171 → 172 in `lint:gates` to match main's own pre-existing drift (verified in main's CI run 36604202386 at `71c823d`: total 172); restored the `emitToolCallUpdate` complexity by extracting `buildToolCallUpdate`/resolver helpers (warnings back to 107); reused `diffAccumulatedText` (`runtime/server-helpers.ts`) and `request` (`cli/cli-helpers.ts`) instead of private duplicates; capped the stdin line buffer (1 MiB).
+- **Deferred (explicitly)**: tool-call status mapping remains approximate for real core traffic — core bridge events carry `bridgeKind: 'tool'` text only, with no `toolCall` metadata or terminal status on the wire, so real tool calls render as generic pending updates; fixing this requires core-side persistence/replay of tool-call metadata (follow-up issue references this record). Stdin write backpressure remains unhandled (NIT, local trust domain).
+- Updated test suite (`tests/integration/local-core-acp-stdio-server.test.ts`, 13 tests): adds regression coverage for the registration race, `run.failed`/`run.completed` resolution, send-failure refusal, empty-runId `end_turn`, SSE reconnect, and disconnect-grace failure.
+
+### Changed Facts (supplement)
+
+- Unchanged: Local AI Core daemon routes, trust boundaries, data ownership, storage, and dependency direction.
+- Amended: the `/api/local/v1/events` public event surface now also carries `run.failed` and `run.completed` (additive `LocalCoreEvent` members), forwarded from the kernel bus via the runtime controller.

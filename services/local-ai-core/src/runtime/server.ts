@@ -260,6 +260,9 @@ export class LocalAiCoreServer {
         });
       }
     });
+    b.controller.on('agent-run', (event: LocalCoreEvent) => {
+      this.broadcast(event);
+    });
     b.controller.on('thread-session-activated', (event: Omit<Extract<LocalCoreEvent, { type: 'thread.session.activated' }>, 'type'>) => {
       this.broadcast({ type: 'thread.session.activated', ...event });
     });

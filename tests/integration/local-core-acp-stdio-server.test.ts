@@ -17,6 +17,11 @@ interface FakeCore {
   requests: FakeCoreRequest[];
   lastRunId: string;
   returnEmptyRunId: boolean;
+  deferMessagesMs: number;
+  failMessagesStatus: number;
+  rejectEvents: boolean;
+  closeFirstSse: boolean;
+  sseConnections: number;
   pushEvent: (event: Record<string, unknown>) => void;
   close: () => Promise<void>;
 }
@@ -25,15 +30,34 @@ async function startFakeCore(): Promise<FakeCore> {
   const requests: FakeCoreRequest[] = [];
   let sseRes: ServerResponse | null = null;
   let lastRunId = '';
-  const state = { returnEmptyRunId: false };
+  const state = {
+    returnEmptyRunId: false,
+    deferMessagesMs: 0,
+    failMessagesStatus: 0,
+    rejectEvents: false,
+    closeFirstSse: false,
+    sseConnections: 0,
+  };
   const server: Server = createServer((req, res) => {
     const path = req.url || '';
     if (req.method === 'GET' && path.endsWith('/events')) {
+      state.sseConnections += 1;
+      if (state.rejectEvents) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'events unavailable' }));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
       res.write(': connected\n\n');
+      if (state.closeFirstSse && state.sseConnections === 1) {
+        res.end();
+        return;
+      }
       sseRes = res;
       req.on('close', () => {
-        sseRes = null;
+        if (sseRes === res) {
+          sseRes = null;
+        }
       });
       return;
     }
@@ -49,7 +73,16 @@ async function startFakeCore(): Promise<FakeCore> {
         return;
       }
       if (req.method === 'POST' && /\/threads\/[^/]+\/messages$/.test(path)) {
+        if (state.failMessagesStatus) {
+          res.writeHead(state.failMessagesStatus, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'agent spawn failed' }));
+          return;
+        }
         lastRunId = `run:agentdock::${randomUUID()}:${Date.now()}`;
+        if (state.deferMessagesMs > 0) {
+          setTimeout(() => respondJson(res, { runId: state.returnEmptyRunId ? '' : lastRunId }), state.deferMessagesMs);
+          return;
+        }
         respondJson(res, { runId: state.returnEmptyRunId ? '' : lastRunId });
         return;
       }
@@ -76,6 +109,33 @@ async function startFakeCore(): Promise<FakeCore> {
     set returnEmptyRunId(value: boolean) {
       state.returnEmptyRunId = value;
     },
+    get deferMessagesMs() {
+      return state.deferMessagesMs;
+    },
+    set deferMessagesMs(value: number) {
+      state.deferMessagesMs = value;
+    },
+    get failMessagesStatus() {
+      return state.failMessagesStatus;
+    },
+    set failMessagesStatus(value: number) {
+      state.failMessagesStatus = value;
+    },
+    get rejectEvents() {
+      return state.rejectEvents;
+    },
+    set rejectEvents(value: boolean) {
+      state.rejectEvents = value;
+    },
+    get closeFirstSse() {
+      return state.closeFirstSse;
+    },
+    set closeFirstSse(value: boolean) {
+      state.closeFirstSse = value;
+    },
+    get sseConnections() {
+      return state.sseConnections;
+    },
     pushEvent: (event: Record<string, unknown>) => {
       sseRes?.write(`event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`);
     },
@@ -96,10 +156,11 @@ interface BridgeHarness {
   streamBridgeEvent: (event: Record<string, unknown>) => void;
   waitForCoreRequest: (pathPattern: RegExp) => Promise<FakeCoreRequest>;
   waitForRunRegistration: () => Promise<string>;
+  waitForCondition: (probe: () => boolean, label: string) => Promise<void>;
   stop: () => Promise<void>;
 }
 
-function createBridge(fakeCore: FakeCore, workspaceId = 'ws-acp-desktop'): BridgeHarness {
+function createBridge(fakeCore: FakeCore, options: { workspaceId?: string; streamDisconnectGraceMs?: number } = {}): BridgeHarness {
   const input = new PassThrough();
   const output = new PassThrough();
   const queued: any[] = [];
@@ -131,10 +192,11 @@ function createBridge(fakeCore: FakeCore, workspaceId = 'ws-acp-desktop'): Bridg
     }
   };
   const server = new AcpStdioServer({
-    workspaceId,
-    client: new LocalCoreApiClient({ baseUrl: fakeCore.baseUrl }),
+    workspaceId: options.workspaceId || 'ws-acp-desktop',
+    client: new LocalCoreApiClient({ baseUrl: fakeCore.baseUrl, reconnectBaseDelayMs: 10 }),
     input,
     output,
+    ...(options.streamDisconnectGraceMs !== undefined ? { streamDisconnectGraceMs: options.streamDisconnectGraceMs } : {}),
   });
   const serving = server.serve();
   const sendFrame = (payload: unknown) => input.write(`${JSON.stringify(payload)}\n`);
@@ -182,6 +244,7 @@ function createBridge(fakeCore: FakeCore, workspaceId = 'ws-acp-desktop'): Bridg
       await sleep(60);
       return fakeCore.lastRunId;
     },
+    waitForCondition: waitFor,
     stop: async () => {
       input.end();
       await serving;
@@ -198,9 +261,13 @@ interface BridgeFixture {
   bridge: BridgeHarness;
 }
 
-async function withBridge(fn: (fixture: BridgeFixture) => Promise<void>): Promise<void> {
+async function withBridge(
+  fn: (fixture: BridgeFixture) => Promise<void>,
+  options?: { workspaceId?: string; streamDisconnectGraceMs?: number; configure?: (core: FakeCore) => void },
+): Promise<void> {
   const fakeCore = await startFakeCore();
-  const bridge = createBridge(fakeCore);
+  options?.configure?.(fakeCore);
+  const bridge = createBridge(fakeCore, options);
   try {
     await fn({ fakeCore, bridge });
   } finally {
@@ -324,20 +391,111 @@ test('session/cancel interrupts the run and resolves the prompt as cancelled', a
   });
 });
 
-test('a failing run resolves the prompt with refusal and surfaces the error text', async () => {
+test('a run.failed core event surfaces the error and resolves the prompt with refusal', async () => {
   await withBridge(async ({ bridge }) => {
     const session = await bridge.request({ jsonrpc: '2.0', id: 40, method: 'session/new', params: {} });
     sendPrompt(bridge, session.result.sessionId, 41);
     await bridge.waitForCoreRequest(/\/messages$/);
     const runId = await bridge.waitForRunRegistration();
 
-    bridge.streamBridgeEvent(streamUpdated({ replyCtx: runId, type: 'status', error: 'provider auth failed' }));
+    bridge.streamBridgeEvent({
+      type: 'run.failed',
+      payload: { runId, threadId: session.result.sessionId, workspaceId: 'ws-acp-desktop', error: 'provider auth failed' },
+    });
     const errorChunk = await bridge.nextFrame();
     assert.equal(errorChunk.params.update.sessionUpdate, 'agent_thought_chunk');
     assert.equal(errorChunk.params.update.content.text, '[error] provider auth failed');
+
+    bridge.streamBridgeEvent({ type: 'stream.updated', stream: { replyCtx: runId, type: 'typing_stop' } });
     const promptResponse = await requestWithId(bridge, 41);
     assert.deepEqual(promptResponse.result, { stopReason: 'refusal' });
   });
+});
+
+test('a run.completed core event resolves a pending prompt with end_turn', async () => {
+  await withBridge(async ({ bridge }) => {
+    const session = await bridge.request({ jsonrpc: '2.0', id: 42, method: 'session/new', params: {} });
+    sendPrompt(bridge, session.result.sessionId, 43);
+    await bridge.waitForCoreRequest(/\/messages$/);
+    const runId = await bridge.waitForRunRegistration();
+
+    bridge.streamBridgeEvent({
+      type: 'run.completed',
+      payload: { runId, threadId: session.result.sessionId, workspaceId: 'ws-acp-desktop', stopReason: 'completed' },
+    });
+    const promptResponse = await requestWithId(bridge, 43);
+    assert.deepEqual(promptResponse.result, { stopReason: 'end_turn' });
+  });
+});
+
+test('a terminal bridge event arriving before the run registers still resolves the prompt', async () => {
+  await withBridge(async ({ fakeCore, bridge }) => {
+    fakeCore.deferMessagesMs = 150;
+    const session = await bridge.request({ jsonrpc: '2.0', id: 44, method: 'session/new', params: {} });
+    sendPrompt(bridge, session.result.sessionId, 45);
+    await bridge.waitForCoreRequest(/\/messages$/);
+    const runId = fakeCore.lastRunId;
+    assert.match(runId, /^run:agentdock::/);
+
+    bridge.streamBridgeEvent({ type: 'stream.updated', stream: { replyCtx: runId, type: 'typing_stop' } });
+    const promptResponse = await requestWithId(bridge, 45);
+    assert.deepEqual(promptResponse.result, { stopReason: 'end_turn' });
+  });
+});
+
+test('a failed message send resolves the prompt with refusal', async () => {
+  await withBridge(async ({ fakeCore, bridge }) => {
+    fakeCore.failMessagesStatus = 500;
+    const session = await bridge.request({ jsonrpc: '2.0', id: 46, method: 'session/new', params: {} });
+    sendPrompt(bridge, session.result.sessionId, 47);
+    const errorChunk = await bridge.nextFrame();
+    assert.equal(errorChunk.params.update.sessionUpdate, 'agent_thought_chunk');
+    assert.equal(errorChunk.params.update.content.text, '[error] agent spawn failed');
+    const promptResponse = await requestWithId(bridge, 47);
+    assert.deepEqual(promptResponse.result, { stopReason: 'refusal' });
+  });
+});
+
+test('a slash-command prompt without a runId resolves with end_turn', async () => {
+  await withBridge(async ({ fakeCore, bridge }) => {
+    fakeCore.returnEmptyRunId = true;
+    const session = await bridge.request({ jsonrpc: '2.0', id: 60, method: 'session/new', params: {} });
+    const promptResponse = await bridge.request({
+      jsonrpc: '2.0', id: 61, method: 'session/prompt',
+      params: { sessionId: session.result.sessionId, prompt: [{ type: 'text', text: 'hi' }] },
+    });
+    assert.deepEqual(promptResponse.result, { stopReason: 'end_turn' });
+  });
+});
+
+test('the event stream reconnects and keeps delivering run events', async () => {
+  await withBridge(
+    async ({ fakeCore, bridge }) => {
+      await bridge.waitForCondition(() => fakeCore.sseConnections >= 2, 'SSE reconnect');
+
+    const session = await bridge.request({ jsonrpc: '2.0', id: 62, method: 'session/new', params: {} });
+    sendPrompt(bridge, session.result.sessionId, 63);
+    await bridge.waitForCoreRequest(/\/messages$/);
+    await bridge.waitForRunRegistration();
+    bridge.streamBridgeEvent({ type: 'stream.updated', stream: { replyCtx: fakeCore.lastRunId, type: 'typing_stop' } });
+    const promptResponse = await requestWithId(bridge, 63);
+    assert.deepEqual(promptResponse.result, { stopReason: 'end_turn' });
+    },
+    { configure: (core) => { core.closeFirstSse = true; } },
+  );
+});
+
+test('a persistent event-stream outage fails pending prompts after the grace period', async () => {
+  await withBridge(
+    async ({ bridge }) => {
+      const session = await bridge.request({ jsonrpc: '2.0', id: 64, method: 'session/new', params: {} });
+      sendPrompt(bridge, session.result.sessionId, 65);
+      await bridge.waitForCoreRequest(/\/messages$/);
+      const promptResponse = await requestWithId(bridge, 65, 5000);
+      assert.deepEqual(promptResponse.result, { stopReason: 'refusal' });
+    },
+    { streamDisconnectGraceMs: 100, configure: (core) => { core.rejectEvents = true; } },
+  );
 });
 
 test('protocol errors: unknown method, unknown session, busy session, invalid blocks, malformed frames', async () => {
@@ -384,23 +542,11 @@ function sendPrompt(bridge: BridgeHarness, sessionId: string, id: number) {
   });
 }
 
-async function requestWithId(bridge: BridgeHarness, id: number): Promise<any> {
+async function requestWithId(bridge: BridgeHarness, id: number, timeoutMs = 3000): Promise<any> {
   for (;;) {
-    const frame = await bridge.nextFrame();
+    const frame = await bridge.nextFrame(timeoutMs);
     if (frame.id === id) {
       return frame;
     }
   }
 }
-
-test('a run that never starts resolves the prompt with refusal', async () => {
-  await withBridge(async ({ fakeCore, bridge }) => {
-    fakeCore.returnEmptyRunId = true;
-    const session = await bridge.request({ jsonrpc: '2.0', id: 60, method: 'session/new', params: {} });
-    const promptResponse = await bridge.request({
-      jsonrpc: '2.0', id: 61, method: 'session/prompt',
-      params: { sessionId: session.result.sessionId, prompt: [{ type: 'text', text: 'hi' }] },
-    });
-    assert.deepEqual(promptResponse.result, { stopReason: 'refusal' });
-  });
-});

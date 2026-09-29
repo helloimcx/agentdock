@@ -1,8 +1,10 @@
-import type { DesktopBridgeEvent, LocalCoreEvent } from '@cc/superai-contracts';
+import type { LocalCoreEvent } from '@cc/superai-contracts';
+import { request } from '../../cli/cli-helpers.js';
 
 export interface LocalCoreClientOptions {
   baseUrl: string;
   fetchImpl?: typeof fetch;
+  reconnectBaseDelayMs?: number;
 }
 
 export interface CoreThread {
@@ -17,32 +19,35 @@ export interface LocalCoreStreamHandle {
 
 export interface LocalCoreStreamHandlers {
   onEvent: (event: LocalCoreEvent) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
   onError: (error: Error) => void;
   onClose: () => void;
 }
 
-type JsonEnvelope<T> = {
-  ok: boolean;
-  data: T;
-  error?: string;
-};
+const RECONNECT_INITIAL_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 16000;
+const RECONNECT_RESET_AFTER_MS = 30_000;
 
 export class LocalCoreApiClient {
   private readonly fetchImpl: typeof fetch;
+  private readonly reconnectBaseDelayMs: number;
 
   constructor(private readonly options: LocalCoreClientOptions) {
     this.fetchImpl = options.fetchImpl || fetch;
+    this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? RECONNECT_INITIAL_DELAY_MS;
   }
 
   async createThread(workspaceId: string, title?: string): Promise<CoreThread> {
-    return await this.requestJson<CoreThread>('POST', '/threads', {
+    return await request<CoreThread>(this.options.baseUrl, 'POST', '/threads', {
       workspaceId,
       ...(title ? { title } : {}),
     });
   }
 
   async sendThreadMessage(threadId: string, content: string): Promise<{ runId: string }> {
-    return await this.requestJson<{ runId: string }>(
+    return await request<{ runId: string }>(
+      this.options.baseUrl,
       'POST',
       `/threads/${encodeURIComponent(threadId)}/messages`,
       { content },
@@ -50,7 +55,8 @@ export class LocalCoreApiClient {
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
-    return await this.requestJson<{ interrupted: boolean }>(
+    return await request<{ interrupted: boolean }>(
+      this.options.baseUrl,
       'POST',
       `/runs/${encodeURIComponent(runId)}/interrupt`,
     );
@@ -58,14 +64,38 @@ export class LocalCoreApiClient {
 
   streamEvents(handlers: LocalCoreStreamHandlers): LocalCoreStreamHandle {
     const controller = new AbortController();
-    void this.readEventStream(controller, handlers).catch((error: unknown) => {
-      if (!controller.signal.aborted) {
-        handlers.onError(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
+    void this.runEventStreamLoop(controller, handlers);
     return {
       close: () => controller.abort(),
     };
+  }
+
+  private async runEventStreamLoop(controller: AbortController, handlers: LocalCoreStreamHandlers) {
+    let delayMs = this.reconnectBaseDelayMs;
+    while (!controller.signal.aborted) {
+      const connectedAt = Date.now();
+      try {
+        await this.readEventStream(controller, handlers);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        handlers.onError(error instanceof Error ? error : new Error(String(error)));
+      }
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (Date.now() - connectedAt >= RECONNECT_RESET_AFTER_MS) {
+        delayMs = this.reconnectBaseDelayMs;
+      }
+      handlers.onDisconnect?.();
+      await sleep(delayMs);
+      if (controller.signal.aborted) {
+        return;
+      }
+      delayMs = Math.min(delayMs * 2, RECONNECT_MAX_DELAY_MS);
+    }
+    handlers.onClose();
   }
 
   private async readEventStream(controller: AbortController, handlers: LocalCoreStreamHandlers) {
@@ -76,18 +106,22 @@ export class LocalCoreApiClient {
     if (!response.ok || !response.body) {
       throw new Error(`Local AI Core event stream failed: HTTP ${response.status}`);
     }
+    handlers.onConnect?.();
     let buffer = '';
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        buffer = this.consumeSseFrames(buffer, handlers);
       }
-      buffer += decoder.decode(value, { stream: true });
-      buffer = this.consumeSseFrames(buffer, handlers);
+    } finally {
+      reader.releaseLock();
     }
-    handlers.onClose();
   }
 
   private consumeSseFrames(buffer: string, handlers: LocalCoreStreamHandlers): string {
@@ -105,27 +139,9 @@ export class LocalCoreApiClient {
       }
     }
   }
-
-  private async requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(`${this.options.baseUrl}${path}`, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch (error) {
-      throw new Error(`Local AI Core is unavailable at ${this.options.baseUrl}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    const payload = (await response.json().catch(() => undefined)) as JsonEnvelope<T> | undefined;
-    if (!response.ok || !payload?.ok) {
-      throw new Error(payload?.error || `Local AI Core request failed: HTTP ${response.status}`);
-    }
-    return payload.data;
-  }
 }
 
-export function parseSseFrame(frame: string): LocalCoreEvent | null {
+function parseSseFrame(frame: string): LocalCoreEvent | null {
   let data = '';
   for (const line of frame.split('\n')) {
     if (line.startsWith('data: ')) {
@@ -146,4 +162,6 @@ export function isRunBridgeEvent(event: LocalCoreEvent): event is Extract<LocalC
   return event.type === 'stream.updated';
 }
 
-export type RunBridgeEvent = DesktopBridgeEvent;
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}

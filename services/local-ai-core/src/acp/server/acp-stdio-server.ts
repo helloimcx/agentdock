@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import type { DesktopBridgeEvent, LocalCoreEvent } from '@cc/superai-contracts';
+import { diffAccumulatedText } from '../../runtime/server-helpers.js';
 import {
   isRunBridgeEvent,
   LocalCoreApiClient,
@@ -14,6 +15,7 @@ export interface AcpStdioServerOptions {
   input: NodeJS.ReadableStream;
   output: { write: (chunk: string) => void };
   log?: (message: string) => void;
+  streamDisconnectGraceMs?: number;
 }
 
 interface JsonRpcError {
@@ -34,6 +36,7 @@ interface PendingTurn {
   sessionId: string;
   runId: string;
   settled: boolean;
+  failed: boolean;
   toolSeq: number;
   previewTextByHandle: Map<string, string>;
   repliedMessageIds: Set<string>;
@@ -46,11 +49,18 @@ const JSON_RPC_INTERNAL_ERROR = -32603;
 const JSON_RPC_UNKNOWN_SESSION = -32002;
 const JSON_RPC_SESSION_BUSY = -32003;
 
+const MAX_BUFFERED_EVENTS_PER_RUN = 100;
+const MAX_BUFFERED_RUNS = 200;
+const STREAM_DISCONNECT_GRACE_MS = 30_000;
+const MAX_INPUT_BUFFER_CHARS = 1_000_000;
+
 export class AcpStdioServer {
   private readonly sessions = new Map<string, { cwd?: string }>();
   private readonly turnsByRun = new Map<string, PendingTurn>();
   private readonly turnsBySession = new Map<string, PendingTurn>();
+  private readonly bufferedEventsByRun = new Map<string, LocalCoreEvent[]>();
   private streamHandle: { close: () => void } | null = null;
+  private streamDisconnectTimer: NodeJS.Timeout | null = null;
   private inputBuffer = '';
   private serving = false;
 
@@ -63,6 +73,8 @@ export class AcpStdioServer {
     this.serving = true;
     this.streamHandle = this.options.client.streamEvents({
       onEvent: (event: LocalCoreEvent) => this.onCoreEvent(event),
+      onConnect: () => this.clearStreamDisconnectTimer(),
+      onDisconnect: () => this.scheduleStreamDisconnectFailure(),
       onError: (error: Error) => this.options.log?.(`ACP bridge event stream error: ${error.message}`),
       onClose: () => this.options.log?.('ACP bridge event stream closed.'),
     });
@@ -81,13 +93,19 @@ export class AcpStdioServer {
   shutdown() {
     this.streamHandle?.close();
     this.streamHandle = null;
-    for (const turn of this.turnsByRun.values()) {
+    this.clearStreamDisconnectTimer();
+    for (const turn of this.turnsBySession.values()) {
       this.finishTurn(turn, 'refusal');
     }
   }
 
   onInputChunk(chunk: string | Buffer) {
     this.inputBuffer += String(chunk);
+    if (this.inputBuffer.length > MAX_INPUT_BUFFER_CHARS) {
+      this.options.log?.('ACP bridge dropped an oversized stdin line buffer.');
+      this.inputBuffer = '';
+      return;
+    }
     for (;;) {
       const newlineIndex = this.inputBuffer.indexOf('\n');
       if (newlineIndex < 0) {
@@ -153,7 +171,7 @@ export class AcpStdioServer {
     return { sessionId: thread.id };
   }
 
-  private async handleSessionPrompt(params: Record<string, unknown>) {
+  private handleSessionPrompt(params: Record<string, unknown>) {
     const sessionId = asString(params.sessionId);
     if (!sessionId || !this.sessions.has(sessionId)) {
       throw new AcpRpcError(JSON_RPC_UNKNOWN_SESSION, `Unknown ACP sessionId: ${sessionId}`);
@@ -162,23 +180,44 @@ export class AcpStdioServer {
       throw new AcpRpcError(JSON_RPC_SESSION_BUSY, `ACP session ${sessionId} already has a running prompt.`);
     }
     const content = extractPromptText(params.prompt);
-    const sent = await this.options.client.sendThreadMessage(sessionId, content);
-    if (!sent.runId) {
-      return { stopReason: 'refusal' as const };
-    }
-    return await new Promise<{ stopReason: AcpStopReason }>((resolve) => {
+    return new Promise<{ stopReason: AcpStopReason }>((resolve) => {
       const turn: PendingTurn = {
         sessionId,
-        runId: sent.runId,
+        runId: '',
         settled: false,
+        failed: false,
         toolSeq: 0,
         previewTextByHandle: new Map(),
         repliedMessageIds: new Set(),
         resolve,
       };
-      this.turnsByRun.set(sent.runId, turn);
       this.turnsBySession.set(sessionId, turn);
+      void this.startTurn(turn, content);
     });
+  }
+
+  private async startTurn(turn: PendingTurn, content: string) {
+    try {
+      const sent = await this.options.client.sendThreadMessage(turn.sessionId, content);
+      if (turn.settled) {
+        return;
+      }
+      if (!sent.runId) {
+        this.finishTurn(turn, 'end_turn');
+        return;
+      }
+      turn.runId = sent.runId;
+      this.turnsByRun.set(sent.runId, turn);
+      this.replayBufferedRunEvents(turn, sent.runId);
+    } catch (error) {
+      if (turn.settled) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.options.log?.(`ACP bridge failed to start the run for session ${turn.sessionId}: ${message}`);
+      this.emitTextChunk(turn, 'agent_thought_chunk', `[error] ${message}`);
+      this.finishTurn(turn, 'refusal');
+    }
   }
 
   private handleNotification(payload: JsonRpcPayload) {
@@ -191,29 +230,92 @@ export class AcpStdioServer {
     if (!turn || turn.settled) {
       return;
     }
-    void this.options.client.interruptRun(turn.runId).catch((error: unknown) => {
-      this.options.log?.(`ACP bridge interrupt failed: ${error instanceof Error ? error.message : String(error)}`);
-    });
+    if (turn.runId) {
+      void this.options.client.interruptRun(turn.runId).catch((error: unknown) => {
+        this.options.log?.(`ACP bridge interrupt failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
     this.finishTurn(turn, 'cancelled');
   }
 
   private onCoreEvent(event: LocalCoreEvent) {
     if (isRunBridgeEvent(event)) {
-      this.onBridgeEvent(event.stream);
+      this.dispatchRunScopedEvent(asString(event.stream.replyCtx), event);
+      return;
+    }
+    if (event.type === 'run.failed' || event.type === 'run.completed') {
+      this.dispatchRunScopedEvent(event.payload.runId, event);
     }
   }
 
-  private onBridgeEvent(stream: DesktopBridgeEvent) {
-    const runId = stream.replyCtx || '';
+  private dispatchRunScopedEvent(runId: string, event: LocalCoreEvent) {
+    if (!runId) {
+      return;
+    }
     const turn = this.turnsByRun.get(runId);
-    if (!turn || turn.settled) {
+    if (!turn) {
+      this.bufferRunEvent(runId, event);
+      return;
+    }
+    this.applyRunScopedEvent(turn, event);
+  }
+
+  private bufferRunEvent(runId: string, event: LocalCoreEvent) {
+    const buffered = this.bufferedEventsByRun.get(runId) || [];
+    if (buffered.length >= MAX_BUFFERED_EVENTS_PER_RUN) {
+      buffered.shift();
+    }
+    buffered.push(event);
+    this.bufferedEventsByRun.set(runId, buffered);
+    while (this.bufferedEventsByRun.size > MAX_BUFFERED_RUNS) {
+      const oldest = this.bufferedEventsByRun.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      this.bufferedEventsByRun.delete(oldest);
+    }
+  }
+
+  private replayBufferedRunEvents(turn: PendingTurn, runId: string) {
+    const buffered = this.bufferedEventsByRun.get(runId);
+    if (!buffered) {
+      return;
+    }
+    this.bufferedEventsByRun.delete(runId);
+    for (const event of buffered) {
+      this.applyRunScopedEvent(turn, event);
+    }
+  }
+
+  private applyRunScopedEvent(turn: PendingTurn, event: LocalCoreEvent) {
+    if (isRunBridgeEvent(event)) {
+      this.onBridgeEvent(turn, event.stream);
+      return;
+    }
+    if (event.type === 'run.failed') {
+      turn.failed = true;
+      this.emitTextChunk(turn, 'agent_thought_chunk', `[error] ${event.payload.error || 'agent run failed'}`);
+      return;
+    }
+    if (event.type === 'run.completed') {
+      if (!turn.failed && event.payload.stopReason === 'cancelled') {
+        this.finishTurn(turn, 'cancelled');
+        return;
+      }
+      this.finishTurn(turn, turn.failed ? 'refusal' : 'end_turn');
+    }
+  }
+
+  private onBridgeEvent(turn: PendingTurn, stream: DesktopBridgeEvent) {
+    if (turn.settled) {
       return;
     }
     if (stream.type === 'typing_stop') {
-      this.finishTurn(turn, 'end_turn');
+      this.finishTurn(turn, turn.failed ? 'refusal' : 'end_turn');
       return;
     }
     if ((stream.type === 'status' || stream.type === 'card') && stream.error) {
+      turn.failed = true;
       this.emitTextChunk(turn, 'agent_thought_chunk', `[error] ${stream.error}`);
       this.finishTurn(turn, 'refusal');
       return;
@@ -292,18 +394,7 @@ export class AcpStdioServer {
   }
 
   private emitToolCallUpdate(turn: PendingTurn, stream: DesktopBridgeEvent) {
-    const tool = stream.toolCall;
-    const name = tool?.name || tool?.label || 'tool';
-    const output = tool?.output || tool?.detail || stream.content || '';
-    const toolCallId = tool?.id || stream.messageId || `tool-${turn.toolSeq++}`;
-    this.emitUpdate(turn, {
-      sessionUpdate: 'tool_call',
-      toolCallId,
-      title: name,
-      kind: 'other',
-      status: mapToolStatus(tool?.status || ''),
-      ...(output ? { content: [{ type: 'content', content: { type: 'text', text: output } }] } : { content: [] }),
-    });
+    this.emitUpdate(turn, buildToolCallUpdate(turn, stream));
   }
 
   private emitUpdate(turn: PendingTurn, update: Record<string, unknown>) {
@@ -312,6 +403,27 @@ export class AcpStdioServer {
       method: 'session/update',
       params: { sessionId: turn.sessionId, update },
     });
+  }
+
+  private scheduleStreamDisconnectFailure() {
+    if (this.streamDisconnectTimer) {
+      return;
+    }
+    const graceMs = this.options.streamDisconnectGraceMs ?? STREAM_DISCONNECT_GRACE_MS;
+    this.streamDisconnectTimer = setTimeout(() => {
+      this.streamDisconnectTimer = null;
+      for (const turn of this.turnsBySession.values()) {
+        this.emitTextChunk(turn, 'agent_thought_chunk', '[error] Local AI Core event stream is unavailable.');
+        this.finishTurn(turn, 'refusal');
+      }
+    }, graceMs);
+  }
+
+  private clearStreamDisconnectTimer() {
+    if (this.streamDisconnectTimer) {
+      clearTimeout(this.streamDisconnectTimer);
+      this.streamDisconnectTimer = null;
+    }
   }
 
   private finishTurn(turn: PendingTurn, stopReason: AcpStopReason) {
@@ -329,7 +441,7 @@ export class AcpStdioServer {
   }
 }
 
-export class AcpRpcError extends Error {
+class AcpRpcError extends Error {
   constructor(readonly code: number, message: string) {
     super(message);
     this.name = 'AcpRpcError';
@@ -354,6 +466,30 @@ function extractPromptText(prompt: unknown): string {
   return content;
 }
 
+function buildToolCallUpdate(turn: PendingTurn, stream: DesktopBridgeEvent): Record<string, unknown> {
+  const output = resolveToolOutput(stream);
+  return {
+    sessionUpdate: 'tool_call',
+    toolCallId: resolveToolCallId(turn, stream),
+    title: resolveToolTitle(stream),
+    kind: 'other',
+    status: mapToolStatus(stream.toolCall?.status || ''),
+    ...(output ? { content: [{ type: 'content', content: { type: 'text', text: output } }] } : { content: [] }),
+  };
+}
+
+function resolveToolCallId(turn: PendingTurn, stream: DesktopBridgeEvent): string {
+  return stream.toolCall?.id || stream.messageId || `tool-${turn.toolSeq++}`;
+}
+
+function resolveToolTitle(stream: DesktopBridgeEvent): string {
+  return stream.toolCall?.name || stream.toolCall?.label || 'tool';
+}
+
+function resolveToolOutput(stream: DesktopBridgeEvent): string {
+  return stream.toolCall?.output || stream.toolCall?.detail || stream.content || '';
+}
+
 function mapToolStatus(raw: string): 'pending' | 'in_progress' | 'completed' | 'failed' {
   const status = raw.toLowerCase();
   if (status.includes('fail') || status.includes('error')) {
@@ -366,19 +502,6 @@ function mapToolStatus(raw: string): 'pending' | 'in_progress' | 'completed' | '
     return 'pending';
   }
   return 'in_progress';
-}
-
-function diffAccumulatedText(previous: string, next: string): string {
-  if (!next) {
-    return '';
-  }
-  if (!previous) {
-    return next;
-  }
-  if (previous === next) {
-    return '';
-  }
-  return next.startsWith(previous) ? next.slice(previous.length) : next;
 }
 
 function asString(value: unknown): string {
