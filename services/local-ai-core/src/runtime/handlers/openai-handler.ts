@@ -511,11 +511,14 @@ async function handleNonStreaming(
   }
   const started = Date.now();
   const timeoutMs = 10 * 60 * 1000;
-  let snapshot = await externalService.getRunSnapshot(created.run_id);
-  while (!isTerminalAgentTaskStatus(snapshot.task?.status) && Date.now() - started < timeoutMs) {
+  // Poll the task row only; hydrating the full thread snapshot per poll costs
+  // O(messages) on every tick, so it happens once after the run goes terminal.
+  let task = await externalService.getRunStatus(created.run_id);
+  while (!isTerminalAgentTaskStatus(task?.status) && Date.now() - started < timeoutMs) {
     await new Promise((resolve) => setTimeout(resolve, 500));
-    snapshot = await externalService.getRunSnapshot(created.run_id);
+    task = await externalService.getRunStatus(created.run_id);
   }
+  const snapshot = await externalService.getRunSnapshot(created.run_id);
   if (!isTerminalAgentTaskStatus(snapshot.task?.status)) {
     openAiJsonError(res, 504, 'OpenAI-compatible chat completion timed out waiting for the agent run.', 'run_timeout');
     return;
