@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
+  AgentTask,
   DesktopConnectConfig,
   DesktopProjectConfig,
   ExternalProject,
@@ -104,6 +105,10 @@ export class ExternalService {
       task,
       thread,
     };
+  }
+
+  async getRunStatus(runId: string): Promise<AgentTask | undefined> {
+    return this.store.getAgentTaskByRunId(runId);
   }
 
   private resolveProvider(providerId?: string) {

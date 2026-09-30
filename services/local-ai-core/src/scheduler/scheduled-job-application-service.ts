@@ -12,7 +12,6 @@ import {
   automationToScheduledJobRun,
   scheduledJobToAutomationInput,
 } from '../automation/legacy-automation-mappers.js';
-import type { SchedulerService } from './scheduler-service.js';
 import {
   routeFromPlatformThreadBinding,
   routeTypeForPlatform,
@@ -38,7 +37,6 @@ type ResolvedScheduledJobCreateInput = ScheduledJobCreateInput & {
 
 type ScheduledJobApplicationServiceOptions = {
   store: LocalCoreAcpStore;
-  scheduler: SchedulerService;
   automations: AutomationService;
   eventBus?: import('@cc/plugin-sdk').EventBus;
 };

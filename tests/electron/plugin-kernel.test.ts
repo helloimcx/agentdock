@@ -1274,6 +1274,22 @@ test('server diagnostics routes dispatch through generic bindings', async () => 
 test('server OpenAI-compatible chat route maps metadata to sandbox yolo external run', async () => {
   let externalInput: any;
   const controller = new EventEmitter() as any;
+  const completedTask = {
+    taskId: 'task-1',
+    workspaceId: 'external-user-project',
+    runtimeId: 'pi',
+    threadId: 'thread-1',
+    runId: 'run-1',
+    title: 'Task',
+    status: 'completed',
+    createdAt: '2026-05-15T00:00:00.000Z',
+    updatedAt: '2026-05-15T00:00:02.000Z',
+    startedAt: '2026-05-15T00:00:01.000Z',
+    timeline: [],
+    logs: [],
+    artifacts: [],
+    approvalIds: [],
+  };
   const externalService = {
     createRun: async (input: any) => {
       externalInput = input;
@@ -1287,24 +1303,10 @@ test('server OpenAI-compatible chat route maps metadata to sandbox yolo external
         events_url: '/api/local/v1/external/runs/run-1/events',
       };
     },
+    getRunStatus: async () => completedTask,
     getRunSnapshot: async () => ({
       runId: 'run-1',
-      task: {
-        taskId: 'task-1',
-        workspaceId: 'external-user-project',
-        runtimeId: 'pi',
-        threadId: 'thread-1',
-        runId: 'run-1',
-        title: 'Task',
-        status: 'completed',
-        createdAt: '2026-05-15T00:00:00.000Z',
-        updatedAt: '2026-05-15T00:00:02.000Z',
-        startedAt: '2026-05-15T00:00:01.000Z',
-        timeline: [],
-        logs: [],
-        artifacts: [],
-        approvalIds: [],
-      },
+      task: completedTask,
       thread: {
         id: 'thread-1',
         workspaceId: 'external-user-project',
