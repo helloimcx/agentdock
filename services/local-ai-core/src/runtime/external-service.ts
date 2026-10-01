@@ -167,6 +167,12 @@ export class ExternalService {
       disabled_commands: existing?.disabled_commands,
     };
     if (existingIndex >= 0) {
+      // External run creation calls this on every request; persisting the
+      // identical project would also trigger refreshBindings + emitRuntime in
+      // the controller save path, so keep repeats write-free.
+      if (JSON.stringify(config.projects![existingIndex]) === JSON.stringify(nextProject)) {
+        return;
+      }
       config.projects![existingIndex] = nextProject;
     } else {
       config.projects!.push(nextProject);
