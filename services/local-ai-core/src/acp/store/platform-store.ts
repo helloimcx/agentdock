@@ -17,6 +17,12 @@ function buildWorkspacePlatformWhere(workspaceId?: string, platform?: string): {
   return { where: builder.whereClause(), params: builder.params };
 }
 
+const PLATFORM_THREAD_BINDING_SELECT = `
+  SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at
+  FROM platform_thread_bindings`;
+
+const PLATFORM_THREAD_BINDING_KEY_WHERE = 'workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?';
+
 export class LocalPlatformStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -140,16 +146,14 @@ export class LocalPlatformStore {
 
   getPlatformThreadBinding(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
     return this.db.prepare(`
-      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at
-      FROM platform_thread_bindings
-      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
+      ${PLATFORM_THREAD_BINDING_SELECT}
+      WHERE ${PLATFORM_THREAD_BINDING_KEY_WHERE}
     `).get(workspaceId, platform, chatId, platformUserId) as LocalPlatformThreadBindingRow | undefined;
   }
 
   getPlatformThreadBindingByThreadId(threadId: string) {
     return this.db.prepare(`
-      SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at
-      FROM platform_thread_bindings
+      ${PLATFORM_THREAD_BINDING_SELECT}
       WHERE thread_id = ?
       ORDER BY updated_at DESC
       LIMIT 1
@@ -192,11 +196,7 @@ export class LocalPlatformStore {
     agentType: string | null,
     platform = 'lark',
   ) {
-    this.db.prepare(`
-      UPDATE platform_thread_bindings
-      SET preferred_agent_type = ?, updated_at = ?
-      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
-    `).run(agentType, new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
+    this.updatePlatformThreadBindingField('preferred_agent_type', agentType, workspaceId, chatId, platformUserId, platform);
   }
 
   updatePlatformThreadPreferredProvider(
@@ -206,27 +206,31 @@ export class LocalPlatformStore {
     providerId: string | null,
     platform = 'lark',
   ) {
-    this.db.prepare(`
-      UPDATE platform_thread_bindings
-      SET preferred_provider_id = ?, updated_at = ?
-      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
-    `).run(providerId, new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
+    this.updatePlatformThreadBindingField('preferred_provider_id', providerId, workspaceId, chatId, platformUserId, platform);
   }
 
   updatePlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, messageId: string, platform = 'lark') {
-    this.db.prepare(`
-      UPDATE platform_thread_bindings
-      SET last_platform_message_id = ?, updated_at = ?
-      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
-    `).run(messageId, new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
+    this.updatePlatformThreadBindingField('last_platform_message_id', messageId, workspaceId, chatId, platformUserId, platform);
   }
 
   clearPlatformThreadMessageId(workspaceId: string, chatId: string, platformUserId: string, platform = 'lark') {
+    this.updatePlatformThreadBindingField('last_platform_message_id', null, workspaceId, chatId, platformUserId, platform);
+  }
+
+  // Callers pass only these three literals, so interpolating the column is safe.
+  private updatePlatformThreadBindingField(
+    column: 'preferred_agent_type' | 'preferred_provider_id' | 'last_platform_message_id',
+    value: string | null,
+    workspaceId: string,
+    chatId: string,
+    platformUserId: string,
+    platform = 'lark',
+  ) {
     this.db.prepare(`
       UPDATE platform_thread_bindings
-      SET last_platform_message_id = NULL, updated_at = ?
-      WHERE workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?
-    `).run(new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
+      SET ${column} = ?, updated_at = ?
+      WHERE ${PLATFORM_THREAD_BINDING_KEY_WHERE}
+    `).run(value, new Date().toISOString(), workspaceId, platform, chatId, platformUserId);
   }
 
   listPairingRequests(workspaceId?: string, platform?: string): LocalCorePairingRequest[] {
