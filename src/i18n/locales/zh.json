@@ -1,5 +1,6 @@
 {
   "nav": {
+    "mesh": "设备互联",
     "dashboard": "概览",
     "chat": "聊天",
     "chatDesktop": "桌面聊天",
@@ -266,5 +267,57 @@
     "light": "浅色",
     "dark": "深色",
     "system": "跟随系统"
+  },
+  "mesh": {
+    "download": "下载文件",
+    "exitCode": "退出状态",
+    "truncated": "列表仅显示前 100 项。",
+
+    "title": "AgentDock Mesh",
+    "description": "将多台设备连接到一起，统一使用设备上的文件与工具。",
+    "pair": "配对设备",
+    "label": "设备名称",
+    "allowShell": "允许执行命令",
+    "shellWarning": "命令将以设备用户的权限运行；服务端和设备端都需要显式开启。",
+    "pairingHelp": "在设备上将此单次配对码设为 AGENTDOCK_MESH_PAIRING_TOKEN。配对码 10 分钟后失效。",
+    "expires": "有效期至",
+    "hideToken": "隐藏配对码",
+    "device": "设备",
+    "selectDevice": "选择在线设备",
+    "capability": "操作",
+    "execute": "在设备上执行",
+    "path": "授权目录内的相对路径",
+    "program": "可执行程序",
+    "arguments": "参数（JSON 数组）",
+    "authenticationHelp": "输入服务端配置的 Mesh 管理凭据。凭据仅保留在当前页面的内存中。",
+    "adminToken": "Mesh 管理凭据",
+    "connect": "连接",
+    "disconnect": "断开",
+    "refresh": "刷新",
+    "noDevices": "尚未配对设备。",
+    "revoke": "撤销访问",
+    "revokeConfirm": "撤销 {{label}} 的访问权限？正在执行的请求将被中断。",
+    "history": "最近请求",
+    "outcomeHelp": "断线或超时请求的结果可能未知，重试前请检查设备。取消无法撤回已发生的操作。",
+    "cancel": "取消",
+    "result": "查看结果",
+    "nodeStatus": {
+      "online": "在线",
+      "offline": "离线",
+      "revoked": "已撤销"
+    },
+    "requestStatus": {
+      "running": "执行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已请求取消",
+      "timed_out": "已超时",
+      "interrupted": "已中断，结果未知"
+    },
+    "capabilities": {
+      "filesystem_list": "列出文件",
+      "filesystem_read": "读取文件",
+      "shell_exec": "执行命令"
+    }
   }
 }

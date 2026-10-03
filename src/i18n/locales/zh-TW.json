@@ -1,5 +1,6 @@
 {
   "nav": {
+    "mesh": "裝置互聯",
     "dashboard": "總覽",
     "chat": "聊天",
     "chatDesktop": "桌面聊天",
@@ -226,5 +227,57 @@
     "light": "淺色",
     "dark": "深色",
     "system": "跟隨系統"
+  },
+  "mesh": {
+    "download": "Download file",
+    "exitCode": "Exit status",
+    "truncated": "Showing the first 100 entries.",
+
+    "title": "AgentDock Mesh",
+    "description": "Connect your devices and use their files and tools from one place.",
+    "pair": "Pair a device",
+    "label": "Device name",
+    "allowShell": "Allow command execution",
+    "shellWarning": "Commands run with the device user’s permissions. Both the server and device must enable this option.",
+    "pairingHelp": "Use this single-use token on the device as AGENTDOCK_MESH_PAIRING_TOKEN. It expires after 10 minutes.",
+    "expires": "Expires",
+    "hideToken": "Hide token",
+    "device": "Device",
+    "selectDevice": "Select an online device",
+    "capability": "Action",
+    "execute": "Run on device",
+    "path": "Path within the approved directory",
+    "program": "Program",
+    "arguments": "Arguments as a JSON array",
+    "authenticationHelp": "Enter the Mesh administrator token configured on your server. It stays in this page’s memory only.",
+    "adminToken": "Mesh administrator token",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "refresh": "Refresh",
+    "noDevices": "No devices paired yet.",
+    "revoke": "Revoke access",
+    "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",
+    "history": "Recent requests",
+    "outcomeHelp": "Disconnected or timed-out requests can have an unknown outcome. Check the device before retrying. Cancellation may not undo actions already performed.",
+    "cancel": "Cancel",
+    "result": "View result",
+    "nodeStatus": {
+      "online": "Online",
+      "offline": "Offline",
+      "revoked": "Revoked"
+    },
+    "requestStatus": {
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancellation requested",
+      "timed_out": "Timed out",
+      "interrupted": "Interrupted — outcome unknown"
+    },
+    "capabilities": {
+      "filesystem_list": "List files",
+      "filesystem_read": "Read a file",
+      "shell_exec": "Run a command"
+    }
   }
 }

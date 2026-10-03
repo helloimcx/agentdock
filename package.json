@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "bin": {
-    "agentdock": "bin/agentdock.mjs"
+    "agentdock": "bin/agentdock.mjs",
+    "agentdock-node": "bin/agentdock-node.mjs"
   },
   "repository": {
     "type": "git",
@@ -84,7 +85,8 @@
     "react-router-dom": "^7.5.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
-    "zustand": "^5.0.5"
+    "zustand": "^5.0.5",
+    "ws": "8.20.0"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^13.2.0",
@@ -92,6 +94,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@types/ws": "8.18.1",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",
     "c8": "^10.1.3",

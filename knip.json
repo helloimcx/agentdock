@@ -6,6 +6,7 @@
     "src/main.tsx",
     "src/App.tsx",
     "services/local-ai-core/src/cli/lac.ts",
+    "services/local-ai-core/src/mesh/node-cli.ts",
     "packages/contracts/src/index.ts",
     "packages/core-sdk/src/index.ts",
     "packages/knowledge-api/src/index.ts",

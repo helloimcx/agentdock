@@ -16,7 +16,7 @@ Phase 0 establishes where core product state belongs so renderer, Electron, Loca
 | Attachments | Local AI Core | `packages/contracts` | Render file/image metadata and request downloads or sends | No attachment ownership |
 | Channel inbound content | Local AI Core channel adapters | `packages/contracts` | Display normalized thread messages | No platform parsing ownership |
 | Channel outbound content | Local AI Core channel adapters | `packages/contracts` | Request sends through shared APIs | No platform delivery ownership |
-| Device registry | Local AI Core | Future contract | Display presence and trust | Provide local device context |
+| Mesh device registry and requests | Local AI Core SQLite | `packages/contracts/src/mesh.ts` | Display presence, pair, execute and revoke via authenticated Mesh APIs | No device ownership |
 | Approval requests | Local AI Core | Future contract | Prompt and resolve approvals | No policy ownership |
 | Audit log | Local AI Core | Future contract | Display filtered history | No audit ownership |
 | UI state | Renderer | Local component/store types | Own transient view state | None |
@@ -43,4 +43,4 @@ Phase 0 establishes where core product state belongs so renderer, Electron, Loca
 
 ## Current Baseline
 
-Runtime detection, workspace registry, and task records are already Local AI Core-owned. Device registry, approvals, and audit logs are planned but should follow the same ownership rule.
+Runtime detection, workspace registry, task records, and Mesh device identities/request history are Local AI Core-owned. Mesh tool requests are distinct from agent tasks and ACP runs; [Mesh](mesh.md) describes their lifecycle and trust boundaries.

@@ -27,7 +27,7 @@ const languages = [
 const navGroups = [
   { label: 'Core', ids: ['dashboard', 'chat', 'workspace', 'providers', 'projects', 'sessions'] },
   { label: 'Knowledge', ids: ['knowledge', 'automations'] },
-  { label: 'System', ids: ['system'] },
+  { label: 'System', ids: ['mesh', 'system'] },
 ];
 
 export default function Sidebar() {

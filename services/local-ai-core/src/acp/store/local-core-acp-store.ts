@@ -93,6 +93,7 @@ import { LocalRuntimeConfigStore } from './runtime-config-store.js';
 import { LocalSkillSourceStore } from './skill-source-store.js';
 import { LocalCoreSessionHandoffStore } from './session-handoff-store.js';
 import { LocalCoreWorkspaceMemoryStore } from './workspace-memory-store.js';
+import { MeshStore } from '../../mesh/mesh-store.js';
 import type { SkillSource, SkillScope } from '@cc/superai-contracts/skills';
 
 export class LocalCoreAcpStore {
@@ -117,6 +118,7 @@ export class LocalCoreAcpStore {
   readonly sessionHandoffs: LocalCoreSessionHandoffStore;
   readonly workspaceMemory: LocalCoreWorkspaceMemoryStore;
   readonly userDataPath: string;
+  readonly mesh: MeshStore;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
@@ -125,6 +127,7 @@ export class LocalCoreAcpStore {
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new DatabaseSync(dbPath);
     configureSqlitePragmas(this.db);
+    this.mesh = new MeshStore(this.db);
     this.threads = new LocalThreadStore(this.db);
     this.trace = new LocalCoreTraceStore(this.db);
     this.cost = new LocalCoreCostStore(this.db);

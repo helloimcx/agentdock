@@ -26,7 +26,7 @@ Rules:
 
 ## Device Registry
 
-The device registry is not implemented yet. It should follow the same Local AI Core ownership model.
+AgentDock Mesh v1 now implements the device registry in Core SQLite. See [Mesh](../architecture/mesh.md) for the current identity, presence, capability authorization and request contracts. The remaining fields below are the original Phase 0 design direction, not additional implemented guarantees.
 
 Draft contract direction:
 
