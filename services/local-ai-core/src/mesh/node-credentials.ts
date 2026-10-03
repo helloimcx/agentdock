@@ -30,6 +30,9 @@ export async function createPrivateJson<T>(file: string, produce: () => Promise<
     await handle.sync();
     return value;
   }
-  catch (error) { await unlink(file); throw error; }
+  catch (error) {
+    try { await unlink(file); } catch { /* Ignore cleanup failure */ }
+    throw error;
+  }
   finally { await handle.close(); }
 }

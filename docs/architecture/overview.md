@@ -33,12 +33,12 @@ flowchart LR
   acp --> agents[Local Pi / Codex / Claude / Hermes]
   acp --> sandbox[OpenSandbox]
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
-  mesh --> sqlite
+  mesh --> kernel
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
 ```
 
-当前使用 Mermaid 回退图。Archify L1 JSON 为待校验候选；保留的 [交互导出](system-architecture.html) 和 PNG 是 Mesh 之前的最后已知有效版本，不代表当前设备层。
+当前已通过 Archify L1 校验，提供交互式 [HTML 导出](system-architecture.html) 与 Mermaid 视图。
 
 ## 架构资产矩阵 (Architecture-as-Code Matrix)
 
@@ -46,7 +46,7 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 
 | 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
 |---|---|---|---|---|---|
-| **L1 全局系统** | 当前系统与 Mesh | Mermaid 回退 / Archify 待校验 | 本页当前图；历史 [HTML](system-architecture.html) · [PNG](system-architecture.png) | [`system-architecture.mmd`](system-architecture.mmd) · [待校验 JSON](system-architecture.json) | [架构总览](overview.md) |
+| **L1 全局系统** | 端到端系统架构与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [PNG](system-architecture.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
 | **L2 核心流程** | 定时调度与渠道主动投递 | `workflow` | [调度工作流](scheduled-delivery-workflow.html) · [PNG](scheduled-delivery-workflow.png) | [`scheduled-delivery-workflow.json`](scheduled-delivery-workflow.json) | [定时投递架构](scheduled-delivery.md) |
 | **L2 核心流程** | ACP 会话与沙箱桥接时序 | `sequence` | [通信时序图](acp-session-flow.html) · [PNG](acp-session-flow.png) | [`acp-session-flow.sequence.json`](acp-session-flow.sequence.json) | [ACP 协议运行时](acp-protocol.md) |
 | **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [PNG](skill-router.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |

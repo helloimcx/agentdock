@@ -10,6 +10,7 @@ import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
 import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
 import { NodeAgent, enrollNode, meshUrl } from '../../services/local-ai-core/src/mesh/node-agent.js';
 import type { MeshExecution, MeshPairing } from '../../packages/contracts/src/mesh.js';
+import { WebSocketServer } from 'ws';
 
 async function until(check: () => boolean, timeout = 4000) {
   const end = Date.now() + timeout;
@@ -105,3 +106,44 @@ test('Mesh transport requires TLS outside loopback and rejects embedded credenti
   assert.equal(meshUrl('https://device.example.com/api/local/v1').pathname, '/api/local/v1/mesh');
   assert.throws(() => meshUrl('https://user:secret@device.example.com'), /credentials/);
 });
+
+test('Mesh gateway ignores non-mesh WebSocket upgrade requests', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'agentdock-mesh-upgrade-'));
+  const db = new DatabaseSync(join(temp, 'mesh.db'));
+  const store = new MeshStore(db);
+  const server = createServer();
+  const gateway = new MeshGateway(store, server, 'test-admin');
+
+  const otherWss = new WebSocketServer({ noServer: true });
+  let otherUpgraded = false;
+  server.on('upgrade', (req, socket, head) => {
+    const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
+    if (pathname === '/other/ws') {
+      otherWss.handleUpgrade(req, socket, head, ws => {
+        otherUpgraded = true;
+        ws.send('hello-from-other');
+      });
+    }
+  });
+
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+  try {
+    const ws = new WebSocket(`${origin.replace('http:', 'ws:')}/other/ws`);
+    const received = await new Promise<string>((resolve, reject) => {
+      ws.addEventListener('message', ev => resolve(String(ev.data)), { once: true });
+      ws.addEventListener('error', err => reject(err), { once: true });
+    });
+    assert.equal(received, 'hello-from-other');
+    assert.equal(otherUpgraded, true);
+    ws.close();
+  } finally {
+    otherWss.close();
+    gateway.close();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    db.close();
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+

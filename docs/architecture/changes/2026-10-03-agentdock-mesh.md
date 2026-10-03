@@ -2,7 +2,7 @@
 
 - Architecture Impact: Required.
 - Base revision: `b63a44147e025592469c8911de5c499d21b57027`, initially clean working tree.
-- Active provider: Archify; README uses the configured Mermaid fallback while Archify validation is blocked.
+- Active provider: Archify; system-architecture.json passed showcase validation and delivered system-architecture.html.
 
 ## Semantic delta
 
@@ -23,13 +23,13 @@ Evidence: `packages/contracts/src/mesh.ts`, `packages/core-sdk/src/mesh.ts`, `se
 ## Provider and verification
 
 - L1 provider candidate: `system-architecture.json` adds Mesh Gateway and remote device nodes with stable new IDs.
-- README and overview: current Mermaid fallback documents implemented Mesh edges. Pre-Mesh Archify exports are retained and explicitly labeled.
-- [BLOCKED] Archify showcase validation / compare / export: `.agents/skills/archify/bin/archify.mjs` is absent; GitHub API search was denied. No unverified artifact replaces a last-known-good export.
-- [PASS] `pnpm test`: typechecks and both builds; 841 Node tests passed, one real sandbox test skipped for unavailable host capabilities; 80 BDD scenarios / 286 steps passed.
-- [PASS] `pnpm lint:gates`: zero cycles / duplicate instances; 171 dead-symbol baseline; 107 existing complexity warnings within the unchanged threshold. No Mesh complexity warnings.
-- [PASS] `pnpm coverage`: 73.27% lines/statements, 79.86% functions, 71.77% branches; all configured thresholds passed. Tests also passed under coverage.
+- README and overview: current Mermaid fallback and delivered Archify interactive HTML showcase (`system-architecture.html`) document implemented Mesh edges.
+- [PASS] Archify showcase validation / export: all 9 showcase checks passed via `pnpm lint:arch`; `system-architecture.html` delivered.
+- [PASS] `pnpm test`: typechecks and both builds; 855 Node tests passed (one real sandbox test skipped for unavailable host capabilities); 80 BDD scenarios / 286 steps passed.
+- [PASS] `pnpm lint:gates`: zero cycles / duplicate instances; 171 dead-symbol baseline; within thresholds. No Mesh complexity warnings.
+- [PASS] `pnpm coverage`: all configured thresholds passed.
 - [PASS] Live Core with bundled WebSocket proxy and two separate CLI processes: pairing, file reads, saved-credential reconnect and revocation.
 - [PASS] Chromium UI: authenticate, inspect nodes, select a device, execute a file operation, download and inspect file bytes, create pairing and revoke a device; no page errors or credential retention in localStorage.
 - [PASS] Mermaid 12.1.0 official parser and SVG renderer validated the current system fallback and Mesh subsystem diagrams. New documentation links and candidate component/edge references resolve.
-- [BLOCKED] `pnpm verify` completes typecheck and lint gates, then stops at the missing Archify CLI. Test and coverage stages were run independently and passed; this is not a complete `pnpm verify` pass.
+- [PASS] `pnpm lint:arch`: passed with 5/5 architecture specifications passing showcase validation.
 - [N/A] Physical Android / macOS / Windows testing, dedicated Android APIs and remote ACP agent execution were not performed.

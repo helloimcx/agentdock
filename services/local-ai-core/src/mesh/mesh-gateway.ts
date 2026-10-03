@@ -22,7 +22,9 @@ export class MeshGateway {
   constructor(private readonly store: MeshStore, private readonly server: Server, private readonly adminToken?: string) {
     store.recover();
     this.upgrade = (req, socket, head) => {
-      if (req.url !== `${PREFIX}/connect` || !adminToken || this.wss.clients.size >= 128) {
+      const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
+      if (pathname !== `${PREFIX}/connect`) return;
+      if (!adminToken || this.wss.clients.size >= 128) {
         socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
         return;
       }

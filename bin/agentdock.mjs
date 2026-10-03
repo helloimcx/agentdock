@@ -286,12 +286,16 @@ function startWebServer({ host, port, coreOrigin }) {
     sendFile(req, res, filePath);
   });
   server.on('upgrade', (req, socket, head) => {
-    if (req.url !== '/api/local/v1/mesh/connect') { socket.destroy(); return; }
+    const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
+    if (pathname !== '/api/local/v1/mesh/connect') { socket.destroy(); return; }
     const upstream = new URL(req.url, normalizedCoreOrigin);
     const client = upstream.protocol === 'https:' ? https : http;
     const proxy = client.request(upstream, { headers: { ...req.headers, host: upstream.host } });
     proxy.on('upgrade', (response, upstreamSocket, upstreamHead) => {
-      socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(response.headers).map(([key, value]) => `${key}: ${value}`).join('\r\n')}\r\n\r\n`);
+      const headers = Object.entries(response.headers)
+        .flatMap(([k, v]) => Array.isArray(v) ? v.map(item => `${k}: ${item}`) : [`${k}: ${v}`])
+        .join('\r\n');
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\n${headers}\r\n\r\n`);
       if (head.length) upstreamSocket.write(head);
       if (upstreamHead.length) socket.write(upstreamHead);
       socket.pipe(upstreamSocket).pipe(socket);

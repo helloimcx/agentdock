@@ -11,6 +11,6 @@ flowchart LR
   acp --> agents[Local Pi / Codex / Claude / Hermes]
   acp --> sandbox[OpenSandbox]
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
-  mesh --> sqlite
+  mesh --> kernel
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes

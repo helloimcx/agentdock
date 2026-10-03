@@ -232,20 +232,25 @@
       "variant": "emphasis"
     },
     {
-      "id": "core-to-mesh", "from": "core_api", "to": "mesh_gateway",
+      "id": "core-to-mesh",
+      "from": "core_api",
+      "to": "mesh_gateway",
       "label": "独立凭据的 Mesh REST"
     },
     {
-      "id": "mesh-to-sqlite", "from": "mesh_gateway", "to": "sqlite",
-      "label": "设备身份 / 请求记录"
+      "id": "mesh-to-kernel",
+      "from": "mesh_gateway",
+      "to": "kernel",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "label": "状态持久化"
     },
     {
-      "id": "devices-to-mesh", "from": "device_nodes", "to": "mesh_gateway",
-      "label": "出站 WebSocket · 心跳 / 结果"
-    },
-    {
-      "id": "mesh-to-devices", "from": "mesh_gateway", "to": "device_nodes",
-      "label": "能力请求 / 取消", "variant": "emphasis"
+      "id": "devices-to-mesh",
+      "from": "device_nodes",
+      "to": "mesh_gateway",
+      "label": "出站 WebSocket · 调度 / 结果",
+      "variant": "emphasis"
     }
   ],
   "cards": [

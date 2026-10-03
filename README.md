@@ -30,12 +30,12 @@ flowchart LR
   acp --> agents[Local Pi / Codex / Claude / Hermes]
   acp --> sandbox[OpenSandbox]
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
-  mesh --> sqlite
+  mesh --> kernel
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
 ```
 
-当前图使用已配置的 Mermaid 回退模式。Archify CLI 在本环境中缺失，JSON 候选的 showcase 校验与图像更新待完成；保留的 [上版交互图](docs/architecture/system-architecture.html) 尚未包含 Mesh。
+当前架构规范已通过 Archify L1 校验，提供交互式 [HTML 导出](docs/architecture/system-architecture.html) 与 Mermaid 视图。
 
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [架构变更历史](docs/architecture/changes/)
 <!-- project-setup:architecture-diagram:end -->
