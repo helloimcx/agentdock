@@ -55,6 +55,10 @@ flowchart LR
 
 ## New
 
+### 2026-10-04
+
+- **ACP 桥工具调用状态修复（Issue #160）**：Zed 等 ACP 客户端现在能看到工具调用的真实名称与状态流转（`tool_call` → `tool_call_update` 直至 completed/failed），不再永远停留在进行中。此前运行态与终态更新共用同一 message id，被桥的消息去重误丢，终态从未送达客户端。
+
 ### 2026-10-03
 
 - 发布 AgentDock 0.1.83：工作区目录选择器与远程 Mesh 透明工具调用支持：
