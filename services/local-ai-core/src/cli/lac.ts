@@ -20,6 +20,7 @@ import { formatSafeError } from '../kernel/local-core-errors.js';
 import { runSkillDomain } from './skill-cli-handlers.js';
 import { runRulesDomain } from './standards-cli-handlers.js';
 import { runMemoryDomain } from './memory-cli-handlers.js';
+import { runAcpDomain } from './acp-cli-handlers.js';
 import type { StdIo, ParsedFlags, CliContext } from './cli-helpers.js';
 import {
   request,
@@ -61,6 +62,8 @@ async function dispatchDomain(
       return await runRulesDomain(action, maybeId, flags, env, io, json);
     case 'memory':
       return await runMemoryDomain(action, maybeId, flags, env, io, json);
+    case 'acp':
+      return await runAcpDomain(action, flags, env, io);
     default:
       printUsage(io.stderr);
       return 2;
@@ -741,6 +744,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac memory write --slug <slug> --title "<title>" [--category <cat>] [--summary "<desc>"] [--tags "<t1,t2>"] [--content "<text>" | --file <path>] [--json]',
     '  lac memory del <category>/<slug> [--json]',
     '  lac memory sync [--json]',
+    '  lac acp serve --workspace <id> [--base-url <url>]',
   ].join('\n') + '\n');
 }
 

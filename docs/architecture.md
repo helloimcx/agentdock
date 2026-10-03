@@ -74,6 +74,7 @@ Key capabilities:
    - `/api/local/v1/workspaces/:workspaceId/standards/*`: Workspace standards configuration, materialization, and tech stack detection
    - `/api/local/v1/external/*`: External programmatic integration and per-run SSE streaming
 4. **Channel Gateway Webhooks**: Inbound poller and webhooks for enterprise messaging channels (Lark, WeChat Work).
+5. **ACP Inbound Bridge**: `lac acp serve --workspace <id>` (`services/local-ai-core/src/cli/acp-cli-handlers.ts`, `services/local-ai-core/src/acp/server/`). An optional local consumer process spawned by ACP clients (e.g. the Zed editor); speaks the Agent Client Protocol agent-side over stdio and drives workspace agents through the existing Local AI Core HTTP+SSE surface (`/threads`, `/threads/:id/messages`, `/runs/:id/interrupt`, `/events`). ACP sessions map to threads in the bound workspace; the daemon itself gains no new route or trust boundary.
 
 ---
 
@@ -86,6 +87,7 @@ Key capabilities:
 | **Local Core Kernel** | `services/local-ai-core/src/kernel/` | Core lifecycle, error domains, configuration management, SQLite database migrations, and telemetry. | `services/local-ai-core/src/kernel/` |
 | **Workspace Router** | `services/local-ai-core/src/router/` | Resolves target workspace, model provider, and channel bindings for incoming requests. | `services/local-ai-core/src/router/workspace-router.ts` |
 | **ACP Runtime** | `services/local-ai-core/src/acp/` | Manages ACP agent processes, session handshakes, capability negotiations, and NDJSON streaming. | `services/local-ai-core/src/acp/` |
+| **ACP Inbound Bridge** | `services/local-ai-core/src/acp/server/` | Optional stdio consumer that exposes workspace agents to external ACP clients (agent-side protocol), translating ACP sessions/prompts onto existing core routes and `stream.updated` bridge events. | `services/local-ai-core/src/acp/server/acp-stdio-server.ts`, `services/local-ai-core/src/cli/acp-cli-handlers.ts` |
 | **Channel Gateways** | `services/local-ai-core/src/channel/` | Inbound message polling, signature verification, message normalization, and outbound card rendering for Lark and WeChat. | `services/local-ai-core/src/channel/` |
 | **Scheduler** | `services/local-ai-core/src/scheduler/` | Parses cron expressions, triggers scheduled runs, and delivers results to target threads/channels. | `services/local-ai-core/src/scheduler/` |
 | **Sandbox Manager**| `services/local-ai-core/src/sandbox/` | Spawns and manages Docker or OpenSandbox containers for isolated code execution. | `services/local-ai-core/src/sandbox/` |

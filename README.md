@@ -42,6 +42,13 @@ AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、Open
 
 ## New
 
+### 2026-09-29
+
+- **入站 ACP 标准协议桥(Issue #155)**:
+  - **`lac acp serve --workspace <id>`**:以 ACP(Agent Client Protocol)agent 侧身份在 stdio 上提供服务,Zed 等 ACP 原生编辑器可直接驱动 AgentDock 工作区 Agent,复用既有的 Provider 路由、Skills、规范层与成本追踪。
+  - **会话即线程**:每个 ACP session 显式映射为绑定工作区内的一个 thread;`session/prompt` 走既有线程消息链路,权限决策沿用工作区既有策略。
+  - **流式协议转译**:将 Local AI Core 桥接事件(`stream.updated`)实时转译为 ACP `session/update`(正文增量、思考、工具调用、计划),支持 `session/cancel` 中断;纯增量能力,Core 守护进程零改动。
+
 ### 2026-09-13
 
 - **工作区项目工作记忆与跨 Agent 会话确定性交接（Issue #86）**：

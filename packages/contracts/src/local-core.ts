@@ -922,6 +922,8 @@ export type LocalCoreEvent =
   | { type: 'message.created'; threadId: string; message: ThreadMessage; stream?: DesktopBridgeEvent }
   | { type: 'message.updated'; threadId: string; message: Partial<ThreadMessage>; stream?: DesktopBridgeEvent }
   | { type: 'run.updated'; run: RunSummary; stream?: DesktopBridgeEvent }
+  | { type: 'run.failed'; payload: { runId: string; threadId: string; workspaceId: string; error: string; errorInfo?: LocalCoreErrorInfo } }
+  | { type: 'run.completed'; payload: { runId: string; threadId: string; workspaceId: string; stopReason?: string } }
   | { type: 'scheduler.job.updated'; job: ScheduledJob }
   | { type: 'scheduler.run.updated'; run: ScheduledJobRun }
   | { type: 'automation.monitor.updated'; monitor: AutomationMonitor }
