@@ -2,18 +2,18 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import type { MeshExecutionInput, MeshNode, MeshServerMessage } from '@cc/superai-contracts';
+import type { MeshExecution, MeshExecutionInput, MeshNode, MeshServerMessage } from '@cc/superai-contracts';
 import { json, readJsonBody } from '../runtime/server-helpers.js';
 import { MeshStore } from './mesh-store.js';
 import { MeshError, capability, executionInput, record, text } from './mesh-validation.js';
 
 const PREFIX = '/api/local/v1/mesh';
 type Session = { socket: WebSocket; node: MeshNode; lastSeen: number };
-type Pending = { nodeId: string; timer: NodeJS.Timeout };
+type Pending = { nodeId: string; timer: NodeJS.Timeout; resolve?: (result: MeshExecution) => void; reject?: (err: Error) => void };
 
 /** Outbound node connections; administrative endpoints require a separate token. */
 export class MeshGateway {
-  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024, perMessageDeflate: false });
+  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024, perMessageDeflate: false });
   private readonly sessions = new Map<string, Session>();
   private readonly pending = new Map<string, Pending>();
   private readonly heartbeat: NodeJS.Timeout;
@@ -62,27 +62,38 @@ export class MeshGateway {
   }
 
   private authorize(req: IncomingMessage) {
+    if (!this.adminToken) return;
     const supplied = req.headers.authorization?.replace(/^Bearer /, '') || '';
     const hash = (value: string) => createHash('sha256').update(value).digest();
-    if (!timingSafeEqual(hash(supplied), hash(this.adminToken!))) throw new MeshError('Mesh administrator authentication required.', 401);
+    if (!timingSafeEqual(hash(supplied), hash(this.adminToken))) throw new MeshError('Mesh administrator authentication required.', 401);
   }
 
-  private async manage(req: IncomingMessage, path: string): Promise<unknown> {
+  private async manageStaticRoute(req: IncomingMessage, path: string): Promise<unknown> {
     if (path === '/nodes' && req.method === 'GET') return { nodes: this.store.listNodes() };
     if (path === '/requests' && req.method === 'GET') return { requests: this.store.listExecutions() };
-    if (path === '/pairings' && req.method === 'POST') {
-      return this.pair(req);
-    }
-    if (path === '/requests' && req.method === 'POST') return this.dispatch(executionInput(await readJsonBody(req, 32_768)));
-    const match = /^\/(nodes|requests)\/([^/]+)(?:\/(revoke|cancel))?$/.exec(path);
-    if (!match) throw new MeshError('Unknown mesh endpoint.', 404);
-    const id = decodeURIComponent(match[2]);
-    if (match[1] === 'nodes' && match[3] === 'revoke' && req.method === 'POST') {
+    if (path === '/pairings' && req.method === 'POST') return this.pair(req);
+    if (path === '/requests' && req.method === 'POST') return this.dispatch(executionInput(await readJsonBody(req, 2 * 1024 * 1024)));
+    if (path === '/execute' && req.method === 'POST') return this.executeAndWait(executionInput(await readJsonBody(req, 2 * 1024 * 1024)));
+    return undefined;
+  }
+
+  private handleNodeAction(req: IncomingMessage, id: string, action?: string) {
+    if (action === 'revoke' && req.method === 'POST') {
       this.store.revoke(id);
       this.sessions.get(id)?.socket.close(4003, 'Device revoked');
       this.disconnect(id);
       return { revoked: true };
     }
+    throw new MeshError('Unknown mesh endpoint.', 404);
+  }
+
+  private async manage(req: IncomingMessage, path: string): Promise<unknown> {
+    const staticRes = await this.manageStaticRoute(req, path);
+    if (staticRes !== undefined) return staticRes;
+    const match = /^\/(nodes|requests)\/([^/]+)(?:\/(revoke|cancel))?$/.exec(path);
+    if (!match) throw new MeshError('Unknown mesh endpoint.', 404);
+    const id = decodeURIComponent(match[2]);
+    if (match[1] === 'nodes') return this.handleNodeAction(req, id, match[3]);
     return this.requestAction(req.method, id, match[1], match[3]);
   }
 
@@ -119,6 +130,34 @@ export class MeshGateway {
     this.pending.set(request.id, { nodeId: input.nodeId, timer });
     this.send(session.socket, { version: 1, type: 'execute', request });
     return request;
+  }
+
+  executeAndWait(input: MeshExecutionInput, signal?: AbortSignal): Promise<MeshExecution> {
+    if (signal?.aborted) return Promise.reject(new MeshError('Execution aborted.', 400));
+    const request = this.dispatch(input);
+    const pending = this.pending.get(request.id);
+    if (!pending) return Promise.reject(new MeshError('Failed to track pending execution.', 500));
+    return new Promise<MeshExecution>((resolve, reject) => {
+      let onAbort: (() => void) | undefined;
+      const cleanup = () => {
+        if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+      };
+      pending.resolve = (val) => {
+        cleanup();
+        resolve(val);
+      };
+      pending.reject = (err) => {
+        cleanup();
+        reject(err);
+      };
+      if (signal) {
+        onAbort = () => {
+          this.sendCancel(request.id, input.nodeId);
+          this.finish(request.id, 'cancelled', undefined, 'Execution cancelled by caller.');
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
   }
 
   private accept(socket: WebSocket) {
@@ -160,7 +199,7 @@ export class MeshGateway {
     if (message.type !== 'hello') throw new MeshError('Expected hello.');
     const node = this.store.authenticate(text(message.token, 128));
     if (!node || node.status === 'revoked') throw new MeshError('Invalid device credential.');
-    if (!Array.isArray(message.capabilities) || message.capabilities.length > 3) throw new MeshError('Invalid capabilities.');
+    if (!Array.isArray(message.capabilities) || message.capabilities.length > 4) throw new MeshError('Invalid capabilities.');
     const requested = message.capabilities.map(capability);
     const previous = this.sessions.get(node.id);
     if (previous) {
@@ -200,6 +239,14 @@ export class MeshGateway {
     if (pending) clearTimeout(pending.timer);
     this.pending.delete(id);
     this.store.finish(id, status, result, error);
+    if (pending?.resolve) {
+      const execution = this.store.getExecution(id);
+      if (status === 'completed' && execution) {
+        pending.resolve(execution);
+      } else {
+        pending.reject?.(new MeshError(error || `Mesh execution ended with status: ${status}`, status === 'timed_out' ? 504 : 500));
+      }
+    }
   }
 
   private disconnect(nodeId: string) {

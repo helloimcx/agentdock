@@ -34,6 +34,8 @@ export type NodeAgentOptions = {
   allowInsecure?: boolean;
   platform?: string;
   reconnectMs?: number;
+  maxReadBytes?: number;
+  maxShellBytes?: number;
   onStatus?: (status: 'connected' | 'disconnected' | 'rejected') => void;
 };
 
@@ -48,7 +50,12 @@ export class NodeAgent {
   private retry = 0;
 
   constructor(private readonly options: NodeAgentOptions) {
-    this.capabilities = new NodeCapabilities(options.root, options.allowShell);
+    this.capabilities = new NodeCapabilities(
+      options.root,
+      options.allowShell,
+      options.maxReadBytes ?? 1024 * 1024,
+      options.maxShellBytes ?? 1024 * 1024,
+    );
     meshUrl(options.server, options.allowInsecure);
   }
 
@@ -72,13 +79,13 @@ export class NodeAgent {
     const url = meshUrl(this.options.server, this.options.allowInsecure);
     url.pathname += '/connect';
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(url, { maxPayload: 128 * 1024, handshakeTimeout: 10_000, followRedirects: false });
+    const socket = new WebSocket(url, { maxPayload: 2 * 1024 * 1024, handshakeTimeout: 10_000, followRedirects: false });
     this.socket = socket;
     let welcomed = false;
     let lastSeen = Date.now();
     const authDeadline = setTimeout(() => socket.terminate(), 10_000);
     socket.on('open', () => {
-      const capabilities: MeshCapability[] = ['filesystem.list', 'filesystem.read'];
+      const capabilities: MeshCapability[] = ['filesystem.list', 'filesystem.read', 'filesystem.write'];
       if (this.options.allowShell) capabilities.push('shell.exec');
       this.send(socket, { version: 1, type: 'hello', token: this.options.credentials.token, platform: this.options.platform || process.platform, capabilities });
     });

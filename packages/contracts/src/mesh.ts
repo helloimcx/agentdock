@@ -1,6 +1,8 @@
 /** Mesh v1 separates device tool execution from ACP agent sessions. */
-export const MESH_CAPABILITIES = ['filesystem.list', 'filesystem.read', 'shell.exec'] as const;
+export const MESH_CAPABILITIES = ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec'] as const;
 export type MeshCapability = typeof MESH_CAPABILITIES[number];
+export type MeshWriteArgs = { path: string; content: string; encoding?: 'utf8' | 'base64' };
+export type MeshWriteResult = { path: string; bytes: number };
 export type MeshNode = {
   id: string;
   label: string;

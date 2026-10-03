@@ -33,6 +33,8 @@ import type {
   WorkspaceSecuritySettings,
   WorkspaceSecuritySettingsUpdateInput,
   WorkspaceStreamingProbeResult,
+  MeshExecution,
+  MeshNode,
 } from '@cc/superai-contracts';
 import { coreClient } from './client.js';
 import { buildQuery, coreRequest } from './request.js';
@@ -256,3 +258,106 @@ export function onRuntimeUpdated(listener: (runtime: DesktopRuntimeStatus) => vo
     }
   });
 }
+
+export function listMeshNodes(adminToken?: string) {
+  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return coreRequest<{ nodes: MeshNode[] }>('GET', '/mesh/nodes', undefined, headers);
+}
+
+export interface DirectoryListingResult {
+  path: string;
+  parentPath?: string | null;
+  directories: string[];
+}
+
+function normalizeRemoteReqPath(targetPath?: string): string {
+  const trimmed = targetPath?.trim() || '.';
+  if (trimmed.startsWith('/') || /^[A-Za-z]:[\\/]/.test(trimmed)) {
+    return '.';
+  }
+  return trimmed;
+}
+
+function computeRemoteParentPath(currentPath: string): string | null {
+  if (currentPath === '.' || !currentPath || currentPath === '/') {
+    return null;
+  }
+  const parts = currentPath.split(/[/\\]/).filter(Boolean);
+  if (parts.length > 1) {
+    parts.pop();
+    return parts.join('/');
+  }
+  return '.';
+}
+
+async function listRemoteDirectories(
+  deviceId: string,
+  targetPath?: string,
+  adminToken?: string
+): Promise<DirectoryListingResult> {
+  const nodeId = deviceId.startsWith('node:') ? deviceId.slice(5) : deviceId;
+  const token =
+    adminToken ||
+    (typeof window !== 'undefined'
+      ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || ''
+      : '');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const reqPath = normalizeRemoteReqPath(targetPath);
+  const executionRes = await coreRequest<MeshExecution>(
+    'POST',
+    '/mesh/execute',
+    {
+      nodeId,
+      capability: 'filesystem.list',
+      args: { path: reqPath },
+      timeoutMs: 15_000,
+    },
+    headers
+  );
+
+  if (executionRes.status !== 'completed') {
+    throw new Error(executionRes.error || `Remote device failed to list directory (status: ${executionRes.status})`);
+  }
+
+  const result = executionRes.result as
+    | {
+        path: string;
+        entries: Array<{ name: string; type: string }>;
+      }
+    | undefined;
+
+  const currentPath = result?.path || reqPath;
+  const directories = (result?.entries || [])
+    .filter((e) => e.type === 'directory' && !e.name.startsWith('.'))
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+  return {
+    path: currentPath,
+    parentPath: computeRemoteParentPath(currentPath),
+    directories,
+  };
+}
+
+export async function listDirectories(target: {
+  deviceId?: string;
+  path?: string;
+  adminToken?: string;
+}): Promise<DirectoryListingResult> {
+  const deviceId = target.deviceId || 'local';
+  if (deviceId === 'local') {
+    return coreRequest<DirectoryListingResult>('POST', '/fs/directories', {
+      path: target.path || undefined,
+    });
+  }
+  return listRemoteDirectories(deviceId, target.path, target.adminToken);
+}
+

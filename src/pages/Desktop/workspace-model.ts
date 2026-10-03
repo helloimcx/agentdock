@@ -54,6 +54,7 @@ export type ProjectDialogDraft = {
   agentType: string;
   workDir: string;
   model: string;
+  deviceId?: string;
 };
 
 export type SandboxForm = {
@@ -130,16 +131,20 @@ export function createProjectDialogDraft(projects: DesktopProjectConfig[]): Proj
     agentType: DEFAULT_DESKTOP_AGENT_TYPE,
     workDir: '',
     model: '',
+    deviceId: 'local',
   };
 }
 
 export function normalizeProject(project: DesktopProjectConfig): DesktopProjectConfig {
+  const deviceId = project.device_id || project.agent?.options?.device_id || 'local';
   return {
     ...project,
+    device_id: deviceId,
     agent: {
       ...project.agent,
       options: {
         ...(project.agent?.options || {}),
+        device_id: deviceId,
         model: normalizeDesktopAgentModel(project.agent?.type, String(project.agent?.options?.model || '')),
       },
     },

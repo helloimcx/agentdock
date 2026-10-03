@@ -1,7 +1,7 @@
 import { coreClient } from './client.js';
 
-export function coreRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return coreClient.request<T>(method, path, body);
+export function coreRequest<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return coreClient.request<T>(method, path, body, headers);
 }
 
 // buildQuery renders a `?k=v&k2=v2` query string for defined, non-empty params

@@ -62,11 +62,12 @@ export function syncWorkspaceRegistry(
     const previous = existing.find((entry) => entry.workspaceId === workspaceId);
     const path = workspacePathFromProject(nextProject);
     retainedIds.add(workspaceId);
+    const configuredDeviceId = String(nextProject.device_id || nextProject.agent?.options?.device_id || '').trim();
     store.upsertWorkspaceRegistryEntry({
       workspaceId,
       displayName: nextProject.name,
       path,
-      deviceId: previous?.deviceId || 'local',
+      deviceId: configuredDeviceId || previous?.deviceId || 'local',
       defaultRuntimeId: nextProject.agent?.type,
       git: previous?.git,
       health: previous?.health,

@@ -23,7 +23,11 @@ export function executionInput(value: unknown): MeshExecutionInput {
   const input = record(value);
   const timeoutMs = input.timeoutMs ?? 30_000;
   if (!Number.isInteger(timeoutMs) || Number(timeoutMs) < 100 || Number(timeoutMs) > 120_000) throw new MeshError('Timeout must be 100–120000 milliseconds.');
+  const cap = capability(input.capability);
   const args = record(input.args);
-  if (JSON.stringify(args).length > 16_384) throw new MeshError('Arguments exceed 16 KiB.');
-  return { nodeId: text(input.nodeId, 100), capability: capability(input.capability), args, timeoutMs: Number(timeoutMs) };
+  const maxArgsLength = cap === 'filesystem.write' ? 2 * 1024 * 1024 : 64 * 1024;
+  if (JSON.stringify(args).length > maxArgsLength) {
+    throw new MeshError(cap === 'filesystem.write' ? 'Arguments exceed 2 MiB.' : 'Arguments exceed 64 KiB.');
+  }
+  return { nodeId: text(input.nodeId, 100), capability: cap, args, timeoutMs: Number(timeoutMs) };
 }

@@ -46,3 +46,35 @@ test('Credential files use private permissions, cannot overwrite and reserve bef
     await assert.rejects(stat(failed), /ENOENT/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('Node capabilities safely writes files, creates parent directories, and rejects escapes and oversized content', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agentdock-mesh-write-'));
+  const request = (args: Record<string, unknown>): MeshExecution => ({
+    id: `mesh-request:${randomUUID()}`, nodeId: `node:${randomUUID()}`, capability: 'filesystem.write', args, status: 'running', createdAt: new Date().toISOString(),
+  });
+  try {
+    const node = new NodeCapabilities(root);
+    // Write new file in nested directory
+    const res = await node.execute(request({ path: 'nested/sub/hello.txt', content: 'Hello Mesh Write!' }), new AbortController().signal) as { path: string; bytes: number };
+    assert.equal(res.path, 'nested/sub/hello.txt');
+    assert.equal(res.bytes, 17);
+    assert.equal(await readFile(join(root, 'nested/sub/hello.txt'), 'utf8'), 'Hello Mesh Write!');
+
+    // Base64 encoding write
+    const b64Res = await node.execute(request({ path: 'binary.bin', content: Buffer.from('bin-data').toString('base64'), encoding: 'base64' }), new AbortController().signal) as { bytes: number };
+    assert.equal(b64Res.bytes, 8);
+    assert.equal(await readFile(join(root, 'binary.bin'), 'utf8'), 'bin-data');
+
+    // Overwrite existing file atomically
+    await node.execute(request({ path: 'nested/sub/hello.txt', content: 'Overwritten content' }), new AbortController().signal);
+    assert.equal(await readFile(join(root, 'nested/sub/hello.txt'), 'utf8'), 'Overwritten content');
+
+    // Rejection of path traversal
+    await assert.rejects(node.execute(request({ path: '../escape.txt', content: 'bad' }), new AbortController().signal), /outside the approved root/);
+    await assert.rejects(node.execute(request({ path: '/etc/passwd', content: 'bad' }), new AbortController().signal), /relative path/);
+
+    // Rejection of oversized file (> 1 MiB)
+    await assert.rejects(node.execute(request({ path: 'huge.txt', content: 'x'.repeat(1024 * 1024 + 1) }), new AbortController().signal), /1 MiB/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
