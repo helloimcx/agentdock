@@ -179,13 +179,21 @@ test('ensureSession passes enabled MCP servers to session/new', async () => {
     const thread = harness.store.createThread('mcp-workspace', 'MCP thread', 'pi');
     await harness.coordinator.ensureSession(thread.id, `session:${thread.id}`, launchConfig([
       { name: 'fs', type: 'stdio', command: 'npx', args: ['-y', 'fs-mcp'], env: { KEY: 'v' }, enabled: true },
+      { name: 'remote', type: 'http', url: 'https://mcp.example.com', headers: { Authorization: 'Bearer token' }, enabled: true },
+      { name: 'hybrid', type: 'http', url: 'https://mcp.example.org', command: 'x', args: ['-y'], env: { A: 'b' }, enabled: true },
       { name: 'off', type: 'http', url: 'https://mcp.example.com', enabled: false },
     ]));
 
     const newRequest = harness.requests.find((request) => request.method === 'session/new');
     assert.ok(newRequest, 'session/new should be requested');
+    // ACP wire shape: env/headers are name/value pair arrays, and stdio
+    // entries always carry args/env arrays (the ACP schema marks them
+    // required, so omitted fields make the runtime reject session/new).
     assert.deepEqual(newRequest.params.mcpServers, [
-      { name: 'fs', type: 'stdio', command: 'npx', args: ['-y', 'fs-mcp'], env: { KEY: 'v' } },
+      { name: 'fs', type: 'stdio', command: 'npx', args: ['-y', 'fs-mcp'], env: [{ name: 'KEY', value: 'v' }] },
+      { name: 'remote', type: 'http', url: 'https://mcp.example.com', headers: [{ name: 'Authorization', value: 'Bearer token' }] },
+      // Cross-typed fields (http entry carrying stdio fields) stay off the wire.
+      { name: 'hybrid', type: 'http', url: 'https://mcp.example.org', headers: [] },
     ]);
   } finally {
     rmSync(harness.dir, { recursive: true, force: true });
@@ -217,7 +225,7 @@ test('ensureSession passes enabled MCP servers to session/load for resumable thr
     const loadRequest = harness.requests.find((request) => request.method === 'session/load');
     assert.ok(loadRequest, 'session/load should be requested');
     assert.deepEqual(loadRequest.params.mcpServers, [
-      { name: 'remote', type: 'http', url: 'https://mcp.example.com' },
+      { name: 'remote', type: 'http', url: 'https://mcp.example.com', headers: [] },
     ]);
     assert.equal(harness.requests.some((request) => request.method === 'session/new'), false);
   } finally {
@@ -243,7 +251,7 @@ test('changing the MCP server list rebuilds the session', async () => {
     // which must carry the updated server list.
     const loadRequest = harness.requests.find((request) => request.method === 'session/load');
     assert.deepEqual(loadRequest?.params.mcpServers, [
-      { name: 'fs', type: 'stdio', command: 'npx' },
+      { name: 'fs', type: 'stdio', command: 'npx', args: [], env: [] },
     ]);
   } finally {
     rmSync(harness.dir, { recursive: true, force: true });

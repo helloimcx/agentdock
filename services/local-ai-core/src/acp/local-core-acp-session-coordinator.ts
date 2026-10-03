@@ -10,28 +10,40 @@ import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatf
 import { getPathEnv } from '../runtime/env-utils.js';
 import type { AgentMcpServerConfig } from '@cc/plugin-sdk';
 
+type AcpWireNameValue = { name: string; value: string };
+
 type AcpWireMcpServer = {
   name: string;
   type: AgentMcpServerConfig['type'];
   command?: string;
   args?: string[];
-  env?: Record<string, string>;
+  env?: AcpWireNameValue[];
   url?: string;
-  headers?: Record<string, string>;
+  headers?: AcpWireNameValue[];
 };
+
+function toAcpNameValuePairs(record: Record<string, string> | undefined): AcpWireNameValue[] {
+  return Object.entries(record || {}).map(([name, value]) => ({ name, value }));
+}
 
 // The ACP session/new|load `mcpServers` field takes the wire shape only — the
 // local `enabled` flag is filtered out before the list leaves Local AI Core.
+// The ACP schema makes stdio entries require args/env arrays and http/sse
+// entries require a headers array; omitting them makes runtimes reject the
+// whole session request with "Invalid params".
 function toAcpMcpServers(config: LocalCoreProjectConfig): AcpWireMcpServer[] {
   return (config.mcpServers || [])
     .filter((server) => server.enabled !== false)
     .map((server) => {
       const wire: AcpWireMcpServer = { name: server.name, type: server.type };
+      if (server.type === 'http' || server.type === 'sse') {
+        if (server.url) wire.url = server.url;
+        wire.headers = toAcpNameValuePairs(server.headers);
+        return wire;
+      }
       if (server.command) wire.command = server.command;
-      if (server.args && server.args.length > 0) wire.args = server.args;
-      if (server.env && Object.keys(server.env).length > 0) wire.env = server.env;
-      if (server.url) wire.url = server.url;
-      if (server.headers && Object.keys(server.headers).length > 0) wire.headers = server.headers;
+      wire.args = server.args && server.args.length > 0 ? [...server.args] : [];
+      wire.env = toAcpNameValuePairs(server.env);
       return wire;
     });
 }
