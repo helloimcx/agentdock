@@ -19,14 +19,26 @@ There is no `cc-connect` runtime, management API, or bridge compatibility path i
 
 ## Top-Level Flow
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="system-architecture.dark.png">
-    <img alt="AgentDock 系统架构图" src="system-architecture.light.png" width="100%">
-  </picture>
-</p>
+```mermaid
+flowchart LR
+  electron[Electron desktop shell] -->|Start| api[Local AI Core API]
+  renderer[React / Web and Core SDK] -->|REST / SSE| api
+  channels[Lark / Weixin] --> api
+  external[External clients] --> api
+  api --> kernel[Core kernel and workspace router]
+  kernel --> sqlite[(SQLite)]
+  kernel --> acp[ACP session runtime]
+  kernel --> scheduler[Scheduler / Automation]
+  scheduler --> acp
+  acp --> agents[Local Pi / Codex / Claude / Hermes]
+  acp --> sandbox[OpenSandbox]
+  api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
+  mesh --> sqlite
+  nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
+  mesh -->|Execute / cancel| nodes
+```
 
-> 💡 **交互式架构图**：可在浏览器中打开 [system-architecture.html](system-architecture.html)，体验深浅色切换、分步引导导览（01 桌面通信 / 02 会话与沙箱 / 03 调度与渠道）、节点高亮与路径追踪。
+当前使用 Mermaid 回退图。Archify L1 JSON 为待校验候选；保留的 [交互导出](system-architecture.html) 和 PNG 是 Mesh 之前的最后已知有效版本，不代表当前设备层。
 
 ## 架构资产矩阵 (Architecture-as-Code Matrix)
 
@@ -34,12 +46,16 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 
 | 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
 |---|---|---|---|---|---|
-| **L1 全局系统** | 端到端系统架构 | `architecture` | [交互全景图](system-architecture.html) · [PNG](system-architecture.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
+| **L1 全局系统** | 当前系统与 Mesh | Mermaid 回退 / Archify 待校验 | 本页当前图；历史 [HTML](system-architecture.html) · [PNG](system-architecture.png) | [`system-architecture.mmd`](system-architecture.mmd) · [待校验 JSON](system-architecture.json) | [架构总览](overview.md) |
 | **L2 核心流程** | 定时调度与渠道主动投递 | `workflow` | [调度工作流](scheduled-delivery-workflow.html) · [PNG](scheduled-delivery-workflow.png) | [`scheduled-delivery-workflow.json`](scheduled-delivery-workflow.json) | [定时投递架构](scheduled-delivery.md) |
 | **L2 核心流程** | ACP 会话与沙箱桥接时序 | `sequence` | [通信时序图](acp-session-flow.html) · [PNG](acp-session-flow.png) | [`acp-session-flow.sequence.json`](acp-session-flow.sequence.json) | [ACP 协议运行时](acp-protocol.md) |
 | **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [PNG](skill-router.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |
 | **L3 状态模型** | Agent Run 执行状态机 | `lifecycle` | [状态转移图](agent-run-lifecycle.html) · [PNG](agent-run-lifecycle.png) | [`agent-run.lifecycle.json`](agent-run.lifecycle.json) | [状态所有权](state-ownership.md) |
 
+
+## Mesh Device Plane
+
+[Mesh](mesh.md) describes Core-owned device pairing and request history, outbound node connections, read-only file capabilities and explicitly enabled command execution. Remote tool requests do not change ACP run routing.
 
 ## Main Layers
 

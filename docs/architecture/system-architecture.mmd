@@ -1,0 +1,16 @@
+flowchart LR
+  electron[Electron desktop shell] -->|Start| api[Local AI Core API]
+  renderer[React / Web and Core SDK] -->|REST / SSE| api
+  channels[Lark / Weixin] --> api
+  external[External clients] --> api
+  api --> kernel[Core kernel and workspace router]
+  kernel --> sqlite[(SQLite)]
+  kernel --> acp[ACP session runtime]
+  kernel --> scheduler[Scheduler / Automation]
+  scheduler --> acp
+  acp --> agents[Local Pi / Codex / Claude / Hermes]
+  acp --> sandbox[OpenSandbox]
+  api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
+  mesh --> sqlite
+  nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
+  mesh -->|Execute / cancel| nodes

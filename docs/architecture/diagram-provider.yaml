@@ -22,4 +22,4 @@ provider_files:
     - docs/architecture/skill-router.workflow.json
   receipt: null
 readme:
-  mode: static-image
+  mode: inline-mermaid

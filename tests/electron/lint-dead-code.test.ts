@@ -18,7 +18,7 @@ test('lint-dead-code passes within baseline threshold', () => {
 });
 
 test('lint-dead-code fails with clear error banner when exceeding threshold', () => {
-  const res = spawnSync(process.execPath, [SCRIPT, '--fail', '--max-count', '0'], {
+  const res = spawnSync(process.execPath, [SCRIPT, '--fail', '--max-count', '0', '--verbose'], {
     cwd: ROOT,
     encoding: 'utf8',
   });

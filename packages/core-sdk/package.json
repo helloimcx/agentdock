@@ -21,6 +21,7 @@
     "./costs": "./src/costs.ts",
     "./budgets": "./src/budgets.ts",
     "./standards": "./src/standards.ts",
-    "./memory": "./src/memory.ts"
+    "./memory": "./src/memory.ts",
+    "./mesh": "./src/mesh.ts"
   }
 }

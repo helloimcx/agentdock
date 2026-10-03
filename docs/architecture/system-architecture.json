@@ -115,6 +115,22 @@
       "sublabel": "隔离容器 · 状态挂载 · NDJSON",
       "pos": [1140, 320],
       "size": [160, 64]
+    },
+    {
+      "id": "mesh_gateway",
+      "type": "backend",
+      "label": "Mesh 设备网关",
+      "sublabel": "配对 · 能力授权 · 请求调度",
+      "pos": [600, 570],
+      "size": [160, 64]
+    },
+    {
+      "id": "device_nodes",
+      "type": "external",
+      "label": "远程设备节点",
+      "sublabel": "Mac / Linux / Windows / Termux",
+      "pos": [1140, 570],
+      "size": [180, 64]
     }
   ],
   "boundaries": [
@@ -127,7 +143,7 @@
     {
       "kind": "region",
       "label": "Local AI Core (本地服务进程 127.0.0.1:9831)",
-      "wraps": ["core_api", "sqlite", "kernel", "acp_engine", "scheduler"],
+      "wraps": ["core_api", "sqlite", "kernel", "acp_engine", "scheduler", "mesh_gateway"],
       "pad": 24
     },
     {
@@ -214,6 +230,22 @@
       "to": "opensandbox",
       "label": "NDJSON 桥接",
       "variant": "emphasis"
+    },
+    {
+      "id": "core-to-mesh", "from": "core_api", "to": "mesh_gateway",
+      "label": "独立凭据的 Mesh REST"
+    },
+    {
+      "id": "mesh-to-sqlite", "from": "mesh_gateway", "to": "sqlite",
+      "label": "设备身份 / 请求记录"
+    },
+    {
+      "id": "devices-to-mesh", "from": "device_nodes", "to": "mesh_gateway",
+      "label": "出站 WebSocket · 心跳 / 结果"
+    },
+    {
+      "id": "mesh-to-devices", "from": "mesh_gateway", "to": "device_nodes",
+      "label": "能力请求 / 取消", "variant": "emphasis"
     }
   ],
   "cards": [

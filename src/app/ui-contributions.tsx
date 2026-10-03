@@ -9,6 +9,7 @@ import {
   Library,
   MessageSquare,
   MessagesSquare,
+  Network,
   Settings,
   Sparkles,
   Wrench,
@@ -27,6 +28,7 @@ const SystemLogs = lazy(() => import('@/pages/System/Logs'));
 const KnowledgeHome = lazy(() => import('@/pages/Knowledge/KnowledgeHome'));
 const KnowledgeDetail = lazy(() => import('@/pages/Knowledge/KnowledgeDetail'));
 const SkillsPage = lazy(() => import('@/pages/Skills/SkillsPage'));
+const MeshDevices = lazy(() => import('@/pages/Mesh/Devices'));
 
 export type UiContributionContext = {
   features: RuntimeFeatureSupport;
@@ -212,6 +214,7 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
       order: 80,
       element: () => <SystemConfig />,
     },
+    { id: 'mesh', path: 'mesh', titleKey: 'nav.mesh', order: 78, element: () => <MeshDevices /> },
     {
       id: 'system-logs',
       path: 'system/logs',
@@ -298,6 +301,7 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       visible: ({ features }) => features.schedulerModule || features.monitorModule,
     },
     { id: 'system', path: '/system', labelKey: 'nav.system', icon: Settings, order: 80 },
+    { id: 'mesh', path: '/mesh', labelKey: 'nav.mesh', icon: Network, order: 78 },
   ];
   navItems.forEach((item) => registry.registerNavItem(item));
 }

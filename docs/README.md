@@ -10,6 +10,7 @@ This directory is organized by documentation purpose.
 ## Architecture
 
 - [Overview](architecture/overview.md): current Local AI Core-first architecture.
+- [AgentDock Mesh](architecture/mesh.md): device pairing, outbound connections, capabilities and remote request lifecycle.
 - [Cloud Sandbox And External Agent API](architecture/cloud-sandbox-and-external-api.md): OpenSandbox cloud execution, external project/thread/run mapping, and per-run SSE.
 - [Local AI Core Kernel And Plugin Composition](architecture/local-core-kernel.md): kernel bootstrap, plugin registration, capabilities, lifecycle, and runtime composition.
 - [Workspace Router Architecture](architecture/workspace-router.md): workspace route resolution, thread messaging, registry sync, and scheduler bridge flow.

@@ -68,6 +68,7 @@ import {
   type OpenAiStreamRegistration,
 } from './handlers/openai-handler.js';
 import { RequestValidationError } from './request-validation.js';
+import { MeshGateway } from '../mesh/mesh-gateway.js';
 
 export interface LocalAiCoreServerBindings {
   readonly controller: EventEmitter & {
@@ -117,6 +118,7 @@ export class LocalAiCoreServer {
   private readonly externalRunSseClients = new Map<string, Set<ServerResponse>>();
   private readonly openAiRunStreams = new Map<string, Set<OpenAiChatCompletionStreamAdapter>>();
   private readonly handlers = new Map<string, RouteHandler>();
+  private readonly mesh?: MeshGateway;
   private server = createServer((req, res) => {
     void this.handleRequest(req, res);
   });
@@ -124,6 +126,9 @@ export class LocalAiCoreServer {
   constructor(private readonly bindings: LocalAiCoreServerBindings, options: LocalAiCoreServerOptions = {}) {
     this.host = options.host || '127.0.0.1';
     this.port = options.port ?? 9831;
+    if (bindings.store?.mesh) {
+      this.mesh = new MeshGateway(bindings.store.mesh, this.server, process.env.AGENTDOCK_MESH_ADMIN_TOKEN);
+    }
     this.registerHandlers();
     this.wireEvents();
   }
@@ -139,6 +144,7 @@ export class LocalAiCoreServer {
   }
 
   async stop() {
+    this.mesh?.close();
     for (const client of this.sseClients) {
       client.end();
     }
@@ -315,6 +321,7 @@ export class LocalAiCoreServer {
     const path = url.pathname;
 
     try {
+      if (await this.mesh?.handle(req, res, url)) return;
       const route = parseLocalAiCoreRoute(req.method, path);
       if (route) {
         const handler = this.handlers.get(route.name);

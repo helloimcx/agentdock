@@ -128,3 +128,11 @@ The L1-L3 Architecture Matrix is defined in typed JSON specifications validated 
 - **L3 Agent Run Lifecycle (State Machine)**: [docs/architecture/agent-run.lifecycle.json](docs/architecture/agent-run.lifecycle.json)
 
 For navigation across specs, dual-theme images, and interactive HTML canvases, visit [docs/architecture/overview.md](docs/architecture/overview.md).
+
+## AgentDock Mesh Device Plane
+
+Local AI Core owns the Mesh device registry and remote tool request lifecycle in its existing SQLite database (`mesh_nodes`, `mesh_executions`). `MeshGateway` attaches authenticated administration routes and device-authenticated outbound WebSocket sessions to the Core HTTP server. `agentdock-node` executes bounded read-only file capabilities and optional commands with local policy; React and Core SDK provide device management and request inspection. The bundled web server forwards the Mesh WebSocket upgrade.
+
+Mesh requests have their own identities and terminal history. They do not replace ACP sessions or alter workspace agent-task routing. Disconnect/restart marks unresolved operations interrupted without replay; cancellation and timeout may leave an uncertain remote outcome. Pairing is single-use and expiring, device credentials are retained only as hashes by Core, revocation invalidates active connections, and shell requires server and node opt-in. See [Mesh boundaries and usage](architecture/mesh.md) and [the semantic change record](architecture/changes/2026-10-03-agentdock-mesh.md).
+
+The README and overview use the configured Mermaid fallback. The Archify JSON candidate includes the Device Plane, but showcase validation and export replacement are blocked by the absent CLI. Existing Archify image and interactive exports are retained as pre-Mesh historical artifacts.

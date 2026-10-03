@@ -285,6 +285,26 @@ function startWebServer({ host, port, coreOrigin }) {
     }
     sendFile(req, res, filePath);
   });
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url !== '/api/local/v1/mesh/connect') { socket.destroy(); return; }
+    const upstream = new URL(req.url, normalizedCoreOrigin);
+    const client = upstream.protocol === 'https:' ? https : http;
+    const proxy = client.request(upstream, { headers: { ...req.headers, host: upstream.host } });
+    proxy.on('upgrade', (response, upstreamSocket, upstreamHead) => {
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\n${Object.entries(response.headers).map(([key, value]) => `${key}: ${value}`).join('\r\n')}\r\n\r\n`);
+      if (head.length) upstreamSocket.write(head);
+      if (upstreamHead.length) socket.write(upstreamHead);
+      socket.pipe(upstreamSocket).pipe(socket);
+      socket.on('error', () => upstreamSocket.destroy());
+      socket.on('close', () => upstreamSocket.destroy());
+      upstreamSocket.on('error', () => socket.destroy());
+      upstreamSocket.on('close', () => socket.destroy());
+    });
+    proxy.on('response', response => { response.resume(); socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n'); });
+    proxy.on('error', () => socket.destroy());
+    socket.on('error', () => proxy.destroy());
+    proxy.end();
+  });
   server.listen(port, host, () => {
     console.log(`[agentdock] Web listening at http://${host}:${port}`);
     console.log(`[agentdock] Proxying /api/local/v1 to ${normalizedCoreOrigin}`);
