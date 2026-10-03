@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Plus, Save, Settings, Trash2 } from 'lucide-react';
+import { FolderOpen, Plus, Save, Settings, Trash2 } from 'lucide-react';
 import { Button, EmptyState, Input, Select, StatusPill } from '@/components/ui';
+import { DirectoryPickerModal } from './DirectoryPickerModal';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
   DESKTOP_AGENT_TYPE_OPTIONS,
@@ -83,7 +84,51 @@ function DeviceOptions({ nodes }: { nodes?: import('@cc/superai-contracts').Mesh
   );
 }
 
+function resolveDeviceLabel(deviceId: string, meshNodes?: import('@cc/superai-contracts').MeshNode[]) {
+  if (deviceId === 'local') return '本机 (Local)';
+  const matched = meshNodes?.find((n) => n.id === deviceId || `node:${n.id}` === deviceId);
+  return matched?.label || deviceId;
+}
+
+function HostWorkspacePathField({
+  workDir,
+  selectedDevice,
+  onUpdateWorkDir,
+  onOpenPicker,
+}: {
+  workDir: string;
+  selectedDevice: string;
+  onUpdateWorkDir: (path: string) => void;
+  onOpenPicker: () => void;
+}) {
+  const placeholder = selectedDevice !== 'local' ? '例如 . 或 my-project (remote path)' : '/Users/example/project';
+  return (
+    <div className="flex items-end gap-2">
+      <div className="flex-1">
+        <Input
+          label="Host workspace path"
+          value={workDir}
+          onChange={(event) => onUpdateWorkDir(event.target.value)}
+          placeholder={placeholder}
+        />
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-9 px-3 gap-1.5 shrink-0"
+        onClick={onOpenPicker}
+        title="选择目录"
+      >
+        <FolderOpen size={15} />
+        选择目录
+      </Button>
+    </div>
+  );
+}
+
 export function BasicProjectSection({ project, updateProject, meshNodes }: BasicProjectSectionProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const agentType = project.agent?.type || '';
   const agentTypeValue = getSelectValue(agentType, DESKTOP_AGENT_TYPE_OPTIONS);
   const selectedDevice = project.device_id || project.agent?.options?.device_id || 'local';
@@ -91,51 +136,65 @@ export function BasicProjectSection({ project, updateProject, meshNodes }: Basic
   const model = String(project.agent?.options?.model || '');
   const placeholderModel = getDefaultDesktopAgentModel(agentType) || 'Use agent default model';
 
+  const handleUpdateWorkDir = (newPath: string) => {
+    updateProject((current) => ({
+      ...current,
+      agent: { ...current.agent, options: { ...(current.agent.options || {}), work_dir: newPath } },
+    }));
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <Input
-        label="Project name"
-        value={project.name}
-        onChange={(event) => updateProject((current) => ({ ...current, name: event.target.value }))}
+    <>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Input
+          label="Project name"
+          value={project.name}
+          onChange={(event) => updateProject((current) => ({ ...current, name: event.target.value }))}
+        />
+        <Select
+          label="Agent type"
+          value={agentTypeValue}
+          onChange={(event) => updateProject((current) => applyAgentTypeChange(current, event.target.value))}
+        >
+          {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          <option value={CUSTOM_SELECT_VALUE}>custom</option>
+        </Select>
+        <Select
+          label="Execution device"
+          value={selectedDevice}
+          onChange={(event) => updateProject((current) => applyDeviceChange(current, event.target.value))}
+        >
+          <option value="local">本机 (Local)</option>
+          <DeviceOptions nodes={meshNodes} />
+        </Select>
+        <HostWorkspacePathField
+          workDir={workDir}
+          selectedDevice={selectedDevice}
+          onUpdateWorkDir={handleUpdateWorkDir}
+          onOpenPicker={() => setPickerOpen(true)}
+        />
+        <Input
+          label="Default model"
+          value={model}
+          onChange={(event) =>
+            updateProject((current) => ({
+              ...current,
+              agent: { ...current.agent, options: { ...(current.agent.options || {}), model: event.target.value } },
+            }))
+          }
+          placeholder={placeholderModel}
+        />
+      </div>
+
+      <DirectoryPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={handleUpdateWorkDir}
+        initialPath={workDir}
+        deviceId={selectedDevice}
+        deviceLabel={resolveDeviceLabel(selectedDevice, meshNodes)}
       />
-      <Select
-        label="Agent type"
-        value={agentTypeValue}
-        onChange={(event) => updateProject((current) => applyAgentTypeChange(current, event.target.value))}
-      >
-        {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-        <option value={CUSTOM_SELECT_VALUE}>custom</option>
-      </Select>
-      <Select
-        label="Execution device"
-        value={selectedDevice}
-        onChange={(event) => updateProject((current) => applyDeviceChange(current, event.target.value))}
-      >
-        <option value="local">本机 (Local)</option>
-        <DeviceOptions nodes={meshNodes} />
-      </Select>
-      <Input
-        label="Host workspace path"
-        value={workDir}
-        onChange={(event) =>
-          updateProject((current) => ({
-            ...current,
-            agent: { ...current.agent, options: { ...(current.agent.options || {}), work_dir: event.target.value } },
-          }))
-        }
-      />
-      <Input
-        label="Default model"
-        value={model}
-        onChange={(event) =>
-          updateProject((current) => ({
-            ...current,
-            agent: { ...current.agent, options: { ...(current.agent.options || {}), model: event.target.value } },
-          }))
-        }
-        placeholder={placeholderModel}
-      />
-    </div>
+    </>
   );
 }
 

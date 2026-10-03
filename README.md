@@ -58,6 +58,7 @@ flowchart LR
 ### 2026-10-03
 
 - 发布 AgentDock 0.1.82：AgentDock Mesh 多设备互联与入站 ACP 标准协议桥：
+  - **工作区目录选择器（支持本地与远程设备）**：创建与编辑工作区项目时支持图形化目录浏览与选择。本地设备通过 `/api/local/v1/fs/directories` 浏览服务端主机目录；远程设备通过 Mesh `filesystem.list` 在节点受控根目录内安全浏览与点选，告别手动输入长路径。
   - **远程 Workspace 支持（Agent 运行在 Server，Toolcall 透明执行在 Client）**：支持在 Server 创建与管理绑定到 Mesh 节点的远程工作区。通过注入内置 `agentdock-remote-mesh` MCP Server 与 ACP 协议底层文件系统桥接，Agent 的文件读写与终端命令自动转发至长连接 Client 执行，对 Agent 完全无感，模型按本地工作区习惯即可无缝操作远程设备。
   - **AgentDock Mesh 多设备互联**：新增设备配对、在线状态与撤销、`agentdock-node` 出站连接、远程目录浏览/文件读取及双端显式授权的命令执行。支持 UI、CLI 和 SDK 派发、取消与结果查询；断线和重启中断请求且不自动重放。详见 [Mesh](docs/architecture/mesh.md)。
 

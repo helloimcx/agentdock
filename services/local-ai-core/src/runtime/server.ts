@@ -61,6 +61,7 @@ import { StandardsService } from '../standards/standards-service.js';
 import { registerStandardsHandlers } from './handlers/standards-handler.js';
 import { WorkspaceMemoryService } from '../memory/workspace-memory-service.js';
 import { registerMemoryHandlers } from './handlers/memory-handler.js';
+import { registerFilesystemHandlers } from './handlers/fs-handler.js';
 
 import {
   registerOpenAiHandler,
@@ -223,6 +224,7 @@ export class LocalAiCoreServer {
     if (memoryService) {
       registerMemoryHandlers(this.handlers, memoryService);
     }
+    registerFilesystemHandlers(this.handlers);
 
 
     const openAiReg: OpenAiStreamRegistration = {
