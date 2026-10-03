@@ -128,6 +128,7 @@ export class LocalAiCoreServer {
     this.port = options.port ?? 9831;
     if (bindings.store?.mesh) {
       this.mesh = new MeshGateway(bindings.store.mesh, this.server, process.env.AGENTDOCK_MESH_ADMIN_TOKEN);
+      bindings.workspaceRouter?.setMeshGateway?.(this.mesh);
     }
     this.registerHandlers();
     this.wireEvents();

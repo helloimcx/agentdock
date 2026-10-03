@@ -59,6 +59,7 @@ export interface WorkspaceRegistryEntry {
 export interface WorkspaceRegistryCreateInput {
   displayName: string;
   path: string;
+  deviceId?: string;
   defaultRuntimeId?: string;
   metadata?: Record<string, unknown>;
 }

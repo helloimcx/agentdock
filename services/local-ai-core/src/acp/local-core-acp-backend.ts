@@ -51,6 +51,7 @@ type LocalCoreAcpBackendOptions = {
   eventBus: EventBus;
   scheduler: SchedulerHandlers;
   getAgentTypes?: () => string[];
+  executeMesh?: (input: { nodeId: string; capability: string; args: Record<string, unknown>; timeoutMs?: number; signal?: AbortSignal }) => Promise<any>;
   log?: (message: string) => void;
 };
 
@@ -147,6 +148,7 @@ export class LocalCoreAcpBackend {
       },
       getThreadAgentMode: (threadId) => this.options.store.getThreadRow(threadId)?.agent_mode || DEFAULT_AGENT_MODE,
       hasThreadAllowAll: (threadId) => this.threadAllowAll.has(threadId),
+      executeMesh: options.executeMesh,
       sendRaw: (session, payload) => this.transport.sendRaw(session, payload),
     });
     this.sessionCoordinator = new LocalCoreAcpSessionCoordinator({

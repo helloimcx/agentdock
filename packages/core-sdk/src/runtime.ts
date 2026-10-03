@@ -256,3 +256,13 @@ export function onRuntimeUpdated(listener: (runtime: DesktopRuntimeStatus) => vo
     }
   });
 }
+
+export function listMeshNodes(adminToken?: string) {
+  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return coreRequest<{ nodes: import('@cc/superai-contracts').MeshNode[] }>('GET', '/mesh/nodes', undefined, headers);
+}
+

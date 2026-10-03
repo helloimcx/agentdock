@@ -47,6 +47,7 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   getThreadAgentMode?: (threadId: string) => string;
   hasThreadAllowAll?: (threadId: string) => boolean;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
+  executeMesh?: (input: { nodeId: string; capability: string; args: Record<string, unknown>; timeoutMs?: number; signal?: AbortSignal }) => Promise<any>;
   traceStore?: LocalCoreTraceStore;
   traceProjector?: AcpTraceProjector;
 };
@@ -165,6 +166,10 @@ export class LocalCoreAcpTurnCoordinator {
   }
 
   handleAgentRequest(session: AcpSessionState, payload: any) {
+    if (payload.method === 'fs/read_text_file' || payload.method === 'fs/write_text_file') {
+      void this.handleMeshFsRequest(session, payload);
+      return;
+    }
     if (payload.method !== 'session/request_permission') {
       this.options.sendRaw(session, {
         jsonrpc: '2.0',
@@ -282,6 +287,42 @@ export class LocalCoreAcpTurnCoordinator {
             },
       },
     });
+  }
+
+  private async handleMeshFsRequest(session: AcpSessionState, payload: any) {
+    if (!session.meshNodeId || !this.options.executeMesh) {
+      this.options.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: payload.id,
+        error: { code: -32603, message: 'Mesh execution is not available for this session.' },
+      });
+      return;
+    }
+    const filePath = String(payload.params?.path || '').trim();
+    try {
+      if (payload.method === 'fs/read_text_file') {
+        const res = await this.options.executeMesh({
+          nodeId: session.meshNodeId,
+          capability: 'filesystem.read',
+          args: { path: filePath },
+        });
+        const executionResult = (res && typeof res === 'object' && 'result' in res) ? (res as any).result : res;
+        const raw = executionResult?.content || '';
+        const content = executionResult?.encoding === 'base64' ? Buffer.from(raw, 'base64').toString('utf8') : raw;
+        this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, result: { content } });
+      } else {
+        const content = String(payload.params?.content ?? '');
+        await this.options.executeMesh({
+          nodeId: session.meshNodeId,
+          capability: 'filesystem.write',
+          args: { path: filePath, content },
+        });
+        this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, result: {} });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mesh filesystem operation failed';
+      this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, error: { code: -32603, message } });
+    }
   }
 
   handleAgentNotification(session: AcpSessionState, payload: any) {

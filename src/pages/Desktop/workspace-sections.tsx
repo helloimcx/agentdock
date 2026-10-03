@@ -34,9 +34,63 @@ type SandboxUpdater = (updater: (sandbox: SandboxForm) => SandboxForm) => void;
 type BasicProjectSectionProps = {
   project: DesktopProjectConfig;
   updateProject: ProjectUpdater;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
-export function BasicProjectSection({ project, updateProject }: BasicProjectSectionProps) {
+function applyAgentTypeChange(current: DesktopProjectConfig, value: string): DesktopProjectConfig {
+  const type = value === CUSTOM_SELECT_VALUE ? current.agent.type : value;
+  return {
+    ...current,
+    agent: {
+      ...current.agent,
+      type,
+      options: {
+        ...(current.agent.options || {}),
+        model: normalizeDesktopAgentModel(type, String(current.agent.options?.model || '')),
+      },
+    },
+  };
+}
+
+function applyDeviceChange(current: DesktopProjectConfig, deviceId: string): DesktopProjectConfig {
+  return {
+    ...current,
+    device_id: deviceId,
+    agent: {
+      ...current.agent,
+      options: {
+        ...(current.agent.options || {}),
+        device_id: deviceId,
+      },
+    },
+  };
+}
+
+function DeviceOptions({ nodes }: { nodes?: import('@cc/superai-contracts').MeshNode[] }) {
+  if (!nodes || nodes.length === 0) return null;
+  return (
+    <>
+      {nodes.map((node) => {
+        const label = node.label || node.id;
+        const deviceValue = node.id.startsWith('node:') ? node.id : `node:${node.id}`;
+        return (
+          <option key={node.id} value={deviceValue}>
+            {label} ({node.platform}) - {node.status}
+          </option>
+        );
+      })}
+    </>
+  );
+}
+
+export function BasicProjectSection({ project, updateProject, meshNodes }: BasicProjectSectionProps) {
+  const agentType = project.agent?.type || '';
+  const agentTypeValue = getSelectValue(agentType, DESKTOP_AGENT_TYPE_OPTIONS);
+  const selectedDevice = project.device_id || project.agent?.options?.device_id || 'local';
+  const workDir = String(project.agent?.options?.work_dir || '');
+  const model = String(project.agent?.options?.model || '');
+  const placeholderModel = getDefaultDesktopAgentModel(agentType) || 'Use agent default model';
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <Input
@@ -46,30 +100,23 @@ export function BasicProjectSection({ project, updateProject }: BasicProjectSect
       />
       <Select
         label="Agent type"
-        value={getSelectValue(project.agent?.type || '', DESKTOP_AGENT_TYPE_OPTIONS)}
-        onChange={(event) =>
-          updateProject((current) => {
-            const type = event.target.value === CUSTOM_SELECT_VALUE ? current.agent.type : event.target.value;
-            return {
-              ...current,
-              agent: {
-                ...current.agent,
-                type,
-                options: {
-                  ...(current.agent.options || {}),
-                  model: normalizeDesktopAgentModel(type, String(current.agent.options?.model || '')),
-                },
-              },
-            };
-          })
-        }
+        value={agentTypeValue}
+        onChange={(event) => updateProject((current) => applyAgentTypeChange(current, event.target.value))}
       >
         {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
         <option value={CUSTOM_SELECT_VALUE}>custom</option>
       </Select>
+      <Select
+        label="Execution device"
+        value={selectedDevice}
+        onChange={(event) => updateProject((current) => applyDeviceChange(current, event.target.value))}
+      >
+        <option value="local">本机 (Local)</option>
+        <DeviceOptions nodes={meshNodes} />
+      </Select>
       <Input
         label="Host workspace path"
-        value={String(project.agent?.options?.work_dir || '')}
+        value={workDir}
         onChange={(event) =>
           updateProject((current) => ({
             ...current,
@@ -79,14 +126,14 @@ export function BasicProjectSection({ project, updateProject }: BasicProjectSect
       />
       <Input
         label="Default model"
-        value={String(project.agent?.options?.model || '')}
+        value={model}
         onChange={(event) =>
           updateProject((current) => ({
             ...current,
             agent: { ...current.agent, options: { ...(current.agent.options || {}), model: event.target.value } },
           }))
         }
-        placeholder={getDefaultDesktopAgentModel(project.agent?.type) || 'Use agent default model'}
+        placeholder={placeholderModel}
       />
     </div>
   );

@@ -75,9 +75,11 @@ export class WorkspaceRouter {
     listJobsForThread: (threadId: string) => Promise<ScheduledJob[]>;
     deleteJob: (jobId: string) => Promise<void>;
   } | null = null;
+  private meshGateway: any = null;
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = options.store;
+    this.meshGateway = options.meshGateway || null;
     this.bridgeEvents = new WorkspaceBridgeEventStream(options.eventBus);
     this.localCoreAcp = new LocalCoreAcpBackend({
       store: this.store,
@@ -87,6 +89,12 @@ export class WorkspaceRouter {
       localCoreBase: options.localCoreBase,
       emitBridge: (event) => this.bridgeEvents.emit(event),
       eventBus: options.eventBus,
+      executeMesh: (input) => {
+        if (!this.meshGateway) {
+          return Promise.reject(new Error('Mesh gateway is unavailable.'));
+        }
+        return this.meshGateway.executeAndWait(input);
+      },
       scheduler: {
         createJob: async (input) => {
           if (!this.schedulerBridge) {
@@ -125,6 +133,10 @@ export class WorkspaceRouter {
 
   setSchedulerBridge(bridge: NonNullable<WorkspaceRouter['schedulerBridge']>) {
     this.schedulerBridge = bridge;
+  }
+
+  setMeshGateway(gateway: any) {
+    this.meshGateway = gateway;
   }
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {

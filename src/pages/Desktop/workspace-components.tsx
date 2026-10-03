@@ -288,9 +288,10 @@ type AddProjectDialogProps = {
   updateDialog: (patch: Partial<ProjectDialogDraft>) => void;
   onConfirm: () => void;
   onClose: () => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
-export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose }: AddProjectDialogProps) {
+export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, meshNodes }: AddProjectDialogProps) {
   return (
     <Modal
       open={Boolean(dialog)}
@@ -312,11 +313,23 @@ export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose }: A
           >
             {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </Select>
+          <Select
+            label="Execution device"
+            value={dialog.deviceId || 'local'}
+            onChange={(event) => updateDialog({ deviceId: event.target.value })}
+          >
+            <option value="local">本机 (Local)</option>
+            {(meshNodes || []).map((node) => (
+              <option key={node.id} value={node.id.startsWith('node:') ? node.id : `node:${node.id}`}>
+                {node.label || node.id} ({node.platform}) - {node.status}
+              </option>
+            ))}
+          </Select>
           <Input
             label="Host workspace path"
             value={dialog.workDir}
             onChange={(event) => updateDialog({ workDir: event.target.value })}
-            placeholder="/Users/yinyin/code/my-project"
+            placeholder={dialog.deviceId && dialog.deviceId !== 'local' ? '/home/user/project (remote path)' : '/Users/yinyin/code/my-project'}
           />
           <Input
             label="Default model"
@@ -350,6 +363,7 @@ type ProjectDetailsProps = {
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
   onSaveConfig: () => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
 const PROJECT_TABS: Array<[ProjectTab, string]> = [
@@ -374,6 +388,7 @@ type ProjectTabContentProps = {
   updateSandbox: (updater: (sandbox: SandboxForm) => SandboxForm) => void;
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
 function ProjectTabContent({
@@ -388,9 +403,10 @@ function ProjectTabContent({
   updateSandbox,
   updateDeploymentProfile,
   openPlatformDialog,
+  meshNodes,
 }: ProjectTabContentProps) {
   if (projectTab === 'basic') {
-    return <BasicProjectSection project={project} updateProject={updateProject} />;
+    return <BasicProjectSection project={project} updateProject={updateProject} meshNodes={meshNodes} />;
   }
   if (projectTab === 'providers') {
     return <ProvidersSection project={project} modelProviders={modelProviders} updateProject={updateProject} />;
@@ -436,6 +452,7 @@ export function ProjectDetails({
   updateDeploymentProfile,
   openPlatformDialog,
   onSaveConfig,
+  meshNodes,
 }: ProjectDetailsProps) {
   return (
     <SectionCard
@@ -482,6 +499,7 @@ export function ProjectDetails({
             updateSandbox={updateSandbox}
             updateDeploymentProfile={updateDeploymentProfile}
             openPlatformDialog={openPlatformDialog}
+            meshNodes={meshNodes}
           />
 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">

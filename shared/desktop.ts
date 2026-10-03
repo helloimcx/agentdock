@@ -710,10 +710,12 @@ export interface DesktopProjectConfig {
   /** Stable Local AI Core identity. Display-name changes must not change this value. */
   workspace_id?: string;
   name: string;
+  device_id?: string;
   agent: {
     type: string;
     options?: Record<string, unknown> & {
       provider_id?: string;
+      device_id?: string;
       sandbox?: DesktopSandboxOptions;
       mcp_servers?: DesktopMcpServerOptions[];
       standards?: DesktopStandardsOptions;

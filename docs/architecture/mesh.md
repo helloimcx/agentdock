@@ -33,9 +33,17 @@ An administrator creates a device-specific, single-use pairing token valid for t
 
 The client requires HTTPS/WSS outside loopback, follows no redirects, and verifies TLS normally. `--allow-insecure` explicitly permits HTTP/WS on a trusted private network; it does not disable certificate verification. Termux's Android platform identification is descriptive metadata, not an attestation.
 
-`filesystem.list` and `filesystem.read` resolve paths inside the configured root; absolute paths and symlink escapes are rejected. Files must be regular files and at most 32 KiB; the protocol returns base64 for binary-safe reads. Listing returns at most 100 entries. These checks do not provide OS isolation against a hostile local process racing filesystem mutations. Choose a root writable only by trusted processes.
+`filesystem.list` and `filesystem.read` resolve paths inside the configured root; absolute paths and symlink escapes are rejected. Files must be regular files and at most 32 KiB; the protocol returns base64 for binary-safe reads. Listing returns at most 100 entries. `filesystem.write` supports atomic file writes up to 1 MiB with automatic parent directory creation and path confinement within the approved root. These checks do not provide OS isolation against a hostile local process racing filesystem mutations. Choose a root writable only by trusted processes.
 
 `shell.exec` is available only when pairing allows it and the node uses `--allow-shell`. It uses a program and argument array with `shell:false`, the approved root as the working directory, and a 32 KiB combined output limit. It runs with the device user's permissions and inherited environment; the working directory is not a filesystem or network sandbox. A successful Mesh result can contain a nonzero command `exitCode`, which callers must inspect.
+
+## Remote Workspace Mesh Execution
+
+When a Workspace is configured with `deviceId: 'node:<uuid>'`:
+1. **Agent Process**: Runs on the Server (Local AI Core daemon host) with a physical working directory anchored at `<baseDir>/remote-shadow/<workspaceId>`.
+2. **Transparent MCP Tool Bridge**: Local AI Core injects the `agentdock-remote-mesh` MCP stdio server providing standard `read_file`, `write_file`, `list_directory`, `execute_command`, and `bash` tools. Tool calls are dispatched synchronously to `MeshGateway.executeAndWait()` (`POST /api/local/v1/mesh/execute`).
+3. **ACP Protocol Bridge**: When agents issue ACP filesystem requests (`fs/read_text_file`, `fs/write_text_file`), LocalCoreAcpTurnCoordinator routes them directly to `MeshGateway.executeAndWait()`, transparently returning UTF-8 contents without modifying the agent prompt.
+4. **Zero Awareness**: To the LLM and the agent runtime (Pi, Claude Code, Codex, Hermes, OpenCode), the environment appears as a standard local workspace, requiring zero specialized prompts or awareness of the remote execution substrate.
 
 ## Requests and failure semantics
 
@@ -96,11 +104,11 @@ node bin/agentdock-node.mjs status --server https://agent.example.com \
   --request 'mesh-request:<uuid>'
 ```
 
-For command execution, add `--allow-shell` to both `pair` and `connect`, then dispatch `shell.exec` with `{"program":"git","arguments":["status","--short"]}`. The CLI outputs a request identity immediately; use `status`, `requests` or the UI to inspect the terminal outcome. SDK callers can use `mesh.createMeshClient(token, coreBaseUrl)` for the same operations. Agent runtimes are not automatically given the administrator token or a new MCP tool in this version.
+For command execution, add `--allow-shell` to both `pair` and `connect`, then dispatch `shell.exec` with `{"program":"git","arguments":["status","--short"]}`. The CLI outputs a request identity immediately; use `status`, `requests` or the UI to inspect the terminal outcome. SDK callers can use `mesh.createMeshClient(token, coreBaseUrl)` for the same operations. When configured as a Remote Workspace, Agent runtimes are automatically and transparently equipped with the `agentdock-remote-mesh` MCP server and ACP filesystem bridges.
 
 ## Validation evidence
 
-`tests/integration/mesh.test.ts` exercises two independent nodes with separate roots over real HTTP/WebSocket connections, device authentication, enrollment reuse rejection, capability policy, file confinement, dispatch, results, timeout, cancellation, disconnect/reconnect and revocation. `tests/electron/mesh-store.test.ts` checks hash-only persistence, pairing expiry and restart recovery. `tests/electron/mesh-node-policy.test.ts` checks local shell opt-in, output/read bounds, cancellation and private credential-file handling. `tests/integration/mesh-auth.test.ts` checks role separation, disabled-by-default behavior, cross-device forged results, connection replacement and late-result fencing. Live validation additionally exercised two CLI processes through the bundled WebSocket proxy, reconnect with saved credentials, and Chromium page operations including a byte-verified file download.
+`tests/integration/mesh.test.ts` exercises two independent nodes with separate roots over real HTTP/WebSocket connections, device authentication, enrollment reuse rejection, capability policy, file confinement, dispatch, results, timeout, cancellation, disconnect/reconnect and revocation. `tests/electron/mesh-store.test.ts` checks hash-only persistence, pairing expiry and restart recovery. `tests/electron/mesh-node-policy.test.ts` checks local shell opt-in, output/read/write bounds, cancellation and private credential-file handling. `tests/integration/mesh-auth.test.ts` checks role separation, disabled-by-default behavior, cross-device forged results, connection replacement and late-result fencing. `tests/integration/remote-workspace-mesh.test.ts` exercises end-to-end transparent tool dispatching, ACP filesystem RPC bridging, and MCP stdio execution. Live validation additionally exercised two CLI processes through the bundled WebSocket proxy, reconnect with saved credentials, and Chromium page operations including a byte-verified file download.
 
 The L1 Archify specification has passed all 9 showcase checks via `pnpm lint:arch`. The interactive showcase HTML (`system-architecture.html`) has been delivered alongside the Mermaid reference view.
 
