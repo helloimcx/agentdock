@@ -40,6 +40,8 @@ interface PendingTurn {
   toolSeq: number;
   previewTextByHandle: Map<string, string>;
   repliedMessageIds: Set<string>;
+  toolCallIds: Set<string>;
+  toolTransitionKeys: Set<string>;
   resolve: (value: { stopReason: AcpStopReason }) => void;
 }
 
@@ -189,6 +191,8 @@ export class AcpStdioServer {
         toolSeq: 0,
         previewTextByHandle: new Map(),
         repliedMessageIds: new Set(),
+        toolCallIds: new Set(),
+        toolTransitionKeys: new Set(),
         resolve,
       };
       this.turnsBySession.set(sessionId, turn);
@@ -355,6 +359,13 @@ export class AcpStdioServer {
 
   private handleReplyEvent(turn: PendingTurn, stream: DesktopBridgeEvent) {
     const content = stream.content || '';
+    // Tool transitions (running -> completed) reuse one message id as the thread
+    // storage upsert key, so they must not go through the messageId dedupe —
+    // otherwise the terminal status never reaches the ACP client.
+    if (stream.bridgeKind === 'tool') {
+      this.handleToolReply(turn, stream);
+      return;
+    }
     const messageId = stream.messageId || '';
     if (messageId) {
       if (turn.repliedMessageIds.has(messageId)) {
@@ -363,10 +374,6 @@ export class AcpStdioServer {
       turn.repliedMessageIds.add(messageId);
     }
     const bridgeKind = stream.bridgeKind;
-    if (bridgeKind === 'tool') {
-      this.emitToolCallUpdate(turn, stream);
-      return;
-    }
     if (bridgeKind === 'plan') {
       this.emitTextChunk(turn, 'agent_thought_chunk', content ? `[plan]\n${content}` : '');
       return;
@@ -393,8 +400,16 @@ export class AcpStdioServer {
     this.emitUpdate(turn, { sessionUpdate, content: { type: 'text', text } });
   }
 
-  private emitToolCallUpdate(turn: PendingTurn, stream: DesktopBridgeEvent) {
-    this.emitUpdate(turn, buildToolCallUpdate(turn, stream));
+  private handleToolReply(turn: PendingTurn, stream: DesktopBridgeEvent) {
+    const toolCallId = stream.toolCall?.id || stream.messageId || `tool-${turn.toolSeq++}`;
+    const transitionKey = `${toolCallId}:${mapToolStatus(stream.toolCall?.status || '')}`;
+    if (turn.toolTransitionKeys.has(transitionKey)) {
+      return;
+    }
+    turn.toolTransitionKeys.add(transitionKey);
+    const sessionUpdate = turn.toolCallIds.has(toolCallId) ? 'tool_call_update' : 'tool_call';
+    turn.toolCallIds.add(toolCallId);
+    this.emitUpdate(turn, buildToolCallUpdate(stream, toolCallId, sessionUpdate));
   }
 
   private emitUpdate(turn: PendingTurn, update: Record<string, unknown>) {
@@ -466,20 +481,20 @@ function extractPromptText(prompt: unknown): string {
   return content;
 }
 
-function buildToolCallUpdate(turn: PendingTurn, stream: DesktopBridgeEvent): Record<string, unknown> {
+function buildToolCallUpdate(
+  stream: DesktopBridgeEvent,
+  toolCallId: string,
+  sessionUpdate: 'tool_call' | 'tool_call_update',
+): Record<string, unknown> {
   const output = resolveToolOutput(stream);
   return {
-    sessionUpdate: 'tool_call',
-    toolCallId: resolveToolCallId(turn, stream),
+    sessionUpdate,
+    toolCallId,
     title: resolveToolTitle(stream),
     kind: 'other',
     status: mapToolStatus(stream.toolCall?.status || ''),
     ...(output ? { content: [{ type: 'content', content: { type: 'text', text: output } }] } : { content: [] }),
   };
-}
-
-function resolveToolCallId(turn: PendingTurn, stream: DesktopBridgeEvent): string {
-  return stream.toolCall?.id || stream.messageId || `tool-${turn.toolSeq++}`;
 }
 
 function resolveToolTitle(stream: DesktopBridgeEvent): string {
