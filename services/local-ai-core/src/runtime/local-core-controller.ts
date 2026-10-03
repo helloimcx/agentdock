@@ -119,6 +119,12 @@ export class LocalCoreController extends EventEmitter {
       this.kernel.context.bus.on('platform.bridge.updated', (event) => {
         this.emit('bridge', event);
       }),
+      this.kernel.context.bus.on('run.failed', (payload) => {
+        this.emit('agent-run', { type: 'run.failed', payload });
+      }),
+      this.kernel.context.bus.on('run.completed', (payload) => {
+        this.emit('agent-run', { type: 'run.completed', payload });
+      }),
       this.kernel.context.bus.on('thread.session.activated', (event) => {
         this.emit('thread-session-activated', event);
       }),
