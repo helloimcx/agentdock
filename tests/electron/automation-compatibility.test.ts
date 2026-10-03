@@ -40,7 +40,7 @@ function fixture(
     conditionEvaluator,
   });
   const scheduler = new SchedulerService({ store, automations, triggers: [], executors: [], eventBus });
-  const jobs = new ScheduledJobApplicationService({ store, scheduler, automations, eventBus });
+  const jobs = new ScheduledJobApplicationService({ store, automations, eventBus });
   return {
     path, store, eventBus, automations, scheduler, jobs, actions,
     close() { store.close(); rmSync(path, { recursive: true, force: true }); },
@@ -318,8 +318,7 @@ test('scheduler empty description survives unified persistence and reopen', () =
       actionExecutor: { async execute() { return { threadId: 'thread', acpRunId: 'run' }; } },
       ownershipPolicy: { executes: () => true },
     });
-    const scheduler = new SchedulerService({ store, automations, triggers: [], executors: [], eventBus });
-    const jobs = new ScheduledJobApplicationService({ store, scheduler, automations, eventBus });
+    const jobs = new ScheduledJobApplicationService({ store, automations, eventBus });
     assert.equal(jobs.getJob(id)?.description, '');
     assert.equal(jobs.listJobs()[0]?.description, '');
     store.close();

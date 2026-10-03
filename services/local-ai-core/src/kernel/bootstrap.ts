@@ -333,7 +333,6 @@ export function bootstrapLocalCoreRuntime(options: {
   });
   const scheduledJobs = new ScheduledJobApplicationService({
     store,
-    scheduler,
     automations,
     eventBus: kernel.context.bus,
   });

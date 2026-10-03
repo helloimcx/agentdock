@@ -20,6 +20,7 @@ const ROOT = process.cwd();
 const KNIP = join(ROOT, 'node_modules', 'knip', 'bin', 'knip.js');
 
 const FAIL = process.argv.includes('--fail');
+const VERBOSE = process.argv.includes('--verbose') || process.argv.includes('-v');
 const maxCountArg = process.argv.find((arg, i) => i > 0 && process.argv[i - 1] === '--max-count');
 const parsedMaxCount = maxCountArg !== undefined ? Number(maxCountArg) : 0;
 // Non-numeric values fail closed (0): a NaN threshold would silently pass every count.
@@ -46,6 +47,55 @@ function run() {
   process.exit(FAIL && totalSymbols > MAX_COUNT ? 1 : 0);
 }
 
+function getGitChangedFiles() {
+  const changed = new Set();
+  const runGit = (args, parser = (l) => l.trim()) => {
+    try {
+      const res = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      if (res.status === 0 && res.stdout) {
+        for (const line of res.stdout.split('\n')) {
+          const parsed = parser(line);
+          if (parsed) changed.add(parsed);
+        }
+        return true;
+      }
+    } catch {
+      // Git unavailable or repository missing
+    }
+    return false;
+  };
+
+  // 1. Uncommitted working tree & staged files (handle renames and non-ASCII paths)
+  runGit(['diff', '--name-only', 'HEAD']);
+  runGit(['diff', '--cached', '--name-only']);
+  runGit(['-c', 'core.quotepath=false', 'status', '--porcelain', '-uall'], (line) => {
+    if (line.length <= 3) return '';
+    let p = line.slice(3).trim();
+    if (p.includes(' -> ')) p = p.split(' -> ').pop().trim();
+    if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1);
+    return p;
+  });
+
+  // 2. PR / Branch comparison against target branch: prefer remote tracking branch, fallback to local
+  const baseRef = process.env.GITHUB_BASE_REF || 'main';
+  const hasRemoteDiff = runGit(['diff', '--name-only', `origin/${baseRef}...HEAD`]);
+  if (!hasRemoteDiff) {
+    runGit(['diff', '--name-only', `${baseRef}...HEAD`]);
+  }
+
+  // 3. In CI on push event (where HEAD is the pushed commit, compare with previous commit)
+  if (process.env.GITHUB_EVENT_NAME === 'push') {
+    const beforeSha = process.env.GITHUB_BEFORE_SHA;
+    if (beforeSha && beforeSha !== '0000000000000000000000000000000000000000') {
+      runGit(['diff', '--name-only', beforeSha, 'HEAD']);
+    } else {
+      runGit(['diff', '--name-only', 'HEAD~1', 'HEAD']);
+    }
+  }
+
+  return changed;
+}
+
 function printReport(report) {
   const issues = report.issues || [];
 
@@ -63,7 +113,13 @@ function printReport(report) {
       fileTotal += value.length;
     }
     if (fileTotal > 0) {
-      offenders.push({ file: issue.file, total: fileTotal, breakdown, names: collectNames(issue) });
+      offenders.push({
+        file: issue.file,
+        total: fileTotal,
+        breakdown,
+        names: collectNames(issue),
+        items: collectDetailedItems(issue),
+      });
     }
   }
 
@@ -85,10 +141,37 @@ function printReport(report) {
     }
   }
 
-  const top = [...offenders].sort((a, b) => b.total - a.total).slice(0, 15);
-  if (top.length > 0) {
-    console.log('\nTop offenders:');
-    top.forEach((o, i) => {
+  const isFailing = FAIL && totalSymbols > MAX_COUNT;
+  let changedOffenders = [];
+
+  if (isFailing) {
+    const changedFiles = getGitChangedFiles();
+    changedOffenders = offenders.filter((o) => changedFiles.has(o.file));
+
+    console.log('\n' + '='.repeat(70));
+    console.log(`❌ GATE FAILURE: Dead symbols total (${totalSymbols}) exceeds threshold (${MAX_COUNT}) by ${totalSymbols - MAX_COUNT}`);
+    console.log('='.repeat(70));
+
+    if (changedOffenders.length > 0) {
+      console.log('\n🚨 Dead symbols detected in changed files (immediate fix recommended):');
+      for (const o of changedOffenders) {
+        console.log(`\n  📁 ${o.file} (${o.total} dead symbol${o.total > 1 ? 's' : ''}):`);
+        for (const item of o.items) {
+          const loc = item.line ? `:${item.line}` : '';
+          console.log(`     - [${item.type}] ${item.name} (${o.file}${loc})`);
+        }
+      }
+    } else {
+      console.log('\nℹ️  No dead symbols detected in current git changed files.');
+    }
+  }
+
+  const showAll = VERBOSE || (isFailing && changedOffenders.length === 0);
+  const displayList = showAll ? [...offenders].sort((a, b) => b.total - a.total) : [...offenders].sort((a, b) => b.total - a.total).slice(0, 15);
+
+  if (displayList.length > 0) {
+    console.log(showAll ? `\nAll offenders (${displayList.length} files):` : '\nTop offenders:');
+    displayList.forEach((o, i) => {
       const parts = Object.entries(o.breakdown)
         .map(([k, v]) => `${v} ${k}`)
         .join(', ');
@@ -96,9 +179,16 @@ function printReport(report) {
         `  #${String(i + 1).padStart(2)}  ${String(o.total).padStart(4)}  ${o.file}`,
       );
       console.log(`        ${parts}`);
-      const preview = o.names.slice(0, 6).join(', ');
-      const more = o.names.length > 6 ? `, …${o.names.length - 6} more` : '';
-      console.log(`        e.g. ${preview}${more}`);
+      if (VERBOSE) {
+        for (const item of o.items) {
+          const loc = item.line ? `:${item.line}` : '';
+          console.log(`        - [${item.type}] ${item.name}${loc}`);
+        }
+      } else {
+        const preview = o.names.slice(0, 6).join(', ');
+        const more = o.names.length > 6 ? `, …${o.names.length - 6} more` : '';
+        console.log(`        e.g. ${preview}${more}`);
+      }
     });
   } else {
     console.log('\nNo dead symbols detected. ✔');
@@ -108,14 +198,36 @@ function printReport(report) {
   return totalSymbols;
 }
 
-// Collect the first few symbol names across all issue types, for a quick preview.
+function collectDetailedItems(issue) {
+  const items = [];
+  const seen = new Set();
+  const addItem = (type, entry) => {
+    if (!entry?.name) return;
+    const key = `${type}:${entry.name}:${entry.line || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({ type, name: entry.name, line: entry.line, col: entry.col });
+  };
+
+  for (const [key, value] of Object.entries(issue)) {
+    if (!Array.isArray(value) || key === 'files') continue;
+    for (const entry of value) {
+      if (Array.isArray(entry)) {
+        for (const e of entry) addItem(key, e);
+      } else {
+        addItem(key, entry);
+      }
+    }
+  }
+  return items;
+}
+
 function collectNames(issue) {
   const names = [];
   for (const [key, value] of Object.entries(issue)) {
     if (!Array.isArray(value) || key === 'files') continue;
     for (const entry of value) {
       if (Array.isArray(entry)) {
-        // duplicates are pairs [[a,b], ...]
         for (const e of entry) if (e?.name) names.push(e.name);
       } else if (entry?.name) {
         names.push(entry.name);

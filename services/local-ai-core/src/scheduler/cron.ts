@@ -395,7 +395,7 @@ function getSupportedTimezones(): Set<string> | null {
   return supportedTimezones;
 }
 
-export function isValidTimezone(timezone: string): boolean {
+function isValidTimezone(timezone: string): boolean {
   // "UTC"/"Z" are valid cron timezones but may be missing from Intl's list (which uses "Etc/UTC").
   if (timezone === 'UTC' || timezone === 'Z' || timezone === 'Etc/UTC') return true;
   const supported = getSupportedTimezones();
