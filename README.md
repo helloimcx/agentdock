@@ -56,7 +56,8 @@ flowchart LR
 
 ### 2026-10-03
 
-- **AgentDock Mesh 多设备互联**：新增设备配对、在线状态与撤销、`agentdock-node` 出站连接、远程目录浏览/文件读取及双端显式授权的命令执行。支持 UI、CLI 和 SDK 派发、取消与结果查询；断线和重启中断请求且不自动重放。详见 [Mesh](docs/architecture/mesh.md)。
+- 发布 AgentDock 0.1.82：AgentDock Mesh 多设备互联与入站 ACP 标准协议桥：
+  - **AgentDock Mesh 多设备互联**：新增设备配对、在线状态与撤销、`agentdock-node` 出站连接、远程目录浏览/文件读取及双端显式授权的命令执行。支持 UI、CLI 和 SDK 派发、取消与结果查询；断线和重启中断请求且不自动重放。详见 [Mesh](docs/architecture/mesh.md)。
 
 ### 2026-09-29
 
