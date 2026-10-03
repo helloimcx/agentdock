@@ -17,6 +17,7 @@ export default tseslint.config(
       'coverage/**',
       '**/*.config.{js,mjs,cjs}',
       'scripts/**',
+      '.worktrees/**',
     ],
   },
   {
