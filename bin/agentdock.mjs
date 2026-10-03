@@ -286,9 +286,16 @@ function startWebServer({ host, port, coreOrigin }) {
     sendFile(req, res, filePath);
   });
   server.on('upgrade', (req, socket, head) => {
-    const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
-    if (pathname !== '/api/local/v1/mesh/connect') { socket.destroy(); return; }
-    const upstream = new URL(req.url, normalizedCoreOrigin);
+    let pathname = '';
+    let upstream;
+    try {
+      pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
+      if (pathname !== '/api/local/v1/mesh/connect') { socket.destroy(); return; }
+      upstream = new URL(req.url, normalizedCoreOrigin);
+    } catch {
+      socket.destroy();
+      return;
+    }
     const client = upstream.protocol === 'https:' ? https : http;
     const proxy = client.request(upstream, { headers: { ...req.headers, host: upstream.host } });
     proxy.on('upgrade', (response, upstreamSocket, upstreamHead) => {

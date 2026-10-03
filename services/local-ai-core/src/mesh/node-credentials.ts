@@ -24,6 +24,7 @@ export async function writePrivateJson(file: string, value: unknown) {
 export async function createPrivateJson<T>(file: string, produce: () => Promise<T>): Promise<T> {
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   const handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+  let closed = false;
   try {
     const value = await produce();
     await handle.writeFile(`${JSON.stringify(value)}\n`);
@@ -31,8 +32,9 @@ export async function createPrivateJson<T>(file: string, produce: () => Promise<
     return value;
   }
   catch (error) {
+    try { await handle.close(); closed = true; } catch { /* Ignore close failure */ }
     try { await unlink(file); } catch { /* Ignore cleanup failure */ }
     throw error;
   }
-  finally { await handle.close(); }
+  finally { if (!closed) await handle.close(); }
 }

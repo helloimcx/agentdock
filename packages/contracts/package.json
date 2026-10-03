@@ -13,6 +13,7 @@
     "./automations": "./src/automations.ts",
     "./knowledge": "./src/knowledge.ts",
     "./handoff": "./src/handoff.ts",
-    "./memory": "./src/memory.ts"
+    "./memory": "./src/memory.ts",
+    "./mesh": "./src/mesh.ts"
   }
 }

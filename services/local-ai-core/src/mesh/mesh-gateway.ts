@@ -22,7 +22,13 @@ export class MeshGateway {
   constructor(private readonly store: MeshStore, private readonly server: Server, private readonly adminToken?: string) {
     store.recover();
     this.upgrade = (req, socket, head) => {
-      const pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
+      let pathname = '';
+      try {
+        pathname = req.url ? new URL(req.url, 'http://localhost').pathname : '';
+      } catch {
+        socket.destroy();
+        return;
+      }
       if (pathname !== `${PREFIX}/connect`) return;
       if (!adminToken || this.wss.clients.size >= 128) {
         socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
@@ -117,7 +123,12 @@ export class MeshGateway {
 
   private accept(socket: WebSocket) {
     let session: Session | undefined;
-    const deadline = setTimeout(() => socket.close(4001, 'Authentication timeout'), 5000);
+    let fallbackTimer: NodeJS.Timeout | undefined;
+    const deadline = setTimeout(() => {
+      socket.close(4001, 'Authentication timeout');
+      fallbackTimer = setTimeout(() => socket.terminate(), 1000);
+      fallbackTimer.unref();
+    }, 5000);
     socket.on('error', () => socket.terminate());
     socket.on('message', (raw, binary) => {
       try {
@@ -126,6 +137,7 @@ export class MeshGateway {
         if (!session) {
           session = this.hello(socket, message);
           clearTimeout(deadline);
+          if (fallbackTimer) clearTimeout(fallbackTimer);
         } else if (this.sessions.get(session.node.id) === session) {
           this.receive(session, message);
         }
@@ -133,6 +145,7 @@ export class MeshGateway {
     });
     socket.on('close', () => {
       clearTimeout(deadline);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       if (session && this.sessions.get(session.node.id) === session) this.disconnect(session.node.id);
     });
   }
@@ -212,6 +225,11 @@ export class MeshGateway {
       if (Date.now() - session.lastSeen > 45_000) {
         session.socket.terminate();
         this.disconnect(id);
+      }
+    }
+    for (const socket of this.wss.clients) {
+      if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) {
+        socket.terminate();
       }
     }
   }
