@@ -26,6 +26,7 @@ import type {
   ScheduledJobRun,
   ScheduledJobUpdateInput,
   ThreadDetail,
+  ThreadGetOptions,
   ThreadSummary,
   AgentTask,
   AgentTaskCreateInput,
@@ -171,8 +172,8 @@ export class LocalCoreAcpStore {
     return this.threads.create(workspaceId, title, agentType, agentMode);
   }
 
-  getThread(threadId: string, selectedKnowledgeBaseIds: string[]): ThreadDetail {
-    return this.threads.get(threadId, selectedKnowledgeBaseIds);
+  getThread(threadId: string, selectedKnowledgeBaseIds: string[], options?: ThreadGetOptions): ThreadDetail {
+    return this.threads.get(threadId, selectedKnowledgeBaseIds, options);
   }
 
   renameThread(threadId: string, title: string) {

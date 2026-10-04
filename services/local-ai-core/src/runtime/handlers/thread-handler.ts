@@ -18,8 +18,15 @@ export function registerThreadHandlers(
     });
     json(res, 200, await workspaceRouter.createThread(body.workspaceId, body.title || undefined));
   });
-  map.set('thread.get', async (route, _req, res) => {
-    json(res, 200, await workspaceRouter.getThread((route as { threadId: string }).threadId));
+  map.set('thread.get', async (route, req, res, url) => {
+    const threadId = (route as { threadId: string }).threadId;
+    const limitParam = url.searchParams.get('limit');
+    const beforeSeqParam = url.searchParams.get('before_seq');
+    const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+    const parsedBeforeSeq = beforeSeqParam ? Number.parseInt(beforeSeqParam, 10) : undefined;
+    const limit = Number.isFinite(parsedLimit) && (parsedLimit as number) > 0 ? Math.min(parsedLimit as number, 200) : undefined;
+    const beforeSeq = Number.isFinite(parsedBeforeSeq) && (parsedBeforeSeq as number) >= 0 ? parsedBeforeSeq : undefined;
+    json(res, 200, await workspaceRouter.getThread(threadId, { limit, beforeSeq }), true, undefined, req);
   });
   map.set('thread.update-knowledge-bases', async (route, req, res) => {
     const body = validateBody<{ knowledgeBaseIds: string[] }>(await readJsonBody(req), {

@@ -36,6 +36,7 @@ export default function ThreadChat() {
     deleteTarget,
     draft,
     endRef,
+    scrollContainerRef,
     filteredSessionGroups,
     handleBridgeAction,
     handleCreateNew,
@@ -43,6 +44,9 @@ export default function ThreadChat() {
     handleRenameSession,
     handleSend,
     handleStopTask,
+    hasMoreHistory,
+    loadingMoreHistory,
+    loadMoreHistory,
     availableKnowledgeBases,
     loadActiveSession,
     loading,
@@ -175,7 +179,10 @@ export default function ThreadChat() {
               onOpenTrace={(runId) => setTraceDrawerRunId(runId)}
             />
 
-            <div className="flex-1 overflow-y-auto px-3 py-4 [scrollbar-gutter:stable] sm:px-6 sm:py-5">
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto px-3 py-4 [scrollbar-gutter:stable] sm:px-6 sm:py-5"
+            >
               {renderedMessages.length === 0 ? (
                 <ThreadChatEmptyState
                   selectedProject={selectedProject}
@@ -183,6 +190,19 @@ export default function ThreadChat() {
                 />
               ) : (
                 <div className="mx-auto w-full max-w-4xl space-y-5">
+                  {hasMoreHistory ? (
+                    <div className="flex justify-center pt-1 pb-1">
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreHistory()}
+                        disabled={loadingMoreHistory}
+                        data-testid="desktop-chat-load-more-history"
+                        className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/[0.08] dark:bg-[#1a1d21] dark:text-slate-300 dark:hover:bg-white/[0.05]"
+                      >
+                        {loadingMoreHistory ? '正在加载更早历史…' : '查看更早的历史消息'}
+                      </button>
+                    </div>
+                  ) : null}
                   {renderedMessages.map((message) => {
                     if (!shouldRenderThreadChatMessage(message, composerPermissionCard)) {
                       return null;

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import type { LocalAiCoreRoute } from './server-routes.js';
 import type { LocalCoreEvent } from '@cc/superai-contracts';
 import type { OpenAiChatCompletionChunk } from '@cc/superai-contracts';
@@ -7,16 +8,33 @@ import { assertJsonObject, RequestValidationError } from './request-validation.j
 
 export type RouteHandler = (route: LocalAiCoreRoute, req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
-export function json<T>(res: ServerResponse, statusCode: number, data: T, ok = true, error?: string) {
+function sendJsonPayload(
+  res: ServerResponse,
+  statusCode: number,
+  payload: string,
+  req?: IncomingMessage,
+) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(ok ? { ok: true, data } : { ok: false, error }));
+  const incoming = req || (res as unknown as { req?: IncomingMessage }).req;
+  const acceptEncoding = incoming?.headers?.['accept-encoding'];
+  const supportsGzip = typeof acceptEncoding === 'string' && acceptEncoding.includes('gzip');
+
+  if (supportsGzip && payload.length > 1024) {
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Vary', 'Accept-Encoding');
+    res.end(gzipSync(Buffer.from(payload, 'utf-8')));
+  } else {
+    res.end(payload);
+  }
 }
 
-export function rawJson<T>(res: ServerResponse, statusCode: number, data: T) {
-  res.statusCode = statusCode;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(data));
+export function json<T>(res: ServerResponse, statusCode: number, data: T, ok = true, error?: string, req?: IncomingMessage) {
+  sendJsonPayload(res, statusCode, JSON.stringify(ok ? { ok: true, data } : { ok: false, error }), req);
+}
+
+export function rawJson<T>(res: ServerResponse, statusCode: number, data: T, req?: IncomingMessage) {
+  sendJsonPayload(res, statusCode, JSON.stringify(data), req);
 }
 
 export function openAiJsonError(res: ServerResponse, statusCode: number, message: string, code = 'invalid_request_error') {

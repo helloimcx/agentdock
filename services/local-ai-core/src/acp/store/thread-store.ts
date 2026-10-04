@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   ThreadDetail,
+  ThreadGetOptions,
   ThreadSummary,
 } from '@cc/superai-contracts';
 import { normalizeRunStatus } from '@cc/superai-contracts';
@@ -89,17 +90,56 @@ export class LocalThreadStore {
     };
   }
 
-  get(threadId: string, selectedKnowledgeBaseIds: string[]): ThreadDetail {
+  get(threadId: string, selectedKnowledgeBaseIds: string[], options?: ThreadGetOptions): ThreadDetail {
     const row = this.getRow(threadId);
     if (!row) {
       throw new Error(`Thread not found: ${threadId}`);
     }
-    const messages = this.db.prepare(`
-      SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
-      FROM messages
-      WHERE thread_id = ?
-      ORDER BY seq ASC
-    `).all(threadId) as LocalMessageRow[];
+
+    let messages: LocalMessageRow[];
+    let hasMore = false;
+
+    if (options?.limit !== undefined && options.limit > 0) {
+      const limit = options.limit;
+      if (options.beforeSeq !== undefined) {
+        const rows = this.db.prepare(`
+          SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
+          FROM messages
+          WHERE thread_id = ? AND seq < ?
+          ORDER BY seq DESC
+          LIMIT ?
+        `).all(threadId, options.beforeSeq, limit + 1) as LocalMessageRow[];
+        if (rows.length > limit) {
+          hasMore = true;
+          rows.pop();
+        }
+        messages = rows.reverse();
+      } else {
+        const rows = this.db.prepare(`
+          SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
+          FROM messages
+          WHERE thread_id = ?
+          ORDER BY seq DESC
+          LIMIT ?
+        `).all(threadId, limit + 1) as LocalMessageRow[];
+        if (rows.length > limit) {
+          hasMore = true;
+          rows.pop();
+        }
+        messages = rows.reverse();
+      }
+    } else {
+      messages = this.db.prepare(`
+        SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
+        FROM messages
+        WHERE thread_id = ?
+        ORDER BY seq ASC
+      `).all(threadId) as LocalMessageRow[];
+    }
+
+    const firstSeq = messages.length > 0 ? messages[0].seq : undefined;
+    const lastSeq = messages.length > 0 ? messages[messages.length - 1].seq : undefined;
+
     return {
       id: row.id,
       workspaceId: row.workspace_id,
@@ -112,18 +152,28 @@ export class LocalThreadStore {
       bridgeSessionKey: row.bridge_session_key,
       agentType: row.agent_type,
       agentMode: row.agent_mode,
-      messages: messages.map((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        toolCall: parseJson<DesktopBridgeToolCall | null>(message.tool_call_json || 'null', null) || undefined,
-        bridgeKind: normalizeBridgeKind(message.bridge_kind),
-        bridgeStatus: normalizeBridgeStatus(message.bridge_status),
-        timestamp: message.timestamp,
-        kind: message.kind,
-      })),
+      messages: messages.map((message) => {
+        const toolCall = parseJson<DesktopBridgeToolCall | null>(message.tool_call_json || 'null', null) || undefined;
+        if (toolCall?.output && toolCall.output.length > 65536) {
+          toolCall.output = `${toolCall.output.slice(0, 65536)}\n... [output truncated for performance]`;
+        }
+        return {
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          toolCall,
+          bridgeKind: normalizeBridgeKind(message.bridge_kind),
+          bridgeStatus: normalizeBridgeStatus(message.bridge_status),
+          timestamp: message.timestamp,
+          kind: message.kind,
+          seq: message.seq,
+        };
+      }),
       selectedKnowledgeBaseIds,
       pendingPermissionRequest: null,
+      hasMore,
+      firstSeq,
+      lastSeq,
     };
   }
 
