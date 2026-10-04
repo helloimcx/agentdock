@@ -55,6 +55,11 @@ flowchart LR
 
 ## New
 
+### 2026-10-04
+
+- 发布 AgentDock 0.1.84：
+  - **ACP MCP 协议规范对齐**：修复 Local AI Core 向 ACP 运行时（如 Claude Agent ACP、Codex）发送 `session/new` 与 `session/load` 时 `mcpServers` 数据结构未对齐官方规范的缺陷（环境变量与请求头由 Object 规范转换为 `[{ name, value }]` 键值对数组，严格补齐 `args` 与 `env` 默认空数组），消除远程工作区中 Agent 初始化触发 `-32602 Invalid params`（`Agent runtime returned an invalid protocol response`）的问题。
+
 ### 2026-10-03
 
 - 发布 AgentDock 0.1.83：工作区目录选择器与远程 Mesh 透明工具调用支持：
