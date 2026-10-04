@@ -58,13 +58,18 @@ test('stock monitor skill defines comprehensive market formats, metrics, strateg
 });
 
 test('managed skill catalog loads exact source stock-monitor skill', () => {
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
-  const source = catalog.get('stock-monitor');
-  assert(source, 'stock-monitor skill should be found in catalog');
+  const legacyCatalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const source = legacyCatalog.get('stock-monitor');
+  assert(source, 'stock-monitor skill should be found in legacy catalog');
   assert.equal(source.scope, 'builtin');
   assert.equal(source.content, readFileSync(sourceSkillPath, 'utf8'));
 
-  const skills = catalog.listSkills();
+  const defaultCatalog = new ManagedSkillCatalog();
+  const defaultSkill = defaultCatalog.get('stock-monitor');
+  assert(defaultSkill, 'stock-monitor skill should be found in default catalog');
+  assert.equal(defaultSkill.scope, 'builtin');
+
+  const skills = defaultCatalog.listSkills();
   const listed = skills.find((s) => s.id === 'stock-monitor');
   assert(listed, 'stock-monitor should be listed in listSkills');
   assert.equal(listed.scope, 'builtin');

@@ -75,14 +75,42 @@ export function parseFrontmatter(markdownContent: string): { metadata: Record<st
   const yamlText = match[1];
   const body = match[2];
   const metadata: Record<string, unknown> = {};
+  let currentListKey: string | null = null;
+  let currentList: string[] = [];
+
+  const flushList = () => {
+    if (currentListKey) {
+      metadata[currentListKey] = currentList;
+      currentListKey = null;
+      currentList = [];
+    }
+  };
+
   for (const line of yamlText.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
+
+    if (trimmed.startsWith('- ') && currentListKey) {
+      let item = trimmed.slice(2).trim();
+      if ((item.startsWith('"') && item.endsWith('"')) || (item.startsWith("'") && item.endsWith("'"))) {
+        item = item.slice(1, -1);
+      }
+      currentList.push(item);
+      continue;
+    }
+
+    flushList();
+
     const colonIdx = trimmed.indexOf(':');
     if (colonIdx > 0) {
       const key = trimmed.slice(0, colonIdx).trim();
       let value: unknown = trimmed.slice(colonIdx + 1).trim();
       if (typeof value === 'string') {
+        if (!value) {
+          currentListKey = key;
+          currentList = [];
+          continue;
+        }
         if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
           value = value.slice(1, -1);
         } else if (value === 'true') {
@@ -100,6 +128,7 @@ export function parseFrontmatter(markdownContent: string): { metadata: Record<st
       metadata[key] = value;
     }
   }
+  flushList();
   return { metadata, body };
 }
 

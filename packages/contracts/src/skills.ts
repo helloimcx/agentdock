@@ -37,6 +37,7 @@ export interface SkillMetadata {
   priority?: number;
   requiresTools?: string[];
   rules?: SkillRoutingRule[];
+  platforms?: string[];
   [key: string]: unknown;
 }
 

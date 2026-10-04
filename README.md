@@ -59,8 +59,12 @@ flowchart LR
 
 ### 2026-10-04
 
-- Android 自动化随任务保持亮屏：Core 每 30 秒续约，任务结束或取消释放；手机展示状态光晕和点击目标反馈。120 秒是失联兜底，手动锁屏终止租约。需要新版无障碍 APK，HyperOS 效果尚待真机验证。
-
+- Android 自动化随任务保持亮屏：Core 每 30 秒续约，任务结束或取消释放；手机展示状态光晕和点击目标反馈。已在小米 Android 16 真机验证亮屏和触控穿透；状态角标位置仍需优化，手动锁屏恢复尚未验证。
+- 发布 AgentDock 0.1.89：内置 Managed Skills 体系重构与远程移动端自动注入：
+  - **消除跨层倒挂依赖**：内置技能从桌面外壳（`electron/managed-skills`）整体迁入 Local AI Core 服务域（`services/local-ai-core/src/skills/builtin/`），与内置插件体系（`plugins/builtin/`）实现结构对称；`ManagedSkillCatalog` 支持四级探测，纯服务端模式与容器部署可独立自包含加载全部技能。
+  - **新增移动端自动化一等公民技能 (`mobile-automation`)**：新增 Android 原生应用导航与 UI 感知交互技能，支持 DeepLink 秒级跳转与免 ADB/免 Root 页面内精准元素点击、文本输入与手势。
+  - **远程工作区动态平台感知注入**：彻底杜绝向宿主机全局目录写软链接。远程节点（如小米/Android）启动时，系统自动将适配平台的技能挂载到影子工作区（`shadowDir/.agents/skills/`），由 Agent 原生发现消费，并大幅精简系统提示词。
+  - **双向打包与平滑兼容**：构建脚本同时分发至 Core 编译目录与 Electron 镜像目录，存量测试与外部引用 100% 保持兼容。
 - 发布 AgentDock 0.1.88：移动端页面内操作与免 ADB 无障碍桥接（`mobile-ui`）：
   - **免 ADB 页面内感知与交互（`mobile-ui`）**：在第一阶段 `mobile-apps` 页面秒级直达基础上，新增针对 Android 端的极简无障碍桥接，使云端 Agent 在免 ADB、免 Root 约束下可实时感知屏幕可见元素（`mobile-ui dump`，按人类视觉流自然排序赋予单调递增 `[1..N]` 序号），并执行精准序号点击（`mobile-ui click <index>`，具备真实手势轻触降级保障）、静默文本输入（`mobile-ui input`）、页面滚动（`mobile-ui scroll`）与物理返回（`mobile-ui back`）。
   - **云端透明代理与双模协同工作流注入**：在远程工作区影子目录自动注入 `mobile-ui` transparent wrapper，并在环境提示词中固化“宏观跳转（`mobile-apps`）-> 等待加载 -> 屏幕感知（`mobile-ui dump`）-> 精准点击/输入（`mobile-ui click/input`）”的最佳协同工作流。
