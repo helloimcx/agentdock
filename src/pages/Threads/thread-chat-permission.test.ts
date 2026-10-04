@@ -42,6 +42,64 @@ import {
   toSelectedKnowledgeBases,
 } from './thread-chat-page-state';
 import type { KnowledgeBase } from '@cc/superai-contracts';
+import {
+  captureHistoryScrollAnchor,
+  restoreHistoryScrollAnchor,
+  type HistoryScrollAnchorElement,
+  type HistoryScrollContainer,
+} from './thread-chat-scroll-anchor';
+
+test('history scroll anchor tracks the first visible message relative to the scroll container', () => {
+  const containerTop = { value: 100 };
+  const offscreenMessage = createScrollAnchorElement(70, 95);
+  const visibleMessage = createScrollAnchorElement(90, 140);
+  const nextMessage = createScrollAnchorElement(150, 180);
+  const container = createScrollContainer(() => containerTop.value, [offscreenMessage, visibleMessage, nextMessage]);
+
+  const anchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(anchor);
+  assert.equal(anchor.element, visibleMessage);
+  assert.equal(anchor.top, -10);
+
+  visibleMessage.top = 190;
+  assert.equal(restoreHistoryScrollAnchor(container, anchor), true);
+  assert.equal(container.scrollTop, 300);
+});
+
+test('history scroll anchor ignores a message removed while history loads', () => {
+  const message = createScrollAnchorElement(120, 170);
+  const container = createScrollContainer(() => 100, [message]);
+  const anchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(anchor);
+  message.isConnected = false;
+
+  assert.equal(restoreHistoryScrollAnchor(container, anchor), false);
+  assert.equal(container.scrollTop, 200);
+});
+
+function createScrollAnchorElement(top: number, bottom: number): HistoryScrollAnchorElement & { top: number; bottom: number } {
+  const element = {
+    top,
+    bottom,
+    isConnected: true,
+    getBoundingClientRect: () => ({ top: element.top, bottom: element.bottom }),
+  };
+  return element;
+}
+
+function createScrollContainer(
+  getTop: () => number,
+  elements: HistoryScrollAnchorElement[],
+): HistoryScrollContainer {
+  const container = {
+    scrollTop: 200,
+    getBoundingClientRect: () => ({ top: getTop() }),
+    querySelectorAll: () => elements,
+  };
+  return container;
+}
 
 type TestMessage = PermissionPromptMessage & {
   id: string;
