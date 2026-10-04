@@ -10,6 +10,7 @@ import {
   listModelProviders,
   readCoreRuntimeConfig as readRuntimeConfig,
   saveCoreRuntimeConfig as saveRuntimeConfig,
+  listMeshNodes,
 } from '@cc/core-sdk/runtime';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
@@ -24,6 +25,7 @@ import type {
   DesktopModelProviderInput,
   DesktopPlatformConfig,
   DesktopProjectConfig,
+  MeshNode,
 } from '@cc/superai-contracts';
 import {
   clone,
@@ -63,6 +65,7 @@ export default function DesktopWorkspace() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
 
   const loadAll = useCallback(async (projectName = '') => {
@@ -72,6 +75,7 @@ export default function DesktopWorkspace() {
         readRuntimeConfig(),
         listModelProviders(),
       ]);
+      void listMeshNodes().then((res) => setMeshNodes(res?.nodes || [])).catch(() => {});
       const parsed = clone(configState.config || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
@@ -182,11 +186,13 @@ export default function DesktopWorkspace() {
     }
     const nextProject = normalizeProject({
       name,
+      device_id: projectDialog.deviceId || 'local',
       agent: {
         type: agentType,
         options: {
           model: model || getDefaultDesktopAgentModel(agentType),
           work_dir: workDir,
+          device_id: projectDialog.deviceId || 'local',
         },
         providers: [],
       },
@@ -398,6 +404,7 @@ export default function DesktopWorkspace() {
           updateDeploymentProfile={updateDeploymentProfile}
           openPlatformDialog={openPlatformDialog}
           onSaveConfig={() => void handleSaveConfig()}
+          meshNodes={meshNodes}
         />
       </div>
 
@@ -406,6 +413,7 @@ export default function DesktopWorkspace() {
         updateDialog={updateProjectDialog}
         onConfirm={handleConfirmAddProject}
         onClose={() => setProjectDialog(null)}
+        meshNodes={meshNodes}
       />
 
       <PlatformDialog

@@ -25,7 +25,7 @@ export class MeshStore {
     const expiresAt = new Date(now + 10 * 60_000).toISOString();
     const node: MeshNode = {
       id, label: input.label.trim(), platform: 'unknown', capabilities: [],
-      allowedCapabilities: input.allowShell ? ['filesystem.list', 'filesystem.read', 'shell.exec'] : ['filesystem.list', 'filesystem.read'],
+      allowedCapabilities: input.allowShell ? ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec'] : ['filesystem.list', 'filesystem.read', 'filesystem.write'],
       status: 'offline', lastSeenAt: null, createdAt: new Date(now).toISOString(),
     };
     this.db.prepare('INSERT INTO mesh_nodes VALUES (?, ?, NULL, ?, ?)').run(id, JSON.stringify(node), digest(pairingToken), expiresAt);

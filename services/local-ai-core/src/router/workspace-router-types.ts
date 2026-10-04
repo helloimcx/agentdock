@@ -35,6 +35,7 @@ export type WorkspaceRouterOptions = {
   eventBus: EventBus;
   knowledgeProvider: KnowledgeRuntime;
   knowledgeAttachments: ThreadKnowledgeAttachmentStore;
+  meshGateway?: any;
   log?: (message: string) => void;
 };
 
@@ -120,6 +121,7 @@ export type AcpSessionState = {
   launchPermissionMode: string;
   launchConfigKey?: string;
   launchRuntimeEnvKey?: string;
+  meshNodeId?: string | null;
   idleCloseTimer?: NodeJS.Timeout;
 };
 

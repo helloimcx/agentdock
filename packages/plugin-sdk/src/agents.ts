@@ -32,12 +32,15 @@ export interface AgentMcpServerConfig {
   enabled?: boolean;
 }
 
-export type AgentExecutionMode = 'local' | 'sandbox';
+export type AgentExecutionMode = 'local' | 'sandbox' | 'mesh';
 
 export interface AgentExecutionDescriptor {
   mode: AgentExecutionMode;
   transport: string;
   provider?: string;
+  nodeId?: string;
+  node?: { label?: string; platform?: string };
+  systemPromptAppend?: string;
   sandbox?: {
     image: string;
     transport?: AgentSandboxTransport;

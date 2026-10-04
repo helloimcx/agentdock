@@ -34,6 +34,7 @@ flowchart LR
   kernel -->|Approved atomic write| workspace[(Workspace files)]
   durable -->|OpenAI-compatible HTTPS| provider[Configured model provider]
   acp --> sandbox[OpenSandbox]
+  acp -.->|Remote Shell Proxy / ACP fs bridge| mesh
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
@@ -63,10 +64,20 @@ flowchart LR
 ### 2026-10-04
 
 - **持久执行试接**：thread prompt 以稳定 `requestId` 去重；定时/自动化最终报告通过带平台回执的 delivery outbox 恢复；thread snapshot/watch 支持重连。新增可选 Pi Durable 运行时，每个 Core 数据目录由一个 worker/Harness 共享一个 SQLite，单个 thread 对应独立 Conversation；提供工作区文本读取，以及经现有权限卡逐次批准的文件创建/覆盖。Shell、删除、MCP 和 sandbox 工具仍不可用。
+- 发布 AgentDock 0.1.85：透明 Shell 代理与多设备自适应远程 Workspace 支持：
+  - **透明 Shell 代理（`agentdock-mesh-shell`）**：彻底移除远程工作区的 MCP Stdio 管道与工具前缀污染，改为通过环境变量 `SHELL` 注入跨平台 Shell 代理脚本。Agent 调用原生内置 `Bash` 终端工具时，任何命令自动透传至目标设备（`shell.exec`），并将真实输出与退出码透明返回，Agent 完全无感且天然认为自己就运行在远程目标设备上。
+  - **多设备动态感知与规范注入**：根据绑定的 Mesh 设备节点（`mesh_nodes`）动态提取设备名称（`label`）与操作系统平台（`platform`：Android/Termux、Linux、macOS、Windows），在工作区影子目录自适应生成 `CLAUDE.md` 与 ACP `systemPrompt.append`，杜绝任何硬编码，告别 ADB 或外部连接混淆。
+  - **宿主机文件工具隔离**：针对远程 Mesh 工作区自动屏蔽宿主机本地 `FileEdit`、`GlobTool` 工具，防止云端服务器本地文件泄漏，引导 Agent 纯粹通过远程终端操作目标设备。
+- 发布 AgentDock 0.1.84：
+  - **ACP MCP 协议规范对齐**：修复 Local AI Core 向 ACP 运行时（如 Claude Agent ACP、Codex）发送 `session/new` 与 `session/load` 时 `mcpServers` 数据结构未对齐官方规范的缺陷（环境变量与请求头由 Object 规范转换为 `[{ name, value }]` 键值对数组，严格补齐 `args` 与 `env` 默认空数组），消除远程工作区中 Agent 初始化触发 `-32602 Invalid params`（`Agent runtime returned an invalid protocol response`）的问题。
+- **ACP 桥工具调用状态修复（Issue #160）**：Zed 等 ACP 客户端现在能看到工具调用的真实名称与状态流转（`tool_call` → `tool_call_update` 直至 completed/failed），不再永远停留在进行中。此前运行态与终态更新共用同一 message id，被桥的消息去重误丢，终态从未送达客户端。
 
 ### 2026-10-03
 
-- 发布 AgentDock 0.1.82：AgentDock Mesh 多设备互联与入站 ACP 标准协议桥：
+- 发布 AgentDock 0.1.83：工作区目录选择器与远程 Mesh 透明工具调用支持：
+  - **工作区目录选择器（支持本地与远程设备）**：创建与编辑工作区项目时支持图形化目录浏览与选择。本地设备通过 `/api/local/v1/fs/directories` 浏览服务端主机目录；远程设备通过 Mesh `filesystem.list` 在节点受控根目录内安全浏览与点选，告别手动输入长路径。
+  - **远程 Workspace 支持（Agent 运行在 Server，Toolcall 透明执行在 Client）**：支持在 Server 创建与管理绑定到 Mesh 节点的远程工作区。通过注入内置 `agentdock-remote-mesh` MCP Server 与 ACP 协议底层文件系统桥接，Agent 的文件读写与终端命令自动转发至长连接 Client 执行，对 Agent 完全无感，模型按本地工作区习惯即可无缝操作远程设备。
+- 发布 AgentDock 0.1.82：AgentDock Mesh 多设备互联：
   - **AgentDock Mesh 多设备互联**：新增设备配对、在线状态与撤销、`agentdock-node` 出站连接、远程目录浏览/文件读取及双端显式授权的命令执行。支持 UI、CLI 和 SDK 派发、取消与结果查询；断线和重启中断请求且不自动重放。详见 [Mesh](docs/architecture/mesh.md)。
 
 ### 2026-09-29

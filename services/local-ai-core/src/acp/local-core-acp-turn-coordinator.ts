@@ -51,6 +51,7 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   getThreadAgentMode?: (threadId: string) => string;
   hasThreadAllowAll?: (threadId: string) => boolean;
   sendRaw: (session: AcpSessionState, payload: Record<string, unknown>) => boolean;
+  executeMesh?: (input: { nodeId: string; capability: string; args: Record<string, unknown>; timeoutMs?: number; signal?: AbortSignal }) => Promise<any>;
   traceStore?: LocalCoreTraceStore;
   traceProjector?: AcpTraceProjector;
 };
@@ -177,6 +178,10 @@ export class LocalCoreAcpTurnCoordinator {
   }
 
   handleAgentRequest(session: AcpSessionState, payload: any) {
+    if (payload.method === 'fs/read_text_file' || payload.method === 'fs/write_text_file') {
+      void this.handleMeshFsRequest(session, payload);
+      return;
+    }
     if (payload.method !== 'session/request_permission') {
       this.options.sendRaw(session, {
         jsonrpc: '2.0',
@@ -294,6 +299,26 @@ export class LocalCoreAcpTurnCoordinator {
             },
       },
     });
+  }
+
+  private async handleMeshFsRequest(session: AcpSessionState, payload: any) {
+    if (!session.meshNodeId || !this.options.executeMesh) {
+      this.options.sendRaw(session, {
+        jsonrpc: '2.0',
+        id: payload.id,
+        error: { code: -32603, message: 'Mesh execution is not available for this session.' },
+      });
+      return;
+    }
+    const filePath = String(payload.params?.path || '').trim();
+    try {
+      const result = await executeMeshFilesystemRequest(this.options.executeMesh, session.meshNodeId,
+        payload.method, filePath, String(payload.params?.content ?? ''));
+      this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mesh filesystem operation failed';
+      this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, error: { code: -32603, message } });
+    }
   }
 
   handleAgentNotification(session: AcpSessionState, payload: any) {
@@ -625,6 +650,18 @@ export class LocalCoreAcpTurnCoordinator {
       message.kind === 'tool' && message.content.includes(needle));
   }
 
+}
+
+async function executeMeshFilesystemRequest(executeMesh: NonNullable<LocalCoreAcpTurnCoordinatorOptions['executeMesh']>,
+  nodeId: string, method: string, path: string, content: string) {
+  if (method !== 'fs/read_text_file') {
+    await executeMesh({ nodeId, capability: 'filesystem.write', args: { path, content } });
+    return {};
+  }
+  const response = await executeMesh({ nodeId, capability: 'filesystem.read', args: { path } });
+  const result = (response && typeof response === 'object' && 'result' in response) ? (response as any).result : response;
+  const raw = result?.content || '';
+  return { content: result?.encoding === 'base64' ? Buffer.from(raw, 'base64').toString('utf8') : raw };
 }
 
 function compactToolInput(input: unknown) {

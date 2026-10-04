@@ -6,19 +6,12 @@ import {
   sandboxProxyLaunchEnv,
   sandboxProxyScriptPath,
 } from '../sandbox/sandbox-config.js';
+import { isRemoteMeshProject, RemoteMeshExecutionBackend } from './remote-mesh/remote-mesh-backend.js';
+import type { AgentExecutionBackend, AgentExecutionBackendInput } from './agent-execution-types.js';
 
-export interface AgentExecutionBackendInput {
-  configState: RuntimeConfigState;
-  project: DesktopProjectConfig;
-  launchConfig: AgentLaunchConfig;
-}
+export type { AgentExecutionBackend, AgentExecutionBackendInput } from './agent-execution-types.js';
 
-export interface AgentExecutionBackend {
-  readonly mode: 'local' | 'sandbox';
-  prepareLaunch(input: AgentExecutionBackendInput): AgentLaunchConfig;
-}
-
-export class LocalAgentExecutionBackend implements AgentExecutionBackend {
+class LocalAgentExecutionBackend implements AgentExecutionBackend {
   readonly mode = 'local' as const;
 
   prepareLaunch(input: AgentExecutionBackendInput): AgentLaunchConfig {
@@ -32,7 +25,7 @@ export class LocalAgentExecutionBackend implements AgentExecutionBackend {
   }
 }
 
-export class OpenSandboxExecutionBackend implements AgentExecutionBackend {
+class OpenSandboxExecutionBackend implements AgentExecutionBackend {
   readonly mode = 'sandbox' as const;
 
   prepareLaunch(input: AgentExecutionBackendInput): AgentLaunchConfig {
@@ -66,8 +59,11 @@ export class OpenSandboxExecutionBackend implements AgentExecutionBackend {
 }
 
 export function prepareAgentExecutionLaunch(input: AgentExecutionBackendInput): AgentLaunchConfig {
-  const backend = isProjectSandboxEnabled(input.project)
-    ? new OpenSandboxExecutionBackend()
-    : new LocalAgentExecutionBackend();
-  return backend.prepareLaunch(input);
+  if (isProjectSandboxEnabled(input.project)) {
+    return new OpenSandboxExecutionBackend().prepareLaunch(input);
+  }
+  if (isRemoteMeshProject(input.project)) {
+    return new RemoteMeshExecutionBackend().prepareLaunch(input);
+  }
+  return new LocalAgentExecutionBackend().prepareLaunch(input);
 }

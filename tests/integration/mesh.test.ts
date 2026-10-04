@@ -147,3 +147,63 @@ test('Mesh gateway ignores non-mesh WebSocket upgrade requests', async () => {
   }
 });
 
+test('MeshGateway executeAndWait resolves completed execution and rejects on abort', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'agentdock-mesh-wait-'));
+  const root = join(temp, 'node-root');
+  await mkdir(root);
+  await writeFile(join(root, 'hello.txt'), 'Mesh wait test content');
+  const db = new DatabaseSync(join(temp, 'mesh.db'));
+  const store = new MeshStore(db);
+  const server = createServer();
+  const gateway = new MeshGateway(store, server, 'test-admin');
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+  const pairing = store.createPairing({ label: 'test-node', allowShell: true });
+  const credentials = store.enroll(pairing.pairingToken);
+  const agent = new NodeAgent({
+    server: origin, credentials, root, allowShell: true, allowInsecure: true,
+  });
+  agent.start();
+  await until(() => store.getNode(credentials.nodeId)?.status === 'online');
+
+  try {
+    // 1. Successful executeAndWait for filesystem.read
+    const execResult = await gateway.executeAndWait({
+      nodeId: credentials.nodeId,
+      capability: 'filesystem.read',
+      args: { path: 'hello.txt' },
+      timeoutMs: 5000,
+    });
+    assert.equal(execResult.status, 'completed');
+    assert.equal((execResult.result as { bytes: number }).bytes, 22);
+
+    // 2. Successful executeAndWait for filesystem.write
+    const writeResult = await gateway.executeAndWait({
+      nodeId: credentials.nodeId,
+      capability: 'filesystem.write',
+      args: { path: 'new.txt', content: 'created via wait' },
+      timeoutMs: 5000,
+    });
+    assert.equal(writeResult.status, 'completed');
+    assert.equal((writeResult.result as { bytes: number }).bytes, 16);
+
+    // 3. Rejection on abort signal
+    const controller = new AbortController();
+    const abortPromise = gateway.executeAndWait({
+      nodeId: credentials.nodeId,
+      capability: 'shell.exec',
+      args: { program: process.execPath, arguments: ['-e', 'setTimeout(()=>{},5000)'] },
+      timeoutMs: 5000,
+    }, controller.signal);
+    controller.abort();
+    await assert.rejects(abortPromise, /Execution cancelled/);
+  } finally {
+    agent.stop();
+    gateway.close();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    db.close();
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+

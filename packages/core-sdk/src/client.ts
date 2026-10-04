@@ -617,10 +617,10 @@ export function createCoreClient(options: CoreClientOptions) {
     };
   };
 
-  const request = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+  const request = async <T>(method: string, path: string, body?: unknown, customHeaders?: Record<string, string>): Promise<T> => {
     const response = await fetchImpl(`${baseUrl}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(customHeaders || {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const json = await response.json() as JsonEnvelope<T>;

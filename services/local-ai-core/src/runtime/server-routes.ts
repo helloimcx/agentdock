@@ -166,7 +166,8 @@ export type LocalAiCoreRoute =
   | { name: 'platform.gateway.disable'; platform: string; workspaceId: string }
   | { name: 'platform.file.send'; platform: string; workspaceId: string }
   | { name: 'platform.message.send'; platform: string; workspaceId: string }
-  | { name: 'platform.qrcode.create'; platform: string; workspaceId: string };
+  | { name: 'platform.qrcode.create'; platform: string; workspaceId: string }
+  | { name: 'fs.directories' };
 
 const API_PREFIX = '/api/local/v1';
 
@@ -183,6 +184,8 @@ const STATIC_LOCALCORE_ROUTES: Record<string, LocalAiCoreRoute> = {
   'GET /runtime/config': { name: 'runtime.runtime-config.read' },
   'POST /runtime/runtime-config': { name: 'runtime.runtime-config.save' },
   'POST /runtime/settings': { name: 'runtime.settings.save' },
+  'GET /fs/directories': { name: 'fs.directories' },
+  'POST /fs/directories': { name: 'fs.directories' },
 };
 
 export function parseLocalAiCoreRoute(method: string | undefined, path: string): LocalAiCoreRoute | null {

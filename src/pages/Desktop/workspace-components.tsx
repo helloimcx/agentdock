@@ -1,6 +1,8 @@
-import { Bot, Cloud, FolderKanban, Plug, Plus, QrCode, Save, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Bot, Cloud, FolderKanban, FolderOpen, Plug, Plus, QrCode, Save, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, SectionCard, Select, StatusPill } from '@/components/ui';
+import { DirectoryPickerModal } from './DirectoryPickerModal';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   DESKTOP_PLATFORM_TYPE_OPTIONS,
@@ -288,49 +290,96 @@ type AddProjectDialogProps = {
   updateDialog: (patch: Partial<ProjectDialogDraft>) => void;
   onConfirm: () => void;
   onClose: () => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
-export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose }: AddProjectDialogProps) {
+export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, meshNodes }: AddProjectDialogProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   return (
-    <Modal
-      open={Boolean(dialog)}
-      onClose={onClose}
-      title="新建项目"
-    >
-      {dialog ? (
-        <div className="space-y-4">
-          <Input
-            label="Project name"
-            value={dialog.name}
-            onChange={(event) => updateDialog({ name: event.target.value })}
-            autoFocus
-          />
-          <Select
-            label="Agent type"
-            value={dialog.agentType}
-            onChange={(event) => updateDialog({ agentType: event.target.value })}
-          >
-            {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-          </Select>
-          <Input
-            label="Host workspace path"
-            value={dialog.workDir}
-            onChange={(event) => updateDialog({ workDir: event.target.value })}
-            placeholder="/Users/yinyin/code/my-project"
-          />
-          <Input
-            label="Default model"
-            value={dialog.model}
-            onChange={(event) => updateDialog({ model: event.target.value })}
-            placeholder={getDefaultDesktopAgentModel(dialog.agentType) || 'Use agent default model'}
-          />
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-            <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button className="w-full sm:w-auto" onClick={onConfirm}><Plus size={14} /> 新建项目</Button>
+    <>
+      <Modal
+        open={Boolean(dialog)}
+        onClose={onClose}
+        title="新建项目"
+      >
+        {dialog ? (
+          <div className="space-y-4">
+            <Input
+              label="Project name"
+              value={dialog.name}
+              onChange={(event) => updateDialog({ name: event.target.value })}
+              autoFocus
+            />
+            <Select
+              label="Agent type"
+              value={dialog.agentType}
+              onChange={(event) => updateDialog({ agentType: event.target.value })}
+            >
+              {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+            </Select>
+            <Select
+              label="Execution device"
+              value={dialog.deviceId || 'local'}
+              onChange={(event) => updateDialog({ deviceId: event.target.value })}
+            >
+              <option value="local">本机 (Local)</option>
+              {(meshNodes || []).map((node) => (
+                <option key={node.id} value={node.id.startsWith('node:') ? node.id : `node:${node.id}`}>
+                  {node.label || node.id} ({node.platform}) - {node.status}
+                </option>
+              ))}
+            </Select>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label="Host workspace path"
+                  value={dialog.workDir}
+                  onChange={(event) => updateDialog({ workDir: event.target.value })}
+                  placeholder={dialog.deviceId && dialog.deviceId !== 'local' ? '例如 . 或 my-project (remote path)' : '/Users/yinyin/code/my-project'}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 gap-1.5 shrink-0"
+                onClick={() => setPickerOpen(true)}
+                title="选择目录"
+              >
+                <FolderOpen size={15} />
+                选择目录
+              </Button>
+            </div>
+            <Input
+              label="Default model"
+              value={dialog.model}
+              onChange={(event) => updateDialog({ model: event.target.value })}
+              placeholder={getDefaultDesktopAgentModel(dialog.agentType) || 'Use agent default model'}
+            />
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>Cancel</Button>
+              <Button className="w-full sm:w-auto" onClick={onConfirm}><Plus size={14} /> 新建项目</Button>
+            </div>
           </div>
-        </div>
-      ) : null}
-    </Modal>
+        ) : null}
+      </Modal>
+
+      {dialog && (
+        <DirectoryPickerModal
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={(selectedPath) => updateDialog({ workDir: selectedPath })}
+          initialPath={dialog.workDir}
+          deviceId={dialog.deviceId || 'local'}
+          deviceLabel={
+            dialog.deviceId && dialog.deviceId !== 'local'
+              ? meshNodes?.find((n) => n.id === dialog.deviceId || `node:${n.id}` === dialog.deviceId)?.label || dialog.deviceId
+              : '本机 (Local)'
+          }
+        />
+      )}
+    </>
   );
 }
 
@@ -350,6 +399,7 @@ type ProjectDetailsProps = {
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
   onSaveConfig: () => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
 const PROJECT_TABS: Array<[ProjectTab, string]> = [
@@ -374,6 +424,7 @@ type ProjectTabContentProps = {
   updateSandbox: (updater: (sandbox: SandboxForm) => SandboxForm) => void;
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
 };
 
 function ProjectTabContent({
@@ -388,9 +439,10 @@ function ProjectTabContent({
   updateSandbox,
   updateDeploymentProfile,
   openPlatformDialog,
+  meshNodes,
 }: ProjectTabContentProps) {
   if (projectTab === 'basic') {
-    return <BasicProjectSection project={project} updateProject={updateProject} />;
+    return <BasicProjectSection project={project} updateProject={updateProject} meshNodes={meshNodes} />;
   }
   if (projectTab === 'providers') {
     return <ProvidersSection project={project} modelProviders={modelProviders} updateProject={updateProject} />;
@@ -436,6 +488,7 @@ export function ProjectDetails({
   updateDeploymentProfile,
   openPlatformDialog,
   onSaveConfig,
+  meshNodes,
 }: ProjectDetailsProps) {
   return (
     <SectionCard
@@ -482,6 +535,7 @@ export function ProjectDetails({
             updateSandbox={updateSandbox}
             updateDeploymentProfile={updateDeploymentProfile}
             openPlatformDialog={openPlatformDialog}
+            meshNodes={meshNodes}
           />
 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">

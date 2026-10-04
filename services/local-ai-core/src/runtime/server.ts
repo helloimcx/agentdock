@@ -63,6 +63,7 @@ import { StandardsService } from '../standards/standards-service.js';
 import { registerStandardsHandlers } from './handlers/standards-handler.js';
 import { WorkspaceMemoryService } from '../memory/workspace-memory-service.js';
 import { registerMemoryHandlers } from './handlers/memory-handler.js';
+import { registerFilesystemHandlers } from './handlers/fs-handler.js';
 
 import {
   registerOpenAiHandler,
@@ -131,6 +132,7 @@ export class LocalAiCoreServer {
     this.port = options.port ?? 9831;
     if (bindings.store?.mesh) {
       this.mesh = new MeshGateway(bindings.store.mesh, this.server, process.env.AGENTDOCK_MESH_ADMIN_TOKEN);
+      bindings.workspaceRouter?.setMeshGateway?.(this.mesh);
     }
     this.registerHandlers();
     this.wireEvents();
@@ -227,6 +229,7 @@ export class LocalAiCoreServer {
     if (memoryService) {
       registerMemoryHandlers(this.handlers, memoryService);
     }
+    registerFilesystemHandlers(this.handlers);
 
 
     const openAiReg: OpenAiStreamRegistration = {

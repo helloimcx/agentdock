@@ -60,6 +60,7 @@ export class LocalCoreAcpTransport {
       closeReason: null,
       promptPromise: null,
       launchPermissionMode: '',
+      meshNodeId: input.config.execution?.nodeId || null,
     };
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => this.handleStdout(session, chunk));
@@ -120,10 +121,15 @@ export class LocalCoreAcpTransport {
     const initResult = await this.request(session, 'initialize', {
       protocolVersion: 1,
       clientCapabilities: {
-        fs: {
-          readTextFile: false,
-          writeTextFile: false,
-        },
+        fs: session.meshNodeId
+          ? {
+              readTextFile: true,
+              writeTextFile: true,
+            }
+          : {
+              readTextFile: false,
+              writeTextFile: false,
+            },
         terminal: false,
       },
       clientInfo: {
