@@ -28,6 +28,12 @@ export type AgentLaunchResolverInput = {
   model: string;
 };
 
+type AgentMeshIntegration = {
+  context: 'acp-meta' | 'workspace-instructions';
+  filesystem: 'claudecode' | 'opencode' | 'pi' | 'unsupported';
+  unsupportedReason?: string;
+};
+
 export type AgentLaunchDefaults = {
   command?: string;
   args?: string[];
@@ -39,6 +45,7 @@ export type AgentRuntimeDefinition = {
   displayName: string;
   aliases?: string[];
   behavior: AgentAcpBehavior;
+  mesh: AgentMeshIntegration;
   detection?: AgentRuntimeDetectionDefinition;
   resolveModel?(input: AgentModelResolverInput): string;
   buildLaunchConfig?(input: AgentLaunchResolverInput): AgentLaunchDefaults;

@@ -2,10 +2,10 @@
 
 This document is the provider-neutral source of truth for AgentDock's system architecture, process boundaries, communication protocols, and data ownership.
 
-For visual diagrams and the interactive L1-L3 Architecture Matrix, see [docs/architecture/overview.md](docs/architecture/overview.md).
-For the architecture maintenance policy, see [docs/architecture/maintenance.md](docs/architecture/maintenance.md).
-For diagram provider settings, see [docs/architecture/diagram-provider.yaml](docs/architecture/diagram-provider.yaml).
-For semantic architecture change history, see [docs/architecture/changes/](docs/architecture/changes/).
+For visual diagrams and the interactive L1-L3 Architecture Matrix, see [the architecture overview](architecture/overview.md).
+For the architecture maintenance policy, see [the architecture maintenance policy](architecture/maintenance.md).
+For diagram provider settings, see [the diagram provider settings](architecture/diagram-provider.yaml).
+For semantic architecture change history, see [architecture changes](architecture/changes/).
 
 ---
 
@@ -116,6 +116,8 @@ Key capabilities:
 - **Local AI Core SQLite Database**: Primary persistent store for workspaces, thread histories, permission decisions, channel credentials, and scheduler jobs.
 - **Renderer Zustand Stores**: Ephemeral presentation and session state (active workspace, current thread, UI theme, connection status).
 - **Workspace Repositories**: Source code and local configuration files owned by the user in the host filesystem or mounted inside sandboxes.
+- **Mesh workspace execution**: The ACP agent runtime, runtime configuration, credentials, and agent-private memory remain on the Local AI Core host. Only operations explicitly routed by a verified runtime profile execute on the paired node inside its approved root. Mesh workspace file operations fail closed and do not fall back to the host shadow directory.
+- **Core workspace memory**: AgentDock workspace-memory Markdown and its SQLite index are Core-owned host data. For Mesh workspaces the Markdown root is under Core user data, separate from the remote shadow directory; legacy pages are copied on first access without deleting their old copies.
 
 ---
 
@@ -123,13 +125,13 @@ Key capabilities:
 
 The L1-L3 Architecture Matrix is defined in typed JSON specifications validated via `pnpm lint:arch` with Archify:
 
-- **L1 System Architecture**: [docs/architecture/system-architecture.json](docs/architecture/system-architecture.json)
-- **L2 ACP Session Flow (Sequence)**: [docs/architecture/acp-session-flow.sequence.json](docs/architecture/acp-session-flow.sequence.json)
-- **L2 Scheduled Delivery (Workflow)**: [docs/architecture/scheduled-delivery-workflow.json](docs/architecture/scheduled-delivery-workflow.json)
-- **L2 Skill Router (Workflow)**: [docs/architecture/skill-router.workflow.json](docs/architecture/skill-router.workflow.json)
-- **L3 Agent Run Lifecycle (State Machine)**: [docs/architecture/agent-run.lifecycle.json](docs/architecture/agent-run.lifecycle.json)
+- **L1 System Architecture**: [system-architecture.json](architecture/system-architecture.json)
+- **L2 ACP Session Flow (Sequence)**: [acp-session-flow.sequence.json](architecture/acp-session-flow.sequence.json)
+- **L2 Scheduled Delivery (Workflow)**: [scheduled-delivery-workflow.json](architecture/scheduled-delivery-workflow.json)
+- **L2 Skill Router (Workflow)**: [skill-router.workflow.json](architecture/skill-router.workflow.json)
+- **L3 Agent Run Lifecycle (State Machine)**: [agent-run.lifecycle.json](architecture/agent-run.lifecycle.json)
 
-For navigation across specs, dual-theme images, and interactive HTML canvases, visit [docs/architecture/overview.md](docs/architecture/overview.md).
+For navigation across specs, dual-theme images, and interactive HTML canvases, visit [the architecture overview](architecture/overview.md).
 
 ## AgentDock Mesh Device Plane
 
@@ -137,4 +139,4 @@ Local AI Core owns the Mesh device registry and remote tool request lifecycle in
 
 Mesh requests have their own identities and terminal history. They do not replace ACP sessions or alter workspace agent-task routing. Disconnect/restart marks unresolved operations interrupted without replay; cancellation and timeout may leave an uncertain remote outcome. Pairing is single-use and expiring, device credentials are retained only as hashes by Core, revocation invalidates active connections, and shell requires server and node opt-in. See [Mesh boundaries and usage](architecture/mesh.md) and [the semantic change record](architecture/changes/2026-10-03-agentdock-mesh.md).
 
-The README and overview use the configured Mermaid fallback. The Archify JSON candidate includes the Device Plane, but showcase validation and export replacement are blocked by the absent CLI. Existing Archify image and interactive exports are retained as pre-Mesh historical artifacts.
+The README and overview use the configured Mermaid fallback. The Archify system-architecture specification includes the Device Plane. The host/target execution and file-routing contract is detailed in [Mesh boundaries and usage](architecture/mesh.md), with the runtime support matrix in [Mesh runtime compatibility](architecture/mesh-runtime-compatibility.md).

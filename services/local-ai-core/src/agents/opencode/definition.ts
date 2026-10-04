@@ -6,6 +6,7 @@ export const opencodeAgentDefinition: AgentRuntimeDefinition = {
   agentType: 'opencode',
   displayName: 'OpenCode',
   behavior: opencodeAcpBehavior,
+  mesh: { context: 'workspace-instructions', filesystem: 'opencode' },
   detection: {
     commandCandidates: ['opencode'],
     versionArgs: ['--version'],

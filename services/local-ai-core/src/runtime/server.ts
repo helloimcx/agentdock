@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { parseLocalAiCoreRoute, type LocalAiCoreRoute } from './server-routes.js';
 import { setCorsHeaders, jsonError, createSseEvent, type RouteHandler } from './server-helpers.js';
 import type {
@@ -217,7 +219,20 @@ export class LocalAiCoreServer {
       ? new WorkspaceMemoryService({
           store: b.store.workspaceMemory,
           getWorkspacePath: async (workspaceId: string) => {
+            const project = await b.workspaceRouter.getWorkspaceProject(workspaceId);
+            const deviceId = String(project?.device_id || project?.agent?.options?.device_id || '').trim();
+            if (deviceId.startsWith('node:')) {
+              const namespace = createHash('sha256').update(workspaceId).digest('hex');
+              return join(b.store.userDataPath, 'workspace-memory', namespace);
+            }
             return b.workspaceRouter.resolveWorkspacePath(workspaceId);
+          },
+          getLegacyWorkspacePath: async (workspaceId: string) => {
+            const project = await b.workspaceRouter.getWorkspaceProject(workspaceId);
+            const deviceId = String(project?.device_id || project?.agent?.options?.device_id || '').trim();
+            return deviceId.startsWith('node:')
+              ? b.workspaceRouter.resolveWorkspacePath(workspaceId)
+              : undefined;
           },
         })
       : undefined);

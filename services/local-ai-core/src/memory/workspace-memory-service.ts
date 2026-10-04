@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { atomicWriteFileSync } from '../kernel/atomic-write.js';
 import type {
@@ -21,6 +21,7 @@ export class MemoryPathError extends Error {
 export interface WorkspaceMemoryServiceOptions {
   store: LocalCoreWorkspaceMemoryStore;
   getWorkspacePath: (workspaceId: string) => Promise<string | undefined> | string | undefined;
+  getLegacyWorkspacePath?: (workspaceId: string) => Promise<string | undefined> | string | undefined;
 }
 
 export function serializeMemoryMarkdown(page: {
@@ -170,6 +171,27 @@ function assertRealPagePath(wsDir: string, category: string, slug: string, fileP
   }
 }
 
+function resolveLegacyMemoryRoot(legacyWorkspace: string, memoryRoot: string): string | null {
+  const legacyRoot = resolveMemoryRoot(legacyWorkspace);
+  if (resolve(legacyRoot) === resolve(memoryRoot)) return null;
+  const entry = lstatSync(legacyRoot, { throwIfNoEntry: false });
+  return entry?.isDirectory() && !entry.isSymbolicLink() ? legacyRoot : null;
+}
+
+function copyLegacyMemoryCategory(legacyRoot: string, memoryRoot: string, category: string): void {
+  const sourceDir = join(legacyRoot, category);
+  const sourceEntry = lstatSync(sourceDir, { throwIfNoEntry: false });
+  if (!sourceEntry?.isDirectory() || sourceEntry.isSymbolicLink()) return;
+  const targetDir = join(memoryRoot, category);
+  mkdirSync(targetDir, { recursive: true });
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    if (!entry.isFile() || entry.isSymbolicLink() || !entry.name.endsWith('.md')) continue;
+    const source = join(sourceDir, entry.name);
+    const target = join(targetDir, entry.name);
+    if (!existsSync(target)) copyFileSync(source, target);
+  }
+}
+
 export class WorkspaceMemoryService {
   constructor(private readonly options: WorkspaceMemoryServiceOptions) {}
 
@@ -185,6 +207,7 @@ export class WorkspaceMemoryService {
     const wsDir = await this.getWorkspaceDir(workspaceId);
     const memoryRoot = resolveMemoryRoot(wsDir);
     rejectSymlinkDir(memoryRoot, memoryRoot);
+    await this.migrateLegacyMemory(workspaceId, memoryRoot);
     for (const cat of MEMORY_CATEGORIES) {
       mkdirSync(join(memoryRoot, cat), { recursive: true });
     }
@@ -192,6 +215,17 @@ export class WorkspaceMemoryService {
       rejectSymlinkDir(join(memoryRoot, cat), cat);
     }
     return memoryRoot;
+  }
+
+  private async migrateLegacyMemory(workspaceId: string, memoryRoot: string): Promise<void> {
+    const legacyWorkspace = await this.options.getLegacyWorkspacePath?.(workspaceId);
+    if (!legacyWorkspace) return;
+    const legacyRoot = resolveLegacyMemoryRoot(legacyWorkspace, memoryRoot);
+    if (!legacyRoot) return;
+    // Mesh memory used to live under the host shadow workspace. Copy only
+    // regular Markdown files into Core-owned storage, preserving the old copy
+    // until the migration is verified and avoiding overwriting newer pages.
+    for (const category of MEMORY_CATEGORIES) copyLegacyMemoryCategory(legacyRoot, memoryRoot, category);
   }
 
   async writePage(workspaceId: string, input: MemoryPageWriteInput): Promise<MemoryPage> {
@@ -368,5 +402,3 @@ export class WorkspaceMemoryService {
     return { synced: added + updated, deleted, total };
   }
 }
-
-

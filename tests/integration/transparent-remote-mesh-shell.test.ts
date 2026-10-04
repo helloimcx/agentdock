@@ -11,7 +11,7 @@ import {
   parseShellArgv,
   executeMeshShell,
 } from '../../services/local-ai-core/src/execution/remote-mesh/agentdock-mesh-shell.js';
-import { readFileSync, unlinkSync, existsSync } from 'node:fs';
+import { unlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -39,8 +39,10 @@ test('device-environment generates dynamic CLAUDE.md and system prompts', () => 
     platform: 'linux',
   });
   assert.ok(claudeMd.includes('Raspberry-Pi-5'));
-  assert.ok(claudeMd.includes('Platform: linux'));
-  assert.ok(claudeMd.includes('There is no need for ADB'));
+  assert.ok(claudeMd.includes('agent process'));
+  assert.ok(claudeMd.includes('approved root'));
+  assert.ok(claudeMd.includes('Never retry against the host workspace'));
+  assert.ok(!claudeMd.includes('operating directly on a remote device'));
 
   const prompt = buildDeviceSystemPrompt({
     label: 'Office-MacBook',
@@ -48,6 +50,9 @@ test('device-environment generates dynamic CLAUDE.md and system prompts', () => 
   });
   assert.ok(prompt.includes('Office-MacBook'));
   assert.ok(prompt.includes('darwin'));
+  assert.ok(prompt.includes('AgentDock host'));
+  assert.ok(prompt.includes('runtime-local file tool'));
+  assert.ok(prompt.includes('do not fall back'));
   assert.ok(!prompt.includes('Xiaomi'));
 });
 
@@ -61,6 +66,20 @@ test('parseShellArgv handles --version and SNAPSHOT_FILE', () => {
     command: '',
     isSnapshot: true,
   });
+});
+
+test('Mesh shell ignores Claude host snapshot bootstrap without executing its command text', async () => {
+  const hostMarker = resolve(tmpdir(), `mesh-host-snapshot-${Date.now()}`);
+  try {
+    const exitCode = await executeMeshShell([
+      'node', 'agentdock-mesh-shell.js', '-c', '-l',
+      `SNAPSHOT_FILE=${hostMarker} source ~/.bashrc; touch ${hostMarker}`,
+    ], {});
+    assert.equal(exitCode, 0);
+    assert.equal(existsSync(hostMarker), false);
+  } finally {
+    if (existsSync(hostMarker)) unlinkSync(hostMarker);
+  }
 });
 
 test('extractCommandFromArgv and parseShellArgv unwraps Claude Code eval and pwd wrapping', () => {
@@ -207,7 +226,7 @@ test('executeMeshShell returns non-zero when remote execution times out or fails
   }
 });
 
-test('executeMeshShell handles Claude Code wrapped command and writes local cwdFile', async () => {
+test('executeMeshShell routes Claude Code command and never writes its cwd marker on the host', async () => {
   let receivedBody: any = null;
   const testCwdFile = resolve(tmpdir(), `test-claude-cwd-${Date.now()}`);
 
@@ -262,9 +281,8 @@ test('executeMeshShell handles Claude Code wrapped command and writes local cwdF
       arguments: ['-c', 'df -h /storage/emulated'],
     });
 
-    // Verified: the local cwd file expected by Claude Code was created on the host!
-    assert.ok(existsSync(testCwdFile));
-    assert.equal(readFileSync(testCwdFile, 'utf8'), process.cwd());
+    // The cwd marker is host-local runtime state; Mesh must not write to its path.
+    assert.equal(existsSync(testCwdFile), false);
   } finally {
     if (existsSync(testCwdFile)) {
       unlinkSync(testCwdFile);
@@ -272,4 +290,3 @@ test('executeMeshShell handles Claude Code wrapped command and writes local cwdF
     server.close();
   }
 });
-
