@@ -131,20 +131,16 @@ public class HttpServerBridge {
             String responseJson;
 
             if ("/health".equals(path) || "/api/health".equals(path)) {
-                responseJson = "{\"ok\":true,\"version\":\"1.0.0\"}";
-            } else if ("/api/status".equals(path) || "/status".equals(path)) {
-                responseJson = service != null ? service.handleStatus() : "{\"ok\":false,\"error\":\"Service not connected\"}";
-            } else if ("/api/dump".equals(path) || "/dump".equals(path)) {
-                boolean interactiveOnly = uri.contains("interactiveOnly=true");
-                responseJson = service != null ? service.handleDump(interactiveOnly) : "{\"ok\":false,\"error\":\"Service not connected\"}";
-            } else if (("/api/click".equals(path) || "/click".equals(path)) && "POST".equals(method)) {
-                responseJson = service != null ? service.handleClick(body) : "{\"ok\":false,\"error\":\"Service not connected\"}";
-            } else if (("/api/input".equals(path) || "/input".equals(path)) && "POST".equals(method)) {
-                responseJson = service != null ? service.handleInput(body) : "{\"ok\":false,\"error\":\"Service not connected\"}";
-            } else if (("/api/scroll".equals(path) || "/scroll".equals(path)) && "POST".equals(method)) {
-                responseJson = service != null ? service.handleScroll(body) : "{\"ok\":false,\"error\":\"Service not connected\"}";
-            } else if (("/api/action".equals(path) || "/action".equals(path)) && "POST".equals(method)) {
-                responseJson = service != null ? service.handleAction(body) : "{\"ok\":false,\"error\":\"Service not connected\"}";
+                responseJson = "{\"ok\":true,\"version\":\"1.1.0\"}";
+            } else if (("/api/screen".equals(path) && ("GET".equals(method) || "POST".equals(method)))
+                    || "/api/status".equals(path) || "/status".equals(path)
+                    || "/api/dump".equals(path) || "/dump".equals(path)
+                    || ("POST".equals(method) && (
+                        "/api/click".equals(path) || "/click".equals(path)
+                        || "/api/input".equals(path) || "/input".equals(path)
+                        || "/api/scroll".equals(path) || "/scroll".equals(path)
+                        || "/api/action".equals(path) || "/action".equals(path)))) {
+                responseJson = service.handleRequest(method, path, uri, body);
             } else {
                 statusCode = 404;
                 responseJson = "{\"ok\":false,\"error\":\"Not Found\"}";

@@ -7,6 +7,12 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.os.Handler;
+import android.os.Looper;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import android.content.Intent;
 import android.graphics.Path;
 import android.graphics.Rect;
@@ -22,20 +28,30 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public class AgentDockAccessibilityService extends AccessibilityService {
     private static final String TAG = "AgentDockA11y";
-    public static AgentDockAccessibilityService instance = null;
+    public static volatile AgentDockAccessibilityService instance = null;
 
     private String lastPackage = "";
     private String lastActivity = "";
     private PowerManager.WakeLock wakeLock = null;
+    private ScreenController screenController;
+    private boolean receiverRegistered;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final BroadcastReceiver screenOffReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (screenController != null) screenController.release();
+        }
+    };
 
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
+        screenController = new ScreenController(this);
+        registerReceiver(screenOffReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+        receiverRegistered = true;
         instance = this;
         startForegroundNotification();
         acquireWakeLock();
@@ -45,7 +61,14 @@ public class AgentDockAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        instance = null;
         HttpServerBridge.stop();
+        if (receiverRegistered) {
+            unregisterReceiver(screenOffReceiver);
+            receiverRegistered = false;
+        }
+        if (screenController != null) screenController.release();
+        screenController = null;
         releaseWakeLock();
         try { stopForeground(true); } catch (Throwable ignored) {}
         instance = null;
@@ -123,10 +146,52 @@ public class AgentDockAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
+        if (screenController != null) screenController.release();
         Log.w(TAG, "AgentDock Accessibility Service Interrupted");
     }
 
-    public static class NodeItem {
+    /** HTTP workers marshal device/window effects and UI guards onto one serial thread. */
+    public String handleRequest(String method, String path, String uri, String body) {
+        return onMainThread(() -> handleRequestOnMain(method, path, uri, body));
+    }
+
+    private String onMainThread(java.util.concurrent.Callable<String> action) {
+        FutureTask<String> task = new FutureTask<>(action);
+        if (Looper.myLooper() == Looper.getMainLooper()) task.run();
+        else mainHandler.post(task);
+        try { return task.get(3, TimeUnit.SECONDS); }
+        catch (Exception error) {
+            task.cancel(false);
+            mainHandler.removeCallbacks(task);
+            return "{\"ok\":false,\"code\":\"BRIDGE_TIMEOUT\",\"error\":\"Device main thread unavailable\"}";
+        }
+    }
+
+    private String handleRequestOnMain(String method, String path, String uri, String body) {
+        if (instance != this || screenController == null) {
+            return "{\"ok\":false,\"error\":\"Service not connected\"}";
+        }
+        if ("/api/screen".equals(path)) return screenController.handle(body, "POST".equals(method));
+        if ("/api/status".equals(path) || "/status".equals(path)) return handleStatus();
+        String blocked = screenController.requireUnlocked();
+        if (blocked != null) return blocked;
+        if ("/api/dump".equals(path) || "/dump".equals(path)) return handleDump(!uri.contains("interactiveOnly=false"));
+        if ("/api/click".equals(path) || "/click".equals(path)) return handleClick(body);
+        if ("/api/input".equals(path) || "/input".equals(path)) return handleInput(body);
+        if ("/api/scroll".equals(path) || "/scroll".equals(path)) return handleScroll(body);
+        return handleAction(body);
+    }
+
+    public String releaseScreen() {
+        return onMainThread(() -> {
+            if (screenController != null) screenController.release();
+            return screenController == null ? "{\"ok\":false}" : screenController.status().toString();
+        });
+    }
+
+    public String screenStatus() { return handleRequest("GET", "/api/screen", "/api/screen", ""); }
+
+    public static class NodeItem implements NodeCatalog.Item {
         public AccessibilityNodeInfo node;
         public int index;
         public String text = "";
@@ -137,13 +202,23 @@ public class AgentDockAccessibilityService extends AccessibilityService {
         public boolean clickable;
         public boolean editable;
         public boolean scrollable;
+        public int top() { return bounds.top; }
+        public int left() { return bounds.left; }
+        public boolean interactive() { return clickable || editable || scrollable || !text.isEmpty() || !desc.isEmpty(); }
+        public void index(int value) { index = value; }
+    }
+
+    private List<NodeItem> orderedNodes(AccessibilityNodeInfo root) {
+        List<NodeItem> items = new ArrayList<>();
+        collectNodes(root, items, false, 0);
+        return NodeCatalog.ordered(items);
     }
 
     public String handleStatus() {
         try {
             JSONObject res = new JSONObject();
             res.put("ok", true);
-            res.put("version", "1.0.0");
+            res.put("version", "1.1.0");
             res.put("serviceEnabled", true);
             res.put("currentPackage", lastPackage);
             res.put("currentActivity", lastActivity);
@@ -164,19 +239,7 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                 return "{\"ok\":false,\"error\":\"No active window found (screen may be locked or off)\"}";
             }
 
-            List<NodeItem> items = new ArrayList<>();
-            collectNodes(root, items, interactiveOnly, 0);
-
-            // Spatial Reading Order Line Bucketing
-            int bucketSize = 40; // px
-            Collections.sort(items, (a, b) -> {
-                int bucketA = a.bounds.top / bucketSize;
-                int bucketB = b.bounds.top / bucketSize;
-                if (bucketA != bucketB) {
-                    return Integer.compare(bucketA, bucketB);
-                }
-                return Integer.compare(a.bounds.left, b.bounds.left);
-            });
+            List<NodeItem> items = NodeCatalog.visible(orderedNodes(root), interactiveOnly);
 
             JSONObject rootObj = new JSONObject();
             rootObj.put("ok", true);
@@ -188,9 +251,7 @@ public class AgentDockAccessibilityService extends AccessibilityService {
             rootObj.put("count", items.size());
 
             JSONArray array = new JSONArray();
-            int idx = 1;
             for (NodeItem item : items) {
-                item.index = idx++;
                 JSONObject el = new JSONObject();
                 el.put("index", item.index);
                 el.put("text", item.text);
@@ -275,6 +336,7 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                 int x = pt.getInt(0);
                 int y = pt.getInt(1);
                 boolean success = dispatchTap(x, y);
+                if (success && screenController != null) screenController.showTarget(x, y, false);
                 return "{\"ok\":" + success + ",\"method\":\"gesture_tap\",\"point\":[" + x + "," + y + "]}";
             }
 
@@ -285,20 +347,11 @@ public class AgentDockAccessibilityService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return "{\"ok\":false,\"error\":\"No active window\"}";
 
-            List<NodeItem> items = new ArrayList<>();
-            collectNodes(root, items, false, 0);
-
-            int bucketSize = 40;
-            Collections.sort(items, (a, b) -> {
-                int bucketA = a.bounds.top / bucketSize;
-                int bucketB = b.bounds.top / bucketSize;
-                if (bucketA != bucketB) return Integer.compare(bucketA, bucketB);
-                return Integer.compare(a.bounds.left, b.bounds.left);
-            });
+            List<NodeItem> items = orderedNodes(root);
 
             NodeItem matched = null;
             if (targetIndex > 0 && targetIndex <= items.size()) {
-                matched = items.get(targetIndex - 1);
+                matched = NodeCatalog.byIndex(items, targetIndex);
             } else if (!targetText.isEmpty()) {
                 for (NodeItem item : items) {
                     if (item.text.contains(targetText) || item.desc.contains(targetText)) {
@@ -327,6 +380,8 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                 method = "gesture_tap_fallback";
             }
 
+            if (performed && screenController != null) screenController.showTarget(
+                matched.bounds.centerX(), matched.bounds.centerY(), "action_click".equals(method));
             JSONObject res = new JSONObject();
             res.put("ok", performed);
             res.put("method", method);
@@ -353,20 +408,17 @@ public class AgentDockAccessibilityService extends AccessibilityService {
 
             AccessibilityNodeInfo targetNode = null;
             if (targetIndex > 0) {
-                List<NodeItem> items = new ArrayList<>();
-                collectNodes(root, items, false, 0);
-                int bucketSize = 40;
-                Collections.sort(items, (a, b) -> {
-                    int bucketA = a.bounds.top / bucketSize;
-                    int bucketB = b.bounds.top / bucketSize;
-                    if (bucketA != bucketB) return Integer.compare(bucketA, bucketB);
-                    return Integer.compare(a.bounds.left, b.bounds.left);
-                });
+                List<NodeItem> items = orderedNodes(root);
+
                 if (targetIndex <= items.size()) {
-                    targetNode = items.get(targetIndex - 1).node;
+                    NodeItem target = NodeCatalog.byIndex(items, targetIndex);
+                    if (target != null) targetNode = target.node;
                 }
             }
 
+            if (json.has("index") && (targetNode == null || !targetNode.isEditable())) {
+                return "{\"ok\":false,\"error\":\"Index does not select an editable element; dump the screen again\"}";
+            }
             if (targetNode == null) {
                 targetNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
             }

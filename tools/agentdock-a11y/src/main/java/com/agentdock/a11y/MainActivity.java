@@ -9,6 +9,7 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     private TextView statusText;
@@ -56,6 +57,17 @@ public class MainActivity extends Activity {
         });
         layout.addView(btnBattery);
 
+        Button release = new Button(this);
+        release.setText("释放当前亮屏保护");
+        release.setOnClickListener(v -> {
+            AgentDockAccessibilityService service = AgentDockAccessibilityService.instance;
+            if (service != null) {
+                service.releaseScreen();
+                statusText.setText("亮屏保护已释放，恢复正常息屏策略");
+            }
+        });
+        layout.addView(release);
+
         TextView tip = new TextView(this);
         tip.setText("\n说明:\n1. 点击按钮 1，在系统设置中找到「已下载的应用/服务」->「AgentDock 无障碍桥接服务」并开启\n2. 点击按钮 2，开启「自启动」并将「省电策略」设为「无限制」，避免息屏被冻结\n3. 服务启动后将自动监听 127.0.0.1:19832 端口供 mobile-ui 调用");
         tip.setTextSize(14);
@@ -69,7 +81,14 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (AgentDockAccessibilityService.instance != null) {
-            statusText.setText("🟢 状态: 无障碍桥接服务正在运行\n端口: 127.0.0.1:19832 就绪");
+            String holdStatus = "亮屏保护状态暂不可用";
+            try {
+                JSONObject screen = new JSONObject(AgentDockAccessibilityService.instance.screenStatus());
+                holdStatus = screen.optBoolean("keepAwake")
+                    ? "亮屏保护已启用，剩余 " + (screen.optLong("remainingMs") / 1000) + " 秒"
+                    : "亮屏保护未启用";
+            } catch (Exception ignored) {}
+            statusText.setText("🟢 状态: 无障碍桥接服务正在运行\n" + holdStatus);
             statusText.setTextColor(0xFF2E7D32);
         } else {
             statusText.setText("🔴 状态: 无障碍服务未开启\n请点击下方按钮开启权限");

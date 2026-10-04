@@ -1,5 +1,6 @@
 import type {
   UIStatusResult,
+  ScreenStatusResult,
   UIDumpResult,
   UIElement,
   ClickOptions,
@@ -13,6 +14,18 @@ import type {
   WaitOptions,
   MobileUiClientOptions,
 } from './types.js';
+
+class BridgeHttpError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+
+class ScreenControlError extends Error {}
+
+export function validateScreenDuration(durationSeconds: number): void {
+  if (!Number.isInteger(durationSeconds) || durationSeconds < 1 || durationSeconds > 600) {
+    throw new Error('Screen duration must be an integer between 1 and 600 seconds.');
+  }
+}
 
 export class MobileUiClient {
   private readonly baseUrl: string;
@@ -44,10 +57,14 @@ export class MobileUiClient {
         } catch {
           // Keep default message
         }
-        throw new Error(errMessage);
+        throw new BridgeHttpError(response.status, errMessage);
       }
 
-      return (await response.json()) as T;
+      const result = await response.json() as T;
+      if ((result as { code?: string })?.code === 'USER_UNLOCK_REQUIRED') {
+        throw new ScreenControlError((result as { error?: string }).error || 'Unlock the phone before continuing.');
+      }
+      return result;
     } catch (err) {
       if (err instanceof Error) {
         const msg = err.message.toLowerCase();
@@ -62,16 +79,85 @@ export class MobileUiClient {
     }
   }
 
+  async getScreenStatus(owner?: string): Promise<ScreenStatusResult> {
+    if (owner) return this.request<ScreenStatusResult>('/api/screen', { method: 'POST', body: JSON.stringify({ action: 'status', owner }) });
+    return this.request<ScreenStatusResult>('/api/screen');
+  }
+
+  async keepScreenAwake(durationSeconds = 120, owner?: string): Promise<ScreenStatusResult> {
+    return this.changeScreenHold('acquire', durationSeconds, owner);
+  }
+
+  async renewScreenAwake(durationSeconds = 120, owner?: string): Promise<ScreenStatusResult> {
+    return this.changeScreenHold('renew', durationSeconds, owner);
+  }
+
+  private async changeScreenHold(action: 'acquire' | 'renew', durationSeconds: number, owner?: string): Promise<ScreenStatusResult> {
+    validateScreenDuration(durationSeconds);
+    if (owner && action === 'acquire') await this.assertOwnedScreenProtocol(owner);
+    const result = await this.request<ScreenStatusResult>('/api/screen', {
+      method: 'POST', body: JSON.stringify({ action, durationSeconds, ...(owner ? { owner } : {}) }),
+    });
+    this.assertScreenHoldResponse(result, owner);
+    return result;
+  }
+
+  private async assertOwnedScreenProtocol(owner: string): Promise<void> {
+    const status = await this.getScreenStatus(owner);
+    if (status.screenProtocol !== 2 || status.owner !== owner) {
+      throw new ScreenControlError('OWNED_SCREEN_PROTOCOL_REQUIRED: Update the remote mobile-ui CLI and Android bridge before starting managed keep-awake.');
+    }
+  }
+
+  private assertScreenHoldResponse(result: ScreenStatusResult, owner?: string): void {
+    if (!result.ok || result.locked || result.interactive === false) {
+      throw new ScreenControlError(`${result.code || 'SCREEN_CONTROL_FAILED'}: ${result.error || 'Unlock the phone before continuing mobile automation.'}`);
+    }
+    const invalid = result.interactive !== true || result.locked !== false || result.keepAwake !== true
+      || (owner && (result.owner !== owner || !(typeof result.ownerRemainingMs === 'number' && result.ownerRemainingMs > 0)));
+    if (invalid) throw new ScreenControlError('Bridge returned an invalid screen hold response.');
+  }
+
+  async releaseScreen(owner?: string): Promise<ScreenStatusResult> {
+    const result = await this.request<ScreenStatusResult>('/api/screen', {
+      method: 'POST', body: JSON.stringify({ action: 'release', ...(owner ? { owner } : {}) }),
+    });
+    if (!result.ok || (owner ? result.owner !== owner || result.ownerRemainingMs !== 0 : result.keepAwake !== false && result.ownerRemainingMs !== 0)) {
+      throw new ScreenControlError(result.error || 'Failed to release screen hold.');
+    }
+    return result;
+  }
+
+  private async prepareScreen(): Promise<void> {
+    try {
+      const result = await this.getScreenStatus();
+      if (!result.ok || result.interactive !== true || result.locked !== false) {
+        throw new ScreenControlError(result.error || 'Unlock the phone before continuing mobile automation.');
+      }
+    }
+    catch (error) {
+      if (error instanceof BridgeHttpError && error.status === 404) {
+        console.warn('[mobile-ui] Screen keep-awake is unavailable on this bridge; update the APK.');
+        return;
+      }
+      throw error instanceof ScreenControlError ? error : new ScreenControlError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   async getStatus(): Promise<UIStatusResult> {
     return this.request<UIStatusResult>('/api/status');
   }
 
   async dump(options?: { interactiveOnly?: boolean }): Promise<UIDumpResult> {
+    await this.prepareScreen();
     const interactive = options?.interactiveOnly !== false;
     return this.request<UIDumpResult>(`/api/dump?interactiveOnly=${interactive}`);
   }
 
   async click(options: ClickOptions): Promise<ClickResult> {
+    await this.prepareScreen();
     return this.request<ClickResult>('/api/click', {
       method: 'POST',
       body: JSON.stringify(options),
@@ -79,6 +165,7 @@ export class MobileUiClient {
   }
 
   async input(options: InputOptions): Promise<InputResult> {
+    await this.prepareScreen();
     return this.request<InputResult>('/api/input', {
       method: 'POST',
       body: JSON.stringify({
@@ -90,6 +177,7 @@ export class MobileUiClient {
   }
 
   async scroll(options: ScrollOptions): Promise<ScrollResult> {
+    await this.prepareScreen();
     return this.request<ScrollResult>('/api/scroll', {
       method: 'POST',
       body: JSON.stringify(options),
@@ -97,6 +185,7 @@ export class MobileUiClient {
   }
 
   async action(options: ActionOptions): Promise<ActionResult> {
+    await this.prepareScreen();
     return this.request<ActionResult>('/api/action', {
       method: 'POST',
       body: JSON.stringify(options),
@@ -124,8 +213,9 @@ export class MobileUiClient {
         if (matched) {
           return matched;
         }
-      } catch {
-        // Retry until timeout
+      } catch (error) {
+        if (error instanceof ScreenControlError) throw error;
+        // Retry transient UI dump failures until timeout
       }
 
       await new Promise(r => setTimeout(r, interval));

@@ -34,9 +34,11 @@ flowchart LR
   mesh --> kernel
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
+  nodes -->|mobile-ui: loopback HTTP| a11y[Android accessibility bridge]
+  a11y -->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
-当前架构规范已通过 Archify L1 校验，提供交互式 [HTML 导出](docs/architecture/system-architecture.html) 与 Mermaid 视图。
+当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。
 
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 <!-- project-setup:architecture-diagram:end -->
@@ -57,6 +59,7 @@ flowchart LR
 
 ### 2026-10-04
 
+- Android 自动化随任务保持亮屏：Core 每 30 秒续约，任务结束或取消释放；手机展示状态光晕和点击目标反馈。已在小米 Android 16 真机验证亮屏和触控穿透；状态角标位置仍需优化，手动锁屏恢复尚未验证。
 - 发布 AgentDock 0.1.89：内置 Managed Skills 体系重构与远程移动端自动注入：
   - **消除跨层倒挂依赖**：内置技能从桌面外壳（`electron/managed-skills`）整体迁入 Local AI Core 服务域（`services/local-ai-core/src/skills/builtin/`），与内置插件体系（`plugins/builtin/`）实现结构对称；`ManagedSkillCatalog` 支持四级探测，纯服务端模式与容器部署可独立自包含加载全部技能。
   - **新增移动端自动化一等公民技能 (`mobile-automation`)**：新增 Android 原生应用导航与 UI 感知交互技能，支持 DeepLink 秒级跳转与免 ADB/免 Root 页面内精准元素点击、文本输入与手势。

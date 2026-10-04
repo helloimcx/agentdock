@@ -4,9 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}"
 BUILD_TOOLS="$ANDROID_SDK/build-tools/34.0.0"
 PLATFORM="$ANDROID_SDK/platforms/android-34"
+
+if ! javac -version >/dev/null 2>&1 || [ ! -f "$PLATFORM/android.jar" ] || [ ! -x "$BUILD_TOOLS/aapt2" ]; then
+  echo "[BLOCKED] APK build needs a working JDK and Android SDK platform/build-tools 34. Set ANDROID_HOME." >&2
+  exit 1
+fi
 
 AAPT2="$BUILD_TOOLS/aapt2"
 D8="$BUILD_TOOLS/d8"
