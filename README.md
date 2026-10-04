@@ -57,6 +57,9 @@ flowchart LR
 
 ### 2026-10-04
 
+- 发布 AgentDock 0.1.87：移动端快捷指令库（`mobile-apps`）与客户端脱离式自更新守护：
+  - **移动端快捷指令库（`mobile-apps`）**：内置微信、支付宝、高德地图、百度地图、美团、淘宝、京东、网易云音乐、Bilibili、抖音等 37 个移动端常用 App 高频操作与系统快捷设置，提供标准化语义 CLI（`mobile-apps open <app> [action] [options]`）与 `--dry-run` 调试；针对绑定的 Android/Termux 远程工作区动态注入详细指令提示与参数模板。
+  - **客户端脱离式自更新（`agentdock-node-update` / `run-agentdock.sh update`）**：提供基于脱离父进程的独立 supervisor 自更新机制，支持文件锁防并发与退出自清理，无缝重载客户端守护进程，彻底消除远程 Agent 更新客户端时连接掐断的问题。
 - 发布 AgentDock 0.1.86：修复 Claude Code 远程 Shell 代理环境感知与命令提取：
   - **Claude Code 强校验兼容与专用环境变量注入**：适配 `@anthropic-ai/claude-agent-sdk` 对 Shell 路径名称包含 `bash`/`zsh` 字符的强校验（提供 `mesh-bash` 与软链接），同时注入 `CLAUDE_CODE_SHELL` 并将影子目录 `.bin` 优先置于 `PATH` 前端，确保 Claude Code 100% 命中代理。
   - **复杂命令包装安全解构与本地环境快照**：精确解析 Claude Code 发起的 `eval '<CMD>' && pwd -P >| <CWD>` 嵌套包装，仅将核心目标命令转发至远程目标设备，并在本地自动同步 CWD 状态与委托执行 `SNAPSHOT_FILE=` 初始化，消除远程沙箱路径冲突。

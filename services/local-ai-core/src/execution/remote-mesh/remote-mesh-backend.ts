@@ -10,16 +10,16 @@ export function isRemoteMeshProject(project: AgentExecutionBackendInput['project
   return deviceId.startsWith('node:');
 }
 
-export function resolveMeshNodeId(project: AgentExecutionBackendInput['project']): string {
+function resolveMeshNodeId(project: AgentExecutionBackendInput['project']): string {
   const deviceId = String(project.device_id || project.agent?.options?.device_id || '').trim();
   return deviceId.startsWith('node:') ? deviceId : '';
 }
 
-export function remoteMeshShellScriptPath(): string {
+function remoteMeshShellScriptPath(): string {
   return resolve(__dirname, 'agentdock-mesh-shell.js');
 }
 
-export function lookupMeshNode(baseDir: string, nodeId: string): MeshNodeMetadata | null {
+function lookupMeshNode(baseDir: string, nodeId: string): MeshNodeMetadata | null {
   if (!baseDir || !nodeId) return null;
   try {
     const dbPath = resolve(baseDir, 'local-core.db');
@@ -38,6 +38,37 @@ export function lookupMeshNode(baseDir: string, nodeId: string): MeshNodeMetadat
     // Ignore database lookup error and fall back gracefully
   }
   return null;
+}
+
+function provisionToolWrappers(binDir: string, shellScriptPath: string, isWindowsHost: boolean): void {
+  const tools = ['mobile-apps', 'agentdock-node-update'];
+  for (const tool of tools) {
+    const shToolContent = [
+      '#!/bin/sh',
+      `CMD="${tool}"`,
+      'for arg in "$@"; do',
+      "  escaped=$(printf '%s\\n' \"$arg\" | sed \"s/'/'\\\\\\\\''/g\")",
+      '  CMD="$CMD \'$escaped\'"',
+      'done',
+      `exec "${process.execPath}" "${shellScriptPath}" -c "$CMD"`,
+      '',
+    ].join('\n');
+    const cmdToolContent = [
+      '@echo off',
+      `"${process.execPath}" "${shellScriptPath}" -c "${tool} %*"`,
+      '',
+    ].join('\r\n');
+    try {
+      const toolFile = resolve(binDir, tool);
+      writeFileSync(toolFile, shToolContent, { mode: 0o755, encoding: 'utf8' });
+      chmodSync(toolFile, 0o755);
+      if (isWindowsHost) {
+        writeFileSync(resolve(binDir, `${tool}.cmd`), cmdToolContent, { encoding: 'utf8' });
+      }
+    } catch {
+      // Best-effort
+    }
+  }
 }
 
 function provisionShadowDirectory(shadowDir: string, node: MeshNodeMetadata | { label?: string; platform?: string }): string {
@@ -79,6 +110,8 @@ function provisionShadowDirectory(shadowDir: string, node: MeshNodeMetadata | { 
   } catch {
     // Best-effort permission setting
   }
+
+  provisionToolWrappers(binDir, shellScriptPath, isWindowsHost);
 
   return shellWrapperPath;
 }

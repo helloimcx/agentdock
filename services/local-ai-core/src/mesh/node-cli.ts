@@ -6,8 +6,14 @@ import { createMeshClient } from '@cc/core-sdk/mesh';
 import { NodeAgent, enrollNode, meshUrl } from './node-agent.js';
 import { createPrivateJson, readPrivateJson, writePrivateJson } from './node-credentials.js';
 import { executionInput, text } from './mesh-validation.js';
+import { runMobileAppsCli } from './mobile-apps/cli.js';
+import { runNodeUpdateCli } from './mobile-apps/update-cli.js';
 
 function parseArgs(argv: string[]) {
+  const command = argv[0] || 'help';
+  if (['mobile', 'update'].includes(command)) {
+    return { command, flags: {} };
+  }
   const flags: Record<string, string> = {};
   for (let index = 1; index < argv.length; index++) {
     const key = argv[index];
@@ -19,13 +25,15 @@ function parseArgs(argv: string[]) {
       flags[key.slice(2)] = value;
     }
   }
-  return { command: argv[0] || 'help', flags };
+  return { command, flags };
 }
 
 const HELP = `AgentDock Mesh
 Usage:
   agentdock-node pair --server <https://host> --label <device> --output <pairing.json> [--allow-shell]
   agentdock-node connect --server <https://host> --root <directory> [--pairing-file <pairing.json>] [--state <credentials.json>] [--allow-shell]
+  agentdock-node mobile <command> [args...]
+  agentdock-node update
   agentdock-node list --server <https://host>
   agentdock-node execute --server <https://host> --node <id> --capability <name> --args <JSON> [--timeout <ms>]
   agentdock-node requests --server <https://host>
@@ -95,5 +103,7 @@ export async function runNodeCli(argv = process.argv.slice(2)) {
   const { command, flags } = parseArgs(argv);
   if (['help', '--help', '-h'].includes(command)) { console.log(HELP); return; }
   if (command === 'connect') { await connect(flags); return; }
+  if (command === 'update') { await runNodeUpdateCli(); return; }
+  if (command === 'mobile') { await runMobileAppsCli(argv.slice(1)); return; }
   console.log(JSON.stringify(await manage(command, flags), null, 2));
 }
