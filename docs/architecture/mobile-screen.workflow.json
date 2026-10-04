@@ -1,0 +1,122 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Android 自动化亮屏流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/mobile-screen.workflow.html"
+  },
+  "lanes": [
+    {
+      "id": "client",
+      "label": "远程工作区与 CLI"
+    },
+    {
+      "id": "device",
+      "label": "Android 无障碍桥接"
+    },
+    {
+      "id": "cleanup",
+      "label": "设备本地清理",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "command",
+    "guard",
+    "hold",
+    "operation"
+  ],
+  "nodes": [
+    {
+      "id": "command",
+      "lane": "client",
+      "col": 0,
+      "type": "backend",
+      "label": "mobile-ui 命令",
+      "sublabel": "远程终端代理",
+      "width": 170
+    },
+    {
+      "id": "guard",
+      "lane": "device",
+      "col": 1,
+      "type": "security",
+      "label": "检查屏幕与锁屏",
+      "sublabel": "主线程串行处理",
+      "width": 170
+    },
+    {
+      "id": "hold",
+      "lane": "device",
+      "col": 2,
+      "type": "backend",
+      "label": "续期亮屏窗口",
+      "sublabel": "默认 120 秒",
+      "width": 170
+    },
+    {
+      "id": "operation",
+      "lane": "device",
+      "col": 3,
+      "type": "backend",
+      "label": "执行页面操作",
+      "sublabel": "不抢焦点、不接收点击",
+      "width": 190
+    },
+    {
+      "id": "blocked",
+      "lane": "cleanup",
+      "col": 1,
+      "type": "security",
+      "label": "等待用户解锁",
+      "sublabel": "不自动唤醒或解锁",
+      "width": 170
+    },
+    {
+      "id": "release",
+      "lane": "cleanup",
+      "col": 2,
+      "type": "backend",
+      "label": "移除亮屏窗口",
+      "sublabel": "释放 / 到期 / 手动息屏",
+      "width": 190
+    }
+  ],
+  "edges": [
+    {
+      "id": "command-guard",
+      "from": "command",
+      "to": "guard",
+      "label": "POST /api/screen"
+    },
+    {
+      "id": "guard-hold",
+      "from": "guard",
+      "to": "hold",
+      "label": "屏幕已解锁"
+    },
+    {
+      "id": "hold-operation",
+      "from": "hold",
+      "to": "operation",
+      "label": "请求 UI 操作"
+    },
+    {
+      "id": "guard-blocked",
+      "from": "guard",
+      "to": "blocked",
+      "label": "锁屏或息屏",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "hold-release",
+      "from": "hold",
+      "to": "release",
+      "label": "清理事件",
+      "role": "branch"
+    }
+  ]
+}

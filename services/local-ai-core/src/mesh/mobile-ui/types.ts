@@ -92,3 +92,14 @@ export interface MobileUiClientOptions {
   baseUrl?: string;
   timeoutMs?: number;
 }
+
+/** Device-local screen state; remainingMs uses the device's monotonic clock. */
+export interface ScreenStatusResult {
+  ok: boolean;
+  interactive: boolean;
+  locked: boolean;
+  keepAwake: boolean;
+  remainingMs: number;
+  code?: string;
+  error?: string;
+}

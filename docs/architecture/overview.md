@@ -36,6 +36,8 @@ flowchart LR
   mesh --> kernel
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
+  nodes -->|mobile-ui: loopback HTTP| a11y[Android accessibility bridge]
+  a11y -->|Bounded screen lease| screen[Non-touchable keep-awake window]
 ```
 
 当前已通过 Archify L1 校验，提供交互式 [HTML 导出](system-architecture.html) 与 Mermaid 视图。
@@ -119,3 +121,7 @@ The renderer uses one of two local providers:
 - `local_core`: direct Local AI Core access is available
 
 Both providers target the same Local AI Core API surface.
+
+### Android Mobile Screen Lifecycle
+
+[L2 Android screen flow](mobile-screen.workflow.html) ([typed source](mobile-screen.workflow.json)) records device-local screen checks, bounded hold renewal and cleanup. It does not change the ACP run state machine, scheduler, skill router or Core persistence. [Change record](changes/2026-10-04-mobile-screen-awake.md) captures the additive loopback protocol and APK-source prerequisite.

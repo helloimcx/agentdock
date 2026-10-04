@@ -1,4 +1,4 @@
-import { MobileUiClient } from './client.js';
+import { MobileUiClient, validateScreenDuration } from './client.js';
 import { formatElementsCompact } from './formatter.js';
 import type { ClickOptions, InputOptions, ScrollOptions, ActionOptions } from './types.js';
 
@@ -168,8 +168,31 @@ async function handleWaitCommand(client: MobileUiClient, text: string, flags: Re
   console.log(`Found element: [${found.index}] "${found.text || found.desc || found.id}"`);
 }
 
+async function handleScreenCommand(
+  client: MobileUiClient, action: string | undefined,
+  flags: Record<string, string | boolean>, dryRun: boolean,
+): Promise<void> {
+  const command = action || 'status';
+  if (!['status', 'keep-awake', 'release'].includes(command)) {
+    throw new Error('Usage: mobile-ui screen status|keep-awake|release [--duration=<1..600>]');
+  }
+  const duration = flags.duration === undefined ? 120 : Number(flags.duration);
+  if (command === 'keep-awake') {
+    if (typeof flags.duration === 'boolean') throw new Error('Screen duration requires a number.');
+    validateScreenDuration(duration);
+  }
+  if (dryRun) {
+    console.log(`[dry-run] ${command === 'status' ? 'GET' : 'POST'} /api/screen ${command}`);
+    return;
+  }
+  const result = command === 'status' ? await client.getScreenStatus()
+    : command === 'release' ? await client.releaseScreen() : await client.keepScreenAwake(duration);
+  console.log(JSON.stringify(result));
+}
+
 const HELP_TEXT = `AgentDock Mobile UI Bridge
 Usage:
+  mobile-ui screen status|keep-awake|release [--duration=<1..600>] [--dry-run]
   mobile-ui status [--json]
   mobile-ui dump [--json] [--dry-run]
   mobile-ui click <index | "text" | x,y> [--id=<viewId>] [--dry-run]
@@ -194,6 +217,9 @@ export async function runMobileUiCli(argv = process.argv.slice(2)): Promise<void
   });
 
   switch (subcommand) {
+    case 'screen':
+      await handleScreenCommand(client, positional[0], flags, dryRun);
+      break;
     case 'status':
       await handleStatusCommand(client, flags, dryRun);
       break;
