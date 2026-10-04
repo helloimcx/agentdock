@@ -38,7 +38,7 @@ flowchart LR
 
 当前架构规范已通过 Archify L1 校验，提供交互式 [HTML 导出](docs/architecture/system-architecture.html) 与 Mermaid 视图。
 
-[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [架构变更历史](docs/architecture/changes/)
+[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
