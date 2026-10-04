@@ -1,4 +1,7 @@
-import type { DesktopBridgeEvent, LocalCoreEvent } from '@cc/superai-contracts';
+import type { CoreEventSource } from './event-source.js';
+export type { CoreEventSource } from './event-source.js';
+import { createThreadRuntimeWatch } from './thread-runtime-watch.js';
+import type { DesktopBridgeEvent, LocalCoreEvent, ThreadExecutionSnapshot } from '@cc/superai-contracts';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
 
@@ -28,12 +31,7 @@ export const LOCAL_CORE_EVENT_NAMES = [
   'stream.updated',
 ] as const;
 
-export interface CoreEventSource {
-  onerror: ((...args: any[]) => void) | null;
-  onopen?: ((...args: any[]) => void) | null;
-  addEventListener(type: string, listener: (...args: any[]) => void): void;
-  close(): void;
-}
+
 
 type JsonEnvelope<T> = {
   ok: boolean;
@@ -240,7 +238,7 @@ function isAutomationRun(value: unknown) {
   return isRecord(value) && hasString(value, 'id') && hasString(value, 'automationId') && hasString(value, 'evaluationId') &&
     isEnumString(value, 'status', ['queued', 'running', 'succeeded', 'failed', 'skipped']) &&
     isEnumString(value, 'executionMode', ['same-thread', 'side-thread']) && hasString(value, 'createdAt') &&
-    hasOptionalEnumString(value, 'deliveryStatus', ['pending', 'delivering', 'delivered', 'failed']) &&
+    hasOptionalEnumString(value, 'deliveryStatus', ['pending', 'delivering', 'delivered', 'failed', 'unknown', 'cancelled']) &&
     hasOptionalString(value, 'threadId') && hasOptionalString(value, 'acpRunId') && hasOptionalString(value, 'error');
 }
 
@@ -635,6 +633,14 @@ export function createCoreClient(options: CoreClientOptions) {
   return {
     baseUrl,
     request,
+    watchThreadRuntime(threadId: string, listener: (snapshot: ThreadExecutionSnapshot) => void) {
+      const stop = createThreadRuntimeWatch({
+        url: `${baseUrl}/threads/${encodeURIComponent(threadId)}/runtime-watch`, threadId,
+        createSource: eventSourceFactory, scheduleReconnect, cancelReconnect, listener,
+      });
+      unsubscribeHandlers.add(stop);
+      return () => { unsubscribeHandlers.delete(stop); stop(); };
+    },
     async detect(timeoutMs = 350) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);

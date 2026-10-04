@@ -75,6 +75,10 @@ function queryDailySeries(db: DatabaseSync, whereClause: string, params: (string
 export class LocalCoreCostStore {
   constructor(private readonly db: DatabaseSync) {}
 
+  hasRunSource(runId: string, sourceId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM cost_events WHERE run_id = ? AND source_id = ? LIMIT 1').get(runId, sourceId));
+  }
+
   recordCostEvent(input: CostEventInput): CostEvent {
     const n = normalizeCostEventInput(input);
 
@@ -361,4 +365,3 @@ function buildCostFilterWhere(query: CostEventsQuery & CostSummaryQuery): { wher
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
   return { whereClause, params };
 }
-

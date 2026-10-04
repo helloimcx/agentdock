@@ -6,14 +6,18 @@ import {
   LOCALCORE_ACP_AGENT_TYPE,
   inferArtifactKind,
   getArtifactMimeType,
+  normalizeDesktopBridgeButtonOption,
+  normalizePermissionResponse,
 } from '@cc/superai-contracts';
 import { LocalCoreAcpStore } from './local-core-acp-store.js';
+import type { SubmissionStatus } from './store/submission-store.js';
 import type { EventBus } from '@cc/plugin-sdk';
 import type {
   AcpSessionState,
   LocalCoreProjectConfig,
   RunningPermissionRequest,
 } from '../router/workspace-router-types.js';
+import { ThreadSubmissionDispatcher, submissionBoundary, type SendThreadMessageOptions } from './thread-submission-dispatcher.js';
 import { LocalCoreAcpTransport } from './local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from './local-core-acp-turn-coordinator.js';
 import { AcpTraceProjector } from './local-core-acp-trace-projector.js';
@@ -26,20 +30,23 @@ import { DEFAULT_AGENT_MODE } from './local-core-slash-commands.js';
 import { stripObservedToolTranscriptsFromAssistantText } from './local-core-acp-progress.js';
 import { resolveAgentAcpBehavior } from '../agents/index.js';
 import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route.js';
-import { ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
+import { LOCAL_SLASH_COMMANDS, ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { createProviderCommandOptions } from '../thread/thread-command-service.js';
 import { distillSessionHandoff } from './session-handoff-distiller.js';
 
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
-import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
+import { LocalCoreAcpActions } from './local-core-acp-actions.js';
+import { AssistantPartialPersistence } from './assistant-partial-persistence.js';
+import { PiDurableHost } from '../agents/pi-durable/host.js';
+import type { DurableConfig, DurableView } from '../agents/pi-durable/protocol.js';
+import { LocalCorePiDurableWriteApprovals } from './local-core-pi-durable-write-approvals.js';
+import { sumDurableUsage, toDurableConfig } from '../agents/pi-durable/config.js';
 
 import type { CostService } from '../cost/cost-service.js';
 
-type SendThreadMessageOptions = {
-  permissionMode?: string;
-  runtimeEnv?: Record<string, string>;
-};
+export type { SendThreadMessageOptions } from './thread-submission-dispatcher.js';
+
 
 type LocalCoreAcpBackendOptions = {
   store: LocalCoreAcpStore;
@@ -64,8 +71,25 @@ export class LocalCoreAcpBackend {
   // session) so the choice survives session rebuilds; in-memory only, so a
   // Local AI Core restart asks once again.
   private readonly threadAllowAll = new Set<string>();
+  private readonly submissionDispatcher: ThreadSubmissionDispatcher;
+  private readonly piDurableHost: PiDurableHost;
+  private readonly durablePartialPersistence: AssistantPartialPersistence;
+  private readonly durableConfigs = new Map<string, DurableConfig>();
+  private readonly durableWriteApprovals: LocalCorePiDurableWriteApprovals;
+  private readonly actions: LocalCoreAcpActions;
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
+    this.durablePartialPersistence = new AssistantPartialPersistence((error) => options.log?.(`Pi Durable partial persistence failed: ${String(error)}`));
+    this.piDurableHost = new PiDurableHost({
+      userDataPath: options.store.userDataPath,
+      log: options.log,
+      onView: (view) => this.handlePiDurableView(view),
+      onWriteRequest: (request) => this.durableWriteApprovals.request(request),
+    });
+    this.durableWriteApprovals = new LocalCorePiDurableWriteApprovals({
+      store: options.store, host: this.piDurableHost, configs: this.durableConfigs,
+      emit: (event) => this.emitBridgeEvent(event), log: options.log,
+    });
     this.transport = new LocalCoreAcpTransport({
       log: options.log,
       onAgentRequest: (session, payload) => this.handleAgentRequest(session, payload),
@@ -99,6 +123,9 @@ export class LocalCoreAcpBackend {
     });
     this.turnCoordinator = new LocalCoreAcpTurnCoordinator({
       traceProjector,
+      saveAssistantPartial: (threadId, runId, messageId, content) => this.options.store.threadRuntime.savePartial(threadId, runId, messageId, content),
+      clearAssistantPartial: (threadId, runId) => this.options.store.threadRuntime.clearPartial(threadId, runId),
+      onPartialError: (error) => this.options.log?.(`Assistant partial persistence failed: ${String(error)}`),
       emitBridge: (event) => this.emitBridgeEvent(event),
       appendMessage: (threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
         this.options.store.appendMessage(threadId, role, content, kind, toolCall, bridgeKind, bridgeStatus);
@@ -141,7 +168,7 @@ export class LocalCoreAcpBackend {
             action: option.normalizedAction === 'deny' ? 'reject' : 'approve',
           })),
           requestedBy: 'agent',
-          metadata: { classification },
+          metadata: { classification, acpSessionEpoch: this.options.store.threadRuntime.epoch },
         });
         return approval.approvalId;
       },
@@ -170,7 +197,7 @@ export class LocalCoreAcpBackend {
         getThreadRow: (threadId) => this.options.store.getThreadRow(threadId),
         updateThreadAgentMode: (threadId, mode) => this.options.store.updateThreadAgentMode(threadId, mode),
         updateThreadAgentType: (threadId, agentType) => this.options.store.updateThreadAgentType(threadId, agentType),
-        getLatestRunForThread: (threadId) => this.options.store.getLatestRunForThread(threadId),
+        getLatestRunForThread: (threadId) => this.options.store.getActiveRunForThread(threadId) ?? this.options.store.getLatestRunForThread(threadId),
         createAuditEvent: (input) => {
           this.options.store.createAuditEvent(input);
         },
@@ -220,10 +247,26 @@ export class LocalCoreAcpBackend {
       },
       scheduler: options.scheduler,
     });
+    this.submissionDispatcher = new ThreadSubmissionDispatcher(this.options.store, (submission, config, options) => this.executeSubmission(submission, config, options), this.options.log);
+    this.actions = new LocalCoreAcpActions({
+      store: options.store,
+      sessions: this.sessionCoordinator,
+      transport: this.transport,
+      eventBus: options.eventBus,
+      threadAllowAll: this.threadAllowAll,
+      emitBridge: (event) => this.emitBridgeEvent(event),
+      resolveDurableWriteApproval: (input) => this.durableWriteApprovals.resolve(input),
+      sendThreadMessage: (threadId, content, config, actionOptions) => this.sendThreadMessage(threadId, content, config, actionOptions),
+    });
   }
 
-  close() {
+  async close() {
+    this.submissionDispatcher.close();
+    this.durableWriteApprovals.close();
+    this.durablePartialPersistence.close();
+    this.turnCoordinator.close();
     this.sessionCoordinator.closeAll();
+    await this.piDurableHost.close();
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
@@ -255,32 +298,123 @@ export class LocalCoreAcpBackend {
   }
 
   async sendThreadMessage(
-    threadId: string,
-    input: ThreadMessageInput,
-    config?: LocalCoreProjectConfig,
+    threadId: string, input: ThreadMessageInput, config?: LocalCoreProjectConfig,
     options: SendThreadMessageOptions = {},
-  ): Promise<{ runId: string }> {
-    if (!config) {
-      throw new Error('localcore-acp message send requires a workspace config.');
-    }
+  ) {
+    if (!config) throw new Error('localcore-acp message send requires a workspace config.');
     const row = this.options.store.getThreadRow(threadId);
-    if (!row) {
-      throw new Error(`Thread not found: ${threadId}`);
-    }
+    if (!row) throw new Error(`Thread not found: ${threadId}`);
     const message = normalizeThreadMessageInput(input);
     const content = message.displayText;
-    this.options.store.appendMessage(threadId, 'user', content, 'final');
-    this.options.eventBus.emit({
-      type: 'thread.message.accepted',
-      payload: {
-        threadId,
+    const isCommand = isLocalSubmissionCommand(content);
+    const admitted = this.options.store.submissions.admit({
+      threadId, requestId: options.requestId, operationKind: options.operationKind ?? 'message', runtimeType: row.agent_type,
+      identity: options.submissionIdentity ?? { input, permissionMode: options.permissionMode, runtimeEnv: options.runtimeEnv },
+      payload: { input: message, permissionMode: options.permissionMode, isCommand,
+        resumeOptions: { providerIdOverride: options.providerIdOverride, agentTypeOverride: options.agentTypeOverride, channelRoute: options.channelRoute },
+        requiresRuntimeEnv: Boolean(options.runtimeEnv && Object.keys(options.runtimeEnv).length),
+        boundaryFingerprint: submissionBoundary(config) },
+    }, (submission) => {
+      const runId = submission.runId;
+      const appended = this.options.store.appendMessageInTransaction(threadId, 'user', content, 'final');
+      if (isCommand) return { messageId: appended.id };
+      this.options.store.updateRun(runId, threadId, 'queued');
+      const task = this.options.store.createAgentTask({
         workspaceId: row.workspace_id,
-        role: 'user',
-        content,
-        kind: 'final',
-        source: 'user',
-      },
+        deviceId: 'local',
+        runtimeId: row.agent_type,
+        threadId,
+        runId,
+        title: content.trim().slice(0, 80) || row.title || 'Agent task',
+        prompt: content,
+        status: 'queued',
+        metadata: {
+          execution: config.execution || {
+            mode: config.sandbox?.enabled ? 'sandbox' : 'local',
+            transport: config.sandbox?.enabled ? `sandbox-${config.sandbox.transport}-stdio-proxy` : 'stdio',
+          },
+          ...(config.sandbox?.enabled
+            ? {
+                sandbox: {
+                  provider: config.sandbox.provider,
+                  image: config.sandbox.image,
+                  transport: config.sandbox.transport,
+                  acpPort: config.sandbox.acpPort,
+                  stateScope: config.sandbox.stateScope,
+                  stateMount: config.sandbox.stateMount || null,
+                },
+              }
+            : {}),
+        },
+      });
+      return { messageId: appended.id, taskId: task.taskId };
     });
+    let responseStatus = admitted.submission.status;
+    if (admitted.submission.status === 'pending') this.submissionDispatcher.remember(admitted.submission.id, config, options);
+    if (!admitted.deduplicated) {
+      this.options.eventBus.emit({ type: 'thread.message.accepted', payload: {
+        threadId, workspaceId: row.workspace_id, role: 'user', content, kind: 'final', source: 'user',
+      } });
+    }
+    if (isCommand && admitted.submission.status === 'pending' && this.options.store.submissions.claim(admitted.submission.id, true)) {
+      try {
+        await this.executeSubmission(admitted.submission, config, options);
+        this.options.store.submissions.finish(admitted.submission.id, 'completed', { runId: '' });
+        responseStatus = 'completed';
+      } catch (error) {
+        this.options.store.submissions.finish(admitted.submission.id, 'unknown', undefined, String(error));
+        responseStatus = 'unknown';
+        throw error;
+      } finally { this.submissionDispatcher.forget(admitted.submission.id); }
+    }
+    setImmediate(() => { void this.submissionDispatcher.drain(threadId).catch((error) => this.options.log?.(`submission dispatch failed: ${String(error)}`)); });
+    return { runId: isCommand ? '' : admitted.submission.runId, submissionId: admitted.submission.id,
+      status: responseStatus, deduplicated: admitted.deduplicated };
+  }
+
+  async resumePendingSubmissions(resolveConfig: (threadId: string, options?: SendThreadMessageOptions) => Promise<LocalCoreProjectConfig>) {
+    const interruptedDurable = this.options.store.submissions.listInterruptedDurable();
+    const durableActive = interruptedDurable.length > 0
+      || this.options.store.submissions.listPending().some((submission) => submission.runtimeType === 'pi-durable')
+      || this.options.store.submissions.listActive().some((submission) => submission.runtimeType === 'pi-durable');
+    if (durableActive) {
+      await this.preparePiDurableBindings(async (threadId) => toDurableConfig(await resolveConfig(threadId)),
+        [...new Set(interruptedDurable.map((submission) => submission.threadId))]);
+    }
+    return this.submissionDispatcher.resume(resolveConfig);
+  }
+
+  private handlePiDurableView(view: DurableView) {
+    const submission = view.coreSubmissionId ? this.options.store.submissions.get(view.coreSubmissionId) : undefined;
+    if (!submission || submission.threadId !== view.threadId || !['dispatching', 'running', 'pending'].includes(submission.status)) return;
+    const thread = this.options.store.getThreadRow(view.threadId);
+    if (!thread) return;
+    const messageId = `${submission.runId}-assistant`;
+    if (view.partial) {
+      this.durablePartialPersistence.schedule(view.threadId, () =>
+        this.options.store.threadRuntime.savePartial(view.threadId, submission.runId, messageId, view.partial));
+      const event: DesktopBridgeEvent = {
+        type: 'update_message', sessionKey: thread.bridge_session_key,
+        replyCtx: submission.runId, previewHandle: submission.runId, bridgeKind: 'assistant', content: view.partial,
+      };
+      this.options.eventBus.emit({ type: 'run.progress', payload: {
+        runId: submission.runId, threadId: view.threadId,
+        workspaceId: thread.workspace_id, stream: event,
+      } });
+      this.emitBridgeEvent(event);
+    }
+  }
+
+  private async executeSubmission(
+    submission: import('./store/submission-store.js').ThreadSubmission,
+    config: LocalCoreProjectConfig, options: SendThreadMessageOptions,
+  ) {
+    const threadId = submission.threadId;
+    const runId = submission.runId;
+    const row = this.options.store.getThreadRow(threadId);
+    if (!row) throw new Error(`Thread not found: ${threadId}`);
+    const message = (submission.payload as { input: ThreadMessageInput }).input;
+    const content = normalizeThreadMessageInput(message).displayText;
     const slashCommandResult = await this.slashCommands.execute({
       threadId,
       workspaceId: row.workspace_id,
@@ -291,7 +425,7 @@ export class LocalCoreAcpBackend {
     if (slashCommandResult.handled) {
       const activeThreadEffect = (slashCommandResult.effects || [])
         .find((effect) => effect.type === 'activate_thread');
-      this.options.store.appendMessage(threadId, 'assistant', slashCommandResult.displayText, 'final');
+      this.options.store.appendRunFinalMessage(runId, threadId, slashCommandResult.displayText);
       this.options.eventBus.emit({
         type: 'thread.message.accepted',
         payload: {
@@ -323,177 +457,40 @@ export class LocalCoreAcpBackend {
         type: 'typing_stop',
         sessionKey: row.bridge_session_key,
       });
-      return { runId: '' };
-    }
-    const runId = `run:${threadId}:${Date.now()}`;
-    this.options.runThreadMap.set(runId, threadId);
-    this.options.store.updateRun(runId, threadId, 'running');
-    this.options.store.createAgentTask({
-      workspaceId: row.workspace_id,
-      deviceId: 'local',
-      runtimeId: row.agent_type,
-      threadId,
-      runId,
-      title: content.trim().slice(0, 80) || row.title || 'Agent task',
-      prompt: content,
-      status: 'running',
-      metadata: {
-        execution: config.execution || {
-          mode: config.sandbox?.enabled ? 'sandbox' : 'local',
-          transport: config.sandbox?.enabled ? `sandbox-${config.sandbox.transport}-stdio-proxy` : 'stdio',
-        },
-        ...(config.sandbox?.enabled
-          ? {
-              sandbox: {
-                provider: config.sandbox.provider,
-                image: config.sandbox.image,
-                transport: config.sandbox.transport,
-                acpPort: config.sandbox.acpPort,
-                stateScope: config.sandbox.stateScope,
-                stateMount: config.sandbox.stateMount || null,
-              },
-            }
-          : {}),
-      },
-    });
-    this.options.eventBus.emit({
-      type: 'run.started',
-      payload: {
-        runId,
-        threadId,
-        workspaceId: row.workspace_id,
-        prompt: content,
-        sessionKey: row.bridge_session_key,
-      },
-    });
-    setImmediate(() => {
-      void this.runPrompt(threadId, runId, row.bridge_session_key, config, message, options).catch((error) => {
-        this.options.log?.(`localcore-acp prompt failed for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    });
-    return { runId };
-  }
-
-  async sendThreadAction(threadId: string, content: string, config?: LocalCoreProjectConfig) {
-    const session = this.sessionCoordinator.getSession(threadId);
-    const pendingPermission = session?.currentRunId
-      ? session.pendingPermissionByRun.get(session.currentRunId)
-      : undefined;
-    if (session && pendingPermission) {
-      return this.answerPendingPermission(session, pendingPermission, threadId, content);
-    }
-    // While allow-all is remembered no permission card is pending, so a deny-style
-    // reply lands here — treat it as the user-facing revoke switch.
-    if (this.threadAllowAll.has(threadId) && isThreadAllowAllRevokeIntent(content)) {
-      return this.revokeThreadAllowAll(threadId, content);
-    }
-    return this.sendThreadMessage(threadId, content, config);
-  }
-
-  private answerPendingPermission(
-    session: AcpSessionState,
-    pendingPermission: RunningPermissionRequest,
-    threadId: string,
-    content: string,
-  ): { runId: string } {
-    const action = String(content || '').trim().toLowerCase();
-    const matched = pendingPermission.options.find((option) => option.normalizedAction === action || option.optionId === action);
-    if (!matched) {
-      throw new Error(`Unknown permission option: ${content}`);
-    }
-    if (matched.normalizedAction === 'allow all') {
-      this.threadAllowAll.add(threadId);
-      this.postAssistantNotice(
-        threadId,
-        session.bridgeSessionKey,
-        '已记住本会话的“始终允许”：后续工具确认将自动通过，回复 deny / 拒绝 / 撤销 可恢复逐次确认。',
-        false,
-      );
-    } else if (matched.normalizedAction === 'deny') {
-      this.threadAllowAll.delete(threadId);
-    }
-    const accepted = this.transport.sendRaw(session, {
-      jsonrpc: '2.0',
-      id: pendingPermission.requestId,
-      result: {
-        outcome: {
-          outcome: 'selected',
-          optionId: matched.optionId,
-        },
-      },
-    });
-    if (!accepted) {
-      throw new Error(session.closeReason || 'ACP session is not writable');
-    }
-    if (pendingPermission.approvalId) {
-      this.options.store.resolveApprovalRequest(pendingPermission.approvalId, {
-        status: matched.normalizedAction === 'deny' ? 'rejected' : 'approved',
-        resolvedBy: 'local',
-        resolution: matched.name || matched.optionId,
-      });
-    }
-    const runId = session.currentRunId || '';
-    session.pendingPermissionByRun.delete(runId);
-    this.emitBridgeEvent({
-      type: 'typing_start',
-      sessionKey: session.bridgeSessionKey,
-      replyCtx: runId,
-    });
-    return { runId };
-  }
-
-  private revokeThreadAllowAll(threadId: string, content: string): { runId: string } {
-    this.threadAllowAll.delete(threadId);
-    const row = this.options.store.getThreadRow(threadId);
-    const reply = String(content || '').trim();
-    if (row && reply) {
-      this.options.store.appendMessage(threadId, 'user', reply, 'final');
-      this.options.eventBus.emit({
-        type: 'thread.message.accepted',
-        payload: {
-          threadId,
-          workspaceId: row.workspace_id,
-          role: 'user',
-          content: reply,
-          kind: 'final',
-          source: 'user',
-        },
-      });
-    }
-    this.postAssistantNotice(
-      threadId,
-      row?.bridge_session_key,
-      '已撤销本会话的“始终允许”，后续工具确认将重新逐次询问。',
-      true,
-    );
-    return { runId: '' };
-  }
-
-  private postAssistantNotice(threadId: string, bridgeSessionKey: string | null | undefined, text: string, withTypingStop: boolean) {
-    const row = this.options.store.getThreadRow(threadId);
-    if (!row) {
+      if (this.options.store.getRun(runId)) this.options.store.updateRun(runId, threadId, 'completed');
+      if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'completed' });
       return;
     }
-    this.options.store.appendMessage(threadId, 'assistant', text, 'final');
-    this.options.eventBus.emit({
-      type: 'thread.message.accepted',
-      payload: {
-        threadId,
-        workspaceId: row.workspace_id,
-        role: 'assistant',
-        content: text,
-        kind: 'final',
-        source: 'system',
-      },
-    });
-    const sessionKey = String(bridgeSessionKey || row.bridge_session_key || '');
-    this.emitBridgeEvent({ type: 'reply', sessionKey, content: text });
-    if (withTypingStop) {
-      this.emitBridgeEvent({ type: 'typing_stop', sessionKey });
-    }
+    this.options.runThreadMap.set(runId, threadId);
+    this.options.store.updateRun(runId, threadId, 'running');
+    this.options.store.submissions.finish(submission.id, 'running');
+    if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'running' });
+    this.options.eventBus.emit({ type: 'run.started', payload: {
+      runId, threadId, workspaceId: row.workspace_id, prompt: content, sessionKey: row.bridge_session_key,
+    } });
+    await this.runPrompt(threadId, runId, row.bridge_session_key, config, message, options);
+  }
+
+  async sendThreadAction(threadId: string, content: string, config?: LocalCoreProjectConfig, options: SendThreadMessageOptions = {}): Promise<{ runId: string; submissionId?: string; status?: SubmissionStatus; deduplicated?: boolean }> {
+    return this.actions.sendThreadAction(threadId, content, config, options);
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
+    const submission = this.options.store.submissions.byRun(runId);
+    if (submission?.status === 'pending') {
+      this.options.store.submissions.finish(submission.id, 'interrupted', undefined, 'Queued submission cancelled.');
+      this.options.store.updateRun(runId, submission.threadId, 'interrupted');
+      if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'cancelled' });
+      this.submissionDispatcher.forget(submission.id);
+      return { interrupted: true };
+    }
+    if (submission?.runtimeType === 'pi-durable' && ['dispatching', 'running'].includes(submission.status)) {
+      this.options.store.submissions.finish(submission.id, 'interrupted', { runId }, 'Cancelled by the user.');
+      this.options.store.updateRun(runId, submission.threadId, 'interrupted');
+      if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'cancelled', summary: 'Request cancelled.' });
+      await this.piDurableHost.cancel(submission.threadId);
+      return { interrupted: true };
+    }
     return this.sessionCoordinator.interruptRun(runId);
   }
 
@@ -527,6 +524,10 @@ export class LocalCoreAcpBackend {
     let session: AcpSessionState | null = null;
     const runStartedAt = Date.now();
     try {
+      if (row.agent_type === 'pi-durable') {
+        await this.runPiDurablePrompt(threadId, runId, bridgeSessionKey, config, content, options, runStartedAt);
+        return;
+      }
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
         permissionMode: options.permissionMode,
         runtimeEnv: options.runtimeEnv,
@@ -603,7 +604,8 @@ export class LocalCoreAcpBackend {
         );
         const processed = await this.responseProcessor.processAssistantResponse(threadId, assistantText);
         if (processed.displayContent) {
-          this.options.store.appendMessage(threadId, 'assistant', processed.displayContent, 'final');
+          this.turnCoordinator.discardAssistantPartial(session);
+          this.options.store.appendRunFinalMessage(runId, threadId, processed.displayContent);
           this.options.eventBus.emit({
             type: 'thread.message.accepted',
             payload: {
@@ -639,7 +641,7 @@ export class LocalCoreAcpBackend {
       } else if (String(content || '').trim().startsWith('/')) {
         const slashReply = this.responseProcessor.deriveSlashCommandReply(content, result as Record<string, unknown>);
         if (slashReply) {
-          this.options.store.appendMessage(threadId, 'assistant', slashReply, 'final');
+          this.options.store.appendRunFinalMessage(runId, threadId, slashReply);
           this.options.eventBus.emit({
             type: 'thread.message.accepted',
             payload: {
@@ -761,6 +763,7 @@ export class LocalCoreAcpBackend {
         replyCtx: runId,
       });
     } finally {
+      if (session) this.turnCoordinator.flushAssistantPartial(session);
       if (session?.currentRunId === runId) {
         session.currentRunId = null;
       }
@@ -774,6 +777,70 @@ export class LocalCoreAcpBackend {
         this.sessionCoordinator.releaseThreadSession(threadId, config);
       }
     }
+  }
+
+  private async runPiDurablePrompt(threadId: string, runId: string, sessionKey: string,
+    config: LocalCoreProjectConfig, prompt: string, options: SendThreadMessageOptions, startedAt: number) {
+    const submission = this.options.store.submissions.byRun(runId);
+    if (!submission) throw new Error('Pi Durable Core submission is missing.');
+    const currentConfig = toDurableConfig(config, options.runtimeEnv);
+    this.durableConfigs.set(threadId, currentConfig);
+    await this.preparePiDurableBindings(async (boundThreadId) => {
+      const candidate = boundThreadId === threadId ? currentConfig : this.durableConfigs.get(boundThreadId);
+      if (!candidate) throw new Error(`Pi Durable recovery is blocked: configuration for live thread ${boundThreadId} is unavailable.`);
+      return candidate;
+    });
+    const result = await this.piDurableHost.submit({
+      threadId,
+      coreSubmissionId: submission.id,
+      coreRunId: runId,
+      prompt,
+      config: currentConfig,
+    });
+    if (result.status !== 'done') throw new Error(result.reason || 'Pi Durable did not complete this request.');
+    const row = this.options.store.getThreadRow(threadId);
+    if (!row) throw new Error(`Thread not found: ${threadId}`);
+    const answer = result.answer.trim();
+    this.durablePartialPersistence.discard(threadId);
+    this.options.store.threadRuntime.clearPartial(threadId, runId);
+    if (answer) {
+      this.options.store.appendRunFinalMessage(runId, threadId, answer);
+      this.options.eventBus.emit({ type: 'thread.message.accepted', payload: {
+        threadId, workspaceId: row.workspace_id, role: 'assistant', content: answer, kind: 'final', source: 'agent',
+      } });
+      this.emitBridgeEvent({ type: 'reply', sessionKey, replyCtx: runId, content: answer });
+    }
+    const usage = sumDurableUsage(result.usage);
+    const usageSourceId = `pi-durable:${submission.id}`;
+    if (usage.totalTokens > 0 && !this.options.store.cost.hasRunSource(runId, usageSourceId)) {
+      const eventPayload = {
+        workspaceId: row.workspace_id, threadId, runId, agentType: 'pi-durable', modelId: config.model,
+        sourceKind: 'manual' as const, sourceId: usageSourceId, tokensIn: usage.inputTokens, tokensOut: usage.outputTokens,
+        tokensCache: usage.cacheTokens, tokensTotal: usage.totalTokens,
+      };
+      if (this.options.costService) this.options.costService.recordUsage(eventPayload);
+      else this.options.store.cost.recordCostEvent(eventPayload);
+    }
+    this.options.store.updateRun(runId, threadId, 'completed');
+    this.turnCoordinator.endRun(runId, 'completed');
+    const task = this.options.store.getAgentTaskByRunId(runId);
+    if (task) this.options.store.updateAgentTask(task.taskId, { status: 'completed', summary: 'Task completed.' });
+    this.options.eventBus.emit({ type: 'run.completed', payload: {
+      runId, threadId, workspaceId: row.workspace_id, stopReason: 'end_turn',
+    } });
+    this.emitBridgeEvent({ type: 'typing_stop', sessionKey, replyCtx: runId });
+    this.options.log?.(`[pi-durable.run:${runId}] completed in ${Date.now() - startedAt}ms`);
+  }
+
+  private async preparePiDurableBindings(resolve: (threadId: string) => Promise<DurableConfig>, cancelThreads: string[] = []) {
+    const bindings = await this.piDurableHost.bindings();
+    for (const binding of bindings.filter((item) => item.live)) {
+      const config = await resolve(binding.threadId);
+      this.durableConfigs.set(binding.threadId, config);
+      await this.piDurableHost.configure(binding.threadId, config);
+    }
+    for (const threadId of cancelThreads) await this.piDurableHost.cancel(threadId);
+    await this.piDurableHost.resume();
   }
 
   private finishInterruptedRun(
@@ -825,6 +892,8 @@ export class LocalCoreAcpBackend {
   }
 
   private handleTransportSessionClosed(session: AcpSessionState, error: Error) {
+    this.turnCoordinator.flushAssistantPartial(session);
+    this.options.store.threadRuntime.expireAcpPermissions(session.threadId, session.currentRunId || undefined);
     const row = this.options.store.getThreadRow(session.threadId);
     const runtimeId = session.currentTurn?.agentType || row?.agent_type || '';
     const errorInfo = toLocalCoreErrorInfo(error, 'runtime_exited', {
@@ -903,4 +972,9 @@ export class LocalCoreAcpBackend {
     }
     this.options.emitBridge(event);
   }
+}
+
+function isLocalSubmissionCommand(content: string) {
+  const name = /^\/([a-z]+)(?:\s|$)/i.exec(content.trim())?.[1]?.toLowerCase();
+  return LOCAL_SLASH_COMMANDS.some((command) => command.names.includes(name || ''));
 }

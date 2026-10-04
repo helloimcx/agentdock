@@ -1,3 +1,4 @@
+import type { DeliveryReconcileInput } from '@cc/superai-contracts';
 import type {
   AutomationCreateInput,
   AutomationDefinition,
@@ -59,7 +60,7 @@ const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
 
 type TimerHandle = unknown;
-type ActionExecutor = Pick<AutomationActionExecutor, 'execute'>;
+type ActionExecutor = Pick<AutomationActionExecutor, 'execute'> & Partial<Pick<AutomationActionExecutor, 'deliveryService' | 'recoverCompletedExecutions'>>;
 
 const PUBLIC_ID_RESOLUTION: Record<
   'automation-monitor' | 'scheduled-job',
@@ -306,11 +307,13 @@ export class AutomationService {
       return;
     }
     try {
+      this.recoverCompletedExecutions();
       const recovered = this.options.store.reconcileInterruptedAutomationRuns(
         normalizeAutomationError(RESTART_INTERRUPTION_REASON),
         this.now().toISOString(),
       );
       for (const run of recovered) this.eventProjector.emitRun(run);
+      await this.recoverDeliveries();
       const missingNextCheckAt = this.options.store.listAutomationIdsMissingNextCheckAt();
       for (const automationId of missingNextCheckAt) {
         const automation = this.get(automationId);
@@ -351,6 +354,10 @@ export class AutomationService {
       this.runtimeStatus = { status: 'stopped' };
     }
   }
+
+  private recoverCompletedExecutions() { this.options.actionExecutor.recoverCompletedExecutions?.(); }
+
+  private async recoverDeliveries() { await this.options.actionExecutor.deliveryService?.recover(); }
 
   async tick(): Promise<void> {
     if (this.tickPromise) return this.tickPromise;
@@ -771,6 +778,24 @@ export class AutomationService {
     this.eventProjector.emitDefinition(blocked);
   }
 
+  listDeliveries(automationId: string) {
+    const automation = this.get(automationId);
+    if (!automation) throw new Error('Automation not found');
+    const runIds = new Set(this.listRuns(automationId).map((run) => run.id));
+    return this.options.store.deliveries.list(automation.workspaceId).filter((row) => runIds.has(row.ownerRunId));
+  }
+
+  async reconcileDelivery(automationId: string, deliveryId: string, input: DeliveryReconcileInput) {
+    const record = this.listDeliveries(automationId).find((row) => row.id === deliveryId);
+    if (!record) throw new Error('Delivery not found for this automation');
+    if (input.action === 'retry' && input.acknowledgeDuplicateRisk !== true) throw new Error('Retry requires acknowledgement that another send may duplicate the report');
+    const result = this.options.store.deliveries.reconcile(deliveryId, input.action, 'authenticated-core-admin', input.reason);
+    if (input.action === 'retry') await this.options.actionExecutor.deliveryService?.deliver(deliveryId);
+    const run = this.options.store.getAutomationRun(record.ownerRunId);
+    if (run) this.eventProjector.emitRun(run);
+    return this.options.store.deliveries.get(deliveryId) || result;
+  }
+
   private async executeAction(
     automation: AutomationDefinition,
     evaluation: AutomationEvaluation,
@@ -788,8 +813,17 @@ export class AutomationService {
       ...payload,
     };
     try {
-      const result = await this.options.actionExecutor.execute({ automation, evaluation, promptVariables });
-      run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result, this.now().toISOString()));
+      const result = await this.options.actionExecutor.execute({ automation, automationRunId: run.id, evaluation, promptVariables });
+      const completed = () => {
+        run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result, this.now().toISOString()));
+      };
+      if (result.deliveryIntent) {
+        const delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
+        // Execution is committed; a delivery fault must never rerun or fail the Agent.
+        try { await this.options.actionExecutor.deliveryService?.deliver(delivery.id); }
+        catch (error) { this.options.log?.(normalizeAutomationError(error, 'Delivery checkpoint failed: ')); }
+        run = this.options.store.getAutomationRun(run.id) || run;
+      } else completed();
     } catch (error) {
       const message = normalizeAutomationError(error);
       run = this.options.store.updateAutomationRun(run.id, {

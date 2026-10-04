@@ -1,3 +1,5 @@
+import type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, RunSummary } from './thread-types.js';
+export type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, RunSummary } from './thread-types.js';
 import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop.js';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop.js';
 export * from './knowledge.js';
@@ -19,32 +21,9 @@ import {
   ScheduledJobRoute,
 } from './scheduler.js';
 
-export interface ThreadSummary {
-  id: string;
-  workspaceId: string;
-  title: string;
-  live: boolean;
-  updatedAt: string;
-  createdAt: string;
-  historyCount: number;
-  excerpt: string;
-  participantName?: string;
-  runId?: string;
-  bridgeSessionKey?: string;
-  agentType?: string;
-  agentMode?: string;
-}
 
-export interface ThreadMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-  kind?: 'final' | 'progress' | 'system';
-  bridgeKind?: DesktopBridgeEvent['bridgeKind'];
-  bridgeStatus?: DesktopBridgeEvent['bridgeStatus'];
-  toolCall?: DesktopBridgeToolCall;
-}
+
+
 
 export type ChannelInboundContentPart =
   | {
@@ -74,30 +53,11 @@ export interface ChannelInboundMessageContent {
   contentParts: ChannelInboundContentPart[];
 }
 
-export interface ThreadPendingPermissionRequest {
-  id: string;
-  content: string;
-  actions: DesktopBridgeButtonOption[][];
-  actionReplyCtx?: string;
-  actionPending?: boolean;
-  actionStatus?: string;
-  actionMode: 'permission';
-  actionInteractive: true;
-}
 
-export interface ThreadDetail extends ThreadSummary {
-  messages: ThreadMessage[];
-  selectedKnowledgeBaseIds: string[];
-  pendingPermissionRequest?: ThreadPendingPermissionRequest | null;
-}
 
-export interface RunSummary {
-  id: string;
-  threadId: string;
-  status: 'queued' | 'running' | 'awaiting_input' | 'completed' | 'failed' | 'interrupted';
-  startedAt: string;
-  updatedAt: string;
-}
+
+
+
 
 export type AgentTaskStatus =
   | 'created'
@@ -308,6 +268,7 @@ export interface ExternalProject {
 }
 
 export interface ExternalRunCreateInput extends ExternalProjectEnsureInput {
+  request_id?: string;
   external_thread_id?: string;
   title?: string;
   prompt: string;
@@ -470,6 +431,8 @@ export interface ChannelOutboundAttachmentResult {
 }
 
 export interface ChannelOutboundMessageResult {
+  /** Confirmed platform acceptance; never inferred from a locally generated ID. */
+  deliveryAcknowledgement?: 'confirmed' | 'unknown';
   platform: string;
   workspaceId: string;
   channelId: string;
@@ -912,6 +875,7 @@ export interface LocalCoreHealth {
 }
 
 export type LocalCoreEvent =
+  | import('./thread-runtime.js').ThreadRuntimeFrame
   | { type: 'runtime.updated'; runtime: DesktopRuntimeStatus }
   | ({ type: 'runtime.detect.started' } & RuntimeDetectionEventBase)
   | ({ type: 'runtime.detect.completed'; runtimes: InstalledAgentRuntime[] } & RuntimeDetectionEventBase)
@@ -939,3 +903,11 @@ export type LocalCoreEvent =
   | { type: 'cost.event.recorded'; event: import('./costs.js').CostEvent }
   | { type: 'budget.threshold.reached'; budget: import('./budgets.js').Budget; spend: number }
   | { type: 'budget.limit.exceeded'; budget: import('./budgets.js').Budget; spend: number };
+
+/** One admitted intent. runId remains empty for commands that do not run an Agent. */
+export interface ThreadSubmissionResponse {
+  runId: string;
+  submissionId: string;
+  status: 'pending' | 'dispatching' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown';
+  deduplicated: boolean;
+}

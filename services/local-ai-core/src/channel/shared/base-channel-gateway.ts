@@ -28,11 +28,27 @@ import { ChannelSessionCommandRuntime, type ChannelSessionCommandInput } from '.
 import { createProviderCommandOptions } from '../../thread/thread-command-service.js';
 import { resolveChannelThreadRoute } from '../shared/thread-routing.js';
 import type { SessionCommandResult } from '../../thread/session-command-service.js';
-import { ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
+import { LOCAL_SLASH_COMMANDS, ThreadSlashCommandDispatcher } from '../../thread/thread-slash-command-dispatcher.js';
 import { distillSessionHandoff } from '../../acp/session-handoff-distiller.js';
 import { LocalCoreError } from '../../kernel/local-core-errors.js';
 
 import { parseSlashCommand } from '../../acp/local-core-slash-commands.js';
+
+type ChannelSessionCommandEvent<TRoute> = {
+  route: TRoute; text: string; normalizedText: string; displayName?: string;
+  platformLabel: string; contextToken?: string; platformMessageId?: string; commandAdmissionKey?: string;
+};
+
+function commandAdmissionKey(input: ChannelSessionCommandEvent<GatewayThreadRoute>, requireIdentity = false): string | undefined {
+  const parsed = parseSlashCommand(input.text);
+  if (!parsed || !LOCAL_SLASH_COMMANDS.some((definition) => definition.names.includes(parsed.name))) return undefined;
+  if (!input.platformMessageId) {
+    if (requireIdentity) throw new Error('Local channel commands require a stable platform message identity');
+    return undefined;
+  }
+  const { route } = input;
+  return JSON.stringify([route.workspaceId, route.platformKey, route.chatId, route.platformUserId, input.platformMessageId]);
+}
 
 export interface GatewayOptions {
   store: LocalCoreAcpStore;
@@ -113,6 +129,8 @@ export abstract class BaseChannelGateway<
   protected readonly runtime = new Map<string, TRuntimeState>();
   protected readonly threadRouting = new Map<string, TThreadRoute>();
   protected readonly outboundEventChains = new Map<string, Promise<void>>();
+  private readonly outboxOwnedRuns = new Map<string, Set<string>>();
+  private readonly outboxOwnedSessionCounts = new Map<string, number>();
   protected readonly outboundTurns = new Map<string, TTurnState>();
   protected readonly mutedThreadBridgeCounts = new Map<string, number>();
   protected readonly sessionCommandRuntime: ChannelSessionCommandRuntime<TThreadRoute>;
@@ -432,7 +450,12 @@ export abstract class BaseChannelGateway<
     route: ChannelRoute;
     threadId: string;
     sessionKey: string;
+    suppressFinalReport?: boolean;
   }) {
+    if (input.suppressFinalReport) {
+      if (!this.outboxOwnedRuns.has(input.sessionKey)) this.outboxOwnedRuns.set(input.sessionKey, new Set());
+      this.outboxOwnedSessionCounts.set(input.sessionKey, (this.outboxOwnedSessionCounts.get(input.sessionKey) || 0) + 1);
+    }
     const instanceId = input.route.instanceId || extractChannelInstanceId(input.platform, this.platform) || 'default';
     const route: GatewayThreadRoute = {
       workspaceId: input.workspaceId,
@@ -449,12 +472,24 @@ export abstract class BaseChannelGateway<
       if (turn) this.outboundTurns.set(input.sessionKey, turn);
     }
     return () => {
+      if (input.suppressFinalReport) {
+        const remaining = (this.outboxOwnedSessionCounts.get(input.sessionKey) || 1) - 1;
+        if (remaining) this.outboxOwnedSessionCounts.set(input.sessionKey, remaining);
+        else {
+          this.outboxOwnedSessionCounts.delete(input.sessionKey);
+          this.outboxOwnedRuns.delete(input.sessionKey);
+        }
+      }
       if (previousRoute) {
         this.threadRouting.set(input.sessionKey, previousRoute as TThreadRoute);
       } else {
         this.threadRouting.delete(input.sessionKey);
       }
-    };
+  };
+  }
+
+  markScheduledThreadRunOwned(sessionKey: string, runId: string) {
+    this.outboxOwnedRuns.get(sessionKey)?.add(runId);
   }
 
   // ==================== Session Commands ====================
@@ -508,29 +543,28 @@ export abstract class BaseChannelGateway<
     return { threadId, normalizedText, effectiveSessionKey };
   }
 
-  protected async handleSessionCommandOrAction(input: {
-    route: TThreadRoute;
-    text: string;
-    normalizedText: string;
-    displayName?: string;
-    platformLabel: string;
-    contextToken?: string;
-  }): Promise<boolean> {
+  protected admitLocalCommandEvent(input: {
+    workspaceId: string; platformKey: string; instanceId: string; chatId: string; platformUserId: string;
+    text: string; messageId?: string;
+  }): { duplicate: boolean; key?: string } {
+    const key = commandAdmissionKey({ route: { ...input, threadId: '' }, text: input.text,
+      normalizedText: input.text.trim().toLowerCase(), platformLabel: this.platform, platformMessageId: input.messageId }, Boolean(this.options.store.channelCommands));
+    const commands = this.options.store.channelCommands;
+    return { duplicate: Boolean(key && commands && !commands.claim(key, input.text)), key };
+  }
+
+  protected admitInboundMessage(input: { workspaceId: string; platformKey: string; chatId: string; platformUserId: string; messageId?: string; contextToken?: string; text: string }): boolean {
+    const messageId = input.messageId || input.contextToken;
+    if (!messageId) return true;
+    const commands = this.options.store.channelCommands;
+    if (!commands) return true;
+    const key = JSON.stringify([input.workspaceId, input.platformKey, input.chatId, input.platformUserId, messageId]);
+    return commands.claimMessage(key, input.text);
+  }
+
+  protected async handleSessionCommandOrAction(input: ChannelSessionCommandEvent<TThreadRoute>): Promise<boolean> {
     const { route } = input;
-    const slashCommand = parseSlashCommand(input.text);
-    const sessionCommand = await this.executeSessionCommand({
-      workspaceId: route.workspaceId,
-      currentThreadId: route.threadId,
-      text: input.text,
-      defaultTitle: `${input.displayName || input.platformLabel} ${new Date().toLocaleTimeString()}`,
-      defaultAgentType: slashCommand ? await this.resolveDefaultAgentType(route.workspaceId, route.threadId) : '',
-      chatId: route.chatId,
-      platformUserId: route.platformUserId,
-      platformKey: route.platformKey,
-      instanceId: route.instanceId,
-      contextToken: input.contextToken,
-    });
-    if (sessionCommand.handled) return true;
+    if (await this.executeInboundSessionCommand(input)) return true;
     const latestRun = this.options.store.getLatestRunForThread(route.threadId);
     if (
       (input.normalizedText === 'allow' || input.normalizedText === 'allow all' || input.normalizedText === 'deny')
@@ -541,6 +575,30 @@ export abstract class BaseChannelGateway<
       return true;
     }
     return false;
+  }
+
+  private async executeInboundSessionCommand(input: ChannelSessionCommandEvent<TThreadRoute>): Promise<boolean> {
+    const { route } = input;
+    const commands = this.options.store.channelCommands;
+    const commandKey = input.commandAdmissionKey || commandAdmissionKey(input, Boolean(commands));
+    if (commandKey && commands && !input.commandAdmissionKey && !commands.claim(commandKey, input.text)) {
+      this.options.log?.(`Skipped previously admitted channel command ${input.platformMessageId}`);
+      return true;
+    }
+    try {
+      const sessionCommand = await this.executeSessionCommand({
+        workspaceId: route.workspaceId, currentThreadId: route.threadId, text: input.text,
+        defaultTitle: `${input.displayName || input.platformLabel} ${new Date().toLocaleTimeString()}`,
+        defaultAgentType: parseSlashCommand(input.text) ? await this.resolveDefaultAgentType(route.workspaceId, route.threadId) : '',
+        chatId: route.chatId, platformUserId: route.platformUserId, platformKey: route.platformKey,
+        instanceId: route.instanceId, contextToken: input.contextToken,
+      });
+      if (commandKey) commands?.finish(commandKey, 'completed');
+      return sessionCommand.handled;
+    } catch (error) {
+      if (commandKey) commands?.finish(commandKey, 'unknown');
+      throw error;
+    }
   }
 
   protected async resolveDefaultAgentType(workspaceId: string, threadId: string) {
@@ -670,6 +728,7 @@ export abstract class BaseChannelGateway<
     state: TRuntimeState;
     platformKey: string;
   } | undefined {
+    if (this.shouldSuppressScheduledFinal(event)) return undefined;
     if (!event.sessionKey) {
       this.options.log?.(`localcore-${this.platform} bridge event ignored without sessionKey: ${event.type}`);
       return undefined;
@@ -696,6 +755,12 @@ export abstract class BaseChannelGateway<
       return undefined;
     }
     return { sessionKey: event.sessionKey, route, state, platformKey };
+  }
+
+  private shouldSuppressScheduledFinal(event: DesktopBridgeEvent): boolean {
+    return Boolean(event.sessionKey && event.replyCtx && this.outboxOwnedRuns.get(event.sessionKey)?.has(event.replyCtx)
+      && ['reply', 'preview_start', 'update_message', 'card'].includes(event.type)
+      && (!event.bridgeKind || event.bridgeKind === 'assistant'));
   }
 
   protected getBridgeBinding(route: TThreadRoute, platformKey: string) {

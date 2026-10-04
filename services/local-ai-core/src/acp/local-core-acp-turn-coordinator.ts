@@ -1,3 +1,4 @@
+import { AssistantPartialPersistence } from './assistant-partial-persistence.js';
 import type { DesktopBridgeEvent, DesktopBridgeToolCall, ThreadDetail, ThreadPendingPermissionRequest } from '@cc/superai-contracts';
 import { normalizeDesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
@@ -39,6 +40,9 @@ import type { LocalCoreTraceStore } from './store/trace-store.js';
 import { AcpTraceProjector, type TokenUsage } from './local-core-acp-trace-projector.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
+  saveAssistantPartial?: (threadId: string, runId: string, messageId: string, content: string) => void;
+  clearAssistantPartial?: (threadId: string, runId: string) => void;
+  onPartialError?: (error: unknown) => void;
   emitBridge: (event: DesktopBridgeEvent) => void;
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
   upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
@@ -52,11 +56,17 @@ type LocalCoreAcpTurnCoordinatorOptions = {
 };
 
 export class LocalCoreAcpTurnCoordinator {
+  private readonly partialPersistence: AssistantPartialPersistence;
   readonly traceProjector?: AcpTraceProjector;
 
   constructor(private readonly options: LocalCoreAcpTurnCoordinatorOptions) {
+    this.partialPersistence = new AssistantPartialPersistence((error) => options.onPartialError?.(error));
     this.traceProjector = options.traceProjector || (options.traceStore ? new AcpTraceProjector(options.traceStore) : undefined);
   }
+
+  flushAssistantPartial(session: AcpSessionState) { this.partialPersistence.flush(session.threadId); }
+  discardAssistantPartial(session: AcpSessionState) { this.partialPersistence.discard(session.threadId); }
+  close() { this.partialPersistence.close(); }
 
   endRun(runId: string, status: 'completed' | 'failed' = 'completed') {
     this.traceProjector?.endRun(runId, status);
@@ -68,12 +78,14 @@ export class LocalCoreAcpTurnCoordinator {
   }
 
   closePendingAssistantSegment(session: AcpSessionState) {
+    this.discardAssistantPartial(session);
     const currentTurn = session.currentTurn;
     const currentRunId = session.currentRunId;
     if (!currentTurn || !currentRunId) {
       return;
     }
     const projection = closeAssistantMessageSegment(currentTurn);
+    this.options.clearAssistantPartial?.(session.threadId, currentRunId);
     if (!projection) {
       return;
     }
@@ -369,6 +381,13 @@ export class LocalCoreAcpTurnCoordinator {
     if (!projection) {
       return;
     }
+    this.persistAssistantProjection(session.threadId, currentRunId, currentTurn, projection);
+  }
+
+  private persistAssistantProjection(threadId: string, runId: string, turn: RunningTurn, projection: { previewHandle: string; content: string }) {
+    const messageId = turn.assistantMessageId || projection.previewHandle;
+    this.partialPersistence.schedule(threadId, () =>
+      this.options.saveAssistantPartial?.(threadId, runId, messageId, projection.content));
   }
 
   private handleThoughtChunkUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {

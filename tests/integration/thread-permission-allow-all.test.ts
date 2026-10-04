@@ -277,3 +277,32 @@ test('turn coordinator auto-approves remembered allow-all without emitting a per
   assert.equal(bridgeEvents.some((event) => event.type === 'buttons'), false);
   assert.equal(session.pendingPermissionByRun.size, 0);
 });
+
+test('permission decision must commit before transport release, and persistence failure grants nothing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'permission-commit-'));
+  const store = new LocalCoreAcpStore(dir);
+  const thread = store.createThread('agentdock', 'Decision ordering', 'claudecode');
+  const runId = `run:${thread.id}:9cc657de-6bb4-4a3a-b389-c22639472e62:1791000000000`;
+  const session = createSession(thread.id, runId, true);
+  session.pendingPermissionByRun.get(runId).approvalId = 'approval:1067287e-80ea-4d43-b8c5-386be9103a2d';
+  const backend = new LocalCoreAcpBackend({
+    store, runThreadMap: new Map(), emitBridge: () => {},
+    eventBus: { emit: () => {}, on: () => () => {} },
+    scheduler: { createJob: async () => { throw new Error('unused'); }, listJobsForThread: async () => [], deleteJob: async () => {} },
+  } as any);
+  const effects: string[] = [];
+  (backend as any).sessionCoordinator.getSession = () => session;
+  (backend as any).transport.sendRaw = () => { effects.push('send'); return true; };
+  store.resolveApprovalRequest = () => { throw new Error('disk failure'); };
+  try {
+    await assert.rejects(backend.sendThreadAction(thread.id, 'allow all'), /disk failure/);
+    assert.equal(effects.length, 0);
+    assert.equal((backend as any).threadAllowAll.has(thread.id), false);
+    assert.equal(session.pendingPermissionByRun.size, 1);
+    store.resolveApprovalRequest = () => { effects.push('commit'); return {} as any; };
+    await backend.sendThreadAction(thread.id, 'allow');
+    assert.deepEqual(effects, ['commit', 'send']);
+  } finally {
+    cleanup(backend, store, dir);
+  }
+});

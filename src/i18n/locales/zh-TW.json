@@ -279,5 +279,13 @@
       "filesystem_read": "Read a file",
       "shell_exec": "Run a command"
     }
+  },
+  "delivery": {
+    "recovery": "投遞需要處理",
+    "reason": "處理原因",
+    "duplicateRisk": "我理解重試可能重複傳送報告。",
+    "confirm": "確認已投遞",
+    "retry": "重試投遞",
+    "cancel": "取消投遞"
   }
 }

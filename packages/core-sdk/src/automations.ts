@@ -1,3 +1,4 @@
+import type { DeliveryRecord, DeliveryReconcileInput } from '@cc/superai-contracts';
 import type {
   AutomationCreateInput,
   AutomationDefinition,
@@ -101,4 +102,12 @@ export function rejectAutomationScriptVersion(versionId: string, workspaceId: st
 
 export function revokeAutomationScriptVersion(versionId: string, workspaceId: string, actor: string) {
   return coreRequest<AutomationScriptVersion>('POST', scoped(`/automation-scripts/versions/${encodeURIComponent(versionId)}/revoke`, workspaceId), { actor });
+}
+
+export function listAutomationDeliveries(automationId: string, workspaceId: string) {
+  return coreRequest<{ deliveries: DeliveryRecord[] }>('GET', scoped(`/automations/${encodeURIComponent(automationId)}/deliveries`, workspaceId));
+}
+
+export function reconcileAutomationDelivery(automationId: string, workspaceId: string, deliveryId: string, input: DeliveryReconcileInput) {
+  return coreRequest<DeliveryRecord>('POST', scoped(`/automations/${encodeURIComponent(automationId)}/deliveries/${encodeURIComponent(deliveryId)}/reconcile`, workspaceId), input);
 }

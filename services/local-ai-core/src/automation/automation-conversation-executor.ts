@@ -9,8 +9,8 @@ export type AutomationConversationExecutionResult = {
   threadId: string;
   runId: string;
   replyText?: string;
-  deliveryMode?: 'thread-only' | 'bridge-stream';
-  deliveryStatus?: 'succeeded' | 'failed';
+  deliveryMode?: 'thread-only' | 'bridge-stream' | 'final-message';
+  deliveryStatus?: 'succeeded' | 'failed' | 'pending';
   deliveryError?: string;
   lastBridgeEventAt?: string;
 };

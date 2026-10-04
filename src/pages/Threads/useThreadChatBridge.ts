@@ -34,12 +34,13 @@ type UseThreadChatBridgeInput = {
     supersededRunId?: string;
   } | null>;
   progressSequenceByTurnRef: MutableRefObject<Record<string, number>>;
-  sendAction: (threadId: string, action: string) => Promise<{ runId: string }>;
+  sendAction: (threadId: string, action: string, options?: { requestId?: string; expectedRunId?: string; expectedApprovalId?: string }) => Promise<{ runId: string }>;
   taskStateRef: MutableRefObject<ChatTaskState>;
 };
 
 export function useThreadChatBridge(input: UseThreadChatBridgeInput) {
   useThreadChatBridgeEvents({
+    snapshotOwned: !!input.activeThreadId,
     activeAgentType: input.activeAgentType,
     activeBridgeSessionKey: input.activeBridgeSessionKey,
     activeRunId: input.activeRunId,

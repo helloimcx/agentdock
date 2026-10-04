@@ -38,6 +38,8 @@ export type LocalAiCoreRoute =
   | { name: 'automation.check'; automationId: string }
   | { name: 'automation.evaluations'; automationId: string }
   | { name: 'automation.runs'; automationId: string }
+  | { name: 'automation.deliveries'; automationId: string }
+  | { name: 'automation.delivery.reconcile'; automationId: string; deliveryId: string }
   | { name: 'automation-scripts.list' }
   | { name: 'automation-scripts.create' }
   | { name: 'automation-script.get'; scriptId: string }
@@ -53,6 +55,8 @@ export type LocalAiCoreRoute =
   | { name: 'threads.list' }
   | { name: 'threads.create' }
   | { name: 'thread.get'; threadId: string }
+  | { name: 'thread.runtime.snapshot'; threadId: string }
+  | { name: 'thread.runtime.watch'; threadId: string }
   | { name: 'thread.rename'; threadId: string }
   | { name: 'thread.update-mode'; threadId: string }
   | { name: 'thread.update-knowledge-bases'; threadId: string }
@@ -243,7 +247,16 @@ const SEGMENT_ROUTE_PARSERS: Record<string, SegmentRouteParser> = {
 function parseAutomationActionRoute(method: string, automationId: string, action: string): LocalAiCoreRoute | null {
   if (method === 'POST' && action === 'check') return { name: 'automation.check', automationId };
   if (method === 'GET' && action === 'evaluations') return { name: 'automation.evaluations', automationId };
+  if (method === 'GET' && action === 'deliveries') return { name: 'automation.deliveries', automationId };
   if (method === 'GET' && action === 'runs') return { name: 'automation.runs', automationId };
+  return null;
+}
+
+function parseAutomationDeliveryRoute(method: string, segments: string[], automationId: string): LocalAiCoreRoute | null {
+  if (segments.length === 5 && segments[2] === 'deliveries' && segments[4] === 'reconcile' && method === 'POST') {
+    const deliveryId = decodeURIComponent(segments[3] || '').trim();
+    return deliveryId ? { name: 'automation.delivery.reconcile', automationId, deliveryId } : null;
+  }
   return null;
 }
 
@@ -261,6 +274,8 @@ function parseAutomationsRoute(method: string, segments: string[]): LocalAiCoreR
     if (method === 'DELETE') return { name: 'automation.delete', automationId };
     return null;
   }
+  const deliveryRoute = parseAutomationDeliveryRoute(method, segments, automationId);
+  if (deliveryRoute) return deliveryRoute;
   if (segments.length === 3) {
     return parseAutomationActionRoute(method, automationId, segments[2]);
   }
@@ -439,6 +454,8 @@ function parseThreadsRoute(method: string, segments: string[]): LocalAiCoreRoute
   if (method === 'GET' && segments.length === 2) {
     return { name: 'thread.get', threadId };
   }
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'runtime-snapshot') return { name: 'thread.runtime.snapshot', threadId };
+  if (method === 'GET' && segments.length === 3 && segments[2] === 'runtime-watch') return { name: 'thread.runtime.watch', threadId };
   if (method === 'PATCH' && segments.length === 2) {
     return { name: 'thread.rename', threadId };
   }

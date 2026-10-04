@@ -385,8 +385,7 @@ export function bootstrapLocalCoreRuntime(options: {
       await automations.stop();
       await scheduler.stop();
       await kernel.lifecycle.stopAll();
-      workspaceRouter.close();
+      await workspaceRouter.close();
     },
   };
 }
-

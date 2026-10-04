@@ -32,7 +32,7 @@
     "build:npm": "VITE_LOCAL_AI_CORE_BASE=/api/local/v1 pnpm build",
     "build:web": "vite build",
     "build:renderer": "vite build",
-    "build:electron": "node -e \"require('node:fs').rmSync('dist-electron',{recursive:true,force:true})\" && node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json && node scripts/copy-managed-skills.mjs",
+    "build:electron": "node -e \"require('node:fs').rmSync('dist-electron',{recursive:true,force:true})\" && node scripts/build-pi-durable.mjs && node scripts/write-electron-package.mjs && tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json && node scripts/copy-managed-skills.mjs",
     "build:core": "pnpm build:electron",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/bdd/tsconfig.json --noEmit",
     "test": "pnpm typecheck && pnpm build:renderer && pnpm build:electron && node --test dist-electron/tests/electron/*.test.js dist-electron/tests/contracts/*.test.js dist-electron/tests/integration/*.test.js dist-electron/packages/knowledge-api/test/*.test.js dist-electron/src/pages/Threads/thread-chat-permission.test.js && pnpm test:bdd",
@@ -65,6 +65,9 @@
     "@cc/core-sdk": "workspace:*",
     "@cc/plugin-sdk": "workspace:*",
     "@cc/superai-contracts": "workspace:*",
+    "@earendil-works/chord": "1.0.1",
+    "@earendil-works/pi-ai": "1.0.1",
+    "@earendil-works/pi-durable": "1.0.1",
     "@larksuiteoapi/node-sdk": "^1.58.0",
     "@mariozechner/pi-coding-agent": "^0.72.1",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -85,8 +88,8 @@
     "react-router-dom": "^7.5.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
-    "zustand": "^5.0.5",
-    "ws": "8.20.0"
+    "ws": "8.20.0",
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^13.2.0",

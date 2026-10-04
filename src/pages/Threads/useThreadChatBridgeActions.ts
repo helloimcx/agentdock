@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import {
   normalizePermissionResponse,
   type DesktopBridgeButtonOption,
@@ -21,7 +21,7 @@ type UseThreadChatBridgeActionsInput = {
   clearActionStatuses: () => void;
   settlePreviewMessages: (turnKey?: string) => void;
   setPendingBridgeActionId: Dispatch<SetStateAction<string | null>>;
-  sendAction: (threadId: string, action: string) => Promise<{ runId: string }>;
+  sendAction: (threadId: string, action: string, options?: { requestId?: string; expectedRunId?: string; expectedApprovalId?: string }) => Promise<{ runId: string }>;
 } & Pick<ThreadChatSharedHookContext, 'selectedWorkspaceId' | 'updateTaskState'> &
   Pick<ThreadChatSharedHookContext, 'clearReplyTimeout' | 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatActiveThreadIdentity, 'activeThreadId' | 'activeBridgeSessionKey'> &
@@ -48,6 +48,7 @@ export function useThreadChatBridgeActions({
   setTyping,
   updateTaskState,
 }: UseThreadChatBridgeActionsInput & Pick<ThreadChatActiveThreadIdentity, 'activeRunId'> & { setActiveRunId: Dispatch<SetStateAction<string>> }) {
+  const actionRequests = useRef(new Map<string, string>());
   const handleBridgeAction = useCallback(async (
     message: Pick<ChatMessage, 'id' | 'actionReplyCtx' | 'actionMode' | 'actionInteractive'> | PendingPermissionRequest,
     action: DesktopBridgeButtonOption,
@@ -84,7 +85,12 @@ export function useThreadChatBridgeActions({
           { id: actionMessageId, role: 'user', content: actionLabel, order: userOrder, timestamp: new Date().toISOString() },
         ]);
       }
-      const result = await sendAction(activeThreadId, actionContent);
+      const identity = JSON.stringify([activeThreadId, message.id, actionContent]);
+      const requestId = actionRequests.current.get(identity) || `request:${crypto.randomUUID()}`;
+      actionRequests.current.set(identity, requestId);
+      const result = await sendAction(activeThreadId, actionContent, { requestId,
+        ...(isInteractivePermission ? { expectedRunId: message.actionReplyCtx, expectedApprovalId: message.id } : {}),
+      });
       setActiveRunId(result.runId);
       sent = true;
       setBridgeError('');

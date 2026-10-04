@@ -31,6 +31,9 @@ flowchart LR
   kernel --> scheduler[Scheduler / Automation]
   scheduler --> acp
   acp --> agents[Local Pi / Codex / Claude / Hermes]
+  kernel -->|稳定提交身份| durable[可选 Pi Durable worker]
+  durable --> pidb[(Core 数据目录内的单一 pi-durable.sqlite)]
+  durable -->|OpenAI 兼容 HTTPS| provider[已配置模型服务]
   acp --> sandbox[OpenSandbox]
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
@@ -38,7 +41,7 @@ flowchart LR
   mesh -->|Execute / cancel| nodes
 ```
 
-当前已通过 Archify L1 校验，提供交互式 [HTML 导出](system-architecture.html) 与 Mermaid 视图。
+Pi Durable 通过 Local AI Core 的单一 worker 接入；所有 Durable threads 共用一个 Harness 和 `runtime/pi-durable.sqlite`，每个 thread 保持独立 Conversation。工作区写入经 Core 的逐次审批、路径与基线校验后由 Core 原子落盘；shell、删除、MCP、sandbox 仍不可用。详细边界见[架构事实](../architecture.md)、[持久执行记录](changes/2026-10-03-durable-execution.md)和[写入审批变更](changes/2026-10-04-pi-durable-write-approval.md)。
 
 ## 架构资产矩阵 (Architecture-as-Code Matrix)
 
@@ -46,11 +49,12 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 
 | 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
 |---|---|---|---|---|---|
-| **L1 全局系统** | 端到端系统架构与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [PNG (待刷新)](system-architecture.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
-| **L2 核心流程** | 定时调度与渠道主动投递 | `workflow` | [调度工作流](scheduled-delivery-workflow.html) · [PNG](scheduled-delivery-workflow.png) | [`scheduled-delivery-workflow.json`](scheduled-delivery-workflow.json) | [定时投递架构](scheduled-delivery.md) |
-| **L2 核心流程** | ACP 会话与沙箱桥接时序 | `sequence` | [通信时序图](acp-session-flow.html) · [PNG](acp-session-flow.png) | [`acp-session-flow.sequence.json`](acp-session-flow.sequence.json) | [ACP 协议运行时](acp-protocol.md) |
-| **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [PNG](skill-router.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |
-| **L3 状态模型** | Agent Run 执行状态机 | `lifecycle` | [状态转移图](agent-run-lifecycle.html) · [PNG](agent-run-lifecycle.png) | [`agent-run.lifecycle.json`](agent-run.lifecycle.json) | [状态所有权](state-ownership.md) |
+| **L1 全局系统** | 端到端系统架构与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [浅色图](system-architecture.light.png) · [深色图](system-architecture.dark.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
+| **L2 核心流程** | 定时调度与渠道主动投递 | `workflow` | [调度工作流](scheduled-delivery-workflow.html) · [浅色图](scheduled-delivery-workflow.light.png) · [深色图](scheduled-delivery-workflow.dark.png) | [`scheduled-delivery-workflow.json`](scheduled-delivery-workflow.json) | [定时投递架构](scheduled-delivery.md) |
+| **L2 核心流程** | ACP 会话与沙箱桥接时序 | `sequence` | [通信时序图](acp-session-flow.html) · [浅色图](acp-session-flow.light.png) · [深色图](acp-session-flow.dark.png) | [`acp-session-flow.sequence.json`](acp-session-flow.sequence.json) | [ACP 协议运行时](acp-protocol.md) |
+| **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [浅色图](skill-router.light.png) · [深色图](skill-router.dark.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |
+| **L3 状态模型** | Agent Run 执行状态机 | `lifecycle` | [状态转移图](agent-run-lifecycle.html) · [浅色图](agent-run-lifecycle.light.png) · [深色图](agent-run-lifecycle.dark.png) | [`agent-run.lifecycle.json`](agent-run.lifecycle.json) | [状态所有权](state-ownership.md) |
+| **L2 持久执行** | 提交、delivery outbox、运行快照、Pi Durable 与逐次写入审批 | `workflow` | [持久执行流程](durable-execution-workflow.html) · [浅色图](durable-execution-workflow.light.png) · [深色图](durable-execution-workflow.dark.png) | [`durable-execution.workflow.json`](durable-execution.workflow.json) | [持久执行记录](changes/2026-10-03-durable-execution.md) · [写入审批变更](changes/2026-10-04-pi-durable-write-approval.md) |
 
 
 ## Mesh Device Plane

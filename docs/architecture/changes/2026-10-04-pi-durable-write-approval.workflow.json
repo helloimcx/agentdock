@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Pi Durable 工作区写入审批与安全落盘",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "write_flow", "label": "Pi Durable 写入与 Core 授权流程" }
+  ],
+  "mainPath": ["write_tool", "permission_card", "write_guard"],
+  "semanticChecks": {
+    "requiredPaths": [
+      { "from": "write_tool", "to": "write_guard" }
+    ]
+  },
+  "nodes": [
+    { "id": "write_tool", "lane": "write_flow", "col": 0, "type": "backend", "label": "Durable 写工具", "sublabel": "双向 IPC 请求审批" },
+    { "id": "permission_card", "lane": "write_flow", "col": 1, "type": "frontend", "label": "逐次确认", "sublabel": "绑定路径与内容" },
+    { "id": "write_guard", "lane": "write_flow", "col": 2, "type": "security", "label": "Core 原子写入", "sublabel": "复核权限、路径、基线" }
+  ],
+  "edges": [
+    { "id": "request", "from": "write_tool", "to": "permission_card", "label": "Core 持久化审批" },
+    { "id": "decision", "from": "permission_card", "to": "write_guard", "label": "批准后复核并写入" }
+  ]
+}

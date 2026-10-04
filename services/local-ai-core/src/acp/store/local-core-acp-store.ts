@@ -1,3 +1,5 @@
+import { ChannelCommandStore } from './channel-command-store.js';
+import { DeliveryOutboxStore } from './delivery-outbox-store.js';
 import { existsSync, mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, join } from 'node:path';
@@ -86,6 +88,8 @@ import { LocalPlatformStore } from './platform-store.js';
 import { LocalSchedulerStore } from './scheduler-store.js';
 import { LocalSecurityStore } from './security-store.js';
 import { LocalThreadStore } from './thread-store.js';
+import { LocalThreadRuntimeStore } from './thread-runtime-store.js';
+import { readThreadExecutionSnapshot } from './thread-execution-snapshot.js';
 import { LocalWorkspaceRegistryStore } from './workspace-registry-store.js';
 import { LocalModelProviderStore } from './model-provider-store.js';
 import { LocalExternalStore } from './external-store.js';
@@ -93,6 +97,7 @@ import { LocalRuntimeConfigStore } from './runtime-config-store.js';
 import { LocalSkillSourceStore } from './skill-source-store.js';
 import { LocalCoreSessionHandoffStore } from './session-handoff-store.js';
 import { LocalCoreWorkspaceMemoryStore } from './workspace-memory-store.js';
+import { LocalSubmissionStore } from './submission-store.js';
 import { MeshStore } from '../../mesh/mesh-store.js';
 import type { SkillSource, SkillScope } from '@cc/superai-contracts/skills';
 
@@ -117,8 +122,12 @@ export class LocalCoreAcpStore {
   readonly skillSources: LocalSkillSourceStore;
   readonly sessionHandoffs: LocalCoreSessionHandoffStore;
   readonly workspaceMemory: LocalCoreWorkspaceMemoryStore;
+  readonly threadRuntime: LocalThreadRuntimeStore;
   readonly userDataPath: string;
   readonly mesh: MeshStore;
+  readonly deliveries: DeliveryOutboxStore;
+  readonly channelCommands: ChannelCommandStore;
+  readonly submissions: LocalSubmissionStore;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
@@ -151,9 +160,29 @@ export class LocalCoreAcpStore {
     this.sessionHandoffs = new LocalCoreSessionHandoffStore(this.db);
     this.workspaceMemory = new LocalCoreWorkspaceMemoryStore(this.db);
     ensureLocalCoreAcpSchema(this.db);
+    this.channelCommands = new ChannelCommandStore(this.db);
+    this.deliveries = new DeliveryOutboxStore(this.db, (record) => {
+      if (record.ownerKind === 'automation') {
+        const exists = this.db.prepare('SELECT id FROM automation_runs WHERE id = ?').get(record.ownerRunId);
+        if (exists) this.automations.updateRun(record.ownerRunId, {
+          deliveryStatus: record.status === 'sending' ? 'delivering' : record.status,
+        });
+      } else if (this.scheduler.getRun(record.ownerRunId)) {
+        this.scheduler.updateRun(record.ownerRunId, {
+          deliveryStatus: record.status === 'delivered' ? 'succeeded' : record.status,
+          deliveryError: record.error || '', platformMessageIds: record.messageIds,
+        });
+      }
+    });
+    this.submissions = new LocalSubmissionStore(this.db);
     this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
+    this.threadRuntime = new LocalThreadRuntimeStore(this.db);
   }
 
+
+  getThreadExecutionSnapshot(threadId: string, knowledgeBaseIds: string[] = []) {
+    return readThreadExecutionSnapshot(this.db, this.threadRuntime, threadId, () => this.getThread(threadId, knowledgeBaseIds));
+  }
 
   close() {
     this.db.close();
@@ -182,6 +211,8 @@ export class LocalCoreAcpStore {
   deleteThread(threadId: string) {
     this.platform.clearAuthorizedUserThreadByThreadId(threadId);
     this.platform.deletePlatformThreadBindingsByThreadId(threadId);
+    this.submissions.deleteThread(threadId);
+    this.threadRuntime.clearPartial(threadId);
     this.threads.delete(threadId);
   }
 
@@ -191,6 +222,43 @@ export class LocalCoreAcpStore {
 
   upsertMessage(threadId: string, id: string, ...args: MessageContentArgs) {
     return this.threads.upsertMessage(threadId, id, ...args);
+  }
+
+  appendMessageInTransaction(threadId: string, ...args: MessageContentArgs) {
+    return this.threads.appendMessageInTransaction(threadId, ...args);
+  }
+
+  appendRunFinalMessage(runId: string, threadId: string, content: string) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing = this.submissions.getFinal(runId);
+      if (existing) {
+        if (existing.threadId !== threadId || existing.content !== content) throw new Error('Run already has a different final result.');
+        this.threadRuntime.clearPartial(threadId, runId);
+        this.db.exec('COMMIT');
+        return undefined;
+      }
+      const message = this.threads.appendMessageInTransaction(threadId, 'assistant', content, 'final');
+      this.submissions.saveFinal(runId, threadId, content, message.id);
+      this.threadRuntime.clearPartial(threadId, runId);
+      this.db.exec('COMMIT');
+      return message;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  getActiveRunForThread(threadId: string) {
+    return this.db.prepare("SELECT id, thread_id, status, started_at, updated_at FROM runs WHERE thread_id = ? AND status IN ('running', 'awaiting_input') ORDER BY updated_at DESC, rowid DESC LIMIT 1").get(threadId) as LocalRunRow | undefined;
+  }
+
+  findSubmissionsByRequestId(requestId: string, operationKind = 'message') {
+    return this.submissions.byRequestId(requestId, operationKind);
+  }
+
+  getRunFinalResult(runId: string) {
+    return this.submissions.getFinal(runId);
   }
 
   updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {
@@ -696,6 +764,8 @@ export class LocalCoreAcpStore {
   getLatestAutomationRun(automationId: string): AutomationRun | undefined {
     return this.automations.getLatestRun(automationId);
   }
+
+  getAutomationRun(runId: string) { return this.automations.getRun(runId); }
 
   reconcileInterruptedAutomationRuns(reason: string, finishedAt: string): AutomationRun[] {
     return this.automations.reconcileInterruptedRuns(reason, finishedAt);

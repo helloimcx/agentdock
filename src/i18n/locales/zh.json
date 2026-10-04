@@ -319,5 +319,13 @@
       "filesystem_read": "读取文件",
       "shell_exec": "执行命令"
     }
+  },
+  "delivery": {
+    "recovery": "投递需要处理",
+    "reason": "处理原因",
+    "duplicateRisk": "我理解重试可能重复发送报告。",
+    "confirm": "确认已投递",
+    "retry": "重试投递",
+    "cancel": "取消投递"
   }
 }
