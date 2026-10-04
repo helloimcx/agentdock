@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AgentDock A11y</string>
-    <string name="accessibility_service_name">AgentDock 无障碍桥接服务</string>
-    <string name="accessibility_service_description">为 AgentDock 提供本地无障碍屏幕感知与微观交互能力 (http://127.0.0.1:19832)</string>
+    <string name="accessibility_service_name">AgentDock 无障碍服务</string>
+    <string name="accessibility_service_description">为 AgentDock 提供无障碍屏幕感知、快捷操作与原生 Mesh 节点能力</string>
 </resources>

@@ -32,10 +32,9 @@ flowchart LR
   acp -.->|Remote Shell Proxy / ACP fs bridge| mesh
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
-  nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
+  nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
-  nodes -->|mobile-ui: loopback HTTP| a11y[Android accessibility bridge]
-  a11y -->|Run-owned screen lease| screen[Visible status and target feedback]
+  nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
 当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。
@@ -59,6 +58,11 @@ flowchart LR
 
 ### 2026-10-04
 
+- **Android All-in-One 原生无障碍 Mesh 客户端集成（免 Termux / 零本地端口）**：
+  - **原生 Mesh 长连接客户端集成**：在无障碍桥接 APK（`agentdock-a11y`）中直接原生集成 RFC 6455 WebSocket 客户端与配对配置界面（`MainActivity`），手机安装单个 APK 开启无障碍即可一键接入 AgentDock 云端。
+  - **彻底移除本地 19832 HTTP 监听**：实现纯出站长连接（Zero-Listening-Port），杜绝端口占用与网络攻击面，所有命令通过内存直调无障碍与系统引擎。
+  - **全能系统能力与 termux-api 洁净室兼容**：虚拟 Shell 自动拦截并分发 `mobile-ui`（屏幕元素感知与点击、亮屏保活 `cliProtocol: 2`）、`mobile-apps`（微信/支付宝/高德/美团等原生 Intent 宏观跳转）及 `termux-*` 系列常用指令（TTS、电池状态 JSON、剪贴板读写、振动、手电筒、Toast、音量调节、GPS 定位），兼具路径越界防护与超时保护。
+  - **保留跨平台 npm 客户端**：`agentdock-node` 完整保留，继续支持 Linux/macOS/Windows 及 Termux 极客模式。
 - Android 自动化随任务保持亮屏：Core 每 30 秒续约，任务结束或取消释放；手机展示状态光晕和点击目标反馈。已在小米 Android 16 真机验证亮屏和触控穿透；状态角标位置仍需优化，手动锁屏恢复尚未验证。
 - 发布 AgentDock 0.1.89：内置 Managed Skills 体系重构与远程移动端自动注入：
   - **消除跨层倒挂依赖**：内置技能从桌面外壳（`electron/managed-skills`）整体迁入 Local AI Core 服务域（`services/local-ai-core/src/skills/builtin/`），与内置插件体系（`plugins/builtin/`）实现结构对称；`ManagedSkillCatalog` 支持四级探测，纯服务端模式与容器部署可独立自包含加载全部技能。
