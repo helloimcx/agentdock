@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   Bot,
   Check,
@@ -156,7 +156,7 @@ export function PermissionRequestCardView({
   );
 }
 
-export function ThreadChatMessage({
+export const ThreadChatMessage = memo(function ThreadChatMessage({
   message,
   pendingBridgeActionId,
   onAction,
@@ -295,4 +295,4 @@ export function ThreadChatMessage({
       ) : null}
     </div>
   );
-}
+});

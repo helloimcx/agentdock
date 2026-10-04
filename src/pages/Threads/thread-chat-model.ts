@@ -245,7 +245,7 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
         : message.kind === 'system'
           ? 'progress'
           : 'final',
-    order: index,
+    order: typeof message.seq === 'number' ? message.seq : index,
     timestamp: message.timestamp,
   }));
 }

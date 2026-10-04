@@ -24,6 +24,7 @@ import type {
   DesktopProjectConfig,
   DesktopStandardsOptions,
   ThreadDetail,
+  ThreadGetOptions,
   ThreadSummary,
   WorkspaceRegistryEntry,
   WorkspaceStreamingProbeResult,
@@ -308,10 +309,10 @@ export class WorkspaceRouter {
     ));
   }
 
-  async getThread(threadId: string): Promise<ThreadDetail> {
+  async getThread(threadId: string, options?: ThreadGetOptions): Promise<ThreadDetail> {
     const { workspaceId } = decodeThreadId(threadId);
     await this.getWorkspaceRoute(workspaceId);
-    return this.withKnowledge(await this.localCoreAcp.getThread(threadId));
+    return this.withKnowledge(await this.localCoreAcp.getThread(threadId, options));
   }
 
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
