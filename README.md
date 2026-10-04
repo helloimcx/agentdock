@@ -35,7 +35,7 @@ flowchart LR
   nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
   nodes -->|mobile-ui: loopback HTTP| a11y[Android accessibility bridge]
-  a11y -->|Bounded screen lease| screen[Non-touchable keep-awake window]
+  a11y -->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
 当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。
@@ -59,7 +59,7 @@ flowchart LR
 
 ### 2026-10-04
 
-- Android 自动化新增限时亮屏保护：`mobile-ui` 页面操作续期默认 120 秒，支持 `screen status|keep-awake|release`；锁屏时停止操作，到期或手动息屏后释放。需要支持该协议的无障碍 APK，HyperOS 效果尚待真机验证。
+- Android 自动化随任务保持亮屏：Core 每 30 秒续约，任务结束或取消释放；手机展示状态光晕和点击目标反馈。120 秒是失联兜底，手动锁屏终止租约。需要新版无障碍 APK，HyperOS 效果尚待真机验证。
 
 - 发布 AgentDock 0.1.88：移动端页面内操作与免 ADB 无障碍桥接（`mobile-ui`）：
   - **免 ADB 页面内感知与交互（`mobile-ui`）**：在第一阶段 `mobile-apps` 页面秒级直达基础上，新增针对 Android 端的极简无障碍桥接，使云端 Agent 在免 ADB、免 Root 约束下可实时感知屏幕可见元素（`mobile-ui dump`，按人类视觉流自然排序赋予单调递增 `[1..N]` 序号），并执行精准序号点击（`mobile-ui click <index>`，具备真实手势轻触降级保障）、静默文本输入（`mobile-ui input`）、页面滚动（`mobile-ui scroll`）与物理返回（`mobile-ui back`）。

@@ -6,7 +6,7 @@ import { MobileUiClient } from '../../services/local-ai-core/src/mesh/mobile-ui/
 import { formatElementsCompact } from '../../services/local-ai-core/src/mesh/mobile-ui/formatter.js';
 import { runMobileUiCli } from '../../services/local-ai-core/src/mesh/mobile-ui/cli.js';
 
-const ready = { ok: true, interactive: true, locked: false, keepAwake: true, remainingMs: 120000 };
+const ready = { ok: true, interactive: true, locked: false, keepAwake: true, remainingMs: 120000, ownerRemainingMs: 120000, cliProtocol: 2, screenProtocol: 2 };
 
 async function withBridge(
   respond: (path: string, method: string, body: any) => [number, unknown],
@@ -25,12 +25,13 @@ async function withBridge(
   finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 }
 
-test('each UI command acquires the bounded screen hold before interacting', async () => {
+test('UI commands check unlocked state without creating a residual manual hold', async () => {
   const requests: string[] = [];
   await withBridge((path, method, body) => {
     requests.push(`${method} ${path}`);
     if (path === '/api/screen') {
-      assert.deepEqual(body, { action: 'acquire', durationSeconds: 120 });
+      assert.equal(method, 'GET');
+      assert.equal(body, undefined);
       return [200, ready];
     }
     return [200, { ok: true, elements: [] }];
@@ -40,7 +41,7 @@ test('each UI command acquires the bounded screen hold before interacting', asyn
     await client.action({ action: 'back' });
   });
   assert.equal(requests.length, 10);
-  for (let i = 0; i < requests.length; i += 2) assert.equal(requests[i], 'POST /api/screen');
+  for (let i = 0; i < requests.length; i += 2) assert.equal(requests[i], 'GET /api/screen');
 });
 
 test('screen lock and screen-off fail before UI interaction, including wait', async () => {
@@ -135,4 +136,24 @@ test('filtered dump indices remain unchanged through formatting and subsequent c
     assert.match(formatElementsCompact(dump), /\[3\] \[Button\]/);
     await client.click({ index: dump.elements[0].index });
   });
+});
+
+
+test('owned renewal and release preserve other owners and carry the run identifier', async () => {
+  const owner = 'run:agentdock::b9e9e75b-50cd-4d81-835f-5277daa91cc3:1791108000000';
+  const calls: unknown[] = [];
+  await withBridge((_, method, body) => {
+    calls.push(body);
+    return [200, { ...ready, owner: body.owner, ownerRemainingMs: body.action === 'release' ? 0 : 120000 }];
+  }, async client => {
+    await client.keepScreenAwake(120, owner);
+    await client.renewScreenAwake(120, owner);
+    await client.releaseScreen(owner);
+  });
+  assert.deepEqual(calls, [
+    { action: 'status', owner },
+    { action: 'acquire', durationSeconds: 120, owner },
+    { action: 'renew', durationSeconds: 120, owner },
+    { action: 'release', owner },
+  ]);
 });

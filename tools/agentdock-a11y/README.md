@@ -148,20 +148,23 @@
 
 ## 4. 自动化期间亮屏
 
-支持此协议的 APK 使用无障碍窗口保持亮屏，不修改系统息屏时间，不依赖 ADB/Root，也不自动解锁。
+支持此协议的 APK 使用非触控、非焦点的无障碍窗口及 `FLAG_KEEP_SCREEN_ON` 保持亮屏，不修改系统息屏时间，不依赖 ADB/Root，也不自动解锁。边缘呼吸光晕和角标显示正在操作，动画仅提供反馈，不负责续约。
+
+远程 Android 工作区由 Core 为真实运行创建亮屏会话并定期续约，思考和等待页面时继续保持；完成、取消、失败时按运行 owner 释放。设备在没有续约后自动释放，120 秒是失联兜底期限，到期不代表立即关屏。独立手工操作仍可使用：
 
 ```bash
 mobile-ui screen status
 mobile-ui screen keep-awake --duration=120
-# 导航及页面操作；dump/click/input/scroll/back/home/wait 自动续期 120 秒
 mobile-ui screen release
 ```
 
-开始前需要手机已亮屏并解锁。连续 120 秒没有续期会释放窗口，随后系统按原息屏策略处理；到期不代表立刻关屏。`--duration` 接受 1–600 的整数，后续普通 UI 操作会续期为默认 120 秒。长等待前按需续期。任务结束应在 finally 清理中 release；断连或崩溃由到期及进程窗口清理兜底。手动息屏、服务中断或销毁也会释放，不会自动唤醒手机。一个设备共享一个亮屏窗口，不应同时运行多个界面自动化任务。
+HTTP 协议：`GET /api/screen` 只读取；`POST /api/screen` 接收 `{"action":"acquire","owner":"run:...","durationSeconds":120}`、`{"action":"renew","owner":"run:...","durationSeconds":120}` 或 `{"action":"release","owner":"run:..."}`。owner 省略时为 `manual`，必须是 1–256 字符的非空字符串；duration 接受 1–600 的整数。多个 owner 共享一个窗口，各自续约、到期和释放，某个运行的 release 不影响其他运行。共享亮屏窗口不意味着允许并发点击同一手机；界面操作仍应串行。
 
-APK 主界面显示屏幕状态并提供「释放当前亮屏保护」按钮。旧 APK 没有 screen 接口时会警告，原页面操作仍可用，但不提供亮屏或新的锁屏保护保证。
+`renew` 只续约存在且未到期的 owner，失效返回 `SCREEN_LEASE_EXPIRED`，不会重建窗口。返回 `ok, interactive, locked, keepAwake, remainingMs, ownerRemainingMs, ownerCount, overlayVisible`；remainingMs 是所有 owner 的最长剩余期限，ownerRemainingMs 是本次请求 owner 的剩余期限（GET 默认 manual），失败另有 `code,error`。锁屏/息屏为 `USER_UNLOCK_REQUIRED`。所有窗口和保护状态在设备主线程处理。
 
-HTTP 协议：`GET /api/screen` 只读取；`POST /api/screen` 接收 `{"action":"acquire","durationSeconds":120}` 或 `{"action":"release"}`。返回 `ok, interactive, locked, keepAwake, remainingMs`，失败另有 `code,error`，锁屏/息屏为 `USER_UNLOCK_REQUIRED`。所有设备窗口和保护状态在主线程处理。
+开始前需要手机已亮屏并解锁。手动息屏、服务中断或销毁会清除全部 owner。APK 主界面的「释放当前亮屏保护」按钮也清除全部 owner，而 HTTP / CLI release 仅清除指定 owner。清除后旧心跳不能复活保护，不会自动唤醒手机。
+
+成功接受语义点击后，短暂波纹标记目标中心（`Target`）；接受手势提交后显示 `Tap queued`，不代表真实手指位置或页面操作已经完成。失败操作不显示波纹。覆盖层不接收触摸、不抢键盘焦点，绘制内容不加入应用无障碍节点目录。普通系统截图或 ADB 截图可能包含光晕、角标和波纹；目前不提供隐去覆盖层的截图协议，视觉识别需要考虑这些可见提示，真实效果须真机验证。
 
 ### 构建与验证
 

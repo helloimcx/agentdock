@@ -79,36 +79,62 @@ export class MobileUiClient {
     }
   }
 
-  async getScreenStatus(): Promise<ScreenStatusResult> {
+  async getScreenStatus(owner?: string): Promise<ScreenStatusResult> {
+    if (owner) return this.request<ScreenStatusResult>('/api/screen', { method: 'POST', body: JSON.stringify({ action: 'status', owner }) });
     return this.request<ScreenStatusResult>('/api/screen');
   }
 
-  async keepScreenAwake(durationSeconds = 120): Promise<ScreenStatusResult> {
+  async keepScreenAwake(durationSeconds = 120, owner?: string): Promise<ScreenStatusResult> {
+    return this.changeScreenHold('acquire', durationSeconds, owner);
+  }
+
+  async renewScreenAwake(durationSeconds = 120, owner?: string): Promise<ScreenStatusResult> {
+    return this.changeScreenHold('renew', durationSeconds, owner);
+  }
+
+  private async changeScreenHold(action: 'acquire' | 'renew', durationSeconds: number, owner?: string): Promise<ScreenStatusResult> {
     validateScreenDuration(durationSeconds);
+    if (owner && action === 'acquire') await this.assertOwnedScreenProtocol(owner);
     const result = await this.request<ScreenStatusResult>('/api/screen', {
-      method: 'POST', body: JSON.stringify({ action: 'acquire', durationSeconds }),
+      method: 'POST', body: JSON.stringify({ action, durationSeconds, ...(owner ? { owner } : {}) }),
     });
-    if (!result.ok || result.locked || result.interactive === false) {
-      throw new ScreenControlError(result.error || 'Unlock the phone before continuing mobile automation.');
-    }
-    if (result.interactive !== true || result.locked !== false || result.keepAwake !== true) {
-      throw new ScreenControlError('Bridge returned an invalid screen hold response.');
-    }
+    this.assertScreenHoldResponse(result, owner);
     return result;
   }
 
-  async releaseScreen(): Promise<ScreenStatusResult> {
+  private async assertOwnedScreenProtocol(owner: string): Promise<void> {
+    const status = await this.getScreenStatus(owner);
+    if (status.screenProtocol !== 2 || status.owner !== owner) {
+      throw new ScreenControlError('OWNED_SCREEN_PROTOCOL_REQUIRED: Update the remote mobile-ui CLI and Android bridge before starting managed keep-awake.');
+    }
+  }
+
+  private assertScreenHoldResponse(result: ScreenStatusResult, owner?: string): void {
+    if (!result.ok || result.locked || result.interactive === false) {
+      throw new ScreenControlError(`${result.code || 'SCREEN_CONTROL_FAILED'}: ${result.error || 'Unlock the phone before continuing mobile automation.'}`);
+    }
+    const invalid = result.interactive !== true || result.locked !== false || result.keepAwake !== true
+      || (owner && (result.owner !== owner || !(typeof result.ownerRemainingMs === 'number' && result.ownerRemainingMs > 0)));
+    if (invalid) throw new ScreenControlError('Bridge returned an invalid screen hold response.');
+  }
+
+  async releaseScreen(owner?: string): Promise<ScreenStatusResult> {
     const result = await this.request<ScreenStatusResult>('/api/screen', {
-      method: 'POST', body: JSON.stringify({ action: 'release' }),
+      method: 'POST', body: JSON.stringify({ action: 'release', ...(owner ? { owner } : {}) }),
     });
-    if (!result.ok || result.keepAwake !== false) {
+    if (!result.ok || (owner ? result.owner !== owner || result.ownerRemainingMs !== 0 : result.keepAwake !== false && result.ownerRemainingMs !== 0)) {
       throw new ScreenControlError(result.error || 'Failed to release screen hold.');
     }
     return result;
   }
 
   private async prepareScreen(): Promise<void> {
-    try { await this.keepScreenAwake(); }
+    try {
+      const result = await this.getScreenStatus();
+      if (!result.ok || result.interactive !== true || result.locked !== false) {
+        throw new ScreenControlError(result.error || 'Unlock the phone before continuing mobile automation.');
+      }
+    }
     catch (error) {
       if (error instanceof BridgeHttpError && error.status === 404) {
         console.warn('[mobile-ui] Screen keep-awake is unavailable on this bridge; update the APK.');

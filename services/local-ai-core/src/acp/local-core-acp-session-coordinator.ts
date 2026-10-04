@@ -56,6 +56,7 @@ type LocalCoreAcpSessionCoordinatorOptions = {
   localCoreBase?: string;
   emitBridge: (event: DesktopBridgeEvent) => void;
   log?: (message: string) => void;
+  onRunStopped?: (runId: string) => void;
 };
 
 type EnsureSessionOptions = {
@@ -75,6 +76,7 @@ export class LocalCoreAcpSessionCoordinator {
 
   closeAll() {
     for (const session of this.sessions.values()) {
+      if (session.currentRunId) this.options.onRunStopped?.(session.currentRunId);
       this.clearIdleClose(session);
       this.options.transport.closeSession(session);
     }
@@ -86,6 +88,7 @@ export class LocalCoreAcpSessionCoordinator {
     if (!session) {
       return;
     }
+    if (session.currentRunId) this.options.onRunStopped?.(session.currentRunId);
     this.clearIdleClose(session);
     this.options.transport.closeSession(session);
     this.sessions.delete(threadId);
@@ -263,6 +266,7 @@ export class LocalCoreAcpSessionCoordinator {
   }
 
   private markRunInterrupted(runId: string, threadId: string) {
+    this.options.onRunStopped?.(runId);
     this.options.store.updateRun(runId, threadId, 'interrupted');
     const task = this.options.store.getAgentTaskByRunId(runId);
     if (task) {
@@ -278,6 +282,7 @@ export class LocalCoreAcpSessionCoordinator {
       return;
     }
     const activeRunId = session.currentRunId;
+    if (activeRunId) this.options.onRunStopped?.(activeRunId);
     this.clearIdleClose(session);
     this.options.transport.closeSessionWithError(session, error);
     if (activeRunId) {

@@ -95,6 +95,10 @@ export interface MobileUiClientOptions {
 
 /** Device-local screen state; remainingMs uses the device's monotonic clock. */
 export interface ScreenStatusResult {
+  ownerRemainingMs?: number;
+  ownerCount?: number;
+  screenProtocol?: number;
+  owner?: string;
   ok: boolean;
   interactive: boolean;
   locked: boolean;

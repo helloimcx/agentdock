@@ -10,7 +10,7 @@
   "lanes": [
     {
       "id": "client",
-      "label": "远程工作区与 CLI"
+      "label": "Core ACP 任务与 Mesh"
     },
     {
       "id": "device",
@@ -34,9 +34,9 @@
       "lane": "client",
       "col": 0,
       "type": "backend",
-      "label": "mobile-ui 命令",
-      "sublabel": "远程终端代理",
-      "width": 170
+      "label": "真实 ACP run",
+      "sublabel": "开始 / 思考 / 等待",
+      "width": 210
     },
     {
       "id": "guard",
@@ -52,18 +52,18 @@
       "lane": "device",
       "col": 2,
       "type": "backend",
-      "label": "续期亮屏窗口",
-      "sublabel": "默认 120 秒",
-      "width": 170
+      "label": "任务标识亮屏租约",
+      "sublabel": "30 秒续约 / 120 秒兜底",
+      "width": 210
     },
     {
       "id": "operation",
       "lane": "device",
       "col": 3,
       "type": "backend",
-      "label": "执行页面操作",
-      "sublabel": "不抢焦点、不接收点击",
-      "width": 190
+      "label": "可见状态与目标波纹",
+      "sublabel": "窗口保亮 / 绘制反馈",
+      "width": 210
     },
     {
       "id": "blocked",
@@ -79,9 +79,9 @@
       "lane": "cleanup",
       "col": 2,
       "type": "backend",
-      "label": "移除亮屏窗口",
-      "sublabel": "释放 / 到期 / 手动息屏",
-      "width": 190
+      "label": "释放对应任务租约",
+      "sublabel": "结束 / 取消 / 到期 / 锁屏",
+      "width": 210
     }
   ],
   "edges": [
@@ -89,7 +89,7 @@
       "id": "command-guard",
       "from": "command",
       "to": "guard",
-      "label": "POST /api/screen"
+      "label": "Mesh → owner acquire"
     },
     {
       "id": "guard-hold",
@@ -101,7 +101,7 @@
       "id": "hold-operation",
       "from": "hold",
       "to": "operation",
-      "label": "请求 UI 操作"
+      "label": "运行时持续续约"
     },
     {
       "id": "guard-blocked",
@@ -115,7 +115,7 @@
       "id": "hold-release",
       "from": "hold",
       "to": "release",
-      "label": "清理事件",
+      "label": "停止续约与清理",
       "role": "branch"
     }
   ]

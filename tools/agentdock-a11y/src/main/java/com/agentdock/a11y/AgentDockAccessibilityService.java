@@ -152,7 +152,11 @@ public class AgentDockAccessibilityService extends AccessibilityService {
 
     /** HTTP workers marshal device/window effects and UI guards onto one serial thread. */
     public String handleRequest(String method, String path, String uri, String body) {
-        FutureTask<String> task = new FutureTask<>(() -> handleRequestOnMain(method, path, uri, body));
+        return onMainThread(() -> handleRequestOnMain(method, path, uri, body));
+    }
+
+    private String onMainThread(java.util.concurrent.Callable<String> action) {
+        FutureTask<String> task = new FutureTask<>(action);
         if (Looper.myLooper() == Looper.getMainLooper()) task.run();
         else mainHandler.post(task);
         try { return task.get(3, TimeUnit.SECONDS); }
@@ -179,7 +183,10 @@ public class AgentDockAccessibilityService extends AccessibilityService {
     }
 
     public String releaseScreen() {
-        return handleRequest("POST", "/api/screen", "/api/screen", "{\"action\":\"release\"}");
+        return onMainThread(() -> {
+            if (screenController != null) screenController.release();
+            return screenController == null ? "{\"ok\":false}" : screenController.status().toString();
+        });
     }
 
     public String screenStatus() { return handleRequest("GET", "/api/screen", "/api/screen", ""); }
@@ -329,6 +336,7 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                 int x = pt.getInt(0);
                 int y = pt.getInt(1);
                 boolean success = dispatchTap(x, y);
+                if (success && screenController != null) screenController.showTarget(x, y, false);
                 return "{\"ok\":" + success + ",\"method\":\"gesture_tap\",\"point\":[" + x + "," + y + "]}";
             }
 
@@ -372,6 +380,8 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                 method = "gesture_tap_fallback";
             }
 
+            if (performed && screenController != null) screenController.showTarget(
+                matched.bounds.centerX(), matched.bounds.centerY(), "action_click".equals(method));
             JSONObject res = new JSONObject();
             res.put("ok", performed);
             res.put("method", method);

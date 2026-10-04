@@ -168,31 +168,43 @@ async function handleWaitCommand(client: MobileUiClient, text: string, flags: Re
   console.log(`Found element: [${found.index}] "${found.text || found.desc || found.id}"`);
 }
 
+function parseScreenCommand(action: string | undefined, flags: Record<string, string | boolean>) {
+  const command = action || 'status';
+  if (!['status', 'keep-awake', 'renew', 'release'].includes(command)) {
+    throw new Error('Usage: mobile-ui screen status|keep-awake|renew|release [--duration=<1..600>] [--owner=<runId>]');
+  }
+  const duration = flags.duration === undefined ? 120 : Number(flags.duration);
+  if (command === 'keep-awake' || command === 'renew') {
+    if (typeof flags.duration === 'boolean') throw new Error('Screen duration requires a number.');
+    validateScreenDuration(duration);
+  }
+  const owner = flags.owner === undefined ? undefined : String(flags.owner);
+  if (flags.owner === true || owner === '' || (owner && owner.length > 256)) throw new Error('Screen owner requires 1..256 characters.');
+  return { command, duration, owner };
+}
+
+async function executeScreenCommand(client: MobileUiClient, command: string, duration: number, owner?: string) {
+  if (command === 'status') return client.getScreenStatus(owner);
+  if (command === 'release') return client.releaseScreen(owner);
+  if (command === 'renew') return client.renewScreenAwake(duration, owner);
+  return client.keepScreenAwake(duration, owner);
+}
+
 async function handleScreenCommand(
   client: MobileUiClient, action: string | undefined,
   flags: Record<string, string | boolean>, dryRun: boolean,
 ): Promise<void> {
-  const command = action || 'status';
-  if (!['status', 'keep-awake', 'release'].includes(command)) {
-    throw new Error('Usage: mobile-ui screen status|keep-awake|release [--duration=<1..600>]');
-  }
-  const duration = flags.duration === undefined ? 120 : Number(flags.duration);
-  if (command === 'keep-awake') {
-    if (typeof flags.duration === 'boolean') throw new Error('Screen duration requires a number.');
-    validateScreenDuration(duration);
-  }
+  const { command, duration, owner } = parseScreenCommand(action, flags);
   if (dryRun) {
     console.log(`[dry-run] ${command === 'status' ? 'GET' : 'POST'} /api/screen ${command}`);
     return;
   }
-  const result = command === 'status' ? await client.getScreenStatus()
-    : command === 'release' ? await client.releaseScreen() : await client.keepScreenAwake(duration);
-  console.log(JSON.stringify(result));
+  console.log(JSON.stringify({ ...await executeScreenCommand(client, command, duration, owner), cliProtocol: 2 }));
 }
 
 const HELP_TEXT = `AgentDock Mobile UI Bridge
 Usage:
-  mobile-ui screen status|keep-awake|release [--duration=<1..600>] [--dry-run]
+  mobile-ui screen status|keep-awake|renew|release [--duration=<1..600>] [--owner=<runId>] [--dry-run]
   mobile-ui status [--json]
   mobile-ui dump [--json] [--dry-run]
   mobile-ui click <index | "text" | x,y> [--id=<viewId>] [--dry-run]

@@ -34,6 +34,8 @@ import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-erro
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
 
+import { RemoteMeshScreenSessionManager } from '../execution/remote-mesh/screen-session-manager.js';
+
 import type { CostService } from '../cost/cost-service.js';
 
 type SendThreadMessageOptions = {
@@ -56,6 +58,7 @@ type LocalCoreAcpBackendOptions = {
 };
 
 export class LocalCoreAcpBackend {
+  private readonly screenSessions: RemoteMeshScreenSessionManager;
   private readonly transport: LocalCoreAcpTransport;
   private readonly turnCoordinator: LocalCoreAcpTurnCoordinator;
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
@@ -67,6 +70,11 @@ export class LocalCoreAcpBackend {
   private readonly threadAllowAll = new Set<string>();
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
+    this.screenSessions = new RemoteMeshScreenSessionManager({
+      execute: options.executeMesh,
+      log: options.log,
+      onFailure: (runId) => { void this.interruptRun(runId).catch(error => options.log?.(`Screen interruption failed: ${String(error)}`)); },
+    });
     this.transport = new LocalCoreAcpTransport({
       log: options.log,
       onAgentRequest: (session, payload) => this.handleAgentRequest(session, payload),
@@ -157,6 +165,7 @@ export class LocalCoreAcpBackend {
       runThreadMap: options.runThreadMap,
       cliBinDir: options.cliBinDir,
       localCoreBase: options.localCoreBase,
+      onRunStopped: (runId) => { void this.screenSessions.stop(runId); },
       emitBridge: (event) => this.emitBridgeEvent(event),
       log: options.log,
     });
@@ -225,6 +234,7 @@ export class LocalCoreAcpBackend {
   }
 
   close() {
+    void this.screenSessions.close();
     this.sessionCoordinator.closeAll();
   }
 
@@ -496,7 +506,9 @@ export class LocalCoreAcpBackend {
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {
-    return this.sessionCoordinator.interruptRun(runId);
+    const result = await this.sessionCoordinator.interruptRun(runId);
+    await this.screenSessions.stop(runId);
+    return result;
   }
 
   async setThreadMode(threadId: string, mode: string) {
@@ -504,6 +516,8 @@ export class LocalCoreAcpBackend {
   }
 
   closeThreadSession(threadId: string) {
+    const runId = this.sessionCoordinator.getSession(threadId)?.currentRunId;
+    if (runId) void this.screenSessions.stop(runId);
     this.sessionCoordinator.closeThreadSession(threadId);
   }
 
@@ -578,6 +592,11 @@ export class LocalCoreAcpBackend {
         toolObservations: [],
         permission: null,
       };
+      const screenReady = await this.screenSessions.begin(runId, config);
+      if (!screenReady || this.options.store.getRun(runId)?.status === 'interrupted') {
+        this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
+        return;
+      }
       const promptPromise = this.transport.request(session, 'session/prompt', {
         sessionId: session.sessionId,
         messageId: randomUUID(),
@@ -763,6 +782,7 @@ export class LocalCoreAcpBackend {
         replyCtx: runId,
       });
     } finally {
+      await this.screenSessions.stop(runId);
       if (session?.currentRunId === runId) {
         session.currentRunId = null;
       }
@@ -827,6 +847,7 @@ export class LocalCoreAcpBackend {
   }
 
   private handleTransportSessionClosed(session: AcpSessionState, error: Error) {
+    if (session.currentRunId) void this.screenSessions.stop(session.currentRunId);
     const row = this.options.store.getThreadRow(session.threadId);
     const runtimeId = session.currentTurn?.agentType || row?.agent_type || '';
     const errorInfo = toLocalCoreErrorInfo(error, 'runtime_exited', {
