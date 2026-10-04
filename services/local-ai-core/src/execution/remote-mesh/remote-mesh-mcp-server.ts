@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * @deprecated Superceded by agentdock-mesh-shell (Transparent Shell Proxy).
+ * Retained for backwards compatibility tests.
+ */
 import { createInterface } from 'node:readline';
 
 const nodeId = process.env.AGENTDOCK_MESH_NODE_ID || '';

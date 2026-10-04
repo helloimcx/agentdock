@@ -7,7 +7,7 @@ import type { MeshExecution } from '@cc/superai-contracts';
 import { record, text } from './mesh-validation.js';
 
 const DEFAULT_MAX_READ_BYTES = 32 * 1024;
-const DEFAULT_MAX_SHELL_BYTES = 32 * 1024;
+const DEFAULT_MAX_SHELL_BYTES = 512 * 1024;
 const MAX_WRITE_BYTES = 1024 * 1024;
 
 /** File capabilities are read-only and confined; shell opt-in is not an OS sandbox. */

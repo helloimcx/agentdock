@@ -39,6 +39,8 @@ export interface AgentExecutionDescriptor {
   transport: string;
   provider?: string;
   nodeId?: string;
+  node?: { label?: string; platform?: string };
+  systemPromptAppend?: string;
   sandbox?: {
     image: string;
     transport?: AgentSandboxTransport;

@@ -19,7 +19,7 @@ test('Node independently rejects shell without opt-in, oversized files and comma
     await writeFile(join(root, 'large'), Buffer.alloc(32 * 1024 + 1));
     await assert.rejects(disabled.execute(request('filesystem.read', { path: 'large' }), new AbortController().signal), /32 KiB/);
     const enabled = new NodeCapabilities(root, true);
-    await assert.rejects(enabled.execute(request('shell.exec', { program: process.execPath, arguments: ['-e', 'process.stdout.write("x".repeat(40000))'] }), new AbortController().signal), /32 KiB/);
+    await assert.rejects(enabled.execute(request('shell.exec', { program: process.execPath, arguments: ['-e', 'process.stdout.write("x".repeat(512 * 1024 + 10))'] }), new AbortController().signal), /512 KiB/);
     const controller = new AbortController();
     const execution = enabled.execute(request('shell.exec', { program: process.execPath, arguments: ['-e', 'setTimeout(()=>{},5000)'] }), controller.signal);
     controller.abort();

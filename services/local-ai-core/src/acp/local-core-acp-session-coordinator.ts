@@ -177,7 +177,7 @@ export class LocalCoreAcpSessionCoordinator {
         const created = await this.options.transport.request(session, 'session/new', {
           cwd: acpSessionCwd(config),
           mcpServers: toAcpMcpServers(config),
-          _meta: this.buildSessionMeta(threadId, permissionMode),
+          _meta: this.buildSessionMeta(threadId, permissionMode, config),
         }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
         session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
         if (!session.sessionId) {
@@ -381,6 +381,8 @@ export class LocalCoreAcpSessionCoordinator {
       model: config.model || '',
       baseUrl: env.OPENAI_BASE_URL || env.HERMES_BASE_URL || env.ANTHROPIC_BASE_URL || '',
       keyHash,
+      executionMode: config.execution?.mode || 'local',
+      executionNodeId: config.execution?.nodeId || '',
     });
   }
 
@@ -404,17 +406,23 @@ export class LocalCoreAcpSessionCoordinator {
     return !mode || mode === 'default' ? '' : mode;
   }
 
-  private buildSessionMeta(threadId: string, permissionModeOverride = '') {
+  private buildSessionMeta(threadId: string, permissionModeOverride = '', config?: LocalCoreProjectConfig) {
     const mode = this.resolveLaunchPermissionMode(threadId, permissionModeOverride);
+    const isMesh = config?.execution?.mode === 'mesh';
+    const systemPromptAppend = isMesh ? config?.execution?.systemPromptAppend : undefined;
+    const disallowedTools = isMesh ? ['FileEdit', 'GlobTool'] : [];
+
     return {
+      ...(systemPromptAppend ? { systemPrompt: { append: systemPromptAppend } } : {}),
       claudeCode: {
         emitRawSDKMessages: [
           { type: 'system', subtype: 'local_command_output' },
         ],
-        ...(mode
+        ...(mode || disallowedTools.length > 0
           ? {
               options: {
-                permissionMode: mode,
+                ...(mode ? { permissionMode: mode } : {}),
+                ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
               },
             }
           : {}),
