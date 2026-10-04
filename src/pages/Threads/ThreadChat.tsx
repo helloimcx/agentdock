@@ -37,6 +37,7 @@ export default function ThreadChat() {
     draft,
     endRef,
     scrollContainerRef,
+    handleScrollContainerScroll,
     filteredSessionGroups,
     handleBridgeAction,
     handleCreateNew,
@@ -181,6 +182,7 @@ export default function ThreadChat() {
 
             <div
               ref={scrollContainerRef}
+              onScroll={handleScrollContainerScroll}
               className="flex-1 overflow-y-auto px-3 py-4 [overflow-anchor:none] [scrollbar-gutter:stable] sm:px-6 sm:py-5"
             >
               {renderedMessages.length === 0 ? (

@@ -48,6 +48,13 @@ import {
   type HistoryScrollAnchorElement,
   type HistoryScrollContainer,
 } from './thread-chat-scroll-anchor';
+import { shouldFollowChatScroll } from './thread-chat-scroll-follow';
+
+test('chat scroll following only stays enabled while the view is near the bottom', () => {
+  assert.equal(shouldFollowChatScroll({ scrollTop: 700, scrollHeight: 1200, clientHeight: 500 }), true);
+  assert.equal(shouldFollowChatScroll({ scrollTop: 690, scrollHeight: 1200, clientHeight: 500 }), true);
+  assert.equal(shouldFollowChatScroll({ scrollTop: 619, scrollHeight: 1200, clientHeight: 500 }), false);
+});
 
 test('history scroll anchor tracks the first visible message relative to the scroll container', () => {
   const containerTop = { value: 100 };
@@ -77,6 +84,31 @@ test('history scroll anchor ignores a message removed while history loads', () =
 
   assert.equal(restoreHistoryScrollAnchor(container, anchor), false);
   assert.equal(container.scrollTop, 200);
+});
+
+test('history scroll anchor follows the user position changed during a pending load', () => {
+  const earlierMessage = createScrollAnchorElement(100, 130);
+  const middleMessage = createScrollAnchorElement(150, 190);
+  const newestMessage = createScrollAnchorElement(210, 260);
+  const container = createScrollContainer(() => 100, [earlierMessage, middleMessage, newestMessage]);
+  const clickAnchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(clickAnchor);
+  earlierMessage.top = -80;
+  earlierMessage.bottom = -40;
+  middleMessage.top = -30;
+  middleMessage.bottom = 0;
+  newestMessage.top = 100;
+  newestMessage.bottom = 150;
+  container.scrollTop = 350;
+  const rebasedAnchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(rebasedAnchor);
+  assert.equal(rebasedAnchor.element, newestMessage);
+  newestMessage.top = 300;
+
+  assert.equal(restoreHistoryScrollAnchor(container, rebasedAnchor), true);
+  assert.equal(container.scrollTop, 550);
 });
 
 function createScrollAnchorElement(top: number, bottom: number): HistoryScrollAnchorElement & { top: number; bottom: number } {

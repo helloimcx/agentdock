@@ -22,6 +22,7 @@ import {
   restoreHistoryScrollAnchor,
   type HistoryScrollAnchor,
 } from './thread-chat-scroll-anchor';
+import { shouldFollowChatScroll } from './thread-chat-scroll-follow';
 
 export function useThreadChatController() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,6 +54,7 @@ export function useThreadChatController() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingHistoryScrollAnchorRef = useRef<HistoryScrollAnchor | null>(null);
   const suppressAutoScrollAfterHistoryRef = useRef(false);
+  const shouldAutoScrollRef = useRef(true);
   const requestedWorkspaceId = searchParams.get('project') || '';
   const requestedThreadId = searchParams.get('session') || '';
   const branding = getRuntimeBranding();
@@ -110,6 +112,7 @@ export function useThreadChatController() {
     pendingHistoryScrollAnchorRef.current = null;
     isPrependingHistoryRef.current = false;
     suppressAutoScrollAfterHistoryRef.current = false;
+    shouldAutoScrollRef.current = true;
     scrollStateThreadIdRef.current = activeThreadId;
   }, [activeThreadId, isPrependingHistoryRef]);
 
@@ -188,8 +191,20 @@ export function useThreadChatController() {
       suppressAutoScrollAfterHistoryRef.current = false;
       return;
     }
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldAutoScrollRef.current) {
+      endRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
   }, [isPrependingHistoryRef, loadingMoreHistory, renderedMessages, typing]);
+
+  const handleScrollContainerScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      shouldAutoScrollRef.current = shouldFollowChatScroll(container);
+      if (isPrependingHistoryRef.current) {
+        pendingHistoryScrollAnchorRef.current = captureHistoryScrollAnchor(container);
+      }
+    }
+  }, [isPrependingHistoryRef]);
 
   const handleLoadMoreHistory = useCallback(async () => {
     const requestThreadId = activeThreadId;
@@ -372,6 +387,7 @@ export function useThreadChatController() {
     draft,
     endRef,
     scrollContainerRef,
+    handleScrollContainerScroll,
     filteredSessionGroups: filteredThreadGroups,
     handleBridgeAction,
     handleCreateNew,
