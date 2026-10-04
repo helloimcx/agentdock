@@ -1353,3 +1353,24 @@ test('runTick skips out-of-window monitors while manual runs still poll', async 
     assert.equal(inWindow.id === outWindow.id, false);
   } finally { await monitors.stop(); context.close(); }
 });
+
+test('provider lifecycle failures log the normalized message exactly once', async () => {
+  const context = monitorFixture();
+  const logs: string[] = [];
+  const monitors = new AutomationMonitorService({
+    store: context.store, automations: context.automations, eventBus: context.eventBus, providers: [],
+    log: (message) => logs.push(message),
+  });
+  const original = context.automations.getRuntimeStatus.bind(context.automations);
+  context.automations.getRuntimeStatus = () => ({ status: 'degraded', reason: 'fixture' });
+  try {
+    await monitors.start();
+    assert.deepEqual(logs, [
+      'automation monitor provider start failed: Unified automation migration is unavailable.',
+    ]);
+  } finally {
+    context.automations.getRuntimeStatus = original;
+    await monitors.stop();
+    context.close();
+  }
+});

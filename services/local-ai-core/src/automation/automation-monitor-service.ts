@@ -817,7 +817,7 @@ export class AutomationMonitorService {
   private reportProviderError(scope: string, error: unknown): void {
     const message = this.lifecycleError(scope, error);
     try {
-      this.options.log?.(`automation monitor provider ${scope} failed: ${message}`);
+      this.options.log?.(message);
     } catch {
       // Provider diagnostics must not destabilize lifecycle isolation.
     }
