@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, memo, Suspense } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,7 @@ const HighlightedMarkdown = lazy(() =>
   import('./HighlightedMarkdown').then((module) => ({ default: module.HighlightedMarkdown })),
 );
 
-export function ChatMarkdown({ content, isUser }: { content: string; isUser: boolean }) {
+export const ChatMarkdown = memo(function ChatMarkdown({ content, isUser }: { content: string; isUser: boolean }) {
   const hasCodeBlock = hasMarkdownCodeBlock(content);
   const markdown = hasCodeBlock ? (
     <Suspense fallback={<Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>}>
@@ -50,4 +50,4 @@ export function ChatMarkdown({ content, isUser }: { content: string; isUser: boo
       {markdown}
     </div>
   );
-}
+});

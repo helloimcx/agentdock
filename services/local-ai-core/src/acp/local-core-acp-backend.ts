@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import type { DesktopBridgeEvent, ThreadDetail, ThreadSummary } from '@cc/superai-contracts';
+import type { DesktopBridgeEvent, ThreadDetail, ThreadGetOptions, ThreadSummary } from '@cc/superai-contracts';
 import {
   LOCALCORE_ACP_AGENT_TYPE,
   inferArtifactKind,
@@ -279,8 +279,8 @@ export class LocalCoreAcpBackend {
     return this.options.store.createThread(workspaceId, title, agentType, agentMode);
   }
 
-  async getThread(threadId: string): Promise<ThreadDetail> {
-    const detail = this.options.store.getThread(threadId, []);
+  async getThread(threadId: string, options?: ThreadGetOptions): Promise<ThreadDetail> {
+    const detail = this.options.store.getThread(threadId, [], options);
     return {
       ...detail,
       pendingPermissionRequest: this.turnCoordinator.getPendingPermissionRequest(this.sessionCoordinator.getSession(threadId), detail),

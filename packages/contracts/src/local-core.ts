@@ -1,5 +1,5 @@
-import type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, RunSummary } from './thread-types.js';
-export type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, RunSummary } from './thread-types.js';
+import type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, ThreadGetOptions, RunSummary } from './thread-types.js';
+export type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, ThreadGetOptions, RunSummary } from './thread-types.js';
 import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop.js';
 import type { DesktopBridgeButtonOption } from '../../../shared/desktop.js';
 export * from './knowledge.js';
@@ -20,8 +20,6 @@ import {
   ScheduledJobExecutionMode,
   ScheduledJobRoute,
 } from './scheduler.js';
-
-
 
 
 
@@ -52,12 +50,6 @@ export interface ChannelInboundMessageContent {
   displayText: string;
   contentParts: ChannelInboundContentPart[];
 }
-
-
-
-
-
-
 
 export type AgentTaskStatus =
   | 'created'

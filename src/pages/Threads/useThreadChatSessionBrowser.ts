@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import type { ThreadDetail } from '@cc/superai-contracts';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
-import { watchThreadRuntime, listThreads, listWorkspaces } from '@cc/core-sdk/threads';
+import { watchThreadRuntime, getThread, listThreads, listWorkspaces } from '@cc/core-sdk/threads';
 import type { ThreadGroup } from './thread-chat-model';
 import {
   chatThreadMatchesSearch,
@@ -8,6 +9,30 @@ import {
   toCoreChatThreadSummary,
   upsertThreadGroup,
 } from './thread-chat-model';
+
+const MAX_THREAD_CACHE_ENTRIES = 30;
+const threadDetailCache = new Map<string, ThreadDetail>();
+
+function getCachedThreadDetail(threadId: string): ThreadDetail | undefined {
+  const detail = threadDetailCache.get(threadId);
+  if (detail) {
+    threadDetailCache.delete(threadId);
+    threadDetailCache.set(threadId, detail);
+  }
+  return detail;
+}
+
+function setCachedThreadDetail(threadId: string, detail: ThreadDetail): void {
+  if (threadDetailCache.has(threadId)) {
+    threadDetailCache.delete(threadId);
+  } else if (threadDetailCache.size >= MAX_THREAD_CACHE_ENTRIES) {
+    const oldestKey = threadDetailCache.keys().next().value;
+    if (oldestKey) {
+      threadDetailCache.delete(oldestKey);
+    }
+  }
+  threadDetailCache.set(threadId, detail);
+}
 import type {
   ThreadChatBrowserSetters,
   ThreadChatConversationRefs,
@@ -131,34 +156,45 @@ export function useThreadChatSessionBrowser({
     return nextThreads;
   }, [activeThreadId, serviceRunning, setActiveAgentMode, setActiveSessionAgentType, setThreadGroups]);
 
+  const activeThreadRequestIdRef = useRef(0);
+
   const loadActiveThread = useCallback(async (workspaceId: string, threadId: string) => {
-    if (!workspaceId || !threadId || !serviceRunning) {
+    if (!threadId || !serviceRunning) {
       return;
     }
     selectedThreadRef.current = threadId;
+    const requestId = ++activeThreadRequestIdRef.current;
     holdBlankComposerRef.current = false;
     updateTaskState('idle');
     setPendingPermissionRequest(null);
     setTyping(false);
     setActiveSessionId(threadId);
+    const cached = getCachedThreadDetail(threadId);
+    if (cached) {
+      applyLocalCoreThreadDetail(cached);
+    }
+    try {
+      const detail = await getThread(threadId, { limit: 50 });
+      if (activeThreadRequestIdRef.current !== requestId) {
+        return;
+      }
+      setCachedThreadDetail(threadId, detail);
+      applyLocalCoreThreadDetail(detail);
+    } catch (error) {
+      if (activeThreadRequestIdRef.current !== requestId) {
+        return;
+      }
+      if (!cached) {
+        setBridgeError(error instanceof Error ? error.message : 'Failed to load thread.');
+      }
+    }
   }, [
     applyLocalCoreThreadDetail,
     holdBlankComposerRef,
-    nextMessageOrderRef,
-    pendingTurnRef,
-    progressSequenceByTurnRef,
     serviceRunning,
-    setActiveRunId,
-    setActiveAgentMode,
-    setActiveSessionAgentType,
-    setActiveSessionId,
-    setActiveSessionKey,
-    setActiveSessionName,
-    setSelectedKnowledgeBaseIds,
-    setMessages,
+    setBridgeError,
     setPendingPermissionRequest,
-    setSelectedProject,
-    setThreadGroups,
+    setActiveSessionId,
     setTyping,
     updateTaskState,
   ]);
@@ -263,6 +299,19 @@ export function useThreadChatSessionBrowser({
     setTyping,
     updateTaskState,
   ]);
+
+  const lastRequestedThreadIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!serviceRunning || !requestedThreadId) {
+      return;
+    }
+    if (requestedThreadId === activeThreadId || lastRequestedThreadIdRef.current === requestedThreadId) {
+      return;
+    }
+    lastRequestedThreadIdRef.current = requestedThreadId;
+    void loadActiveThread(requestedWorkspaceId, requestedThreadId);
+  }, [activeThreadId, loadActiveThread, requestedThreadId, requestedWorkspaceId, serviceRunning]);
 
   useEffect(() => {
     if (!selectedWorkspaceId || !serviceRunning) {

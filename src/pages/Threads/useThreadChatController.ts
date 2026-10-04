@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { listKnowledgeBases } from '@cc/core-sdk/knowledge';
 import { getRuntimeBranding } from '@/lib/runtime-branding';
@@ -43,6 +43,9 @@ export function useThreadChatController() {
   const [bridgeError, setBridgeError] = useState('');
   const knowledgeBaseSelectionRequestRef = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeightRef = useRef(0);
+  const prevScrollTopRef = useRef(0);
   const requestedWorkspaceId = searchParams.get('project') || '';
   const requestedThreadId = searchParams.get('session') || '';
   const branding = getRuntimeBranding();
@@ -52,8 +55,12 @@ export function useThreadChatController() {
     clearActionStatuses,
     clearReplyTimeout,
     finalizeTurnMessages,
+    hasMoreHistory,
     holdBlankComposerRef,
+    isPrependingHistoryRef,
     lastSessionByProjectRef,
+    loadMoreHistory,
+    loadingMoreHistory,
     nextMessageOrderRef,
     nextProgressMessageId,
     pendingPermissionRequest,
@@ -144,9 +151,34 @@ export function useThreadChatController() {
     progressSequenceByTurnRef,
   });
 
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container && prevScrollHeightRef.current > 0) {
+      const diff = container.scrollHeight - prevScrollHeightRef.current;
+      if (diff > 0) {
+        container.scrollTop = prevScrollTopRef.current + diff;
+      }
+      prevScrollHeightRef.current = 0;
+      prevScrollTopRef.current = 0;
+    }
+  }, [renderedMessages]);
+
   useEffect(() => {
+    if (isPrependingHistoryRef.current) {
+      isPrependingHistoryRef.current = false;
+      return;
+    }
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [renderedMessages, typing]);
+  }, [isPrependingHistoryRef, renderedMessages, typing]);
+
+  const handleLoadMoreHistory = useCallback(async () => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      prevScrollHeightRef.current = container.scrollHeight;
+      prevScrollTopRef.current = container.scrollTop;
+    }
+    await loadMoreHistory();
+  }, [loadMoreHistory]);
 
   const refreshKnowledgeBases = useCallback(async () => {
     try {
@@ -302,6 +334,7 @@ export function useThreadChatController() {
     deleteTarget,
     draft,
     endRef,
+    scrollContainerRef,
     filteredSessionGroups: filteredThreadGroups,
     handleBridgeAction,
     handleCreateNew,
@@ -309,6 +342,9 @@ export function useThreadChatController() {
     handleRenameSession,
     handleSend,
     handleStopTask,
+    hasMoreHistory,
+    loadingMoreHistory,
+    loadMoreHistory: handleLoadMoreHistory,
     availableKnowledgeBases,
     loadActiveSession: loadActiveThread,
     loading,

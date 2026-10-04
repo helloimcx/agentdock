@@ -25,6 +25,7 @@ export interface ThreadMessage {
   bridgeKind?: DesktopBridgeEvent['bridgeKind'];
   bridgeStatus?: DesktopBridgeEvent['bridgeStatus'];
   toolCall?: DesktopBridgeToolCall;
+  seq?: number;
 }
 
 export interface ThreadPendingPermissionRequest {
@@ -42,6 +43,14 @@ export interface ThreadDetail extends ThreadSummary {
   messages: ThreadMessage[];
   selectedKnowledgeBaseIds: string[];
   pendingPermissionRequest?: ThreadPendingPermissionRequest | null;
+  hasMore?: boolean;
+  firstSeq?: number;
+  lastSeq?: number;
+}
+
+export interface ThreadGetOptions {
+  limit?: number;
+  beforeSeq?: number;
 }
 
 export interface RunSummary {

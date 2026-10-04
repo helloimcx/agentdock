@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ThreadDetail } from '@cc/superai-contracts';
+import { getThread } from '@cc/core-sdk/threads';
 import { chatControllerReducer, initialChatControllerState } from '@/components/chat/chat-controller-state';
 import {
   ASSISTANT_REPLY_TIMEOUT_MS,
@@ -50,6 +51,9 @@ export function useThreadChatConversationState({
   setThreadGroups,
 }: UseThreadChatConversationStateInput) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const [firstSeq, setFirstSeq] = useState<number | undefined>(undefined);
   const [pendingPermissionRequest, setPendingPermissionRequest] = useState<PendingPermissionRequest | null>(null);
   const [typing, setTyping] = useState(false);
   const [controllerState, dispatchController] = useReducer(chatControllerReducer, initialChatControllerState);
@@ -63,6 +67,7 @@ export function useThreadChatConversationState({
   const progressSequenceByTurnRef = useRef<Record<string, number>>({});
   const taskStateRef = useRef<ChatTaskState>('idle');
   const activeThreadIdRef = useRef('');
+  const isPrependingHistoryRef = useRef(false);
 
   const renderedMessages = useMemo(() => sortChatMessages(messages), [messages]);
   const taskRunning = isTaskRunningState(taskState);
@@ -153,6 +158,7 @@ export function useThreadChatConversationState({
   }, []);
 
   const applyLocalCoreThreadDetail = useCallback((detail: ThreadDetail) => {
+    activeThreadIdRef.current = detail.id;
     lastSessionByProjectRef.current[detail.workspaceId] = detail.id;
     setSelectedProject(detail.workspaceId);
     setActiveSessionId(detail.id);
@@ -166,6 +172,8 @@ export function useThreadChatConversationState({
     setThreadGroups((current) => upsertThreadInGroup(current, detail.workspaceId, toCoreChatThreadSummary(detail)));
     holdBlankComposerRef.current = false;
     progressSequenceByTurnRef.current = {};
+    setHasMoreHistory(Boolean(detail.hasMore));
+    setFirstSeq(detail.firstSeq);
     const nextMessages = toMessagesFromThread(detail.messages || []);
     pendingTurnRef.current = null;
     nextMessageOrderRef.current = nextMessages.reduce((max, message) => Math.max(max, message.order + 1), 0);
@@ -183,13 +191,47 @@ export function useThreadChatConversationState({
     setPendingPermissionRequest,
   ]);
 
+  const loadMoreHistory = useCallback(async () => {
+    if (!activeThreadId || !hasMoreHistory || loadingMoreHistory || firstSeq === undefined) {
+      return;
+    }
+    const targetThreadId = activeThreadId;
+    setLoadingMoreHistory(true);
+    isPrependingHistoryRef.current = true;
+    try {
+      const older = await getThread(targetThreadId, { limit: 50, beforeSeq: firstSeq });
+      if (activeThreadIdRef.current !== targetThreadId) {
+        isPrependingHistoryRef.current = false;
+        return;
+      }
+      setHasMoreHistory(Boolean(older.hasMore));
+      setFirstSeq(older.firstSeq);
+      const olderMessages = toMessagesFromThread(older.messages || []);
+      setMessages((current) => {
+        const existingIds = new Set(current.map((m) => m.id));
+        const newUnique = olderMessages.filter((m) => !existingIds.has(m.id));
+        return sortChatMessages([...newUnique, ...current]);
+      });
+    } catch (error) {
+      isPrependingHistoryRef.current = false;
+      throw error;
+    } finally {
+      setLoadingMoreHistory(false);
+    }
+  }, [activeThreadId, firstSeq, hasMoreHistory, loadingMoreHistory]);
+
   return {
     applyLocalCoreThreadDetail,
     armReplyTimeout,
     clearActionStatuses,
     clearReplyTimeout,
+    firstSeq,
+    hasMoreHistory,
     holdBlankComposerRef,
+    isPrependingHistoryRef,
     lastSessionByProjectRef,
+    loadMoreHistory,
+    loadingMoreHistory,
     messages,
     nextMessageOrderRef,
     pendingPermissionRequest,

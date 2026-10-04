@@ -69,6 +69,11 @@ flowchart LR
   - **多设备动态感知与规范注入**：根据绑定的 Mesh 设备节点（`mesh_nodes`）动态提取设备名称（`label`）与操作系统平台（`platform`：Android/Termux、Linux、macOS、Windows），在工作区影子目录自适应生成 `CLAUDE.md` 与 ACP `systemPrompt.append`，杜绝任何硬编码，告别 ADB 或外部连接混淆。
   - **宿主机文件工具隔离**：针对远程 Mesh 工作区自动屏蔽宿主机本地 `FileEdit`、`GlobTool` 工具，防止云端服务器本地文件泄漏，引导 Agent 纯粹通过远程终端操作目标设备。
 - 发布 AgentDock 0.1.84：
+  - **历史消息会话加载全链路性能优化**：
+    - **HTTP 传输 Gzip 压缩**：Local AI Core 针对大于 1KB 的 JSON 响应启用 gzip 压缩，在远程 Tailscale 或弱网连接下网络数据传输量减少 80%~90%。
+    - **消息历史窗口化分页与工具输出截断防护**：`/api/local/v1/threads/:id` 新增 `limit` 与 `before_seq` 窗口化分页（默认优先返回最新 50 条消息），单次工具输出加入 64KB 性能防护截断，支持平滑向上加载更早历史。
+    - **消除前端请求瀑布流与 SWR 缓存**：会话页面初始化并行拉取目标 Thread 与工作区/会话列表，引入容量为 30 的 LRU SWR 缓存和请求竞态消除机制，切换会话秒级直出并避免无谓的工作区遍历。
+    - **滚动位置平滑锁定与组件渲染优化**：聊天消息与 Markdown 组件接入 `React.memo`，加载更早历史时通过 `useLayoutEffect` 精确保持视口滚动锚点，抑制自动滚底跳动。
   - **ACP MCP 协议规范对齐**：修复 Local AI Core 向 ACP 运行时（如 Claude Agent ACP、Codex）发送 `session/new` 与 `session/load` 时 `mcpServers` 数据结构未对齐官方规范的缺陷（环境变量与请求头由 Object 规范转换为 `[{ name, value }]` 键值对数组，严格补齐 `args` 与 `env` 默认空数组），消除远程工作区中 Agent 初始化触发 `-32602 Invalid params`（`Agent runtime returned an invalid protocol response`）的问题。
 - **ACP 桥工具调用状态修复（Issue #160）**：Zed 等 ACP 客户端现在能看到工具调用的真实名称与状态流转（`tool_call` → `tool_call_update` 直至 completed/failed），不再永远停留在进行中。此前运行态与终态更新共用同一 message id，被桥的消息去重误丢，终态从未送达客户端。
 

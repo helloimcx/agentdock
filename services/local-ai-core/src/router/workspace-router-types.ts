@@ -8,6 +8,7 @@ import type {
   RuntimeConfigState,
   LocalCoreCapabilities,
   ThreadDetail,
+  ThreadGetOptions,
   ThreadSummary,
   WorkspaceStreamingProbeEvent,
 } from '@cc/superai-contracts';
@@ -161,7 +162,7 @@ export type ProbeCollector = {
 export type WorkspaceThreadBackend = {
   listThreads(workspaceId: string): Promise<ThreadSummary[]>;
   createThread(workspaceId: string, title: string): Promise<ThreadDetail>;
-  getThread(threadId: string): Promise<ThreadDetail>;
+  getThread(threadId: string, options?: ThreadGetOptions): Promise<ThreadDetail>;
   renameThread(threadId: string, title: string): Promise<ThreadDetail>;
   deleteThread(threadId: string): Promise<{ deleted: boolean }>;
   sendThreadMessage(

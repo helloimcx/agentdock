@@ -3,6 +3,7 @@ import type {
   ThreadDetail,
   ThreadExecutionSnapshot,
   ThreadSubmissionResponse,
+  ThreadGetOptions,
   ThreadSummary,
   WorkspaceRegistryEntry,
   WorkspaceSummary,
@@ -30,8 +31,12 @@ export function createThread(workspaceId: string, title?: string) {
   return coreRequest<ThreadDetail>('POST', '/threads', { workspaceId, title });
 }
 
-export function getThread(threadId: string) {
-  return coreRequest<ThreadDetail>('GET', `/threads/${encodeURIComponent(threadId)}`);
+export function getThread(threadId: string, options?: ThreadGetOptions) {
+  const query = options ? buildQuery({
+    limit: options.limit !== undefined ? options.limit : undefined,
+    before_seq: options.beforeSeq !== undefined ? options.beforeSeq : undefined,
+  }) : '';
+  return coreRequest<ThreadDetail>('GET', `/threads/${encodeURIComponent(threadId)}${query}`);
 }
 
 export function renameThread(threadId: string, title: string) {
