@@ -58,7 +58,7 @@ flowchart LR
 
 ### 2026-10-04
 
-- **Android All-in-One 原生无障碍 Mesh 客户端集成（免 Termux / 零本地端口）**：
+- 发布 AgentDock 0.1.90：Android All-in-One 原生无障碍 Mesh 客户端集成（免 Termux / 零本地端口）：
   - **原生 Mesh 长连接客户端集成**：在无障碍桥接 APK（`agentdock-a11y`）中直接原生集成 RFC 6455 WebSocket 客户端与配对配置界面（`MainActivity`），手机安装单个 APK 开启无障碍即可一键接入 AgentDock 云端。
   - **彻底移除本地 19832 HTTP 监听**：实现纯出站长连接（Zero-Listening-Port），杜绝端口占用与网络攻击面，所有命令通过内存直调无障碍与系统引擎。
   - **全能系统能力与 termux-api 洁净室兼容**：虚拟 Shell 自动拦截并分发 `mobile-ui`（屏幕元素感知与点击、亮屏保活 `cliProtocol: 2`）、`mobile-apps`（微信/支付宝/高德/美团等原生 Intent 宏观跳转）及 `termux-*` 系列常用指令（TTS、电池状态 JSON、剪贴板读写、振动、手电筒、Toast、音量调节、GPS 定位），兼具路径越界防护与超时保护。

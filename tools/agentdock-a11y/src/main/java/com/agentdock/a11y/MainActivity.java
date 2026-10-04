@@ -14,6 +14,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.util.Log;
 import android.widget.Toast;
 
 import org.json.JSONObject;
@@ -147,6 +148,29 @@ public class MainActivity extends Activity implements MeshClient.StatusListener 
         setContentView(scrollView);
 
         MeshClient.getInstance(this).setStatusListener(this);
+        processIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        processIntent(intent);
+    }
+
+    private void processIntent(Intent intent) {
+        if (intent == null) return;
+        String intentServer = intent.getStringExtra("server");
+        if (intentServer != null && !intentServer.trim().isEmpty()) {
+            serverInput.setText(intentServer.trim());
+        }
+        String intentToken = intent.getStringExtra("pairingToken");
+        if (intentToken != null && !intentToken.trim().isEmpty()) {
+            tokenInput.setText(intentToken.trim());
+        }
+        if (intent.getBooleanExtra("autoConnect", false)) {
+            mainHandler.post(this::handlePairAndConnect);
+        }
     }
 
     private void handlePairAndConnect() {
@@ -175,9 +199,11 @@ public class MainActivity extends Activity implements MeshClient.StatusListener 
 
         new Thread(() -> {
             try {
+                Log.i("AgentDockMain", "Initiating mesh enrollment: server=" + server + ", token=" + pairingToken);
                 JSONObject data = MeshClient.enroll(server, pairingToken);
                 String nodeId = data.getString("nodeId");
                 String token = data.getString("token");
+                Log.i("AgentDockMain", "Mesh enrollment success: nodeId=" + nodeId);
                 preferences.saveCredentials(server, nodeId, token);
 
                 mainHandler.post(() -> {
@@ -185,9 +211,12 @@ public class MainActivity extends Activity implements MeshClient.StatusListener 
                     btnPair.setText("配对并连接 Mesh 网关");
                     tokenInput.setText("");
                     Toast.makeText(this, "配对成功! 节点 ID: " + nodeId, Toast.LENGTH_LONG).show();
-                    MeshClient.getInstance(this).start();
+                    MeshClient client = MeshClient.getInstance(this);
+                    client.stop();
+                    client.start();
                 });
             } catch (Exception e) {
+                Log.e("AgentDockMain", "Mesh enrollment error: " + e.getMessage(), e);
                 mainHandler.post(() -> {
                     btnPair.setEnabled(true);
                     btnPair.setText("配对并连接 Mesh 网关");

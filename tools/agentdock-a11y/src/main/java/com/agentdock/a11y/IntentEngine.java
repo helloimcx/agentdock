@@ -33,7 +33,7 @@ public class IntentEngine {
         String targetApp = app.toLowerCase().trim();
         String targetAction = (action == null || action.isEmpty()) ? "open" : action.toLowerCase().trim();
 
-        if ("system".equals(targetApp)) {
+        if ("system".equals(targetApp) || "settings".equals(targetApp)) {
             return openSystemSetting(targetAction);
         }
 
