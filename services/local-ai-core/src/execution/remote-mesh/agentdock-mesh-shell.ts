@@ -1,16 +1,72 @@
-#!/usr/bin/env node
+import { writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
-export function extractCommandFromArgv(argv: string[]): string {
-  const args = argv.slice(2);
+export interface ExtractedCommand {
+  command: string;
+  isVersion?: boolean;
+  isSnapshot?: boolean;
+  cwdFile?: string;
+}
+
+function stripBashQuotes(str: string): string {
+  if ((str.startsWith("'") && str.endsWith("'")) || (str.startsWith('"') && str.endsWith('"'))) {
+    const isSingle = str.startsWith("'");
+    const unquoted = str.slice(1, -1);
+    return isSingle ? unquoted.replace(/'\\''/g, "'") : unquoted;
+  }
+  return str;
+}
+
+function extractRawCommand(args: string[]): string {
   const cIndex = args.findIndex((arg) => arg === '-c' || /^-[a-zA-Z]*c$/.test(arg));
-  if (cIndex !== -1 && cIndex + 1 < args.length) {
-    return args[cIndex + 1];
+  if (cIndex !== -1) {
+    for (let i = cIndex + 1; i < args.length; i += 1) {
+      if (!args[i].startsWith('-')) {
+        return args[i];
+      }
+    }
+    return '';
   }
   const firstCmdIndex = args.findIndex((arg) => !arg.startsWith('-'));
-  if (firstCmdIndex !== -1) {
-    return args.slice(firstCmdIndex).join(' ').trim();
+  return firstCmdIndex !== -1 ? args.slice(firstCmdIndex).join(' ').trim() : '';
+}
+
+function unwrapClaudeCommand(rawCmd: string): ExtractedCommand {
+  const claudeMatch = rawCmd.match(/(?:^|.*\s+&&\s+)eval\s+([\s\S]*?)(?:\s*<\s*\/dev\/null)?\s*&&\s*pwd\s+-P\s*>\|?\s*(\S+)\s*$/);
+  if (claudeMatch) {
+    return { command: stripBashQuotes(claudeMatch[1].trim()).trim(), cwdFile: claudeMatch[2] };
   }
-  return '';
+
+  const evalOnlyMatch = rawCmd.match(/^eval\s+([\s\S]+)$/);
+  if (evalOnlyMatch) {
+    return { command: stripBashQuotes(evalOnlyMatch[1].trim()).trim() };
+  }
+
+  const pwdMatch = rawCmd.match(/\s*&&\s*pwd\s+-P\s*>\|?\s*(\S+)\s*$/);
+  if (pwdMatch) {
+    return { command: rawCmd.slice(0, pwdMatch.index).trim(), cwdFile: pwdMatch[1] };
+  }
+
+  return { command: rawCmd };
+}
+
+export function parseShellArgv(argv: string[]): ExtractedCommand {
+  const args = argv.slice(2);
+  if (args.includes('--version') || args.includes('-v')) {
+    return { command: '', isVersion: true };
+  }
+  if (args.some((a) => a.includes('SNAPSHOT_FILE='))) {
+    return { command: '', isSnapshot: true };
+  }
+  const rawCmd = extractRawCommand(args);
+  if (!rawCmd) {
+    return { command: '' };
+  }
+  return unwrapClaudeCommand(rawCmd);
+}
+
+export function extractCommandFromArgv(argv: string[]): string {
+  return parseShellArgv(argv).command;
 }
 
 interface MeshShellOptions {
@@ -83,9 +139,37 @@ async function sendMeshShellRequest(options: MeshShellOptions, command: string):
   return (execution.result || {}) as MeshExecutionResult;
 }
 
+function handleSpecialInvocation(parsed: ExtractedCommand, argv: string[]): number | null {
+  if (parsed.isVersion) {
+    process.stdout.write('GNU bash, version 5.2.0(1)-release (agentdock-mesh-shell)\n');
+    return 0;
+  }
+
+  if (parsed.isSnapshot) {
+    const systemShell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
+    const localRes = spawnSync(systemShell, argv.slice(2), { stdio: 'inherit' });
+    return localRes.status ?? 0;
+  }
+
+  if (parsed.cwdFile) {
+    try {
+      writeFileSync(parsed.cwdFile, process.cwd(), 'utf8');
+    } catch {
+      // Best-effort local cwd tracking
+    }
+  }
+
+  return null;
+}
+
 export async function executeMeshShell(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
-  const command = extractCommandFromArgv(argv);
-  if (!command) {
+  const parsed = parseShellArgv(argv);
+  const specialCode = handleSpecialInvocation(parsed, argv);
+  if (specialCode !== null) {
+    return specialCode;
+  }
+
+  if (!parsed.command) {
     return 0;
   }
 
@@ -95,19 +179,14 @@ export async function executeMeshShell(argv: string[], env: NodeJS.ProcessEnv = 
   }
 
   try {
-    const res = await sendMeshShellRequest(options, command);
-    const stdout = res.stdout || '';
-    const stderr = res.stderr || '';
-    const exitCode = res.exitCode ?? 0;
-
-    if (stdout) {
-      process.stdout.write(stdout);
+    const res = await sendMeshShellRequest(options, parsed.command);
+    if (res.stdout) {
+      process.stdout.write(res.stdout);
     }
-    if (stderr) {
-      process.stderr.write(stderr);
+    if (res.stderr) {
+      process.stderr.write(res.stderr);
     }
-
-    return exitCode;
+    return res.exitCode ?? 0;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     process.stderr.write(`agentdock-mesh-shell: Remote execution failed: ${msg}\n`);
@@ -119,7 +198,7 @@ export async function executeMeshShell(argv: string[], env: NodeJS.ProcessEnv = 
 const isDirectCli = typeof process !== 'undefined'
   && !process.env.NODE_TEST_CONTEXT
   && Boolean(process.argv?.[1])
-  && /agentdock-mesh-shell(?:\.[cm]?[jt]s)?$/.test(process.argv[1]);
+  && /(?:agentdock-mesh-shell|mesh-bash|mesh-shell)(?:\.[cm]?[jt]s)?$/.test(process.argv[1]);
 
 if (isDirectCli) {
   executeMeshShell(process.argv)

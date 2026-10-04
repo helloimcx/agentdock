@@ -57,6 +57,9 @@ flowchart LR
 
 ### 2026-10-04
 
+- 发布 AgentDock 0.1.86：修复 Claude Code 远程 Shell 代理环境感知与命令提取：
+  - **Claude Code 强校验兼容与专用环境变量注入**：适配 `@anthropic-ai/claude-agent-sdk` 对 Shell 路径名称包含 `bash`/`zsh` 字符的强校验（提供 `mesh-bash` 与软链接），同时注入 `CLAUDE_CODE_SHELL` 并将影子目录 `.bin` 优先置于 `PATH` 前端，确保 Claude Code 100% 命中代理。
+  - **复杂命令包装安全解构与本地环境快照**：精确解析 Claude Code 发起的 `eval '<CMD>' && pwd -P >| <CWD>` 嵌套包装，仅将核心目标命令转发至远程目标设备，并在本地自动同步 CWD 状态与委托执行 `SNAPSHOT_FILE=` 初始化，消除远程沙箱路径冲突。
 - 发布 AgentDock 0.1.85：透明 Shell 代理与多设备自适应远程 Workspace 支持：
   - **透明 Shell 代理（`agentdock-mesh-shell`）**：彻底移除远程工作区的 MCP Stdio 管道与工具前缀污染，改为通过环境变量 `SHELL` 注入跨平台 Shell 代理脚本。Agent 调用原生内置 `Bash` 终端工具时，任何命令自动透传至目标设备（`shell.exec`），并将真实输出与退出码透明返回，Agent 完全无感且天然认为自己就运行在远程目标设备上。
   - **多设备动态感知与规范注入**：根据绑定的 Mesh 设备节点（`mesh_nodes`）动态提取设备名称（`label`）与操作系统平台（`platform`：Android/Termux、Linux、macOS、Windows），在工作区影子目录自适应生成 `CLAUDE.md` 与 ACP `systemPrompt.append`，杜绝任何硬编码，告别 ADB 或外部连接混淆。
