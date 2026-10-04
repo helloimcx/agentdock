@@ -21,25 +21,39 @@ export function resolvePlatformHint(platform: string): string {
   }
 }
 
-function buildAndroidMobileInstructions(): string {
+export function buildAndroidMobileInstructions(): string {
   return [
     '',
-    '## Android Mobile App Automation',
-    'This device has the built-in shortcut tool `mobile-apps` to launch and control installed apps directly:',
+    '## Android Mobile App & In-Page UI Automation',
+    'This device has two built-in tools for mobile automation (no ADB / no root required):',
+    '',
+    '### 1. Macro Navigation (`mobile-apps`)',
+    'Launch and jump directly to target app pages via Intent / DeepLink:',
     '- `mobile-apps list`: view all supported apps and shortcuts.',
     '- `mobile-apps open alipay pay`: open Alipay payment code (付款码).',
     '- `mobile-apps open alipay scan`: open Alipay scanner (扫一扫).',
-    '- `mobile-apps open alipay ride`: open subway/bus ride code (乘车码).',
+    '- `mobile-apps open alipay bus`: open subway/bus ride code (乘车码).',
     '- `mobile-apps open wechat scan`: open WeChat scanner (微信扫一扫).',
-    '- `mobile-apps open wechat pay`: open WeChat offline pay (微信收付款).',
     '- `mobile-apps open amap navigate --destination="地点"`: start navigation on Amap (高德地图).',
     '- `mobile-apps open meituan search --keyword="美食"`: search food/takeout on Meituan (美团).',
     '- `mobile-apps open taobao search --keyword="商品"`: search products on Taobao (淘宝).',
     '- `mobile-apps open system settings`: open Android system settings.',
     '- `mobile-apps open system wifi`: open WLAN / WiFi settings.',
     '- `mobile-apps intent "<uri>"`: open custom deep-link URI.',
-    '- `agentdock-node-update`: safely update the AgentDock mobile client in background.',
-    'When the user asks to open an app, show payment code, scan, or navigate, prefer `mobile-apps` over shell guessing.',
+    '',
+    '### 2. In-Page UI Micro-Interaction (`mobile-ui`)',
+    'Once on an app page, perceive elements and interact with the UI:',
+    '- `mobile-ui status`: inspect active package, activity, and bridge connection.',
+    '- `mobile-ui dump`: inspect current screen elements with 1-based indices [1], [2]...',
+    '- `mobile-ui click <index>`: click element by its index number (e.g. `mobile-ui click 1`).',
+    '- `mobile-ui click "<text>"`: click element matching text.',
+    '- `mobile-ui input "<text>" [--target <index>]`: type text into input box.',
+    '- `mobile-ui scroll [down|up]`: scroll up/down half screen.',
+    '- `mobile-ui back`: press Android system Back button.',
+    '- `mobile-ui wait "<text>"`: wait until target element appears on screen.',
+    '',
+    'Workflow Pattern: Prefer `mobile-apps open ...` to jump to page -> `sleep 2` -> `mobile-ui dump` -> `mobile-ui click <index>`.',
+    'To update the mobile node client in background, run `agentdock-node-update`.',
   ].join('\n');
 }
 
@@ -76,7 +90,7 @@ export function buildDeviceSystemPrompt(node?: MeshNodeMetadata): string {
   const hint = resolvePlatformHint(platform);
   const isAndroid = platform.toLowerCase() === 'android';
   const mobileNotice = isAndroid
-    ? ' Built-in shortcut tool `mobile-apps` is available to launch apps, payment codes, scanners, and navigation (e.g. `mobile-apps open alipay pay`). To update client, run `agentdock-node-update`.'
+    ? ' Built-in tools `mobile-apps` (jump to apps/pages) and `mobile-ui` (dump screen elements, click by index [1..N], input text, scroll, back) are available. To update client, run `agentdock-node-update`.'
     : '';
 
   return [

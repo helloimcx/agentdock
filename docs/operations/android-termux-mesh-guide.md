@@ -299,18 +299,72 @@ mobile-apps intent "<uri>"
 
 ---
 
-## 6. 客户端脱离式自更新（Self-Update）
+## 6. 页面内感知与微观交互 (`mobile-ui`)
+
+在第一阶段中，`mobile-apps` 解决了**“快速跳到目标页面”**；而 `mobile-ui` 解决了**“直达页面后的深度交互”**。
+
+通过与运行在手机内部的极简无障碍桥接服务（`agentdock-a11y` Daemon，监听 `http://127.0.0.1:19832`，仅本机内部访问）通信，Agent 能够直接获取当前屏幕元素结构，并执行点击、输入和手势。
+
+### 6.1 组合协同模式（Macro + Micro）
+```bash
+# 1. 宏观直达：秒级拉起美团搜索“咖啡”
+mobile-apps open meituan search --keyword="咖啡"
+sleep 2
+
+# 2. 微观感知：查看搜索结果列表
+mobile-ui dump
+
+# 3. 精准交互：点击第 1 个搜索结果
+mobile-ui click 1
+
+# 4. 浏览详情：下滑半屏
+mobile-ui scroll down
+```
+
+### 6.2 CLI 命令速查
+
+| 命令 | 说明 | 示例 |
+|---|---|---|
+| `mobile-ui status` | 查看无障碍服务健康度与当前前台应用 | `mobile-ui status` |
+| `mobile-ui dump [--json]` | 提取当前屏幕可见元素（带单调递增序号 `[1], [2]...`） | `mobile-ui dump` |
+| `mobile-ui click <target>` | 智能点击（支持序号、文本匹配、viewId 或坐标） | `mobile-ui click 1` 或 `mobile-ui click "搜索"` |
+| `mobile-ui input <text>` | 在输入框中输入文本（支持 `--target=<序号>`） | `mobile-ui input "特浓咖啡豆" --target=2` |
+| `mobile-ui scroll [down\|up]` | 屏幕上下滑动翻页（默认 down 向下滑动） | `mobile-ui scroll down` |
+| `mobile-ui back` | 触发系统物理返回键（Back） | `mobile-ui back` |
+| `mobile-ui home` | 触发系统回到桌面（Home） | `mobile-ui home` |
+| `mobile-ui wait <text>` | 确定性等待目标元素出现，解决页面加载时延 | `mobile-ui wait "商品列表" --timeout=5` |
+
+### 6.3 紧凑文本输出示例 (`mobile-ui dump`)
+默认输出经过人类视觉流排序（从上到下、从左到右），单行呈现且极度节省 Token：
+```text
+=== Screen: com.taobao.taobao (1080x2400) ===
+[1] [Button] "搜索" (id: search_btn)
+[2] [EditText] "搜索发现: 挂耳咖啡" (id: search_edit)
+[3] [TextView] "综合排序" (selected)
+[4] [ViewGroup] "云南高海拔日晒耶加雪菲咖啡豆 250g ¥48" (center: 520,450)
+[5] [ViewGroup] "意式拼配深度烘焙咖啡豆 500g ¥69" (center: 520,850)
+```
+
+### 6.4 无障碍桥接服务 (`agentdock-a11y`) 配置
+1. 在手机上安装微型桥接服务 APK（体积仅 ~200KB，无外部网络权限，纯本地服务）。
+2. 进入系统 **设置 -> 更多设置 -> 无障碍（辅助功能）**。
+3. 找到 **AgentDock Accessibility Service**，开启服务开关。
+4. 在 Termux 中执行 `mobile-ui status`，确认返回 `Service enabled: true` 即可正常使用。
+
+---
+
+## 7. 客户端脱离式自更新（Self-Update）
 
 当 AgentDock 发布新版本时，可以通过以下方式安全自更新手机客户端：
 
-### 6.1 更新原理
+### 7.1 更新原理
 更新命令通过独立 supervisor 子进程启动：
 1. **防止请求超时掐断**：发起更新后，CLI 在 **~300ms** 内立即返回成功，避免长连接等待。
 2. **并发更新锁**：创建 `$HOME/.agentdock/update.lock`，防止并发重复更新。
 3. **镜像源加速**：通过国内 `npmmirror` 镜像源拉取 `@kafca/agentdock@latest`。
 4. **平滑重载**：更新完成后自动调用重启脚本，节点在 2~3 秒内重新向 Mesh 网关报到。
 
-### 6.2 触发方式
+### 7.2 触发方式
 - **方式一（飞书 / 自然语言对 Agent 发送）**：
   直接发送：“更新手机上的 AgentDock 客户端”，Agent 会自动调用 `agentdock-node-update`。
 - **方式二（手机端终端操作）**：
@@ -322,19 +376,25 @@ mobile-apps intent "<uri>"
 
 ---
 
-## 7. 飞书 / Lark 协同实战
+## 8. 飞书 / Lark 协同实战
 
 在云端 Local AI Core 中：
 1. 创建绑定到该手机节点的 Workspace（例如名称为 `Xiaomi-Phone`，设备绑定为 `node:xxxx`）。
 2. 在 Channel 设置中绑定飞书机器人。
 3. 此时无需任何额外的工具配置，`device-environment` 会自动在云端工作区中生成针对该 Android 设备的环境提示词：
    - 告诉 Agent 当前操作的是真实的 Android 手机；
-   - 自动提供 `mobile-apps` 的操作示例与语法说明。
+   - 自动提供 `mobile-apps` 与 `mobile-ui` 的操作示例与语法说明。
 
 ### 对话示例
 - **用户**：“帮我出示支付宝乘车码”
   - **Agent 行为**：识别意图，执行 `mobile-apps open alipay bus`。
   - **手机响应**：手机屏幕自动点亮并跳转至乘车码界面。
+- **用户**：“去淘宝搜咖啡，帮我打开第 1 个”
+  - **Agent 行为**：
+    1. 执行 `mobile-apps open taobao search --keyword="咖啡"`；
+    2. 等待 2 秒后执行 `mobile-ui dump` 获取结果列表；
+    3. 执行 `mobile-ui click 1` 打开第 1 个搜索结果。
+  - **手机响应**：淘宝自动搜索并跳转至第一个商品详情页。
 - **用户**：“导航到广州塔，用高德”
   - **Agent 行为**：执行 `mobile-apps open amap navigate --destination="广州塔"`。
   - **手机响应**：高德地图启动并规划好路线。
@@ -343,7 +403,7 @@ mobile-apps intent "<uri>"
 
 ---
 
-## 8. 常见问题与排查 (Troubleshooting)
+## 9. 常见问题与排查 (Troubleshooting)
 
 ### Q1: 手机锁屏一段时间后，服务端显示节点离线？
 - **原因**：Android 系统的激进后台管理挂起了 Termux。

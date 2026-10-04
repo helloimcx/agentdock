@@ -57,6 +57,9 @@ flowchart LR
 
 ### 2026-10-04
 
+- 发布 AgentDock 0.1.88：移动端页面内操作与免 ADB 无障碍桥接（`mobile-ui`）：
+  - **免 ADB 页面内感知与交互（`mobile-ui`）**：在第一阶段 `mobile-apps` 页面秒级直达基础上，新增针对 Android 端的极简无障碍桥接，使云端 Agent 在免 ADB、免 Root 约束下可实时感知屏幕可见元素（`mobile-ui dump`，按人类视觉流自然排序赋予单调递增 `[1..N]` 序号），并执行精准序号点击（`mobile-ui click <index>`，具备真实手势轻触降级保障）、静默文本输入（`mobile-ui input`）、页面滚动（`mobile-ui scroll`）与物理返回（`mobile-ui back`）。
+  - **云端透明代理与双模协同工作流注入**：在远程工作区影子目录自动注入 `mobile-ui` transparent wrapper，并在环境提示词中固化“宏观跳转（`mobile-apps`）-> 等待加载 -> 屏幕感知（`mobile-ui dump`）-> 精准点击/输入（`mobile-ui click/input`）”的最佳协同工作流。
 - 发布 AgentDock 0.1.87：移动端快捷指令库（`mobile-apps`）与客户端脱离式自更新守护：
   - **移动端快捷指令库（`mobile-apps`）**：内置微信、支付宝、高德地图、百度地图、美团、淘宝、京东、网易云音乐、Bilibili、抖音等 37 个移动端常用 App 高频操作与系统快捷设置，提供标准化语义 CLI（`mobile-apps open <app> [action] [options]`）与 `--dry-run` 调试；针对绑定的 Android/Termux 远程工作区动态注入详细指令提示与参数模板。
   - **客户端脱离式自更新（`agentdock-node-update` / `run-agentdock.sh update`）**：提供基于脱离父进程的独立 supervisor 自更新机制，支持文件锁防并发与退出自清理，无缝重载客户端守护进程，彻底消除远程 Agent 更新客户端时连接掐断的问题。

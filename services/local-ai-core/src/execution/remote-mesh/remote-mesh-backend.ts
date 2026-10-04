@@ -41,7 +41,7 @@ function lookupMeshNode(baseDir: string, nodeId: string): MeshNodeMetadata | nul
 }
 
 function provisionToolWrappers(binDir: string, shellScriptPath: string, isWindowsHost: boolean): void {
-  const tools = ['mobile-apps', 'agentdock-node-update'];
+  const tools = ['mobile-apps', 'mobile-ui', 'agentdock-node-update'];
   for (const tool of tools) {
     const shToolContent = [
       '#!/bin/sh',
