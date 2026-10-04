@@ -20,7 +20,7 @@ export class MobileUiClient {
 
   constructor(options: MobileUiClientOptions = {}) {
     this.baseUrl = (options.baseUrl || 'http://127.0.0.1:19832').replace(/\/+$/, '');
-    this.timeoutMs = options.timeoutMs ?? 3000;
+    this.timeoutMs = options.timeoutMs ?? 8000;
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
