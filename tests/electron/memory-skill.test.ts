@@ -33,11 +33,16 @@ test('memory managed skill definition exists and has valid metadata', () => {
 });
 
 test('managed skill catalog loads memory skill', () => {
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
-  const memorySkill = catalog.get('memory');
-  assert(memorySkill, 'ManagedSkillCatalog should return memory skill');
+  const legacyCatalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const memorySkill = legacyCatalog.get('memory');
+  assert(memorySkill, 'ManagedSkillCatalog should return memory skill from legacy path');
   assert.equal(memorySkill.id, 'memory');
   assert.equal(memorySkill.content, readFileSync(sourceSkillPath, 'utf8'));
+
+  const defaultCatalog = new ManagedSkillCatalog();
+  const defaultMemorySkill = defaultCatalog.get('memory');
+  assert(defaultMemorySkill, 'ManagedSkillCatalog should return memory skill from default Core path');
+  assert.equal(defaultMemorySkill.id, 'memory');
 });
 
 test('runMemoryDomain validates required workspace context', async () => {

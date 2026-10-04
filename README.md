@@ -87,6 +87,14 @@ flowchart LR
 - 发布 AgentDock 0.1.82：AgentDock Mesh 多设备互联：
   - **AgentDock Mesh 多设备互联**：新增设备配对、在线状态与撤销、`agentdock-node` 出站连接、远程目录浏览/文件读取及双端显式授权的命令执行。支持 UI、CLI 和 SDK 派发、取消与结果查询；断线和重启中断请求且不自动重放。详见 [Mesh](docs/architecture/mesh.md)。
 
+### 2026-10-04
+
+- **内置 Managed Skills 体系重构与远程移动端自动注入**：
+  - **消除跨层倒挂依赖**：内置技能从桌面外壳（`electron/managed-skills`）整体迁入 Local AI Core 服务域（`services/local-ai-core/src/skills/builtin/`），与内置插件体系（`plugins/builtin/`）实现结构对称；`ManagedSkillCatalog` 支持四级探测，纯服务端模式与容器部署可独立自包含加载全部技能。
+  - **新增移动端自动化一等公民技能 (`mobile-automation`)**：新增 Android 原生应用导航与 UI 感知交互技能，支持 DeepLink 秒级跳转与免 ADB/免 Root 页面内精准元素点击、文本输入与手势。
+  - **远程工作区动态平台感知注入**：彻底杜绝向宿主机全局目录写软链接。远程节点（如小米/Android）启动时，系统自动将适配平台的技能挂载到影子工作区（`shadowDir/.agents/skills/`），由 Agent 原生发现消费，并大幅精简系统提示词。
+  - **双向打包与平滑兼容**：构建脚本同时分发至 Core 编译目录与 Electron 镜像目录，存量测试与外部引用 100% 保持兼容。
+
 ### 2026-09-29
 
 - **入站 ACP 标准协议桥(Issue #155)**:

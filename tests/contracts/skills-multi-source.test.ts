@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync, existsSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { mountActiveSkillsForAgent, resolveAgentSkillsDirectory } from '../../services/local-ai-core/src/runtime/skill-mounter.js';
+import { mountActiveSkillsForAgent, mountActiveSkillsSync, resolveAgentSkillsDirectory } from '../../services/local-ai-core/src/runtime/skill-mounter.js';
 
 const TEST_DIR = join(process.cwd(), 'tmp', 'test-skills-multi-source');
 
@@ -110,3 +110,67 @@ test('skill-mounter symlinks active skills to agent runtime directory', async ()
   assert(existsSync(linkPath));
   assert(lstatSync(linkPath).isSymbolicLink());
 });
+
+test('ManagedSkillCatalog default root resolves Local AI Core builtin skills including mobile-automation', () => {
+  const catalog = new ManagedSkillCatalog();
+  const skills = catalog.listSkills();
+  const skillIds = skills.map((s) => s.id);
+
+  assert.ok(skillIds.includes('mobile-automation'), 'Must load mobile-automation');
+  assert.ok(skillIds.includes('stock-monitor'), 'Must load stock-monitor');
+  assert.ok(skillIds.includes('memory'), 'Must load memory');
+  assert.ok(skillIds.includes('condition-trigger'), 'Must load condition-trigger');
+  assert.ok(skillIds.includes('knowledge-base'), 'Must load knowledge-base');
+  assert.ok(skillIds.includes('agent-browser'), 'Must load agent-browser');
+
+  const mobileSkill = skills.find((s) => s.id === 'mobile-automation');
+  assert.ok(mobileSkill?.metadata?.platforms?.includes('android'), 'mobile-automation metadata should have android platform');
+});
+
+test('ManagedSkillCatalog filters skills by target platform', () => {
+  const catalog = new ManagedSkillCatalog();
+  const androidSkills = catalog.listSkills({ platform: 'android' });
+  const macSkills = catalog.listSkills({ platform: 'darwin' });
+  const emptyPlatformSkills = catalog.listSkills({ platform: '' });
+  const unknownPlatformSkills = catalog.listSkills({ platform: 'unknown' });
+
+  assert.ok(androidSkills.some((s) => s.id === 'mobile-automation'), 'Android platform should include mobile-automation');
+  assert.ok(!macSkills.some((s) => s.id === 'mobile-automation'), 'Darwin platform should exclude mobile-automation');
+  assert.ok(!emptyPlatformSkills.some((s) => s.id === 'mobile-automation'), 'Empty platform should exclude mobile-automation');
+  assert.ok(!unknownPlatformSkills.some((s) => s.id === 'mobile-automation'), 'Unknown platform should exclude mobile-automation');
+  assert.ok(macSkills.some((s) => s.id === 'memory'), 'Generic skills should remain on Darwin');
+  assert.ok(emptyPlatformSkills.some((s) => s.id === 'memory'), 'Generic skills should remain for empty platform');
+});
+
+test('skill-mounter mounts platform-specific skills to custom targetDir', async () => {
+  setupTestFolder();
+  const targetDir = join(TEST_DIR, 'shadow-workspace', '.agents', 'skills');
+  const catalog = new ManagedSkillCatalog();
+
+  const mountedAndroid = await mountActiveSkillsForAgent({
+    catalog,
+    targetDir,
+    platform: 'android',
+  });
+  assert.ok(mountedAndroid.includes('mobile-automation'), 'Should mount mobile-automation for android');
+  assert.ok(existsSync(join(targetDir, 'mobile-automation')));
+
+  // Remount for darwin
+  const mountedDarwin = await mountActiveSkillsForAgent({
+    catalog,
+    targetDir,
+    platform: 'darwin',
+  });
+  assert.ok(!mountedDarwin.includes('mobile-automation'), 'Should not mount mobile-automation for darwin');
+  assert.ok(!existsSync(join(targetDir, 'mobile-automation')), 'Stale mobile-automation should be cleaned up');
+
+  // Verify mountActiveSkillsSync behaves identically
+  const mountedSync = mountActiveSkillsSync({
+    catalog,
+    targetDir,
+    platform: 'android',
+  });
+  assert.ok(mountedSync.includes('mobile-automation'), 'mountActiveSkillsSync should mount mobile-automation for android');
+  assert.ok(existsSync(join(targetDir, 'mobile-automation')));
+});
+
