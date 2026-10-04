@@ -96,7 +96,7 @@ test('skills.route HTTP handler processes POST and GET route requests', async ()
   const { ManagedSkillCatalog } = await import('../../services/local-ai-core/src/runtime/managed-skill-catalog.js');
   const { join } = await import('node:path');
 
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const catalog = new ManagedSkillCatalog();
   const routeMap = new Map();
   registerSkillsHandlers(routeMap, catalog);
 
@@ -147,3 +147,16 @@ test('skills.route HTTP handler processes POST and GET route requests', async ()
   assert(postData.data);
   assert.equal(postData.data.selectedSkills[0]?.skillId, 'condition-trigger');
 });
+
+test('skill router matches mobile-automation intent when tools are available', async () => {
+  const { ManagedSkillCatalog } = await import('../../services/local-ai-core/src/runtime/managed-skill-catalog.js');
+  const router = new SkillRouter({
+    toolIndex: new ToolIndex({ resolver: (tool) => ['mobile-apps', 'mobile-ui'].includes(tool) ? '/bin/' + tool : null }),
+  });
+  const catalog = new ManagedSkillCatalog();
+  const skills = catalog.listSkills({ platform: 'android' });
+  const result = router.route('帮我在淘宝搜索树莓派并加入购物车', skills);
+
+  assert.ok(result.selectedSkills.some((s) => s.skillId === 'mobile-automation'));
+});
+

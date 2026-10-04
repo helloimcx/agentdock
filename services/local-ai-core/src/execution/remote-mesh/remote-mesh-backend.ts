@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { AgentLaunchConfig } from '@cc/plugin-sdk';
 import type { AgentExecutionBackend, AgentExecutionBackendInput } from '../agent-execution-types.js';
 import { buildDeviceClaudeMd, buildDeviceSystemPrompt, type MeshNodeMetadata } from './device-environment.js';
+import { mountActiveSkillsSync } from '../../runtime/skill-mounter.js';
 
 export function isRemoteMeshProject(project: AgentExecutionBackendInput['project']): boolean {
   const deviceId = String(project.device_id || project.agent?.options?.device_id || '').trim();
@@ -16,7 +17,8 @@ function resolveMeshNodeId(project: AgentExecutionBackendInput['project']): stri
 }
 
 function remoteMeshShellScriptPath(): string {
-  return resolve(__dirname, 'agentdock-mesh-shell.js');
+  const currentDir = typeof __dirname !== 'undefined' ? __dirname : '';
+  return resolve(currentDir, 'agentdock-mesh-shell.js');
 }
 
 function lookupMeshNode(baseDir: string, nodeId: string): MeshNodeMetadata | null {
@@ -26,10 +28,13 @@ function lookupMeshNode(baseDir: string, nodeId: string): MeshNodeMetadata | nul
     if (!existsSync(dbPath)) return null;
     const db = new DatabaseSync(dbPath, { readOnly: true });
     try {
-      const stmt = db.prepare('SELECT data FROM mesh_nodes WHERE id = ?');
-      const row = stmt.get(nodeId) as { data?: string } | undefined;
+      const stmt = db.prepare('SELECT * FROM mesh_nodes WHERE id = ?');
+      const row = stmt.get(nodeId) as { data?: string; platform?: string; label?: string } | undefined;
       if (row?.data) {
         return JSON.parse(row.data);
+      }
+      if (row && (row.platform || row.label)) {
+        return { label: row.label, platform: row.platform };
       }
     } finally {
       db.close();
@@ -78,6 +83,20 @@ function provisionShadowDirectory(shadowDir: string, node: MeshNodeMetadata | { 
     writeFileSync(resolve(shadowDir, 'AGENTS.md'), claudeMdContent, 'utf8');
   } catch {
     // Best-effort provisioning
+  }
+
+  try {
+    const platform = String(node?.platform || 'unknown').trim() || 'unknown';
+    mountActiveSkillsSync({
+      targetDir: resolve(shadowDir, '.agents', 'skills'),
+      platform,
+    });
+    mountActiveSkillsSync({
+      targetDir: resolve(shadowDir, '.claude', 'skills'),
+      platform,
+    });
+  } catch {
+    // Best-effort skill injection
   }
 
   const binDir = resolve(shadowDir, '.bin');
