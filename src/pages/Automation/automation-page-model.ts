@@ -5,6 +5,11 @@ export type AutomationOriginFilter = 'all' | 'native' | 'scheduled-job' | 'autom
 export type ScriptApprovalAction = 'authorize-test' | 'run-test' | 'request-enable' | 'approve-enable' | 'revoke';
 export type ApprovalDecision = 'approved' | 'rejected';
 
+/** Resolve the `origin` query value carried by the legacy /cron and /monitors entry redirects. */
+export function originFilterFromSearch(value: string | null): AutomationOriginFilter {
+  return value === 'scheduled-job' || value === 'automation-monitor' || value === 'native' ? value : 'all';
+}
+
 export function deriveAutomationDisplayStatus(automation: Pick<AutomationDefinition, 'enabled' | 'health'>): AutomationDisplayStatus {
   if (automation.health === 'blocked') return 'blocked';
   return automation.enabled ? 'active' : 'paused';
