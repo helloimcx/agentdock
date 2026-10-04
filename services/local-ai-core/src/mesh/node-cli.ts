@@ -8,10 +8,11 @@ import { createPrivateJson, readPrivateJson, writePrivateJson } from './node-cre
 import { executionInput, text } from './mesh-validation.js';
 import { runMobileAppsCli } from './mobile-apps/cli.js';
 import { runNodeUpdateCli } from './mobile-apps/update-cli.js';
+import { runMobileUiCli } from './mobile-ui/cli.js';
 
 function parseArgs(argv: string[]) {
   const command = argv[0] || 'help';
-  if (['mobile', 'update'].includes(command)) {
+  if (['mobile', 'update', 'ui'].includes(command)) {
     return { command, flags: {} };
   }
   const flags: Record<string, string> = {};
@@ -33,6 +34,7 @@ Usage:
   agentdock-node pair --server <https://host> --label <device> --output <pairing.json> [--allow-shell]
   agentdock-node connect --server <https://host> --root <directory> [--pairing-file <pairing.json>] [--state <credentials.json>] [--allow-shell]
   agentdock-node mobile <command> [args...]
+  agentdock-node ui <command> [args...]
   agentdock-node update
   agentdock-node list --server <https://host>
   agentdock-node execute --server <https://host> --node <id> --capability <name> --args <JSON> [--timeout <ms>]
@@ -105,5 +107,6 @@ export async function runNodeCli(argv = process.argv.slice(2)) {
   if (command === 'connect') { await connect(flags); return; }
   if (command === 'update') { await runNodeUpdateCli(); return; }
   if (command === 'mobile') { await runMobileAppsCli(argv.slice(1)); return; }
+  if (command === 'ui') { await runMobileUiCli(argv.slice(1)); return; }
   console.log(JSON.stringify(await manage(command, flags), null, 2));
 }
