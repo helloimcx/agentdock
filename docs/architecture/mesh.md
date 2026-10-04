@@ -5,9 +5,10 @@ Mesh adds device tool execution to Local AI Core. ACP sessions, threads and agen
 ```mermaid
 flowchart LR
   ui[Device management UI] --> sdk[Core SDK mesh client]
-  cli[agentdock-node admin commands] --> api[Authenticated Mesh REST API]
+  cli[agentdock-node admin commands] -->|Administrator token| api[Mesh REST API]
   sdk --> api
   api --> gateway[Mesh Gateway / Dispatcher]
+  ui -->|Read-only GET /nodes without Mesh token| gateway
   gateway --> db[(Core SQLite: identities and requests)]
   node[agentdock-node on Mac / Linux / Windows / Termux] -->|Outbound WebSocket: hello and heartbeat| gateway
   gateway -->|Execute / cancel| node
@@ -23,11 +24,11 @@ flowchart LR
 - `MeshGateway` attaches to the existing Core HTTP server. Nodes initiate WebSocket connections, so devices need no inbound listener or public IP. Internet, LAN and Tailscale are transport choices; no specific overlay is required.
 - `bin/agentdock.mjs` forwards the Mesh WebSocket upgrade through the bundled web server, in addition to existing REST forwarding.
 - The node owns its approved root, local credentials and command opt-in. Credentials are created exclusively with mode 0600; existing files are not overwritten. Use an operating-system ACL on Windows to restrict the credential and pairing files to the node user (POSIX mode bits do not establish a Windows ACL).
-- The renderer owns temporary UI state. The administrator token remains in page memory, never a URL or browser storage. Results are fetched every three seconds while connected.
+- The renderer owns temporary UI state. The Mesh page reads node overview data without the Mesh admin token and refreshes every three seconds. It does not expose administrative controls.
 
 ## Trust boundaries
 
-Mesh is disabled unless `AGENTDOCK_MESH_ADMIN_TOKEN` is set. Generate a high-entropy random value and supply it securely to Core and administration clients. This token protects only Mesh endpoints; it does not add authentication to pre-existing Core APIs. Protect the complete Core surface when deploying publicly.
+Mesh is disabled unless `AGENTDOCK_MESH_ADMIN_TOKEN` is set. Generate a high-entropy random value and supply it securely to Core and administration clients. This token protects Mesh management endpoints; it does not add authentication to pre-existing Core APIs. While Mesh is enabled, `GET /mesh/nodes` is the sole Mesh REST route that does not require the administrator token. It reveals node ID, label, platform, advertised and allowed capabilities, presence and timestamps to anyone who can reach the Core route. Pairing, revocation, execution, request history and cancellation remain administrator-authenticated. Protect the complete Core surface when deploying publicly.
 
 An administrator creates a device-specific, single-use pairing token valid for ten minutes. `/enroll` exchanges it for the device credential. The first WebSocket message supplies that credential; protocol v1 accepts only text messages, known capabilities and bounded payloads. A node cannot act as an administrator or finish another device's requests. Revocation invalidates both enrollment and connection credentials, closes the active connection and interrupts pending work.
 
@@ -59,11 +60,11 @@ Disconnect and Core restart mark pending requests `interrupted`: the outcome is 
 
 ## API
 
-Prefix: `/api/local/v1/mesh`. All routes except enrollment and WebSocket handshake require `Authorization: Bearer <administrator token>`.
+Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. All other REST routes except enrollment require `Authorization: Bearer <administrator token>`; the WebSocket handshake uses the device credential protocol.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/nodes` | List devices and presence |
+| GET | `/nodes` | List devices and presence (read-only; no Mesh admin token required while Mesh is enabled) |
 | POST | `/pairings` | Create pairing (`label`, optional `allowShell`) |
 | POST | `/enroll` | Consume `pairingToken`, return device credential |
 | WebSocket | `/connect` | Device-authenticated protocol v1 |
@@ -75,7 +76,7 @@ Prefix: `/api/local/v1/mesh`. All routes except enrollment and WebSocket handsha
 
 ## Running two devices
 
-Build with `pnpm build`. Set `AGENTDOCK_MESH_ADMIN_TOKEN` securely before `pnpm start:core` or `agentdock serve`. The Device Mesh navigation entry opens the device management page. Enter the same administration credential to pair and manage devices.
+Build with `pnpm build`. Set `AGENTDOCK_MESH_ADMIN_TOKEN` securely before `pnpm start:core` or `agentdock serve`. The Device Mesh navigation entry opens the read-only node overview. Use the CLI with the same administration credential to pair and manage devices.
 
 Alternatively, use CLI commands from the repository root (an npm installation exposes `agentdock-node` directly):
 
@@ -113,4 +114,3 @@ For command execution, add `--allow-shell` to both `pair` and `connect`, then di
 `tests/integration/mesh.test.ts` exercises two independent nodes with separate roots over real HTTP/WebSocket connections, device authentication, enrollment reuse rejection, capability policy, file confinement, dispatch, results, timeout, cancellation, disconnect/reconnect and revocation. `tests/electron/mesh-store.test.ts` checks hash-only persistence, pairing expiry and restart recovery. `tests/electron/mesh-node-policy.test.ts` checks local shell opt-in, output/read/write bounds, cancellation and private credential-file handling. `tests/integration/mesh-auth.test.ts` checks role separation, disabled-by-default behavior, cross-device forged results, connection replacement and late-result fencing. `tests/integration/remote-workspace-mesh.test.ts` and `tests/integration/transparent-remote-mesh-shell.test.ts` exercise end-to-end transparent tool dispatching, ACP filesystem RPC bridging, and Transparent Shell Proxy execution. Live validation additionally exercised two CLI processes through the bundled WebSocket proxy, reconnect with saved credentials, and Chromium page operations including a byte-verified file download.
 
 The L1 Archify specification has passed all 9 showcase checks via `pnpm lint:arch`. The interactive showcase HTML (`system-architecture.html`) has been delivered alongside the Mermaid reference view.
-
