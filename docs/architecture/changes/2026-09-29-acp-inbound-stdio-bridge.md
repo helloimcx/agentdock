@@ -68,3 +68,12 @@ Addressed the automated review on PR #156 (HEAD `3ab32eb`):
 
 - Unchanged: Local AI Core daemon routes, trust boundaries, data ownership, storage, and dependency direction.
 - Amended: the `/api/local/v1/events` public event surface now also carries `run.failed` and `run.completed` (additive `LocalCoreEvent` members), forwarded from the kernel bus via the runtime controller.
+
+## Follow-up resolution — 2026-10-04 (issue #160)
+
+The deferred item above mis-stated the core facts, and the real defect lived on the bridge side:
+
+- **Correction**: the core turn coordinator has attached full `toolCall` metadata (id/name/status/input/output/detail) to emitted `reply` bridge events with `bridgeKind: 'tool'` since commit `c294198` (2026-05-03); the `running` and `completed` transitions of one tool call intentionally share a single `messageId` because it doubles as the thread-message upsert key (`tests/integration/local-core-acp-progress.test.ts` asserts both the metadata and the shared id). "No core emitter sets `toolCall`" was wrong; only the nested Claude Code tool-scoped *assistant text* path (`_meta.claudeCode.parentToolUseId`) emits text-only tool events.
+- **Real defect**: the bridge's per-turn `messageId` dedupe ran before the tool branch, so the second (terminal) tool transition sharing the message id was dropped — ACP clients saw every tool call stuck in progress with no output. Fixed in `acp-stdio-server.ts`: tool-kind bridge events bypass the message-id dedupe and are deduped per `toolCallId`+status transition instead; the first sighting of a `toolCallId` emits `tool_call`, follow-ups emit `tool_call_update` (ACP-spec status transitions). Text-only tool events (no `toolCall`/`messageId`) keep their previous one-generic-`tool_call`-per-chunk behavior.
+- Regression coverage: `tests/integration/local-core-acp-stdio-server.test.ts` — "tool bridge events stream real status transitions even when they share a messageId" (written first, reproduced the dropped terminal transition).
+- Architecture impact: None — no component, route, boundary, or data-ownership change; this amends event-handling detail inside the already-recorded bridge component.

@@ -59,6 +59,7 @@ flowchart LR
 
 - 发布 AgentDock 0.1.84：
   - **ACP MCP 协议规范对齐**：修复 Local AI Core 向 ACP 运行时（如 Claude Agent ACP、Codex）发送 `session/new` 与 `session/load` 时 `mcpServers` 数据结构未对齐官方规范的缺陷（环境变量与请求头由 Object 规范转换为 `[{ name, value }]` 键值对数组，严格补齐 `args` 与 `env` 默认空数组），消除远程工作区中 Agent 初始化触发 `-32602 Invalid params`（`Agent runtime returned an invalid protocol response`）的问题。
+- **ACP 桥工具调用状态修复（Issue #160）**：Zed 等 ACP 客户端现在能看到工具调用的真实名称与状态流转（`tool_call` → `tool_call_update` 直至 completed/failed），不再永远停留在进行中。此前运行态与终态更新共用同一 message id，被桥的消息去重误丢，终态从未送达客户端。
 
 ### 2026-10-03
 

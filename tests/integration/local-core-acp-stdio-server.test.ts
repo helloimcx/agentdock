@@ -371,6 +371,44 @@ test('session/prompt maps thought, tool, and plan bridge events to ACP updates',
   });
 });
 
+test('tool bridge events stream real status transitions even when they share a messageId', async () => {
+  await withBridge(async ({ bridge }) => {
+    const session = await bridge.request({ jsonrpc: '2.0', id: 25, method: 'session/new', params: {} });
+    sendPrompt(bridge, session.result.sessionId, 26);
+    await bridge.waitForCoreRequest(/\/messages$/);
+    const runId = await bridge.waitForRunRegistration();
+
+    // Real core traffic: the running and completed transitions of one tool call
+    // share a single message id (the thread-message upsert key) — see
+    // local-core-acp-turn-coordinator.ts emitProgress.
+    const messageId = `run:agentdock::msg-${randomUUID()}`;
+    const toolCallId = `call_${randomUUID()}`;
+    bridge.streamBridgeEvent(streamUpdated({
+      replyCtx: runId, type: 'reply', messageId, bridgeKind: 'tool', content: '🔧 Terminal: npm test - running',
+      toolCall: { id: toolCallId, name: 'Terminal', status: 'running', input: { command: 'npm test' }, output: '' },
+    }));
+    const started = await bridge.nextFrame();
+    assert.equal(started.params.update.sessionUpdate, 'tool_call');
+    assert.equal(started.params.update.toolCallId, toolCallId);
+    assert.equal(started.params.update.title, 'Terminal');
+    assert.equal(started.params.update.status, 'in_progress');
+
+    bridge.streamBridgeEvent(streamUpdated({
+      replyCtx: runId, type: 'reply', messageId, bridgeKind: 'tool', content: '🔧 Terminal: npm test - completed',
+      toolCall: { id: toolCallId, name: 'Terminal', status: 'completed', output: 'all tests passed' },
+    }));
+    const completed = await bridge.nextFrame();
+    assert.equal(completed.params.update.sessionUpdate, 'tool_call_update');
+    assert.equal(completed.params.update.toolCallId, toolCallId);
+    assert.equal(completed.params.update.status, 'completed');
+    assert.equal(completed.params.update.content[0].content.text, 'all tests passed');
+
+    bridge.streamBridgeEvent({ type: 'stream.updated', stream: { replyCtx: runId, type: 'typing_stop' } });
+    const promptResponse = await requestWithId(bridge, 26);
+    assert.deepEqual(promptResponse.result, { stopReason: 'end_turn' });
+  });
+});
+
 test('session/cancel interrupts the run and resolves the prompt as cancelled', async () => {
   await withBridge(async ({ fakeCore, bridge }) => {
     const session = await bridge.request({ jsonrpc: '2.0', id: 30, method: 'session/new', params: {} });
