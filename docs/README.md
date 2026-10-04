@@ -35,6 +35,7 @@ This directory is organized by documentation purpose.
 
 - [Release Workflow](operations/release-workflow.md): CI, tags, and release packaging guidance.
 - [NPM + Tailscale Deployment](operations/npm-tailscale-deployment.md): quick HTTPS deployment path.
+- [Android / Termux 手机节点接入与移动端指令指南](operations/android-termux-mesh-guide.md): 手机节点部署、保活、`mobile-apps` 37 常用指令与脱离式后台自更新。
 
 ## Planning
 

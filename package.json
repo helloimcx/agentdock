@@ -1,12 +1,14 @@
 {
   "name": "@kafca/agentdock",
-  "version": "0.1.86",
+  "version": "0.1.87",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "bin": {
     "agentdock": "bin/agentdock.mjs",
-    "agentdock-node": "bin/agentdock-node.mjs"
+    "agentdock-node": "bin/agentdock-node.mjs",
+    "mobile-apps": "bin/mobile-apps.mjs",
+    "agentdock-node-update": "bin/agentdock-node-update.mjs"
   },
   "repository": {
     "type": "git",

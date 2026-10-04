@@ -96,7 +96,7 @@ node bin/agentdock-node.mjs connect --server https://agent.example.com \
 
 Repeat pairing for a second device with its own label, approved directory and credential file. On reconnect, omit `--pairing-file`; reuse the existing state. A state file is bound to one server; use separate state files for separate servers. Securely remove consumed pairing files. If enrollment succeeded but the credential write failed, revoke that identity and pair again rather than replacing an unrelated credential file.
 
-The default state path is `~/.agentdock/mesh-node.json`. The node needs the built package and Node.js 22 or newer; no Electron GUI is needed. Termux can run this Node client, but real Android device validation remains outstanding. APK background services, notifications, clipboard, camera and Android intents are not included in v1.
+The default state path is `~/.agentdock/mesh-node.json`. The node needs the built package and Node.js 22 or newer; no Electron GUI is needed. Android Termux nodes are fully supported and verified on production hardware (such as Xiaomi HyperOS/MIUI), equipped with built-in mobile app intent dispatching (`mobile-apps`, 37 actions) and detached supervisor self-update (`agentdock-node-update`). See [Android / Termux 手机节点接入与移动端指令指南](../operations/android-termux-mesh-guide.md) for complete setup and operational instructions.
 
 ```bash
 node bin/agentdock-node.mjs list --server https://agent.example.com
