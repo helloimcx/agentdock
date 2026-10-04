@@ -1,1 +1,7 @@
 - [x] 无法在界面上创建新工作区
+- [x] 聊天 Markdown 引用链接把后续方括号拼进目标地址
+  - 环境：AgentDock Web v0.1.86，2026-10-04，Chrome；长会话 `[Automation:lark] 每日AI早报生成`。
+  - 复现：打开含有行内链接和后续方括号引用标记（如 `[1]`）的长 Markdown 消息。
+  - 实际：引用链接的目标地址末尾包含额外的 `[`，例如 `https://chatgpt.com/features/sites/[`，浏览器实际解析为 `%5B`。
+  - 预期：链接目标只包含 Markdown 链接语法中的 URL，不应吞入相邻引用标记。
+  - 修复：Markdown AST 中仅当链接目标末尾的左方括号紧邻数字引用标记时移除它；其他方括号 URL 保持原样。

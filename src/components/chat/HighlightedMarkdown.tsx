@@ -11,6 +11,7 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { MarkdownInlineCode, MarkdownPreBlock } from './MarkdownCodeBlocks';
+import { remarkCitationLinks } from './remark-citation-links';
 
 const highlightOptions = {
   detect: false,
@@ -27,7 +28,7 @@ const highlightOptions = {
 export function HighlightedMarkdown({ content }: { content: string }) {
   return (
     <Markdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkCitationLinks]}
       rehypePlugins={[[rehypeHighlight, highlightOptions]]}
       components={{
         pre: MarkdownPreBlock as any,

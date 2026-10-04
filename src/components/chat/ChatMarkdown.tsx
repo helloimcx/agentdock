@@ -3,6 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { hasMarkdownCodeBlock } from './markdown-code-block';
+import { remarkCitationLinks } from './remark-citation-links';
 
 export { hasMarkdownCodeBlock } from './markdown-code-block';
 
@@ -13,11 +14,11 @@ const HighlightedMarkdown = lazy(() =>
 export const ChatMarkdown = memo(function ChatMarkdown({ content, isUser }: { content: string; isUser: boolean }) {
   const hasCodeBlock = hasMarkdownCodeBlock(content);
   const markdown = hasCodeBlock ? (
-    <Suspense fallback={<Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>}>
+    <Suspense fallback={<Markdown remarkPlugins={[remarkGfm, remarkCitationLinks]}>{content}</Markdown>}>
       <HighlightedMarkdown content={content} />
     </Suspense>
   ) : (
-    <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+    <Markdown remarkPlugins={[remarkGfm, remarkCitationLinks]}>{content}</Markdown>
   );
 
   if (isUser) {
