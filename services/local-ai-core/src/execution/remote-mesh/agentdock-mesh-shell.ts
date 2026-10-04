@@ -1,6 +1,3 @@
-import { writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-
 export interface ExtractedCommand {
   command: string;
   isVersion?: boolean;
@@ -139,24 +136,17 @@ async function sendMeshShellRequest(options: MeshShellOptions, command: string):
   return (execution.result || {}) as MeshExecutionResult;
 }
 
-function handleSpecialInvocation(parsed: ExtractedCommand, argv: string[]): number | null {
+function handleSpecialInvocation(parsed: ExtractedCommand): number | null {
   if (parsed.isVersion) {
     process.stdout.write('GNU bash, version 5.2.0(1)-release (agentdock-mesh-shell)\n');
     return 0;
   }
 
   if (parsed.isSnapshot) {
-    const systemShell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
-    const localRes = spawnSync(systemShell, argv.slice(2), { stdio: 'inherit' });
-    return localRes.status ?? 0;
-  }
-
-  if (parsed.cwdFile) {
-    try {
-      writeFileSync(parsed.cwdFile, process.cwd(), 'utf8');
-    } catch {
-      // Best-effort local cwd tracking
-    }
+    // Claude's snapshot bootstrap is host-local shell code. Never execute it
+    // from a Mesh proxy; a model-controlled invocation could run arbitrary
+    // commands on the Core host. The Mesh session has no host shell snapshot.
+    return 0;
   }
 
   return null;
@@ -164,7 +154,7 @@ function handleSpecialInvocation(parsed: ExtractedCommand, argv: string[]): numb
 
 export async function executeMeshShell(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const parsed = parseShellArgv(argv);
-  const specialCode = handleSpecialInvocation(parsed, argv);
+  const specialCode = handleSpecialInvocation(parsed);
   if (specialCode !== null) {
     return specialCode;
   }

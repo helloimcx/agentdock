@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { existsSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,7 @@ import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
 import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
 import { NodeAgent, enrollNode } from '../../services/local-ai-core/src/mesh/node-agent.js';
 import { prepareAgentExecutionLaunch } from '../../services/local-ai-core/src/execution/agent-execution-backend.js';
+import { getAgentRuntimeDefinitions } from '../../services/local-ai-core/src/agents/registry.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import type { AcpSessionState } from '../../services/local-ai-core/src/router/workspace-router-types.js';
 import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
@@ -22,7 +24,7 @@ async function until(check: () => boolean, timeout = 4000) {
   }
 }
 
-test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge', async () => {
+test('Remote workspace mesh execution backend prepares host context and Mesh file MCP for Claude Code', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'agentdock-remote-test-'));
   const configState: RuntimeConfigState = {
     baseDir: tempDir,
@@ -37,7 +39,7 @@ test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge
     device_id: 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c',
     platforms: [],
     agent: {
-      type: 'pi',
+      type: 'claudecode',
       options: {
         work_dir: '/remote/client/path/to/project',
         device_id: 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c',
@@ -47,7 +49,7 @@ test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge
 
   const launchConfig = {
     workspaceId: 'remote-proj',
-    agentType: 'pi',
+    agentType: 'claudecode',
     model: 'gpt-4o',
     workDir: '/remote/client/path/to/project',
     command: 'node',
@@ -68,7 +70,108 @@ test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge
   assert.ok(prepared.env?.SHELL?.includes('mesh-bash'));
   assert.ok(prepared.env?.CLAUDE_CODE_SHELL?.includes('mesh-bash'));
   assert.equal(prepared.env?.AGENTDOCK_MESH_NODE_ID, 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c');
-  assert.ok(prepared.execution?.systemPromptAppend?.includes('Remote Device Environment'));
+  assert.ok(prepared.execution?.systemPromptAppend?.includes('agent process'));
+  assert.ok(prepared.execution?.systemPromptAppend?.includes('AgentDock host'));
+  assert.ok(prepared.mcpServers?.some((server) => server.name === 'agentdock-mesh-files'));
+  assert.ok(readFileSync(join(prepared.workDir, 'CLAUDE.md'), 'utf8').includes('Other runtime-local file tools'));
+});
+
+test('Mesh execution fails closed for every registered runtime without file-tool enforcement', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'agentdock-mesh-unsupported-'));
+  const configState: RuntimeConfigState = {
+    baseDir: tempDir,
+    storage: 'sqlite',
+    databasePath: join(tempDir, 'core.db'),
+    config: { projects: [] },
+  };
+  const unsupported = getAgentRuntimeDefinitions().filter((runtime) => runtime.mesh.filesystem === 'unsupported');
+  assert.ok(unsupported.length > 0);
+  for (const runtime of unsupported) {
+    const workspaceId = `workspace:agentdock::mesh-gated-${runtime.agentType}`;
+    const project: DesktopProjectConfig = {
+      name: workspaceId,
+      workspace_id: workspaceId,
+      device_id: 'node:2076d906-c224-4fb8-afc2-3c1a0848a1a8',
+      platforms: [],
+      agent: { type: runtime.agentType, options: {} },
+    };
+    assert.throws(() => prepareAgentExecutionLaunch({
+      configState,
+      project,
+      launchConfig: {
+        workspaceId, agentType: runtime.agentType, model: 'gpt-5', workDir: tempDir,
+        command: 'agent-acp', args: [], env: {},
+      },
+    }), new RegExp(`Mesh execution is not enabled for ${runtime.displayName}`));
+  }
+  assert.equal(existsSync(join(tempDir, 'remote-shadow')), false);
+});
+
+test('Pi Mesh wrapper exposes only Mesh file and terminal tools', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'agentdock-mesh-pi-'));
+  const configState: RuntimeConfigState = {
+    baseDir: tempDir,
+    storage: 'sqlite',
+    databasePath: join(tempDir, 'core.db'),
+    config: { projects: [] },
+  };
+  const project: DesktopProjectConfig = {
+    name: 'remote-pi',
+    workspace_id: 'remote-pi',
+    device_id: 'node:380af1bd-bf55-4c07-b303-976d0eb8485e',
+    platforms: [],
+    agent: { type: 'pi', options: {} },
+  };
+  const prepared = prepareAgentExecutionLaunch({
+    configState,
+    project,
+    launchConfig: {
+      workspaceId: 'remote-pi', agentType: 'pi', model: 'gpt-4o', workDir: tempDir,
+      command: 'pi-acp', args: [], env: { PI_ACP_PI_COMMAND: '/runtime/pi' }, mcpServers: [],
+    },
+  });
+  const wrapperPath = prepared.env?.PI_ACP_PI_COMMAND;
+  assert.ok(wrapperPath?.endsWith('/.bin/pi-mesh'));
+  const wrapper = readFileSync(wrapperPath!, 'utf8');
+  assert.ok(wrapper.includes('--tools mesh_read_file,mesh_write_file,mesh_edit_file,mesh_list_directory,mesh_glob_files,mesh_execute_command'));
+  assert.ok(wrapper.includes('--extension'));
+  assert.ok(!wrapper.includes('--tools bash'));
+  assert.ok(!prepared.mcpServers?.some((server) => server.name === 'agentdock-mesh-files'));
+});
+
+test('OpenCode Mesh config injects host/target context and denies local workspace filesystem tools', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'agentdock-mesh-opencode-'));
+  const configState: RuntimeConfigState = {
+    baseDir: tempDir,
+    storage: 'sqlite',
+    databasePath: join(tempDir, 'core.db'),
+    config: { projects: [] },
+  };
+  const project: DesktopProjectConfig = {
+    name: 'remote-opencode',
+    workspace_id: 'remote-opencode',
+    device_id: 'node:fb5a3ff0-9af5-4aaf-9f2c-7650afc7b4d2',
+    platforms: [],
+    agent: { type: 'opencode', options: {} },
+  };
+  const prepared = prepareAgentExecutionLaunch({
+    configState,
+    project,
+    launchConfig: {
+      workspaceId: 'remote-opencode', agentType: 'opencode', model: 'gpt-4o', workDir: tempDir,
+      command: 'opencode', args: ['acp'],
+      env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: 'provider/model', provider: { provider: { name: 'Provider' } } }) },
+      mcpServers: [],
+    },
+  });
+  const runtimeConfig = JSON.parse(prepared.env?.OPENCODE_CONFIG_CONTENT || '{}');
+  assert.equal(runtimeConfig.shell, prepared.env?.SHELL);
+  assert.deepEqual(runtimeConfig.permission, {
+    read: 'deny', edit: 'deny', glob: 'deny', grep: 'deny', list: 'deny',
+  });
+  assert.deepEqual(runtimeConfig.instructions, [join(prepared.workDir, 'AGENTS.md')]);
+  assert.ok(prepared.mcpServers?.some((server) => server.name === 'agentdock-mesh-files'));
+  assert.ok(readFileSync(join(prepared.workDir, 'AGENTS.md'), 'utf8').includes('AgentDock host'));
 });
 
 test('ACP Turn Coordinator handles fs/read_text_file and fs/write_text_file transparently via executeMesh', async () => {

@@ -7,6 +7,7 @@ export const localCoreAcpAgentDefinition: AgentRuntimeDefinition = {
   aliases: ['acp', ''],
   displayName: 'LocalCore ACP',
   behavior: localCoreAcpBehavior,
+  mesh: { context: 'acp-meta', filesystem: 'unsupported', unsupportedReason: 'The LocalCore ACP integration does not yet enforce all native workspace file operations.' },
   detection: {
     builtin: true,
   },

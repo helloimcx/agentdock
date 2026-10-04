@@ -7,6 +7,7 @@ export const claudeCodeAgentDefinition: AgentRuntimeDefinition = {
   agentType: 'claudecode',
   displayName: 'Claude Code',
   behavior: claudeCodeAcpBehavior,
+  mesh: { context: 'acp-meta', filesystem: 'claudecode' },
   detection: {
     commandCandidates: ['claude-agent-acp', 'claude'],
     versionArgs: ['--version'],

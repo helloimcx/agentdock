@@ -74,6 +74,38 @@ test('parseMemoryMarkdown and serializeMemoryMarkdown roundtrip', () => {
   assert.match(parsed.content, /Rule 1: Inward dependency only/);
 });
 
+test('Mesh workspace memory migrates into Core-owned storage without deleting the shadow copy', async () => {
+  const legacyWorkspace = mkdtempSync(join(tmpdir(), 'ws-mem-mesh-shadow-'));
+  const coreMemoryWorkspace = mkdtempSync(join(tmpdir(), 'ws-mem-mesh-core-'));
+  const userDataDir = mkdtempSync(join(tmpdir(), 'ws-mem-mesh-userdata-'));
+  const store = new LocalCoreAcpStore(userDataDir);
+  const legacyFile = join(legacyWorkspace, '.agentdock', 'memory', 'decisions', 'device-policy.md');
+  mkdirSync(join(legacyWorkspace, '.agentdock', 'memory', 'decisions'), { recursive: true });
+  writeFileSync(legacyFile, serializeMemoryMarkdown({
+    title: 'Device policy',
+    content: 'Keep durable agent memory on the host.',
+  }));
+  const service = new WorkspaceMemoryService({
+    store: store.workspaceMemory,
+    getWorkspacePath: () => coreMemoryWorkspace,
+    getLegacyWorkspacePath: () => legacyWorkspace,
+  });
+
+  try {
+    const result = await service.syncWorkspace('workspace:agentdock::mesh-memory');
+    const migratedFile = join(coreMemoryWorkspace, '.agentdock', 'memory', 'decisions', 'device-policy.md');
+    assert.equal(result.synced, 1);
+    assert.equal(readFileSync(migratedFile, 'utf8'), readFileSync(legacyFile, 'utf8'));
+    assert.equal(existsSync(legacyFile), true);
+    assert.equal(service.listPages('workspace:agentdock::mesh-memory')[0]?.content.trim(), 'Keep durable agent memory on the host.');
+  } finally {
+    store.close();
+    rmSync(legacyWorkspace, { recursive: true, force: true });
+    rmSync(coreMemoryWorkspace, { recursive: true, force: true });
+    rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
 test('WorkspaceMemoryService lifecycle: write, get, query, sync, and delete', async () => {
   const tmpDir = mkdtempSync(join(tmpdir(), 'ws-mem-service-'));
   const userDataDir = mkdtempSync(join(tmpdir(), 'ws-mem-userdata-'));
@@ -274,4 +306,3 @@ test('ensureMemoryStructure rejects a symlinked memory root', async () => {
     fx.close();
   }
 });
-

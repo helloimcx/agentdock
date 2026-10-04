@@ -7,6 +7,7 @@ export const codexAgentDefinition: AgentRuntimeDefinition = {
   agentType: 'codex',
   displayName: 'Codex',
   behavior: codexAcpBehavior,
+  mesh: { context: 'acp-meta', filesystem: 'unsupported', unsupportedReason: 'The Codex ACP integration does not yet enforce remote workspace file routing.' },
   detection: {
     commandCandidates: ['codex-acp', 'codex'],
     versionArgs: ['--version'],

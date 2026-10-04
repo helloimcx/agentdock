@@ -9,6 +9,7 @@ export const piAgentDefinition: AgentRuntimeDefinition = {
   agentType: 'pi',
   displayName: 'Pi',
   behavior: piAcpBehavior,
+  mesh: { context: 'workspace-instructions', filesystem: 'pi' },
   detection: {
     commandCandidates: ['pi'],
     versionArgs: ['--version'],

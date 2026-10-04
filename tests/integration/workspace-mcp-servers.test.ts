@@ -214,6 +214,35 @@ test('ensureSession keeps mcpServers empty when none are configured', async () =
   }
 });
 
+test('Mesh Claude session sends host-target context and disables ACP-local filesystem tools', async () => {
+  const harness = createCoordinatorHarness();
+  try {
+    const thread = harness.store.createThread('mcp-workspace', 'Mesh Claude thread', 'claudecode');
+    await harness.coordinator.ensureSession(thread.id, `session:${thread.id}`, {
+      ...launchConfig(),
+      agentType: 'claudecode',
+      execution: {
+        mode: 'mesh',
+        transport: 'mesh',
+        nodeId: 'node:123e4567-e89b-12d3-a456-426614174000',
+        systemPromptAppend: 'AgentDock host controls this session; use Mesh tools for device files.',
+      },
+    });
+
+    const newRequest = harness.requests.find((request) => request.method === 'session/new');
+    assert.ok(newRequest, 'session/new should be requested');
+    assert.equal(
+      newRequest.params._meta.systemPrompt.append,
+      'AgentDock host controls this session; use Mesh tools for device files.',
+    );
+    assert.deepEqual(newRequest.params._meta.claudeCode.options.disallowedTools, [
+      'Read', 'Write', 'Edit', 'Glob', 'Grep', 'FileEdit', 'GlobTool',
+    ]);
+  } finally {
+    rmSync(harness.dir, { recursive: true, force: true });
+  }
+});
+
 test('ensureSession passes enabled MCP servers to session/load for resumable threads', async () => {
   const harness = createCoordinatorHarness();
   try {

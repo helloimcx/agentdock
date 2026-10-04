@@ -15,24 +15,28 @@ const STATIC_AGENT_DEFINITIONS: AgentRuntimeDefinition[] = [
     agentType: 'cursor',
     displayName: 'Cursor',
     behavior: standardAcpBehavior,
+    mesh: { context: 'acp-meta', filesystem: 'unsupported', unsupportedReason: 'The Cursor ACP integration does not yet enforce remote workspace file routing.' },
     detection: { commandCandidates: ['cursor-agent', 'cursor'], versionArgs: ['--version'] },
   },
   {
     agentType: 'gemini',
     displayName: 'Gemini',
     behavior: standardAcpBehavior,
+    mesh: { context: 'acp-meta', filesystem: 'unsupported', unsupportedReason: 'The Gemini ACP integration does not yet enforce remote workspace file routing.' },
     detection: { commandCandidates: ['gemini'], versionArgs: ['--version'] },
   },
   {
     agentType: 'qoder',
     displayName: 'Qoder',
     behavior: standardAcpBehavior,
+    mesh: { context: 'acp-meta', filesystem: 'unsupported', unsupportedReason: 'The Qoder ACP integration does not yet enforce remote workspace file routing.' },
     detection: { commandCandidates: ['qoder'], versionArgs: ['--version'] },
   },
   {
     agentType: 'iflow',
     displayName: 'iFlow',
     behavior: standardAcpBehavior,
+    mesh: { context: 'acp-meta', filesystem: 'unsupported', unsupportedReason: 'The iFlow ACP integration does not yet enforce remote workspace file routing.' },
     detection: { commandCandidates: ['iflow'], versionArgs: ['--version'] },
   },
 ];

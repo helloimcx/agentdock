@@ -9,6 +9,7 @@ import type { AcpSessionState, LocalCoreProjectConfig } from '../router/workspac
 import { getChannelPlatformBase, getChannelPlatformInstanceId, routeTypeForPlatform } from '../scheduler/scheduled-job-route.js';
 import { getPathEnv } from '../runtime/env-utils.js';
 import type { AgentMcpServerConfig } from '@cc/plugin-sdk';
+import { resolveAgentRuntimeDefinition } from '../agents/registry.js';
 
 type AcpWireNameValue = { name: string; value: string };
 
@@ -164,6 +165,7 @@ export class LocalCoreAcpSessionCoordinator {
           sessionId: row.acp_session_id,
           cwd: acpSessionCwd(config),
           mcpServers: toAcpMcpServers(config),
+          _meta: this.buildSessionMeta(threadId, permissionMode, config),
         }, 30000);
         session.sessionId = row.acp_session_id;
       } catch (error) {
@@ -408,27 +410,42 @@ export class LocalCoreAcpSessionCoordinator {
 
   private buildSessionMeta(threadId: string, permissionModeOverride = '', config?: LocalCoreProjectConfig) {
     const mode = this.resolveLaunchPermissionMode(threadId, permissionModeOverride);
-    const isMesh = config?.execution?.mode === 'mesh';
-    const systemPromptAppend = isMesh ? config?.execution?.systemPromptAppend : undefined;
-    const disallowedTools = isMesh ? ['FileEdit', 'GlobTool'] : [];
-
-    return {
-      ...(systemPromptAppend ? { systemPrompt: { append: systemPromptAppend } } : {}),
-      claudeCode: {
-        emitRawSDKMessages: [
-          { type: 'system', subtype: 'local_command_output' },
-        ],
-        ...(mode || disallowedTools.length > 0
-          ? {
-              options: {
-                ...(mode ? { permissionMode: mode } : {}),
-                ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
-              },
-            }
-          : {}),
-      },
-    };
+    const agentType = config?.agentType || this.options.store.getThreadRow(threadId)?.agent_type || '';
+    return buildAcpSessionMetadata(agentType, mode, config);
   }
+}
+
+const CLAUDE_MESH_DISALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'FileEdit', 'GlobTool'];
+
+function buildAcpSessionMetadata(agentType: string, mode: string, config?: LocalCoreProjectConfig) {
+  const isMesh = config?.execution?.mode === 'mesh';
+  const runtime = resolveAgentRuntimeDefinition(agentType);
+  const systemPromptAppend = isMesh && runtime?.mesh.context === 'acp-meta'
+    ? config?.execution?.systemPromptAppend
+    : undefined;
+  const claudeCode = buildClaudeCodeSessionMetadata(runtime?.agentType || '', mode, isMesh);
+  return {
+    ...(systemPromptAppend ? { systemPrompt: { append: systemPromptAppend } } : {}),
+    ...(claudeCode ? { claudeCode } : {}),
+  };
+}
+
+function buildClaudeCodeSessionMetadata(agentType: string, mode: string, isMesh: boolean) {
+  if (agentType !== 'claudecode') return undefined;
+  const disallowedTools = isMesh ? CLAUDE_MESH_DISALLOWED_TOOLS : [];
+  const options = buildClaudeCodeOptions(mode, disallowedTools);
+  return {
+    emitRawSDKMessages: [{ type: 'system', subtype: 'local_command_output' }],
+    ...(options ? { options } : {}),
+  };
+}
+
+function buildClaudeCodeOptions(mode: string, disallowedTools: string[]) {
+  if (!mode && disallowedTools.length === 0) return undefined;
+  return {
+    ...(mode ? { permissionMode: mode } : {}),
+    ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
+  };
 }
 
 function acpSessionCwd(config: LocalCoreProjectConfig) {

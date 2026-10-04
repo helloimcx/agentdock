@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Mesh Agent Runtime Context (As-Built)",
+    "quality_profile": "showcase",
+    "locale": "zh-CN"
+  },
+  "lanes": [
+    { "id": "host", "label": "宿主机控制面" },
+    { "id": "mesh", "label": "Mesh 设备工作区" },
+    { "id": "policy", "label": "路由与记忆边界", "variant": "exception" }
+  ],
+  "mainPath": ["runtime", "context", "adapter", "broker", "node", "result"],
+  "nodes": [
+    { "id": "runtime", "lane": "host", "col": 0, "type": "backend", "label": "Agent Runtime", "sublabel": "进程与配置在宿主机", "width": 154 },
+    { "id": "context", "lane": "host", "col": 1, "type": "backend", "label": "Mesh 会话说明", "sublabel": "明确宿主机与远端职责", "width": 154 },
+    { "id": "adapter", "lane": "host", "col": 2, "type": "security", "label": "Runtime 适配器", "sublabel": "Claude Code / OpenCode / Pi", "width": 154 },
+    { "id": "broker", "lane": "host", "col": 3, "type": "backend", "label": "Mesh 路由代理", "sublabel": "文件限根 · Shell 单独授权", "width": 154 },
+    { "id": "node", "lane": "mesh", "col": 4, "type": "external", "label": "配对 Mesh 节点", "sublabel": "文件限根 · Shell 设备权限", "width": 154 },
+    { "id": "result", "lane": "host", "col": 5, "type": "backend", "label": "工具结果", "sublabel": "回传成功或明确错误", "width": 154 },
+    { "id": "memory", "lane": "policy", "col": 1, "type": "database", "label": "Agent 私有记忆", "sublabel": "宿主机 runtime home", "width": 154 },
+    { "id": "core-memory", "lane": "policy", "col": 2, "type": "database", "label": "Core 工作区记忆", "sublabel": "Core user data · shadow 外", "width": 154 },
+    { "id": "blocked", "lane": "policy", "col": 3, "type": "security", "label": "能力未受控", "sublabel": "拒绝启动 Mesh 会话", "width": 154 }
+  ],
+  "edges": [
+    { "id": "runtime-context", "from": "runtime", "to": "context", "label": "注入真实执行边界", "variant": "emphasis" },
+    { "id": "context-adapter", "from": "context", "to": "adapter", "label": "能力说明与路由策略一致" },
+    { "id": "adapter-broker", "from": "adapter", "to": "broker", "label": "文件操作" },
+    { "id": "broker-node", "from": "broker", "to": "node", "label": "认证文件 / Shell 请求", "variant": "security" },
+    { "id": "node-result", "from": "node", "to": "result", "label": "设备结果或错误", "role": "return" },
+    { "id": "runtime-memory", "from": "runtime", "to": "memory", "label": "provider 私有记忆", "variant": "dashed" },
+    { "id": "runtime-core-memory", "from": "runtime", "to": "core-memory", "label": "AgentDock Memory API", "variant": "dashed" },
+    { "id": "adapter-block", "from": "adapter", "to": "blocked", "label": "无可靠接管机制", "variant": "security", "role": "error" }
+  ]
+}
