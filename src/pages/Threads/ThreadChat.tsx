@@ -181,7 +181,7 @@ export default function ThreadChat() {
 
             <div
               ref={scrollContainerRef}
-              className="flex-1 overflow-y-auto px-3 py-4 [scrollbar-gutter:stable] sm:px-6 sm:py-5"
+              className="flex-1 overflow-y-auto px-3 py-4 [overflow-anchor:none] [scrollbar-gutter:stable] sm:px-6 sm:py-5"
             >
               {renderedMessages.length === 0 ? (
                 <ThreadChatEmptyState
@@ -208,12 +208,13 @@ export default function ThreadChat() {
                       return null;
                     }
                     return (
-                      <ThreadChatMessage
-                        key={message.id}
-                        message={message}
-                        pendingBridgeActionId={pendingBridgeActionId}
-                        onAction={(targetMessage, action) => void handleBridgeAction(targetMessage, action)}
-                      />
+                      <div key={message.id} data-chat-message-anchor="">
+                        <ThreadChatMessage
+                          message={message}
+                          pendingBridgeActionId={pendingBridgeActionId}
+                          onAction={(targetMessage, action) => void handleBridgeAction(targetMessage, action)}
+                        />
+                      </div>
                     );
                   })}
                 </div>
