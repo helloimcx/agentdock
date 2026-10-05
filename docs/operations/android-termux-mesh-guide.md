@@ -43,9 +43,23 @@ flowchart TD
 
 ---
 
-## 2. 手机端前期准备
+## 2. 手机端接入模式选择
 
-### 2.1 安装 Termux
+AgentDock 提供两种 Android 手机端接入形态：
+1. **模式一：All-in-One 原生 APK 接入（推荐，零门槛）**：
+   - 仅需安装单个 `agentdock-a11y.apk`（约 200KB），无需安装 Termux 或配置 Node.js；
+   - 手机端**零本地监听端口（Zero-Listening-Port）**，采用加密出站长连接直连 Mesh Gateway；
+   - 系统无障碍服务享有系统级前台保活，一键支持 `mobile-ui`、`mobile-apps` 以及兼容 `termux-api` 的全套硬件接口；
+   - 配置方式：安装 APK ➔ 开启无障碍 ➔ 输入 Server 地址与配对 Token ➔ 点击连接即完成。
+2. **模式二：Termux 开发者节点接入（极客模式）**：
+   - 适用于需要在手机上编译代码、运行 Node.js/Python 脚本或执行复杂 Linux 工具链的开发者；
+   - 按照下文 2.1 ~ 2.2 章节安装 Termux 并配置环境。
+
+---
+
+## 3. Termux 开发者节点准备（模式二）
+
+### 3.1 安装 Termux
 1. 请从 **[F-Droid](https://f-droid.org/packages/com.termux/)** 或 **[Termux GitHub Releases](https://github.com/termux/termux-app/releases)** 下载最新版 Termux APK 安装包（请勿使用 Google Play 商店的过时版本）。
 2. 打开 Termux，更新软件包并安装基础依赖：
    ```bash
@@ -57,7 +71,7 @@ flowchart TD
    node -v
    ```
 
-### 2.2 系统保活与权限配置（关键）
+### 3.2 系统保活与权限配置（关键）
 为了防止手机锁屏或息屏后 Android 系统终止 Termux 后台进程，请完成以下配置：
 
 1. **申请 Termux 唤醒锁（Wake Lock）**：

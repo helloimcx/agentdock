@@ -34,10 +34,9 @@ flowchart LR
   acp --> sandbox[OpenSandbox]
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
-  nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
+  nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
-  nodes -->|mobile-ui: loopback HTTP| a11y[Android accessibility bridge]
-  a11y -->|Run-owned screen lease| screen[Visible status and target feedback]
+  nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
 当前已通过 Archify L1 校验，提供交互式 [HTML 导出](system-architecture.html) 与 Mermaid 视图。

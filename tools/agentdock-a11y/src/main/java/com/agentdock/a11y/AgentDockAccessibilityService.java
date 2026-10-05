@@ -55,14 +55,16 @@ public class AgentDockAccessibilityService extends AccessibilityService {
         instance = this;
         startForegroundNotification();
         acquireWakeLock();
+        MeshClient.getInstance(this).start();
         HttpServerBridge.start(this);
-        Log.i(TAG, "AgentDock Accessibility Service Connected (Foreground + WakeLock)");
+        Log.i(TAG, "AgentDock Accessibility Service Connected (Foreground + WakeLock + MeshClient + HttpBridge)");
     }
 
     @Override
     public void onDestroy() {
         instance = null;
         HttpServerBridge.stop();
+        MeshClient.getInstance(this).stop();
         if (receiverRegistered) {
             unregisterReceiver(screenOffReceiver);
             receiverRegistered = false;
@@ -71,7 +73,6 @@ public class AgentDockAccessibilityService extends AccessibilityService {
         screenController = null;
         releaseWakeLock();
         try { stopForeground(true); } catch (Throwable ignored) {}
-        instance = null;
         super.onDestroy();
         Log.i(TAG, "AgentDock Accessibility Service Destroyed");
     }
@@ -86,7 +87,7 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                     "AgentDock A11y Service",
                     NotificationManager.IMPORTANCE_LOW
                 );
-                channel.setDescription("AgentDock Local Accessibility Bridge Daemon");
+                channel.setDescription("AgentDock Mesh Accessibility Daemon");
                 if (nm != null) nm.createNotificationChannel(channel);
             }
 
@@ -101,8 +102,8 @@ public class AgentDockAccessibilityService extends AccessibilityService {
                 new Notification.Builder(this, channelId) : new Notification.Builder(this);
 
             Notification notification = builder
-                .setContentTitle("AgentDock A11y Bridge")
-                .setContentText("Local bridge active on 127.0.0.1:19832")
+                .setContentTitle("AgentDock Mobile Mesh")
+                .setContentText("Mesh client and accessibility daemon active")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentIntent(pi)
                 .setOngoing(true)
