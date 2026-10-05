@@ -25,10 +25,10 @@ flowchart LR
     end
 ```
 
-- **纯出站长连接（Zero Listening Ports）**：彻底关闭本地 TCP/HTTP 监听端口（不再占用 19832），所有控制指令均通过双向安全加密 WebSocket 传输，零外部网络攻击面。
+- **双模架构支持（Dual-Mode Bridge & Mesh）**：既支持独立的出站长连接（WSS Outbound）直连云端网关，又内置本地回环（`127.0.0.1:19832`，仅限本机 127.0.0.1 访问）HTTP 桥接服务，完美配合本地 Termux 终端客户端毫秒级协同调用。
 - **系统级保活（Accessibility + Foreground Service）**：基于 Android 官方无障碍服务与前台服务常驻，享有系统级高优先级保活待遇，息屏或手机重启后自动随系统拉起重连。
 - **双模点击保障（Dual-Action）**：优先触发目标节点的 `AccessibilityNodeInfo.performAction(ACTION_CLICK)`；若节点不可直接点击，自动根据节点中心坐标 `(cx, cy)` 调用免 Root 的 `AccessibilityService.dispatchGesture()` 注入 50ms 真实物理轻触手势。
-- **特权剪贴板访问**：利用无障碍服务的 Android 官方特权，突破 Android 10+ 后台无法读取剪贴板的限制。
+- **特权剪贴板访问与屏幕租约**：内置 `ScreenController` 屏幕亮屏保活租约控制，执行期间持有 WakeLock 防止自动回锁，并突破 Android 10+ 后台无法读取剪贴板的限制。
 
 ---
 

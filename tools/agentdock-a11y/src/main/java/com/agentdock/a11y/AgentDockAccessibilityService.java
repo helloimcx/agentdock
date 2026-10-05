@@ -56,12 +56,14 @@ public class AgentDockAccessibilityService extends AccessibilityService {
         startForegroundNotification();
         acquireWakeLock();
         MeshClient.getInstance(this).start();
-        Log.i(TAG, "AgentDock Accessibility Service Connected (Foreground + WakeLock + MeshClient)");
+        HttpServerBridge.start(this);
+        Log.i(TAG, "AgentDock Accessibility Service Connected (Foreground + WakeLock + MeshClient + HttpBridge)");
     }
 
     @Override
     public void onDestroy() {
         instance = null;
+        HttpServerBridge.stop();
         MeshClient.getInstance(this).stop();
         if (receiverRegistered) {
             unregisterReceiver(screenOffReceiver);
