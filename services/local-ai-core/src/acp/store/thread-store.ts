@@ -103,22 +103,7 @@ export class LocalThreadStore {
 
     const limit = options?.limit;
     if (limit !== undefined && limit > 0) {
-      const beforeSeq = options?.beforeSeq;
-      const rows = (beforeSeq !== undefined
-        ? this.db.prepare(`
-            SELECT ${MESSAGE_COLUMNS}
-            FROM messages
-            WHERE thread_id = ? AND seq < ?
-            ORDER BY seq DESC
-            LIMIT ?
-          `).all(threadId, beforeSeq, limit + 1)
-        : this.db.prepare(`
-            SELECT ${MESSAGE_COLUMNS}
-            FROM messages
-            WHERE thread_id = ?
-            ORDER BY seq DESC
-            LIMIT ?
-          `).all(threadId, limit + 1)) as LocalMessageRow[];
+      const rows = this.selectMessageWindow(threadId, limit, options?.beforeSeq);
       hasMore = rows.length > limit;
       if (hasMore) rows.pop();
       messages = rows.reverse();
@@ -169,6 +154,25 @@ export class LocalThreadStore {
       firstSeq,
       lastSeq,
     };
+  }
+
+  private selectMessageWindow(threadId: string, limit: number, beforeSeq?: number): LocalMessageRow[] {
+    if (beforeSeq !== undefined) {
+      return this.db.prepare(`
+        SELECT ${MESSAGE_COLUMNS}
+        FROM messages
+        WHERE thread_id = ? AND seq < ?
+        ORDER BY seq DESC
+        LIMIT ?
+      `).all(threadId, beforeSeq, limit + 1) as LocalMessageRow[];
+    }
+    return this.db.prepare(`
+      SELECT ${MESSAGE_COLUMNS}
+      FROM messages
+      WHERE thread_id = ?
+      ORDER BY seq DESC
+      LIMIT ?
+    `).all(threadId, limit + 1) as LocalMessageRow[];
   }
 
   rename(threadId: string, title: string) {
@@ -244,7 +248,7 @@ export class LocalThreadStore {
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
     const messageId = id ?? `${timestamp}-${role}-${nextSeq}`;
     this.db.prepare(`
-      INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq)
+      INSERT INTO messages (${MESSAGE_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       messageId,
