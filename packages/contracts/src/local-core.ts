@@ -87,7 +87,9 @@ export interface ThreadPendingPermissionRequest {
 }
 
 export interface ThreadGetOptions {
+  /** Window size for the returned messages; undefined or <= 0 returns the full history. */
   limit?: number;
+  /** Exclusive upper bound on message seq; ignored unless limit > 0. undefined starts the window at the newest message. */
   beforeSeq?: number;
 }
 
