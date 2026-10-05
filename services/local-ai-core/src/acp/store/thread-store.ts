@@ -18,6 +18,7 @@ import { normalizeMessageContent } from '../../thread/workspace-thread-mappers.j
 import { encodeThreadId } from '../../thread/workspace-thread-id.js';
 import { normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.js';
 
+// Order matters: also reused by INSERT INTO messages below — keep its VALUES placeholder count in sync.
 const MESSAGE_COLUMNS = 'id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq';
 
 export class LocalThreadStore {
