@@ -13,6 +13,7 @@ type HostOptions = { userDataPath: string; nodeExecutable?: string; log?: (messa
 export class PiDurableHost {
   private child?: ChildProcessWithoutNullStreams;
   private lock?: Server;
+  private lockRelease: Promise<void> = Promise.resolve();
   private nextId = 1;
   private readonly pending = new Map<number, PendingResponse>();
   private startPromise?: Promise<void>;
@@ -84,8 +85,7 @@ export class PiDurableHost {
       });
     }
     this.child = undefined;
-    if (this.lock) await new Promise<void>((resolveClose) => this.lock?.close(() => resolveClose()));
-    this.lock = undefined;
+    await this.releaseOwnerLock();
   }
 
   private async startWorker(): Promise<void> {
@@ -105,12 +105,25 @@ export class PiDurableHost {
     child.once('exit', (code, signal) => {
       if (this.child === child) this.child = undefined;
       this.failPending(new Error(`Pi Durable worker exited (${code ?? signal ?? 'unknown'}).`));
+      void this.releaseOwnerLock();
     });
     try { await this.request('open', { file: this.databasePath }); }
     catch (error) { await this.close(); throw error; }
   }
 
+  /** Release the listening owner lock; a leaked bound port would block every future start with a misleading "live owner" error. */
+  private releaseOwnerLock(): Promise<void> {
+    const lock = this.lock;
+    this.lock = undefined;
+    if (!lock) return this.lockRelease;
+    this.lockRelease = new Promise<void>((resolveClose) => lock.close(() => resolveClose()));
+    return this.lockRelease;
+  }
+
   private async acquireOwnerLock(): Promise<void> {
+    // A previous worker may have exited between the last release call and here;
+    // await the in-flight close so the freed port can be bound again.
+    await this.releaseOwnerLock();
     const identity = await import('node:fs/promises').then(({ realpath }) => realpath(this.options.userDataPath));
     const digest = createHash('sha256').update(identity).digest();
     const port = 30000 + digest.readUInt32BE(0) % 25000;

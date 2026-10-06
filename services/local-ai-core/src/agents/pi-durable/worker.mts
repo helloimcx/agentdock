@@ -98,6 +98,6 @@ lines.on('line',(line)=>{
   if(line.length>4*1024*1024) {process.exit(1);return;}
   let request:DurableRequest;
   try {request=JSON.parse(line) as DurableRequest;}catch {process.exit(1);return;}
-  void handle(request.method,request.params).then((result)=>send({id:request.id,ok:true,result}),()=>send({id:request.id,ok:false,error:'Pi Durable operation failed or recovery configuration is incomplete.'}));
+  void handle(request.method,request.params).then((result)=>send({id:request.id,ok:true,result}),(error)=>send({id:request.id,ok:false,error:error instanceof Error?error.message:String(error)}));
 });
 lines.on('close',()=>{void handle('close',{}).finally(()=>process.exit(0));});
