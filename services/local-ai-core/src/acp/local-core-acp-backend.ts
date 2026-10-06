@@ -37,11 +37,7 @@ import { distillSessionHandoff } from './session-handoff-distiller.js';
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
 import { LocalCoreAcpActions } from './local-core-acp-actions.js';
-import { AssistantPartialPersistence } from './assistant-partial-persistence.js';
-import { PiDurableHost } from '../agents/pi-durable/host.js';
-import type { DurableConfig, DurableView } from '../agents/pi-durable/protocol.js';
-import { LocalCorePiDurableWriteApprovals } from './local-core-pi-durable-write-approvals.js';
-import { sumDurableUsage, toDurableConfig } from '../agents/pi-durable/config.js';
+import { LocalCoreAcpPiDurableRuntime } from './local-core-acp-pi-durable.js';
 
 import { RemoteMeshScreenSessionManager } from '../execution/remote-mesh/screen-session-manager.js';
 
@@ -76,23 +72,17 @@ export class LocalCoreAcpBackend {
   // Local AI Core restart asks once again.
   private readonly threadAllowAll = new Set<string>();
   private readonly submissionDispatcher: ThreadSubmissionDispatcher;
-  private readonly piDurableHost: PiDurableHost;
-  private readonly durablePartialPersistence: AssistantPartialPersistence;
-  private readonly durableConfigs = new Map<string, DurableConfig>();
-  private readonly durableWriteApprovals: LocalCorePiDurableWriteApprovals;
+  private readonly durable: LocalCoreAcpPiDurableRuntime;
   private readonly actions: LocalCoreAcpActions;
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
-    this.durablePartialPersistence = new AssistantPartialPersistence((error) => options.log?.(`Pi Durable partial persistence failed: ${String(error)}`));
-    this.piDurableHost = new PiDurableHost({
-      userDataPath: options.store.userDataPath,
+    this.durable = new LocalCoreAcpPiDurableRuntime({
+      store: options.store,
+      eventBus: options.eventBus,
+      emitBridge: (event) => this.emitBridgeEvent(event),
+      costService: options.costService,
+      endRun: (runId, status) => this.turnCoordinator.endRun(runId, status),
       log: options.log,
-      onView: (view) => this.handlePiDurableView(view),
-      onWriteRequest: (request) => this.durableWriteApprovals.request(request),
-    });
-    this.durableWriteApprovals = new LocalCorePiDurableWriteApprovals({
-      store: options.store, host: this.piDurableHost, configs: this.durableConfigs,
-      emit: (event) => this.emitBridgeEvent(event), log: options.log,
     });
     this.screenSessions = new RemoteMeshScreenSessionManager({
       execute: options.executeMesh,
@@ -266,19 +256,17 @@ export class LocalCoreAcpBackend {
       eventBus: options.eventBus,
       threadAllowAll: this.threadAllowAll,
       emitBridge: (event) => this.emitBridgeEvent(event),
-      resolveDurableWriteApproval: (input) => this.durableWriteApprovals.resolve(input),
+      resolveDurableWriteApproval: (input) => this.durable.resolveWriteApproval(input),
       sendThreadMessage: (threadId, content, config, actionOptions) => this.sendThreadMessage(threadId, content, config, actionOptions),
     });
   }
 
   async close() {
     this.submissionDispatcher.close();
-    this.durableWriteApprovals.close();
-    this.durablePartialPersistence.close();
     this.turnCoordinator.close();
     void this.screenSessions.close();
     this.sessionCoordinator.closeAll();
-    await this.piDurableHost.close();
+    await this.durable.close();
   }
 
   async listThreads(workspaceId: string): Promise<ThreadSummary[]> {
@@ -385,36 +373,8 @@ export class LocalCoreAcpBackend {
   }
 
   async resumePendingSubmissions(resolveConfig: (threadId: string, options?: SendThreadMessageOptions) => Promise<LocalCoreProjectConfig>) {
-    const interruptedDurable = this.options.store.submissions.listInterruptedDurable();
-    const durableActive = interruptedDurable.length > 0
-      || this.options.store.submissions.listPending().some((submission) => submission.runtimeType === 'pi-durable')
-      || this.options.store.submissions.listActive().some((submission) => submission.runtimeType === 'pi-durable');
-    if (durableActive) {
-      await this.preparePiDurableBindings(async (threadId) => toDurableConfig(await resolveConfig(threadId)),
-        [...new Set(interruptedDurable.map((submission) => submission.threadId))]);
-    }
+    await this.durable.prepareForResume(resolveConfig);
     return this.submissionDispatcher.resume(resolveConfig);
-  }
-
-  private handlePiDurableView(view: DurableView) {
-    const submission = view.coreSubmissionId ? this.options.store.submissions.get(view.coreSubmissionId) : undefined;
-    if (!submission || submission.threadId !== view.threadId || !['dispatching', 'running', 'pending'].includes(submission.status)) return;
-    const thread = this.options.store.getThreadRow(view.threadId);
-    if (!thread) return;
-    const messageId = `${submission.runId}-assistant`;
-    if (view.partial) {
-      this.durablePartialPersistence.schedule(view.threadId, () =>
-        this.options.store.threadRuntime.savePartial(view.threadId, submission.runId, messageId, view.partial));
-      const event: DesktopBridgeEvent = {
-        type: 'update_message', sessionKey: thread.bridge_session_key,
-        replyCtx: submission.runId, previewHandle: submission.runId, bridgeKind: 'assistant', content: view.partial,
-      };
-      this.options.eventBus.emit({ type: 'run.progress', payload: {
-        runId: submission.runId, threadId: view.threadId,
-        workspaceId: thread.workspace_id, stream: event,
-      } });
-      this.emitBridgeEvent(event);
-    }
   }
 
   private async executeSubmission(
@@ -500,7 +460,7 @@ export class LocalCoreAcpBackend {
       this.options.store.submissions.finish(submission.id, 'interrupted', { runId }, 'Cancelled by the user.');
       this.options.store.updateRun(runId, submission.threadId, 'interrupted');
       if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'cancelled', summary: 'Request cancelled.' });
-      await this.piDurableHost.cancel(submission.threadId);
+      await this.durable.cancelThread(submission.threadId);
       return { interrupted: true };
     }
     const result = await this.sessionCoordinator.interruptRun(runId);
@@ -541,7 +501,7 @@ export class LocalCoreAcpBackend {
     const runStartedAt = Date.now();
     try {
       if (row.agent_type === 'pi-durable') {
-        await this.runPiDurablePrompt(threadId, runId, bridgeSessionKey, config, content, options, runStartedAt);
+        await this.durable.runPrompt(threadId, runId, bridgeSessionKey, config, content, options, runStartedAt);
         return;
       }
       session = await this.sessionCoordinator.ensureSession(threadId, bridgeSessionKey, config, {
@@ -799,70 +759,6 @@ export class LocalCoreAcpBackend {
         this.sessionCoordinator.releaseThreadSession(threadId, config);
       }
     }
-  }
-
-  private async runPiDurablePrompt(threadId: string, runId: string, sessionKey: string,
-    config: LocalCoreProjectConfig, prompt: string, options: SendThreadMessageOptions, startedAt: number) {
-    const submission = this.options.store.submissions.byRun(runId);
-    if (!submission) throw new Error('Pi Durable Core submission is missing.');
-    const currentConfig = toDurableConfig(config, options.runtimeEnv);
-    this.durableConfigs.set(threadId, currentConfig);
-    await this.preparePiDurableBindings(async (boundThreadId) => {
-      const candidate = boundThreadId === threadId ? currentConfig : this.durableConfigs.get(boundThreadId);
-      if (!candidate) throw new Error(`Pi Durable recovery is blocked: configuration for live thread ${boundThreadId} is unavailable.`);
-      return candidate;
-    });
-    const result = await this.piDurableHost.submit({
-      threadId,
-      coreSubmissionId: submission.id,
-      coreRunId: runId,
-      prompt,
-      config: currentConfig,
-    });
-    if (result.status !== 'done') throw new Error(result.reason || 'Pi Durable did not complete this request.');
-    const row = this.options.store.getThreadRow(threadId);
-    if (!row) throw new Error(`Thread not found: ${threadId}`);
-    const answer = result.answer.trim();
-    this.durablePartialPersistence.discard(threadId);
-    this.options.store.threadRuntime.clearPartial(threadId, runId);
-    if (answer) {
-      this.options.store.appendRunFinalMessage(runId, threadId, answer);
-      this.options.eventBus.emit({ type: 'thread.message.accepted', payload: {
-        threadId, workspaceId: row.workspace_id, role: 'assistant', content: answer, kind: 'final', source: 'agent',
-      } });
-      this.emitBridgeEvent({ type: 'reply', sessionKey, replyCtx: runId, content: answer });
-    }
-    const usage = sumDurableUsage(result.usage);
-    const usageSourceId = `pi-durable:${submission.id}`;
-    if (usage.totalTokens > 0 && !this.options.store.cost.hasRunSource(runId, usageSourceId)) {
-      const eventPayload = {
-        workspaceId: row.workspace_id, threadId, runId, agentType: 'pi-durable', modelId: config.model,
-        sourceKind: 'manual' as const, sourceId: usageSourceId, tokensIn: usage.inputTokens, tokensOut: usage.outputTokens,
-        tokensCache: usage.cacheTokens, tokensTotal: usage.totalTokens,
-      };
-      if (this.options.costService) this.options.costService.recordUsage(eventPayload);
-      else this.options.store.cost.recordCostEvent(eventPayload);
-    }
-    this.options.store.updateRun(runId, threadId, 'completed');
-    this.turnCoordinator.endRun(runId, 'completed');
-    const task = this.options.store.getAgentTaskByRunId(runId);
-    if (task) this.options.store.updateAgentTask(task.taskId, { status: 'completed', summary: 'Task completed.' });
-    this.options.eventBus.emit({ type: 'run.completed', payload: {
-      runId, threadId, workspaceId: row.workspace_id, stopReason: 'end_turn',
-    } });
-    this.emitBridgeEvent({ type: 'typing_stop', sessionKey, replyCtx: runId });
-    this.options.log?.(`[pi-durable.run:${runId}] completed in ${Date.now() - startedAt}ms`);
-  }
-
-  private async preparePiDurableBindings(resolve: (threadId: string) => Promise<DurableConfig>, cancelThreads: string[] = []) {
-    const bindings = await this.piDurableHost.bindings();
-    for (const binding of bindings.filter((item) => item.live)) {
-      const config = await resolve(binding.threadId);
-      this.durableConfigs.set(binding.threadId, config);
-      await this.piDurableHost.configure(binding.threadId, config);
-    }
-    for (const threadId of cancelThreads) await this.piDurableHost.cancel(threadId);
-    await this.piDurableHost.resume();
   }
 
   private finishInterruptedRun(
