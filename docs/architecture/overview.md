@@ -37,8 +37,9 @@ flowchart LR
   acp --> sandbox[OpenSandbox]
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
-  nodes[Mac / Linux / Windows / Termux nodes] -->|Outbound WebSocket: heartbeat / result| mesh
+  nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
+  nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
 Pi Durable 通过 Local AI Core 的单一 worker 接入；所有 Durable threads 共用一个 Harness 和 `runtime/pi-durable.sqlite`，每个 thread 保持独立 Conversation。工作区写入经 Core 的逐次审批、路径与基线校验后由 Core 原子落盘；shell、删除、MCP、sandbox 仍不可用。详细边界见[架构事实](../architecture.md)、[持久执行记录](changes/2026-10-03-durable-execution.md)和[写入审批变更](changes/2026-10-04-pi-durable-write-approval.md)。
@@ -123,3 +124,7 @@ The renderer uses one of two local providers:
 - `local_core`: direct Local AI Core access is available
 
 Both providers target the same Local AI Core API surface.
+
+### Android Mobile Screen Lifecycle
+
+[L2 Android screen flow](mobile-screen.workflow.html) ([typed source](mobile-screen.workflow.json)) records task-owned acquisition, Core heartbeat and device-local cleanup. ACP runPrompt owns the lifecycle through an independent screen coordinator and existing executeMesh transport; this adds no persisted state or scheduler/skill-router changes. [Session change record](changes/2026-10-04-mobile-screen-session.md) records the ownership and visible feedback upgrade.

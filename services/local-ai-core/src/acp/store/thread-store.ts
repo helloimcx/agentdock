@@ -18,6 +18,9 @@ import { normalizeMessageContent } from '../../thread/workspace-thread-mappers.j
 import { encodeThreadId } from '../../thread/workspace-thread-id.js';
 import { normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.js';
 
+// Order matters: also reused by INSERT INTO messages below — keep its VALUES placeholder count in sync.
+const MESSAGE_COLUMNS = 'id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq';
+
 export class LocalThreadStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -99,38 +102,15 @@ export class LocalThreadStore {
     let messages: LocalMessageRow[];
     let hasMore = false;
 
-    if (options?.limit !== undefined && options.limit > 0) {
-      const limit = options.limit;
-      if (options.beforeSeq !== undefined) {
-        const rows = this.db.prepare(`
-          SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
-          FROM messages
-          WHERE thread_id = ? AND seq < ?
-          ORDER BY seq DESC
-          LIMIT ?
-        `).all(threadId, options.beforeSeq, limit + 1) as LocalMessageRow[];
-        if (rows.length > limit) {
-          hasMore = true;
-          rows.pop();
-        }
-        messages = rows.reverse();
-      } else {
-        const rows = this.db.prepare(`
-          SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
-          FROM messages
-          WHERE thread_id = ?
-          ORDER BY seq DESC
-          LIMIT ?
-        `).all(threadId, limit + 1) as LocalMessageRow[];
-        if (rows.length > limit) {
-          hasMore = true;
-          rows.pop();
-        }
-        messages = rows.reverse();
-      }
+    const limit = options?.limit;
+    if (limit !== undefined && limit > 0) {
+      const rows = this.selectMessageWindow(threadId, limit, options?.beforeSeq);
+      hasMore = rows.length > limit;
+      if (hasMore) rows.pop();
+      messages = rows.reverse();
     } else {
       messages = this.db.prepare(`
-        SELECT id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq
+        SELECT ${MESSAGE_COLUMNS}
         FROM messages
         WHERE thread_id = ?
         ORDER BY seq ASC
@@ -175,6 +155,25 @@ export class LocalThreadStore {
       firstSeq,
       lastSeq,
     };
+  }
+
+  private selectMessageWindow(threadId: string, limit: number, beforeSeq?: number): LocalMessageRow[] {
+    if (beforeSeq !== undefined) {
+      return this.db.prepare(`
+        SELECT ${MESSAGE_COLUMNS}
+        FROM messages
+        WHERE thread_id = ? AND seq < ?
+        ORDER BY seq DESC
+        LIMIT ?
+      `).all(threadId, beforeSeq, limit + 1) as LocalMessageRow[];
+    }
+    return this.db.prepare(`
+      SELECT ${MESSAGE_COLUMNS}
+      FROM messages
+      WHERE thread_id = ?
+      ORDER BY seq DESC
+      LIMIT ?
+    `).all(threadId, limit + 1) as LocalMessageRow[];
   }
 
   rename(threadId: string, title: string) {
@@ -250,7 +249,7 @@ export class LocalThreadStore {
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
     const messageId = id ?? `${timestamp}-${role}-${nextSeq}`;
     this.db.prepare(`
-      INSERT INTO messages (id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq)
+      INSERT INTO messages (${MESSAGE_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       messageId,

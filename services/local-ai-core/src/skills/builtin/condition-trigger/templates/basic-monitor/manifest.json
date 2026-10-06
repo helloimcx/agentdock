@@ -1,0 +1,32 @@
+{
+  "protocolVersion": 1,
+  "entrypoint": "check.sh",
+  "config": {
+    "url": "https://example.com/health",
+    "timeout_seconds": 10,
+    "expected_status": 200
+  },
+  "configSchema": {
+    "type": "object",
+    "required": ["url"],
+    "properties": {
+      "url": { "type": "string", "format": "uri" },
+      "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 60 },
+      "expected_status": { "type": "integer", "minimum": 100, "maximum": 599 }
+    }
+  },
+  "capabilities": {
+    "network": "public",
+    "internalAccess": false,
+    "allowedReadDirs": []
+  },
+  "secretRefs": [],
+  "env": [],
+  "limits": {
+    "timeoutMs": 30000,
+    "stdoutBytes": 65536,
+    "stderrBytes": 16384,
+    "payloadBytes": 8192,
+    "stateBytes": 4096
+  }
+}

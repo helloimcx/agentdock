@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, mkdtempSync, statSync } from 'node:fs';
-import { resolve, join, sep, relative } from 'node:path';
+import { resolve, join, sep, relative, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import type {
   SkillInfo,
@@ -69,7 +69,7 @@ export class ManagedSkillCatalog {
   }
 
   /** Resolves all skills across Workspace, User, and Builtin roots with precedence override. */
-  listSkills(options: { workspacePath?: string; workspaceId?: string } = {}): SkillInfo[] {
+  listSkills(options: { workspacePath?: string; workspaceId?: string; platform?: string } = {}): SkillInfo[] {
     const workspacePath = options.workspacePath ? resolve(options.workspacePath) : this.defaultWorkspacePath;
     const roots: { scope: SkillScope; dir: string; priority: number }[] = [
       { scope: 'builtin', dir: this.rootDir, priority: 1 },
@@ -89,7 +89,18 @@ export class ManagedSkillCatalog {
       this.scanSkillsRoot(root, rawMap, disabledUserSkills, disabledWorkspaceSkills);
     }
 
-    const result = Array.from(rawMap.values()).map((item) => item.info);
+    let result = Array.from(rawMap.values()).map((item) => item.info);
+    if (options.platform !== undefined) {
+      const targetPlatform = options.platform.trim().toLowerCase();
+      result = result.filter((skill) => {
+        const platforms = skill.metadata?.platforms;
+        if (!platforms || !Array.isArray(platforms) || platforms.length === 0) {
+          return true;
+        }
+        return platforms.some((p) => String(p).trim().toLowerCase() === targetPlatform);
+      });
+    }
+
     if (this.store) {
       this.attachSourceMetadataToSkills(result, options.workspaceId || '');
     }
@@ -565,9 +576,36 @@ export class ManagedSkillCatalog {
   }
 }
 
-function resolveManagedSkillsRoot() {
-  const packaged = resolve(process.cwd(), 'dist-electron', 'electron', 'managed-skills');
-  return existsSync(packaged) ? packaged : resolve(process.cwd(), 'electron', 'managed-skills');
+export function resolveManagedSkillsRoot(explicitDir?: string): string {
+  if (explicitDir && existsSync(explicitDir)) return resolve(explicitDir);
+
+  if (process.env.AGENTDOCK_BUILTIN_SKILLS_DIR && existsSync(process.env.AGENTDOCK_BUILTIN_SKILLS_DIR)) {
+    return resolve(process.env.AGENTDOCK_BUILTIN_SKILLS_DIR);
+  }
+
+  // 1. Production compiled relative directory (relative to runtime module)
+  const currentDir = typeof __dirname !== 'undefined' ? __dirname : '';
+  if (currentDir) {
+    const runtimeRelative = resolve(currentDir, '..', 'skills', 'builtin');
+    if (existsSync(runtimeRelative)) return runtimeRelative;
+  }
+
+  // 2. Source tree builtin skills directory
+  const coreSource = resolve(process.cwd(), 'services', 'local-ai-core', 'src', 'skills', 'builtin');
+  if (existsSync(coreSource)) return coreSource;
+
+  // 3. Compiled Core destination directory
+  const corePackaged = resolve(process.cwd(), 'dist-electron', 'services', 'local-ai-core', 'src', 'skills', 'builtin');
+  if (existsSync(corePackaged)) return corePackaged;
+
+  // 4. Legacy fallback destinations (for backward compatibility)
+  const legacyPackaged = resolve(process.cwd(), 'dist-electron', 'electron', 'managed-skills');
+  if (existsSync(legacyPackaged)) return legacyPackaged;
+
+  const legacySource = resolve(process.cwd(), 'electron', 'managed-skills');
+  if (existsSync(legacySource)) return legacySource;
+
+  return coreSource;
 }
 
 function resolveUserSkillsRoot() {

@@ -62,4 +62,36 @@ export const BUILTIN_SKILL_RULES: SkillRoutingRule[] = [
       '(?:do not|don\'t|dont|never|without).{0,24}\\b(?:create|add|set(?:\\s+up)?|configure|build|author)\\b',
     ],
   },
+  // Mobile Automation: Chinese mobile app and UI automation
+  {
+    skillId: 'mobile-automation',
+    priority: 10,
+    requiresTools: ['mobile-apps', 'mobile-ui'],
+    patterns: [
+      '(?:手机|移动端|安卓|Android).*(?:操作|打开|点击|加购|搜索|运行|控制)',
+      '(?:打开|启动|跳转).*(?:淘宝|美团|微信|支付宝|高德|设置)',
+      '(?:点击|输入|滑动|返回|加购|加入购物车)',
+    ],
+    keywords: [
+      '手机操作', '移动端', '安卓', 'Android', 'mobile-apps', 'mobile-ui',
+      '打开应用', '淘宝', '美团', '微信', '支付宝', '高德', '扫一扫', '付款码',
+      '乘车码', '加入购物车', '屏幕点击', 'UI交互', '页面元素',
+    ],
+    negativePatterns: [
+      '(?:不要|不需要|无需|别).{0,8}(?:手机|操作|点击|打开)',
+    ],
+  },
+  // Mobile Automation: English mobile app and UI automation
+  {
+    skillId: 'mobile-automation',
+    priority: 10,
+    requiresTools: ['mobile-apps', 'mobile-ui'],
+    requiredGroups: [
+      ['mobile', 'android', 'phone', 'app', 'ui', 'mobile-apps', 'mobile-ui'],
+      ['open', 'launch', 'click', 'input', 'tap', 'scroll', 'dump', 'navigate', 'automate', 'cart'],
+    ],
+    negativePatterns: [
+      '(?:do not|don\'t|dont|never|without).{0,24}\\b(?:open|click|automate)\\b',
+    ],
+  },
 ];

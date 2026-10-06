@@ -1,0 +1,122 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Android 自动化亮屏流程",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/mobile-screen.workflow.html"
+  },
+  "lanes": [
+    {
+      "id": "client",
+      "label": "Core ACP 任务与 Mesh"
+    },
+    {
+      "id": "device",
+      "label": "Android 无障碍桥接"
+    },
+    {
+      "id": "cleanup",
+      "label": "设备本地清理",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "command",
+    "guard",
+    "hold",
+    "operation"
+  ],
+  "nodes": [
+    {
+      "id": "command",
+      "lane": "client",
+      "col": 0,
+      "type": "backend",
+      "label": "真实 ACP run",
+      "sublabel": "开始 / 思考 / 等待",
+      "width": 210
+    },
+    {
+      "id": "guard",
+      "lane": "device",
+      "col": 1,
+      "type": "security",
+      "label": "检查屏幕与锁屏",
+      "sublabel": "主线程串行处理",
+      "width": 170
+    },
+    {
+      "id": "hold",
+      "lane": "device",
+      "col": 2,
+      "type": "backend",
+      "label": "任务标识亮屏租约",
+      "sublabel": "30 秒续约 / 120 秒兜底",
+      "width": 210
+    },
+    {
+      "id": "operation",
+      "lane": "device",
+      "col": 3,
+      "type": "backend",
+      "label": "可见状态与目标波纹",
+      "sublabel": "窗口保亮 / 绘制反馈",
+      "width": 210
+    },
+    {
+      "id": "blocked",
+      "lane": "cleanup",
+      "col": 1,
+      "type": "security",
+      "label": "等待用户解锁",
+      "sublabel": "不自动唤醒或解锁",
+      "width": 170
+    },
+    {
+      "id": "release",
+      "lane": "cleanup",
+      "col": 2,
+      "type": "backend",
+      "label": "释放对应任务租约",
+      "sublabel": "结束 / 取消 / 到期 / 锁屏",
+      "width": 210
+    }
+  ],
+  "edges": [
+    {
+      "id": "command-guard",
+      "from": "command",
+      "to": "guard",
+      "label": "Mesh → owner acquire"
+    },
+    {
+      "id": "guard-hold",
+      "from": "guard",
+      "to": "hold",
+      "label": "屏幕已解锁"
+    },
+    {
+      "id": "hold-operation",
+      "from": "hold",
+      "to": "operation",
+      "label": "运行时持续续约"
+    },
+    {
+      "id": "guard-blocked",
+      "from": "guard",
+      "to": "blocked",
+      "label": "锁屏或息屏",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "hold-release",
+      "from": "hold",
+      "to": "release",
+      "label": "停止续约与清理",
+      "role": "branch"
+    }
+  ]
+}

@@ -43,3 +43,8 @@ tmp/
 
 # Machine-local agent skill symlinks.
 .agents/
+
+# Local cache & temporary build artifacts
+.pnpm-store/
+tools/agentdock-a11y/build/
+tools/agentdock-a11y/keystore/

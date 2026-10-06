@@ -17,6 +17,12 @@ import { useThreadChatSessionBrowser } from './useThreadChatSessionBrowser';
 import { useThreadChatBridge } from './useThreadChatBridge';
 import { useThreadChatActions } from './useThreadChatActions';
 import { useThreadChatConversationState } from './useThreadChatConversationState';
+import {
+  captureHistoryScrollAnchor,
+  restoreHistoryScrollAnchor,
+  type HistoryScrollAnchor,
+} from './thread-chat-scroll-anchor';
+import { shouldFollowChatScroll } from './thread-chat-scroll-follow';
 
 export function useThreadChatController() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,10 +48,13 @@ export function useThreadChatController() {
   const [permissionModeSaving, setPermissionModeSaving] = useState(false);
   const [bridgeError, setBridgeError] = useState('');
   const knowledgeBaseSelectionRequestRef = useRef(0);
+  const currentActiveThreadIdRef = useRef(activeThreadId);
+  const scrollStateThreadIdRef = useRef(activeThreadId);
   const endRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const prevScrollHeightRef = useRef(0);
-  const prevScrollTopRef = useRef(0);
+  const pendingHistoryScrollAnchorRef = useRef<HistoryScrollAnchor | null>(null);
+  const suppressAutoScrollAfterHistoryRef = useRef(false);
+  const shouldAutoScrollRef = useRef(true);
   const requestedWorkspaceId = searchParams.get('project') || '';
   const requestedThreadId = searchParams.get('session') || '';
   const branding = getRuntimeBranding();
@@ -94,6 +103,18 @@ export function useThreadChatController() {
     setSelectedProject: setSelectedWorkspaceId,
     setThreadGroups,
   });
+
+  useLayoutEffect(() => {
+    currentActiveThreadIdRef.current = activeThreadId;
+    if (scrollStateThreadIdRef.current === activeThreadId) {
+      return;
+    }
+    pendingHistoryScrollAnchorRef.current = null;
+    isPrependingHistoryRef.current = false;
+    suppressAutoScrollAfterHistoryRef.current = false;
+    shouldAutoScrollRef.current = true;
+    scrollStateThreadIdRef.current = activeThreadId;
+  }, [activeThreadId, isPrependingHistoryRef]);
 
   const {
     loading,
@@ -153,32 +174,63 @@ export function useThreadChatController() {
 
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
-    if (container && prevScrollHeightRef.current > 0) {
-      const diff = container.scrollHeight - prevScrollHeightRef.current;
-      if (diff > 0) {
-        container.scrollTop = prevScrollTopRef.current + diff;
-      }
-      prevScrollHeightRef.current = 0;
-      prevScrollTopRef.current = 0;
+    const anchor = pendingHistoryScrollAnchorRef.current;
+    if (!container || !anchor) {
+      return;
     }
-  }, [renderedMessages]);
+    if (!restoreHistoryScrollAnchor(container, anchor) || !loadingMoreHistory) {
+      pendingHistoryScrollAnchorRef.current = null;
+    }
+  }, [loadingMoreHistory, renderedMessages]);
 
   useEffect(() => {
     if (isPrependingHistoryRef.current) {
-      isPrependingHistoryRef.current = false;
       return;
     }
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [isPrependingHistoryRef, renderedMessages, typing]);
+    if (suppressAutoScrollAfterHistoryRef.current) {
+      suppressAutoScrollAfterHistoryRef.current = false;
+      return;
+    }
+    if (shouldAutoScrollRef.current) {
+      endRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [isPrependingHistoryRef, loadingMoreHistory, renderedMessages, typing]);
 
-  const handleLoadMoreHistory = useCallback(async () => {
+  const handleScrollContainerScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (container) {
-      prevScrollHeightRef.current = container.scrollHeight;
-      prevScrollTopRef.current = container.scrollTop;
+      shouldAutoScrollRef.current = shouldFollowChatScroll(container);
+      if (isPrependingHistoryRef.current) {
+        pendingHistoryScrollAnchorRef.current = captureHistoryScrollAnchor(container);
+      }
     }
-    await loadMoreHistory();
-  }, [loadMoreHistory]);
+  }, [isPrependingHistoryRef]);
+
+  const handleLoadMoreHistory = useCallback(async () => {
+    const requestThreadId = activeThreadId;
+    const container = scrollContainerRef.current;
+    if (container) {
+      pendingHistoryScrollAnchorRef.current = captureHistoryScrollAnchor(container);
+    }
+    const historyLoad = loadMoreHistory();
+    const shouldSuppressAutoScroll = isPrependingHistoryRef.current;
+    if (!shouldSuppressAutoScroll) {
+      pendingHistoryScrollAnchorRef.current = null;
+    }
+    try {
+      await historyLoad;
+    } catch (error) {
+      if (currentActiveThreadIdRef.current === requestThreadId) {
+        pendingHistoryScrollAnchorRef.current = null;
+      }
+      throw error;
+    } finally {
+      if (currentActiveThreadIdRef.current === requestThreadId && shouldSuppressAutoScroll) {
+        isPrependingHistoryRef.current = false;
+        suppressAutoScrollAfterHistoryRef.current = true;
+      }
+    }
+  }, [activeThreadId, currentActiveThreadIdRef, isPrependingHistoryRef, loadMoreHistory]);
 
   const refreshKnowledgeBases = useCallback(async () => {
     try {
@@ -335,6 +387,7 @@ export function useThreadChatController() {
     draft,
     endRef,
     scrollContainerRef,
+    handleScrollContainerScroll,
     filteredSessionGroups: filteredThreadGroups,
     handleBridgeAction,
     handleCreateNew,

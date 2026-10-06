@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, readdirSync, rmSync, cpSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { ManagedSkillCatalog } from './managed-skill-catalog.js';
 
@@ -7,6 +7,8 @@ export interface MountActiveSkillsOptions {
   workspacePath?: string;
   catalog?: ManagedSkillCatalog;
   userHome?: string;
+  platform?: string;
+  targetDir?: string;
 }
 
 /** Resolves the native skills directory path for a given agent runtime. */
@@ -29,11 +31,14 @@ export function resolveAgentSkillsDirectory(agentId = 'default', userHome?: stri
   return join(home, '.agent-skills');
 }
 
-/** Mounts all active skills into the agent runtime's native skills directory via symlinks. */
-export async function mountActiveSkillsForAgent(options: MountActiveSkillsOptions = {}): Promise<string[]> {
+/** Mounts all active skills into the agent runtime's native skills directory via symlinks (synchronous implementation). */
+export function mountActiveSkillsSync(options: MountActiveSkillsOptions = {}): string[] {
+  const platform = options.platform !== undefined ? options.platform : (options.targetDir ? undefined : process.platform);
   const catalog = options.catalog || new ManagedSkillCatalog({ workspacePath: options.workspacePath });
-  const activeSkills = catalog.listSkills({ workspacePath: options.workspacePath }).filter((s) => s.enabled && !s.overridden);
-  const targetSkillsDir = resolveAgentSkillsDirectory(options.agentId || 'default', options.userHome);
+  const activeSkills = catalog
+    .listSkills({ workspacePath: options.workspacePath, platform })
+    .filter((s) => s.enabled && !s.overridden);
+  const targetSkillsDir = options.targetDir || resolveAgentSkillsDirectory(options.agentId || 'default', options.userHome);
 
   mkdirSync(targetSkillsDir, { recursive: true });
 
@@ -65,9 +70,19 @@ export async function mountActiveSkillsForAgent(options: MountActiveSkillsOption
       symlinkSync(sourceSkillDir, targetLinkPath, 'dir');
       mountedIds.push(skill.id);
     } catch {
-      // Fallback if symlinking fails
+      try {
+        cpSync(sourceSkillDir, targetLinkPath, { recursive: true });
+        mountedIds.push(skill.id);
+      } catch {
+        // Fallback if symlinking/copy fails
+      }
     }
   }
 
   return mountedIds;
+}
+
+/** Mounts all active skills into the agent runtime's native skills directory via symlinks. */
+export async function mountActiveSkillsForAgent(options: MountActiveSkillsOptions = {}): Promise<string[]> {
+  return mountActiveSkillsSync(options);
 }

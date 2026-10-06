@@ -42,6 +42,96 @@ import {
   toSelectedKnowledgeBases,
 } from './thread-chat-page-state';
 import type { KnowledgeBase } from '@cc/superai-contracts';
+import {
+  captureHistoryScrollAnchor,
+  restoreHistoryScrollAnchor,
+  type HistoryScrollAnchorElement,
+  type HistoryScrollContainer,
+} from './thread-chat-scroll-anchor';
+import { shouldFollowChatScroll } from './thread-chat-scroll-follow';
+
+test('chat scroll following only stays enabled while the view is near the bottom', () => {
+  assert.equal(shouldFollowChatScroll({ scrollTop: 700, scrollHeight: 1200, clientHeight: 500 }), true);
+  assert.equal(shouldFollowChatScroll({ scrollTop: 690, scrollHeight: 1200, clientHeight: 500 }), true);
+  assert.equal(shouldFollowChatScroll({ scrollTop: 619, scrollHeight: 1200, clientHeight: 500 }), false);
+});
+
+test('history scroll anchor tracks the first visible message relative to the scroll container', () => {
+  const containerTop = { value: 100 };
+  const offscreenMessage = createScrollAnchorElement(70, 95);
+  const visibleMessage = createScrollAnchorElement(90, 140);
+  const nextMessage = createScrollAnchorElement(150, 180);
+  const container = createScrollContainer(() => containerTop.value, [offscreenMessage, visibleMessage, nextMessage]);
+
+  const anchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(anchor);
+  assert.equal(anchor.element, visibleMessage);
+  assert.equal(anchor.top, -10);
+
+  visibleMessage.top = 190;
+  assert.equal(restoreHistoryScrollAnchor(container, anchor), true);
+  assert.equal(container.scrollTop, 300);
+});
+
+test('history scroll anchor ignores a message removed while history loads', () => {
+  const message = createScrollAnchorElement(120, 170);
+  const container = createScrollContainer(() => 100, [message]);
+  const anchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(anchor);
+  message.isConnected = false;
+
+  assert.equal(restoreHistoryScrollAnchor(container, anchor), false);
+  assert.equal(container.scrollTop, 200);
+});
+
+test('history scroll anchor follows the user position changed during a pending load', () => {
+  const earlierMessage = createScrollAnchorElement(100, 130);
+  const middleMessage = createScrollAnchorElement(150, 190);
+  const newestMessage = createScrollAnchorElement(210, 260);
+  const container = createScrollContainer(() => 100, [earlierMessage, middleMessage, newestMessage]);
+  const clickAnchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(clickAnchor);
+  earlierMessage.top = -80;
+  earlierMessage.bottom = -40;
+  middleMessage.top = -30;
+  middleMessage.bottom = 0;
+  newestMessage.top = 100;
+  newestMessage.bottom = 150;
+  container.scrollTop = 350;
+  const rebasedAnchor = captureHistoryScrollAnchor(container);
+
+  assert.ok(rebasedAnchor);
+  assert.equal(rebasedAnchor.element, newestMessage);
+  newestMessage.top = 300;
+
+  assert.equal(restoreHistoryScrollAnchor(container, rebasedAnchor), true);
+  assert.equal(container.scrollTop, 550);
+});
+
+function createScrollAnchorElement(top: number, bottom: number): HistoryScrollAnchorElement & { top: number; bottom: number } {
+  const element = {
+    top,
+    bottom,
+    isConnected: true,
+    getBoundingClientRect: () => ({ top: element.top, bottom: element.bottom }),
+  };
+  return element;
+}
+
+function createScrollContainer(
+  getTop: () => number,
+  elements: HistoryScrollAnchorElement[],
+): HistoryScrollContainer {
+  const container = {
+    scrollTop: 200,
+    getBoundingClientRect: () => ({ top: getTop() }),
+    querySelectorAll: () => elements,
+  };
+  return container;
+}
 
 type TestMessage = PermissionPromptMessage & {
   id: string;

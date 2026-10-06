@@ -43,6 +43,8 @@ import type { DurableConfig, DurableView } from '../agents/pi-durable/protocol.j
 import { LocalCorePiDurableWriteApprovals } from './local-core-pi-durable-write-approvals.js';
 import { sumDurableUsage, toDurableConfig } from '../agents/pi-durable/config.js';
 
+import { RemoteMeshScreenSessionManager } from '../execution/remote-mesh/screen-session-manager.js';
+
 import type { CostService } from '../cost/cost-service.js';
 
 export type { SendThreadMessageOptions } from './thread-submission-dispatcher.js';
@@ -63,6 +65,7 @@ type LocalCoreAcpBackendOptions = {
 };
 
 export class LocalCoreAcpBackend {
+  private readonly screenSessions: RemoteMeshScreenSessionManager;
   private readonly transport: LocalCoreAcpTransport;
   private readonly turnCoordinator: LocalCoreAcpTurnCoordinator;
   private readonly sessionCoordinator: LocalCoreAcpSessionCoordinator;
@@ -90,6 +93,11 @@ export class LocalCoreAcpBackend {
     this.durableWriteApprovals = new LocalCorePiDurableWriteApprovals({
       store: options.store, host: this.piDurableHost, configs: this.durableConfigs,
       emit: (event) => this.emitBridgeEvent(event), log: options.log,
+    });
+    this.screenSessions = new RemoteMeshScreenSessionManager({
+      execute: options.executeMesh,
+      log: options.log,
+      onFailure: (runId) => { void this.interruptRun(runId).catch(error => options.log?.(`Screen interruption failed: ${String(error)}`)); },
     });
     this.transport = new LocalCoreAcpTransport({
       log: options.log,
@@ -184,6 +192,7 @@ export class LocalCoreAcpBackend {
       runThreadMap: options.runThreadMap,
       cliBinDir: options.cliBinDir,
       localCoreBase: options.localCoreBase,
+      onRunStopped: (runId) => { void this.screenSessions.stop(runId); },
       emitBridge: (event) => this.emitBridgeEvent(event),
       log: options.log,
     });
@@ -267,6 +276,7 @@ export class LocalCoreAcpBackend {
     this.durableWriteApprovals.close();
     this.durablePartialPersistence.close();
     this.turnCoordinator.close();
+    void this.screenSessions.close();
     this.sessionCoordinator.closeAll();
     await this.piDurableHost.close();
   }
@@ -493,7 +503,9 @@ export class LocalCoreAcpBackend {
       await this.piDurableHost.cancel(submission.threadId);
       return { interrupted: true };
     }
-    return this.sessionCoordinator.interruptRun(runId);
+    const result = await this.sessionCoordinator.interruptRun(runId);
+    await this.screenSessions.stop(runId);
+    return result;
   }
 
   async setThreadMode(threadId: string, mode: string) {
@@ -501,6 +513,8 @@ export class LocalCoreAcpBackend {
   }
 
   closeThreadSession(threadId: string) {
+    const runId = this.sessionCoordinator.getSession(threadId)?.currentRunId;
+    if (runId) void this.screenSessions.stop(runId);
     this.sessionCoordinator.closeThreadSession(threadId);
   }
 
@@ -579,6 +593,11 @@ export class LocalCoreAcpBackend {
         toolObservations: [],
         permission: null,
       };
+      const screenReady = await this.screenSessions.begin(runId, config);
+      if (!screenReady || this.options.store.getRun(runId)?.status === 'interrupted') {
+        this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
+        return;
+      }
       const promptPromise = this.transport.request(session, 'session/prompt', {
         sessionId: session.sessionId,
         messageId: randomUUID(),
@@ -766,6 +785,7 @@ export class LocalCoreAcpBackend {
       });
     } finally {
       if (session) this.turnCoordinator.flushAssistantPartial(session);
+      await this.screenSessions.stop(runId);
       if (session?.currentRunId === runId) {
         session.currentRunId = null;
       }
@@ -896,6 +916,7 @@ export class LocalCoreAcpBackend {
   private handleTransportSessionClosed(session: AcpSessionState, error: Error) {
     this.turnCoordinator.flushAssistantPartial(session);
     this.options.store.threadRuntime.expireAcpPermissions(session.threadId, session.currentRunId || undefined);
+    if (session.currentRunId) void this.screenSessions.stop(session.currentRunId);
     const row = this.options.store.getThreadRow(session.threadId);
     const runtimeId = session.currentTurn?.agentType || row?.agent_type || '';
     const errorInfo = toLocalCoreErrorInfo(error, 'runtime_exited', {

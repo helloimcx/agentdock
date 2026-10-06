@@ -65,8 +65,8 @@ test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge
   assert.equal(prepared.execution?.mode, 'mesh');
   assert.equal(prepared.execution?.nodeId, 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c');
   assert.ok(prepared.workDir.includes('remote-shadow'));
-  assert.ok(!prepared.mcpServers?.some((s) => s.name === 'agentdock-remote-mesh'));
-  assert.ok(prepared.env?.SHELL?.includes('mesh-shell'));
+  assert.ok(prepared.env?.SHELL?.includes('mesh-bash'));
+  assert.ok(prepared.env?.CLAUDE_CODE_SHELL?.includes('mesh-bash'));
   assert.equal(prepared.env?.AGENTDOCK_MESH_NODE_ID, 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c');
   assert.ok(prepared.execution?.systemPromptAppend?.includes('Remote Device Environment'));
 });
