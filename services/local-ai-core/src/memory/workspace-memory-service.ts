@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { atomicWriteFileSync } from '../kernel/atomic-write.js';
+import { parseMarkdownFrontmatter } from '../kernel/frontmatter.js';
 import type {
   MemoryCategory,
   MemoryPage,
@@ -54,31 +55,13 @@ export function parseMemoryMarkdown(raw: string): {
   updatedAt?: string;
   content: string;
 } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
-  if (!match) {
+  const parsed = parseMarkdownFrontmatter(raw);
+  if (!parsed) {
     return { content: raw.trim() };
   }
-  const frontmatterStr = match[1];
-  const content = match[2];
-  const meta: Record<string, unknown> = {};
-
-  for (const line of frontmatterStr.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const colonIdx = trimmed.indexOf(':');
-    if (colonIdx > 0) {
-      const key = trimmed.slice(0, colonIdx).trim().toLowerCase();
-      const val = trimmed.slice(colonIdx + 1).trim();
-      if (val.startsWith('[') && val.endsWith(']')) {
-        meta[key] = val
-          .slice(1, -1)
-          .split(',')
-          .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-          .filter(Boolean);
-      } else {
-        meta[key] = val.replace(/^['"]|['"]$/g, '');
-      }
-    }
+  const meta: Record<string, string | string[]> = {};
+  for (const [key, value] of Object.entries(parsed.meta)) {
+    meta[key.toLowerCase()] = value;
   }
 
   const title = typeof meta.title === 'string' ? meta.title : undefined;
@@ -91,7 +74,7 @@ export function parseMemoryMarkdown(raw: string): {
         : undefined;
   const tags = Array.isArray(meta.tags) ? meta.tags.map(String) : [];
 
-  return { title, description, updatedAt, tags, content };
+  return { title, description, updatedAt, tags, content: parsed.body };
 }
 
 function resolveMemoryRoot(workspacePath: string): string {
