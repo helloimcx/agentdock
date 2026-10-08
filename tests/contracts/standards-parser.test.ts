@@ -54,6 +54,20 @@ Use sync.Pool for buffer reuse in critical hot loops.
   assert.equal(perfRule.minIntensity, 'ultra');
 });
 
+test('parseStandardPack applies defaults when the markdown has no frontmatter block', () => {
+  const parsed = parseStandardPack('### Rule Without Pack Header\nAlways validate inputs.\n');
+  assert.equal(parsed.id, 'standard-pack');
+  assert.equal(parsed.name, 'standard-pack');
+  assert.equal(parsed.language, 'general');
+  assert.equal(parsed.version, '1.0.0');
+  assert.equal(parsed.description, '');
+  assert.equal(parsed.author, undefined);
+  assert.equal(parsed.tags, undefined);
+  assert.equal(parsed.rules?.length, 1);
+  assert.equal(parsed.rules?.[0]?.title, 'Rule Without Pack Header');
+  assert.equal(parsed.rawMarkdown, '### Rule Without Pack Header\nAlways validate inputs.\n');
+});
+
 test('renderPonytailDecisionLadder renders 5-level hierarchy and safety carve-out note', () => {
   const ladder = renderPonytailDecisionLadder('full');
   assert.ok(ladder.includes('Decision Ladder'));

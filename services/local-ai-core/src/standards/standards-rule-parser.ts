@@ -3,6 +3,7 @@ import type {
   StandardRule,
   StandardPackMetadata,
 } from '@cc/superai-contracts/standards';
+import { parseMarkdownFrontmatter } from '../kernel/frontmatter.js';
 import type { RenderStandardsOptions } from './standards-types.js';
 
 const SAFETY_CARVE_OUT_REGEX =
@@ -16,33 +17,9 @@ const INTENSITY_ORDER: Record<RuleIntensityLevel, number> = {
 };
 
 export function parseStandardPack(markdownContent: string): StandardPackMetadata {
-  const frontmatterMatch = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(markdownContent);
-  const rawMetadata: Record<string, unknown> = {};
-  let body = markdownContent;
-
-  if (frontmatterMatch) {
-    const yamlLines = frontmatterMatch[1].split('\n');
-    for (const line of yamlLines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const colonIdx = trimmed.indexOf(':');
-      if (colonIdx > 0) {
-        const key = trimmed.slice(0, colonIdx).trim();
-        let val = trimmed.slice(colonIdx + 1).trim();
-        if (val.startsWith('[') && val.endsWith(']')) {
-          const items = val
-            .slice(1, -1)
-            .split(',')
-            .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-            .filter(Boolean);
-          rawMetadata[key] = items;
-        } else {
-          rawMetadata[key] = val.replace(/^['"]|['"]$/g, '');
-        }
-      }
-    }
-    body = frontmatterMatch[2];
-  }
+  const parsed = parseMarkdownFrontmatter(markdownContent);
+  const rawMetadata = parsed?.meta ?? {};
+  const body = parsed?.body ?? markdownContent;
 
   const id = String(rawMetadata.id || 'standard-pack').trim();
   const name = String(rawMetadata.name || id).trim();
