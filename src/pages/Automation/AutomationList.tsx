@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { Activity, Eye, Pause, Play, RefreshCw } from 'lucide-react';
 import { checkAutomation, listAutomationScriptVersions, listAutomationScripts, listAutomations, updateAutomation } from '@cc/core-sdk/automations';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
@@ -9,17 +10,13 @@ import { Badge, Button, Card, EmptyState, PageHeader, Select } from '@/component
 import { RunTimelineDrawer } from '@/components/traces/RunTimelineDrawer';
 import AutomationDetailModal from './AutomationDetailModal';
 import ScriptApprovalModal from './ScriptApprovalModal';
-import { deriveAutomationDisplayStatus, filterAutomationRows, originLabel, type AutomationOriginFilter } from './automation-page-model';
-
-function originFromSearch(): AutomationOriginFilter {
-  const value = new URLSearchParams(window.location.search).get('origin');
-  return value === 'scheduled-job' || value === 'automation-monitor' || value === 'native' ? value : 'all';
-}
+import { deriveAutomationDisplayStatus, filterAutomationRows, originFilterFromSearch, originLabel, type AutomationOriginFilter } from './automation-page-model';
 
 export default function AutomationList() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
   const [automations, setAutomations] = useState<AutomationDefinition[]>([]);
-  const [origin, setOrigin] = useState<AutomationOriginFilter>(originFromSearch);
+  const [origin, setOrigin] = useState<AutomationOriginFilter>(() => originFilterFromSearch(searchParams.get('origin')));
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AutomationDefinition | null>(null);
   const [scriptVersions, setScriptVersions] = useState<Array<{ workspaceId: string; title: string; version: AutomationScriptVersion }>>([]);
