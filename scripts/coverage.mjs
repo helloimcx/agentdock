@@ -23,6 +23,7 @@ const TEST_FILES = [
   'dist-electron/tests/integration/*.test.js',
   'dist-electron/packages/knowledge-api/test/*.test.js',
   'dist-electron/src/pages/Threads/thread-chat-permission.test.js',
+  'dist-electron/src/i18n/locales.test.js',
 ];
 
 function run(command, args) {

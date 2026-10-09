@@ -39,7 +39,8 @@
     "src/pages/Threads/thread-chat-permission.test.ts",
     "src/pages/Automation/automation-page-model.ts",
     "src/pages/Automation/automation-page-model.test.ts",
-    "src/components/chat/chat-controller-state.ts"
+    "src/components/chat/chat-controller-state.ts",
+    "src/i18n/locales.test.ts"
   ],
   "exclude": ["tests/bdd"]
 }
