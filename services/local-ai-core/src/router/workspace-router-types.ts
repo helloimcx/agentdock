@@ -175,6 +175,10 @@ export type WorkspaceThreadBackend = {
 };
 
 export type WorkspaceThreadMessageOptions = {
+  expectedRunId?: string;
+  expectedApprovalId?: string;
+  requestId?: string;
+  submissionIdentity?: unknown;
   permissionMode?: string;
   runtimeEnv?: Record<string, string>;
   channelRoute?: ChannelRoute;

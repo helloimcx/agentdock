@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ThreadDetail } from '@cc/superai-contracts';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
-import { getThread, listThreads, listWorkspaces } from '@cc/core-sdk/threads';
+import { watchThreadRuntime, getThread, listThreads, listWorkspaces } from '@cc/core-sdk/threads';
 import type { ThreadGroup } from './thread-chat-model';
 import {
   chatThreadMatchesSearch,
@@ -119,6 +119,8 @@ export function useThreadChatSessionBrowser({
   pendingTurnRef,
   progressSequenceByTurnRef,
 }: UseThreadChatSessionBrowserInput) {
+  const selectedThreadRef = useRef(activeThreadId);
+  selectedThreadRef.current = activeThreadId;
   const threadsForSelectedWorkspace = useMemo(
     () => threadGroups.find((group) => group.project === selectedWorkspaceId)?.sessions || [],
     [selectedWorkspaceId, threadGroups],
@@ -160,11 +162,13 @@ export function useThreadChatSessionBrowser({
     if (!threadId || !serviceRunning) {
       return;
     }
+    selectedThreadRef.current = threadId;
     const requestId = ++activeThreadRequestIdRef.current;
     holdBlankComposerRef.current = false;
     updateTaskState('idle');
     setPendingPermissionRequest(null);
     setTyping(false);
+    setActiveSessionId(threadId);
     const cached = getCachedThreadDetail(threadId);
     if (cached) {
       applyLocalCoreThreadDetail(cached);
@@ -190,9 +194,21 @@ export function useThreadChatSessionBrowser({
     serviceRunning,
     setBridgeError,
     setPendingPermissionRequest,
+    setActiveSessionId,
     setTyping,
     updateTaskState,
   ]);
+
+  useEffect(() => {
+    if (!activeThreadId || !serviceRunning) return;
+    return watchThreadRuntime(activeThreadId, (snapshot) => {
+      if (selectedThreadRef.current !== snapshot.threadId) return;
+      applyLocalCoreThreadDetail(snapshot.thread);
+      setTyping(snapshot.thread.live && !snapshot.thread.pendingPermissionRequest);
+      updateTaskState(snapshot.thread.pendingPermissionRequest ? 'awaiting_permission' : snapshot.thread.live ? 'running' : 'idle');
+      clearReplyTimeout();
+    });
+  }, [activeThreadId, serviceRunning, applyLocalCoreThreadDetail, setTyping, updateTaskState, clearReplyTimeout]);
 
   const refreshWorkspacesAndThreads = useCallback(async () => {
     if (!serviceRunning) {

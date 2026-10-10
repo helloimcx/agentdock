@@ -119,10 +119,16 @@ export class WorkspaceRouter {
       getAgentTypes: () => this.options.getCapabilities().snapshot.agents.map((agent) => agent.agentType),
       log: options.log,
     });
+    setImmediate(() => {
+      void this.localCoreAcp.resumePendingSubmissions(async (threadId, resumeOptions) => {
+        const { workspaceId } = decodeThreadId(threadId);
+        return (await this.getThreadWorkspaceRoute(threadId, workspaceId, resumeOptions)).config;
+      }).catch((error) => this.options.log?.(`Submission recovery unavailable: ${String(error)}`));
+    });
   }
 
-  close() {
-    this.localCoreAcp.close();
+  async close() {
+    await this.localCoreAcp.close();
     this.bridgeEvents.clear();
     this.store.close();
   }
@@ -339,19 +345,24 @@ export class WorkspaceRouter {
     threadId: string,
     content: string | ChannelInboundMessageContent,
     options?: WorkspaceThreadMessageOptions,
-  ): Promise<{ runId: string }> {
+  ) {
     const { workspaceId } = decodeThreadId(threadId);
     const route = isLocalSlashCommand(content)
       ? await this.getWorkspaceRoute(workspaceId)
       : await this.getThreadWorkspaceRoute(threadId, workspaceId, options);
     const preparedContent = await this.prepareAgentMessage(threadId, content, route.config.workDir);
-    return this.localCoreAcp.sendThreadMessage(threadId, preparedContent, route.config, options);
+    return this.localCoreAcp.sendThreadMessage(threadId, preparedContent, route.config, {
+      ...options,
+      submissionIdentity: options?.submissionIdentity ?? { input: content, permissionMode: options?.permissionMode,
+        providerIdOverride: options?.providerIdOverride, agentTypeOverride: options?.agentTypeOverride,
+        channelRoute: options?.channelRoute, runtimeEnv: options?.runtimeEnv },
+    });
   }
 
   async sendThreadAction(threadId: string, content: string, options?: WorkspaceThreadMessageOptions) {
     const { workspaceId } = decodeThreadId(threadId);
     const route = await this.getThreadWorkspaceRoute(threadId, workspaceId, options);
-    return this.localCoreAcp.sendThreadAction(threadId, content, route.config);
+    return this.localCoreAcp.sendThreadAction(threadId, content, route.config, options);
   }
 
   async interruptRun(runId: string): Promise<{ interrupted: boolean }> {

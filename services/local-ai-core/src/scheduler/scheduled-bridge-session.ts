@@ -21,6 +21,7 @@ export type ScheduledBridgeSessionInput = {
   getChannelRuntime: () => ChannelRuntime;
   noticeIcon?: string;
   noticeTitle?: string;
+  suppressFinalReport?: boolean;
 };
 
 export type ScheduledBridgeSessionHandle = {
@@ -44,6 +45,7 @@ export class ScheduledBridgeSession {
       route: target.route,
       threadId: input.threadId,
       sessionKey,
+      ...(input.suppressFinalReport ? { suppressFinalReport: true } : {}),
     });
     await sendScheduledStartNotice(channelRuntime, target, sessionKey, input.noticeIcon, input.noticeTitle);
     return {

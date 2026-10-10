@@ -279,5 +279,13 @@
       "filesystem_read": "Read a file",
       "shell_exec": "Run a command"
     }
+  },
+  "delivery": {
+    "recovery": "配信の確認が必要です",
+    "reason": "操作の理由",
+    "duplicateRisk": "再送によりレポートが重複する可能性を理解しています。",
+    "confirm": "配信済みと確認",
+    "retry": "配信を再試行",
+    "cancel": "配信を取消"
   }
 }

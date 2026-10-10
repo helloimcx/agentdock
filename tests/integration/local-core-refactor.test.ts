@@ -409,7 +409,10 @@ test('slash agent commands switch and reset the current thread agent', async () 
       model: '',
     };
 
-    assert.deepEqual(await backend.sendThreadMessage(thread.id, '/agent use pi', config), { runId: '' });
+    const switchResult = await backend.sendThreadMessage(thread.id, '/agent use pi', config);
+    assert.equal(switchResult.runId, '');
+    assert.ok(switchResult.submissionId);
+    assert.equal(switchResult.status, 'completed');
     assert.equal(store.getThreadRow(thread.id)?.agent_type, 'pi');
     assert.match(store.getThread(thread.id, []).messages.at(-1)?.content || '', /已将当前线程 Agent 切换为 pi/);
     assert.equal(bridgeEvents.at(-2)?.type, 'reply');

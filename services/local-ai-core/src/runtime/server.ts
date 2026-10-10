@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { SubmissionConflictError } from '../acp/store/submission-store.js';
 import { EventEmitter } from 'node:events';
 import { parseLocalAiCoreRoute, type LocalAiCoreRoute } from './server-routes.js';
 import { setCorsHeaders, jsonError, createSseEvent, type RouteHandler } from './server-helpers.js';
@@ -40,6 +41,7 @@ import type { ChannelService } from './channel-service.js';
 import type { ExternalService } from './external-service.js';
 import { registerRuntimeHandlers } from './handlers/runtime-handler.js';
 import { registerRuntimesHandlers } from './handlers/runtimes-handler.js';
+import { registerThreadRuntimeHandlers } from './handlers/thread-runtime-handler.js';
 import { registerThreadHandlers } from './handlers/thread-handler.js';
 import { registerWorkspaceHandlers } from './handlers/workspace-handler.js';
 import { registerSecurityHandlers } from './handlers/security-handler.js';
@@ -113,6 +115,7 @@ interface LocalAiCoreServerOptions {
 export class LocalAiCoreServer {
   private readonly host: string;
   private readonly port: number;
+  private readonly threadWatches = new Set<() => void>();
   private readonly sseClients = new Set<ServerResponse>();
   private readonly heartbeatTimers = new Map<ServerResponse, NodeJS.Timeout>();
   private readonly externalReplayTimers = new Map<ServerResponse, NodeJS.Timeout>();
@@ -147,6 +150,7 @@ export class LocalAiCoreServer {
 
   async stop() {
     this.mesh?.close();
+    for (const close of this.threadWatches) close();
     for (const client of this.sseClients) {
       client.end();
     }
@@ -188,6 +192,7 @@ export class LocalAiCoreServer {
     registerRuntimeHandlers(this.handlers, b.controller, b.errorReporter, (res) => this.attachSseClient(res));
     registerRuntimesHandlers(this.handlers, b.runtimeDetection);
     registerThreadHandlers(this.handlers, b.workspaceRouter);
+    if (b.store?.threadRuntime) registerThreadRuntimeHandlers(this.handlers, b.store, b.workspaceRouter, b.controller, this.threadWatches);
     registerWorkspaceHandlers(this.handlers, b.workspaceRouter);
     registerSecurityHandlers(this.handlers, b.workspaceRouter);
     registerTaskHandlers(this.handlers, b.workspaceRouter);
@@ -340,7 +345,7 @@ export class LocalAiCoreServer {
       }
       jsonError(res, 404, new Error(`Unknown route: ${path}`));
     } catch (error) {
-      jsonError(res, error instanceof RequestValidationError ? 400 : 500, error);
+      jsonError(res, error instanceof SubmissionConflictError ? 409 : error instanceof RequestValidationError ? 400 : 500, error);
     }
   }
 

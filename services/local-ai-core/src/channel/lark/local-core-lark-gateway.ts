@@ -281,6 +281,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     }
     return {
       platform: 'lark',
+      deliveryAcknowledgement: larkAcknowledgement(messageIds),
       workspaceId,
       channelId,
       participantId: input.route.participantId,
@@ -459,6 +460,14 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       this.options.log?.(`localcore-lark auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
     }
     const authorized = authorization.authorized;
+    if (!this.admitInboundMessage({ workspaceId: msg.workspaceId, platformKey, chatId: msg.chatId,
+      platformUserId: msg.platformUserId, messageId: msg.messageId, text: msg.text })) return;
+    const commandAdmission = this.admitLocalCommandEvent({
+      workspaceId: msg.workspaceId, platformKey, instanceId, chatId: msg.chatId,
+      platformUserId: msg.platformUserId, text: msg.text, messageId: msg.messageId,
+    });
+    if (commandAdmission.duplicate) return;
+
     const router = this.options.getWorkspaceRouter();
     const { threadId, normalizedText, effectiveSessionKey } = await this.resolveInboundThreadAndSession({
       workspaceId: msg.workspaceId,
@@ -488,12 +497,15 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
         normalizedText,
         displayName: msg.displayName,
         platformLabel: 'Lark',
+        commandAdmissionKey: commandAdmission.key,
+        platformMessageId: msg.messageId,
       })
     ) {
       return;
     }
     this.options.store.clearPlatformThreadMessageId(msg.workspaceId, msg.chatId, msg.platformUserId);
     await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts), {
+      requestId: msg.messageId ? `channel:${platformKey}:${msg.messageId}` : undefined,
       channelRoute: {
         type: 'channel.chat',
         channelId: msg.chatId,
@@ -931,4 +943,8 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     this.options.log?.(`localcore-lark bridge event produced empty render for sessionKey=${sessionKey} type=${type}`);
   }
 
+}
+
+function larkAcknowledgement(messageIds: string[]): 'confirmed' | 'unknown' {
+  return messageIds.length > 0 && messageIds.every(Boolean) ? 'confirmed' : 'unknown';
 }

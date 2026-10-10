@@ -209,7 +209,7 @@ export function validateRun(value: unknown): AutomationRun {
     if (input[key] !== undefined) run[key] = assertIsoTimestamp(input[key], `Automation run ${key}`);
   }
   if (input.deliveryStatus !== undefined) {
-    if (!['pending', 'delivering', 'delivered', 'failed'].includes(String(input.deliveryStatus))) {
+    if (!['pending', 'delivering', 'delivered', 'failed', 'unknown', 'cancelled'].includes(String(input.deliveryStatus))) {
       throw new Error('Automation run deliveryStatus is invalid.');
     }
     run.deliveryStatus = input.deliveryStatus as AutomationRun['deliveryStatus'];

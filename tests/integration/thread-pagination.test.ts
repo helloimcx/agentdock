@@ -98,5 +98,3 @@ test('thread.get route handler passes query parameters to workspaceRouter', asyn
   await handler({ name: 'thread.get', threadId: 'ws-1::session-1' }, {} as any, res as any, excessUrl);
   assert.deepEqual(calledOptions, { limit: 200, beforeSeq: undefined });
 });
-
-

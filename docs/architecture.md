@@ -86,7 +86,7 @@ Key capabilities:
 | **Renderer UI** | `src/` | Single-page application rendering threads, workspaces, automations, and settings using React 19, Zustand stores, and TailwindCSS. | `src/pages/`, `src/store/`, `src/components/` |
 | **Local Core Kernel** | `services/local-ai-core/src/kernel/` | Core lifecycle, error domains, configuration management, SQLite database migrations, and telemetry. | `services/local-ai-core/src/kernel/` |
 | **Workspace Router** | `services/local-ai-core/src/router/` | Resolves target workspace, model provider, and channel bindings for incoming requests. | `services/local-ai-core/src/router/workspace-router.ts` |
-| **ACP Runtime** | `services/local-ai-core/src/acp/` | Manages ACP agent processes, session handshakes, capability negotiations, and NDJSON streaming. | `services/local-ai-core/src/acp/` |
+| **ACP and Durable Runtime** | `services/local-ai-core/src/acp/`, `services/local-ai-core/src/agents/pi-durable/` | Core admits thread submissions and routes ordinary agents through ACP. The opt-in Pi Durable path uses one ESM worker/Harness per Core data directory; Core owns approval-gated workspace text writes and the filesystem side effect. | `acp/thread-submission-dispatcher.ts`, `acp/local-core-acp-backend.ts`, `agents/pi-durable/host.ts`, `agents/pi-durable/worker.mts` |
 | **ACP Inbound Bridge** | `services/local-ai-core/src/acp/server/` | Optional stdio consumer that exposes workspace agents to external ACP clients (agent-side protocol), translating ACP sessions/prompts onto existing core routes and `stream.updated` bridge events. | `services/local-ai-core/src/acp/server/acp-stdio-server.ts`, `services/local-ai-core/src/cli/acp-cli-handlers.ts` |
 | **Channel Gateways** | `services/local-ai-core/src/channel/` | Inbound message polling, signature verification, message normalization, and outbound card rendering for Lark and WeChat. | `services/local-ai-core/src/channel/` |
 | **Scheduler** | `services/local-ai-core/src/scheduler/` | Parses cron expressions, triggers scheduled runs, and delivers results to target threads/channels. | `services/local-ai-core/src/scheduler/` |
@@ -107,13 +107,17 @@ Key capabilities:
 2. **Communication Protocols**:
    - UI to Local AI Core: HTTP REST + WebSocket (`ws://127.0.0.1:9831/api/local/v1/events`).
    - Local AI Core to Agents: ACP (Agent Client Protocol) over stdio or HTTP NDJSON bridge.
+   - Local AI Core to Pi Durable: a private JSON-lines protocol over worker stdio; the worker exclusively owns the Pi SQLite database. Correlated write requests return through this protocol to Core's per-write approval and filesystem commit path.
    - External Systems to Local AI Core: HTTP REST + Server-Sent Events (SSE).
 
 ---
 
 ## 5. Data Ownership & Storage
 
-- **Local AI Core SQLite Database**: Primary persistent store for workspaces, thread histories, permission decisions, channel credentials, and scheduler jobs.
+- **Core SQLite (`runtime/local-core.db`)**: Owns workspaces, thread histories, transactional submissions, permission lifecycle, run results, runtime snapshot revisions/partials, delivery outbox attempts, and scheduler/channel state.
+- **Pi Durable SQLite (`runtime/pi-durable.sqlite`)**: Optional and separate, one global database per Core user-data directory. One ESM worker owns one Harness and multiplexes independent thread Conversations. Core submissions remain the business identity and stable upstream request keys reconcile both stores. A kernel-held local socket lock rejects a second owner. Node executor capability (upstream engine requirement plus `node:sqlite`) is checked before worker startup. The worker requests each workspace text write through a private correlated approval protocol; Core persists/audits the approval, verifies path and file baseline, and performs the atomic filesystem update. Pending write approvals expire on restart and tool side effects are never replayed automatically. Delete, shell, MCP, and sandbox tools remain unavailable.
+- **Runtime snapshots**: Core exposes an atomic REST baseline and versioned SSE watch. Reconnect subscribes before reading the baseline and uses bounded buffering. Partial assistant text is coalesced, and stale ACP approvals expire on process recovery.
+- **Delivery outbox**: Core stores final report content and immutable destinations separately from Agent execution. A channel send is delivered only after a confirmed platform acknowledgement; ambiguous results remain unknown until an audited operator decision.
 - **Renderer Zustand Stores**: Ephemeral presentation and session state (active workspace, current thread, UI theme, connection status).
 - **Workspace Repositories**: Source code and local configuration files owned by the user in the host filesystem or mounted inside sandboxes.
 
@@ -138,6 +142,8 @@ Local AI Core owns the Mesh device registry and remote tool request lifecycle in
 Mesh requests have their own identities and terminal history. They do not replace ACP sessions or alter workspace agent-task routing. Disconnect/restart marks unresolved operations interrupted without replay; cancellation and timeout may leave an uncertain remote outcome. Pairing is single-use and expiring, device credentials are retained only as hashes by Core, revocation invalidates active connections, and shell requires server and node opt-in. See [Mesh boundaries and usage](architecture/mesh.md) and [the semantic change record](architecture/changes/2026-10-03-agentdock-mesh.md).
 
 The README and overview use the configured inline Mermaid mode. Archify L1 validation and interactive/static export replacement were rerun during the Android screen-lease change; the current diagram includes the Device Plane. Detailed screen behavior is captured in the L2 mobile-screen workflow.
+
+Pi Durable has a separate global SQLite per Core data directory; the current implementation and provider artifact evidence are recorded in [the durable execution change](architecture/changes/2026-10-03-durable-execution.md).
 
 ## Android Screen Lease
 

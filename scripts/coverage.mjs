@@ -44,6 +44,7 @@ console.log('\nBuilding renderer output...\n');
 run(vite, ['build']);
 
 console.log('\nBuilding Electron output with source maps (tsconfig.coverage.json)...\n');
+run('node', ['scripts/build-pi-durable.mjs']);
 run('node', ['scripts/write-electron-package.mjs']);
 run(tsc, ['-p', 'tsconfig.coverage.json']);
 run(tscAlias, ['-p', 'tsconfig.coverage.json']);

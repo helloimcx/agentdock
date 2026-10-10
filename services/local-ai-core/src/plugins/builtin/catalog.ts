@@ -16,6 +16,7 @@ import {
   createBuiltinLocalCoreAcpAgentPlugin,
   createBuiltinOpencodeAgentPlugin,
   createBuiltinPiAgentPlugin,
+  createBuiltinPiDurableAgentPlugin,
   createBuiltinStaticAgentCapabilityPlugin,
   getStaticAgentRuntimeDefinitions,
 } from '../../agents/index.js';
@@ -43,6 +44,7 @@ export function createRuntimeAgentPlugins(localCoreAgentPlugin: AgentPlugin): Ag
   return [
     localCoreAgentPlugin,
     createBuiltinPiAgentPlugin(),
+    createBuiltinPiDurableAgentPlugin(),
     createBuiltinOpencodeAgentPlugin(),
     createBuiltinCodexAgentPlugin(),
     createBuiltinClaudeCodeAgentPlugin(),

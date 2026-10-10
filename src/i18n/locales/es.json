@@ -279,5 +279,13 @@
       "filesystem_read": "Read a file",
       "shell_exec": "Run a command"
     }
+  },
+  "delivery": {
+    "recovery": "La entrega requiere atención",
+    "reason": "Motivo de esta decisión",
+    "duplicateRisk": "Entiendo que reintentar puede duplicar el informe.",
+    "confirm": "Confirmar entrega",
+    "retry": "Reintentar entrega",
+    "cancel": "Cancelar entrega"
   }
 }

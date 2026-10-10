@@ -21,6 +21,7 @@ provider_files:
     - docs/architecture/scheduled-delivery-workflow.json
     - docs/architecture/skill-router.workflow.json
     - docs/architecture/mobile-screen.workflow.json
+    - docs/architecture/durable-execution.workflow.json
   receipt: null
 readme:
   mode: inline-mermaid

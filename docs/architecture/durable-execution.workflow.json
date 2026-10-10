@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentDock 提交去重、投递恢复、运行快照与 Pi Durable SQLite",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/durable-execution-workflow.html"
+  },
+  "lanes": [
+    {
+      "id": "view",
+      "label": "运行快照与多端恢复"
+    },
+    {
+      "id": "core",
+      "label": "提交与最终报告投递"
+    },
+    {
+      "id": "durable",
+      "label": "可选 Pi Durable SQLite"
+    },
+    {
+      "id": "recovery",
+      "label": "重启与不确定结果",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "input",
+    "admit",
+    "execute",
+    "outbox",
+    "send",
+    "ack"
+  ],
+  "semanticChecks": {
+    "requiredEdges": [
+      { "from": "harness", "to": "execute" }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "input",
+      "lane": "core",
+      "col": 0,
+      "type": "frontend",
+      "label": "提交入口",
+      "width": 150
+    },
+    {
+      "id": "admit",
+      "lane": "core",
+      "col": 1,
+      "type": "database",
+      "label": "事务接收",
+      "width": 150
+    },
+    {
+      "id": "execute",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "运行路由",
+      "width": 150
+    },
+    {
+      "id": "outbox",
+      "lane": "core",
+      "col": 3,
+      "type": "database",
+      "label": "持久投递单",
+      "width": 150
+    },
+    {
+      "id": "send",
+      "lane": "core",
+      "col": 4,
+      "type": "external",
+      "label": "渠道发送",
+      "width": 150
+    },
+    {
+      "id": "ack",
+      "lane": "core",
+      "col": 5,
+      "type": "database",
+      "label": "保存确认",
+      "width": 150
+    },
+    {
+      "id": "snapshot",
+      "lane": "view",
+      "col": 1,
+      "type": "backend",
+      "label": "持久运行快照",
+      "width": 150
+    },
+    {
+      "id": "clients",
+      "lane": "view",
+      "col": 2,
+      "type": "frontend",
+      "label": "多端重连",
+      "width": 150
+    },
+    {
+      "id": "harness",
+      "lane": "durable",
+      "col": 2,
+      "type": "backend",
+      "label": "全局 Durable 进程",
+      "width": 150
+    },
+    {
+      "id": "pi_store",
+      "lane": "durable",
+      "col": 3,
+      "type": "database",
+      "label": "全局 SQLite",
+      "width": 175
+    },
+    {
+      "id": "restart",
+      "lane": "recovery",
+      "col": 2,
+      "type": "backend",
+      "label": "启动对账",
+      "width": 150
+    },
+    {
+      "id": "unknown",
+      "lane": "recovery",
+      "col": 4,
+      "type": "security",
+      "label": "投递结果未知",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "from": "input",
+      "to": "admit",
+      "role": "main"
+    },
+    {
+      "from": "admit",
+      "to": "execute",
+      "role": "main"
+    },
+    {
+      "from": "execute",
+      "to": "outbox",
+      "role": "main"
+    },
+    {
+      "from": "outbox",
+      "to": "send",
+      "role": "main"
+    },
+    {
+      "from": "send",
+      "to": "ack",
+      "role": "main"
+    },
+    {
+      "from": "admit",
+      "to": "snapshot",
+      "label": "提交后可见",
+      "role": "branch"
+    },
+    {
+      "from": "snapshot",
+      "to": "clients",
+      "label": "REST baseline / SSE watch",
+      "role": "async"
+    },
+    {
+      "from": "execute",
+      "to": "harness",
+      "label": "显式启用",
+      "role": "branch"
+    },
+    {
+      "from": "harness",
+      "to": "pi_store",
+      "label": "检查点",
+      "role": "async"
+    },
+    {
+      "from": "harness",
+      "to": "execute",
+      "label": "写入审批 RPC",
+      "role": "async"
+    },
+    {
+      "from": "harness",
+      "to": "restart",
+      "label": "进程重启",
+      "role": "branch"
+    },
+    {
+      "from": "send",
+      "to": "unknown",
+      "label": "确认丢失",
+      "role": "error"
+    }
+  ]
+}

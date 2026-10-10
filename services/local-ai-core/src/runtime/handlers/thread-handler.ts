@@ -46,12 +46,16 @@ export function registerThreadHandlers(
     json(res, 200, await workspaceRouter.deleteThread((route as { threadId: string }).threadId));
   });
   map.set('thread.messages.send', async (route, req, res) => {
-    const body = validateBody<{ content: string }>(await readJsonBody(req), { content: { kind: 'string', required: true } });
-    json(res, 200, await workspaceRouter.sendThreadMessage((route as { threadId: string }).threadId, body.content));
+    const body = validateBody<{ content: string; requestId?: string }>(await readJsonBody(req), { content: { kind: 'string', required: true }, requestId: 'string' });
+    json(res, 200, await workspaceRouter.sendThreadMessage((route as { threadId: string }).threadId, body.content, { requestId: body.requestId }));
   });
   map.set('thread.actions.send', async (route, req, res) => {
-    const body = validateBody<{ content: string }>(await readJsonBody(req), { content: { kind: 'string', required: true } });
-    json(res, 200, await workspaceRouter.sendThreadAction((route as { threadId: string }).threadId, body.content));
+    const body = validateBody<{ content: string; requestId?: string; expectedRunId?: string; expectedApprovalId?: string }>(await readJsonBody(req), {
+      content: { kind: 'string', required: true }, requestId: 'string', expectedRunId: 'string', expectedApprovalId: 'string',
+    });
+    json(res, 200, await workspaceRouter.sendThreadAction((route as { threadId: string }).threadId, body.content, {
+      requestId: body.requestId, expectedRunId: body.expectedRunId, expectedApprovalId: body.expectedApprovalId,
+    }));
   });
   map.set('thread.handoffs.list', async (route, _req, res) => {
     json(res, 200, { handoffs: workspaceRouter.listThreadHandoffs((route as { threadId: string }).threadId) });

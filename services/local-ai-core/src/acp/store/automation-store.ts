@@ -531,7 +531,7 @@ export class LocalAutomationStore {
     return row ? rowToEvaluation(row) : undefined;
   }
 
-  private getRun(id: string): AutomationRun | undefined {
+  getRun(id: string): AutomationRun | undefined {
     const row = this.db.prepare(`SELECT ${RUN_COLUMNS} FROM automation_runs WHERE id = ?`)
       .get(id) as LocalAutomationRunRow | undefined;
     return row ? rowToRun(row) : undefined;

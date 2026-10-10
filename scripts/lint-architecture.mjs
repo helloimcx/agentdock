@@ -1,12 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const ARCH_DIR = path.resolve('docs/architecture');
-const ARCHIFY_BIN = path.resolve('.agents/skills/archify/bin/archify.mjs');
+const archifyCandidates = [
+  process.env.ARCHIFY_BIN,
+  path.resolve('.agents/skills/archify/bin/archify.mjs'),
+  path.join(os.homedir(), '.agents/skills/archify/bin/archify.mjs'),
+].filter(Boolean);
+const ARCHIFY_BIN = archifyCandidates.find((candidate) => fs.existsSync(candidate));
 
-if (!fs.existsSync(ARCHIFY_BIN)) {
-  console.error(`Archify CLI not found at: ${ARCHIFY_BIN}`);
+if (!ARCHIFY_BIN) {
+  console.error(`Archify CLI not found. Set ARCHIFY_BIN or install the archify skill.`);
   process.exit(1);
 }
 

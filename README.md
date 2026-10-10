@@ -28,6 +28,11 @@ flowchart LR
   kernel --> scheduler[Scheduler / Automation]
   scheduler --> acp
   acp --> agents[Local Pi / Codex / Claude / Hermes]
+  kernel -->|Typed submissions| durable[Pi Durable worker - optional]
+  durable --> pidb[(One pi-durable.sqlite per Core data directory)]
+  durable -->|Per-write approval request| kernel
+  kernel -->|Approved atomic write| workspace[(Workspace files)]
+  durable -->|OpenAI-compatible HTTPS| provider[Configured model provider]
   acp --> sandbox[OpenSandbox]
   acp -.->|Remote Shell Proxy / ACP fs bridge| mesh
   api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
@@ -37,9 +42,10 @@ flowchart LR
   nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
-当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。
+当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明 Core SQLite 与 Pi Durable 全局 SQLite 的边界。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
+持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
@@ -58,6 +64,7 @@ flowchart LR
 
 ### 2026-10-04
 
+- **持久执行试接**：thread prompt 以稳定 `requestId` 去重；定时/自动化最终报告通过带平台回执的 delivery outbox 恢复；thread snapshot/watch 支持重连。新增可选 Pi Durable 运行时，每个 Core 数据目录由一个 worker/Harness 共享一个 SQLite，单个 thread 对应独立 Conversation；提供工作区文本读取，以及经现有权限卡逐次批准的文件创建/覆盖。Shell、删除、MCP 和 sandbox 工具仍不可用。
 - 发布 AgentDock 0.1.90：Android All-in-One 原生无障碍 Mesh 客户端集成（免 Termux / 零本地端口）：
   - **原生 Mesh 长连接客户端集成**：在无障碍桥接 APK（`agentdock-a11y`）中直接原生集成 RFC 6455 WebSocket 客户端与配对配置界面（`MainActivity`），手机安装单个 APK 开启无障碍即可一键接入 AgentDock 云端。
   - **彻底移除本地 19832 HTTP 监听**：实现纯出站长连接（Zero-Listening-Port），杜绝端口占用与网络攻击面，所有命令通过内存直调无障碍与系统引擎。

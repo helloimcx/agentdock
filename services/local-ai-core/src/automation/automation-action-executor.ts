@@ -1,3 +1,6 @@
+import { DeliveryOutboxService } from './delivery-outbox-service.js';
+import { channelPlatformKey, extractChannelInstanceId } from '../channel/shared/channel-keys.js';
+import type { DeliveryIntent } from '@cc/superai-contracts';
 import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
@@ -7,13 +10,17 @@ import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/executio
 import { ScheduledBridgeSession, type ScheduledBridgeSessionHandle } from '../scheduler/scheduled-bridge-session.js';
 import { buildPlatformRuntimeEnv, getChannelPlatformBase } from '../scheduler/scheduled-job-route.js';
 import { waitForRunCompletion } from '../scheduler/run-polling.js';
-import { getLatestAssistantFinalContent, threadExists } from '../scheduler/thread-resolution.js';
+import { threadExists } from '../scheduler/thread-resolution.js';
+
+// Narrow contract supplied by Core submission admission (kept separate from delivery ownership).
+
 
 const AUTOMATION_RUN_PERMISSION_MODE = 'bypassPermissions';
 const UNSAFE_PROMPT_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString']);
 
 export interface AutomationActionExecutionInput {
   automation: AutomationDefinition;
+  automationRunId?: string;
   evaluation: AutomationEvaluation;
   promptVariables: Record<string, unknown>;
 }
@@ -31,8 +38,9 @@ export interface AutomationActionExecutionResult {
   threadId: string;
   acpRunId: string;
   replyText?: string;
-  deliveryMode?: 'thread-only' | 'bridge-stream';
-  deliveryStatus?: 'succeeded' | 'failed';
+  deliveryMode?: 'thread-only' | 'bridge-stream' | 'final-message';
+  deliveryIntent?: DeliveryIntent;
+  deliveryStatus?: 'succeeded' | 'failed' | 'pending';
   deliveryError?: string;
   lastBridgeEventAt?: string;
   decision?: AutomationDecisionRecord;
@@ -120,14 +128,73 @@ async function openExecutionBridge(
     getChannelRuntime: () => channelRuntime,
     noticeIcon: isStock ? '📈' : '🔔',
     noticeTitle: automation.title,
+    suppressFinalReport: true,
   });
 }
 
+function buildDeliveryResult(input: AutomationActionExecutionInput, final: { threadId: string; content: string; messageId?: string }, runId: string) {
+  const { automation } = input;
+  const delivery: Pick<AutomationActionExecutionResult, 'deliveryMode' | 'deliveryStatus' | 'deliveryIntent'> = {
+    deliveryMode: automation.delivery.platform === 'local' ? 'thread-only' : 'final-message',
+    deliveryStatus: automation.delivery.platform === 'local' ? 'succeeded' : 'pending',
+  };
+  if (input.automationRunId) delivery.deliveryIntent = {
+    ownerKind: 'automation', ownerRunId: input.automationRunId,
+    workspaceId: automation.workspaceId, platform: automation.delivery.platform, route: automation.delivery.route,
+    threadId: final.threadId, acpRunId: runId, sourceMessageId: final.messageId, content: final.content,
+  };
+  return delivery;
+}
+
 export class AutomationActionExecutor {
+  readonly deliveryService: DeliveryOutboxService;
   private readonly decisionService: DecisionLogService;
 
   constructor(private readonly options: AutomationActionExecutorOptions) {
+    this.deliveryService = new DeliveryOutboxService(options.store.deliveries, options.getChannelRuntime, (record) => {
+      const thread = options.store.getThreadRow(record.threadId);
+      if (!thread || thread.workspace_id !== record.workspaceId) return false;
+      if (record.ownerKind === 'automation') {
+        const run = options.store.getAutomationRun(record.ownerRunId);
+        if (!run || !options.store.getAutomation(run.automationId)) return false;
+      } else {
+        const run = options.store.getScheduledJobRun(record.ownerRunId);
+        if (!run || !options.store.getScheduledJob(run.jobId)) return false;
+      }
+      if (record.platform === 'local') return true;
+      const runtime = options.getChannelRuntime(record.platform);
+      const instanceId = record.route.instanceId || extractChannelInstanceId(record.platform, runtime?.platform || record.platform);
+      const platformKey = channelPlatformKey(record.platform, instanceId || 'default');
+      const binding = options.store.getPlatformThreadBinding(record.workspaceId, record.route.channelId,
+        record.route.participantId || '', platformKey);
+      return binding?.thread_id === record.threadId;
+    });
     this.decisionService = options.decisionLogService ?? new DecisionLogService(options.store);
+  }
+
+  /** Reconcile saved final answers before generic interrupted-run cleanup. Never re-prompt an Agent. */
+  recoverCompletedExecutions(): void {
+    for (const automation of this.options.store.listAutomations()) {
+      for (const run of this.options.store.listAutomationRuns(automation.id)) {
+        if (!['queued', 'running'].includes(run.status) || this.options.store.deliveries.forRun(run.id)) continue;
+        const destination = this.options.store.deliveries.destination(run.id);
+        if (!destination) continue; // Historical runs have no recoverable final-delivery intent.
+        const submissions = this.options.store.findSubmissionsByRequestId(`automation:${run.id}`);
+        if (submissions.length > 1) throw new Error(`Ambiguous submission binding for ${run.id}`);
+        const acpRunId = run.acpRunId || submissions[0]?.runId;
+        if (!acpRunId) continue;
+        const final = this.options.store.getRunFinalResult(acpRunId);
+        if (!final) continue;
+        this.options.store.deliveries.enqueue({
+          ownerKind: 'automation', ownerRunId: run.id, workspaceId: destination.workspaceId,
+          platform: destination.platform, route: destination.route,
+          threadId: final.threadId, acpRunId, sourceMessageId: final.messageId, content: final.content,
+        }, () => this.options.store.updateAutomationRun(run.id, {
+          status: 'succeeded', threadId: final.threadId, acpRunId,
+          finishedAt: new Date().toISOString(), deliveryStatus: 'pending',
+        }));
+      }
+    }
   }
 
   async execute(
@@ -139,6 +206,7 @@ export class AutomationActionExecutor {
 
     const workspaceRouter = this.options.getWorkspaceRouter();
     const threadId = await this.resolveThread(automation);
+    rememberDeliveryDestination(this.options.store, input, automation, threadId);
     const workspacePath = this.options.store.getWorkspaceRegistryEntry?.(automation.workspaceId)?.path;
 
     const isDeepAnalysis = automation.action.workflowTemplate === 'deep-analysis';
@@ -153,9 +221,11 @@ export class AutomationActionExecutor {
     );
     try {
       const sendResult = await workspaceRouter.sendThreadMessage(threadId, prompt, {
+        ...(input.automationRunId ? { requestId: `automation:${input.automationRunId}` } : {}),
         permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
         runtimeEnv: buildPlatformRuntimeEnv(automation.delivery.platform, automation.delivery.route),
       });
+      trackScheduledRun(this.options, input, automation, bridge, threadId, sendResult.runId);
       await waitForRunCompletion({
         store: this.options.store,
         runId: sendResult.runId,
@@ -163,8 +233,9 @@ export class AutomationActionExecutor {
         label: automation.originKind === 'automation-monitor' ? 'Monitor' : 'Automation',
         interruptRun: (runId) => workspaceRouter.interruptRun(runId),
       });
-      const thread = await workspaceRouter.getThread(threadId);
-      const replyText = getLatestAssistantFinalContent(thread);
+      const final = this.options.store.getRunFinalResult(sendResult.runId);
+      if (!final || final.threadId !== threadId) throw new Error('Final result for the target execution is unavailable.');
+      const replyText = final.content;
 
       const { decision, retrospectiveOutcome } = await processPostRunDecision({
         automation,
@@ -182,8 +253,7 @@ export class AutomationActionExecutor {
         threadId,
         acpRunId: sendResult.runId,
         replyText,
-        deliveryMode: bridge ? 'bridge-stream' : 'thread-only',
-        deliveryStatus: 'succeeded',
+        ...buildDeliveryResult(input, final, sendResult.runId),
         lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
         ...(decision ? { decision } : {}),
         ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
@@ -224,6 +294,20 @@ export class AutomationActionExecutor {
     }
     return (await workspaceRouter.createThread(automation.workspaceId, title)).id;
   }
+}
+
+function rememberDeliveryDestination(store: AutomationActionExecutorOptions['store'], input: AutomationActionExecutionInput,
+  automation: AutomationDefinition, threadId: string) {
+  if (!input.automationRunId) return;
+  store.deliveries.rememberDestination(input.automationRunId, {
+    workspaceId: automation.workspaceId, platform: automation.delivery.platform, route: automation.delivery.route, threadId,
+  });
+}
+
+function trackScheduledRun(options: AutomationActionExecutorOptions, input: AutomationActionExecutionInput,
+  automation: AutomationDefinition, bridge: Awaited<ReturnType<typeof openExecutionBridge>>, threadId: string, runId: string) {
+  if (bridge?.sessionKey) options.getChannelRuntime(automation.delivery.platform)?.markScheduledThreadRunOwned?.(bridge.sessionKey, runId);
+  if (input.automationRunId) options.store.updateAutomationRun(input.automationRunId, { threadId, acpRunId: runId });
 }
 
 async function processPostRunDecision(options: {

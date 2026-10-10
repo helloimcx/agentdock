@@ -360,4 +360,3 @@ export async function listDirectories(target: {
   }
   return listRemoteDirectories(deviceId, target.path, target.adminToken);
 }
-

@@ -66,6 +66,8 @@ Phase 3: Final Adjudication
       },
     } as any;
 
+    const finalFixture = await mockWorkspaceRouter.getThread();
+    mockStore.getRunFinalResult = () => ({ threadId: finalFixture.id, content: finalFixture.messages[0].content, messageId: finalFixture.messages[0].id });
     const executor = new AutomationActionExecutor({
       store: mockStore,
       getWorkspaceRouter: () => mockWorkspaceRouter,
@@ -192,6 +194,8 @@ Phase 3: Final Adjudication
       ],
     });
 
+    const retroFixture = await mockWorkspaceRouter.getThread();
+    mockStore.getRunFinalResult = () => ({ threadId: retroFixture.id, content: retroFixture.messages[0].content, messageId: retroFixture.messages[0].id });
     const retroResult = await executor.execute({
       automation: retroAutomation,
       evaluation,
@@ -266,6 +270,8 @@ test('deep-analysis run includes disk-persisted lessons via workspaceId resoluti
       interruptRun: async () => {},
     } as any;
 
+    const finalFixture = await mockWorkspaceRouter.getThread();
+    mockStore.getRunFinalResult = () => ({ threadId: finalFixture.id, content: finalFixture.messages[0].content, messageId: finalFixture.messages[0].id });
     const executor = new AutomationActionExecutor({
       store: mockStore,
       getWorkspaceRouter: () => mockWorkspaceRouter,

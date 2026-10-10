@@ -186,23 +186,23 @@ export class LocalThreadStore {
   }
 
   appendMessage(threadId: string, ...args: MessageContentArgs) {
-    const timestamp = new Date().toISOString();
-    const [, content] = args;
-    const excerpt = normalizeMessageContent(content);
-    let id: string;
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
-      this.db.prepare(`
-        UPDATE threads
-        SET updated_at = ?, history_count = history_count + 1, excerpt = ?
-        WHERE id = ?
-      `).run(timestamp, excerpt, threadId);
+      const result = this.appendMessageInTransaction(threadId, ...args);
       this.db.exec('COMMIT');
+      return result;
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /** Caller owns a transaction, allowing admission and message metadata to commit together. */
+  appendMessageInTransaction(threadId: string, ...args: MessageContentArgs) {
+    const timestamp = new Date().toISOString();
+    const id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
+    this.db.prepare(`UPDATE threads SET updated_at = ?, history_count = history_count + 1, excerpt = ? WHERE id = ?`)
+      .run(timestamp, normalizeMessageContent(args[1]), threadId);
     return { id, timestamp };
   }
 

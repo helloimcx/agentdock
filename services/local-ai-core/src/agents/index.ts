@@ -18,5 +18,6 @@ export { createBuiltinHermesAgentPlugin } from './hermes/index.js';
 export { createBuiltinLocalCoreAcpAgentPlugin } from './localcore-acp/index.js';
 export { createBuiltinOpencodeAgentPlugin } from './opencode/index.js';
 export { createBuiltinPiAgentPlugin } from './pi/index.js';
+export { createBuiltinPiDurableAgentPlugin } from './pi-durable/index.js';
 export type { AgentAcpBehavior } from './shared/acp-behavior.js';
 export type { AgentRuntimeDefinition } from './shared/definition.js';
