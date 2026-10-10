@@ -62,6 +62,14 @@ flowchart LR
 
 ## New
 
+### 2026-10-10
+
+- 发布 AgentDock 0.1.91：
+  - **持久执行恢复与 Pi Durable 运行时**：基于 `requestId` 的幂等去重与单 owner SQLite 崩溃恢复机制，结合 delivery outbox 投递回执重试，并支持工作区文本逐次批准与原子写入。
+  - **Mesh 只读节点概览与路由安全加固**：提供免鉴权的只读节点拓扑与状态展示；跨运行时文件系统路径限制与 fail-closed 安全策略。
+  - **桌面端导航模型对齐**：桌面侧边栏与能力注册表统一（恢复 Costs 与 Skills 导航项展示），保持多端视图与权限守卫一致。
+  - **核心基础设施优化**：抽取 Markdown Frontmatter 通用解析助手；窗口化分页 SQL 逻辑去重；单测登记与覆盖率测试流水线严格对齐。
+
 ### 2026-10-04
 
 - **持久执行试接**：thread prompt 以稳定 `requestId` 去重；定时/自动化最终报告通过带平台回执的 delivery outbox 恢复；thread snapshot/watch 支持重连。新增可选 Pi Durable 运行时，每个 Core 数据目录由一个 worker/Harness 共享一个 SQLite，单个 thread 对应独立 Conversation；提供工作区文本读取，以及经现有权限卡逐次批准的文件创建/覆盖。Shell、删除、MCP 和 sandbox 工具仍不可用。
