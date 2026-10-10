@@ -35,7 +35,7 @@ flowchart LR
   durable --> pidb[(Core 数据目录内的单一 pi-durable.sqlite)]
   durable -->|OpenAI 兼容 HTTPS| provider[已配置模型服务]
   acp --> sandbox[OpenSandbox]
-  api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
+  api -->|Public read-only node list; admin token for management| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
   nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
@@ -60,7 +60,7 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 
 ## Mesh Device Plane
 
-[Mesh](mesh.md) describes Core-owned device pairing and request history, outbound node connections, read-only file capabilities and explicitly enabled command execution. Remote tool requests do not change ACP run routing.
+[Mesh](mesh.md) describes Core-owned device pairing and request history, outbound node connections, read-only file capabilities and explicitly enabled command execution. The Mesh page reads node metadata without a Mesh admin token; pairing, revocation, execution and request history remain protected. Remote tool requests do not change ACP run routing.
 
 ## Main Layers
 

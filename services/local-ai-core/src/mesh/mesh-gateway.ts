@@ -46,6 +46,10 @@ export class MeshGateway {
     try {
       if (!this.adminToken) throw new MeshError('Mesh is disabled. Configure AGENTDOCK_MESH_ADMIN_TOKEN.', 503);
       const path = url.pathname.slice(PREFIX.length);
+      if (path === '/nodes' && req.method === 'GET') {
+        json(res, 200, { nodes: this.store.listNodes() });
+        return true;
+      }
       if (path === '/enroll' && req.method === 'POST') {
         const body = record(await readJsonBody(req, 4096));
         try { json(res, 200, this.store.enroll(text(body.pairingToken, 128))); }

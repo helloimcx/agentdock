@@ -2,11 +2,13 @@ import type { MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPair
 import { LOCAL_AI_CORE_BASE } from './client.js';
 
 /** Keep administrator credentials in caller memory; never place tokens in URLs or storage. */
-export function createMeshClient(token: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
+export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, '');
   async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetchImpl(`${base}/mesh${path}`, {
-      method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      method, headers,
       body: body === undefined ? undefined : JSON.stringify(body), redirect: 'error',
       signal: AbortSignal.timeout(15_000),
     });

@@ -5049,7 +5049,7 @@
         <path data-edge-from="acp_engine" data-edge-to="local_agents" data-edge-label="stdio 通道" data-edge-key="9" data-edge-id="acp-to-local" data-composition-points="1030,225;1085,225;1085,172;1140,172" d="M 1030 225 L 1077 225 Q 1085 225 1085 217 L 1085 180 Q 1085 172 1093 172 L 1140 172" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="local_agents" data-edge-to="kernel" data-edge-label="Core write approval" data-edge-key="10" data-edge-id="local-to-kernel-write-approval" data-composition-points="1140,172;784,172;784,330;760,330" d="M 1140 172 L 792 172 Q 784 172 784 180 L 784 322 Q 784 330 776 330 L 760 330" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="acp_engine" data-edge-to="opensandbox" data-edge-label="NDJSON 桥接" data-edge-key="11" data-edge-id="acp-to-sandbox" data-composition-points="1030,239;1085,239;1085,352;1140,352" d="M 1030 239 L 1077 239 Q 1085 239 1085 247 L 1085 344 Q 1085 352 1093 352 L 1140 352" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="core_api" data-edge-to="mesh_gateway" data-edge-label="独立凭据的 Mesh REST" data-edge-key="12" data-edge-id="core-to-mesh" data-composition-points="490,337;545,337;545,602;600,602" d="M 490 337 L 537 337 Q 545 337 545 345 L 545 594 Q 545 602 553 602 L 600 602" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="core_api" data-edge-to="mesh_gateway" data-edge-label="Public node overview; admin operations protected" data-edge-key="12" data-edge-id="core-to-mesh" data-composition-points="490,337;545,337;545,602;600,602" d="M 490 337 L 537 337 Q 545 337 545 345 L 545 594 Q 545 602 553 602 L 600 602" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="mesh_gateway" data-edge-to="kernel" data-edge-label="状态持久化" data-edge-key="13" data-edge-id="mesh-to-kernel" data-composition-points="680,570;680,365" d="M 680 570 L 680 365" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="device_nodes" data-edge-to="mesh_gateway" data-edge-label="出站 WebSocket · 调度 / 结果" data-edge-key="14" data-edge-id="devices-to-mesh" data-composition-points="1140,602;760,602" d="M 1140 602 L 760 602" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="local_agents" data-edge-to="pi_durable_sqlite" data-edge-label="single owner" data-edge-key="15" data-edge-id="pi-durable-to-sqlite" data-composition-points="1140,172;1340,172;1340,485;1290,485" d="M 1140 172 L 1332 172 Q 1340 172 1340 180 L 1340 477 Q 1340 485 1332 485 L 1290 485" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
@@ -5267,9 +5267,9 @@
           <rect x="1053.6" y="275.5" width="62.8" height="14" rx="3" class="c-mask"/>
           <text x="1085" y="285.5" class="t-backend" font-size="8" text-anchor="middle">NDJSON 桥接</text>
         </g>
-        <g data-detail="context" data-edge-from="core_api" data-edge-to="mesh_gateway" data-edge-label="独立凭据的 Mesh REST" data-edge-key="12" data-edge-id="core-to-mesh">
-          <rect x="492" y="449.5" width="106" height="14" rx="3" class="c-mask"/>
-          <text x="545" y="459.5" class="t-muted" font-size="8" text-anchor="middle">独立凭据的 Mesh REST</text>
+        <g data-detail="context" data-edge-from="core_api" data-edge-to="mesh_gateway" data-edge-label="Public node overview; admin operations protected" data-edge-key="12" data-edge-id="core-to-mesh">
+          <rect x="424.8" y="549.5" width="240.39999999999998" height="14" rx="3" class="c-mask"/>
+          <text x="545" y="559.5" class="t-muted" font-size="8" text-anchor="middle">Public node overview; admin operations protected</text>
         </g>
         <g data-detail="context" data-edge-from="mesh_gateway" data-edge-to="kernel" data-edge-label="状态持久化" data-edge-key="13" data-edge-id="mesh-to-kernel">
           <rect x="651" y="550" width="58" height="14" rx="3" class="c-mask"/>
@@ -5547,7 +5547,7 @@
           <li>&bull; ACP 协议运行时解耦多种本地模型（Codex/Claude/Pi/Hermes）</li>
           <li>&bull; 支持基于 OpenSandbox 的云端安全隔离容器与状态持久挂载</li>
           <li>&bull; 定时调度器打通自动化执行与渠道消息流式结果主动投递</li>
-          <li>&bull; Core ACP 按任务续约 Android 亮屏租约并展示操作反馈</li>
+          <li>&bull; Core ACP 按任务续租 Android 亮屏并反馈</li>
         </ul>
       </div>
     </div>
