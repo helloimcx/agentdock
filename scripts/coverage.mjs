@@ -23,6 +23,8 @@ const TEST_FILES = [
   'dist-electron/tests/integration/*.test.js',
   'dist-electron/packages/knowledge-api/test/*.test.js',
   'dist-electron/src/pages/Threads/thread-chat-permission.test.js',
+  'dist-electron/src/pages/Automation/automation-page-model.test.js',
+  'dist-electron/src/components/Layout/sidebar-nav.test.js',
 ];
 
 function run(command, args) {
