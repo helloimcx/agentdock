@@ -95,7 +95,7 @@ export class LocalCoreAcpSessionCoordinator {
   }
 
   releaseThreadSession(threadId: string, config: LocalCoreProjectConfig) {
-    if (!config.sandbox?.enabled || config.sandbox.lifecycle === 'per_run' || config.sandbox.stateScope === 'run') {
+    if (config.sandbox?.enabled && (config.sandbox.lifecycle === 'per_run' || config.sandbox.stateScope === 'run')) {
       this.closeThreadSession(threadId);
       return;
     }
@@ -103,7 +103,13 @@ export class LocalCoreAcpSessionCoordinator {
     if (!session || session.closed) {
       return;
     }
-    this.scheduleIdleClose(session, config.sandbox.idleSeconds);
+    if (config.sandbox?.enabled) {
+      this.scheduleIdleClose(session, config.sandbox.idleSeconds, 'sandbox');
+      return;
+    }
+    const envIdle = process.env.AGENTDOCK_ACP_IDLE_SECONDS ? Number(process.env.AGENTDOCK_ACP_IDLE_SECONDS) : NaN;
+    const idleSeconds = Number.isFinite(envIdle) && envIdle > 0 ? envIdle : 900;
+    this.scheduleIdleClose(session, idleSeconds, 'local');
   }
 
   async ensureSession(
@@ -299,13 +305,13 @@ export class LocalCoreAcpSessionCoordinator {
     }
   }
 
-  private scheduleIdleClose(session: AcpSessionState, idleSeconds: number) {
+  private scheduleIdleClose(session: AcpSessionState, idleSeconds: number, mode = 'session') {
     this.clearIdleClose(session);
     const seconds = Number.isFinite(idleSeconds) && idleSeconds > 0 ? idleSeconds : 900;
-    this.options.log?.(`[acp.session:${session.threadId}] keep sandbox session warm for ${seconds}s`);
+    this.options.log?.(`[acp.session:${session.threadId}] keep ${mode} session warm for ${seconds}s`);
     session.idleCloseTimer = setTimeout(() => {
       if (this.sessions.get(session.threadId) === session && !session.closed && !session.currentRunId) {
-        this.options.log?.(`[acp.session:${session.threadId}] idle timeout reached; closing sandbox session`);
+        this.options.log?.(`[acp.session:${session.threadId}] idle timeout reached; closing ${mode} session`);
         this.closeThreadSession(session.threadId);
       }
     }, seconds * 1000);

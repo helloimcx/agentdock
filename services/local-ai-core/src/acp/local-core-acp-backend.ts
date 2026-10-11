@@ -755,9 +755,7 @@ export class LocalCoreAcpBackend {
       if (session) {
         session.promptPromise = null;
       }
-      if (config.sandbox?.enabled) {
-        this.sessionCoordinator.releaseThreadSession(threadId, config);
-      }
+      this.sessionCoordinator.releaseThreadSession(threadId, config);
     }
   }
 
