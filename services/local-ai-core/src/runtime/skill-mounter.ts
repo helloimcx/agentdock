@@ -1,6 +1,23 @@
-import { existsSync, mkdirSync, symlinkSync, readdirSync, rmSync, cpSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  symlinkSync,
+  readdirSync,
+  rmSync,
+  cpSync,
+  readFileSync,
+  writeFileSync,
+  lstatSync,
+} from 'node:fs';
 import { join, dirname } from 'node:path';
 import { ManagedSkillCatalog } from './managed-skill-catalog.js';
+
+export const MOUNT_MANIFEST_FILENAME = '.mount-manifest.json';
+
+export interface MountManifest {
+  version: number;
+  entries: string[];
+}
 
 export interface MountActiveSkillsOptions {
   agentId?: string;
@@ -9,6 +26,91 @@ export interface MountActiveSkillsOptions {
   userHome?: string;
   platform?: string;
   targetDir?: string;
+}
+
+function loadMountManifest(manifestPath: string): { manifest: MountManifest | null; valid: boolean } {
+  if (!existsSync(manifestPath)) {
+    return { manifest: null, valid: false };
+  }
+  try {
+    const raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    if (raw && typeof raw === 'object' && Array.isArray(raw.entries)) {
+      return {
+        manifest: {
+          version: typeof raw.version === 'number' ? raw.version : 1,
+          entries: raw.entries.map((entry: unknown) => String(entry)),
+        },
+        valid: true,
+      };
+    }
+  } catch {
+    // Ignore corrupted manifest, fallback safely
+  }
+  return { manifest: null, valid: false };
+}
+
+function shouldRemoveStaleEntry(
+  filePath: string,
+  fileName: string,
+  manifestEntries: Set<string> | null,
+): boolean {
+  if (manifestEntries !== null) {
+    return manifestEntries.has(fileName);
+  }
+  try {
+    return lstatSync(filePath).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function reconcileStaleMounts(
+  targetSkillsDir: string,
+  existingFiles: string[],
+  activeIdSet: Set<string>,
+  manifestEntries: Set<string> | null,
+): void {
+  for (const file of existingFiles) {
+    if (file === MOUNT_MANIFEST_FILENAME || activeIdSet.has(file)) {
+      continue;
+    }
+    const filePath = join(targetSkillsDir, file);
+    if (!shouldRemoveStaleEntry(filePath, file, manifestEntries)) {
+      continue;
+    }
+    try {
+      rmSync(filePath, { recursive: true, force: true });
+    } catch {
+      // Ignore deletion errors
+    }
+  }
+}
+
+function mountSingleSkill(sourceSkillDir: string, targetLinkPath: string): boolean {
+  try {
+    rmSync(targetLinkPath, { recursive: true, force: true });
+    symlinkSync(sourceSkillDir, targetLinkPath, 'dir');
+    return true;
+  } catch {
+    try {
+      cpSync(sourceSkillDir, targetLinkPath, { recursive: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function writeMountManifest(manifestPath: string, mountedIds: string[]): void {
+  try {
+    const manifestData: MountManifest = {
+      version: 1,
+      entries: mountedIds,
+    };
+    writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2), 'utf8');
+  } catch {
+    // Best-effort manifest write
+  }
 }
 
 /** Resolves the native skills directory path for a given agent runtime. */
@@ -42,43 +144,26 @@ export function mountActiveSkillsSync(options: MountActiveSkillsOptions = {}): s
 
   mkdirSync(targetSkillsDir, { recursive: true });
 
-  const mountedIds: string[] = [];
   const existingFiles = existsSync(targetSkillsDir) ? readdirSync(targetSkillsDir) : [];
   const activeIdSet = new Set(activeSkills.map((s) => s.id));
+  const manifestPath = join(targetSkillsDir, MOUNT_MANIFEST_FILENAME);
+  const { manifest, valid: hasValidManifest } = loadMountManifest(manifestPath);
+  const manifestEntries = hasValidManifest && manifest ? new Set(manifest.entries) : null;
 
-  // Remove stale symlinks or mounts
-  for (const file of existingFiles) {
-    if (!activeIdSet.has(file)) {
-      const filePath = join(targetSkillsDir, file);
-      try {
-        rmSync(filePath, { recursive: true, force: true });
-      } catch {
-        // Ignore deletion errors
-      }
-    }
-  }
+  reconcileStaleMounts(targetSkillsDir, existingFiles, activeIdSet, manifestEntries);
 
-  // Create or update symlinks for active skills
+  const mountedIds: string[] = [];
   for (const skill of activeSkills) {
     const sourceSkillDir = dirname(skill.path);
-    const targetLinkPath = join(targetSkillsDir, skill.id);
-
     if (!existsSync(sourceSkillDir)) continue;
 
-    try {
-      rmSync(targetLinkPath, { recursive: true, force: true });
-      symlinkSync(sourceSkillDir, targetLinkPath, 'dir');
+    const targetLinkPath = join(targetSkillsDir, skill.id);
+    if (mountSingleSkill(sourceSkillDir, targetLinkPath)) {
       mountedIds.push(skill.id);
-    } catch {
-      try {
-        cpSync(sourceSkillDir, targetLinkPath, { recursive: true });
-        mountedIds.push(skill.id);
-      } catch {
-        // Fallback if symlinking/copy fails
-      }
     }
   }
 
+  writeMountManifest(manifestPath, mountedIds);
   return mountedIds;
 }
 

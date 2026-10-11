@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
 import type {
@@ -11,6 +12,11 @@ import type {
 } from '@cc/superai-contracts/skills';
 import { ManagedSkillCatalog } from '../managed-skill-catalog.js';
 import { mountActiveSkillsForAgent } from '../skill-mounter.js';
+import {
+  toSafeWorkspaceId,
+  resolveMeshWorkspaceSkillsPath,
+  refreshMeshShadowSkillMounts,
+} from '../workspace-skills-resolver.js';
 import { SkillRouter } from '../../skills/skill-router.js';
 import {
   scanSkillContent,
@@ -19,20 +25,99 @@ import {
   calculateHighestSeverity,
 } from '../../security/skill-content-scan.js';
 
+export interface SkillsHandlerContext {
+  baseDir?: string;
+  workspaceRouter?: { resolveWorkspacePath: (workspaceId: string) => Promise<string | undefined> };
+  store?: { readRuntimeConfig?: () => { baseDir?: string } };
+}
+
+async function resolveWorkspacePathIfNeeded(
+  target: { workspacePath?: string; workspaceId?: string },
+  context?: SkillsHandlerContext,
+): Promise<string | undefined> {
+  if (target.workspacePath) return target.workspacePath;
+  if (!target.workspaceId) return undefined;
+  const baseDir = context?.baseDir || context?.store?.readRuntimeConfig?.()?.baseDir;
+  if (!baseDir) return undefined;
+
+  if (context?.workspaceRouter) {
+    try {
+      const resolved = await context.workspaceRouter.resolveWorkspacePath(target.workspaceId);
+      if (resolved && existsSync(resolved)) return resolved;
+    } catch {
+      // Fallback to mesh persistent storage
+    }
+  }
+  return resolveMeshWorkspaceSkillsPath(baseDir, toSafeWorkspaceId(target.workspaceId));
+}
+
+async function syncSkillMounts(
+  catalog: ManagedSkillCatalog,
+  context?: SkillsHandlerContext,
+  target?: { workspacePath?: string; workspaceId?: string },
+): Promise<void> {
+  const baseDir = context?.baseDir || context?.store?.readRuntimeConfig?.()?.baseDir;
+  const workspacePath = target ? await resolveWorkspacePathIfNeeded(target, context) : undefined;
+
+  await mountActiveSkillsForAgent({ workspacePath, catalog });
+
+  if (baseDir) {
+    refreshMeshShadowSkillMounts({
+      baseDir,
+      workspaceId: target?.workspaceId,
+      workspacePath,
+      catalog,
+    });
+  }
+}
+
 export function registerSkillsHandlers(
   map: Map<string, RouteHandler>,
   catalog = new ManagedSkillCatalog(),
+  context?: SkillsHandlerContext,
 ) {
-  registerSkillQueryHandlers(map, catalog);
-  registerSkillMutationHandlers(map, catalog);
-  registerSkillDistributionHandlers(map, catalog);
+  registerSkillQueryHandlers(map, catalog, context);
+  registerSkillMutationHandlers(map, catalog, context);
+  registerSkillDistributionHandlers(map, catalog, context);
 }
 
-function registerSkillQueryHandlers(map: Map<string, RouteHandler>, catalog: ManagedSkillCatalog) {
+async function parseSkillRouteParams(req: any): Promise<{
+  query: string;
+  workspacePath?: string;
+  workspaceId?: string;
+  maxMatches?: number;
+}> {
+  if (req.method === 'POST') {
+    const body = (await readJsonBody(req)) as unknown as SkillRouteInput | null;
+    return {
+      query: body?.query || '',
+      workspacePath: body?.workspacePath,
+      workspaceId: body?.workspaceId,
+      maxMatches: body?.maxMatches,
+    };
+  }
+  const url = new URL(req.url || '/', 'http://localhost');
+  const m = url.searchParams.get('maxMatches');
+  return {
+    query: url.searchParams.get('query') || url.searchParams.get('q') || '',
+    workspacePath: url.searchParams.get('workspacePath') || undefined,
+    workspaceId: url.searchParams.get('workspaceId') || undefined,
+    maxMatches: m ? Number.parseInt(m, 10) : undefined,
+  };
+}
+
+function registerSkillQueryHandlers(
+  map: Map<string, RouteHandler>,
+  catalog: ManagedSkillCatalog,
+  context?: SkillsHandlerContext,
+) {
   map.set('skills.list', async (_route, req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
-    const workspacePath = url.searchParams.get('workspacePath') || undefined;
+    let workspacePath = url.searchParams.get('workspacePath') || undefined;
     const workspaceId = url.searchParams.get('workspaceId') || undefined;
+    if (!workspacePath && workspaceId) {
+      workspacePath = await resolveWorkspacePathIfNeeded({ workspaceId }, context);
+    }
     const skills = catalog.listSkills({ workspacePath, workspaceId });
     json(res, 200, { skills });
   });
@@ -40,8 +125,11 @@ function registerSkillQueryHandlers(map: Map<string, RouteHandler>, catalog: Man
   map.set('skills.get', async (route, req, res) => {
     const skillId = (route as { skillId: string }).skillId;
     const url = new URL(req.url || '/', 'http://localhost');
-    const workspacePath = url.searchParams.get('workspacePath') || undefined;
+    let workspacePath = url.searchParams.get('workspacePath') || undefined;
     const workspaceId = url.searchParams.get('workspaceId') || undefined;
+    if (!workspacePath && workspaceId) {
+      workspacePath = await resolveWorkspacePathIfNeeded({ workspaceId }, context);
+    }
     const skill = catalog.getDetail(skillId, { workspacePath, workspaceId });
     if (!skill) {
       json(res, 404, { error: `Skill ${skillId} not found.` });
@@ -52,9 +140,12 @@ function registerSkillQueryHandlers(map: Map<string, RouteHandler>, catalog: Man
 
   map.set('skills.verify', async (_route, req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
-    const workspacePath = url.searchParams.get('workspacePath') || undefined;
+    let workspacePath = url.searchParams.get('workspacePath') || undefined;
     const workspaceId = url.searchParams.get('workspaceId') || undefined;
     const skillId = url.searchParams.get('skillId') || undefined;
+    if (!workspacePath && workspaceId) {
+      workspacePath = await resolveWorkspacePathIfNeeded({ workspaceId }, context);
+    }
     const result = catalog.verifySkills({ workspacePath, workspaceId, skillId });
     json(res, 200, result);
   });
@@ -70,33 +161,19 @@ function registerSkillQueryHandlers(map: Map<string, RouteHandler>, catalog: Man
     if (req.method === 'POST') {
       return await handleScanPost(req, res);
     }
-    return await handleScanGet(req, res, catalog);
+    return await handleScanGet(req, res, catalog, context);
   });
 
   map.set('skills.route', async (_route, req, res) => {
-    let query = '';
-    let workspacePath: string | undefined;
-    let workspaceId: string | undefined;
-    let maxMatches: number | undefined;
-
-    if (req.method === 'POST') {
-      const body = (await readJsonBody(req)) as unknown as SkillRouteInput | null;
-      query = body?.query || '';
-      workspacePath = body?.workspacePath;
-      workspaceId = body?.workspaceId;
-      maxMatches = body?.maxMatches;
-    } else {
-      const url = new URL(req.url || '/', 'http://localhost');
-      query = url.searchParams.get('query') || url.searchParams.get('q') || '';
-      workspacePath = url.searchParams.get('workspacePath') || undefined;
-      workspaceId = url.searchParams.get('workspaceId') || undefined;
-      const m = url.searchParams.get('maxMatches');
-      if (m) maxMatches = Number.parseInt(m, 10);
+    const params = await parseSkillRouteParams(req);
+    let workspacePath = params.workspacePath;
+    if (!workspacePath && params.workspaceId) {
+      workspacePath = await resolveWorkspacePathIfNeeded({ workspaceId: params.workspaceId }, context);
     }
 
-    const skills = catalog.listSkills({ workspacePath, workspaceId });
-    const router = new SkillRouter(maxMatches ? { maxMatches } : {});
-    const result = router.route(query, skills);
+    const skills = catalog.listSkills({ workspacePath, workspaceId: params.workspaceId });
+    const router = new SkillRouter(params.maxMatches ? { maxMatches: params.maxMatches } : {});
+    const result = router.route(params.query, skills);
     json(res, 200, result);
   });
 }
@@ -128,11 +205,15 @@ async function handleScanPost(req: any, res: any) {
   return json(res, 400, { error: 'content or path is required for scanning.' });
 }
 
-async function handleScanGet(req: any, res: any, catalog: ManagedSkillCatalog) {
+async function handleScanGet(req: any, res: any, catalog: ManagedSkillCatalog, context?: SkillsHandlerContext) {
   const url = new URL(req.url || '/', 'http://localhost');
-  const workspacePath = url.searchParams.get('workspacePath') || undefined;
+  let workspacePath = url.searchParams.get('workspacePath') || undefined;
   const workspaceId = url.searchParams.get('workspaceId') || undefined;
   const skillId = url.searchParams.get('skillId') || undefined;
+
+  if (!workspacePath && workspaceId) {
+    workspacePath = await resolveWorkspacePathIfNeeded({ workspaceId }, context);
+  }
 
   if (skillId) {
     const report = catalog.scanSkill(skillId, { workspacePath, workspaceId });
@@ -146,16 +227,25 @@ async function handleScanGet(req: any, res: any, catalog: ManagedSkillCatalog) {
   json(res, 200, result);
 }
 
-function registerSkillMutationHandlers(map: Map<string, RouteHandler>, catalog: ManagedSkillCatalog) {
+function registerSkillMutationHandlers(
+  map: Map<string, RouteHandler>,
+  catalog: ManagedSkillCatalog,
+  context?: SkillsHandlerContext,
+) {
   map.set('skills.save', async (_route, req, res) => {
     const raw = await readJsonBody(req);
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as SaveSkillInput;
     if (!body.id || typeof body.id !== 'string') return json(res, 400, { error: 'Skill ID is required and must be a string.' });
     if (body.scope !== 'user' && body.scope !== 'workspace') return json(res, 400, { error: 'scope must be "user" or "workspace".' });
+
+    if (body.scope === 'workspace' && !body.workspacePath && (body as { workspaceId?: string }).workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body as { workspaceId?: string }, context);
+    }
+
     try {
       const skill = catalog.saveSkill(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body as { workspacePath?: string; workspaceId?: string });
       json(res, 200, skill);
     } catch (err) {
       json(res, 400, { error: String(err) });
@@ -167,9 +257,14 @@ function registerSkillMutationHandlers(map: Map<string, RouteHandler>, catalog: 
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as DeleteSkillInput;
     if (!body.id || typeof body.id !== 'string') return json(res, 400, { error: 'Skill ID is required and must be a string.' });
+
+    if (body.scope === 'workspace' && !body.workspacePath && body.workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
+    }
+
     try {
       const success = catalog.deleteSkill(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body);
       json(res, 200, { success });
     } catch (err) {
       json(res, 400, { error: String(err) });
@@ -181,9 +276,14 @@ function registerSkillMutationHandlers(map: Map<string, RouteHandler>, catalog: 
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as ToggleSkillInput;
     if (!body.id || typeof body.id !== 'string') return json(res, 400, { error: 'Skill ID is required and must be a string.' });
+
+    if (!body.workspacePath && (body as { workspaceId?: string }).workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body as { workspaceId?: string }, context);
+    }
+
     try {
       const success = catalog.toggleSkill(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body as { workspacePath?: string; workspaceId?: string });
       json(res, 200, { success });
     } catch (err) {
       json(res, 400, { error: String(err) });
@@ -191,15 +291,24 @@ function registerSkillMutationHandlers(map: Map<string, RouteHandler>, catalog: 
   });
 }
 
-function registerSkillDistributionHandlers(map: Map<string, RouteHandler>, catalog: ManagedSkillCatalog) {
+function registerSkillDistributionHandlers(
+  map: Map<string, RouteHandler>,
+  catalog: ManagedSkillCatalog,
+  context?: SkillsHandlerContext,
+) {
   map.set('skills.install', async (_route, req, res) => {
     const raw = await readJsonBody(req);
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as InstallSkillInput;
     if (!body.url && !body.repo) return json(res, 400, { error: 'Git URL or repository is required.' });
+
+    if (body.targetScope === 'workspace' && !body.workspacePath && body.workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
+    }
+
     try {
       const skill = await catalog.installSkillFromGit(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body);
       json(res, 200, skill);
     } catch (err) {
       json(res, 400, { error: String(err) });
@@ -212,9 +321,14 @@ function registerSkillDistributionHandlers(map: Map<string, RouteHandler>, catal
     const body = raw as unknown as InstallSkillBundleInput;
     if (!body.url && !body.repo) return json(res, 400, { error: 'Git URL or repository is required.' });
     if (body.targetScope !== 'user' && body.targetScope !== 'workspace') return json(res, 400, { error: 'targetScope must be "user" or "workspace".' });
+
+    if (body.targetScope === 'workspace' && !body.workspacePath && body.workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
+    }
+
     try {
       const result = await catalog.installSkillBundleFromGit(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body);
       json(res, 200, result);
     } catch (err) {
       json(res, 400, { error: String(err) });
@@ -226,9 +340,14 @@ function registerSkillDistributionHandlers(map: Map<string, RouteHandler>, catal
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as InstallSkillInput;
     if (!body.repo && !body.url) return json(res, 400, { error: 'Repository or URL is required.' });
+
+    if (body.targetScope === 'workspace' && !body.workspacePath && body.workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
+    }
+
     try {
       const result = await catalog.installSkillFromSource(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body);
       json(res, 200, result);
     } catch (err) {
       json(res, 400, { error: String(err) });
@@ -239,9 +358,14 @@ function registerSkillDistributionHandlers(map: Map<string, RouteHandler>, catal
     const raw = await readJsonBody(req);
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as UpdateSkillInput;
+
+    if (!body.workspacePath && body.workspaceId) {
+      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
+    }
+
     try {
       const result = await catalog.updateSkill(body);
-      await mountActiveSkillsForAgent({ workspacePath: body.workspacePath, catalog });
+      await syncSkillMounts(catalog, context, body);
       json(res, 200, result);
     } catch (err) {
       json(res, 400, { error: String(err) });
