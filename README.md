@@ -64,14 +64,10 @@ flowchart LR
 
 ### 2026-10-11
 
-- **Skills 挂载 Manifest-based GC 与未托管内容保护 (#202)**：
-  - 挂载机制引入 `.mount-manifest.json` 跟踪记录由 mounter 创建的投影条目（符号链接与 `cpSync` 回退拷贝）。
-  - 过期清理（GC）只回收 manifest 中记录且已禁用的失效技能，完全保护 Agent 或用户在目标目录（如 `.claude/skills/`）自行创建的真实目录和未托管内容。
-  - 支持旧版本无 manifest 状态平滑过渡，仅清理符号链接并自动建立新 manifest。
-- **Remote Mesh 远程工作区技能挂载与动态同步 (#201)**：
-  - 远程 Mesh 会话启动时自动挂载工作区级技能（`.agents/skills/` 与 `.agentdock/skills/`），支持按远程节点平台（`platforms`）精确过滤。
-  - 在 Core 宿主机建立持久化存储 `{baseDir}/workspace-skills/<safeWorkspaceId>/`，核心重启后自动恢复投射，无需手动重新软链。
-  - 技能保存、删除、启禁用等 API 变更实时刷新对应影子工作区（`remote-shadow/<safeWorkspaceId>/`）的技能挂载。
+- 发布 AgentDock 0.1.92：
+  - **本地 ACP 会话空闲内存回收与无感恢复 (#200)**：支持本地与非沙箱模式下 ACP 会话在 run 结束后启动空闲回收倒计时（默认 900 秒 / 15 分钟，支持 `AGENTDOCK_ACP_IDLE_SECONDS` 配置），超时自动销毁 Agent 进程释放内存；新交互到达时通过 session/load 无感恢复历史会话上下文，彻底解决长时间多线程运行导致的内存累积和 OOM 风险。
+  - **Skills 挂载 Manifest-based GC 与未托管内容保护 (#202)**：挂载机制引入 `.mount-manifest.json` 跟踪记录由 mounter 创建的投影条目（符号链接与 `cpSync` 回退拷贝）。过期清理（GC）只回收 manifest 中记录且已禁用的失效技能，完全保护 Agent 或用户在目标目录（如 `.claude/skills/`）自行创建的真实目录和未托管内容；支持旧版本无 manifest 状态平滑过渡。
+  - **Remote Mesh 远程工作区技能挂载与动态同步 (#201)**：远程 Mesh 会话启动时自动挂载工作区级技能（`.agents/skills/` 与 `.agentdock/skills/`），支持按远程节点平台（`platforms`）精确过滤；在 Core 宿主机建立持久化存储 `{baseDir}/workspace-skills/<safeWorkspaceId>/`，核心重启后自动恢复投射；技能保存、删除、启禁用等 API 变更实时刷新对应影子工作区（`remote-shadow/<safeWorkspaceId>/`）的技能挂载。
 
 ### 2026-10-10
 
