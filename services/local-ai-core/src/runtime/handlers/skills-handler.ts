@@ -51,6 +51,22 @@ async function resolveWorkspacePathIfNeeded(
   return resolveMeshWorkspaceSkillsPath(baseDir, toSafeWorkspaceId(target.workspaceId));
 }
 
+/**
+ * Fills in `workspacePath` from `workspaceId` before a skill mutation.
+ * User-scoped mutations skip workspace resolution; toggle/update have no
+ * scope field and always resolve. Reads `scope` / `targetScope` structurally
+ * because the input contracts differ per route.
+ */
+async function applyWorkspacePathResolution(
+  body: { workspacePath?: string; workspaceId?: string; scope?: string; targetScope?: string },
+  context?: SkillsHandlerContext,
+): Promise<void> {
+  if (body.workspacePath || !body.workspaceId) return;
+  const scope = body.scope ?? body.targetScope;
+  if (scope !== undefined && scope !== 'workspace') return;
+  body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
+}
+
 async function syncSkillMounts(
   catalog: ManagedSkillCatalog,
   context?: SkillsHandlerContext,
@@ -239,9 +255,7 @@ function registerSkillMutationHandlers(
     if (!body.id || typeof body.id !== 'string') return json(res, 400, { error: 'Skill ID is required and must be a string.' });
     if (body.scope !== 'user' && body.scope !== 'workspace') return json(res, 400, { error: 'scope must be "user" or "workspace".' });
 
-    if (body.scope === 'workspace' && !body.workspacePath && (body as { workspaceId?: string }).workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body as { workspaceId?: string }, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const skill = catalog.saveSkill(body);
@@ -258,9 +272,7 @@ function registerSkillMutationHandlers(
     const body = raw as unknown as DeleteSkillInput;
     if (!body.id || typeof body.id !== 'string') return json(res, 400, { error: 'Skill ID is required and must be a string.' });
 
-    if (body.scope === 'workspace' && !body.workspacePath && body.workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const success = catalog.deleteSkill(body);
@@ -277,9 +289,7 @@ function registerSkillMutationHandlers(
     const body = raw as unknown as ToggleSkillInput;
     if (!body.id || typeof body.id !== 'string') return json(res, 400, { error: 'Skill ID is required and must be a string.' });
 
-    if (!body.workspacePath && (body as { workspaceId?: string }).workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body as { workspaceId?: string }, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const success = catalog.toggleSkill(body);
@@ -302,9 +312,7 @@ function registerSkillDistributionHandlers(
     const body = raw as unknown as InstallSkillInput;
     if (!body.url && !body.repo) return json(res, 400, { error: 'Git URL or repository is required.' });
 
-    if (body.targetScope === 'workspace' && !body.workspacePath && body.workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const skill = await catalog.installSkillFromGit(body);
@@ -322,9 +330,7 @@ function registerSkillDistributionHandlers(
     if (!body.url && !body.repo) return json(res, 400, { error: 'Git URL or repository is required.' });
     if (body.targetScope !== 'user' && body.targetScope !== 'workspace') return json(res, 400, { error: 'targetScope must be "user" or "workspace".' });
 
-    if (body.targetScope === 'workspace' && !body.workspacePath && body.workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const result = await catalog.installSkillBundleFromGit(body);
@@ -341,9 +347,7 @@ function registerSkillDistributionHandlers(
     const body = raw as unknown as InstallSkillInput;
     if (!body.repo && !body.url) return json(res, 400, { error: 'Repository or URL is required.' });
 
-    if (body.targetScope === 'workspace' && !body.workspacePath && body.workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const result = await catalog.installSkillFromSource(body);
@@ -359,9 +363,7 @@ function registerSkillDistributionHandlers(
     if (!raw || typeof raw !== 'object') return json(res, 400, { error: 'Invalid JSON body' });
     const body = raw as unknown as UpdateSkillInput;
 
-    if (!body.workspacePath && body.workspaceId) {
-      body.workspacePath = await resolveWorkspacePathIfNeeded(body, context);
-    }
+    await applyWorkspacePathResolution(body, context);
 
     try {
       const result = await catalog.updateSkill(body);
