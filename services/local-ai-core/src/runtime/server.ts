@@ -206,8 +206,10 @@ export class LocalAiCoreServer {
         emitScriptVersion: (version) => b.controller.emit('automation-script-version', version),
       });
     }
-    registerKnowledgeHandlers(this.handlers, b.knowledgeProvider);
-    registerSkillsHandlers(this.handlers, b.skillCatalog || new ManagedSkillCatalog({ store: b.store }));
+    registerSkillsHandlers(this.handlers, b.skillCatalog || new ManagedSkillCatalog({ store: b.store }), {
+      workspaceRouter: b.workspaceRouter,
+      store: b.store,
+    });
     registerTraceHandlers(this.handlers, b.store);
     const costEventBus = b.kernel?.context?.bus || { emit: () => {}, on: () => () => {} };
     const costService = b.costService || new CostService({ store: b.store, eventBus: costEventBus as any });

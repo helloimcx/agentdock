@@ -62,6 +62,17 @@ flowchart LR
 
 ## New
 
+### 2026-10-11
+
+- **Skills 挂载 Manifest-based GC 与未托管内容保护 (#202)**：
+  - 挂载机制引入 `.mount-manifest.json` 跟踪记录由 mounter 创建的投影条目（符号链接与 `cpSync` 回退拷贝）。
+  - 过期清理（GC）只回收 manifest 中记录且已禁用的失效技能，完全保护 Agent 或用户在目标目录（如 `.claude/skills/`）自行创建的真实目录和未托管内容。
+  - 支持旧版本无 manifest 状态平滑过渡，仅清理符号链接并自动建立新 manifest。
+- **Remote Mesh 远程工作区技能挂载与动态同步 (#201)**：
+  - 远程 Mesh 会话启动时自动挂载工作区级技能（`.agents/skills/` 与 `.agentdock/skills/`），支持按远程节点平台（`platforms`）精确过滤。
+  - 在 Core 宿主机建立持久化存储 `{baseDir}/workspace-skills/<safeWorkspaceId>/`，核心重启后自动恢复投射，无需手动重新软链。
+  - 技能保存、删除、启禁用等 API 变更实时刷新对应影子工作区（`remote-shadow/<safeWorkspaceId>/`）的技能挂载。
+
 ### 2026-10-10
 
 - 发布 AgentDock 0.1.91：

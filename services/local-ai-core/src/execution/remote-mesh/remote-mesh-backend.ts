@@ -5,6 +5,12 @@ import type { AgentLaunchConfig } from '@cc/plugin-sdk';
 import type { AgentExecutionBackend, AgentExecutionBackendInput } from '../agent-execution-types.js';
 import { buildDeviceClaudeMd, buildDeviceSystemPrompt, type MeshNodeMetadata } from './device-environment.js';
 import { mountActiveSkillsSync } from '../../runtime/skill-mounter.js';
+import {
+  toSafeWorkspaceId,
+  resolveMeshWorkspaceSkillsPath,
+  MESH_SHADOW_META_FILENAME,
+  type MeshShadowMeta,
+} from '../../runtime/workspace-skills-resolver.js';
 
 export function isRemoteMeshProject(project: AgentExecutionBackendInput['project']): boolean {
   const deviceId = String(project.device_id || project.agent?.options?.device_id || '').trim();
@@ -76,7 +82,47 @@ function provisionToolWrappers(binDir: string, shellScriptPath: string, isWindow
   }
 }
 
-function provisionShadowDirectory(shadowDir: string, node: MeshNodeMetadata | { label?: string; platform?: string }): string {
+function provisionShadowSkills(
+  shadowDir: string,
+  node: MeshNodeMetadata | { label?: string; platform?: string; id?: string },
+  workspaceSkillsPath?: string,
+  workspaceId?: string,
+): void {
+  try {
+    const meta: MeshShadowMeta = {
+      nodeId: (node as { id?: string })?.id || node?.label,
+      platform: String(node?.platform || 'unknown').trim() || 'unknown',
+      workspaceId,
+      workspacePath: workspaceSkillsPath,
+    };
+    writeFileSync(resolve(shadowDir, MESH_SHADOW_META_FILENAME), JSON.stringify(meta, null, 2), 'utf8');
+  } catch {
+    // Best-effort shadow metadata save
+  }
+
+  try {
+    const platform = String(node?.platform || 'unknown').trim() || 'unknown';
+    mountActiveSkillsSync({
+      targetDir: resolve(shadowDir, '.agents', 'skills'),
+      workspacePath: workspaceSkillsPath,
+      platform,
+    });
+    mountActiveSkillsSync({
+      targetDir: resolve(shadowDir, '.claude', 'skills'),
+      workspacePath: workspaceSkillsPath,
+      platform,
+    });
+  } catch {
+    // Best-effort skill injection
+  }
+}
+
+function provisionShadowDirectory(
+  shadowDir: string,
+  node: MeshNodeMetadata | { label?: string; platform?: string; id?: string },
+  workspaceSkillsPath?: string,
+  workspaceId?: string,
+): string {
   const claudeMdContent = buildDeviceClaudeMd(node);
   try {
     writeFileSync(resolve(shadowDir, 'CLAUDE.md'), claudeMdContent, 'utf8');
@@ -85,19 +131,7 @@ function provisionShadowDirectory(shadowDir: string, node: MeshNodeMetadata | { 
     // Best-effort provisioning
   }
 
-  try {
-    const platform = String(node?.platform || 'unknown').trim() || 'unknown';
-    mountActiveSkillsSync({
-      targetDir: resolve(shadowDir, '.agents', 'skills'),
-      platform,
-    });
-    mountActiveSkillsSync({
-      targetDir: resolve(shadowDir, '.claude', 'skills'),
-      platform,
-    });
-  } catch {
-    // Best-effort skill injection
-  }
+  provisionShadowSkills(shadowDir, node, workspaceSkillsPath, workspaceId);
 
   const binDir = resolve(shadowDir, '.bin');
   mkdirSync(binDir, { recursive: true });
@@ -141,7 +175,7 @@ export class RemoteMeshExecutionBackend implements AgentExecutionBackend {
   prepareLaunch(input: AgentExecutionBackendInput): AgentLaunchConfig {
     const nodeId = resolveMeshNodeId(input.project);
     const rawWorkspaceId = input.launchConfig.workspaceId || input.project.name || 'workspace';
-    const safeWorkspaceId = rawWorkspaceId.replace(/[^a-zA-Z0-9_.-]/g, '_').replace(/^\.+/, '') || 'workspace';
+    const safeWorkspaceId = toSafeWorkspaceId(rawWorkspaceId);
     const shadowDir = resolve(input.configState.baseDir, 'remote-shadow', safeWorkspaceId);
     mkdirSync(shadowDir, { recursive: true });
 
@@ -150,7 +184,13 @@ export class RemoteMeshExecutionBackend implements AgentExecutionBackend {
       platform: 'unknown',
     };
 
-    const shellWrapperPath = provisionShadowDirectory(shadowDir, node);
+    const workspaceSkillsPath = resolveMeshWorkspaceSkillsPath(
+      input.configState.baseDir,
+      safeWorkspaceId,
+      input.launchConfig.workDir,
+    );
+
+    const shellWrapperPath = provisionShadowDirectory(shadowDir, node, workspaceSkillsPath, safeWorkspaceId);
     const binDir = resolve(shadowDir, '.bin');
 
     const localCoreUrl = String(process.env.AGENTDOCK_LOCAL_CORE_URL || 'http://127.0.0.1:9831').trim();
