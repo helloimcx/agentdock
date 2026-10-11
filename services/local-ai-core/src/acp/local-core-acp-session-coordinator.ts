@@ -421,7 +421,7 @@ export class LocalCoreAcpSessionCoordinator {
     const mode = this.resolveLaunchPermissionMode(threadId, permissionModeOverride);
     const isMesh = config?.execution?.mode === 'mesh';
     const systemPromptAppend = isMesh ? config?.execution?.systemPromptAppend : undefined;
-    const disallowedTools = isMesh ? ['FileEdit', 'GlobTool'] : [];
+    const disallowedTools = isMesh ? ['FileEdit', 'GlobTool', 'Write', 'Edit'] : [];
 
     return {
       ...(systemPromptAppend ? { systemPrompt: { append: systemPromptAppend } } : {}),
