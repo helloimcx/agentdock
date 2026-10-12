@@ -109,6 +109,27 @@ test('extractCommandFromArgv and parseShellArgv unwraps Claude Code eval and pwd
   ]);
   assert.equal(escapedWrapped.command, "echo 'hello world'");
   assert.equal(escapedWrapped.cwdFile, '/tmp/claude-test-cwd');
+
+  // Claude Code single quote escaping with '"'"'
+  const claudeQuoteEscaped = parseShellArgv([
+    'node',
+    'agentdock-mesh-shell.js',
+    '-c',
+    "eval 'echo '\"'\"'hello world'\"'\"'' < /dev/null && pwd -P >| /tmp/claude-test-cwd",
+  ]);
+  assert.equal(claudeQuoteEscaped.command, "echo 'hello world'");
+
+  // Claude Code multiline heredoc with Python and single quotes
+  const claudeHeredoc = parseShellArgv([
+    'node',
+    'agentdock-mesh-shell.js',
+    '-c',
+    "eval 'python3 - <<'\"'\"'EOF'\"'\"'\nif c == b'\"'\"'d'\"'\"':\n    print('\"'\"'ok'\"'\"')\nEOF' < /dev/null && pwd -P >| /tmp/claude-test-cwd",
+  ]);
+  assert.equal(
+    claudeHeredoc.command,
+    "python3 - <<'EOF'\nif c == b'd':\n    print('ok')\nEOF",
+  );
 });
 
 test('executeMeshShell errors when AGENTDOCK_MESH_NODE_ID is missing', async () => {

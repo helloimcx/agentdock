@@ -12,7 +12,13 @@ function stripBashQuotes(str: string): string {
   if ((str.startsWith("'") && str.endsWith("'")) || (str.startsWith('"') && str.endsWith('"'))) {
     const isSingle = str.startsWith("'");
     const unquoted = str.slice(1, -1);
-    return isSingle ? unquoted.replace(/'\\''/g, "'") : unquoted;
+    if (isSingle) {
+      return unquoted
+        .replaceAll(`'"'"'`, "'")
+        .replaceAll(`'\\''`, "'")
+        .replaceAll(`'\\'`, "'");
+    }
+    return unquoted;
   }
   return str;
 }
