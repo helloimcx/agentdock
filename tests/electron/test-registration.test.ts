@@ -30,4 +30,18 @@ test('renderer test files registered in tsconfig are wired into both test runner
       `${compiled} is missing from scripts/coverage.mjs TEST_FILES`,
     );
   }
+
+  const coverageTestFiles = [...coverage.matchAll(/'(dist-electron\/[^']+\.test\.js)'/g)].map((m) => m[1]);
+  for (const entry of new Set(coverageTestFiles)) {
+    assert.ok(
+      testScript.includes(entry),
+      `${entry} is in scripts/coverage.mjs TEST_FILES but missing from package.json scripts.test`,
+    );
+    if (entry.startsWith('dist-electron/src/')) {
+      assert.ok(
+        tsconfigTests.includes(entry),
+        `${entry} is in scripts/coverage.mjs TEST_FILES but not registered in tsconfig.electron.json`,
+      );
+    }
+  }
 });
