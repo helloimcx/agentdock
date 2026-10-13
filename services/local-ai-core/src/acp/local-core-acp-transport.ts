@@ -23,21 +23,29 @@ type LocalCoreAcpTransportOptions = {
   onSessionClosed: (session: AcpSessionState, error: Error) => void;
 };
 
+export function buildAcpChildEnvironment(
+  input: SpawnSessionInput,
+  inheritedEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...inheritedEnv,
+    ...input.config.env,
+    ...input.runtimeEnv,
+  };
+  if (input.config.execution?.mode === 'mesh') {
+    delete env.AGENTDOCK_MESH_ADMIN_TOKEN;
+  }
+  return env;
+}
+
 export class LocalCoreAcpTransport {
   constructor(private readonly options: LocalCoreAcpTransportOptions) {}
 
   spawnSession(input: SpawnSessionInput) {
-    const baseEnv = {
-      ...process.env,
-      ...input.config.env,
-    };
     const cwd = resolveTransportCwd(input.config);
     const child = spawn(input.config.command, input.config.args, {
       cwd,
-      env: {
-        ...baseEnv,
-        ...input.runtimeEnv,
-      },
+      env: buildAcpChildEnvironment(input),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const session: AcpSessionState = {

@@ -6,6 +6,9 @@ Mesh adds device tool execution to Local AI Core. ACP sessions, threads and agen
 flowchart LR
   ui[Device management UI] --> sdk[Core SDK mesh client]
   cli[agentdock-node admin commands] -->|Administrator token| api[Mesh REST API]
+  agent[Remote workspace Agent] -->|Standalone lac / control MCP over stdio| lac[Host LAC dispatcher]
+  lac -->|Allowlisted CLI handlers · host context| core[Local AI Core API]
+  agent -->|POST /shell/execute · node-scoped token| gateway
   sdk --> api
   api --> gateway[Mesh Gateway / Dispatcher]
   ui -->|Read-only GET /nodes without Mesh token| gateway
@@ -28,7 +31,7 @@ flowchart LR
 
 ## Trust boundaries
 
-Mesh is disabled unless `AGENTDOCK_MESH_ADMIN_TOKEN` is set. Generate a high-entropy random value and supply it securely to Core and administration clients. This token protects Mesh management endpoints; it does not add authentication to pre-existing Core APIs. While Mesh is enabled, `GET /mesh/nodes` is the sole Mesh REST route that does not require the administrator token. It reveals node ID, label, platform, advertised and allowed capabilities, presence and timestamps to anyone who can reach the Core route. Pairing, revocation, execution, request history and cancellation remain administrator-authenticated. Protect the complete Core surface when deploying publicly.
+Mesh is disabled unless `AGENTDOCK_MESH_ADMIN_TOKEN` is set. Generate a high-entropy random value and supply it securely to Core and administration clients. This token protects Mesh management endpoints; it does not add authentication to pre-existing Core APIs. While Mesh is enabled, `GET /mesh/nodes` returns node ID, label, platform, advertised and allowed capabilities, presence and timestamps to anyone who can reach the Core route. `POST /mesh/shell/execute` instead requires a signed, expiring launch token and accepts only the bound node's `shell.exec`; all other management routes remain administrator-authenticated. Protect the complete Core surface when deploying publicly.
 
 An administrator creates a device-specific, single-use pairing token valid for ten minutes. `/enroll` exchanges it for the device credential. The first WebSocket message supplies that credential; protocol v1 accepts only text messages, known capabilities and bounded payloads. A node cannot act as an administrator or finish another device's requests. Revocation invalidates both enrollment and connection credentials, closes the active connection and interrupts pending work.
 
@@ -42,11 +45,15 @@ The client requires HTTPS/WSS outside loopback, follows no redirects, and verifi
 
 When a Workspace is configured with `deviceId: 'node:<uuid>'`:
 1. **Agent Process**: Runs on the Server (Local AI Core daemon host) with a physical working directory anchored at `<baseDir>/remote-shadow/<workspaceId>`.
-2. **Transparent Shell Proxy (`agentdock-mesh-shell`)**: Injected via `SHELL` environment variable into Agent processes on remote workspaces. When the agent uses its native Bash tool (`$SHELL -c "<cmd>"`), the proxy delegates the command directly to `MeshGateway.executeAndWait()` (`shell.exec`). Output and exit codes are transparently streamed back to the agent's native terminal tool.
-3. **Multi-Device Dynamic Context**: Local AI Core resolves the target node's `label` and `platform` (Android/Termux, Linux, macOS, Windows) and dynamically generates `CLAUDE.md` and ACP `systemPrompt.append` inside the shadow directory. No hardcoded device names or operating system assumptions.
-4. **Host Tool Disallowance**: Cloud server filesystem tools (`FileEdit`, `GlobTool`) are disabled in ACP session initialization for remote mesh workspaces to prevent server-host filesystem operations from leaking or interfering with the remote session.
-5. **ACP Protocol Bridge**: When agents issue ACP filesystem requests (`fs/read_text_file`, `fs/write_text_file`), LocalCoreAcpTurnCoordinator routes them directly to `MeshGateway.executeAndWait()`, transparently returning UTF-8 contents.
-6. **Zero Awareness**: To the LLM, the environment operates naturally as a native shell on the target device, requiring zero specialized prompts or MCP prefix awareness.
+2. **Transparent Shell Proxy (`agentdock-mesh-shell`)**: Injected via `SHELL` environment variable into Agent processes on remote workspaces. A standalone, allowlisted `lac <domain> <action> ...` invocation is dispatched on the Core host through the LAC dispatcher; ordinary commands go through `POST /mesh/shell/execute` and then `MeshGateway.executeAndWait()` (`shell.exec`). Output, errors and exit codes return to the agent's native terminal tool. Mixed Shell expressions containing LAC and file-based arguments are rejected in this first phase.
+3. **Host LAC control MCP**: Remote-workspace launches receive a separate stdio MCP server with structured, read-only memory, scheduler, monitor and automation queries. It calls the same host dispatcher as the Shell compatibility path. Core derives workspace/thread and channel context from the thread row, and caller-supplied runtime values cannot replace it or the host Core URL. Scheduler and monitor ID requests carry workspace scope, which the handlers verify.
+4. **Scoped Shell authorization**: The Core signs a time-limited bearer for the launch node; `/mesh/shell/execute` accepts only `shell.exec` for that node. The global Mesh administrator token is removed from the final agent child environment, including inherited Core process variables. The signed token stays stable within a refresh window so repeated route resolution can reuse the ACP session. Existing node `allowShell` policy and the node's `--allow-shell` opt-in still apply. The signed token's workspace/thread claims identify the launch, while gateway enforcement is limited to node ID and capability.
+5. **Multi-Device Dynamic Context**: Local AI Core resolves the target node's `label` and `platform` (Android/Termux, Linux, macOS, Windows) and dynamically generates `CLAUDE.md` and ACP `systemPrompt.append` inside the shadow directory. No hardcoded device names or operating system assumptions.
+6. **Host Tool Disallowance**: Cloud server filesystem tools (`FileEdit`, `GlobTool`) are disabled in ACP session initialization for remote mesh workspaces to prevent server-host filesystem operations from leaking or interfering with the remote session.
+7. **ACP Protocol Bridge**: When agents issue ACP filesystem requests (`fs/read_text_file`, `fs/write_text_file`), LocalCoreAcpTurnCoordinator routes them directly to `MeshGateway.executeAndWait()`, transparently returning UTF-8 contents.
+8. **Zero Awareness**: To the LLM, the environment operates naturally as a native shell on the target device, requiring zero specialized prompts or MCP prefix awareness.
+
+The first-phase LAC allowlist covers memory, scheduler, monitor and automation operations without remote file arguments. Bash supports only a standalone command; pipelines, redirects, command substitutions and other compound forms that contain LAC return an explicit unsupported error. Snapshot initialization runs on the Mesh node. Claude's cwd marker is written only beneath the session shadow directory. Structured MCP currently exposes read queries only. The shell authorization token grants the same node's already-enabled `shell.exec` capability and is not a Mesh administration credential.
 
 ## Requests and failure semantics
 
@@ -60,7 +67,7 @@ Disconnect and Core restart mark pending requests `interrupted`: the outcome is 
 
 ## API
 
-Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. All other REST routes except enrollment require `Authorization: Bearer <administrator token>`; the WebSocket handshake uses the device credential protocol.
+Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. `POST /shell/execute` uses the signed launch token described above. Other management routes require `Authorization: Bearer <administrator token>`; enrollment uses the one-time pairing token, and the WebSocket handshake uses the device credential protocol.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -70,6 +77,7 @@ Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata witho
 | WebSocket | `/connect` | Device-authenticated protocol v1 |
 | POST | `/nodes/:id/revoke` | Revoke a device |
 | POST | `/requests` | Dispatch `nodeId`, `capability`, `args`, optional `timeoutMs` |
+| POST | `/shell/execute` | Execute `shell.exec` for the node bound to a signed, expiring launch token |
 | GET | `/requests` | Recent history |
 | GET | `/requests/:id` | Request status/result |
 | POST | `/requests/:id/cancel` | Request cancellation |

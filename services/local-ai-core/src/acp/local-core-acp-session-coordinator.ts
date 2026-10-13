@@ -65,6 +65,33 @@ type EnsureSessionOptions = {
   runId?: string;
 };
 
+const MESH_RUNTIME_RESERVED_ENV = new Set([
+  'LOCAL_AI_CORE_BASE', 'LOCAL_AI_WORKSPACE_ID', 'LOCAL_AI_THREAD_ID', 'LOCAL_AI_WORKSPACE_PATH',
+  'LOCAL_AI_PLATFORM', 'LOCAL_AI_PLATFORM_INSTANCE_ID', 'LOCAL_AI_CHAT_ID', 'LOCAL_AI_PLATFORM_USER_ID', 'LOCAL_AI_ROUTE_TYPE',
+  'AGENTDOCK_SANDBOX_RUN_ID', 'AGENTDOCK_LOCAL_CORE_URL', 'AGENTDOCK_MESH_NODE_ID', 'AGENTDOCK_MESH_SHELL_TOKEN',
+  'AGENTDOCK_MESH_ADMIN_TOKEN', 'AGENTDOCK_MESH_TIMEOUT_MS', 'AGENTDOCK_MESH_NODE_PLATFORM', 'AGENTDOCK_MESH_NODE_LABEL',
+  'AGENTDOCK_MESH_CWD_DIR', 'TMPDIR', 'TMP', 'TEMP', 'PATH', 'SHELL', 'CLAUDE_CODE_SHELL',
+]);
+
+function filterMeshRuntimeEnv(runtimeEnv: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(runtimeEnv).filter(([key]) => !MESH_RUNTIME_RESERVED_ENV.has(key)));
+}
+
+function bindMeshLacMcpContext(config: LocalCoreProjectConfig, runtimeEnv: Record<string, string>): LocalCoreProjectConfig {
+  if (config.execution?.mode !== 'mesh') return config;
+  const contextKeys = [
+    'LOCAL_AI_CORE_BASE', 'LOCAL_AI_WORKSPACE_ID', 'LOCAL_AI_THREAD_ID', 'LOCAL_AI_PLATFORM',
+    'LOCAL_AI_PLATFORM_INSTANCE_ID', 'LOCAL_AI_CHAT_ID', 'LOCAL_AI_PLATFORM_USER_ID', 'LOCAL_AI_ROUTE_TYPE',
+  ];
+  const contextEnv = Object.fromEntries(contextKeys.flatMap((key) => runtimeEnv[key] === undefined ? [] : [[key, runtimeEnv[key]]])) as Record<string, string>;
+  return {
+    ...config,
+    mcpServers: (config.mcpServers || []).map((server) => server.name === 'agentdock-lac-control'
+      ? { ...server, env: { ELECTRON_RUN_AS_NODE: '1', ...contextEnv } }
+      : server),
+  };
+}
+
 export class LocalCoreAcpSessionCoordinator {
   private readonly sessions = new Map<string, AcpSessionState>();
 
@@ -120,7 +147,13 @@ export class LocalCoreAcpSessionCoordinator {
   ) {
     const existing = this.sessions.get(threadId);
     const permissionMode = this.resolveLaunchPermissionMode(threadId, options.permissionMode);
-    const configKey = this.buildLaunchConfigKey(config);
+    const baseEnv = {
+      ...process.env,
+      ...config.env,
+    };
+    const runtimeEnv = this.buildAgentRuntimeEnv(threadId, getPathEnv(baseEnv), options.runtimeEnv, options.runId, config);
+    const sessionConfig = bindMeshLacMcpContext(config, runtimeEnv);
+    const configKey = this.buildLaunchConfigKey(sessionConfig);
     const runtimeEnvKey = this.buildRuntimeEnvKey(options.runtimeEnv);
     if (
       existing
@@ -139,15 +172,11 @@ export class LocalCoreAcpSessionCoordinator {
     }
     const startedAt = Date.now();
     this.options.log?.(`[acp.session:${threadId}] spawn mode=${config.sandbox?.enabled ? 'sandbox' : 'local'} transport=${config.execution?.transport || 'stdio'}`);
-    const baseEnv = {
-      ...process.env,
-      ...config.env,
-    };
     const session = this.options.transport.spawnSession({
       threadId,
       bridgeSessionKey,
-      config,
-      runtimeEnv: this.buildAgentRuntimeEnv(threadId, getPathEnv(baseEnv), options.runtimeEnv, options.runId),
+      config: sessionConfig,
+      runtimeEnv,
     });
     session.launchPermissionMode = permissionMode;
     session.launchConfigKey = configKey;
@@ -171,8 +200,8 @@ export class LocalCoreAcpSessionCoordinator {
         session.loadReplayMode = true;
         await this.options.transport.request(session, 'session/load', {
           sessionId: row.acp_session_id,
-          cwd: acpSessionCwd(config),
-          mcpServers: toAcpMcpServers(config),
+          cwd: acpSessionCwd(sessionConfig),
+          mcpServers: toAcpMcpServers(sessionConfig),
         }, 30000);
         session.sessionId = row.acp_session_id;
       } catch (error) {
@@ -184,9 +213,9 @@ export class LocalCoreAcpSessionCoordinator {
     if (!session.sessionId) {
       try {
         const created = await this.options.transport.request(session, 'session/new', {
-          cwd: acpSessionCwd(config),
-          mcpServers: toAcpMcpServers(config),
-          _meta: this.buildSessionMeta(threadId, permissionMode, config),
+          cwd: acpSessionCwd(sessionConfig),
+          mcpServers: toAcpMcpServers(sessionConfig),
+          _meta: this.buildSessionMeta(threadId, permissionMode, sessionConfig),
         }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
         session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
         if (!session.sessionId) {
@@ -332,7 +361,13 @@ export class LocalCoreAcpSessionCoordinator {
       .join('\n');
   }
 
-  private buildAgentRuntimeEnv(threadId: string, existingPath: string, runtimeEnv: Record<string, string> = {}, runId = '') {
+  private buildAgentRuntimeEnv(
+    threadId: string,
+    existingPath: string,
+    runtimeEnv: Record<string, string> = {},
+    runId = '',
+    config?: LocalCoreProjectConfig,
+  ) {
     const row = this.options.store.getThreadRow(threadId);
     if (!row) {
       return {};
@@ -363,9 +398,17 @@ export class LocalCoreAcpSessionCoordinator {
     } else {
       env.PATH = buildAgentPath(existingPath);
     }
+    const isRemoteMesh = config?.execution?.mode === 'mesh';
+    const meshLaunchEnv = isRemoteMesh
+      ? Object.fromEntries(['AGENTDOCK_LOCAL_CORE_URL', 'AGENTDOCK_MESH_NODE_ID', 'AGENTDOCK_MESH_SHELL_TOKEN',
+        'AGENTDOCK_MESH_TIMEOUT_MS', 'AGENTDOCK_MESH_NODE_PLATFORM', 'AGENTDOCK_MESH_NODE_LABEL',
+        'AGENTDOCK_MESH_CWD_DIR', 'TMPDIR', 'TMP', 'TEMP']
+        .flatMap((key) => config?.env?.[key] === undefined ? [] : [[key, config.env[key]]]))
+      : {};
     return {
       ...env,
-      ...runtimeEnv,
+      ...meshLaunchEnv,
+      ...(isRemoteMesh ? filterMeshRuntimeEnv(runtimeEnv) : runtimeEnv),
     };
   }
 

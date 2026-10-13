@@ -22,6 +22,7 @@ provider_files:
     - docs/architecture/skill-router.workflow.json
     - docs/architecture/mobile-screen.workflow.json
     - docs/architecture/durable-execution.workflow.json
+    - docs/architecture/remote-lac-control.workflow.json
   receipt: null
 readme:
   mode: inline-mermaid

@@ -31,11 +31,14 @@ flowchart LR
   kernel --> scheduler[Scheduler / Automation]
   scheduler --> acp
   acp --> agents[Local Pi / Codex / Claude / Hermes]
+  agents -->|Standalone lac / structured MCP over stdio| lac[LAC Host Dispatcher]
+  lac -->|Allowlisted CLI handlers · host workspace/thread context| api
   kernel -->|稳定提交身份| durable[可选 Pi Durable worker]
   durable --> pidb[(Core 数据目录内的单一 pi-durable.sqlite)]
   durable -->|OpenAI 兼容 HTTPS| provider[已配置模型服务]
   acp --> sandbox[OpenSandbox]
-  api -->|Public read-only node list; admin token for management| mesh[Mesh Gateway / Dispatcher]
+  api -->|Read-only nodes · admin / scoped Shell auth| mesh[Mesh Gateway / Dispatcher]
+  acp -.->|Remote Shell: signed node-scoped token| mesh
   mesh --> kernel
   nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
@@ -56,11 +59,12 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 | **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [浅色图](skill-router.light.png) · [深色图](skill-router.dark.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |
 | **L3 状态模型** | Agent Run 执行状态机 | `lifecycle` | [状态转移图](agent-run-lifecycle.html) · [浅色图](agent-run-lifecycle.light.png) · [深色图](agent-run-lifecycle.dark.png) | [`agent-run.lifecycle.json`](agent-run.lifecycle.json) | [状态所有权](state-ownership.md) |
 | **L2 持久执行** | 提交、delivery outbox、运行快照、Pi Durable 与逐次写入审批 | `workflow` | [持久执行流程](durable-execution-workflow.html) · [浅色图](durable-execution-workflow.light.png) · [深色图](durable-execution-workflow.dark.png) | [`durable-execution.workflow.json`](durable-execution.workflow.json) | [持久执行记录](changes/2026-10-03-durable-execution.md) · [写入审批变更](changes/2026-10-04-pi-durable-write-approval.md) |
+| **L2 远程调用** | 远程工作区通过 MCP 与独立 CLI 调用主机 LAC | `workflow` | [LAC 控制流程](remote-lac-control.html) · [浅色图](remote-lac-control.light.png) · [深色图](remote-lac-control.dark.png) | [`remote-lac-control.workflow.json`](remote-lac-control.workflow.json) | [远程 LAC 变更记录](changes/2026-10-12-remote-lac-routing.md) |
 
 
 ## Mesh Device Plane
 
-[Mesh](mesh.md) describes Core-owned device pairing and request history, outbound node connections, read-only file capabilities and explicitly enabled command execution. The Mesh page reads node metadata without a Mesh admin token; pairing, revocation, execution and request history remain protected. Remote tool requests do not change ACP run routing.
+[Mesh](mesh.md) describes Core-owned device pairing and request history, outbound node connections, read-only file capabilities and explicitly enabled command execution. The Mesh page reads node metadata without a Mesh admin token; pairing, revocation, execution and request history remain protected. Remote-workspace agents use the host LAC dispatcher through structured MCP queries or standalone allowlisted `lac` commands; ordinary Shell execution remains node-bound. Remote tool requests do not change ACP run routing.
 
 ## Main Layers
 

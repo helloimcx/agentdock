@@ -27,7 +27,7 @@
           "local_agents",
           "opensandbox"
         ],
-        "note": "Pi Durable shares one worker and SQLite; workspace writes require Core approval and Core-owned atomic file updates."
+        "note": "Pi Durable writes stay Core-approved; remote Mesh workspaces expose host LAC through MCP while ordinary Shell remains node-bound."
       },
       {
         "id": "automation-channels",
@@ -40,6 +40,19 @@
           "scheduler"
         ],
         "note": "支持定时任务、Webhook 事件驱动、飞书与微信消息流及结果投递"
+      },
+      {
+        "id": "remote-workspace-lac",
+        "label": "远程工作区调用主机 LAC",
+        "focus": [
+          "local_agents",
+          "acp_engine",
+          "kernel",
+          "core_api",
+          "mesh_gateway",
+          "device_nodes"
+        ],
+        "note": "结构化 MCP 与独立 lac 命令走主机 allowlist；普通 Shell 命令仍发往绑定设备"
       }
     ]
   },
@@ -201,7 +214,7 @@
       "id": "mesh_gateway",
       "type": "backend",
       "label": "Mesh 设备网关",
-      "sublabel": "配对 · 能力授权 · 请求调度",
+      "sublabel": "配对 · Shell 授权",
       "pos": [
         600,
         570
@@ -342,7 +355,7 @@
       "id": "acp-to-local",
       "from": "acp_engine",
       "to": "local_agents",
-      "label": "stdio 通道"
+      "label": "ACP stdio · MCP tools"
     },
     {
       "id": "local-to-kernel-write-approval",
@@ -365,7 +378,7 @@
       "id": "core-to-mesh",
       "from": "core_api",
       "to": "mesh_gateway",
-      "label": "Public node overview; admin operations protected",
+      "label": "Read-only nodes · admin / scoped Shell auth",
       "labelDy": 100
     },
     {
