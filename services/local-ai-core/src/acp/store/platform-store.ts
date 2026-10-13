@@ -17,8 +17,11 @@ function buildWorkspacePlatformWhere(workspaceId?: string, platform?: string): {
   return { where: builder.whereClause(), params: builder.params };
 }
 
+// Also reused by the INSERT INTO platform_thread_bindings in upsertPlatformThreadBinding — keep its VALUES placeholder count in sync.
+const PLATFORM_THREAD_BINDING_COLUMNS = 'workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at';
+
 const PLATFORM_THREAD_BINDING_SELECT = `
-  SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at
+  SELECT ${PLATFORM_THREAD_BINDING_COLUMNS}
   FROM platform_thread_bindings`;
 
 const PLATFORM_THREAD_BINDING_KEY_WHERE = 'workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?';
@@ -170,8 +173,7 @@ export class LocalPlatformStore {
 
   upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
-      INSERT INTO platform_thread_bindings
-      (workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at)
+      INSERT INTO platform_thread_bindings (${PLATFORM_THREAD_BINDING_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, platform, chat_id, platform_user_id) DO UPDATE SET
         thread_id = excluded.thread_id,
