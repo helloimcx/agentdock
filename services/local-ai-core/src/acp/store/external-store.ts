@@ -5,6 +5,11 @@ import type {
 } from '@cc/superai-contracts';
 import { parseJson } from './utils.js';
 
+// Also reused by the INSERT INTO external_projects in upsertProject — keep its VALUES placeholder count in sync.
+const EXTERNAL_PROJECT_COLUMNS = 'user_id, external_project_id, workspace_id, workspace_path, display_name, agent_type, provider_id, metadata_json, created_at, updated_at';
+// Also reused by the INSERT INTO external_threads in upsertThread — keep its VALUES placeholder count in sync.
+const EXTERNAL_THREAD_COLUMNS = 'user_id, external_project_id, external_thread_id, workspace_id, thread_id, workspace_path, metadata_json, created_at, updated_at';
+
 type ExternalProjectRow = {
   user_id: string;
   external_project_id: string;
@@ -35,7 +40,7 @@ export class LocalExternalStore {
 
   getProject(userId: string, externalProjectId: string): ExternalProject | undefined {
     const row = this.db.prepare(`
-      SELECT user_id, external_project_id, workspace_id, workspace_path, display_name, agent_type, provider_id, metadata_json, created_at, updated_at
+      SELECT ${EXTERNAL_PROJECT_COLUMNS}
       FROM external_projects
       WHERE user_id = ? AND external_project_id = ?
     `).get(userId, externalProjectId) as ExternalProjectRow | undefined;
@@ -46,10 +51,8 @@ export class LocalExternalStore {
     const now = new Date().toISOString();
     const existing = this.getProject(input.userId, input.externalProjectId);
     this.db.prepare(`
-      INSERT INTO external_projects (
-        user_id, external_project_id, workspace_id, workspace_path, display_name, agent_type, provider_id,
-        metadata_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO external_projects (${EXTERNAL_PROJECT_COLUMNS})
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, external_project_id) DO UPDATE SET
         workspace_id = excluded.workspace_id,
         workspace_path = excluded.workspace_path,
@@ -75,7 +78,7 @@ export class LocalExternalStore {
 
   getThread(userId: string, externalProjectId: string, externalThreadId: string): ExternalThread | undefined {
     const row = this.db.prepare(`
-      SELECT user_id, external_project_id, external_thread_id, workspace_id, thread_id, workspace_path, metadata_json, created_at, updated_at
+      SELECT ${EXTERNAL_THREAD_COLUMNS}
       FROM external_threads
       WHERE user_id = ? AND external_project_id = ? AND external_thread_id = ?
     `).get(userId, externalProjectId, externalThreadId) as ExternalThreadRow | undefined;
@@ -84,7 +87,7 @@ export class LocalExternalStore {
 
   getThreadByThreadId(threadId: string): ExternalThread | undefined {
     const row = this.db.prepare(`
-      SELECT user_id, external_project_id, external_thread_id, workspace_id, thread_id, workspace_path, metadata_json, created_at, updated_at
+      SELECT ${EXTERNAL_THREAD_COLUMNS}
       FROM external_threads
       WHERE thread_id = ?
     `).get(threadId) as ExternalThreadRow | undefined;
@@ -95,10 +98,8 @@ export class LocalExternalStore {
     const now = new Date().toISOString();
     const existing = this.getThread(input.userId, input.externalProjectId, input.externalThreadId);
     this.db.prepare(`
-      INSERT INTO external_threads (
-        user_id, external_project_id, external_thread_id, workspace_id, thread_id, workspace_path,
-        metadata_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO external_threads (${EXTERNAL_THREAD_COLUMNS})
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, external_project_id, external_thread_id) DO UPDATE SET
         workspace_id = excluded.workspace_id,
         thread_id = excluded.thread_id,
