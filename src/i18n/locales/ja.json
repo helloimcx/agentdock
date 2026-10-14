@@ -13,7 +13,8 @@
     "cron": "Cron",
     "automations": "自動化",
     "bridge": "ブリッジ",
-    "system": "システム"
+    "system": "システム",
+    "butler": "執事"
   },
   "dashboard": {
     "title": "ダッシュボード",
@@ -232,7 +233,6 @@
     "download": "Download file",
     "exitCode": "Exit status",
     "truncated": "Showing the first 100 entries.",
-
     "title": "AgentDock Mesh",
     "description": "Connect your devices and use their files and tools from one place.",
     "pair": "Pair a device",
@@ -287,5 +287,51 @@
     "confirm": "配信済みと確認",
     "retry": "配信を再試行",
     "cancel": "配信を取消"
+  },
+  "butler": {
+    "title": "執事",
+    "description": "執事は Lark ボットです。管理対象のボットに作業を依頼し、その返信と進捗を追跡します。",
+    "refresh": "更新",
+    "talkTitle": "執事に相談",
+    "talkHint": "Lark で執事ボットに目標を伝えてください。選んだボットへ連絡し、進捗をまとめて返します。",
+    "openChat": "会話を開く",
+    "example": "例：調査ボットに競合を3つ比較してもらい、その結果を開発ボットに渡して試作品を作る。",
+    "setupTitle": "執事を設定",
+    "setupHint": "1つの Lark ボットを執事に選び、連絡可能なボットを指定します。各ボットは自身のワークスペースに設定された権限を使用します。",
+    "setup": "執事を設定",
+    "progress": "タスクの進捗",
+    "progressHint": "ボットから返信が届くと進捗が更新されます。判断や許可が必要な場合は、該当ボットの実行会話を開いてください。",
+    "empty": "Lark で執事ボットに最初の目標を伝えると、ここに進捗が表示されます。",
+    "updatedAt": "更新日時",
+    "openAgent": "ボットの実行会話を開く",
+    "handleDecision": "判断する",
+    "approvalHint": "判断が必要です。エージェントの会話で詳細を確認してください。",
+    "followup": "指示を追加",
+    "followupPlaceholder": "この管理対象ボットへの追加要件や修正…",
+    "followupQueued": "{{count}} 件の指示が次のターンを待っています。",
+    "cancel": "目標をキャンセル",
+    "cancelling": "キャンセルを要求しました。実行中の作業が止まるのを待っています。",
+    "reviewHint": "エージェントの実行が終了しました。結果を確認してから目標を承認してください。",
+    "acceptanceSummary": "確認した結果を記入…",
+    "accept": "結果を承認",
+    "status": {
+      "queued": "待機中",
+      "running": "実行中",
+      "waiting_for_user": "判断待ち",
+      "reviewing": "確認待ち",
+      "completed": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル済み",
+      "sending": "送信中",
+      "waiting_for_bot": "ボットの返信待ち"
+    },
+    "changeBots": "ボットを管理",
+    "managerBot": "執事ボット",
+    "chooseManagerBot": "執事にする Lark ボットを選択",
+    "managedBots": "執事が管理するボット",
+    "sharedChatId": "共有グループチャット ID",
+    "sharedChatHint": "各管理対象ボットの共有グループ ID（oc_…）を入力してください。執事と対象ボットの両方が参加するグループが必要で、1つのグループに複数の対象ボットを追加できます。各アプリでボット発信グループイベント（im:message.group_at_msg / include_bot）を有効にしてください。",
+    "needBots": "まず Lark ボットを2つ以上接続してください。1つは執事、もう1つは管理対象です。",
+    "disconnected": "未接続"
   }
 }

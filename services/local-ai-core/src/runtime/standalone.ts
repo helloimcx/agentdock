@@ -13,6 +13,7 @@ async function main() {
     controller,
     channelService: controller.channelService,
     externalService: controller.externalService,
+    butler: controller.butler,
     workspaceRouter: controller.workspaceRouter,
     knowledgeProvider: controller.knowledgeProvider,
     scheduledJobs: controller.scheduledJobs,

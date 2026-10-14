@@ -399,6 +399,23 @@ export interface ChannelOutboundMessageInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface ChannelBotMessageInput {
+  instanceId: string;
+  channelId: string;
+  recipientBotOpenId: string;
+  recipientBotName: string;
+  text: string;
+}
+
+export interface ChannelBotMessageResult {
+  platform: string;
+  workspaceId: string;
+  instanceId: string;
+  channelId: string;
+  messageId: string;
+  deliveryAcknowledgement: 'confirmed' | 'unknown';
+}
+
 export type ChannelContentPartType = ChannelInboundContentPart['type'] | ChannelOutboundMessagePart['type'];
 
 export function normalizeChannelContentPartType(value: unknown): ChannelContentPartType {
@@ -735,6 +752,8 @@ export interface LocalCoreChannelGatewayStatus {
   connected: boolean;
   status: 'disabled' | 'stopped' | 'starting' | 'running' | 'error';
   appId?: string;
+  /** Lark app bot identity used for explicit bot-to-bot routing. */
+  botOpenId?: string;
   lastError?: string;
   lastErrorInfo?: LocalCoreErrorInfo;
   lastErrorAt?: string;

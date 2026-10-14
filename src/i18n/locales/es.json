@@ -13,7 +13,8 @@
     "cron": "Cron",
     "automations": "Automatizaciones",
     "bridge": "Puente",
-    "system": "Sistema"
+    "system": "Sistema",
+    "butler": "Mayordomo"
   },
   "dashboard": {
     "title": "Panel",
@@ -232,7 +233,6 @@
     "download": "Download file",
     "exitCode": "Exit status",
     "truncated": "Showing the first 100 entries.",
-
     "title": "AgentDock Mesh",
     "description": "Connect your devices and use their files and tools from one place.",
     "pair": "Pair a device",
@@ -287,5 +287,51 @@
     "confirm": "Confirmar entrega",
     "retry": "Reintentar entrega",
     "cancel": "Cancelar entrega"
+  },
+  "butler": {
+    "title": "Mayordomo",
+    "description": "El mayordomo es un bot de Lark que delega tareas en los bots que administra y sigue sus respuestas.",
+    "refresh": "Actualizar",
+    "talkTitle": "Habla con tu mayordomo",
+    "talkHint": "Cuéntale tu objetivo al bot mayordomo en Lark. Contactará con los bots elegidos y te devolverá el progreso.",
+    "openChat": "Abrir conversación",
+    "example": "Ejemplo: pide al bot de investigación que compare tres competidores y al de desarrollo que cree un prototipo con los resultados.",
+    "setupTitle": "Configura tu mayordomo",
+    "setupHint": "Elige un bot de Lark como mayordomo y selecciona los bots a los que puede escribir. Cada bot conserva los permisos de su propio espacio de trabajo.",
+    "setup": "Configurar mayordomo",
+    "progress": "Progreso de tareas",
+    "progressHint": "El progreso se actualiza cuando responden los bots. Abre la conversación de ejecución del bot correspondiente si necesita una decisión o permiso.",
+    "empty": "Indica el primer objetivo al bot mayordomo en Lark para ver aquí el progreso.",
+    "updatedAt": "Actualizado",
+    "openAgent": "Abrir conversación de ejecución del bot",
+    "handleDecision": "Resolver decisión",
+    "approvalHint": "Se necesita tu decisión. Abre la conversación del agente para revisar los detalles.",
+    "followup": "Añadir instrucciones",
+    "followupPlaceholder": "Añade un requisito o corrección para este bot administrado…",
+    "followupQueued": "{{count}} instrucción(es) en cola para el siguiente turno.",
+    "cancel": "Cancelar objetivo",
+    "cancelling": "Se solicitó cancelar. Esperando a que se detenga el trabajo activo.",
+    "reviewHint": "Los agentes han terminado. Revisa los resultados antes de aceptar el objetivo.",
+    "acceptanceSummary": "Describe el resultado que has verificado…",
+    "accept": "Aceptar resultado",
+    "status": {
+      "queued": "En cola",
+      "running": "En curso",
+      "waiting_for_user": "Esperando tu decisión",
+      "reviewing": "Pendiente de revisión",
+      "completed": "Completado",
+      "failed": "Fallido",
+      "cancelled": "Cancelado",
+      "sending": "Enviando",
+      "waiting_for_bot": "Esperando respuesta del bot"
+    },
+    "changeBots": "Gestionar bots",
+    "managerBot": "Bot mayordomo",
+    "chooseManagerBot": "Elige un bot de Lark como mayordomo",
+    "managedBots": "Bots administrados",
+    "sharedChatId": "ID del grupo compartido",
+    "sharedChatHint": "Introduce un ID de grupo compartido (oc_…) para cada bot administrado. El mayordomo y ese bot deben estar en el grupo; un grupo puede incluir varios bots administrados. Activa los eventos de grupo enviados por bots en cada app (im:message.group_at_msg / include_bot).",
+    "needBots": "Conecta al menos dos bots de Lark: uno como mayordomo y otro como bot administrado.",
+    "disconnected": "Desconectado"
   }
 }

@@ -64,6 +64,8 @@ import { registerStandardsHandlers } from './handlers/standards-handler.js';
 import { WorkspaceMemoryService } from '../memory/workspace-memory-service.js';
 import { registerMemoryHandlers } from './handlers/memory-handler.js';
 import { registerFilesystemHandlers } from './handlers/fs-handler.js';
+import { registerButlerHandlers } from './handlers/butler-handler.js';
+import { ButlerError, type ButlerService } from '../butler/butler-service.js';
 
 import {
   registerOpenAiHandler,
@@ -91,6 +93,7 @@ export interface LocalAiCoreServerBindings {
   };
   readonly channelService: ChannelService;
   readonly externalService: ExternalService;
+  readonly butler?: ButlerService;
   readonly workspaceRouter: WorkspaceRouter;
   readonly knowledgeProvider: KnowledgeRuntime;
   readonly scheduledJobs: ScheduledJobApplicationService;
@@ -196,6 +199,7 @@ export class LocalAiCoreServer {
     registerWorkspaceHandlers(this.handlers, b.workspaceRouter);
     registerSecurityHandlers(this.handlers, b.workspaceRouter);
     registerTaskHandlers(this.handlers, b.workspaceRouter);
+    registerOptionalButlerHandlers(this.handlers, b.butler);
     registerSchedulerHandlers(this.handlers, b.scheduledJobs);
     registerAutomationHandlers(this.handlers, b.automationMonitors, b.decisionLogService);
     if (b.automations) {
@@ -347,7 +351,9 @@ export class LocalAiCoreServer {
       }
       jsonError(res, 404, new Error(`Unknown route: ${path}`));
     } catch (error) {
-      jsonError(res, error instanceof SubmissionConflictError ? 409 : error instanceof RequestValidationError ? 400 : 500, error);
+      const status = error instanceof ButlerError ? error.status
+        : error instanceof SubmissionConflictError ? 409 : error instanceof RequestValidationError ? 400 : 500;
+      jsonError(res, status, error);
     }
   }
 
@@ -486,4 +492,8 @@ export class LocalAiCoreServer {
     }
     return `${encodeURIComponent(parts[1] || '')}::${encodeURIComponent(parts[2] || '')}`;
   }
+}
+
+function registerOptionalButlerHandlers(handlers: Map<string, RouteHandler>, butler?: ButlerService) {
+  if (butler) registerButlerHandlers(handlers, butler);
 }

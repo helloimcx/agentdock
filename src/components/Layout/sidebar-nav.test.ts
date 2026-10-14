@@ -12,6 +12,7 @@ const HIDDEN_NAV_IDS = new Set(['projects', 'sessions']);
 const REQUIRED_VISIBLE_NAV_IDS = [
   'dashboard',
   'chat',
+  'butler',
   'workspace',
   'providers',
   'costs',

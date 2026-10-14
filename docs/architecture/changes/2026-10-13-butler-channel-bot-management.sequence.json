@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "管家与受管 Channel Bot 的消息闭环",
+    "output": "docs/architecture/changes/2026-10-13-butler-channel-bot-management.html",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [980, 1060],
+    "views": [
+      { "id": "admit-command", "label": "接收命令", "focus": ["user", "butlerBot", "core", "store"], "note": "管家身份由具体 channel bot 实例确定。" },
+      { "id": "deliver-to-bot", "label": "投递给目标 bot", "focus": ["core", "registry", "channel", "managedBot"], "note": "目标是 bot 身份；群聊或私聊仅提供平台投递上下文。" },
+      { "id": "track-reply", "label": "跟踪回复", "focus": ["managedBot", "channel", "butlerBot", "core", "store", "user"], "note": "回复必须验证发送 bot 并关联到原委托。" }
+    ]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "命令 / 跟进 / 验收" },
+    { "id": "butlerBot", "type": "external", "label": "管家 Bot", "sublabel": "具体 channel 实例" },
+    { "id": "core", "type": "backend", "label": "Local AI Core", "sublabel": "校验、投递、跟踪" },
+    { "id": "store", "type": "database", "label": "管家状态库", "sublabel": "bot 引用、委托、回执" },
+    { "id": "registry", "type": "backend", "label": "Bot 注册表", "sublabel": "bot 身份 + 投递地址" },
+    { "id": "channel", "type": "cloud", "label": "Channel 平台", "sublabel": "原生寻址 / 消息事件" },
+    { "id": "managedBot", "type": "external", "label": "受管 Bot", "sublabel": "平台 / 工作区 / 实例" }
+  ],
+  "segments": [
+    { "from": 150, "to": 300, "label": "接入命令并持久化" },
+    { "from": 320, "to": 650, "label": "按 Bot 身份投递" },
+    { "from": 670, "to": 1000, "label": "验证回复并持续跟踪" }
+  ],
+  "messages": [
+    { "from": "user", "to": "butlerBot", "y": 180, "label": "发送任务命令", "variant": "emphasis" },
+    { "from": "butlerBot", "to": "core", "y": 222, "label": "带管家 bot 身份的入站事件" },
+    { "from": "core", "to": "store", "y": 264, "label": "持久化任务与目标 bot 引用", "variant": "emphasis" },
+    { "from": "core", "to": "registry", "y": 350, "label": "解析受管 bot 与可用投递上下文" },
+    { "from": "registry", "to": "core", "y": 392, "label": "bot 身份 + 会话地址", "variant": "return", "note": "会话地址是传输信息，不是管理对象。" },
+    { "from": "core", "to": "channel", "y": 434, "label": "以管家 bot 身份向目标 bot 投递", "variant": "emphasis" },
+    { "from": "channel", "to": "managedBot", "y": 476, "label": "平台原生点名 / 寻址任务" },
+    { "from": "managedBot", "to": "channel", "y": 560, "label": "带委托关联信息的进展或结果", "variant": "return" },
+    { "from": "channel", "to": "butlerBot", "y": 602, "label": "目标 bot 的入站回复事件" },
+    { "from": "butlerBot", "to": "core", "y": 644, "label": "回传发送者身份、上下文与消息" },
+    { "from": "core", "to": "store", "y": 686, "label": "校验目标 bot 并关联原委托", "variant": "emphasis" },
+    { "from": "store", "to": "core", "y": 728, "label": "最新持久状态", "variant": "return" },
+    { "from": "core", "to": "butlerBot", "y": 812, "label": "进度、阻塞或待验收通知" },
+    { "from": "butlerBot", "to": "user", "y": 854, "label": "持续更新与最终结果", "variant": "return" },
+    { "from": "user", "to": "butlerBot", "y": 938, "label": "跟进 / 取消 / 验收" }
+  ],
+  "activations": [
+    { "participant": "butlerBot", "from": 172, "to": 886, "type": "external" },
+    { "participant": "core", "from": 214, "to": 812, "type": "backend" },
+    { "participant": "store", "from": 256, "to": 744, "type": "database" },
+    { "participant": "registry", "from": 344, "to": 404, "type": "backend" },
+    { "participant": "channel", "from": 428, "to": 610, "type": "cloud" },
+    { "participant": "managedBot", "from": 470, "to": 568, "type": "external" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "身份与地址分离", "items": ["委托对象是 bot 实例身份，而非 workspace、私聊或群聊", "bot 可以配置多个投递上下文，同一群里可以有多个独立 bot"] },
+    { "dot": "orange", "title": "消息闭环", "items": ["只接受来自已配置目标 bot 的回复", "持久化投递与回复关联，重启后继续跟踪", "不支持原生 bot 寻址的 channel 不伪装成成功投递"] }
+  ]
+}

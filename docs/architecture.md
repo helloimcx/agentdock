@@ -2,10 +2,10 @@
 
 This document is the provider-neutral source of truth for AgentDock's system architecture, process boundaries, communication protocols, and data ownership.
 
-For visual diagrams and the interactive L1-L3 Architecture Matrix, see [docs/architecture/overview.md](docs/architecture/overview.md).
-For the architecture maintenance policy, see [docs/architecture/maintenance.md](docs/architecture/maintenance.md).
-For diagram provider settings, see [docs/architecture/diagram-provider.yaml](docs/architecture/diagram-provider.yaml).
-For semantic architecture change history, see [docs/architecture/changes/](docs/architecture/changes/).
+For visual diagrams and the interactive L1-L3 Architecture Matrix, see [architecture overview](architecture/overview.md).
+For the architecture maintenance policy, see [architecture maintenance policy](architecture/maintenance.md).
+For diagram provider settings, see [diagram provider settings](architecture/diagram-provider.yaml).
+For semantic architecture change history, see [architecture change history](architecture/changes/).
 
 ---
 
@@ -17,6 +17,7 @@ Key capabilities:
 - Multi-agent runtime orchestration via Agent Client Protocol (ACP)
 - Secure isolation via Docker / OpenSandbox container runtimes
 - Channel gateways bridging team messaging to agent sessions
+- Butler bot coordination across explicitly configured channel bots
 - Background cron scheduling and automation monitors
 - Local knowledge base indexing and retrieval
 
@@ -45,6 +46,7 @@ Key capabilities:
 │  - Port 9831 (HTTP server & WebSocket event bus)       │
 │  - Workspace router & thread management                │
 │  - ACP session coordinator & agent process spawner     │
+│  - Butler Bot roster, message delegation & follow-up   │
 │  - Cron scheduler & automation triggers                │
 │  - Channel gateways: Lark, WeChat                      │
 │  - SQLite local storage & knowledge index              │
@@ -73,6 +75,7 @@ Key capabilities:
    - `/api/local/v1/standards/*`: Standard packs catalog, AST security scanning, and installation
    - `/api/local/v1/workspaces/:workspaceId/standards/*`: Workspace standards configuration, materialization, and tech stack detection
    - `/api/local/v1/external/*`: External programmatic integration and per-run SSE streaming
+   - `/api/local/v1/butler/*`: Lark bot discovery, manager/managed bot profile, and owner-scoped delegation, follow-up, cancellation, and acceptance
 4. **Channel Gateway Webhooks**: Inbound poller and webhooks for enterprise messaging channels (Lark, WeChat Work).
 5. **ACP Inbound Bridge**: `lac acp serve --workspace <id>` (`services/local-ai-core/src/cli/acp-cli-handlers.ts`, `services/local-ai-core/src/acp/server/`). An optional local consumer process spawned by ACP clients (e.g. the Zed editor); speaks the Agent Client Protocol agent-side over stdio and drives workspace agents through the existing Local AI Core HTTP+SSE surface (`/threads`, `/threads/:id/messages`, `/runs/:id/interrupt`, `/events`). ACP sessions map to threads in the bound workspace; the daemon itself gains no new route or trust boundary.
 6. **Remote Workspace LAC Control**: Remote Mesh workspace launches include a host-side stdio MCP server and a restricted `lac` Shell compatibility route. Both reuse the Local AI Core CLI handlers through one allowlisted dispatcher with launch workspace/thread context. Ordinary Shell commands continue to use the Mesh node. The MCP exposes read queries; the standalone CLI route supports the allowed no-file memory/scheduler/monitor/automation operations.
@@ -87,10 +90,11 @@ Key capabilities:
 | **Renderer UI** | `src/` | Single-page application rendering threads, workspaces, automations, and settings using React 19, Zustand stores, and TailwindCSS. | `src/pages/`, `src/store/`, `src/components/` |
 | **Local Core Kernel** | `services/local-ai-core/src/kernel/` | Core lifecycle, error domains, configuration management, SQLite database migrations, and telemetry. | `services/local-ai-core/src/kernel/` |
 | **Workspace Router** | `services/local-ai-core/src/router/` | Resolves target workspace, model provider, and channel bindings for incoming requests. | `services/local-ai-core/src/router/workspace-router.ts` |
+| **Butler Orchestration** | `services/local-ai-core/src/butler/`, `services/local-ai-core/src/acp/store/butler-store.ts` | Manages concrete Lark bot identities, sends typed bot-to-bot group messages through ChannelService, starts target workspace threads on verified callbacks, and persists task, operation, reply-deduplication and acceptance state. | `butler/butler-service.ts`, `butler/butler-dispatcher.ts`, `runtime/channel-service.ts`, `acp/store/butler-store.ts` |
 | **ACP and Durable Runtime** | `services/local-ai-core/src/acp/`, `services/local-ai-core/src/agents/pi-durable/` | Core admits thread submissions and routes ordinary agents through ACP. The opt-in Pi Durable path uses one ESM worker/Harness per Core data directory; Core owns approval-gated workspace text writes and the filesystem side effect. | `acp/thread-submission-dispatcher.ts`, `acp/local-core-acp-backend.ts`, `agents/pi-durable/host.ts`, `agents/pi-durable/worker.mts` |
 | **ACP Inbound Bridge** | `services/local-ai-core/src/acp/server/` | Optional stdio consumer that exposes workspace agents to external ACP clients (agent-side protocol), translating ACP sessions/prompts onto existing core routes and `stream.updated` bridge events. | `services/local-ai-core/src/acp/server/acp-stdio-server.ts`, `services/local-ai-core/src/cli/acp-cli-handlers.ts` |
 | **Remote LAC Control** | `services/local-ai-core/src/execution/remote-mesh/` | Routes allowlisted standalone `lac` commands and structured read-only MCP queries to host CLI handlers for remote-workspace agents; preserves device execution for ordinary Shell commands. | `lac-control.ts`, `lac-control-mcp-server.ts`, `agentdock-mesh-shell.ts` |
-| **Channel Gateways** | `services/local-ai-core/src/channel/` | Inbound message polling, signature verification, message normalization, and outbound card rendering for Lark and WeChat. | `services/local-ai-core/src/channel/` |
+| **Channel Gateways** | `services/local-ai-core/src/channel/` | Inbound message polling, signature verification, sender normalization, and outbound card/text delivery for Lark and WeChat; Lark also routes explicitly mentioned bot-authored group messages to the configured bot runtime. | `services/local-ai-core/src/channel/` |
 | **Scheduler** | `services/local-ai-core/src/scheduler/` | Parses cron expressions, triggers scheduled runs, and delivers results to target threads/channels. | `services/local-ai-core/src/scheduler/` |
 | **Sandbox Manager**| `services/local-ai-core/src/sandbox/` | Spawns and manages Docker or OpenSandbox containers for isolated code execution. | `services/local-ai-core/src/sandbox/` |
 | **Shared Contracts**| `shared/`, `packages/superai-contracts/` | Cross-process type definitions, shared enums, and API interfaces. | `shared/desktop.ts`, `packages/superai-contracts/` |
@@ -110,6 +114,7 @@ Key capabilities:
    - UI to Local AI Core: HTTP REST + WebSocket (`ws://127.0.0.1:9831/api/local/v1/events`).
    - Local AI Core to Agents: ACP (Agent Client Protocol) over stdio or HTTP NDJSON bridge.
    - Remote-workspace LAC access: a dedicated stdio MCP server and the transparent Shell proxy call the host LAC dispatcher; dispatcher requests use the host-configured Local AI Core API URL and launch context. Ordinary remote Shell traffic uses `POST /api/local/v1/mesh/shell/execute` with a signed, expiring node-scoped token.
+   - Butler bot to bot: Lark native group text messages with an explicit `<at user_id="ou_…">` mention; inbound bot-authored group events carry the receiving runtime and sender bot identities back to Core.
    - Local AI Core to Pi Durable: a private JSON-lines protocol over worker stdio; the worker exclusively owns the Pi SQLite database. Correlated write requests return through this protocol to Core's per-write approval and filesystem commit path.
    - External Systems to Local AI Core: HTTP REST + Server-Sent Events (SSE).
 
@@ -117,7 +122,7 @@ Key capabilities:
 
 ## 5. Data Ownership & Storage
 
-- **Core SQLite (`runtime/local-core.db`)**: Owns workspaces, thread histories, transactional submissions, permission lifecycle, run results, runtime snapshot revisions/partials, delivery outbox attempts, and scheduler/channel state.
+- **Core SQLite (`runtime/local-core.db`)**: Owns workspaces, thread histories, transactional submissions, permission lifecycle, run results, runtime snapshot revisions/partials, delivery outbox attempts, scheduler/channel state, and Butler task, delegation, operation, callback-deduplication and acceptance records.
 - **Pi Durable SQLite (`runtime/pi-durable.sqlite`)**: Optional and separate, one global database per Core user-data directory. One ESM worker owns one Harness and multiplexes independent thread Conversations. Core submissions remain the business identity and stable upstream request keys reconcile both stores. A kernel-held local socket lock rejects a second owner. Node executor capability (upstream engine requirement plus `node:sqlite`) is checked before worker startup. The worker requests each workspace text write through a private correlated approval protocol; Core persists/audits the approval, verifies path and file baseline, and performs the atomic filesystem update. Pending write approvals expire on restart and tool side effects are never replayed automatically. Delete, shell, MCP, and sandbox tools remain unavailable.
 - **Runtime snapshots**: Core exposes an atomic REST baseline and versioned SSE watch. Reconnect subscribes before reading the baseline and uses bounded buffering. Partial assistant text is coalesced, and stale ACP approvals expire on process recovery.
 - **Delivery outbox**: Core stores final report content and immutable destinations separately from Agent execution. A channel send is delivered only after a confirmed platform acknowledgement; ambiguous results remain unknown until an audited operator decision.
@@ -130,14 +135,15 @@ Key capabilities:
 
 The L1-L3 Architecture Matrix is defined in typed JSON specifications validated via `pnpm lint:arch` with Archify:
 
-- **L1 System Architecture**: [docs/architecture/system-architecture.json](docs/architecture/system-architecture.json)
-- **L2 ACP Session Flow (Sequence)**: [docs/architecture/acp-session-flow.sequence.json](docs/architecture/acp-session-flow.sequence.json)
-- **L2 Scheduled Delivery (Workflow)**: [docs/architecture/scheduled-delivery-workflow.json](docs/architecture/scheduled-delivery-workflow.json)
-- **L2 Skill Router (Workflow)**: [docs/architecture/skill-router.workflow.json](docs/architecture/skill-router.workflow.json)
-- **L2 Remote Workspace LAC Control (Workflow)**: [docs/architecture/remote-lac-control.workflow.json](docs/architecture/remote-lac-control.workflow.json)
-- **L3 Agent Run Lifecycle (State Machine)**: [docs/architecture/agent-run.lifecycle.json](docs/architecture/agent-run.lifecycle.json)
+- **L1 System Architecture**: [system architecture spec](architecture/system-architecture.json)
+- **L2 ACP Session Flow (Sequence)**: [ACP session flow](architecture/acp-session-flow.sequence.json)
+- **L2 Scheduled Delivery (Workflow)**: [scheduled delivery workflow](architecture/scheduled-delivery-workflow.json)
+- **L2 Skill Router (Workflow)**: [skill router workflow](architecture/skill-router.workflow.json)
+- **L2 Butler Orchestration (Workflow)**: [Butler orchestration workflow](architecture/butler-orchestration.workflow.json)
+- **L2 Remote Workspace LAC Control (Workflow)**: [remote LAC control workflow](architecture/remote-lac-control.workflow.json)
+- **L3 Agent Run Lifecycle (State Machine)**: [agent run lifecycle](architecture/agent-run.lifecycle.json)
 
-For navigation across specs, dual-theme images, and interactive HTML canvases, visit [docs/architecture/overview.md](docs/architecture/overview.md).
+For navigation across specs, dual-theme images, and interactive HTML canvases, visit [architecture overview](architecture/overview.md).
 
 ## AgentDock Mesh Device Plane
 

@@ -10,6 +10,7 @@ Phase 0 establishes where core product state belongs so renderer, Electron, Loca
 | Runtime installation intent | Local AI Core | Reserved contract shape | Display action state when implemented | No installer ownership |
 | Workspace registry | Local AI Core | `packages/contracts` | List, select, edit via APIs | No workspace ownership |
 | Task lifecycle | Local AI Core | `packages/contracts` | Display and request actions | No task ownership |
+| Butler goal and delegation lifecycle | Local AI Core SQLite | `packages/contracts/src/butler.ts` | Display progress, queue follow-ups, request cancellation and acceptance | No orchestration ownership |
 | Run lifecycle | Local AI Core | `packages/contracts` | Display run status and request interrupts | No run ownership |
 | Thread messages | Local AI Core | `packages/contracts` | Display and send messages | No routing ownership |
 | Permission requests | Local AI Core | `packages/contracts` | Render pending request and submit chosen outcome | No permission ownership |
@@ -43,4 +44,4 @@ Phase 0 establishes where core product state belongs so renderer, Electron, Loca
 
 ## Current Baseline
 
-Runtime detection, workspace registry, task records, and Mesh device identities/request history are Local AI Core-owned. Mesh tool requests are distinct from agent tasks and ACP runs; [Mesh](mesh.md) describes their lifecycle and trust boundaries.
+Runtime detection, workspace registry, task records, Butler goals/delegations, and Mesh device identities/request history are Local AI Core-owned. Butler goal IDs, delegation IDs, child thread IDs and ACP run IDs remain distinct; execution status comes from the existing submission and run stores, while acceptance belongs to the parent Butler goal. Mesh tool requests are distinct from agent tasks and ACP runs; [Mesh](mesh.md) describes their lifecycle and trust boundaries.

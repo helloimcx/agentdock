@@ -42,6 +42,7 @@ import type { ProbeCollector, WorkspaceRoute, WorkspaceRouterOptions, WorkspaceT
 import { isLocalCoreNativeAcpProject, normalizePlatformTypes, toLocalCoreProjectConfig } from './workspace-route-config.js';
 import { projectWorkspaceId } from '../runtime/workspace-project-registry.js';
 import { composeAgentMessage } from '../thread/agent-message-policy.js';
+import { composeButlerMessage } from '../thread/butler-message-policy.js';
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
@@ -77,6 +78,7 @@ export class WorkspaceRouter {
     deleteJob: (jobId: string) => Promise<void>;
   } | null = null;
   private meshGateway: any = null;
+  private isButlerThread: (threadId: string) => boolean = () => false;
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = options.store;
@@ -144,6 +146,10 @@ export class WorkspaceRouter {
 
   setMeshGateway(gateway: any) {
     this.meshGateway = gateway;
+  }
+
+  setButlerThreadPredicate(predicate: (threadId: string) => boolean) {
+    this.isButlerThread = predicate;
   }
 
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
@@ -433,13 +439,16 @@ export class WorkspaceRouter {
     const pendingHandoff = this.store.sessionHandoffs.getPendingHandoff(threadId);
     // Honor workspace > user > builtin skill precedence so workspace-scoped
     // overrides of condition-trigger / stock-monitor are the ones injected.
-    const wrapped = composeAgentMessage(
+    const composed = composeAgentMessage(
       displayText,
       knowledgeBases,
       new ManagedSkillCatalog({ workspacePath }),
       undefined,
       pendingHandoff,
     );
+    const wrapped = this.isButlerThread(threadId)
+      ? composeButlerMessage(composed, new ManagedSkillCatalog({ workspacePath }).get('butler')?.content || '')
+      : composed;
     if (pendingHandoff) {
 
       this.store.sessionHandoffs.markHandoffConsumed(pendingHandoff.id);

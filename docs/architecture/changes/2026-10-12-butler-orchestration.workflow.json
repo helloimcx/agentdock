@@ -1,0 +1,30 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": { "title": "管家跨工作区委托", "locale": "zh-CN", "quality_profile": "showcase" },
+  "lanes": [
+    { "id": "conversation", "label": "用户与管家" },
+    { "id": "coordination", "label": "Core 持久协调" },
+    { "id": "execution", "label": "工作区执行" }
+  ],
+  "mainPath": ["request", "butler", "goals", "dispatch", "agent", "facts", "review", "report"],
+  "nodes": [
+    { "id": "request", "lane": "conversation", "col": 0, "type": "external", "label": "用户委托", "sublabel": "目标与完成条件" },
+    { "id": "butler", "lane": "conversation", "col": 1, "type": "backend", "label": "管家会话", "sublabel": "分工与补充要求" },
+    { "id": "goals", "lane": "coordination", "col": 1, "type": "database", "label": "持久任务", "sublabel": "归属、依赖、执行关联" },
+    { "id": "dispatch", "lane": "coordination", "col": 2, "type": "backend", "label": "委托调度", "sublabel": "跨区并行、同区排队" },
+    { "id": "agent", "lane": "execution", "col": 3, "type": "backend", "label": "工作区 Agent", "sublabel": "沿用模型、技能与权限" },
+    { "id": "facts", "lane": "coordination", "col": 3, "type": "database", "label": "执行事实", "sublabel": "精确运行与审批状态" },
+    { "id": "review", "lane": "conversation", "col": 4, "type": "backend", "label": "管家跟进", "sublabel": "归并通知与结果验收" },
+    { "id": "report", "lane": "conversation", "col": 5, "type": "frontend", "label": "统一交付", "sublabel": "成果或待用户决策" }
+  ],
+  "edges": [
+    { "id": "accept", "from": "request", "to": "butler", "label": "命令" },
+    { "id": "admit", "from": "butler", "to": "goals", "label": "CLI 幂等入库" },
+    { "id": "schedule", "from": "goals", "to": "dispatch", "label": "依赖满足" },
+    { "id": "execute", "from": "dispatch", "to": "agent", "label": "WorkspaceRouter" },
+    { "id": "observe", "from": "agent", "to": "facts", "label": "提交与运行快照" },
+    { "id": "notify", "from": "facts", "to": "review", "label": "持久通知唤醒" },
+    { "id": "deliver", "from": "review", "to": "report", "label": "验收后汇报" }
+  ]
+}

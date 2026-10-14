@@ -14,3 +14,4 @@ export * as standards from './standards.js';
 export * as memory from './memory.js';
 export * as mesh from './mesh.js';
 export type { DirectoryListingResult } from './runtime.js';
+export * as butler from './butler.js';

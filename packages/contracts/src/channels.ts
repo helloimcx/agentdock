@@ -1,6 +1,8 @@
 export type {
   ChannelFileSendInput,
   ChannelFileSendResult,
+  ChannelBotMessageInput,
+  ChannelBotMessageResult,
   ChannelInboundContentPart,
   ChannelInboundMessageContent,
   ChannelOutboundMessageInput,

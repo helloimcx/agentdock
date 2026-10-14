@@ -27,6 +27,7 @@ import { ChannelService } from './channel-service.js';
 import { ExternalService } from './external-service.js';
 import { runDeploymentDiagnostics } from './deployment-diagnostics.js';
 import { normalizeWorkspaceIds, syncWorkspaceRegistry } from './workspace-project-registry.js';
+import { ButlerService } from '../butler/butler-service.js';
 
 export class LocalCoreController extends EventEmitter {
   readonly store: LocalCoreAcpStore;
@@ -34,6 +35,7 @@ export class LocalCoreController extends EventEmitter {
   readonly knowledgeProvider: KnowledgeRuntime;
   readonly channelService: ChannelService;
   readonly externalService: ExternalService;
+  readonly butler?: ButlerService;
   readonly scheduledJobs: ScheduledJobApplicationService;
   readonly automationMonitors: AutomationMonitorService;
   readonly automations: AutomationService;
@@ -71,10 +73,18 @@ export class LocalCoreController extends EventEmitter {
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
     const runtimeChannels = this.runtime.channelRuntimes || [this.runtime.channelRuntime, this.runtime.weixinChannelRuntime];
-    const channelRuntimes = new Map(
-      runtimeChannels.filter(Boolean).map((ch) => [ch.platform, ch]),
-    );
+    const channelRuntimes = new Map(runtimeChannels.filter(Boolean).map((ch) => [ch.platform, ch]));
     this.channelService = new ChannelService(channelRuntimes);
+    if (this.store.butler) {
+      this.butler = new ButlerService(this.store, this.workspaceRouter, {
+        channels: this.channelService,
+        onError: (error) => this.handleLog(`Butler coordination: ${String(error)}`),
+      });
+      this.workspaceRouter.setButlerThreadPredicate?.((threadId) => this.butler!.isButlerThread(threadId));
+      this.busUnsubscribers.push(this.kernel.context.bus.on('channel.bot-message.received', (message) => {
+        void this.butler?.receiveBotMessage(message).catch((error) => this.handleLog(`Butler bot message: ${String(error)}`));
+      }));
+    }
     this.externalService = new ExternalService(
       this.store,
       this.workspaceRouter,
@@ -115,6 +125,11 @@ export class LocalCoreController extends EventEmitter {
       emit: (event) => this.handleRuntimeDetectionEvent(event),
     });
     this.flushPendingLogs();
+    const reconcileButler = () => {
+      void this.butler?.reconcile().catch((error) => this.handleLog(`Butler coordination: ${String(error)}`));
+    };
+    this.on('bridge', reconcileButler);
+    this.on('agent-run', reconcileButler);
     this.busUnsubscribers.push(
       this.kernel.context.bus.on('platform.bridge.updated', (event) => {
         this.emit('bridge', event);
@@ -181,6 +196,7 @@ export class LocalCoreController extends EventEmitter {
     // Without this, channels only (re)connect when runtime_config is later re-saved,
     // so a fresh process boot silently leaves every channel disconnected.
     await this.channelService.refreshBindings();
+    this.butler?.start();
     await this.emitRuntime();
     setTimeout(() => {
       void this.runtimeDetection.refreshOnStartup();
@@ -188,6 +204,7 @@ export class LocalCoreController extends EventEmitter {
   }
 
   async close() {
+    await this.butler?.stop();
     for (const unsubscribe of this.busUnsubscribers) {
       unsubscribe();
     }

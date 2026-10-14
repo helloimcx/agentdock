@@ -16,7 +16,8 @@
     "monitors": "Monitors",
     "automations": "Automations",
     "bridge": "Bridge",
-    "system": "System"
+    "system": "System",
+    "butler": "Butler"
   },
   "costs": {
     "title": "Cost & Budgets Governance",
@@ -272,7 +273,6 @@
     "download": "Download file",
     "exitCode": "Exit status",
     "truncated": "Showing the first 100 entries.",
-
     "title": "AgentDock Mesh",
     "description": "Connect your devices and use their files and tools from one place.",
     "pair": "Pair a device",
@@ -327,5 +327,51 @@
     "confirm": "Confirm delivered",
     "retry": "Retry delivery",
     "cancel": "Cancel delivery"
+  },
+  "butler": {
+    "title": "Butler",
+    "description": "The Butler is a Lark bot that delegates work to the bots it manages and tracks their replies.",
+    "refresh": "Refresh",
+    "talkTitle": "Talk to your butler",
+    "talkHint": "Tell the Butler bot what you need in Lark. It will message selected bots and bring their progress back to you.",
+    "openChat": "Open conversation",
+    "example": "Example: Ask the research bot to compare three competitors, then ask the development bot to build a prototype from the findings.",
+    "setupTitle": "Set up your butler",
+    "setupHint": "Choose one Lark bot as the Butler, then select the bots it can message. Each bot keeps the permissions configured in its own workspace.",
+    "setup": "Set up butler",
+    "progress": "Task progress",
+    "progressHint": "Progress updates as bots reply. Open the relevant bot’s execution conversation when a decision or permission is needed.",
+    "empty": "Give the Butler bot its first goal in Lark to see progress here.",
+    "updatedAt": "Updated",
+    "openAgent": "Open bot execution conversation",
+    "handleDecision": "Handle decision",
+    "approvalHint": "A decision is needed. Open the agent conversation to review it.",
+    "followup": "Add instructions",
+    "followupPlaceholder": "Add a requirement or correction for this managed bot…",
+    "followupQueued": "{{count}} instruction(s) queued for the next turn.",
+    "cancel": "Cancel goal",
+    "cancelling": "Cancellation requested. Waiting for active work to stop.",
+    "reviewHint": "The agents have finished. Review their results before accepting this goal.",
+    "acceptanceSummary": "Describe the result you verified…",
+    "accept": "Accept result",
+    "status": {
+      "queued": "Queued",
+      "running": "In progress",
+      "waiting_for_user": "Waiting for you",
+      "reviewing": "Ready for review",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "sending": "Sending",
+      "waiting_for_bot": "Waiting for bot"
+    },
+    "changeBots": "Manage bots",
+    "managerBot": "Butler bot",
+    "chooseManagerBot": "Choose a Lark bot to act as the Butler",
+    "managedBots": "Bots managed by the Butler",
+    "sharedChatId": "Shared group chat ID",
+    "sharedChatHint": "Enter a shared group chat ID (oc_…) for every managed bot. The Butler and that bot must both be in the group; one group can contain several managed bots. Enable bot-authored group events for each managed app (im:message.group_at_msg / include_bot).",
+    "needBots": "Connect at least two Lark bots first: one Butler and one managed bot.",
+    "disconnected": "Disconnected"
   }
 }

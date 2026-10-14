@@ -6,9 +6,9 @@
   "status": "pass",
   "visualReview": "pending",
   "artifact": {
-    "path": "/Users/momo/.codex/worktrees/remote-lac-routing/agentdock/docs/architecture/system-architecture.html",
-    "sha256": "f1645a1c82425517dc7fd674e7d34cd0b45c5ce88809f45680f396b7074fad71",
-    "bytes": 730044
+    "path": "/Users/momo/.codex/worktrees/butler-orchestration/agentdock/docs/architecture/system-architecture.html",
+    "sha256": "f15cf8dcf0c80404cc455c68f9ff61f7215f8ce293b287434d3dfbda24301523",
+    "bytes": 732546
   },
   "state": {
     "detail": "read",

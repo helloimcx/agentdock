@@ -13,7 +13,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## 系统架构
 
-AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 core 启动；React/Web 通过 Core SDK 访问 Local AI Core；Local AI Core 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Local AI Core 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。
+AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 core 启动；React/Web 通过 Core SDK 访问 Local AI Core；Local AI Core 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Local AI Core 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家本身是一个飞书 bot，可向配置的受管 bot 发消息并持续跟踪任务。
 
 <!-- project-setup:architecture-diagram:start -->
 ```mermaid
@@ -23,6 +23,10 @@ flowchart LR
   channels[Lark / Weixin] --> api
   external[External clients] --> api
   api --> kernel[Core kernel and workspace router]
+  api --> butler[Butler orchestration]
+  butler -->|Persist task, progress and acceptance| sqlite
+  butler -->|Bot-to-bot messages / callbacks| channels
+  butler -->|Target bot workspace; existing permissions| acp
   kernel --> sqlite[(SQLite)]
   kernel --> acp[ACP session runtime]
   kernel --> scheduler[Scheduler / Automation]
@@ -44,10 +48,11 @@ flowchart LR
   nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
-当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明 Core SQLite 与 Pi Durable 全局 SQLite 的边界。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
+当前架构提供交互式 [HTML 全景图](docs/architecture/system-architecture.html)、[管家 Bot 委托流程](docs/architecture/butler-orchestration.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明管家任务和 Agent run 的归属，以及 Core SQLite 与 Pi Durable 全局 SQLite 的边界。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
+管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
@@ -61,12 +66,18 @@ flowchart LR
 - [Scheduler 定时投递](docs/architecture/scheduled-delivery.md)
 - [Conditional Automation 条件自动化](docs/architecture/conditional-automation.md)
 - [Knowledge Runtime 知识库运行时](docs/architecture/knowledge-runtime.md)
+- [管家任务协调](docs/architecture/butler-orchestration.md)
 
 ## New
+
+### 2026-10-13
+
+- **管家管理 Channel Bot**：管家自身是具体的飞书机器人，可配置并联系多个受管 bot；通过 bot 间真实消息委派任务、持续跟踪回执，并支持跟进、取消与用户验收。
 
 ### 2026-10-12
 
 - **远程工作区访问 LAC 能力**：远程 Bash 中的独立 `lac ...` 命令由主机 Local AI Core 处理，普通设备命令继续在远程节点运行；另提供当前 workspace 的 memory、scheduler、monitor 和 automation MCP 查询工具。workspace/thread 上下文由 Core 绑定，Mesh 管理令牌不会进入 Agent 子进程；复合/管道形式的 LAC 调用和依赖远端文件的 LAC 操作暂不支持。
+- **管家任务协调基础**：新增持久任务、工作区 Agent 执行观察、进度通知与用户验收能力；当前目标已改为具体 Channel Bot 身份，详见 [管家 Bot 架构](docs/architecture/butler-orchestration.md)。
 
 ### 2026-10-11
 

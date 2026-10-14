@@ -2,6 +2,7 @@ import { lazy, type ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import {
   Activity,
+  ConciergeBell,
   Coins,
   Cpu,
   FolderKanban,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { RuntimeFeatureSupport } from '@/app/runtime';
 
+const ButlerPage = lazy(() => import('@/pages/Butler'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const ThreadChat = lazy(() => import('@/pages/Threads/ThreadChat'));
 const DesktopWorkspace = lazy(() => import('@/pages/Desktop/Workspace'));
@@ -115,6 +117,13 @@ function registerBuiltinRoutes(registry: RendererUiContributionRegistry) {
         features.chatRoute,
         <ThreadChat />,
       ),
+    },
+    {
+      id: 'butler',
+      path: 'butler',
+      titleKey: 'nav.butler',
+      order: 25,
+      element: ({ features }) => guarded(features.chatRoute, <ButlerPage />),
     },
     {
       id: 'workspace',
@@ -237,6 +246,14 @@ function registerBuiltinNavItems(registry: RendererUiContributionRegistry) {
       order: 20,
       visible: ({ features }) => features.chatRoute,
       resolveLabelKey: ({ features }) => features.desktopChat ? 'nav.chat' : 'nav.chatWeb',
+    },
+    {
+      id: 'butler',
+      path: '/butler',
+      labelKey: 'nav.butler',
+      icon: ConciergeBell,
+      order: 25,
+      visible: ({ features }) => features.chatRoute,
     },
     {
       id: 'workspace',

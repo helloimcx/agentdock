@@ -13,7 +13,8 @@
     "cron": "排程工作",
     "automations": "自動化",
     "bridge": "橋接",
-    "system": "系統"
+    "system": "系統",
+    "butler": "管家"
   },
   "dashboard": {
     "title": "總覽",
@@ -232,7 +233,6 @@
     "download": "Download file",
     "exitCode": "Exit status",
     "truncated": "Showing the first 100 entries.",
-
     "title": "AgentDock Mesh",
     "description": "Connect your devices and use their files and tools from one place.",
     "pair": "Pair a device",
@@ -287,5 +287,51 @@
     "confirm": "確認已投遞",
     "retry": "重試投遞",
     "cancel": "取消投遞"
+  },
+  "butler": {
+    "title": "管家",
+    "description": "管家本身是飛書機器人，可把任務交給它管理的其他機器人，並持續追蹤回傳結果。",
+    "refresh": "重新整理",
+    "talkTitle": "和管家聊聊",
+    "talkHint": "在管家機器人所在的飛書對話中說明目標；管家會聯絡選定的機器人並彙整進展。",
+    "openChat": "進入管家對話",
+    "example": "例如：讓研究機器人比較三個競品，再讓開發機器人依據結論製作原型。",
+    "setupTitle": "設定你的管家",
+    "setupHint": "選擇一個飛書機器人作為管家，再選擇它可以聯絡的機器人。每個機器人沿用各自工作區中設定的權限。",
+    "setup": "設定管家",
+    "progress": "任務進展",
+    "progressHint": "進度會隨機器人回傳持續更新。需要決策或授權時，可開啟對應機器人工作區的執行對話處理。",
+    "empty": "在管家機器人的飛書對話中交代第一個目標，進度會顯示在這裡。",
+    "updatedAt": "更新時間",
+    "openAgent": "開啟受管機器人執行對話",
+    "handleDecision": "處理決策",
+    "approvalHint": "需要你決策。請進入 Agent 對話查看具體內容。",
+    "followup": "補充要求",
+    "followupPlaceholder": "為這個受管機器人補充要求或修正方向…",
+    "followupQueued": "{{count}} 條補充要求已排隊，將在下一輪處理。",
+    "cancel": "取消目標",
+    "cancelling": "已請求取消，正在等待執行中的工作停止。",
+    "reviewHint": "Agent 已完成執行。請檢查結果後驗收這個目標。",
+    "acceptanceSummary": "填寫你已檢查的結果…",
+    "accept": "驗收結果",
+    "status": {
+      "queued": "排隊中",
+      "running": "執行中",
+      "waiting_for_user": "等待你處理",
+      "reviewing": "待驗收",
+      "completed": "已完成",
+      "failed": "失敗",
+      "cancelled": "已取消",
+      "sending": "傳送中",
+      "waiting_for_bot": "等待機器人回覆"
+    },
+    "changeBots": "管理機器人",
+    "managerBot": "管家機器人",
+    "chooseManagerBot": "選擇一個飛書機器人作為管家",
+    "managedBots": "管家管理的機器人",
+    "sharedChatId": "機器人共用群組 ID",
+    "sharedChatHint": "請為每個受管 bot 填寫共用群組 ID（oc_…）。管家與該 bot 都必須在群組中；一個群組可加入多個受管 bot。受管應用須啟用機器人群組訊息事件權限（im:message.group_at_msg / include_bot）。",
+    "needBots": "請先連線至少兩個飛書機器人：一個作為管家，另一個作為受管機器人。",
+    "disconnected": "未連線"
   }
 }

@@ -91,6 +91,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     super(options);
     this.inboundHandler = new LarkInboundHandler({
       store: options.store,
+      eventBus: options.eventBus,
       getWorkspaceRouter: options.getWorkspaceRouter,
       getRuntimeState: (workspaceId, instanceId) => this.resolveRuntimeState(workspaceId, instanceId).state,
       getBinding: (workspaceId, instanceId) => this.getBinding(workspaceId, instanceId),
@@ -287,6 +288,29 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       participantId: input.route.participantId,
       messageIds: messageIds.filter(Boolean),
       attachments,
+    };
+  }
+
+  async sendBotMessage(workspaceId: string, input: import('@cc/superai-contracts').ChannelBotMessageInput): Promise<import('@cc/superai-contracts').ChannelBotMessageResult> {
+    const state = this.resolveRuntimeState(workspaceId, input.instanceId).state;
+    if (!state?.client || !state.connected) throw new Error(`Lark bot runtime is not connected: ${workspaceId}/${input.instanceId}`);
+    if (!input.channelId.startsWith('oc_')) throw new Error('Lark bot-to-bot delivery requires a shared group chat.');
+    if (!input.recipientBotOpenId.startsWith('ou_')) throw new Error('A valid Lark bot open_id is required.');
+    if (!input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 24 * 1024) throw new Error('Lark bot protocol message must contain 1 to 24576 bytes.');
+    const messageId = await this.outboundTransport.sendBotMessage(
+      state,
+      input.channelId,
+      input.recipientBotOpenId,
+      input.recipientBotName,
+      input.text,
+    );
+    return {
+      platform: 'lark',
+      workspaceId,
+      instanceId: input.instanceId,
+      channelId: input.channelId,
+      messageId,
+      deliveryAcknowledgement: messageId ? 'confirmed' : 'unknown',
     };
   }
 
@@ -695,6 +719,7 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       connected: Boolean(binding?.connected),
       status: binding?.status || 'disabled',
       appId: binding?.appId || '',
+      botOpenId: binding?.botOpenId,
       lastError: binding?.lastError,
       lastErrorInfo: binding?.lastErrorInfo,
       lastErrorAt: binding?.lastErrorAt,
