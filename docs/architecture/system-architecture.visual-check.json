@@ -6,9 +6,9 @@
   "status": "pass",
   "visualReview": "pending",
   "artifact": {
-    "path": "/Users/happysheep/code/agentdock/docs/architecture/system-architecture.html",
-    "sha256": "58cfd9e4c3f24a2668b04d47adb8528514182aee474758985637dbc7ed05b761",
-    "bytes": 729818
+    "path": "/Users/momo/.codex/worktrees/remote-lac-routing/agentdock/docs/architecture/system-architecture.html",
+    "sha256": "f1645a1c82425517dc7fd674e7d34cd0b45c5ce88809f45680f396b7074fad71",
+    "bytes": 730044
   },
   "state": {
     "detail": "read",

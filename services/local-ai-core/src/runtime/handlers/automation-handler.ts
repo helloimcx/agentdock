@@ -39,7 +39,20 @@ function handleWebhookError(res: Parameters<RouteHandler>[2], error: unknown): v
   rawJson(res, status, { error: error instanceof Error ? error.message : String(error) });
 }
 
-export function registerAutomationHandlers(
+function assertMonitorWorkspace(
+  automationMonitors: AutomationMonitorService,
+  monitorId: string,
+  url: URL,
+): void {
+  const workspaceId = String(url.searchParams.get('workspace_id') || '').trim();
+  if (!workspaceId) return;
+  const identity = automationMonitors.getMonitorIdentity(monitorId);
+  if (!identity || identity.workspaceId !== workspaceId) {
+    throw new Error(`Automation monitor not found in this workspace: ${monitorId}`);
+  }
+}
+
+function registerMonitorRoutes(
   map: Map<string, RouteHandler>,
   automationMonitors: AutomationMonitorService,
   decisionLogService?: DecisionLogService,
@@ -59,37 +72,47 @@ export function registerAutomationHandlers(
     });
     json(res, 200, await automationMonitors.createMonitor(body));
   });
-  map.set('automation.monitor.get', async (route, _req, res) => {
-    const monitor = automationMonitors.getMonitor((route as { monitorId: string }).monitorId);
+  map.set('automation.monitor.get', async (route, _req, res, url) => {
+    const monitorId = (route as { monitorId: string }).monitorId;
+    assertMonitorWorkspace(automationMonitors, monitorId, url);
+    const monitor = automationMonitors.getMonitor(monitorId);
     if (!monitor) {
       throw new Error(`Automation monitor not found: ${(route as { monitorId: string }).monitorId}`);
     }
     json(res, 200, monitor);
   });
-  map.set('automation.monitor.runs', async (route, _req, res) => {
-    json(res, 200, { runs: await automationMonitors.listRuns((route as { monitorId: string }).monitorId) });
+  map.set('automation.monitor.runs', async (route, _req, res, url) => {
+    const monitorId = (route as { monitorId: string }).monitorId;
+    assertMonitorWorkspace(automationMonitors, monitorId, url);
+    json(res, 200, { runs: await automationMonitors.listRuns(monitorId) });
   });
-  map.set('automation.monitor.run', async (route, _req, res) => {
-    json(res, 200, await automationMonitors.runMonitorNow((route as { monitorId: string }).monitorId));
+  map.set('automation.monitor.run', async (route, _req, res, url) => {
+    const monitorId = (route as { monitorId: string }).monitorId;
+    assertMonitorWorkspace(automationMonitors, monitorId, url);
+    json(res, 200, await automationMonitors.runMonitorNow(monitorId));
   });
-  map.set('automation.monitor.update', async (route, req, res) => {
+  map.set('automation.monitor.update', async (route, req, res, url) => {
+    const monitorId = (route as { monitorId: string }).monitorId;
+    assertMonitorWorkspace(automationMonitors, monitorId, url);
     const body = validateBody<AutomationMonitorUpdateInput>(await readJsonBody(req), {
       title: 'string', sourceConfig: 'object', condition: 'object', promptTemplate: 'string', route: 'object',
       executionMode: 'string', enabled: 'boolean', cooldownMs: 'number',
       workflowTemplate: { kind: 'string', allowedValues: ['direct', 'deep-analysis'] },
       retrospectiveDelayHours: 'number',
     });
-    json(res, 200, await automationMonitors.updateMonitor((route as { monitorId: string }).monitorId, body));
+    json(res, 200, await automationMonitors.updateMonitor(monitorId, body));
   });
-  map.set('automation.monitor.delete', async (route, _req, res) => {
+  map.set('automation.monitor.delete', async (route, _req, res, url) => {
     const monitorId = (route as { monitorId: string }).monitorId;
+    assertMonitorWorkspace(automationMonitors, monitorId, url);
     const internalId = automationMonitors.resolveRequiredMonitorId(monitorId);
     const result = await automationMonitors.deleteMonitor(internalId);
     decisionLogService?.forgetMonitor(internalId);
     json(res, 200, result);
   });
-  map.set('automation.monitor.decisions', async (route, _req, res) => {
+  map.set('automation.monitor.decisions', async (route, _req, res, url) => {
     const monitorId = (route as { monitorId: string }).monitorId;
+    assertMonitorWorkspace(automationMonitors, monitorId, url);
     if (!decisionLogService) {
       json(res, 200, { decisions: [] });
       return;
@@ -103,6 +126,14 @@ export function registerAutomationHandlers(
     }
     json(res, 200, { decisions: await decisionLogService.listDecisions(identity.id, identity.workspaceId) });
   });
+}
+
+export function registerAutomationHandlers(
+  map: Map<string, RouteHandler>,
+  automationMonitors: AutomationMonitorService,
+  decisionLogService?: DecisionLogService,
+) {
+  registerMonitorRoutes(map, automationMonitors, decisionLogService);
   map.set('automation.hooks.trigger', async (route, req, res, url) => {
     const hookId = (route as { hookId: string }).hookId;
     const token = extractWebhookToken(req, url);

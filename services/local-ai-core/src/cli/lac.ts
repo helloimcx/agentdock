@@ -405,13 +405,18 @@ async function handleMonitorList(flags: Map<string, string[]>, env: NodeJS.Proce
   return 0;
 }
 
+function workspaceScopeQuery(workspaceId: string): string {
+  return workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
+}
+
 async function handleMonitorInfo(monitorId: string, flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
   if (!monitorId) {
     throw new Error('monitor info requires a monitor id.');
   }
   const context = resolveContext(flags, env);
-  const monitor = await request<AutomationMonitor>(context.baseUrl, 'GET', `/automation/monitors/${encodeURIComponent(monitorId)}`);
-  const runs = await request<{ runs: AutomationMonitorRun[] }>(context.baseUrl, 'GET', `/automation/monitors/${encodeURIComponent(monitorId)}/runs`);
+  const scope = workspaceScopeQuery(context.workspaceId);
+  const monitor = await request<AutomationMonitor>(context.baseUrl, 'GET', `/automation/monitors/${encodeURIComponent(monitorId)}${scope}`);
+  const runs = await request<{ runs: AutomationMonitorRun[] }>(context.baseUrl, 'GET', `/automation/monitors/${encodeURIComponent(monitorId)}/runs${scope}`);
   print(json, io.stdout, { monitor: presentMonitor(monitor), runs: runs.runs }, formatMonitorDetails(monitor, runs.runs[0]));
   return 0;
 }
@@ -443,7 +448,7 @@ async function handleMonitorEdit(monitorId: string, flags: Map<string, string[]>
     throw new Error('monitor edit requires at least one editable field.');
   }
   const context = resolveContext(flags, env);
-  const monitor = await request<AutomationMonitor>(context.baseUrl, 'PATCH', `/automation/monitors/${encodeURIComponent(monitorId)}`, input);
+  const monitor = await request<AutomationMonitor>(context.baseUrl, 'PATCH', `/automation/monitors/${encodeURIComponent(monitorId)}${workspaceScopeQuery(context.workspaceId)}`, input);
   print(json, io.stdout, presentMonitor(monitor), `Updated monitor ${toPublicAutomationMonitorId(monitor.id)}`);
   return 0;
 }
@@ -453,7 +458,7 @@ async function handleMonitorDelete(monitorId: string, flags: Map<string, string[
     throw new Error('monitor del requires a monitor id.');
   }
   const context = resolveContext(flags, env);
-  const result = await request<{ deleted: boolean }>(context.baseUrl, 'DELETE', `/automation/monitors/${encodeURIComponent(monitorId)}`);
+  const result = await request<{ deleted: boolean }>(context.baseUrl, 'DELETE', `/automation/monitors/${encodeURIComponent(monitorId)}${workspaceScopeQuery(context.workspaceId)}`);
   print(json, io.stdout, result, `Deleted monitor ${monitorId}`);
   return 0;
 }
@@ -463,7 +468,7 @@ async function handleMonitorRun(monitorId: string, flags: Map<string, string[]>,
     throw new Error('monitor run requires a monitor id.');
   }
   const context = resolveContext(flags, env);
-  const run = await request<AutomationMonitorRun>(context.baseUrl, 'POST', `/automation/monitors/${encodeURIComponent(monitorId)}/run`);
+  const run = await request<AutomationMonitorRun>(context.baseUrl, 'POST', `/automation/monitors/${encodeURIComponent(monitorId)}/run${workspaceScopeQuery(context.workspaceId)}`);
   print(json, io.stdout, run, `Triggered monitor ${monitorId}: ${run.status}`);
   return 0;
 }
@@ -476,7 +481,7 @@ async function handleMonitorDecisions(monitorId: string, flags: Map<string, stri
   const response = await request<{ decisions: AutomationDecisionRecord[] }>(
     context.baseUrl,
     'GET',
-    `/automation/monitors/${encodeURIComponent(monitorId)}/decisions`,
+    `/automation/monitors/${encodeURIComponent(monitorId)}/decisions${workspaceScopeQuery(context.workspaceId)}`,
   );
   const decisions = response.decisions || [];
   print(
@@ -608,8 +613,9 @@ async function handleInfo(jobId: string, flags: Map<string, string[]>, env: Node
     throw new Error('scheduler info requires a job id.');
   }
   const context = resolveContext(flags, env);
-  const job = await request<ScheduledJob>(context.baseUrl, 'GET', `/scheduler/jobs/${encodeURIComponent(jobId)}`);
-  const runs = await request<{ runs: ScheduledJobRun[] }>(context.baseUrl, 'GET', `/scheduler/jobs/${encodeURIComponent(jobId)}/runs`);
+  const scope = workspaceScopeQuery(context.workspaceId);
+  const job = await request<ScheduledJob>(context.baseUrl, 'GET', `/scheduler/jobs/${encodeURIComponent(jobId)}${scope}`);
+  const runs = await request<{ runs: ScheduledJobRun[] }>(context.baseUrl, 'GET', `/scheduler/jobs/${encodeURIComponent(jobId)}/runs${scope}`);
   print(json, io.stdout, { job: presentJob(job), runs: runs.runs }, formatJobDetails(job, runs.runs[0]));
   return 0;
 }
@@ -643,7 +649,7 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
     throw new Error('scheduler edit requires at least one editable field.');
   }
   const context = resolveContext(flags, env);
-  const job = await request<ScheduledJob>(context.baseUrl, 'PATCH', `/scheduler/jobs/${encodeURIComponent(jobId)}`, input);
+  const job = await request<ScheduledJob>(context.baseUrl, 'PATCH', `/scheduler/jobs/${encodeURIComponent(jobId)}${workspaceScopeQuery(context.workspaceId)}`, input);
   print(json, io.stdout, presentJob(job), `Updated scheduler job ${toPublicScheduledJobId(job.id)}`);
   return 0;
 }
@@ -653,7 +659,7 @@ async function handleDelete(jobId: string, flags: Map<string, string[]>, env: No
     throw new Error('scheduler del requires a job id.');
   }
   const context = resolveContext(flags, env);
-  const result = await request<{ deleted: boolean }>(context.baseUrl, 'DELETE', `/scheduler/jobs/${encodeURIComponent(jobId)}`);
+  const result = await request<{ deleted: boolean }>(context.baseUrl, 'DELETE', `/scheduler/jobs/${encodeURIComponent(jobId)}${workspaceScopeQuery(context.workspaceId)}`);
   print(json, io.stdout, result, `Deleted scheduler job ${jobId}`);
   return 0;
 }
@@ -663,7 +669,7 @@ async function handleRun(jobId: string, flags: Map<string, string[]>, env: NodeJ
     throw new Error('scheduler run requires a job id.');
   }
   const context = resolveContext(flags, env);
-  const run = await request<ScheduledJobRun>(context.baseUrl, 'POST', `/scheduler/jobs/${encodeURIComponent(jobId)}/run`);
+  const run = await request<ScheduledJobRun>(context.baseUrl, 'POST', `/scheduler/jobs/${encodeURIComponent(jobId)}/run${workspaceScopeQuery(context.workspaceId)}`);
   print(json, io.stdout, run, `Triggered scheduler job ${jobId}: ${run.status}`);
   return 0;
 }

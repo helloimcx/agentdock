@@ -499,9 +499,11 @@ test('lac scheduler list shows workspace jobs by default', async () => {
 
 test('lac scheduler info prints the short job id', async () => {
   let requestCount = 0;
+  const requestUrls: string[] = [];
   const { restore } = withFetchMock(async (input) => {
     requestCount++;
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : String(input);
+    requestUrls.push(url);
     if (url.includes('/runs')) {
       return new Response(JSON.stringify({ ok: true, data: { runs: [] } }), { headers: { 'content-type': 'application/json' } });
     }
@@ -528,12 +530,42 @@ test('lac scheduler info prints the short job id', async () => {
     const { io, read } = createIo();
     const exitCode = await runCli(
       ['scheduler', 'info', '826aff79'],
-      { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1' },
+      { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1', LOCAL_AI_WORKSPACE_ID: 'workspace:trusted' },
       io,
     );
     assert.equal(exitCode, 0);
     assert.match(read().stdout, /Job: 826aff79/);
     assert.doesNotMatch(read().stdout, /job:826aff79/);
+    assert.equal(requestUrls.length, 2);
+    assert.ok(requestUrls.every((url) => url.includes('workspace_id=workspace%3Atrusted')));
+  } finally {
+    restore();
+  }
+});
+
+test('lac monitor ID commands carry the trusted workspace scope', async () => {
+  const requestUrls: string[] = [];
+  const { restore } = withFetchMock(async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : String(input);
+    requestUrls.push(url);
+    if (url.includes('/runs')) return new Response(JSON.stringify({ ok: true, data: { runs: [] } }), { headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ ok: true, data: {
+      id: 'monitor:trusted', workspaceId: 'workspace:trusted', title: 'Trusted', sourceType: 'webhook',
+      condition: { metric: 'always', operator: '==', value: true }, promptTemplate: 'test',
+      platform: 'local', route: { type: 'local.thread', channelId: 'workspace:trusted' },
+      executionMode: 'side-thread', enabled: true, cooldownMs: 0, createdAt: '', updatedAt: '',
+    } }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io } = createIo();
+    const exitCode = await runCli(
+      ['monitor', 'info', 'monitor:trusted'],
+      { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1', LOCAL_AI_WORKSPACE_ID: 'workspace:trusted' },
+      io,
+    );
+    assert.equal(exitCode, 0);
+    assert.equal(requestUrls.length, 2);
+    assert.ok(requestUrls.every((url) => url.includes('workspace_id=workspace%3Atrusted')));
   } finally {
     restore();
   }

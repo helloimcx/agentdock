@@ -1,0 +1,113 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "远程工作区调用 LAC",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "flow",
+      "label": "主机调用与远程执行"
+    }
+  ],
+  "mainPath": [
+    "invoke",
+    "route",
+    "dispatch",
+    "core",
+    "return"
+  ],
+  "nodes": [
+    {
+      "id": "invoke",
+      "lane": "flow",
+      "col": 0,
+      "type": "frontend",
+      "label": "MCP / Bash",
+      "sublabel": "结构化工具或命令"
+    },
+    {
+      "id": "route",
+      "lane": "flow",
+      "col": 1,
+      "type": "security",
+      "label": "Shell Proxy",
+      "sublabel": "解析独立 lac",
+      "tag": "不执行主机 Shell"
+    },
+    {
+      "id": "dispatch",
+      "lane": "flow",
+      "col": 2,
+      "type": "security",
+      "label": "LAC Dispatcher",
+      "sublabel": "会话上下文与 allowlist",
+      "tag": "两入口共用"
+    },
+    {
+      "id": "core",
+      "lane": "flow",
+      "col": 4,
+      "type": "backend",
+      "label": "Local AI Core",
+      "sublabel": "workspace / thread"
+    },
+    {
+      "id": "remote_run",
+      "lane": "flow",
+      "col": 3,
+      "yOffset": -125,
+      "type": "cloud",
+      "label": "远程设备 Shell",
+      "sublabel": "普通设备命令"
+    },
+    {
+      "id": "return",
+      "lane": "flow",
+      "col": 5,
+      "type": "frontend",
+      "label": "结果",
+      "sublabel": "数据 / 输出码"
+    }
+  ],
+  "edges": [
+    {
+      "from": "invoke",
+      "to": "dispatch",
+      "label": "结构化 MCP"
+    },
+    {
+      "from": "invoke",
+      "to": "route",
+      "label": "Bash 经 Mesh"
+    },
+    {
+      "from": "route",
+      "to": "dispatch",
+      "label": "独立 lac 命令",
+      "variant": "security"
+    },
+    {
+      "from": "dispatch",
+      "to": "core",
+      "label": "校验后调用"
+    },
+    {
+      "from": "route",
+      "to": "remote_run",
+      "label": "其他命令"
+    },
+    {
+      "from": "core",
+      "to": "return",
+      "label": "结构化结果 / CLI 标准流"
+    },
+    {
+      "from": "remote_run",
+      "to": "return",
+      "label": "Mesh 执行结果"
+    }
+  ]
+}

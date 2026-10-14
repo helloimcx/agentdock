@@ -6,6 +6,7 @@ import type { MeshExecution, MeshExecutionInput, MeshNode, MeshServerMessage } f
 import { json, readJsonBody } from '../runtime/server-helpers.js';
 import { MeshStore } from './mesh-store.js';
 import { MeshError, capability, executionInput, record, text } from './mesh-validation.js';
+import { verifyMeshShellToken } from './mesh-shell-token.js';
 
 const PREFIX = '/api/local/v1/mesh';
 type Session = { socket: WebSocket; node: MeshNode; lastSeen: number };
@@ -46,6 +47,10 @@ export class MeshGateway {
     try {
       if (!this.adminToken) throw new MeshError('Mesh is disabled. Configure AGENTDOCK_MESH_ADMIN_TOKEN.', 503);
       const path = url.pathname.slice(PREFIX.length);
+      if (path === '/shell/execute' && req.method === 'POST') {
+        json(res, 200, await this.executeShellRequest(req));
+        return true;
+      }
       if (path === '/nodes' && req.method === 'GET') {
         json(res, 200, { nodes: this.store.listNodes() });
         return true;
@@ -63,6 +68,17 @@ export class MeshGateway {
       json(res, status, undefined, false, error instanceof Error ? error.message : 'Mesh request failed.');
     }
     return true;
+  }
+
+  private async executeShellRequest(req: IncomingMessage) {
+    const supplied = req.headers.authorization?.replace(/^Bearer /, '') || '';
+    const claims = verifyMeshShellToken(supplied, this.adminToken || '');
+    if (!claims) throw new MeshError('Mesh shell authorization is invalid or expired.', 401);
+    const input = executionInput(await readJsonBody(req, 2 * 1024 * 1024));
+    if (input.nodeId !== claims.nodeId || input.capability !== 'shell.exec') {
+      throw new MeshError('Mesh shell authorization is not valid for this request.', 403);
+    }
+    return await this.executeAndWait(input);
   }
 
   private authorize(req: IncomingMessage) {

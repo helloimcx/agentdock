@@ -1,8 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentLaunchConfig } from '@cc/plugin-sdk';
+import type { AgentLaunchConfig, AgentMcpServerConfig } from '@cc/plugin-sdk';
 import type { AgentExecutionBackend, AgentExecutionBackendInput } from '../agent-execution-types.js';
+import { createTrustedLacEnvironment } from './lac-control.js';
+import { createMeshShellToken } from '../../mesh/mesh-shell-token.js';
 import { buildDeviceClaudeMd, buildDeviceSystemPrompt, type MeshNodeMetadata } from './device-environment.js';
 import { mountActiveSkillsSync } from '../../runtime/skill-mounter.js';
 import {
@@ -169,6 +171,23 @@ function provisionShadowDirectory(
   return shellWrapperPath;
 }
 
+
+function lacControlMcpServer(env: NodeJS.ProcessEnv, workspaceId: string): AgentMcpServerConfig {
+  const trustedEnv = createTrustedLacEnvironment({
+    ...env,
+    AGENTDOCK_LOCAL_CORE_URL: String(process.env.AGENTDOCK_LOCAL_CORE_URL || 'http://127.0.0.1:9831').trim(),
+    LOCAL_AI_WORKSPACE_ID: workspaceId,
+  });
+  return {
+    name: 'agentdock-lac-control',
+    type: 'stdio',
+    command: process.execPath,
+    args: [resolve(typeof __dirname !== 'undefined' ? __dirname : '', 'lac-control-mcp-server.js')],
+    env: { ELECTRON_RUN_AS_NODE: '1', ...trustedEnv as Record<string, string> },
+    enabled: true,
+  };
+}
+
 export class RemoteMeshExecutionBackend implements AgentExecutionBackend {
   readonly mode = 'mesh' as const;
 
@@ -178,6 +197,8 @@ export class RemoteMeshExecutionBackend implements AgentExecutionBackend {
     const safeWorkspaceId = toSafeWorkspaceId(rawWorkspaceId);
     const shadowDir = resolve(input.configState.baseDir, 'remote-shadow', safeWorkspaceId);
     mkdirSync(shadowDir, { recursive: true });
+    const meshCwdDir = resolve(shadowDir, '.mesh-tmp');
+    mkdirSync(meshCwdDir, { recursive: true });
 
     const node = lookupMeshNode(input.configState.baseDir, nodeId) || {
       label: nodeId,
@@ -195,15 +216,19 @@ export class RemoteMeshExecutionBackend implements AgentExecutionBackend {
 
     const localCoreUrl = String(process.env.AGENTDOCK_LOCAL_CORE_URL || 'http://127.0.0.1:9831').trim();
     const adminToken = String(process.env.AGENTDOCK_MESH_ADMIN_TOKEN || '').trim();
+    const agentEnv = { ...(input.launchConfig.env || {}) };
+    delete agentEnv.AGENTDOCK_MESH_ADMIN_TOKEN;
+    delete agentEnv.AGENTDOCK_MESH_SHELL_TOKEN;
 
-    // Completely remove agentdock-remote-mesh from mcpServers
+    // Mesh shell handles device I/O; the separate host MCP exposes only allowlisted LAC operations.
     const existingMcp = input.launchConfig.mcpServers || [];
-    const mcpServers = existingMcp.filter((s) => s.name !== 'agentdock-remote-mesh');
+    const mcpServers = existingMcp.filter((s) => s.name !== 'agentdock-remote-mesh' && s.name !== 'agentdock-lac-control');
+    mcpServers.push(lacControlMcpServer(input.launchConfig.env, input.launchConfig.workspaceId));
 
     const systemPromptAppend = buildDeviceSystemPrompt(node);
 
     const delimiter = process.platform === 'win32' ? ';' : ':';
-    const existingPath = input.launchConfig.env?.PATH || process.env.PATH || '';
+    const existingPath = agentEnv.PATH || process.env.PATH || '';
     const augmentedPath = `${binDir}${delimiter}${existingPath}`;
 
     return {
@@ -211,13 +236,23 @@ export class RemoteMeshExecutionBackend implements AgentExecutionBackend {
       workDir: shadowDir,
       mcpServers,
       env: {
-        ...input.launchConfig.env,
+        ...agentEnv,
         SHELL: shellWrapperPath,
         CLAUDE_CODE_SHELL: shellWrapperPath,
         PATH: augmentedPath,
         AGENTDOCK_MESH_NODE_ID: nodeId,
         AGENTDOCK_LOCAL_CORE_URL: localCoreUrl,
-        AGENTDOCK_MESH_ADMIN_TOKEN: adminToken,
+        LOCAL_AI_WORKSPACE_ID: input.launchConfig.workspaceId,
+        AGENTDOCK_MESH_CWD_DIR: meshCwdDir,
+        TMPDIR: meshCwdDir,
+        TMP: meshCwdDir,
+        TEMP: meshCwdDir,
+        AGENTDOCK_MESH_SHELL_TOKEN: createMeshShellToken({
+          adminToken,
+          nodeId,
+          workspaceId: input.launchConfig.workspaceId,
+          threadId: input.launchConfig.env?.LOCAL_AI_THREAD_ID,
+        }),
         AGENTDOCK_MESH_NODE_PLATFORM: String(node.platform || '').trim(),
         AGENTDOCK_MESH_NODE_LABEL: String(node.label || '').trim(),
       },

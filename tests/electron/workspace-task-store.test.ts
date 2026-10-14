@@ -8,7 +8,7 @@ import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-co
 import { configureSqlitePragmas } from '../../services/local-ai-core/src/acp/store/schema.js';
 import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
 import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import { LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
+import { buildAcpChildEnvironment, LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import { SchedulerService } from '../../services/local-ai-core/src/scheduler/scheduler-service.js';
 import { LarkScheduleAdapter } from '../../services/local-ai-core/src/scheduler/lark-schedule-adapter.js';
@@ -657,6 +657,85 @@ test('ACP runtime env includes the current workspace path for file returns', asy
   }
 });
 
+test('remote Mesh runtime env keeps Core-owned context and routing over caller runtime_env', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'mesh-runtime-env-'));
+  try {
+    const store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace:trusted', 'Thread');
+    let capturedRuntimeEnv: Record<string, string> | undefined;
+    let capturedConfig: any;
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          capturedRuntimeEnv = input.runtimeEnv;
+          capturedConfig = input.config;
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+          };
+        },
+        initializeSession: async () => {},
+        request: async () => ({ sessionId: 'session-mesh-env' }),
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: () => true,
+      } as any,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+      localCoreBase: 'http://127.0.0.1:9831/api/local/v1',
+    });
+
+    await coordinator.ensureSession(thread.id, 'session:mesh-env', {
+      workspaceId: 'workspace:trusted',
+      agentType: 'pi',
+      command: 'pi',
+      args: [],
+      env: {
+        AGENTDOCK_LOCAL_CORE_URL: 'http://host-core.test',
+        AGENTDOCK_MESH_NODE_ID: 'node:trusted',
+        AGENTDOCK_MESH_SHELL_TOKEN: 'trusted-token',
+      },
+      workDir: '/tmp/workspace',
+      model: '',
+      mcpServers: [{
+        name: 'agentdock-lac-control', type: 'stdio', command: 'node', args: ['lac-control-mcp-server.js'], enabled: true,
+        env: { ELECTRON_RUN_AS_NODE: '1', LOCAL_AI_WORKSPACE_ID: 'workspace:attacker', LOCAL_AI_THREAD_ID: 'thread:attacker' },
+      }],
+      execution: { mode: 'mesh', transport: 'remote-mesh-shell', nodeId: 'node:trusted' },
+    } as any, {
+      runtimeEnv: {
+        LOCAL_AI_WORKSPACE_ID: 'workspace:attacker',
+        LOCAL_AI_THREAD_ID: 'thread:attacker',
+        LOCAL_AI_CORE_BASE: 'https://attacker.invalid/api/local/v1',
+        AGENTDOCK_LOCAL_CORE_URL: 'https://attacker.invalid',
+        AGENTDOCK_MESH_NODE_ID: 'node:attacker',
+        AGENTDOCK_MESH_SHELL_TOKEN: 'attacker-token',
+      },
+    });
+
+    assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_ID, 'workspace:trusted');
+    assert.equal(capturedRuntimeEnv?.LOCAL_AI_THREAD_ID, thread.id);
+    assert.equal(capturedRuntimeEnv?.LOCAL_AI_CORE_BASE, 'http://127.0.0.1:9831/api/local/v1');
+    assert.equal(capturedRuntimeEnv?.AGENTDOCK_LOCAL_CORE_URL, 'http://host-core.test');
+    assert.equal(capturedRuntimeEnv?.AGENTDOCK_MESH_NODE_ID, 'node:trusted');
+    assert.equal(capturedRuntimeEnv?.AGENTDOCK_MESH_SHELL_TOKEN, 'trusted-token');
+    const mcpEnv = capturedConfig.mcpServers[0].env;
+    assert.equal(mcpEnv.LOCAL_AI_WORKSPACE_ID, 'workspace:trusted');
+    assert.equal(mcpEnv.LOCAL_AI_THREAD_ID, thread.id);
+    assert.equal(mcpEnv.LOCAL_AI_CORE_BASE, 'http://127.0.0.1:9831/api/local/v1');
+    assert.equal(mcpEnv.AGENTDOCK_MESH_ADMIN_TOKEN, undefined);
+    store.close();
+  } finally {
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('ACP interruption does not cancel a newer run that reused the same session', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'run-interrupt-race-'));
   try {
@@ -946,6 +1025,22 @@ test('ACP transport reports missing agent commands without an unhandled process 
 
   const error = await closed;
   assert.equal(error.message, 'ACP agent command not found: agentdock-command-that-does-not-exist');
+});
+
+test('ACP Mesh child environment removes inherited and runtime-provided Mesh admin tokens', () => {
+  const env = buildAcpChildEnvironment({
+    threadId: 'thread:workspace-a::11111111-2222-3333-4444-555555555555',
+    bridgeSessionKey: 'session:mesh-env-test',
+    config: {
+      workspaceId: 'workspace-a', agentType: 'pi', command: 'pi', args: [], env: {},
+      workDir: '/tmp/workspace-a', model: '',
+      execution: { mode: 'mesh', transport: 'remote-mesh-shell', nodeId: 'node:test' },
+    } as any,
+    runtimeEnv: { AGENTDOCK_MESH_ADMIN_TOKEN: 'runtime-secret', LOCAL_AI_WORKSPACE_ID: 'workspace-a' },
+  }, { AGENTDOCK_MESH_ADMIN_TOKEN: 'host-secret', PATH: '/bin' });
+  assert.equal(env.AGENTDOCK_MESH_ADMIN_TOKEN, undefined);
+  assert.equal(env.LOCAL_AI_WORKSPACE_ID, 'workspace-a');
+  assert.equal(env.PATH, '/bin');
 });
 
 test('ACP transport isolates notification and request handler errors instead of crashing', () => {
@@ -1885,5 +1980,3 @@ test('LocalCoreAcpBackend automatically scans and registers artifacts on run com
     rmSync(workspacePath, { recursive: true, force: true });
   }
 });
-
-
