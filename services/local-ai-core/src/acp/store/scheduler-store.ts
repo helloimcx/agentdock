@@ -19,7 +19,7 @@ import type {
 } from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
-const SCHEDULED_JOB_COLUMNS = 'id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description, enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode';
+export const SCHEDULED_JOB_COLUMNS = 'id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description, enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode';
 // Also reused by the INSERT INTO scheduled_job_runs in createRun — keep its VALUES placeholder count in sync.
 const SCHEDULED_JOB_RUN_COLUMNS = 'id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at';
 

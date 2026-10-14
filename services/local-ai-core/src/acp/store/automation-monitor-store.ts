@@ -20,7 +20,7 @@ import type {
 } from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
-const AUTOMATION_MONITOR_COLUMNS = 'id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform, route_type, route_config, execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json, created_at, updated_at, last_triggered_at, last_status, last_error';
+export const AUTOMATION_MONITOR_COLUMNS = 'id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform, route_type, route_config, execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json, created_at, updated_at, last_triggered_at, last_status, last_error';
 // Also reused by the INSERT INTO automation_monitor_runs in createRun — keep its VALUES placeholder count in sync.
 const AUTOMATION_MONITOR_RUN_COLUMNS = 'id, monitor_id, status, triggered_at, started_at, finished_at, error, event_snapshot_json, thread_id, run_id, delivery_mode, delivery_status, delivery_error, last_bridge_event_at';
 
