@@ -20,6 +20,10 @@ import type {
 } from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
+const AUTOMATION_MONITOR_COLUMNS = 'id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform, route_type, route_config, execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json, created_at, updated_at, last_triggered_at, last_status, last_error';
+// Also reused by the INSERT INTO automation_monitor_runs in createRun — keep its VALUES placeholder count in sync.
+const AUTOMATION_MONITOR_RUN_COLUMNS = 'id, monitor_id, status, triggered_at, started_at, finished_at, error, event_snapshot_json, thread_id, run_id, delivery_mode, delivery_status, delivery_error, last_bridge_event_at';
+
 export type ResolvedAutomationMonitorCreateInput = AutomationMonitorCreateInput & {
   platform: NonNullable<AutomationMonitorCreateInput['platform']>;
   route: NonNullable<AutomationMonitorCreateInput['route']>;
@@ -31,15 +35,13 @@ export class LocalAutomationMonitorStore {
   list(workspaceId?: string): AutomationMonitor[] {
     const query = workspaceId
       ? `
-        SELECT id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform, route_type, route_config,
-               execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json, created_at, updated_at, last_triggered_at, last_status, last_error
+        SELECT ${AUTOMATION_MONITOR_COLUMNS}
         FROM automation_monitors
         WHERE workspace_id = ?
         ORDER BY updated_at DESC
       `
       : `
-        SELECT id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform, route_type, route_config,
-               execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json, created_at, updated_at, last_triggered_at, last_status, last_error
+        SELECT ${AUTOMATION_MONITOR_COLUMNS}
         FROM automation_monitors
         ORDER BY updated_at DESC
       `;
@@ -49,8 +51,7 @@ export class LocalAutomationMonitorStore {
 
   get(monitorId: string): AutomationMonitor | undefined {
     const row = this.db.prepare(`
-      SELECT id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform, route_type, route_config,
-             execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json, created_at, updated_at, last_triggered_at, last_status, last_error
+      SELECT ${AUTOMATION_MONITOR_COLUMNS}
       FROM automation_monitors
       WHERE id = ?
     `).get(monitorId) as LocalAutomationMonitorRow | undefined;
@@ -196,7 +197,7 @@ export class LocalAutomationMonitorStore {
 
   listRuns(monitorId: string): AutomationMonitorRun[] {
     const rows = this.db.prepare(`
-      SELECT id, monitor_id, status, triggered_at, started_at, finished_at, error, event_snapshot_json, thread_id, run_id, delivery_mode, delivery_status, delivery_error, last_bridge_event_at
+      SELECT ${AUTOMATION_MONITOR_RUN_COLUMNS}
       FROM automation_monitor_runs
       WHERE monitor_id = ?
       ORDER BY triggered_at DESC
@@ -209,7 +210,7 @@ export class LocalAutomationMonitorStore {
     const triggeredAt = input.triggeredAt || new Date().toISOString();
     const normalizedStatus = normalizeAutomationMonitorStatus(status);
     this.db.prepare(`
-      INSERT INTO automation_monitor_runs (id, monitor_id, status, triggered_at, started_at, finished_at, error, event_snapshot_json, thread_id, run_id, delivery_mode, delivery_status, delivery_error, last_bridge_event_at)
+      INSERT INTO automation_monitor_runs (${AUTOMATION_MONITOR_RUN_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
@@ -252,7 +253,7 @@ export class LocalAutomationMonitorStore {
 
   getRun(runId: string): AutomationMonitorRun | undefined {
     const row = this.db.prepare(`
-      SELECT id, monitor_id, status, triggered_at, started_at, finished_at, error, event_snapshot_json, thread_id, run_id, delivery_mode, delivery_status, delivery_error, last_bridge_event_at
+      SELECT ${AUTOMATION_MONITOR_RUN_COLUMNS}
       FROM automation_monitor_runs
       WHERE id = ?
     `).get(runId) as LocalAutomationMonitorRunRow | undefined;
