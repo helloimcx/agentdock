@@ -19,21 +19,23 @@ import type {
 } from './acp-store-types.js';
 import { parseJson } from './utils.js';
 
+export const SCHEDULED_JOB_COLUMNS = 'id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description, enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode';
+// Also reused by the INSERT INTO scheduled_job_runs in createRun — keep its VALUES placeholder count in sync.
+const SCHEDULED_JOB_RUN_COLUMNS = 'id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at';
+
 export class LocalSchedulerStore {
   constructor(private readonly db: DatabaseSync) {}
 
   listJobs(workspaceId?: string, channelId?: string, platform?: string): ScheduledJob[] {
     const query = workspaceId
       ? `
-        SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
-               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode
+        SELECT ${SCHEDULED_JOB_COLUMNS}
         FROM scheduled_jobs
         WHERE workspace_id = ?
         ORDER BY updated_at DESC
       `
       : `
-        SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
-               enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode
+        SELECT ${SCHEDULED_JOB_COLUMNS}
         FROM scheduled_jobs
         ORDER BY updated_at DESC
       `;
@@ -54,8 +56,7 @@ export class LocalSchedulerStore {
 
   getJob(jobId: string): ScheduledJob | undefined {
     const row = this.db.prepare(`
-      SELECT id, workspace_id, platform, route_type, route_config, trigger_type, cron_expr, run_at, prompt_template, description,
-             enabled, concurrency_policy, created_at, updated_at, last_run_at, last_status, last_error, execution_mode
+      SELECT ${SCHEDULED_JOB_COLUMNS}
       FROM scheduled_jobs
       WHERE id = ?
     `).get(jobId) as LocalScheduledJobRow | undefined;
@@ -161,7 +162,7 @@ export class LocalSchedulerStore {
 
   listRuns(jobId: string): ScheduledJobRun[] {
     const rows = this.db.prepare(`
-      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at
+      SELECT ${SCHEDULED_JOB_RUN_COLUMNS}
       FROM scheduled_job_runs
       WHERE job_id = ?
       ORDER BY triggered_at DESC
@@ -174,7 +175,7 @@ export class LocalSchedulerStore {
     const triggeredAt = input.triggeredAt || new Date().toISOString();
     const normalizedStatus = normalizeScheduledJobRunStatus(status);
     this.db.prepare(`
-      INSERT INTO scheduled_job_runs (id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at)
+      INSERT INTO scheduled_job_runs (${SCHEDULED_JOB_RUN_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
@@ -219,7 +220,7 @@ export class LocalSchedulerStore {
 
   getRun(runId: string): ScheduledJobRun | undefined {
     const row = this.db.prepare(`
-      SELECT id, job_id, status, triggered_at, started_at, finished_at, error, thread_id, run_id, platform_message_id, platform_message_ids_json, delivery_mode, delivery_status, delivery_error, last_bridge_event_at
+      SELECT ${SCHEDULED_JOB_RUN_COLUMNS}
       FROM scheduled_job_runs
       WHERE id = ?
     `).get(runId) as LocalScheduledJobRunRow | undefined;
