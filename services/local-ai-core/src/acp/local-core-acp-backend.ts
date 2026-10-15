@@ -744,6 +744,7 @@ export class LocalCoreAcpBackend {
         replyCtx: runId,
       });
     } finally {
+      this.options.runThreadMap.delete(runId);
       if (session) this.turnCoordinator.flushAssistantPartial(session);
       await this.screenSessions.stop(runId);
       if (session?.currentRunId === runId) {
