@@ -9,6 +9,7 @@ test('LocalAiCoreServer.stop() does not hang on a client with an unterminated in
   await server.start();
   const port = (server as any).server.address().port;
   const socket = net.connect({ host: '127.0.0.1', port });
+  let stallTimer: NodeJS.Timeout | undefined;
   try {
     await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
     // Request headers without the final blank line: the server keeps this
@@ -17,10 +18,11 @@ test('LocalAiCoreServer.stop() does not hang on a client with an unterminated in
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const stalled = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('server.stop() hung on an active in-flight connection')), 6000);
+      stallTimer = setTimeout(() => reject(new Error('server.stop() hung on an active in-flight connection')), 6000);
     });
     await assert.doesNotReject(Promise.race([server.stop(), stalled]));
   } finally {
     socket.destroy();
+    if (stallTimer) clearTimeout(stallTimer);
   }
 });
