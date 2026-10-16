@@ -13,6 +13,7 @@ AgentDock 完整可点击静态原型，以 `index.html` 为唯一入口，通�
 状态词汇：`待确认`（等用户看）→ `已确认`（可开发）→ `已确认并实现`（附日期，原型保留为设计事实源）。
 
 - 所有样式、脚本和假数据都内联在 `index.html`，不依赖构建流程或外部资源。
+- 管家配置页面的演示截图（假数据）：`screenshots/butler-config-prototype.1440x1100.light.png`。
 - 校验清单一致性：运行 prototype-first skill 中的 `scripts/check_design.py design/`。
 
 ## 本地预览
