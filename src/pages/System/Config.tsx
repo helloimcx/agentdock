@@ -80,7 +80,7 @@ export default function SystemConfig() {
       const result = await runDiagnosticsDoctor();
       setDoctorResult(result);
       setDiagnosticErrors((await listDiagnosticErrors()).errors);
-      setActionMsg(`Diagnostics completed with ${result.status} status.`);
+      setActionMsg(t('system.diagnosticsCompleted', { status: result.status }));
     } catch (e: any) {
       setActionMsg(e.message);
     } finally {
@@ -92,7 +92,7 @@ export default function SystemConfig() {
     <div className="space-y-6 animate-fade-in">
       <PageHeader
         title={t('nav.system')}
-        description="Runtime health, logs, and plugin diagnostics. Advanced config is available read-only from the diagnostics drawer."
+        description={t('system.configDescription')}
         actions={(
           <>
             <Button variant="secondary" onClick={handleReload}><RefreshCw size={16} /> {t('system.reload')}</Button>
@@ -111,13 +111,13 @@ export default function SystemConfig() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SectionCard className="app-panel" title="Runtime" description={loading ? 'Loading...' : 'Local service status.'}>
+        <SectionCard className="app-panel" title={t('system.runtime')} description={loading ? t('common.loading') : t('system.serviceStatus')}>
           <StatusPill tone={runtimeTone(runtime?.phase) as any}>{runtime?.phase || 'unknown'}</StatusPill>
           <p className="mt-3 text-sm text-muted-foreground">
-            {runtime?.pendingRestart ? 'Restart required to apply saved changes.' : 'No pending restart.'}
+            {runtime?.pendingRestart ? t('system.restartRequired') : t('system.noPendingRestart')}
           </p>
         </SectionCard>
-        <SectionCard className="app-panel" title="Runtime Config" description="Active SQLite storage location.">
+        <SectionCard className="app-panel" title={t('system.runtimeConfig')} description={t('system.storageLocation')}>
           <div className="flex items-start gap-3">
             <FileCode size={18} className="mt-0.5 text-primary" />
             <p className="break-all font-mono text-xs leading-5 text-muted-foreground">
@@ -125,29 +125,29 @@ export default function SystemConfig() {
             </p>
           </div>
         </SectionCard>
-        <SectionCard className="app-panel" title="Plugins" description="Health summary only.">
+        <SectionCard className="app-panel" title={t('system.plugins')} description={t('system.healthSummary')}>
           <p className="text-2xl font-semibold text-foreground">
             {plugins ? `${plugins.enabledPluginCount}/${plugins.pluginCount}` : '-'}
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">enabled plugins</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('system.enabledPlugins')}</p>
         </SectionCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <SectionCard
           className="app-panel"
-          title="Diagnostics"
-          description="Structured runtime and channel health checks."
+          title={t('system.diagnostics')}
+          description={t('system.diagnosticsDescription')}
           actions={(
             <Button size="sm" variant="secondary" onClick={() => void handleRunDoctor()} loading={runningDoctor}>
-              <Stethoscope size={14} /> Run doctor
+              <Stethoscope size={14} /> {t('system.runDoctor')}
             </Button>
           )}
         >
           {!doctorResult ? (
             <div className="flex items-start gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
               <ShieldCheck size={16} className="mt-0.5 shrink-0" />
-              <p>Run doctor to validate config, runtime readiness, channel health, and log access.</p>
+              <p>{t('system.runDoctorHint')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -156,7 +156,7 @@ export default function SystemConfig() {
                   {doctorResult.status}
                 </StatusPill>
                 <p className="text-xs text-muted-foreground">
-                  Checked {new Date(doctorResult.checkedAt).toLocaleString()}
+                  {t('system.checkedAt', { time: new Date(doctorResult.checkedAt).toLocaleString() })}
                 </p>
               </div>
               <div className="space-y-2">
@@ -183,9 +183,9 @@ export default function SystemConfig() {
           )}
         </SectionCard>
 
-        <SectionCard className="app-panel" title="Recent Errors" description="Aggregated runtime and channel failures from the current window.">
+        <SectionCard className="app-panel" title={t('system.recentErrors')} description={t('system.recentErrorsDescription')}>
           {diagnosticErrors.length === 0 ? (
-            <div className="py-8 text-sm text-muted-foreground">No aggregated errors in the current diagnostics window.</div>
+            <div className="py-8 text-sm text-muted-foreground">{t('system.noAggregatedErrors')}</div>
           ) : (
             <div className="space-y-3">
               {diagnosticErrors.map((entry) => (
@@ -206,7 +206,7 @@ export default function SystemConfig() {
                         </p>
                       ) : null}
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {entry.count} occurrence(s), last seen {new Date(entry.lastSeenAt).toLocaleString()}
+                        {t('system.occurrences', { total: entry.count, time: new Date(entry.lastSeenAt).toLocaleString() })}
                       </p>
                     </div>
                   </div>
@@ -217,11 +217,11 @@ export default function SystemConfig() {
         </SectionCard>
       </div>
 
-      <SectionCard className="app-panel" title={t('system.plugins')} description="Plugin state is read-only in the daily UI. Use backend config for advanced changes.">
+      <SectionCard className="app-panel" title={t('system.plugins')} description={t('system.pluginsReadonly')}>
         {!plugins ? (
-          <div className="py-8 text-sm text-muted-foreground">Loading...</div>
+          <div className="py-8 text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : plugins.plugins.length === 0 ? (
-          <div className="py-8 text-sm text-muted-foreground">No plugins registered.</div>
+          <div className="py-8 text-sm text-muted-foreground">{t('system.noPlugins')}</div>
         ) : (
           <div className="divide-y divide-border">
             {plugins.plugins.map((plugin) => (
