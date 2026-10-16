@@ -28,6 +28,7 @@ export function registerButlerHandlers(map: Map<string, RouteHandler>, service: 
     });
     for (const bot of input.managedBots) validateBody(bot, {
       botId: { kind: 'string', required: true }, sharedChatId: { kind: 'string', required: true },
+      managedBotName: { kind: 'string', required: true }, managerBotName: { kind: 'string', required: true },
     }, 'Managed bot');
     json(res, 200, await service.configure(input));
   });

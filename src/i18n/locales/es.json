@@ -362,9 +362,12 @@
     "managerBot": "Bot mayordomo",
     "chooseManagerBot": "Elige un bot de Lark como mayordomo",
     "managedBots": "Bots administrados",
-    "sharedChatId": "ID del grupo compartido",
-    "sharedChatHint": "Introduce un ID de grupo compartido (oc_…) para cada bot administrado. El mayordomo y ese bot deben estar en el grupo; un grupo puede incluir varios bots administrados. Activa los eventos de grupo enviados por bots en cada app (im:message.group_at_msg / include_bot).",
+    "sharedChatHint": "Introduce los nombres exactos que aparecen en la lista de miembros y el ID del grupo compartido (oc_…). Ambos bots deben estar en el grupo; un grupo puede incluir varios bots administrados. Activa los eventos de grupo enviados por bots en cada app (im:message.group_at_msg / include_bot). Los Open ID de Feishu dependen de la app; las menciones se resuelven con la app emisora.",
     "needBots": "Conecta al menos dos bots de Lark: uno como mayordomo y otro como bot administrado.",
-    "disconnected": "Desconectado"
+    "disconnected": "Desconectado",
+    "managedBotName": "Nombre del bot administrado en el grupo (para que el mayordomo lo mencione)",
+    "managerBotName": "Nombre del mayordomo en el grupo (para que el bot administrado lo mencione)",
+    "managerBotNamePlaceholder": "Por ejemplo: Mayordomo",
+    "sharedChatId": "ID del grupo compartido"
   }
 }

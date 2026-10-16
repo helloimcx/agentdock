@@ -17,7 +17,7 @@ test('Butler SDK preserves owner scope and exact delegation IDs through encoded 
     await butler.getButlerProfile();
     const profileInput = {
       managerBotId: 'lark:app-butler:ou-butler',
-      managedBots: [{ botId: 'lark:app-research:ou-research', sharedChatId: 'oc_shared_research' }],
+      managedBots: [{ botId: 'lark:app-research:ou-research', sharedChatId: 'oc_shared_research', managedBotName: 'Research bot', managerBotName: 'Butler bot' }],
     };
     await butler.setButlerProfile(profileInput);
     await butler.listButlerTasks(ownerThreadId);

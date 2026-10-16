@@ -9,6 +9,7 @@ import type {
   ChannelFileSendResult,
   ChannelBotMessageInput,
   ChannelBotMessageResult,
+  ChannelBotMemberLookupInput,
   ChannelOutboundMessageInput,
   ChannelOutboundMessageResult,
 } from '@cc/superai-contracts';
@@ -128,6 +129,12 @@ export class ChannelService {
     const runtime = this.resolve(platform);
     if (!runtime.sendBotMessage) throw new Error(`Channel platform does not support bot-to-bot messages: ${platform}`);
     return runtime.sendBotMessage(workspaceId, input);
+  }
+
+  async resolveBotMemberId(platform: string, workspaceId: string, input: ChannelBotMemberLookupInput): Promise<string> {
+    const runtime = this.resolve(platform);
+    if (!runtime.resolveBotMemberId) throw new Error(`Channel platform does not support bot member lookup: ${platform}`);
+    return runtime.resolveBotMemberId(workspaceId, input);
   }
 
   async getQrCode(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {

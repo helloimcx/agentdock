@@ -172,7 +172,7 @@ export class ButlerDispatcher {
     try {
       const result = await channels.sendBotMessage('lark', delegation.targetBot.workspaceId, {
         instanceId: delegation.targetBot.instanceId, channelId: delegation.deliveryContext.botChatId,
-        recipientBotOpenId: profile.managerBot.botOpenId, recipientBotName: profile.managerBot.displayName,
+        recipientBotName: delegation.targetBot.managerBotName,
         text,
       });
       this.recordWorkerDelivery(delegation, result.deliveryAcknowledgement, result.messageId, finalResult);
@@ -257,7 +257,7 @@ export class ButlerDispatcher {
     try {
       const result = await channels.sendBotMessage('lark', profile.managerBot.workspaceId, {
         instanceId: profile.managerBot.instanceId, channelId: delegation.deliveryContext.botChatId,
-        recipientBotOpenId: delegation.targetBot.botOpenId, recipientBotName: delegation.targetBot.displayName,
+        recipientBotName: delegation.targetBot.managedBotName,
         text,
       });
       this.recordManagerDelivery(delegation, operation, result);
@@ -327,10 +327,14 @@ export class ButlerDispatcher {
 
   private async receiveManagedBotCommand(profile: ButlerProfile, target: ButlerProfile['managedBots'][number], message: ButlerBotInboundMessage, envelope: ButlerBotProtocolMessage) {
     if (!['task.submit', 'task.followup', 'task.cancel'].includes(envelope.kind)) return;
-    if (envelope.targetBotId !== target.id || envelope.managerBotId !== profile.managerBot.id || message.senderOpenId !== profile.managerBot.botOpenId) return;
+    if (envelope.targetBotId !== target.id || envelope.managerBotId !== profile.managerBot.id || !this.channels) return;
     const task = this.store.butler.get(envelope.taskId);
     const delegation = task?.delegations.find((item) => item.id === envelope.delegationId);
     if (!task || !delegation || delegation.botId !== target.id || delegation.deliveryContext.botChatId !== message.chatId) return;
+    const managerMemberId = await this.channels.resolveBotMemberId('lark', target.workspaceId, {
+      instanceId: target.instanceId, channelId: message.chatId, botName: target.managerBotName,
+    });
+    if (message.senderOpenId !== managerMemberId) return;
     const operation = this.store.butler.operations(delegation.id).find((item) => item.id === envelope.operationId);
     if (!operation || !['sent', 'sending', 'unknown'].includes(operation.status) || !this.claimInbound(message)) return;
     await this.executeManagedBotCommand(profile, target, task, delegation, operation, envelope);
@@ -431,14 +435,14 @@ export class ButlerDispatcher {
     try {
       await this.channels.sendBotMessage('lark', target.workspaceId, {
         instanceId: target.instanceId, channelId: delegation.deliveryContext.botChatId,
-        recipientBotOpenId: profile.managerBot.botOpenId, recipientBotName: profile.managerBot.displayName,
+        recipientBotName: target.managerBotName,
         text: encodeButlerBotProtocolMessage(envelope),
       });
     } catch { /* A subsequent result message can still reconcile the manager. */ }
   }
 
   private async receiveManagerReply(profile: ButlerProfile, message: ButlerBotInboundMessage, envelope: ButlerBotProtocolMessage) {
-    const context = this.resolveManagerReplyContext(profile, message, envelope);
+    const context = await this.resolveManagerReplyContext(profile, message, envelope);
     if (!context || !this.claimInbound(message)) return;
     const { task, delegation, operation } = context;
     const previous = task;
@@ -448,10 +452,15 @@ export class ButlerDispatcher {
     this.changed(this.store.butler.get(task.id)!, previous);
   }
 
-  private resolveManagerReplyContext(profile: ButlerProfile, message: ButlerBotInboundMessage, envelope: ButlerBotProtocolMessage) {
+  private async resolveManagerReplyContext(profile: ButlerProfile, message: ButlerBotInboundMessage, envelope: ButlerBotProtocolMessage) {
     if (!['task.accepted', 'task.progress', 'task.result'].includes(envelope.kind) || envelope.managerBotId !== profile.managerBot.id) return undefined;
-    const target = profile.managedBots.find((bot) => bot.id === envelope.targetBotId && bot.botOpenId === message.senderOpenId);
+    const target = profile.managedBots.find((bot) => bot.id === envelope.targetBotId);
     if (!target) return undefined;
+    if (!this.channels) return undefined;
+    const workerMemberId = await this.channels.resolveBotMemberId('lark', profile.managerBot.workspaceId, {
+      instanceId: profile.managerBot.instanceId, channelId: message.chatId, botName: target.managedBotName,
+    });
+    if (workerMemberId !== message.senderOpenId) return undefined;
     const task = this.store.butler.get(envelope.taskId);
     if (!task) return undefined;
     const delegation = task?.delegations.find((item) => item.id === envelope.delegationId);

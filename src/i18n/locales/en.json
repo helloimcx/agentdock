@@ -402,9 +402,12 @@
     "managerBot": "Butler bot",
     "chooseManagerBot": "Choose a Lark bot to act as the Butler",
     "managedBots": "Bots managed by the Butler",
-    "sharedChatId": "Shared group chat ID",
-    "sharedChatHint": "Enter a shared group chat ID (oc_…) for every managed bot. The Butler and that bot must both be in the group; one group can contain several managed bots. Enable bot-authored group events for each managed app (im:message.group_at_msg / include_bot).",
+    "sharedChatHint": "Enter the exact names shown in the group member list and the shared group chat ID (oc_…). Both bots must be in the group; one group can contain several managed bots. Enable bot-authored group events for each app (im:message.group_at_msg / include_bot). Feishu Open IDs are app-scoped, so mentions are resolved with the sending app.",
     "needBots": "Connect at least two Lark bots first: one Butler and one managed bot.",
-    "disconnected": "Disconnected"
+    "disconnected": "Disconnected",
+    "managedBotName": "Managed bot name in the group (used by the Butler to mention it)",
+    "managerBotName": "Butler name in the group (used by the managed bot to mention the Butler)",
+    "managerBotNamePlaceholder": "For example: Butler",
+    "sharedChatId": "Shared group chat ID"
   }
 }

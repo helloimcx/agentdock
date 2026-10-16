@@ -402,9 +402,12 @@
     "managerBot": "管家机器人",
     "chooseManagerBot": "选择一个飞书机器人作为管家",
     "managedBots": "管家管理的机器人",
-    "sharedChatId": "机器人共用群聊 ID",
-    "sharedChatHint": "为每个受管 bot 填写共享群聊 ID（oc_…）。管家和该 bot 必须都在群中；一个群可以添加多个受管 bot。目标应用须启用机器人消息事件权限（im:message.group_at_msg / include_bot）。",
+    "sharedChatHint": "填写双方在群成员列表中显示的准确名称和共享群聊 ID（oc_…）。管家和受管 Bot 都要在群内；一个群可加入多个受管 Bot。各机器人应用须开启机器人群组消息事件权限（im:message.group_at_msg / include_bot）。飞书 Open ID 按应用隔离，系统会按发送方应用解析 @ ID。",
     "needBots": "请先连接至少两个飞书机器人：一个作为管家，另一个作为受管机器人。",
-    "disconnected": "未连接"
+    "disconnected": "未连接",
+    "managedBotName": "受管 Bot 在群内显示的名称（管家用于 @ 它）",
+    "managerBotName": "管家在群内显示的名称（受管 Bot 用于 @ 管家）",
+    "managerBotNamePlaceholder": "如：项少龙",
+    "sharedChatId": "机器人共用群聊 ID"
   }
 }

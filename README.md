@@ -25,7 +25,7 @@ flowchart LR
   api --> kernel[Core kernel and workspace router]
   api --> butler[Butler orchestration]
   butler -->|Persist task, progress and acceptance| sqlite
-  butler -->|Bot-to-bot messages / callbacks| channels
+  butler -->|Per-app bot mention IDs / callbacks| channels
   butler -->|Target bot workspace; existing permissions| acp
   kernel --> sqlite[(SQLite)]
   kernel --> acp[ACP session runtime]
@@ -72,6 +72,8 @@ flowchart LR
 
 ### 2026-10-16
 
+- 发布 AgentDock 0.1.94：
+  - **修复管家跨应用机器人委派**：配置双方在群内显示的准确名称，发送时按当前飞书应用解析本应用可用的机器人 ID，回执校验也按接收应用的 ID 视角进行。
 - 发布 AgentDock 0.1.93：
   - **管家管理 Channel Bot (#215)**：管家自身是一个飞书机器人，可绑定多个受管 Bot 和共享群聊，通过真实 Bot 间消息委派任务、持续跟踪进展，并支持跟进、取消及用户验收；新增以配置为主的管家页面。
 

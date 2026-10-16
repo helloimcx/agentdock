@@ -62,11 +62,19 @@ test('real Butler HTTP and CLI delegate through ACP processes, persist facts, sc
   let service: ButlerService;
   const channels = {
     listButlerBotEndpoints: async () => bots,
+    resolveBotMemberId: async (_platform: string, workspaceId: string, input: any) => {
+      const bot = bots.find((entry) => entry.displayName === input.botName);
+      if (!bot) throw new Error(`Bot ${input.botName} is not in the group.`);
+      const viewer = bots.find((entry) => entry.workspaceId === workspaceId)!;
+      return bot.appId === viewer.appId ? bot.botOpenId : `ou_${bot.workspaceId}_in_${viewer.workspaceId}`;
+    },
     sendBotMessage: async (_platform: string, workspaceId: string, input: any) => {
       const sender = bots.find((bot) => bot.workspaceId === workspaceId && bot.instanceId === input.instanceId)!;
-      const recipient = bots.find((bot) => bot.botOpenId === input.recipientBotOpenId)!;
+      const recipient = bots.find((bot) => bot.displayName === input.recipientBotName)!;
       await service.receiveBotMessage({ platform: 'lark', workspaceId: recipient.workspaceId, instanceId: recipient.instanceId,
-        appId: recipient.appId, botOpenId: recipient.botOpenId, senderOpenId: sender.botOpenId,
+        appId: recipient.appId, botOpenId: recipient.botOpenId, senderOpenId: await channels.resolveBotMemberId(_platform, recipient.workspaceId, {
+          instanceId: recipient.instanceId, channelId: input.channelId, botName: sender.displayName,
+        }),
         chatId: input.channelId, messageId: `om_${randomUUID()}`, text: input.text });
       return { platform: 'lark', workspaceId, instanceId: input.instanceId, channelId: input.channelId, messageId: `om_${randomUUID()}`,
         deliveryAcknowledgement: 'confirmed' as const };
@@ -86,7 +94,10 @@ test('real Butler HTTP and CLI delegate through ACP processes, persist facts, sc
     const managerBotId = bots[0].id;
     const researchBotId = bots[1].id;
     const developmentBotId = bots[2].id;
-    const roster = [{ botId: researchBotId, sharedChatId: 'oc_shared_research' }, { botId: developmentBotId, sharedChatId: 'oc_shared_development' }];
+    const roster = [
+      { botId: researchBotId, sharedChatId: 'oc_shared_research', managedBotName: 'Research bot', managerBotName: 'Butler' },
+      { botId: developmentBotId, sharedChatId: 'oc_shared_development', managedBotName: 'Development bot', managerBotName: 'Butler' },
+    ];
     const configured = await request('PUT', '/butler/profile', { managerBotId, managedBots: roster });
     assert.equal(configured.status, 200);
     const owner = configured.payload.data.threadId;

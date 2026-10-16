@@ -295,12 +295,13 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
     const state = this.resolveRuntimeState(workspaceId, input.instanceId).state;
     if (!state?.client || !state.connected) throw new Error(`Lark bot runtime is not connected: ${workspaceId}/${input.instanceId}`);
     if (!input.channelId.startsWith('oc_')) throw new Error('Lark bot-to-bot delivery requires a shared group chat.');
-    if (!input.recipientBotOpenId.startsWith('ou_')) throw new Error('A valid Lark bot open_id is required.');
+    if (!input.recipientBotName.trim()) throw new Error('A Lark group bot name is required.');
     if (!input.text.trim() || Buffer.byteLength(input.text, 'utf8') > 24 * 1024) throw new Error('Lark bot protocol message must contain 1 to 24576 bytes.');
+    const recipientBotOpenId = await this.outboundTransport.resolveBotMemberId(state, input.channelId, input.recipientBotName);
     const messageId = await this.outboundTransport.sendBotMessage(
       state,
       input.channelId,
-      input.recipientBotOpenId,
+      recipientBotOpenId,
       input.recipientBotName,
       input.text,
     );
@@ -312,6 +313,13 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       messageId,
       deliveryAcknowledgement: messageId ? 'confirmed' : 'unknown',
     };
+  }
+
+  async resolveBotMemberId(workspaceId: string, input: import('@cc/superai-contracts').ChannelBotMemberLookupInput): Promise<string> {
+    const state = this.resolveRuntimeState(workspaceId, input.instanceId).state;
+    if (!state?.client || !state.connected) throw new Error(`Lark bot runtime is not connected: ${workspaceId}/${input.instanceId}`);
+    if (!input.channelId.startsWith('oc_')) throw new Error('Lark bot member lookup requires a shared group chat.');
+    return this.outboundTransport.resolveBotMemberId(state, input.channelId, input.botName);
   }
 
 

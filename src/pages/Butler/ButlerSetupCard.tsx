@@ -11,25 +11,36 @@ interface ButlerSetupCardProps {
   bots: ButlerBotEndpoint[];
   workspaces: WorkspaceSummary[];
   busy: boolean;
-  onConfigure: (managerBotId: string, managedBots: Array<{ botId: string; sharedChatId: string }>) => Promise<unknown>;
+  onConfigure: (managerBotId: string, managedBots: Array<{ botId: string; sharedChatId: string; managedBotName: string; managerBotName: string }>) => Promise<unknown>;
 }
 
 interface ManagedBotRowProps {
   bot: ButlerBotEndpoint;
   selected: boolean;
   sharedChatId: string;
+  managedBotName: string;
+  managerBotName: string;
   busy: boolean;
   onToggle: (botId: string) => void;
   onSharedChatChange: (botId: string, sharedChatId: string) => void;
+  onManagedBotNameChange: (botId: string, name: string) => void;
+  onManagerBotNameChange: (botId: string, name: string) => void;
 }
 
-function ManagedBotRow({ bot, selected, sharedChatId, busy, onToggle, onSharedChatChange }: ManagedBotRowProps) {
+function ManagedBotRow({ bot, selected, sharedChatId, managedBotName, managerBotName, busy, onToggle,
+  onSharedChatChange, onManagedBotNameChange, onManagerBotNameChange }: ManagedBotRowProps) {
   const { t } = useTranslation();
-  return <div className="grid gap-2 rounded-md border border-border/70 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] sm:items-center">
+  return <div className="grid gap-2 rounded-md border border-border/70 p-3">
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected} onChange={() => onToggle(bot.id)} disabled={busy || !bot.connected} />
       <Bot size={15} />{bot.displayName} · {bot.workspaceId}/{bot.instanceId}{!bot.connected ? ` · ${t('butler.disconnected')}` : ''}</label>
-    {selected && <Input aria-label={`${t('butler.sharedChatId')} ${bot.displayName}`} label={t('butler.sharedChatId')} value={sharedChatId}
-      onChange={(event) => onSharedChatChange(bot.id, event.target.value)} placeholder="oc_…" required />}
+    {selected && <div className="grid gap-2 lg:grid-cols-3">
+      <Input aria-label={`${t('butler.managedBotName')} ${bot.displayName}`} label={t('butler.managedBotName')} value={managedBotName}
+        onChange={(event) => onManagedBotNameChange(bot.id, event.target.value)} placeholder={bot.displayName} required />
+      <Input aria-label={`${t('butler.managerBotName')} ${bot.displayName}`} label={t('butler.managerBotName')} value={managerBotName}
+        onChange={(event) => onManagerBotNameChange(bot.id, event.target.value)} placeholder={t('butler.managerBotNamePlaceholder')} required />
+      <Input aria-label={`${t('butler.sharedChatId')} ${bot.displayName}`} label={t('butler.sharedChatId')} value={sharedChatId}
+        onChange={(event) => onSharedChatChange(bot.id, event.target.value)} placeholder="oc_…" required />
+    </div>}
   </div>;
 }
 
@@ -40,8 +51,12 @@ interface ButlerSetupFormProps {
   managerBotId: string;
   managedBotIds: string[];
   sharedChatIds: Record<string, string>;
+  managedBotNames: Record<string, string>;
+  managerBotNames: Record<string, string>;
   onToggleManaged: (botId: string) => void;
   onSharedChatChange: (botId: string, sharedChatId: string) => void;
+  onManagedBotNameChange: (botId: string, name: string) => void;
+  onManagerBotNameChange: (botId: string, name: string) => void;
 }
 
 interface ManagerBotView {
@@ -96,15 +111,21 @@ function ManagerRolePanel({ managerBot, profile }: { managerBot?: ButlerBotEndpo
   </div>;
 }
 
-function ButlerSetupForm({ bots, busy, onConfigure, managerBotId, managedBotIds, sharedChatIds, onToggleManaged, onSharedChatChange }: ButlerSetupFormProps) {
+function ButlerSetupForm({ bots, busy, onConfigure, managerBotId, managedBotIds, sharedChatIds, managedBotNames, managerBotNames,
+  onToggleManaged, onSharedChatChange, onManagedBotNameChange, onManagerBotNameChange }: ButlerSetupFormProps) {
   const { t } = useTranslation();
   const managedBots = bots.filter((bot) => bot.id !== managerBotId);
-  const hasSharedRoutes = managedBotIds.every((botId) => sharedChatIds[botId]?.trim().startsWith('oc_'));
-  const submit = () => onConfigure(managerBotId, managedBotIds.map((botId) => ({ botId, sharedChatId: sharedChatIds[botId]?.trim() || '' })));
+  const hasSharedRoutes = managedBotIds.every((botId) => sharedChatIds[botId]?.trim().startsWith('oc_')
+    && managedBotNames[botId]?.trim() && managerBotNames[botId]?.trim());
+  const submit = () => onConfigure(managerBotId, managedBotIds.map((botId) => ({ botId,
+    sharedChatId: sharedChatIds[botId]?.trim() || '', managedBotName: managedBotNames[botId]?.trim() || '',
+    managerBotName: managerBotNames[botId]?.trim() || '' })));
   return <>
     <fieldset className="space-y-3 rounded-lg border border-border p-3" disabled={busy || !managerBotId}>
       <legend className="px-1 text-sm font-medium">{t('butler.managedBots')}</legend>
-      {managedBots.map((bot) => <ManagedBotRow key={bot.id} bot={bot} selected={managedBotIds.includes(bot.id)} sharedChatId={sharedChatIds[bot.id] || ''} busy={busy} onToggle={onToggleManaged} onSharedChatChange={onSharedChatChange} />)}
+      {managedBots.map((bot) => <ManagedBotRow key={bot.id} bot={bot} selected={managedBotIds.includes(bot.id)} sharedChatId={sharedChatIds[bot.id] || ''}
+        managedBotName={managedBotNames[bot.id] || ''} managerBotName={managerBotNames[bot.id] || ''} busy={busy} onToggle={onToggleManaged}
+        onSharedChatChange={onSharedChatChange} onManagedBotNameChange={onManagedBotNameChange} onManagerBotNameChange={onManagerBotNameChange} />)}
       <p className="text-xs text-muted-foreground">{t('butler.sharedChatHint')}</p>
     </fieldset>
     <Button disabled={busy || !managerBotId || managedBotIds.length === 0 || !hasSharedRoutes} loading={busy} onClick={() => void submit()}>{t('butler.setup')}</Button>
@@ -116,11 +137,15 @@ export default function ButlerSetupCard({ profile, bots, workspaces, busy, onCon
   const [managerBotId, setManagerBotId] = useState('');
   const [managedBotIds, setManagedBotIds] = useState<string[]>([]);
   const [sharedChatIds, setSharedChatIds] = useState<Record<string, string>>({});
+  const [managedBotNames, setManagedBotNames] = useState<Record<string, string>>({});
+  const [managerBotNames, setManagerBotNames] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!profile) return;
     setManagerBotId(profile.managerBot.id);
     setManagedBotIds(profile.managedBots.map((bot) => bot.id));
     setSharedChatIds(Object.fromEntries(profile.managedBots.map((bot) => [bot.id, bot.sharedChatId])));
+    setManagedBotNames(Object.fromEntries(profile.managedBots.map((bot) => [bot.id, bot.managedBotName || ''])));
+    setManagerBotNames(Object.fromEntries(profile.managedBots.map((bot) => [bot.id, bot.managerBotName || ''])));
   }, [profile]);
   const onManagerChange = (botId: string) => {
     setManagerBotId(botId);
@@ -129,6 +154,8 @@ export default function ButlerSetupCard({ profile, bots, workspaces, busy, onCon
   const onToggleManaged = (botId: string) => setManagedBotIds((current) => current.includes(botId)
     ? current.filter((id) => id !== botId) : [...current, botId]);
   const onSharedChatChange = (botId: string, sharedChatId: string) => setSharedChatIds((current) => ({ ...current, [botId]: sharedChatId }));
+  const onManagedBotNameChange = (botId: string, name: string) => setManagedBotNames((current) => ({ ...current, [botId]: name }));
+  const onManagerBotNameChange = (botId: string, name: string) => setManagerBotNames((current) => ({ ...current, [botId]: name }));
   const { managerBot, choices: managerChoices, statusKey: managerStatus } = resolveManagerBotView(managerBotId, profile, bots);
   const managerWorkspace = managerBot && workspaces.find((workspace) => workspace.id === managerBot.workspaceId);
   return <Card className="app-panel space-y-4">
@@ -140,7 +167,8 @@ export default function ButlerSetupCard({ profile, bots, workspaces, busy, onCon
       {bots.length < 2 && <p className="text-sm text-muted-foreground">{t('butler.needBots')}</p>}
       {bots.length >= 2 && <>
       <ButlerSetupForm bots={bots} busy={busy} onConfigure={onConfigure}
-        managerBotId={managerBotId} managedBotIds={managedBotIds} sharedChatIds={sharedChatIds} onToggleManaged={onToggleManaged} onSharedChatChange={onSharedChatChange} />
+        managerBotId={managerBotId} managedBotIds={managedBotIds} sharedChatIds={sharedChatIds} managedBotNames={managedBotNames} managerBotNames={managerBotNames}
+        onToggleManaged={onToggleManaged} onSharedChatChange={onSharedChatChange} onManagedBotNameChange={onManagedBotNameChange} onManagerBotNameChange={onManagerBotNameChange} />
       </>}
   </Card>;
 }

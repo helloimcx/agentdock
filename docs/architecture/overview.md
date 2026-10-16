@@ -28,7 +28,7 @@ flowchart LR
   api --> kernel[Core kernel and workspace router]
   api --> butler[Butler orchestration]
   butler -->|Persist goals, progress and acceptance| sqlite
-  butler -->|Bot-to-bot messages / callbacks| channels
+  butler -->|Per-app bot mention IDs / callbacks| channels
   butler -->|Target bot workspace; existing permissions| acp
   kernel --> sqlite[(SQLite)]
   kernel --> acp[ACP session runtime]
