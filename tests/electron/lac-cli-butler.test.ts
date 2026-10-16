@@ -94,7 +94,7 @@ test('butler task operations send scoped owner context and exact delegation iden
 
 test('butler setup and bot discovery do not require an owner', async () => {
   await withCore(async (baseUrl, requests) => {
-    const roster = JSON.stringify([{ botId: researchBot, sharedChatId: 'oc_shared_research' }]);
+    const roster = JSON.stringify([{ botId: researchBot, sharedChatId: 'oc_shared_research', managedBotName: 'Research bot', managerBotName: 'Butler bot' }]);
     assert.equal((await invoke(['butler', 'bots', '--json'], baseUrl)).code, 0);
     assert.equal((await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster], baseUrl)).code, 0);
     assert.equal((await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster, '--owner-thread', owner], baseUrl)).code, 0);

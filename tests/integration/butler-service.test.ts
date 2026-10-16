@@ -17,7 +17,11 @@ const BOTS = {
 };
 
 function profileInput(managerBotId = BOTS.manager.id, managed = [BOTS.research.id, BOTS.development.id]) {
-  return { managerBotId, managedBots: managed.map((botId) => ({ botId, sharedChatId: `oc_shared_${botId.split(':').at(-1)}` })) };
+  return { managerBotId, managedBots: managed.map((botId) => ({ botId,
+    sharedChatId: `oc_shared_${botId.split(':').at(-1)}`,
+    managedBotName: BOTS[botId === BOTS.research.id ? 'research' : 'development'].displayName,
+    managerBotName: BOTS.manager.displayName,
+  })) };
 }
 
 function fixture() {
@@ -29,6 +33,11 @@ function fixture() {
   }
   const calls: Array<{ threadId: string; content: string; options: Record<string, unknown> }> = [];
   const botMessages: Array<{ from: string; to: string; chatId: string; text: string }> = [];
+  const groupBotIds: Record<string, Record<string, string>> = {
+    butler: { 'Butler bot': 'ou-butler', 'Research bot': 'ou-research-in-butler', 'Development bot': 'ou-development-in-butler' },
+    research: { 'Butler bot': 'ou-butler-in-research', 'Research bot': 'ou-research', 'Development bot': 'ou-development-in-research' },
+    development: { 'Butler bot': 'ou-butler-in-development', 'Research bot': 'ou-research-in-development', 'Development bot': 'ou-development' },
+  };
   const router = {
     createThread: async (workspaceId: string, title?: string) => core.createThread(workspaceId, title || 'Task', 'codex'),
     sendThreadMessage: async (threadId: string, content: any, options: any = {}) => {
@@ -49,13 +58,25 @@ function fixture() {
   let service: ButlerService;
   const channels = {
     listButlerBotEndpoints: async () => endpoints,
+    resolveBotMemberId: async (_platform: string, workspaceId: string, input: any) => {
+      const id = groupBotIds[workspaceId]?.[input.botName];
+      if (!id) throw new Error(`Bot ${input.botName} is not in ${input.channelId} from ${workspaceId}.`);
+      return id;
+    },
     sendBotMessage: async (_platform: string, workspaceId: string, input: any) => {
       const sender = endpoints.find((bot) => bot.workspaceId === workspaceId && bot.instanceId === input.instanceId);
-      const recipient = endpoints.find((bot) => bot.botOpenId === input.recipientBotOpenId);
+      const recipient = endpoints.find((bot) => bot.displayName === input.recipientBotName);
       if (!sender || !recipient) throw new Error('Bot endpoint is unavailable.');
+      const recipientMemberId = await channels.resolveBotMemberId(_platform, workspaceId, {
+        instanceId: sender.instanceId, channelId: input.channelId, botName: input.recipientBotName,
+      });
+      const senderMemberId = await channels.resolveBotMemberId(_platform, recipient.workspaceId, {
+        instanceId: recipient.instanceId, channelId: input.channelId, botName: sender.displayName,
+      });
+      assert.notEqual(recipientMemberId, recipient.botOpenId, 'the sender app must use its own scoped mention ID');
       botMessages.push({ from: sender.id, to: recipient.id, chatId: input.channelId, text: input.text });
       await service.receiveBotMessage({ platform: 'lark', workspaceId: recipient.workspaceId, instanceId: recipient.instanceId,
-        appId: recipient.appId, botOpenId: recipient.botOpenId, senderOpenId: sender.botOpenId,
+        appId: recipient.appId, botOpenId: recipient.botOpenId, senderOpenId: senderMemberId,
         chatId: input.channelId, messageId: `om_${randomUUID()}`, text: input.text });
       return { platform: 'lark', workspaceId, instanceId: input.instanceId, channelId: input.channelId, messageId: `om_${randomUUID()}`,
         deliveryAcknowledgement: 'confirmed' as const };
@@ -76,11 +97,15 @@ async function oneTask(f: ReturnType<typeof fixture>) {
 test('Butler setup requires a connected distinct bot roster and an explicit shared group per managed bot', async () => {
   const f = fixture();
   try {
+    const invalidAlias = profileInput();
+    invalidAlias.managedBots[0].managedBotName = 'A name that is not in the group';
+    await assert.rejects(f.service.configure(invalidAlias), /not in the group/i);
     await assert.rejects(f.service.configure({ managerBotId: BOTS.manager.id,
-      managedBots: [{ botId: BOTS.research.id, sharedChatId: '' }] }));
+      managedBots: [{ botId: BOTS.research.id, sharedChatId: '', managedBotName: 'Research bot', managerBotName: 'Butler bot' }] }));
     await assert.rejects(f.service.configure(profileInput(BOTS.manager.id, [BOTS.manager.id])));
     await assert.rejects(f.service.configure({ managerBotId: BOTS.manager.id, managedBots: [
-      { botId: BOTS.research.id, sharedChatId: 'oc_shared' }, { botId: BOTS.research.id, sharedChatId: 'oc_shared' },
+      { botId: BOTS.research.id, sharedChatId: 'oc_shared', managedBotName: 'Research bot', managerBotName: 'Butler bot' },
+      { botId: BOTS.research.id, sharedChatId: 'oc_shared', managedBotName: 'Research bot', managerBotName: 'Butler bot' },
     ] }));
     f.endpoints.find((bot) => bot.id === BOTS.development.id)!.connected = false;
     await assert.rejects(f.service.configure(profileInput()));
@@ -123,19 +148,26 @@ test('Butler accepts only the configured bot runtime, sender identity and shared
     const command = f.botMessages.find((message) => message.from === BOTS.manager.id && message.to === BOTS.research.id)!;
     const wrongRuntime = {
       platform: 'lark' as const, workspaceId: 'development', instanceId: 'developer-bot', appId: BOTS.research.appId,
-      botOpenId: BOTS.research.botOpenId, senderOpenId: BOTS.manager.botOpenId, chatId: command.chatId,
+      botOpenId: BOTS.research.botOpenId, senderOpenId: 'ou-butler-in-research', chatId: command.chatId,
       messageId: `om_${randomUUID()}`, text: command.text,
     };
     await f.service.receiveBotMessage(wrongRuntime);
+    const cancellation = f.core.butler.addOperation(delegation.id, 'request:forged-cancel:97aaea01', '', 'cancel');
+    f.core.butler.updateOperation({ ...cancellation, status: 'sent' });
+    const forgedCancel = encodeButlerBotProtocolMessage({ protocol: 'agentdock.butler', version: 1, kind: 'task.cancel',
+      taskId: task.id, delegationId: delegation.id, operationId: cancellation.id,
+      managerBotId: BOTS.manager.id, targetBotId: BOTS.research.id });
     const forgedSender = { ...wrongRuntime, workspaceId: BOTS.research.workspaceId, instanceId: BOTS.research.instanceId,
-      senderOpenId: 'ou_unmanaged', messageId: `om_${randomUUID()}` };
+      senderOpenId: BOTS.manager.botOpenId, messageId: `om_${randomUUID()}`, text: forgedCancel };
     await f.service.receiveBotMessage(forgedSender);
+    assert.notEqual(f.core.submissions.byRun(task.delegations[0].runId!)?.status, 'interrupted');
+    assert.equal(f.core.butler.operations(delegation.id).find((entry) => entry.id === cancellation.id)?.status, 'sent');
     const before = f.service.get(task.id, task.ownerThreadId);
     const forgedReply = encodeButlerBotProtocolMessage({ protocol: 'agentdock.butler', version: 1, kind: 'task.accepted',
       taskId: task.id, delegationId: delegation.id, operationId: delegation.operationId,
       managerBotId: BOTS.manager.id, targetBotId: BOTS.research.id });
     await f.service.receiveBotMessage({ ...wrongRuntime, workspaceId: BOTS.manager.workspaceId, instanceId: BOTS.manager.instanceId,
-      appId: BOTS.manager.appId, botOpenId: BOTS.manager.botOpenId, senderOpenId: 'ou_unmanaged', text: forgedReply,
+      appId: BOTS.manager.appId, botOpenId: BOTS.manager.botOpenId, senderOpenId: BOTS.research.botOpenId, text: forgedReply,
       messageId: `om_${randomUUID()}` });
     const after = f.service.get(task.id, task.ownerThreadId);
     assert.equal(after.delegations[0].threadId, before.delegations[0].threadId);

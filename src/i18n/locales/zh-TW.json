@@ -362,9 +362,12 @@
     "managerBot": "管家機器人",
     "chooseManagerBot": "選擇一個飛書機器人作為管家",
     "managedBots": "管家管理的機器人",
-    "sharedChatId": "機器人共用群組 ID",
-    "sharedChatHint": "請為每個受管 bot 填寫共用群組 ID（oc_…）。管家與該 bot 都必須在群組中；一個群組可加入多個受管 bot。受管應用須啟用機器人群組訊息事件權限（im:message.group_at_msg / include_bot）。",
+    "sharedChatHint": "請填寫群組成員清單中的雙方顯示名稱與共用群組 ID（oc_…）。管家和受管 Bot 都須在群組中；一個群組可加入多個受管 Bot。各機器人應用須啟用機器人群組訊息事件權限（im:message.group_at_msg / include_bot）。飛書 Open ID 依應用隔離，系統會依發送方應用解析提及 ID。",
     "needBots": "請先連線至少兩個飛書機器人：一個作為管家，另一個作為受管機器人。",
-    "disconnected": "未連線"
+    "disconnected": "未連線",
+    "managedBotName": "受管 Bot 在群組中的名稱（由管家用來提及）",
+    "managerBotName": "管家在群組中的名稱（由受管 Bot 用來提及）",
+    "managerBotNamePlaceholder": "例如：項少龍",
+    "sharedChatId": "機器人共用群組 ID"
   }
 }

@@ -13,6 +13,10 @@ export interface ButlerBotEndpoint {
 export interface ButlerManagedBot extends ButlerBotEndpoint {
   /** Shared group containing both this bot and the Butler bot; one group may contain multiple managed bots. */
   sharedChatId: string;
+  /** Exact name shown to the Butler app when it mentions this managed bot in the shared group. */
+  managedBotName: string;
+  /** Exact name shown to this managed bot app when it mentions the Butler in the shared group. */
+  managerBotName: string;
 }
 
 export interface ButlerProfile {
@@ -25,7 +29,7 @@ export interface ButlerProfile {
 
 export interface ButlerProfileInput {
   managerBotId: string;
-  managedBots: Array<{ botId: string; sharedChatId: string }>;
+  managedBots: Array<{ botId: string; sharedChatId: string; managedBotName: string; managerBotName: string }>;
   threadId?: string;
 }
 

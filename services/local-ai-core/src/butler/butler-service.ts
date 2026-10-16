@@ -44,6 +44,7 @@ export class ButlerService {
     const available = await this.listBots();
     const managerBot = this.requireConnectedManagerBot(input.managerBotId, available);
     const managedBots = this.resolveManagedBots(input.managedBots, managerBot, available);
+    await this.validateGroupBotNames(managerBot, managedBots);
     this.requireHost(managerBot.workspaceId);
     const existing = this.profile();
     this.assertProfileCanChange(input, existing, managerBot, managedBots);
@@ -62,7 +63,7 @@ export class ButlerService {
   private resolveManagedBots(input: ButlerProfileInput['managedBots'], managerBot: ButlerBotEndpoint, available: ButlerBotEndpoint[]) {
     if (!Array.isArray(input) || input.length < 1 || input.length > 32) throw new ButlerError('Configure between 1 and 32 managed bots.');
     const selected = new Set<string>();
-    return input.map(({ botId, sharedChatId }) => {
+    return input.map(({ botId, sharedChatId, managedBotName, managerBotName }) => {
       if (botId === managerBot.id || selected.has(botId)) throw new ButlerError('Managed bots must be unique and cannot be the Butler bot.');
       selected.add(botId);
       const endpoint = available.find((bot) => bot.id === botId);
@@ -70,8 +71,26 @@ export class ButlerService {
       if (!endpoint.connected) throw new ButlerError(`Managed bot must be connected before it can be configured: ${endpoint.displayName}`);
       const chatId = String(sharedChatId || '').trim();
       if (!chatId.startsWith('oc_')) throw new ButlerError(`Configure a shared Lark group chat ID for ${endpoint.displayName}.`);
-      return { ...endpoint, sharedChatId: chatId };
+      const managerName = String(managerBotName || '').trim();
+      const managedName = String(managedBotName || '').trim();
+      if (!managerName || !managedName) throw new ButlerError(`Configure both group bot names for ${endpoint.displayName}.`);
+      return { ...endpoint, sharedChatId: chatId, managedBotName: managedName, managerBotName: managerName };
     });
+  }
+
+  private async validateGroupBotNames(managerBot: ButlerBotEndpoint, managedBots: ButlerProfile['managedBots']) {
+    const channels = this.options.channels;
+    if (!channels) throw new ButlerError('Channel bot discovery is unavailable.', 409);
+    for (const bot of managedBots) {
+      const managerViewId = await channels.resolveBotMemberId('lark', managerBot.workspaceId, {
+        instanceId: managerBot.instanceId, channelId: bot.sharedChatId, botName: bot.managedBotName,
+      });
+      if (managerViewId === managerBot.botOpenId) throw new ButlerError(`Managed bot name resolves to the Butler bot in ${bot.sharedChatId}.`);
+      const workerViewId = await channels.resolveBotMemberId('lark', bot.workspaceId, {
+        instanceId: bot.instanceId, channelId: bot.sharedChatId, botName: bot.managerBotName,
+      });
+      if (workerViewId === bot.botOpenId) throw new ButlerError(`Butler bot name resolves to ${bot.displayName} in ${bot.sharedChatId}.`);
+    }
   }
 
   private assertProfileCanChange(input: ButlerProfileInput, existing: ButlerProfile | null,
@@ -137,7 +156,8 @@ export class ButlerService {
       if (!targetBot?.connected || targetBot.workspaceId !== configured.workspaceId || targetBot.instanceId !== configured.instanceId) {
         throw new ButlerError(`Managed bot runtime changed or is unavailable: ${configured.displayName}`, 409);
       }
-      return { input: assignment, targetBot: { ...targetBot, sharedChatId: configured.sharedChatId }, deliveryChatId: configured.sharedChatId };
+      return { input: assignment, targetBot: { ...targetBot, sharedChatId: configured.sharedChatId,
+        managedBotName: configured.managedBotName, managerBotName: configured.managerBotName }, deliveryChatId: configured.sharedChatId };
     });
     const task = this.store.butler.create(input, resolvedAssignments);
     await this.reconcile();
@@ -208,7 +228,7 @@ export class ButlerService {
 }
 
 function sameRoster(existing: ButlerProfile, managerBot: ButlerBotEndpoint, managedBots: ButlerProfile['managedBots']) {
-  const previous = existing.managedBots.map((bot) => [bot.id, bot.sharedChatId]);
-  const next = managedBots.map((bot) => [bot.id, bot.sharedChatId]);
+  const previous = existing.managedBots.map((bot) => [bot.id, bot.sharedChatId, bot.managedBotName, bot.managerBotName]);
+  const next = managedBots.map((bot) => [bot.id, bot.sharedChatId, bot.managedBotName, bot.managerBotName]);
   return existing.managerBot.id === managerBot.id && JSON.stringify(previous) === JSON.stringify(next);
 }

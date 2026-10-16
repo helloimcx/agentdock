@@ -362,9 +362,12 @@
     "managerBot": "執事ボット",
     "chooseManagerBot": "執事にする Lark ボットを選択",
     "managedBots": "執事が管理するボット",
-    "sharedChatId": "共有グループチャット ID",
-    "sharedChatHint": "各管理対象ボットの共有グループ ID（oc_…）を入力してください。執事と対象ボットの両方が参加するグループが必要で、1つのグループに複数の対象ボットを追加できます。各アプリでボット発信グループイベント（im:message.group_at_msg / include_bot）を有効にしてください。",
+    "sharedChatHint": "グループメンバー一覧に表示される双方の正確な名前と共有グループ ID（oc_…）を入力してください。執事と管理対象 Bot の両方が参加している必要があります。各アプリで Bot 発信のグループイベント（im:message.group_at_msg / include_bot）を有効にしてください。Feishu Open ID はアプリごとに異なるため、送信元アプリでメンション ID を解決します。",
     "needBots": "まず Lark ボットを2つ以上接続してください。1つは執事、もう1つは管理対象です。",
-    "disconnected": "未接続"
+    "disconnected": "未接続",
+    "managedBotName": "グループ内の管理対象 Bot 名（執事がメンションするときに使用）",
+    "managerBotName": "グループ内の執事名（管理対象 Bot がメンションするときに使用）",
+    "managerBotNamePlaceholder": "例：執事",
+    "sharedChatId": "共有グループチャット ID"
   }
 }

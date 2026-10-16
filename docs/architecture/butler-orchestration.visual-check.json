@@ -6,9 +6,9 @@
   "status": "pass",
   "visualReview": "pending",
   "artifact": {
-    "path": "/Users/momo/.codex/worktrees/butler-orchestration/agentdock/docs/architecture/butler-orchestration.html",
-    "sha256": "3504cfcbb926616d89a6dee425c36d3345a81af300adafe52bf2c066cef2dbbe",
-    "bytes": 716089
+    "path": "/Users/momo/.codex/worktrees/butler-lark-mention-fix/agentdock/docs/architecture/butler-orchestration.html",
+    "sha256": "e7bc033f935ea2e091f3335d5d88a37bfeb9092cbbe3ee6d88d79730a7be729d",
+    "bytes": 715733
   },
   "state": {
     "detail": "read",

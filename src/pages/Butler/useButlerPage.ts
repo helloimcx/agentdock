@@ -60,7 +60,7 @@ export function useButlerPage() {
       return false;
     } finally { if (alive.current) setBusy(false); }
   };
-  const configure = (managerBotId: string, managedBots: Array<{ botId: string; sharedChatId: string }>) => perform(async () => {
+  const configure = (managerBotId: string, managedBots: Array<{ botId: string; sharedChatId: string; managedBotName: string; managerBotName: string }>) => perform(async () => {
     const next = await setButlerProfile({ managerBotId, managedBots });
     if (alive.current) { owner.current = next.threadId; setProfile(next); setTasks([]); }
   });

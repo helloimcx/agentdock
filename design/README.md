@@ -8,7 +8,7 @@ AgentDock 完整可点击静态原型，以 `index.html` 为唯一入口，通�
 
 | 页面 | 文件 | 状态 | 对应实现 |
 |---|---|---|---|
-| AgentDock 全局可点击原型 | `index.html` | 已确认并实现（2026-10-16） | `src/app/ui-contributions.tsx` 中的可见导航与对应页面；管家配置位于 `/butler`，实现见 `src/pages/Butler/` |
+| AgentDock 全局可点击原型 | `index.html` | 已确认并实现（2026-10-16） | `src/app/ui-contributions.tsx` 中的可见导航与对应页面；管家配置位于 `/butler`，配置表单已增加跨应用群内机器人名称 |
 
 状态词汇：`待确认`（等用户看）→ `已确认`（可开发）→ `已确认并实现`（附日期，原型保留为设计事实源）。
 

@@ -62,7 +62,7 @@
       "col": 2,
       "type": "database",
       "label": "持久任务",
-      "sublabel": "bot 身份 / 操作 / 路由",
+      "sublabel": "bot 身份 / 双向群名 / 路由",
       "width": 150
     },
     {
@@ -71,7 +71,7 @@
       "col": 3,
       "type": "backend",
       "label": "消息分派",
-      "sublabel": "校验 roster 并构造委托",
+      "sublabel": "构造已验证的有向委托",
       "width": 150
     },
     {
@@ -89,7 +89,7 @@
       "col": 3,
       "type": "backend",
       "label": "目标 Bot 网关",
-      "sublabel": "校验发送者与任务",
+      "sublabel": "接收 Bot 消息 · 校验 Butler",
       "width": 150
     },
     {
@@ -116,8 +116,8 @@
       "col": 4,
       "type": "backend",
       "label": "回调校验与跟踪",
-      "sublabel": "身份、任务和 run 校验",
-      "width": 150
+      "sublabel": "接收应用下校验发送方 / run",
+      "width": 170
     },
     {
       "id": "review",
@@ -152,14 +152,14 @@
       "id": "send",
       "from": "dispatch",
       "to": "message",
-      "label": "管家 bot 显式 @ 受管 bot",
+      "label": "发送应用按群名解析 ID 后 @目标",
       "variant": "emphasis"
     },
     {
       "id": "receive",
       "from": "message",
       "to": "target",
-      "label": "Bot-authored 群事件"
+      "route": "straight"
     },
     {
       "id": "run",

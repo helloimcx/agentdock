@@ -71,7 +71,7 @@ export async function runButlerDomain(
     const threadId = ownerThread(flags, env, false);
     let managedBots: unknown;
     try { managedBots = JSON.parse(requiredValue(flags, 'managed-bots')); }
-    catch { throw new Error('--managed-bots must be a JSON array; every entry needs a botId and sharedChatId.'); }
+    catch { throw new Error('--managed-bots must be a JSON array; every entry needs botId, sharedChatId, managedBotName and managerBotName.'); }
     payload = await request(baseUrl, 'PUT', '/butler/profile', {
       managerBotId: requiredValue(flags, 'manager-bot'), managedBots, ...(threadId ? { threadId } : {}),
     });

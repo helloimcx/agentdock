@@ -70,14 +70,57 @@ test('Lark routes an explicitly mentioned bot message to Butler without human au
   });
 });
 
-test('Lark bot transport sends a real group text mention as the exact configured bot runtime', async () => {
+test('Lark bot transport resolves recipient mention IDs from the sending app group bot roster', async () => {
   const calls: any[] = [];
   const transport = new LarkOutboundTransport();
-  const state = { client: { im: { message: { create: async (input: any) => { calls.push(input); return { data: { message_id: 'om_sent' } }; } } } } } as any;
-  const messageId = await transport.sendBotMessage(state, 'oc_shared_group', 'ou_worker', 'Worker <bot>', 'task payload');
+  const state = { appId: 'cli_manager', client: {
+    request: async (input: any) => { calls.push(input); return { code: 0, data: { items: state.appId === 'cli_manager' ? [
+      { bot_id: 'ou_worker_manager_scope', bot_name: 'Worker <bot>' },
+      { bot_id: 'ou_other', bot_name: 'Other bot' },
+    ] : [
+      { bot_id: 'ou_manager_worker_scope', bot_name: 'Manager bot' },
+    ] } }; },
+    im: { message: { create: async (input: any) => { calls.push(input); return { data: { message_id: 'om_sent' } }; } } },
+  } } as any;
+  const mentionId = await transport.resolveBotMemberId(state, 'oc_shared_group', 'Worker <bot>');
+  assert.equal(mentionId, 'ou_worker_manager_scope');
+  state.appId = 'cli_worker';
+  const workerSideManagerId = await transport.resolveBotMemberId(state, 'oc_shared_group', 'Manager bot');
+  assert.equal(workerSideManagerId, 'ou_manager_worker_scope');
+  assert.notEqual(workerSideManagerId, 'ou_manager');
+  state.appId = 'cli_manager';
+  const messageId = await transport.sendBotMessage(state, 'oc_shared_group', mentionId, 'Worker <bot>', 'task payload');
   assert.equal(messageId, 'om_sent');
-  assert.deepEqual(calls[0].params, { receive_id_type: 'chat_id' });
-  assert.equal(calls[0].data.receive_id, 'oc_shared_group');
-  assert.equal(calls[0].data.msg_type, 'text');
-  assert.deepEqual(JSON.parse(calls[0].data.content), { text: '<at user_id="ou_worker">Worker &lt;bot&gt;</at> task payload' });
+  assert.equal(calls[0].url, '/open-apis/im/v1/chats/oc_shared_group/members/bots?page_size=100');
+  assert.equal(calls[0].method, 'GET');
+  assert.equal(calls[1].url, '/open-apis/im/v1/chats/oc_shared_group/members/bots?page_size=100');
+  assert.deepEqual(calls[2].params, { receive_id_type: 'chat_id' });
+  assert.equal(calls[2].data.receive_id, 'oc_shared_group');
+  assert.equal(calls[2].data.msg_type, 'text');
+  assert.deepEqual(JSON.parse(calls[2].data.content), { text: '<at user_id="ou_worker_manager_scope">Worker &lt;bot&gt;</at> task payload' });
+});
+
+test('Lark bot resolver fails closed when the configured visible name is missing or ambiguous', async () => {
+  const transport = new LarkOutboundTransport();
+  const state = { appId: 'cli_manager', client: { request: async () => ({ code: 0, data: { items: [
+    { bot_id: 'ou_first', bot_name: 'Worker' }, { bot_id: 'ou_second', bot_name: 'Worker' },
+  ] } }) } } as any;
+  await assert.rejects(transport.resolveBotMemberId(state, 'oc_shared_group', 'Unknown'), /not found/);
+  await assert.rejects(transport.resolveBotMemberId(state, 'oc_shared_group', 'Worker'), /ambiguous/);
+});
+
+test('Lark bot resolver follows group roster pagination before resolving a visible name', async () => {
+  const calls: any[] = [];
+  const state = { appId: 'cli_manager', client: { request: async (input: any) => {
+    calls.push(input);
+    return calls.length === 1
+      ? { code: 0, data: { items: [], has_more: true, page_token: 'next/token' } }
+      : { code: 0, data: { items: [{ bot_id: 'ou_worker', bot_name: 'Worker bot' }], has_more: false } };
+  } } } as any;
+  const transport = new LarkOutboundTransport();
+  assert.equal(await transport.resolveBotMemberId(state, 'oc_shared_group', 'Worker bot'), 'ou_worker');
+  assert.deepEqual(calls.map((call) => call.url), [
+    '/open-apis/im/v1/chats/oc_shared_group/members/bots?page_size=100',
+    '/open-apis/im/v1/chats/oc_shared_group/members/bots?page_size=100&page_token=next%2Ftoken',
+  ]);
 });

@@ -402,9 +402,14 @@ export interface ChannelOutboundMessageInput {
 export interface ChannelBotMessageInput {
   instanceId: string;
   channelId: string;
-  recipientBotOpenId: string;
   recipientBotName: string;
   text: string;
+}
+
+export interface ChannelBotMemberLookupInput {
+  instanceId: string;
+  channelId: string;
+  botName: string;
 }
 
 export interface ChannelBotMessageResult {

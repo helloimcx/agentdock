@@ -8,8 +8,11 @@ import type { LarkRuntimeState } from './types.js';
 import type { SessionCommandAction } from '../../thread/session-command-service.js';
 
 const LARK_MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+const LARK_CHAT_BOT_CACHE_TTL_MS = 30_000;
 
 export class LarkOutboundTransport {
+  private readonly chatBotCache = new Map<string, { expiresAt: number; bots: Array<{ botId: string; botName: string }> }>();
+
   constructor(private readonly log?: (message: string) => void) {}
 
   async sendFilePart(
@@ -94,6 +97,16 @@ export class LarkOutboundTransport {
     };
   }
 
+  async resolveBotMemberId(state: LarkRuntimeState, chatId: string, botName: string): Promise<string> {
+    const name = String(botName || '').trim();
+    if (!name) throw new Error('A Lark group bot name is required.');
+    const bots = await this.listChatBots(state, chatId);
+    const matches = bots.filter((bot) => bot.botName === name);
+    if (matches.length !== 1) throw new Error(matches.length ? `Lark group bot name is ambiguous: ${name}` : `Lark group bot was not found: ${name}`);
+    if (!matches[0].botId.startsWith('ou_')) throw new Error(`Lark group bot did not return a valid app-scoped open_id: ${name}`);
+    return matches[0].botId;
+  }
+
   async sendBotMessage(state: LarkRuntimeState, chatId: string, recipientBotOpenId: string, recipientBotName: string, text: string) {
     const content = `<at user_id="${escapeLarkAttribute(recipientBotOpenId)}">${escapeLarkText(recipientBotName)}</at> ${text}`;
     const response = await state.client.im.message.create({
@@ -104,6 +117,38 @@ export class LarkOutboundTransport {
     if (!messageId) throw new Error('Lark bot message did not return a message id');
     this.log?.(`localcore-lark sent bot message to ${recipientBotOpenId} in ${chatId}`);
     return messageId;
+  }
+
+  private async listChatBots(state: LarkRuntimeState, chatId: string) {
+    const cacheKey = `${state.appId}:${chatId}`;
+    const cached = this.chatBotCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.bots;
+    const bots: Array<{ botId: string; botName: string }> = [];
+    let pageToken = '';
+    for (let page = 0; page < 10; page += 1) {
+      const data = await this.fetchChatBotPage(state, chatId, pageToken);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      bots.push(...items.map((item: any) => ({ botId: String(item?.bot_id || '').trim(), botName: String(item?.bot_name || '').trim() }))
+        .filter((bot: { botId: string; botName: string }) => bot.botId && bot.botName));
+      if (!data?.has_more) break;
+      pageToken = String(data?.page_token || '').trim();
+      if (!pageToken) throw new Error('Lark group bot lookup indicated more pages without a page token.');
+      if (page === 9) throw new Error('Lark group bot lookup exceeded the supported page limit.');
+    }
+    this.chatBotCache.set(cacheKey, { expiresAt: Date.now() + LARK_CHAT_BOT_CACHE_TTL_MS, bots });
+    return bots;
+  }
+
+  private async fetchChatBotPage(state: LarkRuntimeState, chatId: string, pageToken: string) {
+    const tokenQuery = pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : '';
+    const response = await state.client.request({
+      url: `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}/members/bots?page_size=100${tokenQuery}`,
+      method: 'GET',
+    });
+    if (response?.code !== undefined && Number(response.code) !== 0) {
+      throw new Error(`Lark group bot lookup failed (${response.code}): ${String(response.msg || 'unknown error')}`);
+    }
+    return response?.data || response;
   }
 
   async patchTextCard(
