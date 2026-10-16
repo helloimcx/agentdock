@@ -178,6 +178,7 @@ When designing or connecting multi-entity models (such as `AutomationRun` wrappi
 
 ## Agent Workflow
 
+- `design/` 是唯一 UI 原型源：任何 UI 改动必须先改原型、经用户确认后才启动开发。
 - Before writing any code, describe the intended approach and wait for approval. If requirements are ambiguous, ask clarifying questions before writing code.
 - If a user request for code is not aligned with best practices, briefly explain the concern and suggest a better approach.
 - When investigating issues, reason from first principles about the data model, event flow, and ownership boundaries; first locate whether the faulty state is in agent session storage, Local AI Core logs, SQLite thread records, bridge events, or live UI state, then decide whether the model or workflow needs improvement before applying localized patches.
