@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentDock 持久执行方案（待批准）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "view",
+      "label": "第二阶段：运行快照"
+    },
+    {
+      "id": "core",
+      "label": "第一阶段：提交与投递"
+    },
+    {
+      "id": "durable",
+      "label": "第三阶段：可选 Pi Durable"
+    },
+    {
+      "id": "recovery",
+      "label": "重启与不确定结果",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "input",
+    "admit",
+    "execute",
+    "outbox",
+    "send",
+    "ack"
+  ],
+  "nodes": [
+    {
+      "id": "input",
+      "lane": "core",
+      "col": 0,
+      "type": "frontend",
+      "label": "提交入口",
+      "sublabel": "稳定 requestId",
+      "width": 150
+    },
+    {
+      "id": "admit",
+      "lane": "core",
+      "col": 1,
+      "type": "database",
+      "label": "事务接收",
+      "sublabel": "submission 与 run",
+      "width": 150
+    },
+    {
+      "id": "execute",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "运行路由",
+      "sublabel": "按 runtime 能力执行",
+      "width": 150
+    },
+    {
+      "id": "outbox",
+      "lane": "core",
+      "col": 3,
+      "type": "database",
+      "label": "持久投递单",
+      "sublabel": "绑定目标与最终结果",
+      "width": 150
+    },
+    {
+      "id": "send",
+      "lane": "core",
+      "col": 4,
+      "type": "external",
+      "label": "渠道发送",
+      "sublabel": "记录发送尝试",
+      "width": 150
+    },
+    {
+      "id": "ack",
+      "lane": "core",
+      "col": 5,
+      "type": "database",
+      "label": "保存确认",
+      "sublabel": "平台消息标识",
+      "width": 150
+    },
+    {
+      "id": "snapshot",
+      "lane": "view",
+      "col": 1,
+      "type": "backend",
+      "label": "持久运行快照",
+      "sublabel": "消息、工具、审批、队列",
+      "width": 150
+    },
+    {
+      "id": "clients",
+      "lane": "view",
+      "col": 2,
+      "type": "frontend",
+      "label": "多端重连",
+      "sublabel": "快照加版本增量",
+      "width": 150
+    },
+    {
+      "id": "harness",
+      "lane": "durable",
+      "col": 2,
+      "type": "backend",
+      "label": "全局 Durable 进程",
+      "sublabel": "各线程独立 Conversation",
+      "width": 150
+    },
+    {
+      "id": "pi_store",
+      "lane": "durable",
+      "col": 3,
+      "type": "database",
+      "label": "全局 SQLite",
+      "sublabel": "一个 Harness 独占",
+      "width": 150
+    },
+    {
+      "id": "restart",
+      "lane": "recovery",
+      "col": 2,
+      "type": "backend",
+      "label": "启动对账",
+      "sublabel": "安全恢复或标记中断",
+      "width": 150
+    },
+    {
+      "id": "unknown",
+      "lane": "recovery",
+      "col": 4,
+      "type": "security",
+      "label": "投递结果未知",
+      "sublabel": "核对后再决定重发",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "from": "input",
+      "to": "admit",
+      "role": "main"
+    },
+    {
+      "from": "admit",
+      "to": "execute",
+      "role": "main"
+    },
+    {
+      "from": "execute",
+      "to": "outbox",
+      "role": "main"
+    },
+    {
+      "from": "outbox",
+      "to": "send",
+      "role": "main"
+    },
+    {
+      "from": "send",
+      "to": "ack",
+      "role": "main"
+    },
+    {
+      "from": "admit",
+      "to": "snapshot",
+      "label": "提交后可见",
+      "role": "branch"
+    },
+    {
+      "from": "snapshot",
+      "to": "clients",
+      "label": "REST / WebSocket",
+      "role": "async"
+    },
+    {
+      "from": "execute",
+      "to": "harness",
+      "label": "显式启用",
+      "role": "branch"
+    },
+    {
+      "from": "harness",
+      "to": "pi_store",
+      "label": "检查点",
+      "role": "async"
+    },
+    {
+      "from": "harness",
+      "to": "restart",
+      "label": "进程重启",
+      "role": "branch"
+    },
+    {
+      "from": "send",
+      "to": "unknown",
+      "label": "确认丢失",
+      "role": "error"
+    }
+  ]
+}

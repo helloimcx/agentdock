@@ -28,18 +28,26 @@ flowchart LR
   kernel --> scheduler[Scheduler / Automation]
   scheduler --> acp
   acp --> agents[Local Pi / Codex / Claude / Hermes]
+  kernel -->|Typed submissions| durable[Pi Durable worker - optional]
+  durable --> pidb[(One pi-durable.sqlite per Core data directory)]
+  durable -->|Per-write approval request| kernel
+  kernel -->|Approved atomic write| workspace[(Workspace files)]
+  durable -->|OpenAI-compatible HTTPS| provider[Configured model provider]
   acp --> sandbox[OpenSandbox]
-  acp -.->|Remote Shell Proxy / ACP fs bridge| mesh
-  api -->|Authenticated Mesh REST| mesh[Mesh Gateway / Dispatcher]
+  acp -.->|Remote Shell Proxy: node-scoped token / ACP fs bridge| mesh
+  agents -->|Standalone lac / structured MCP over stdio| lac[LAC Host Dispatcher]
+  lac -->|Allowlisted CLI handlers · host workspace/thread context| api
+  api -->|Read-only nodes · admin / scoped Shell auth| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
   nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
   mesh -->|Execute / cancel| nodes
   nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
-当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。
+当前架构提供交互式 [HTML 导出](docs/architecture/system-architecture.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明 Core SQLite 与 Pi Durable 全局 SQLite 的边界。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
+持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
@@ -56,8 +64,28 @@ flowchart LR
 
 ## New
 
+### 2026-10-12
+
+- **远程工作区访问 LAC 能力**：远程 Bash 中的独立 `lac ...` 命令由主机 Local AI Core 处理，普通设备命令继续在远程节点运行；另提供当前 workspace 的 memory、scheduler、monitor 和 automation MCP 查询工具。workspace/thread 上下文由 Core 绑定，Mesh 管理令牌不会进入 Agent 子进程；复合/管道形式的 LAC 调用和依赖远端文件的 LAC 操作暂不支持。
+
+### 2026-10-11
+
+- 发布 AgentDock 0.1.92：
+  - **本地 ACP 会话空闲内存回收与无感恢复 (#200)**：支持本地与非沙箱模式下 ACP 会话在 run 结束后启动空闲回收倒计时（默认 900 秒 / 15 分钟，支持 `AGENTDOCK_ACP_IDLE_SECONDS` 配置），超时自动销毁 Agent 进程释放内存；新交互到达时通过 session/load 无感恢复历史会话上下文，彻底解决长时间多线程运行导致的内存累积和 OOM 风险。
+  - **Skills 挂载 Manifest-based GC 与未托管内容保护 (#202)**：挂载机制引入 `.mount-manifest.json` 跟踪记录由 mounter 创建的投影条目（符号链接与 `cpSync` 回退拷贝）。过期清理（GC）只回收 manifest 中记录且已禁用的失效技能，完全保护 Agent 或用户在目标目录（如 `.claude/skills/`）自行创建的真实目录和未托管内容；支持旧版本无 manifest 状态平滑过渡。
+  - **Remote Mesh 远程工作区技能挂载与动态同步 (#201)**：远程 Mesh 会话启动时自动挂载工作区级技能（`.agents/skills/` 与 `.agentdock/skills/`），支持按远程节点平台（`platforms`）精确过滤；在 Core 宿主机建立持久化存储 `{baseDir}/workspace-skills/<safeWorkspaceId>/`，核心重启后自动恢复投射；技能保存、删除、启禁用等 API 变更实时刷新对应影子工作区（`remote-shadow/<safeWorkspaceId>/`）的技能挂载。
+
+### 2026-10-10
+
+- 发布 AgentDock 0.1.91：
+  - **持久执行恢复与 Pi Durable 运行时**：基于 `requestId` 的幂等去重与单 owner SQLite 崩溃恢复机制，结合 delivery outbox 投递回执重试，并支持工作区文本逐次批准与原子写入。
+  - **Mesh 只读节点概览与路由安全加固**：提供免鉴权的只读节点拓扑与状态展示；跨运行时文件系统路径限制与 fail-closed 安全策略。
+  - **桌面端导航模型对齐**：桌面侧边栏与能力注册表统一（恢复 Costs 与 Skills 导航项展示），保持多端视图与权限守卫一致。
+  - **核心基础设施优化**：抽取 Markdown Frontmatter 通用解析助手；窗口化分页 SQL 逻辑去重；单测登记与覆盖率测试流水线严格对齐。
+
 ### 2026-10-04
 
+- **持久执行试接**：thread prompt 以稳定 `requestId` 去重；定时/自动化最终报告通过带平台回执的 delivery outbox 恢复；thread snapshot/watch 支持重连。新增可选 Pi Durable 运行时，每个 Core 数据目录由一个 worker/Harness 共享一个 SQLite，单个 thread 对应独立 Conversation；提供工作区文本读取，以及经现有权限卡逐次批准的文件创建/覆盖。Shell、删除、MCP 和 sandbox 工具仍不可用。
 - 发布 AgentDock 0.1.90：Android All-in-One 原生无障碍 Mesh 客户端集成（免 Termux / 零本地端口）：
   - **原生 Mesh 长连接客户端集成**：在无障碍桥接 APK（`agentdock-a11y`）中直接原生集成 RFC 6455 WebSocket 客户端与配对配置界面（`MainActivity`），手机安装单个 APK 开启无障碍即可一键接入 AgentDock 云端。
   - **彻底移除本地 19832 HTTP 监听**：实现纯出站长连接（Zero-Listening-Port），杜绝端口占用与网络攻击面，所有命令通过内存直调无障碍与系统引擎。
@@ -75,9 +103,10 @@ flowchart LR
 - 发布 AgentDock 0.1.87：移动端快捷指令库（`mobile-apps`）与客户端脱离式自更新守护：
   - **移动端快捷指令库（`mobile-apps`）**：内置微信、支付宝、高德地图、百度地图、美团、淘宝、京东、网易云音乐、Bilibili、抖音等 37 个移动端常用 App 高频操作与系统快捷设置，提供标准化语义 CLI（`mobile-apps open <app> [action] [options]`）与 `--dry-run` 调试；针对绑定的 Android/Termux 远程工作区动态注入详细指令提示与参数模板。
   - **客户端脱离式自更新（`agentdock-node-update` / `run-agentdock.sh update`）**：提供基于脱离父进程的独立 supervisor 自更新机制，支持文件锁防并发与退出自清理，无缝重载客户端守护进程，彻底消除远程 Agent 更新客户端时连接掐断的问题。
+- **Mesh 节点概况免凭据查看**：Mesh 页面直接展示节点信息；只有节点列表是免 Mesh 管理令牌的只读接口，配对、撤销、执行与请求历史仍需管理员令牌。
 - 发布 AgentDock 0.1.86：修复 Claude Code 远程 Shell 代理环境感知与命令提取：
   - **Claude Code 强校验兼容与专用环境变量注入**：适配 `@anthropic-ai/claude-agent-sdk` 对 Shell 路径名称包含 `bash`/`zsh` 字符的强校验（提供 `mesh-bash` 与软链接），同时注入 `CLAUDE_CODE_SHELL` 并将影子目录 `.bin` 优先置于 `PATH` 前端，确保 Claude Code 100% 命中代理。
-  - **复杂命令包装安全解构与本地环境快照**：精确解析 Claude Code 发起的 `eval '<CMD>' && pwd -P >| <CWD>` 嵌套包装，仅将核心目标命令转发至远程目标设备，并在本地自动同步 CWD 状态与委托执行 `SNAPSHOT_FILE=` 初始化，消除远程沙箱路径冲突。
+  - **已知命令包装安全解构与本地环境快照**：仅解析 Claude Code 已知的 bootstrap + `eval '<CMD>' && pwd -P >| <CWD>` 包装，不丢弃任意条件前缀；普通 Shell 保留远端语义，`SNAPSHOT_FILE=` 初始化也留在目标设备，CWD 标记仅写入该会话的影子工作区临时目录。
 - 发布 AgentDock 0.1.85：透明 Shell 代理与多设备自适应远程 Workspace 支持：
   - **透明 Shell 代理（`agentdock-mesh-shell`）**：彻底移除远程工作区的 MCP Stdio 管道与工具前缀污染，改为通过环境变量 `SHELL` 注入跨平台 Shell 代理脚本。Agent 调用原生内置 `Bash` 终端工具时，任何命令自动透传至目标设备（`shell.exec`），并将真实输出与退出码透明返回，Agent 完全无感且天然认为自己就运行在远程目标设备上。
   - **多设备动态感知与规范注入**：根据绑定的 Mesh 设备节点（`mesh_nodes`）动态提取设备名称（`label`）与操作系统平台（`platform`：Android/Termux、Linux、macOS、Windows），在工作区影子目录自适应生成 `CLAUDE.md` 与 ACP `systemPrompt.append`，杜绝任何硬编码，告别 ADB 或外部连接混淆。

@@ -156,6 +156,9 @@ test('ACP session replacement and shutdown stop active run screen ownership', ()
 test('backend cancellation finishes by releasing the screen owner', async () => {
   const order: string[] = [];
   const backend = Object.create(LocalCoreAcpBackend.prototype) as any;
+  // interruptRun consults the submission store first; no submission owns this runId,
+  // so cancellation must fall through to the ACP session coordinator and release the screen.
+  backend.options = { store: { submissions: { byRun: () => undefined } } };
   backend.sessionCoordinator = { interruptRun: async () => { order.push('cancel'); return { interrupted: true }; } };
   backend.screenSessions = { stop: async (runId: string) => { assert.equal(runId, owner); order.push('release'); } };
   assert.deepEqual(await backend.interruptRun(owner), { interrupted: true });

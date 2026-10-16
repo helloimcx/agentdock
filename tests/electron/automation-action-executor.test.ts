@@ -80,6 +80,7 @@ test('action executor closes an opened bridge when ACP send fails', async () => 
     store: {
       getPlatformThreadBinding: () => undefined,
       getRun: () => ({ status: 'completed' }),
+      getRunFinalResult: () => ({ threadId: 'fresh-thread', content: 'Report' }),
     },
     getWorkspaceRouter: () => ({
       listThreads: async () => [],
@@ -135,6 +136,7 @@ test('side-thread executor recreates the thread when the workspace agent changed
     store: {
       getPlatformThreadBinding: () => undefined,
       getRun: () => ({ status: 'completed' }),
+      getRunFinalResult: () => ({ threadId: 'fresh-thread', content: 'Report' }),
     },
     getWorkspaceRouter: () => ({
       listThreads: async () => [
@@ -173,6 +175,7 @@ test('side-thread executor reuses the thread when the workspace agent matches', 
     store: {
       getPlatformThreadBinding: () => undefined,
       getRun: () => ({ status: 'completed' }),
+      getRunFinalResult: () => ({ threadId: 'matching-thread', content: 'Report' }),
     },
     getWorkspaceRouter: () => ({
       listThreads: async () => [
@@ -242,6 +245,7 @@ test('deep-analysis run records a decision and schedules a working retrospective
         getPlatformThreadBinding: () => undefined,
         getRun: () => ({ status: 'completed' }),
         getWorkspaceRegistryEntry: () => ({ path: workspacePath }),
+        getRunFinalResult: () => ({ threadId: 'thread-1', content: replyText }),
       },
       getWorkspaceRouter: () => ({
         listThreads: async () => [],
@@ -295,4 +299,39 @@ test('deep-analysis run records a decision and schedules a working retrospective
     rmSync(userDataPath, { recursive: true, force: true });
     rmSync(workspacePath, { recursive: true, force: true });
   }
+});
+
+test('final report uses the exact execution result and requests outbox-only final bridging', async () => {
+  const threadId = 'thread:agentdock::11111111-1111-4111-8111-111111111111';
+  const runId = 'run:agentdock::11111111-1111-4111-8111-111111111111:1791000000000';
+  const outerRunId = 'automation-run:11111111-1111-4111-8111-111111111111';
+  let bridgeInput: any;
+  let requestId: string | undefined;
+  const executor = new AutomationActionExecutor({
+    store: {
+      deliveries: { rememberDestination: () => undefined }, getPlatformThreadBinding: () => undefined, updateAutomationRun: () => undefined,
+      getRun: () => ({ status: 'completed' }),
+      getRunFinalResult: (id: string) => {
+        assert.equal(id, runId);
+        return { threadId, content: 'Target report', messageId: 'message:11111111-1111-4111-8111-111111111111' };
+      },
+    },
+    getWorkspaceRouter: () => ({
+      listThreads: async () => [], createThread: async () => ({ id: threadId }),
+      getThreadSessionKey: () => `session:${threadId}`,
+      getThread: async () => { throw new Error('Reading the latest thread reply would select the wrong run'); },
+      sendThreadMessage: async (_thread: string, _content: string, options: any) => { requestId = options.requestId; return { runId }; },
+    }),
+    getChannelRuntime: () => ({
+      registerScheduledThreadBridge: (input: any) => { bridgeInput = input; return () => {}; },
+      onBridgeEvent: () => undefined,
+    }),
+  } as any);
+  const result = await executor.execute({ automation: definition(), automationRunId: outerRunId, evaluation, promptVariables: {} });
+  assert.equal(result.replyText, 'Target report');
+  assert.equal(result.deliveryStatus, 'pending');
+  assert.equal(result.deliveryIntent?.ownerRunId, outerRunId);
+  assert.equal(result.deliveryIntent?.acpRunId, runId);
+  assert.equal(requestId, `automation:${outerRunId}`);
+  assert.equal(bridgeInput.suppressFinalReport, true);
 });

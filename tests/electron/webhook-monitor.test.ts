@@ -431,6 +431,38 @@ test('parseLocalAiCoreRoute parses POST /api/local/v1/automation/hooks/:hookId',
   assert.equal(parseLocalAiCoreRoute('POST', '/api/local/v1/automation/hooks'), null);
 });
 
+test('legacy monitor ID routes reject IDs outside the supplied workspace', async () => {
+  const calls: string[] = [];
+  const monitors = {
+    getMonitorIdentity: () => ({ id: 'monitor-internal-b', workspaceId: 'workspace-b' }),
+    getMonitor: () => { calls.push('get'); return {}; },
+    listRuns: () => { calls.push('runs'); return []; },
+    runMonitorNow: () => { calls.push('run'); return {}; },
+    updateMonitor: () => { calls.push('update'); return {}; },
+    resolveRequiredMonitorId: () => { calls.push('delete'); return 'monitor-internal-b'; },
+    deleteMonitor: () => { calls.push('delete-action'); return {}; },
+  };
+  const decisions = { listDecisions: () => { calls.push('decisions'); return []; } };
+  const handlers = new Map<string, RouteHandler>();
+  registerAutomationHandlers(handlers, monitors as any, decisions as any);
+  const routeNames = [
+    'automation.monitor.get', 'automation.monitor.runs', 'automation.monitor.run',
+    'automation.monitor.update', 'automation.monitor.delete', 'automation.monitor.decisions',
+  ];
+
+  for (const name of routeNames) {
+    const handler = handlers.get(name);
+    assert.ok(handler, `${name} handler must be registered`);
+    await assert.rejects(
+      handler!({ name, monitorId: 'monitor-public-b' } as any, Readable.from([]) as any, {} as any,
+        new URL('http://127.0.0.1/api/local/v1/automation/monitors/monitor-public-b?workspace_id=workspace-a')),
+      /not found in this workspace/,
+      name,
+    );
+  }
+  assert.deepEqual(calls, []);
+});
+
 test('HTTP automation.hooks.trigger handler supports Bearer, X-Hook-Token, and query token', async () => {
   const context = fixture();
   try {

@@ -43,7 +43,7 @@ export const DESKTOP_PROVIDER_PRESET_OPTIONS = [
   'ollama',
 ] as const;
 export const DESKTOP_PROVIDER_THINKING_OPTIONS = ['', 'enabled', 'disabled'] as const;
-export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['pi', 'opencode', 'codex', 'claudecode', 'hermes', 'acp', 'localcore-acp'] as const;
+export const DESKTOP_INTERACTIVE_PERMISSION_AGENT_TYPES = ['pi', 'pi-durable', 'opencode', 'codex', 'claudecode', 'hermes', 'acp', 'localcore-acp'] as const;
 export const LOCALCORE_ACP_AGENT_TYPE = 'localcore-acp';
 
 const PERMISSION_RESPONSE_MAP: Record<string, 'allow' | 'deny' | 'allow all'> = {

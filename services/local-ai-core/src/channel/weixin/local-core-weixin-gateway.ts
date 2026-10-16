@@ -318,13 +318,13 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     const platformKey = state.platformKey;
     const contextToken = this.resolveContextTokenForFileSend(workspaceId, channelId, input.route.participantId, platformKey);
     const messageIds: string[] = [];
+    const acknowledgements: boolean[] = [];
     const attachments: NonNullable<ChannelOutboundMessageResult['attachments']> = [];
     for (const part of input.parts || []) {
       if (part.type === 'text') {
         const text = String(part.text || '').trim();
         if (text) {
-          await this.sendTextMessage(state, channelId, text, contextToken);
-          messageIds.push(`wx_text_${randomUUID()}`);
+          acknowledgements.push(await this.sendTextMessage(state, channelId, text, contextToken));
         }
         continue;
       }
@@ -345,6 +345,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     }
     return {
       platform: 'weixin',
+      deliveryAcknowledgement: weixinAcknowledgement(acknowledgements, attachments.length),
       workspaceId,
       channelId,
       participantId: input.route.participantId,
@@ -396,6 +397,14 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       this.options.log?.(`localcore-weixin auto-approved user for ${msg.workspaceId}: ${msg.platformUserId}`);
     }
     const authorized = authorization.authorized;
+    if (!this.admitInboundMessage({ workspaceId: msg.workspaceId, platformKey, chatId: msg.chatId,
+      platformUserId: msg.platformUserId, messageId: msg.messageId, contextToken: msg.contextToken, text: msg.text })) return;
+    const commandAdmission = this.admitLocalCommandEvent({
+      workspaceId: msg.workspaceId, platformKey, instanceId, chatId: msg.chatId,
+      platformUserId: msg.platformUserId, text: msg.text, messageId: msg.messageId,
+    });
+    if (commandAdmission.duplicate) return;
+
 
     const router = this.options.getWorkspaceRouter();
     const { threadId, normalizedText, effectiveSessionKey } = await this.resolveInboundThreadAndSession({
@@ -427,6 +436,8 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
         normalizedText,
         displayName: msg.displayName,
         platformLabel: 'WeChat',
+        commandAdmissionKey: commandAdmission.key,
+        platformMessageId: msg.messageId,
         contextToken: msg.contextToken,
       })
     ) {
@@ -441,6 +452,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       platformKey,
     );
     await router.sendThreadMessage(threadId, createChannelThreadMessageInput(msg.text, msg.contentParts), {
+      requestId: msg.messageId ? `channel:${platformKey}:${msg.messageId}` : undefined,
       channelRoute: {
         type: 'channel.chat',
         channelId: msg.chatId,
@@ -546,23 +558,26 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
     text: string,
     contextToken?: string,
     options: { clientId?: string; final?: boolean } = {},
-  ): Promise<void> {
-    const binding = await this.getBinding(state.workspaceId);
+  ): Promise<boolean> {
+    const binding = await this.getBinding(state.workspaceId, state.instanceId);
     const stripped = stripWeixinHtml(text);
     const chunks = contextToken
       ? [truncateTextByUtf8Bytes(stripped, WEIXIN_CONTEXT_REPLY_MAX_BYTES)].filter(Boolean)
       : splitTextByUtf8Bytes(stripped, WEIXIN_TEXT_MESSAGE_MAX_BYTES);
+    let acknowledged = chunks.length > 0;
     for (const [index, chunk] of chunks.entries()) {
       const finalChunk = options.final && index === chunks.length - 1;
       const resp = await sendWeixinTextMessageChunk(binding, toUserId, chunk, contextToken, {
         clientId: options.clientId,
         final: finalChunk,
       });
+      acknowledged = acknowledged && (resp.ret === 0 || resp.errcode === 0);
       if (isWeixinApiError(resp)) {
         throw new Error(`WeChat sendmessage failed: ret=${resp.ret} errcode=${resp.errcode}${resp.errmsg ? ` errmsg=${resp.errmsg}` : ''} chunk=${index + 1}/${chunks.length} bytes=${utf8ByteLength(chunk)} context=${contextToken ? 'yes' : 'no'} message_state=${finalChunk ? 2 : 1}`);
       }
     }
     this.options.log?.(`localcore-weixin sent message to ${toUserId} for workspace ${state.workspaceId}${chunks.length > 1 ? ` chunks=${chunks.length}` : ''}`);
+    return acknowledged;
   }
 
   private async sendFileMessage(
@@ -754,7 +769,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
   }
 
   private isDuplicateInboundMessage(input: WeixinInboundMessage): boolean {
-    const messageKey = input.contextToken || input.messageId;
+    const messageKey = input.messageId || input.contextToken;
     if (!messageKey) return false;
 
     const now = Date.now();
@@ -762,7 +777,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       if (expiresAt <= now) this.processedInboundMessages.delete(key);
     }
 
-    const key = `${input.workspaceId}:${input.chatId}:${messageKey}`;
+    const key = `${input.workspaceId}:${input.platformKey || channelPlatformKey('weixin', input.instanceId || 'default')}:${input.chatId}:${input.platformUserId}:${messageKey}`;
     if (this.processedInboundMessages.has(key)) return true;
     this.processedInboundMessages.set(key, now + PROCESSED_MESSAGE_TTL_MS);
     return false;
@@ -771,4 +786,8 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
 
 
 
+}
+
+function weixinAcknowledgement(acknowledgements: boolean[], attachmentCount: number): 'confirmed' | 'unknown' {
+  return acknowledgements.length > 0 && acknowledgements.every(Boolean) && attachmentCount === 0 ? 'confirmed' : 'unknown';
 }

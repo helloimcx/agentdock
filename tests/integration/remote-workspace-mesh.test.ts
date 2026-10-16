@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
 import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
 import { NodeAgent, enrollNode } from '../../services/local-ai-core/src/mesh/node-agent.js';
+import { createMeshShellToken } from '../../services/local-ai-core/src/mesh/mesh-shell-token.js';
 import { prepareAgentExecutionLaunch } from '../../services/local-ai-core/src/execution/agent-execution-backend.js';
 import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
 import type { AcpSessionState } from '../../services/local-ai-core/src/router/workspace-router-types.js';
@@ -52,15 +53,33 @@ test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge
     workDir: '/remote/client/path/to/project',
     command: 'node',
     args: ['agent.js'],
-    env: {},
+    env: {
+      AGENTDOCK_MESH_ADMIN_TOKEN: 'should-not-leak',
+      AGENTDOCK_LOCAL_CORE_URL: 'http://attacker.invalid',
+      LOCAL_AI_WORKSPACE_ID: 'workspace:attacker',
+    },
     mcpServers: [],
   };
 
-  const prepared = prepareAgentExecutionLaunch({
-    configState,
-    project,
-    launchConfig,
-  });
+  const previousAdminToken = process.env.AGENTDOCK_MESH_ADMIN_TOKEN;
+  const previousCoreUrl = process.env.AGENTDOCK_LOCAL_CORE_URL;
+  process.env.AGENTDOCK_MESH_ADMIN_TOKEN = 'test-mesh-admin-token';
+  process.env.AGENTDOCK_LOCAL_CORE_URL = 'http://host-core.test';
+  let prepared;
+  let preparedAgain;
+  try {
+    prepared = prepareAgentExecutionLaunch({
+      configState,
+      project,
+      launchConfig,
+    });
+    preparedAgain = prepareAgentExecutionLaunch({ configState, project, launchConfig });
+  } finally {
+    if (previousAdminToken === undefined) delete process.env.AGENTDOCK_MESH_ADMIN_TOKEN;
+    else process.env.AGENTDOCK_MESH_ADMIN_TOKEN = previousAdminToken;
+    if (previousCoreUrl === undefined) delete process.env.AGENTDOCK_LOCAL_CORE_URL;
+    else process.env.AGENTDOCK_LOCAL_CORE_URL = previousCoreUrl;
+  }
 
   assert.equal(prepared.execution?.mode, 'mesh');
   assert.equal(prepared.execution?.nodeId, 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c');
@@ -68,6 +87,18 @@ test('Remote workspace mesh execution backend prepares shadow dir and MCP bridge
   assert.ok(prepared.env?.SHELL?.includes('mesh-bash'));
   assert.ok(prepared.env?.CLAUDE_CODE_SHELL?.includes('mesh-bash'));
   assert.equal(prepared.env?.AGENTDOCK_MESH_NODE_ID, 'node:e6e4fb0e-1a3f-4f5f-b089-84ba2bb24d1c');
+  assert.equal(prepared.env?.AGENTDOCK_MESH_ADMIN_TOKEN, undefined);
+  assert.equal(prepared.env?.AGENTDOCK_LOCAL_CORE_URL, 'http://host-core.test');
+  assert.ok(prepared.env?.AGENTDOCK_MESH_SHELL_TOKEN);
+  assert.equal(preparedAgain.env?.AGENTDOCK_MESH_SHELL_TOKEN, prepared.env?.AGENTDOCK_MESH_SHELL_TOKEN);
+  assert.equal(prepared.env?.TMPDIR, prepared.env?.AGENTDOCK_MESH_CWD_DIR);
+  assert.ok(prepared.env?.AGENTDOCK_MESH_CWD_DIR?.includes('remote-shadow'));
+  assert.equal(prepared.env?.LOCAL_AI_WORKSPACE_ID, 'remote-proj');
+  assert.ok(prepared.mcpServers?.some((entry) => entry.name === 'agentdock-lac-control' && entry.type === 'stdio'));
+  const lacMcp = prepared.mcpServers?.find((entry) => entry.name === 'agentdock-lac-control');
+  assert.equal(lacMcp?.env?.LOCAL_AI_WORKSPACE_ID, 'remote-proj');
+  assert.equal(lacMcp?.env?.LOCAL_AI_CORE_BASE, 'http://host-core.test/api/local/v1');
+  assert.equal(lacMcp?.env?.AGENTDOCK_MESH_ADMIN_TOKEN, undefined);
   assert.ok(prepared.execution?.systemPromptAppend?.includes('Remote Device Environment'));
 });
 
@@ -228,6 +259,41 @@ test('End-to-end MeshGateway executeAndWait transparent execution with live clie
     const shellResult = shellExec.result as { stdout: string; exitCode: number };
     assert.equal(shellResult.stdout.trim(), 'Generated build output');
     assert.equal(shellResult.exitCode, 0);
+
+    // The shell proxy uses a node-scoped token; it cannot invoke other Mesh capabilities or nodes.
+    const shellToken = createMeshShellToken({
+      adminToken: 'admin-token',
+      nodeId: credentials.nodeId,
+      workspaceId: 'workspace:test',
+    });
+    const scopedShell = (body: Record<string, unknown>) => fetch(`${origin}/api/local/v1/mesh/shell/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${shellToken}` },
+      body: JSON.stringify(body),
+    });
+    const scopedExec = await scopedShell({
+      nodeId: credentials.nodeId,
+      capability: 'shell.exec',
+      args: { program: 'sh', arguments: ['-c', 'printf scoped'] },
+    });
+    assert.equal(scopedExec.status, 200);
+    const scopedEnvelope = await scopedExec.json() as { ok: boolean; data: { status: string; result: { stdout: string } } };
+    assert.equal(scopedEnvelope.ok, true);
+    assert.equal(scopedEnvelope.data.result.stdout, 'scoped');
+
+    const wrongNode = await scopedShell({
+      nodeId: 'node:other-device', capability: 'shell.exec', args: { program: 'sh', arguments: ['-c', 'true'] },
+    });
+    assert.equal(wrongNode.status, 403);
+    const wrongCapability = await scopedShell({
+      nodeId: credentials.nodeId, capability: 'filesystem.read', args: { path: 'dist/output.txt' },
+    });
+    assert.equal(wrongCapability.status, 403);
+    const noShellToken = await fetch(`${origin}/api/local/v1/mesh/shell/execute`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodeId: credentials.nodeId, capability: 'shell.exec', args: { program: 'sh', arguments: ['-c', 'true'] } }),
+    });
+    assert.equal(noShellToken.status, 401);
 
     // Test 5: Write and read large file (> 16 KiB, e.g. 64 KiB)
     const largeContent = 'X'.repeat(64 * 1024);

@@ -40,7 +40,9 @@
     "src/pages/Automation/automation-page-model.ts",
     "src/pages/Automation/automation-page-model.test.ts",
     "src/components/chat/chat-controller-state.ts",
-    "src/i18n/locales.test.ts"
+    "src/components/Layout/sidebar-nav-model.ts",
+    "src/i18n/locales.test.ts",
+    "src/components/Layout/sidebar-nav.test.ts"
   ],
   "exclude": ["tests/bdd"]
 }

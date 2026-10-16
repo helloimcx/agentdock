@@ -18,6 +18,8 @@ import type {
   LocalScheduledJobRow,
 } from './acp-store-types.js';
 import { SqlPredicateBuilder } from './utils.js';
+import { AUTOMATION_MONITOR_COLUMNS } from './automation-monitor-store.js';
+import { SCHEDULED_JOB_COLUMNS } from './scheduler-store.js';
 import { legacyCronActivation } from '../../automation/legacy-automation-mappers.js';
 import {
   assertIsoTimestamp,
@@ -464,9 +466,7 @@ export class LocalAutomationStore {
       let scheduled = 0;
       let monitors = 0;
       const jobs = this.db.prepare(`
-        SELECT id, workspace_id, platform, route_type, route_config, execution_mode, trigger_type, cron_expr, run_at,
-               prompt_template, description, enabled, concurrency_policy, created_at, updated_at, last_run_at,
-               last_status, last_error
+        SELECT ${SCHEDULED_JOB_COLUMNS}
         FROM scheduled_jobs
       `).all() as LocalScheduledJobRow[];
       for (const row of jobs) {
@@ -478,9 +478,7 @@ export class LocalAutomationStore {
       }
 
       const legacyMonitors = this.db.prepare(`
-        SELECT id, workspace_id, title, source_type, source_config_json, condition_json, prompt_template, platform,
-               route_type, route_config, execution_mode, enabled, cooldown_ms, concurrency_policy, last_state_json,
-               created_at, updated_at, last_triggered_at, last_status, last_error
+        SELECT ${AUTOMATION_MONITOR_COLUMNS}
         FROM automation_monitors
       `).all() as LocalAutomationMonitorRow[];
       for (const row of legacyMonitors) {
@@ -531,7 +529,7 @@ export class LocalAutomationStore {
     return row ? rowToEvaluation(row) : undefined;
   }
 
-  private getRun(id: string): AutomationRun | undefined {
+  getRun(id: string): AutomationRun | undefined {
     const row = this.db.prepare(`SELECT ${RUN_COLUMNS} FROM automation_runs WHERE id = ?`)
       .get(id) as LocalAutomationRunRow | undefined;
     return row ? rowToRun(row) : undefined;

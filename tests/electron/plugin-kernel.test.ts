@@ -285,6 +285,7 @@ test('runtime bootstrap registers the active knowledge provider in capability sn
       'iflow',
       'localcore-acp',
       'pi',
+      'pi-durable',
       'opencode',
       'codex',
       'claudecode',
@@ -321,6 +322,7 @@ test('runtime bootstrap supports a disabled knowledge plugin path', () => {
       'iflow',
       'localcore-acp',
       'pi',
+      'pi-durable',
       'opencode',
       'codex',
       'claudecode',
@@ -1421,7 +1423,7 @@ test('agent runtime selection is registry-based and disabled runtimes do not rou
 
     assert.deepEqual(
       runtime.agentRuntimes.map((entry) => entry.agentType),
-      ['localcore-acp', 'opencode', 'codex', 'hermes'],
+      ['localcore-acp', 'pi-durable', 'opencode', 'codex', 'hermes'],
     );
     assert.equal(
       runtime.kernel.getCapabilitySnapshot().snapshot.agents.some((capability) => capability.agentType === 'claudecode'),

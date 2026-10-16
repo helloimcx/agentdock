@@ -1,0 +1,1 @@
+{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","strict":true,"skipLibCheck":true,"esModuleInterop":true,"types":["node"],"rootDir":".","outDir":"../../../../../dist-electron/services/local-ai-core/src/agents/pi-durable/worker"},"include":["*.mts","protocol.ts"]}

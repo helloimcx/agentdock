@@ -15,6 +15,7 @@ import { useState } from 'react';
 import { rendererUiContributions } from '@/app/ui-contributions';
 import { BrandLogo } from '@/components/BrandLogo';
 import { setAppLanguage } from '@/i18n';
+import { sidebarNavGroups } from './sidebar-nav-model';
 
 const languages = [
   { code: 'en', label: 'English' },
@@ -22,12 +23,6 @@ const languages = [
   { code: 'zh-TW', label: '繁體中文' },
   { code: 'ja', label: '日本語' },
   { code: 'es', label: 'Español' },
-];
-
-const navGroups = [
-  { label: 'Core', ids: ['dashboard', 'chat', 'workspace', 'providers', 'projects', 'sessions'] },
-  { label: 'Knowledge', ids: ['knowledge', 'automations'] },
-  { label: 'System', ids: ['mesh', 'system'] },
 ];
 
 export default function Sidebar() {
@@ -81,7 +76,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="relative flex-1 py-3 space-y-4 px-2 overflow-y-auto">
-        {navGroups.map((group) => {
+        {sidebarNavGroups.map((group) => {
           const items = visibleNavItems.filter((item) => group.ids.includes(item.id));
           if (items.length === 0) return null;
           return (

@@ -11,5 +11,11 @@ allowBuilds:
   koffi: true
   protobufjs: true
 
+minimumReleaseAgeExclude:
+  - '@earendil-works/chord@1.0.1'
+  - '@earendil-works/pi-ai@1.0.1'
+  - '@earendil-works/pi-durable@1.0.1'
+  - '@earendil-works/pi-telemetry@1.0.1'
+
 onlyBuiltDependencies:
   - esbuild

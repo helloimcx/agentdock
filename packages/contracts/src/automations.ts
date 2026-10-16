@@ -145,7 +145,7 @@ export interface AutomationRun {
   threadId?: string;
   acpRunId?: string;
   executionMode: 'same-thread' | 'side-thread';
-  deliveryStatus?: 'pending' | 'delivering' | 'delivered' | 'failed';
+  deliveryStatus?: 'pending' | 'delivering' | 'delivered' | 'failed' | 'unknown' | 'cancelled';
   bridgeActivity?: Record<string, unknown>;
   error?: string;
   createdAt: string;

@@ -77,4 +77,3 @@ test('Node capabilities safely writes files, creates parent directories, and rej
     await assert.rejects(node.execute(request({ path: 'huge.txt', content: 'x'.repeat(1024 * 1024 + 1) }), new AbortController().signal), /1 MiB/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
-

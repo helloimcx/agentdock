@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import {
   createThread,
   interruptRun,
@@ -94,6 +94,8 @@ export function useThreadChatSendingActions({
     selectedProject,
   ]);
 
+  const retryIntentRef = useRef<RetrySubmissionIntent | null>(null);
+
   const handleSend = useCallback(async () => {
     if (!draft.trim() || !selectedProject) {
       return;
@@ -107,6 +109,9 @@ export function useThreadChatSendingActions({
 
     try {
       const ensured = await ensureSession();
+      const intent = retrySubmissionIntent(retryIntentRef.current, ensured.id, payloadContent, isAwaitingReply);
+      const { requestId, kind } = intent;
+      retryIntentRef.current = intent;
       pendingTurnRef.current = {
         sessionKey: ensured.sessionKey,
         userOrder,
@@ -114,9 +119,9 @@ export function useThreadChatSendingActions({
         supersededRunId: isAwaitingReply ? undefined : activeRunId,
       };
       setPendingPermissionRequest(null);
-      setMessages((current) => [
+      setMessages((current) => current.some((entry) => entry.id === `${requestId}-user`) ? current : [
         ...current,
-        { id: `${crypto.randomUUID()}-user`, role: 'user', content, order: userOrder, timestamp: new Date().toISOString() },
+        { id: `${requestId}-user`, role: 'user', content, order: userOrder, timestamp: new Date().toISOString() },
       ]);
       updateTaskState('running', 'send-started');
       setTyping(true);
@@ -126,9 +131,10 @@ export function useThreadChatSendingActions({
       }
       armReplyTimeout();
       if (ensured.id) {
-        const result = isAwaitingReply
-          ? await sendThreadAction(ensured.id, payloadContent)
-          : await sendThreadMessage(ensured.id, payloadContent);
+        const result = kind === 'action'
+          ? await sendThreadAction(ensured.id, payloadContent, { requestId })
+          : await sendThreadMessage(ensured.id, payloadContent, { requestId });
+        retryIntentRef.current = null;
         setActiveRunId(result.runId);
         if (
           pendingTurnRef.current &&
@@ -142,6 +148,7 @@ export function useThreadChatSendingActions({
         }
       }
     } catch (error) {
+      setDraft((current) => current || content);
       clearReplyTimeout();
       pendingTurnRef.current = null;
       settlePreviewMessages();
@@ -216,4 +223,10 @@ export function useThreadChatSendingActions({
     handleSend,
     handleStopTask,
   };
+}
+
+type RetrySubmissionIntent = { threadId: string; content: string; requestId: string; kind: 'action' | 'message' };
+function retrySubmissionIntent(previous: RetrySubmissionIntent | null, threadId: string, content: string, isAction: boolean): RetrySubmissionIntent {
+  if (previous?.threadId === threadId && previous.content === content) return previous;
+  return { threadId, content, requestId: `request:${crypto.randomUUID()}`, kind: isAction ? 'action' : 'message' };
 }

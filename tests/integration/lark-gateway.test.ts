@@ -2356,3 +2356,34 @@ test('lark gateway samples empty-render log per session/type within the dedup wi
   assert.ok(emptyRenderLogs[1].includes('type=preview_start'));
   assert.ok(emptyRenderLogs[2].includes('session:thread-2'));
 });
+
+test('scheduled outbox owner suppresses only its own final run while preserving adjacent ordinary chat', async () => {
+  const messages: string[] = [];
+  const gateway = new LocalCoreLarkGateway({
+    store: { getPlatformThreadBinding: () => ({ thread_id: 'thread:agentdock::11111111-1111-4111-8111-111111111111' }),
+      updatePlatformThreadMessageId: () => undefined } as any,
+    readConfig: async () => null, getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internal = gateway as any;
+  internal.runtime.set('agentdock', { workspaceId: 'agentdock', connected: true,
+    client: { im: { message: { create: async (request: any) => {
+      messages.push(extractLarkCreatedMessage(request).text);
+      return { data: { message_id: `om_ack_${messages.length}` } };
+    } } } } });
+  const sessionKey = 'session:thread:agentdock::11111111-1111-4111-8111-111111111111';
+  const close = gateway.registerScheduledThreadBridge({ workspaceId: 'agentdock', platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'oc_report' },
+    threadId: 'thread:agentdock::11111111-1111-4111-8111-111111111111', sessionKey, suppressFinalReport: true });
+  gateway.markScheduledThreadRunOwned(sessionKey, 'run:thread:agentdock::11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1791000000000');
+  await gateway.onBridgeEvent({ type: 'reply', sessionKey, replyCtx: 'run:thread:agentdock::11111111-1111-4111-8111-111111111111:33333333-3333-4333-8333-333333333333:1791000000000', content: 'Adjacent user answer', bridgeKind: 'assistant' });
+  assert.equal(messages.length, 1);
+  await gateway.onBridgeEvent({ type: 'reply', sessionKey, replyCtx: 'run:thread:agentdock::11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:1791000000000', content: 'Final report', bridgeKind: 'assistant' });
+  assert.equal(messages.length, 1);
+  await gateway.onBridgeEvent({ type: 'status', sessionKey, content: 'Preparing report', bridgeKind: 'status' });
+  assert.equal(messages.length, 2);
+  close();
+  internal.threadRouting.set(sessionKey, { workspaceId: 'agentdock', chatId: 'oc_report', platformUserId: '' });
+  await gateway.onBridgeEvent({ type: 'reply', sessionKey, content: 'Ordinary chat answer', bridgeKind: 'assistant' });
+  assert.equal(messages.length, 3);
+});

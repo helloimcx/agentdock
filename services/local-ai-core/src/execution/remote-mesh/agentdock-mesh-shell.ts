@@ -1,10 +1,11 @@
-import { writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { classifyLacShellCommand, dispatchLacCommand } from './lac-control.js';
+import { runCli } from '../../cli/lac.js';
+import { realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 export interface ExtractedCommand {
   command: string;
   isVersion?: boolean;
-  isSnapshot?: boolean;
   cwdFile?: string;
 }
 
@@ -12,7 +13,13 @@ function stripBashQuotes(str: string): string {
   if ((str.startsWith("'") && str.endsWith("'")) || (str.startsWith('"') && str.endsWith('"'))) {
     const isSingle = str.startsWith("'");
     const unquoted = str.slice(1, -1);
-    return isSingle ? unquoted.replace(/'\\''/g, "'") : unquoted;
+    if (isSingle) {
+      return unquoted
+        .replaceAll(`'"'"'`, "'")
+        .replaceAll(`'\\''`, "'")
+        .replaceAll(`'\\'`, "'");
+    }
+    return unquoted;
   }
   return str;
 }
@@ -32,7 +39,9 @@ function extractRawCommand(args: string[]): string {
 }
 
 function unwrapClaudeCommand(rawCmd: string): ExtractedCommand {
-  const claudeMatch = rawCmd.match(/(?:^|.*\s+&&\s+)eval\s+([\s\S]*?)(?:\s*<\s*\/dev\/null)?\s*&&\s*pwd\s+-P\s*>\|?\s*(\S+)\s*$/);
+  const snapshotBootstrap = String.raw`(?:source\s+(?:'[^'\\\r\n]*\/\.claude\/shell-snapshots\/[^'\\\r\n]+'|[A-Za-z0-9_./~-]*\/\.claude\/shell-snapshots\/[A-Za-z0-9_.~-]+)\s+2>\/dev\/null\s+\|\|\s+true\s+&&\s+)?`;
+  const shoptBootstrap = String.raw`(?:shopt\s+-u\s+extglob\s+2>\/dev\/null\s+\|\|\s+true\s+&&\s+)?`;
+  const claudeMatch = rawCmd.match(new RegExp(`^${snapshotBootstrap}${shoptBootstrap}eval\\s+([\\s\\S]*?)(?:\\s*<\\s*\\/dev\\/null)?\\s*&&\\s*pwd\\s+-P\\s*>\\|?\\s*(\\S+)\\s*$`));
   if (claudeMatch) {
     return { command: stripBashQuotes(claudeMatch[1].trim()).trim(), cwdFile: claudeMatch[2] };
   }
@@ -42,11 +51,6 @@ function unwrapClaudeCommand(rawCmd: string): ExtractedCommand {
     return { command: stripBashQuotes(evalOnlyMatch[1].trim()).trim() };
   }
 
-  const pwdMatch = rawCmd.match(/\s*&&\s*pwd\s+-P\s*>\|?\s*(\S+)\s*$/);
-  if (pwdMatch) {
-    return { command: rawCmd.slice(0, pwdMatch.index).trim(), cwdFile: pwdMatch[1] };
-  }
-
   return { command: rawCmd };
 }
 
@@ -54,9 +58,6 @@ export function parseShellArgv(argv: string[]): ExtractedCommand {
   const args = argv.slice(2);
   if (args.includes('--version') || args.includes('-v')) {
     return { command: '', isVersion: true };
-  }
-  if (args.some((a) => a.includes('SNAPSHOT_FILE='))) {
-    return { command: '', isSnapshot: true };
   }
   const rawCmd = extractRawCommand(args);
   if (!rawCmd) {
@@ -72,7 +73,7 @@ export function extractCommandFromArgv(argv: string[]): string {
 interface MeshShellOptions {
   nodeId: string;
   coreUrl: string;
-  adminToken: string;
+  shellToken: string;
   timeoutMs: number;
 }
 
@@ -84,9 +85,9 @@ function resolveShellOptions(env: NodeJS.ProcessEnv): MeshShellOptions | null {
   }
   const rawCoreUrl = String(env.AGENTDOCK_LOCAL_CORE_URL || 'http://127.0.0.1:9831').trim();
   const coreUrl = rawCoreUrl.replace(/\/+$/, '');
-  const adminToken = String(env.AGENTDOCK_MESH_ADMIN_TOKEN || '').trim();
+  const shellToken = String(env.AGENTDOCK_MESH_SHELL_TOKEN || '').trim();
   const timeoutMs = parseInt(String(env.AGENTDOCK_MESH_TIMEOUT_MS || '120000'), 10) || 120_000;
-  return { nodeId, coreUrl, adminToken, timeoutMs };
+  return { nodeId, coreUrl, shellToken, timeoutMs };
 }
 
 interface MeshExecutionResult {
@@ -104,10 +105,10 @@ interface MeshExecutionEnvelope {
 }
 
 async function sendMeshShellRequest(options: MeshShellOptions, command: string): Promise<MeshExecutionResult> {
-  const url = `${options.coreUrl}/api/local/v1/mesh/execute`;
+  const url = `${options.coreUrl}/api/local/v1/mesh/shell/execute`;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (options.adminToken) {
-    headers.Authorization = `Bearer ${options.adminToken}`;
+  if (options.shellToken) {
+    headers.Authorization = `Bearer ${options.shellToken}`;
   }
 
   const response = await fetch(url, {
@@ -139,23 +140,37 @@ async function sendMeshShellRequest(options: MeshShellOptions, command: string):
   return (execution.result || {}) as MeshExecutionResult;
 }
 
-function handleSpecialInvocation(parsed: ExtractedCommand, argv: string[]): number | null {
+function isWithinDirectory(directory: string, candidate: string): boolean {
+  const relativePath = relative(resolve(directory), resolve(candidate));
+  return Boolean(relativePath)
+    && relativePath !== '..'
+    && !relativePath.startsWith(`..${sep}`)
+    && !isAbsolute(relativePath);
+}
+
+function isSessionCwdFile(cwdDir: string, cwdFile: string): boolean {
+  try {
+    const safeRoot = realpathSync(cwdDir);
+    const parent = realpathSync(dirname(resolve(cwdFile)));
+    const resolvedTarget = resolve(parent, basename(cwdFile));
+    return (parent === safeRoot || isWithinDirectory(safeRoot, parent)) && isWithinDirectory(safeRoot, resolvedTarget);
+  } catch {
+    return false;
+  }
+}
+
+function handleSpecialInvocation(parsed: ExtractedCommand, env: NodeJS.ProcessEnv): number | null {
   if (parsed.isVersion) {
     process.stdout.write('GNU bash, version 5.2.0(1)-release (agentdock-mesh-shell)\n');
     return 0;
   }
 
-  if (parsed.isSnapshot) {
-    const systemShell = process.platform === 'win32' ? 'cmd.exe' : '/bin/bash';
-    const localRes = spawnSync(systemShell, argv.slice(2), { stdio: 'inherit' });
-    return localRes.status ?? 0;
-  }
-
-  if (parsed.cwdFile) {
+  const cwdDir = String(env.AGENTDOCK_MESH_CWD_DIR || '').trim();
+  if (parsed.cwdFile && cwdDir && isSessionCwdFile(cwdDir, parsed.cwdFile)) {
     try {
-      writeFileSync(parsed.cwdFile, process.cwd(), 'utf8');
+      writeFileSync(resolve(parsed.cwdFile), process.cwd(), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
     } catch {
-      // Best-effort local cwd tracking
+      // The runtime may retry with an existing temp path; keep the command remote.
     }
   }
 
@@ -164,13 +179,25 @@ function handleSpecialInvocation(parsed: ExtractedCommand, argv: string[]): numb
 
 export async function executeMeshShell(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const parsed = parseShellArgv(argv);
-  const specialCode = handleSpecialInvocation(parsed, argv);
+  const specialCode = handleSpecialInvocation(parsed, env);
   if (specialCode !== null) {
     return specialCode;
   }
 
   if (!parsed.command) {
     return 0;
+  }
+
+  const lacCommand = classifyLacShellCommand(parsed.command);
+  if (lacCommand.kind === 'unsupported') {
+    process.stderr.write(`agentdock-mesh-shell: ${lacCommand.message}\n`);
+    return 2;
+  }
+  if (lacCommand.kind === 'lac') {
+    const result = await dispatchLacCommand(lacCommand.argv, env, runCli);
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    return result.exitCode;
   }
 
   const options = resolveShellOptions(env);

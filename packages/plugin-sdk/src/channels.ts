@@ -30,7 +30,9 @@ export interface ChannelRuntime {
     route: import('@cc/superai-contracts').ScheduledJobRoute;
     threadId: string;
     sessionKey: string;
+    suppressFinalReport?: boolean;
   }): (() => void) | Promise<() => void>;
+  markScheduledThreadRunOwned?(sessionKey: string, runId: string): void;
   sendOutboundMessage?(workspaceId: string, input: import('@cc/superai-contracts').ChannelOutboundMessageInput): Promise<import('@cc/superai-contracts').ChannelOutboundMessageResult> | import('@cc/superai-contracts').ChannelOutboundMessageResult;
   sendFile?(workspaceId: string, input: import('@cc/superai-contracts').ChannelFileSendInput): Promise<import('@cc/superai-contracts').ChannelFileSendResult> | import('@cc/superai-contracts').ChannelFileSendResult;
   muteThreadBridge?(threadId: string): void;

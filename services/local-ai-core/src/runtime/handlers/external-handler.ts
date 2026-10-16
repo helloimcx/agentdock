@@ -22,7 +22,7 @@ export function registerExternalHandlers(
   map.set('external.run.create', async (_route, req, res) => {
     const body = validateBody<ExternalRunCreateInput>(await readJsonBody(req), {
       ...externalProjectSchema, external_thread_id: 'string', title: 'string', prompt: { kind: 'string', required: true },
-      permission_mode: 'string', runtime_env: 'object',
+      request_id: 'string', permission_mode: 'string', runtime_env: 'object',
     });
     json(res, 200, await externalService.createRun(body));
   });

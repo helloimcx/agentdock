@@ -111,6 +111,7 @@ function upsertStreamingPreviewContent(
 }
 
 type UseThreadChatBridgeEventsInput = {
+  snapshotOwned?: boolean;
   clearActionStatuses: () => void;
   finalizeTurnMessages: (turnKey?: string) => void;
   nextProgressMessageId: (replyCtx?: string) => string;
@@ -123,6 +124,7 @@ type UseThreadChatBridgeEventsInput = {
   Pick<ThreadChatConversationRefs, 'pendingTurnRef' | 'progressSequenceByTurnRef' | 'taskStateRef'>;
 
 export function useThreadChatBridgeEvents({
+  snapshotOwned = false,
   activeAgentType,
   activeBridgeSessionKey,
   activeRunId,
@@ -424,11 +426,12 @@ export function useThreadChatBridgeEvents({
 
   useEffect(() => {
     const stopBridge = onBridgeUpdated((event) => {
+      if (snapshotOwned && event.type !== 'card' && !(event.type === 'buttons' && event.bridgeKind !== 'permission')) return;
       handleBridgeEvent(event);
     });
     return () => {
       clearReplyTimeout();
       stopBridge();
     };
-  }, [clearReplyTimeout, handleBridgeEvent]);
+  }, [clearReplyTimeout, handleBridgeEvent, snapshotOwned]);
 }

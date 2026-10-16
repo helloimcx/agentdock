@@ -29,12 +29,12 @@ flowchart TD
         ACP["LocalCoreAcpBackend / Coordinators"]
         AgentProc["Agent 进程 (Claude Code / Hermes / Pi / Codex)"]
         ShadowDir["虚拟影子目录 (Anchor Cwd)"]
-        
+
         subgraph BridgeSubsystem ["透明工具代理子系统"]
             MeshMcp["内置动态 MeshMcpServer (bash, execute_command, read/write/list)"]
             AcpFsBridge["ACP fs/read & write 协议桥"]
         end
-        
+
         Gateway["MeshGateway (executeAndWait 同步等待器)"]
     end
 
@@ -49,13 +49,13 @@ flowchart TD
     Router -->|deviceId: 'node:id'| ACP
     ACP -->|启动并挂载| AgentProc
     AgentProc -->|物理 cwd 锚定| ShadowDir
-    
+
     AgentProc -.->|MCP Toolcall (bash/fs)| MeshMcp
     AgentProc -.->|ACP fs/请求| AcpFsBridge
-    
+
     MeshMcp --> Gateway
     AcpFsBridge --> Gateway
-    
+
     Gateway ===|WSS 加密双向长连接| NodeAgent
     NodeAgent --> NodeCaps
     NodeCaps --> FileSystem
@@ -75,7 +75,7 @@ sequenceDiagram
     Note over Agent, Client: 场景：Agent 调用写文件或执行命令
     Agent->>Bridge: 触发标准工具 (如 write_file 或 bash "git status")
     Bridge->>Gateway: executeAndWait("filesystem.write" 或 "shell.exec", args)
-    
+
     alt 正常通道执行
         Gateway->>Client: WebSocket 消息: { type: "execute", id, capability, args }
         Client->>Client: 沙箱路径安全校验 (realpath 限制在 --root 内)

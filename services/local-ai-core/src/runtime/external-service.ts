@@ -22,6 +22,7 @@ export interface ExternalServiceDeps {
 }
 
 export class ExternalService {
+  private readonly admissionLocks = new Map<string, Promise<unknown>>();
   constructor(
     private readonly store: LocalCoreAcpStore,
     private readonly workspaceRouter: WorkspaceRouter,
@@ -72,25 +73,49 @@ export class ExternalService {
   }
 
   async createRun(input: ExternalRunCreateInput): Promise<ExternalRunCreateResponse> {
-    if (!String(input.prompt || '').trim()) {
-      throw new Error('prompt is required.');
+    if (!input.request_id) return this.admitRun(input);
+    const key = JSON.stringify([input.user_id, input.external_project_id, input.external_thread_id, input.request_id]);
+    const prior = this.admissionLocks.get(key) ?? Promise.resolve();
+    const next = prior.catch(() => {}).then(() => this.admitRun(input));
+    this.admissionLocks.set(key, next);
+    try { return await next; }
+    finally { if (this.admissionLocks.get(key) === next) this.admissionLocks.delete(key); }
+  }
+
+  private async admitRun(input: ExternalRunCreateInput): Promise<ExternalRunCreateResponse> {
+    if (!String(input.prompt || '').trim()) throw new Error('prompt is required.');
+    const identity = externalSubmissionIdentity(input);
+    const requestId = input.request_id ? `external:${createHash('sha256').update(JSON.stringify([input.user_id, input.external_project_id, input.external_thread_id, input.request_id])).digest('hex')}` : undefined;
+    const externalThreadId = input.external_thread_id || (input.request_id ? `request:${input.request_id}` : undefined);
+    const savedProject = this.store.getExternalProject(input.user_id, input.external_project_id);
+    const savedThread = externalThreadId ? this.store.getExternalThread(input.user_id, input.external_project_id, externalThreadId) : undefined;
+    if (requestId && savedProject && savedThread) {
+      // Check the original caller intent before ensureProject can mutate provider/model configuration.
+      const previous = this.store.submissions.lookup({ threadId: savedThread.threadId, requestId, identity });
+      if (previous) {
+        if (previous.status !== 'pending') return this.runResponse(savedProject, savedThread, previous.runId);
+        return this.submitRun(savedProject, savedThread, input, requestId, identity);
+      }
     }
     const project = await this.ensureProject(input);
-    const thread = await this.ensureThread(project, input);
+    const thread = await this.ensureThread(project, { ...input, external_thread_id: externalThreadId });
+    return this.submitRun(project, thread, input, requestId, identity);
+  }
+
+  private async submitRun(project: ExternalProject, thread: ExternalThread, input: ExternalRunCreateInput, requestId: string | undefined, identity: unknown) {
     const sent = await this.workspaceRouter.sendThreadMessage(thread.threadId, input.prompt, {
+      requestId, submissionIdentity: identity,
       permissionMode: input.permission_mode,
       runtimeEnv: input.runtime_env,
     });
-    const task = this.store.getAgentTaskByRunId(sent.runId);
-    return {
-      project,
-      thread,
-      workspace_id: project.workspaceId,
-      thread_id: thread.threadId,
-      run_id: sent.runId,
-      task_id: task?.taskId,
-      events_url: `/api/local/v1/external/runs/${encodeURIComponent(sent.runId)}/events`,
-    };
+    return this.runResponse(project, thread, sent.runId);
+  }
+
+  private runResponse(project: ExternalProject, thread: ExternalThread, runId: string): ExternalRunCreateResponse {
+    const task = this.store.getAgentTaskByRunId(runId);
+    return { project, thread, workspace_id: project.workspaceId, thread_id: thread.threadId,
+      run_id: runId, task_id: task?.taskId,
+      events_url: `/api/local/v1/external/runs/${encodeURIComponent(runId)}/events` };
   }
 
   async getRunSnapshot(runId: string): Promise<ExternalRunSnapshot> {
@@ -264,4 +289,9 @@ function externalWorkspaceId(userId: string, externalProjectId: string) {
     .digest('hex')
     .slice(0, 8);
   return `${base}-${digest}`;
+}
+
+function externalSubmissionIdentity(input: ExternalRunCreateInput) {
+  return { prompt: input.prompt, provider_id: input.provider_id, model: input.model,
+    agent_type: input.agent_type, permission_mode: input.permission_mode, runtime_env: input.runtime_env };
 }

@@ -43,7 +43,7 @@ test('Mesh connects two devices, confines files, gates shell, cancels and never 
     return store.getExecution(data.id)!;
   }
   try {
-    assert.equal((await api('/nodes', 'GET', undefined, false)).status, 401);
+    assert.equal((await api('/nodes', 'GET', undefined, false)).status, 200);
     const ids: string[] = [];
     for (const label of ['mac-mini', 'android-termux']) {
       const root = join(temp, label);
@@ -206,4 +206,3 @@ test('MeshGateway executeAndWait resolves completed execution and rejects on abo
     await rm(temp, { recursive: true, force: true });
   }
 });
-

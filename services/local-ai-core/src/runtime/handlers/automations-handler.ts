@@ -76,6 +76,21 @@ export function registerUnifiedAutomationHandlers(map: Map<string, RouteHandler>
     json(res, 200, { runs: automations.listRuns(automationId(route)) });
   });
 
+  map.set('automation.deliveries', async (route, _req, res, url) => {
+    requireAutomation(automations, automationId(route), requiredWorkspace(url));
+    json(res, 200, { deliveries: automations.listDeliveries(automationId(route)) });
+  });
+  map.set('automation.delivery.reconcile', async (route, req, res, url) => {
+    requireAutomation(automations, automationId(route), requiredWorkspace(url));
+    const body = await strictBody<import('@cc/superai-contracts').DeliveryReconcileInput>(req, {
+      action: { kind: 'string', required: true, allowedValues: ['confirm-delivered', 'retry', 'cancel'] },
+      reason: { kind: 'string', required: true }, acknowledgeDuplicateRisk: 'boolean',
+    });
+    if (!body.reason.trim()) throw new RequestValidationError('Reconciliation reason is required.');
+    if (body.action === 'retry' && body.acknowledgeDuplicateRisk !== true) throw new RequestValidationError('Retry may duplicate the report; acknowledgeDuplicateRisk must be true.');
+    json(res, 200, await automations.reconcileDelivery(automationId(route), (route as { deliveryId: string }).deliveryId, body));
+  });
+
   map.set('automation-scripts.list', async (_route, _req, res, url) => {
     const workspaceId = requiredWorkspace(url);
     json(res, 200, { scripts: store.listAutomationScripts(workspaceId) });

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "compare",
+  "type": "architecture",
+  "comparatorVersion": 1,
+  "canonicalVersion": 1,
+  "completeness": "complete",
+  "proofLevel": "authored",
+  "base": {
+    "title": "AgentDock 系统架构图",
+    "rawSha256": "f2dbfd3fc2c8bdfe49f325d5d1567fe925690f35076659ba624ac938251b1821",
+    "semanticSha256": "4b93a1b9f681b268888f333df5ed3d35b8a0ae7aeb5de998ed33f389cb6cfc87",
+    "bytes": 7724
+  },
+  "head": {
+    "title": "AgentDock 系统架构图",
+    "rawSha256": "f9884ed62b3b19ac46925aa76a35b8bac11eb7cb39cfd79ff8a90344f5786a7f",
+    "semanticSha256": "313acd84b445b1bc340fd37619cb309c201a17b3fe6d8308cdd13f953ad6c2a6",
+    "bytes": 7751
+  },
+  "summary": {
+    "components": {
+      "added": 0,
+      "changed": 0,
+      "evidenceChanged": 0,
+      "removed": 0,
+      "moved": 0
+    },
+    "connections": {
+      "added": 0,
+      "changed": 1,
+      "removed": 0,
+      "rerouted": 0
+    },
+    "boundaries": {
+      "added": 0,
+      "changed": 0,
+      "removed": 0,
+      "geometryChanged": 0
+    },
+    "presentationChanged": true,
+    "provenanceChanged": false
+  },
+  "changes": {
+    "components": [],
+    "connections": [
+      {
+        "id": "core-to-mesh",
+        "base": {
+          "from": "core_api",
+          "to": "mesh_gateway",
+          "label": "独立凭据的 Mesh REST"
+        },
+        "head": {
+          "from": "core_api",
+          "to": "mesh_gateway",
+          "label": "Public node overview; admin operations protected"
+        },
+        "status": "changed",
+        "classifications": [
+          "geometry",
+          "semantic"
+        ],
+        "changedFields": [
+          "/label",
+          "/labelDy"
+        ]
+      }
+    ],
+    "boundaries": []
+  },
+  "identity": {
+    "components": "components[].id",
+    "connections": "connections[].id (required)",
+    "boundaries": "boundaries[].kind + boundaries[].label (derived)"
+  },
+  "view": {
+    "visualPreset": "classic"
+  },
+  "limitations": [
+    "Authored Architecture IR only; no runtime impact, causality, risk, or mergeability is inferred.",
+    "Boundary identity is conservatively derived from kind + label."
+  ],
+  "artifact": {
+    "sha256": "f75261b36faa7be64d485f6c4a1f808dc4ff3e2f40d636bd3cb4e99c09e4179f",
+    "bytes": 2068007
+  },
+  "validation": {
+    "checksPassed": 28,
+    "checkCount": 28,
+    "baseComposition": "pass",
+    "headComposition": "pass"
+  }
+}

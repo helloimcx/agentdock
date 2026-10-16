@@ -78,9 +78,13 @@ export function buildDeviceClaudeMd(node?: MeshNodeMetadata): string {
     `- Platform: ${platform}`,
     `- Description: ${hint}`,
     '',
-    'All terminal commands run directly on this device via your native Bash tool.',
+    'Ordinary terminal commands run directly on this device via your native Bash tool; standalone allowlisted `lac ...` commands run on the host Local AI Core.',
     'There is no need for ADB, SSH setup, or external bridges — the terminal IS the remote machine.',
     'To read or modify files on the device, use standard shell utilities (cat, grep, sed, echo, etc.).',
+    '',
+    '## Local AI Core tools',
+    'Use the AgentDock LAC Control tools for workspace memory and scheduled job, monitor, or automation queries; these operate on the current AgentDock workspace.',
+    'For existing `lac` CLI skills, run one standalone `lac ...` command at a time. Do not combine it with pipes, redirects, substitutions, or other shell commands. File-based LAC commands are not available in remote workspaces yet.',
   ];
 
   if (isAndroid) {
@@ -103,7 +107,8 @@ export function buildDeviceSystemPrompt(node?: MeshNodeMetadata): string {
   return [
     `[Remote Device Environment]`,
     `This workspace is connected directly to a remote ${platform} device named "${label}" via AgentDock Mesh.`,
-    `All terminal commands execute directly on this target device through your native Bash tool (${hint}).${mobileNotice}`,
+    `Ordinary terminal commands execute directly on this target device through your native Bash tool (${hint}); standalone allowlisted \`lac ...\` commands are handled by the host Local AI Core.${mobileNotice}`,
     `Do not search for ADB or external connection bridges. To inspect or edit files, use standard shell commands (cat, grep, sed, echo).`,
+    `Use the AgentDock LAC Control tools for current-workspace memory, scheduler, monitor, and automation queries. Existing \`lac ...\` CLI calls work as one standalone command; do not combine them with pipes, redirects, substitutions, or other shell commands. File-based LAC commands are not available in remote workspaces yet.`,
   ].join('\n');
 }

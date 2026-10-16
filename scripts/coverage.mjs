@@ -23,6 +23,8 @@ const TEST_FILES = [
   'dist-electron/tests/integration/*.test.js',
   'dist-electron/packages/knowledge-api/test/*.test.js',
   'dist-electron/src/pages/Threads/thread-chat-permission.test.js',
+  'dist-electron/src/pages/Automation/automation-page-model.test.js',
+  'dist-electron/src/components/Layout/sidebar-nav.test.js',
   'dist-electron/src/i18n/locales.test.js',
 ];
 
@@ -45,6 +47,7 @@ console.log('\nBuilding renderer output...\n');
 run(vite, ['build']);
 
 console.log('\nBuilding Electron output with source maps (tsconfig.coverage.json)...\n');
+run('node', ['scripts/build-pi-durable.mjs']);
 run('node', ['scripts/write-electron-package.mjs']);
 run(tsc, ['-p', 'tsconfig.coverage.json']);
 run(tscAlias, ['-p', 'tsconfig.coverage.json']);

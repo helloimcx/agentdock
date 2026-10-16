@@ -17,18 +17,25 @@ function buildWorkspacePlatformWhere(workspaceId?: string, platform?: string): {
   return { where: builder.whereClause(), params: builder.params };
 }
 
+// Also reused by the INSERT INTO platform_thread_bindings in upsertPlatformThreadBinding — keep its VALUES placeholder count in sync.
+const PLATFORM_THREAD_BINDING_COLUMNS = 'workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at';
+
 const PLATFORM_THREAD_BINDING_SELECT = `
-  SELECT workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at
+  SELECT ${PLATFORM_THREAD_BINDING_COLUMNS}
   FROM platform_thread_bindings`;
 
 const PLATFORM_THREAD_BINDING_KEY_WHERE = 'workspace_id = ? AND platform = ? AND chat_id = ? AND platform_user_id = ?';
+// Also reused by the INSERT INTO platform_pairings in createPairingRequest — keep its VALUES placeholder count in sync.
+const PLATFORM_PAIRING_COLUMNS = 'code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status';
+// Also reused by the INSERT INTO platform_users in createAuthorizedUser — keep its VALUES placeholder count in sync.
+const PLATFORM_USER_COLUMNS = 'id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at';
 
 export class LocalPlatformStore {
   constructor(private readonly db: DatabaseSync) {}
 
   createPairingRequest(input: Omit<LocalPlatformPairingRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
-      INSERT INTO platform_pairings (code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status)
+      INSERT INTO platform_pairings (${PLATFORM_PAIRING_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.code,
@@ -46,13 +53,13 @@ export class LocalPlatformStore {
   listPendingPairings(workspaceId?: string) {
     const query = workspaceId
       ? `
-        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        SELECT ${PLATFORM_PAIRING_COLUMNS}
         FROM platform_pairings
         WHERE workspace_id = ? AND status = 'pending'
         ORDER BY requested_at DESC
       `
       : `
-        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        SELECT ${PLATFORM_PAIRING_COLUMNS}
         FROM platform_pairings
         WHERE status = 'pending'
         ORDER BY requested_at DESC
@@ -62,7 +69,7 @@ export class LocalPlatformStore {
 
   getPairingRequest(code: string) {
     return this.db.prepare(`
-      SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+      SELECT ${PLATFORM_PAIRING_COLUMNS}
       FROM platform_pairings
       WHERE code = ?
     `).get(code) as LocalPlatformPairingRow | undefined;
@@ -82,7 +89,7 @@ export class LocalPlatformStore {
 
   getAuthorizedUser(workspaceId: string, platformUserId: string, platform = 'lark') {
     return this.db.prepare(`
-      SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
+      SELECT ${PLATFORM_USER_COLUMNS}
       FROM platform_users
       WHERE workspace_id = ? AND platform = ? AND platform_user_id = ?
     `).get(workspaceId, platform, platformUserId) as LocalPlatformUserRow | undefined;
@@ -91,7 +98,7 @@ export class LocalPlatformStore {
   listAuthorizedUsers(workspaceId?: string, platform?: string): LocalCoreAuthorizedUser[] {
     const { where, params } = buildWorkspacePlatformWhere(workspaceId, platform);
     const query = `
-        SELECT id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at
+        SELECT ${PLATFORM_USER_COLUMNS}
         FROM platform_users
         ${where}
         ORDER BY authorized_at DESC
@@ -113,7 +120,7 @@ export class LocalPlatformStore {
 
   createAuthorizedUser(input: Omit<LocalPlatformUserRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
-      INSERT INTO platform_users (id, workspace_id, platform, platform_user_id, chat_id, display_name, thread_id, authorized_at)
+      INSERT INTO platform_users (${PLATFORM_USER_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, platform, platform_user_id) DO UPDATE SET
         chat_id = excluded.chat_id,
@@ -166,8 +173,7 @@ export class LocalPlatformStore {
 
   upsertPlatformThreadBinding(input: Omit<LocalPlatformThreadBindingRow, 'platform'> & { platform?: string }) {
     this.db.prepare(`
-      INSERT INTO platform_thread_bindings
-      (workspace_id, platform, chat_id, platform_user_id, thread_id, last_platform_message_id, preferred_agent_type, preferred_provider_id, created_at, updated_at)
+      INSERT INTO platform_thread_bindings (${PLATFORM_THREAD_BINDING_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, platform, chat_id, platform_user_id) DO UPDATE SET
         thread_id = excluded.thread_id,
@@ -236,7 +242,7 @@ export class LocalPlatformStore {
   listPairingRequests(workspaceId?: string, platform?: string): LocalCorePairingRequest[] {
     const { where, params } = buildWorkspacePlatformWhere(workspaceId, platform);
     const query = `
-        SELECT code, workspace_id, platform, platform_user_id, chat_id, display_name, requested_at, expires_at, status
+        SELECT ${PLATFORM_PAIRING_COLUMNS}
         FROM platform_pairings
         ${where}
         ORDER BY requested_at DESC

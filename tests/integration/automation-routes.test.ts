@@ -254,3 +254,29 @@ function response() {
     end() {},
   };
 }
+
+test('delivery reconciliation enforces workspace ownership and explicit duplicate-risk acknowledgement', async () => {
+  const automationId = 'automation:11111111-1111-4111-8111-111111111111';
+  const deliveryId = 'delivery:11111111-1111-4111-8111-111111111111';
+  assert.deepEqual(parseLocalAiCoreRoute('POST', `/api/local/v1/automations/${automationId}/deliveries/${deliveryId}/reconcile`), {
+    name: 'automation.delivery.reconcile', automationId, deliveryId,
+  });
+  const map = new Map<string, any>();
+  let operations = 0;
+  registerUnifiedAutomationHandlers(map, {
+    automations: { get: () => ({ id: automationId, workspaceId: 'agentdock' }),
+      reconcileDelivery: async () => { operations++; return { id: deliveryId }; } }, store: {},
+  } as any);
+  const route = { name: 'automation.delivery.reconcile', automationId, deliveryId };
+  const handler = map.get(route.name);
+  await assert.rejects(handler(route, requestBody({ action: 'retry', reason: 'Checked' }), response(),
+    new URL('http://127.0.0.1?workspace_id=other')), /not found in this workspace/);
+  await assert.rejects(handler(route, requestBody({ action: 'retry', reason: 'Checked' }), response(),
+    new URL('http://127.0.0.1?workspace_id=agentdock')), /acknowledgeDuplicateRisk/);
+  await assert.rejects(handler(route, requestBody({ action: 'retry', reason: 'Checked', acknowledgeDuplicateRisk: true, actor: 'impersonated' }), response(),
+    new URL('http://127.0.0.1?workspace_id=agentdock')), /actor is not writable/);
+  assert.equal(operations, 0);
+  await handler(route, requestBody({ action: 'retry', reason: 'Checked the destination', acknowledgeDuplicateRisk: true }), response(),
+    new URL('http://127.0.0.1?workspace_id=agentdock'));
+  assert.equal(operations, 1);
+});

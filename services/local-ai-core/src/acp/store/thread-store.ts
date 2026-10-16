@@ -20,13 +20,17 @@ import { normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.j
 
 // Order matters: also reused by INSERT INTO messages below — keep its VALUES placeholder count in sync.
 const MESSAGE_COLUMNS = 'id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq';
+// Shared by listSummaries and getRow; getRow alone appends acp_launch_config_key.
+const THREAD_COLUMNS = 'id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode';
+// Also reused by the INSERT INTO runs in updateRun — keep its VALUES placeholder count in sync.
+const RUN_COLUMNS = 'id, thread_id, status, started_at, updated_at';
 
 export class LocalThreadStore {
   constructor(private readonly db: DatabaseSync) {}
 
   listSummaries(workspaceId: string): ThreadSummary[] {
     const rows = this.db.prepare(`
-      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode
+      SELECT ${THREAD_COLUMNS}
       FROM threads
       WHERE workspace_id = ?
       ORDER BY updated_at DESC
@@ -186,23 +190,23 @@ export class LocalThreadStore {
   }
 
   appendMessage(threadId: string, ...args: MessageContentArgs) {
-    const timestamp = new Date().toISOString();
-    const [, content] = args;
-    const excerpt = normalizeMessageContent(content);
-    let id: string;
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
-      this.db.prepare(`
-        UPDATE threads
-        SET updated_at = ?, history_count = history_count + 1, excerpt = ?
-        WHERE id = ?
-      `).run(timestamp, excerpt, threadId);
+      const result = this.appendMessageInTransaction(threadId, ...args);
       this.db.exec('COMMIT');
+      return result;
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /** Caller owns a transaction, allowing admission and message metadata to commit together. */
+  appendMessageInTransaction(threadId: string, ...args: MessageContentArgs) {
+    const timestamp = new Date().toISOString();
+    const id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
+    this.db.prepare(`UPDATE threads SET updated_at = ?, history_count = history_count + 1, excerpt = ? WHERE id = ?`)
+      .run(timestamp, normalizeMessageContent(args[1]), threadId);
     return { id, timestamp };
   }
 
@@ -275,14 +279,14 @@ export class LocalThreadStore {
       return;
     }
     this.db.prepare(`
-      INSERT INTO runs (id, thread_id, status, started_at, updated_at)
+      INSERT INTO runs (${RUN_COLUMNS})
       VALUES (?, ?, ?, ?, ?)
     `).run(runId, threadId, normalizedStatus, now, now);
   }
 
   getLatestRunForThread(threadId: string) {
     const row = this.db.prepare(`
-      SELECT id, thread_id, status, started_at, updated_at
+      SELECT ${RUN_COLUMNS}
       FROM runs
       WHERE thread_id = ?
       ORDER BY updated_at DESC, rowid DESC
@@ -293,7 +297,7 @@ export class LocalThreadStore {
 
   getRun(runId: string) {
     const row = this.db.prepare(`
-      SELECT id, thread_id, status, started_at, updated_at
+      SELECT ${RUN_COLUMNS}
       FROM runs
       WHERE id = ?
     `).get(runId) as LocalRunRow | undefined;
@@ -302,7 +306,7 @@ export class LocalThreadStore {
 
   getRow(threadId: string) {
     return this.db.prepare(`
-      SELECT id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode, acp_launch_config_key
+      SELECT ${THREAD_COLUMNS}, acp_launch_config_key
       FROM threads
       WHERE id = ?
     `).get(threadId) as LocalThreadRow | undefined;

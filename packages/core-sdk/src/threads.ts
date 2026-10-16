@@ -1,11 +1,14 @@
 import type {
   SessionHandoffRecord,
   ThreadDetail,
+  ThreadExecutionSnapshot,
+  ThreadSubmissionResponse,
   ThreadGetOptions,
   ThreadSummary,
   WorkspaceRegistryEntry,
   WorkspaceSummary,
 } from '@cc/superai-contracts';
+import { coreClient } from './client.js';
 import { buildQuery, coreRequest } from './request.js';
 
 export function listWorkspaces() {
@@ -56,12 +59,12 @@ export function deleteThread(threadId: string) {
   return coreRequest<{ deleted: boolean }>('DELETE', `/threads/${encodeURIComponent(threadId)}`);
 }
 
-export function sendMessage(threadId: string, content: string) {
-  return coreRequest<{ runId: string }>('POST', `/threads/${encodeURIComponent(threadId)}/messages`, { content });
+export function sendMessage(threadId: string, content: string, options: { requestId?: string } = {}) {
+  return coreRequest<ThreadSubmissionResponse>('POST', `/threads/${encodeURIComponent(threadId)}/messages`, { content, ...options });
 }
 
-export function sendAction(threadId: string, content: string) {
-  return coreRequest<{ runId: string }>('POST', `/threads/${encodeURIComponent(threadId)}/actions`, { content });
+export function sendAction(threadId: string, content: string, options: { requestId?: string; expectedRunId?: string; expectedApprovalId?: string } = {}) {
+  return coreRequest<{ runId: string }>('POST', `/threads/${encodeURIComponent(threadId)}/actions`, { content, ...options });
 }
 
 export function interruptRun(runId: string) {
@@ -80,4 +83,12 @@ export function getPendingThreadHandoff(threadId: string) {
     'GET',
     `/threads/${encodeURIComponent(threadId)}/handoffs/pending`,
   );
+}
+
+export function getThreadRuntimeSnapshot(threadId: string) {
+  return coreRequest<ThreadExecutionSnapshot>('GET', `/threads/${encodeURIComponent(threadId)}/runtime-snapshot`);
+}
+
+export function watchThreadRuntime(threadId: string, listener: (snapshot: ThreadExecutionSnapshot) => void) {
+  return coreClient.watchThreadRuntime(threadId, listener);
 }

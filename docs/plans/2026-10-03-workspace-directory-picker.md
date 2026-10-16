@@ -22,7 +22,7 @@ sequenceDiagram
     participant Node as 远程 Client (NodeAgent)
 
     UI->>SDK: listDirectories({ deviceId, path })
-    
+
     alt deviceId == 'local' (本地设备)
         SDK->>Core: POST /api/local/v1/fs/directories { path }
         Core->>Core: opendir(path) + 过滤目录

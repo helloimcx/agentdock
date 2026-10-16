@@ -1,3 +1,4 @@
+import { AssistantPartialPersistence } from './assistant-partial-persistence.js';
 import type { DesktopBridgeEvent, DesktopBridgeToolCall, ThreadDetail, ThreadPendingPermissionRequest } from '@cc/superai-contracts';
 import { normalizeDesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
@@ -39,6 +40,9 @@ import type { LocalCoreTraceStore } from './store/trace-store.js';
 import { AcpTraceProjector, type TokenUsage } from './local-core-acp-trace-projector.js';
 
 type LocalCoreAcpTurnCoordinatorOptions = {
+  saveAssistantPartial?: (threadId: string, runId: string, messageId: string, content: string) => void;
+  clearAssistantPartial?: (threadId: string, runId: string) => void;
+  onPartialError?: (error: unknown) => void;
   emitBridge: (event: DesktopBridgeEvent) => void;
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
   upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
@@ -53,11 +57,17 @@ type LocalCoreAcpTurnCoordinatorOptions = {
 };
 
 export class LocalCoreAcpTurnCoordinator {
+  private readonly partialPersistence: AssistantPartialPersistence;
   readonly traceProjector?: AcpTraceProjector;
 
   constructor(private readonly options: LocalCoreAcpTurnCoordinatorOptions) {
+    this.partialPersistence = new AssistantPartialPersistence((error) => options.onPartialError?.(error));
     this.traceProjector = options.traceProjector || (options.traceStore ? new AcpTraceProjector(options.traceStore) : undefined);
   }
+
+  flushAssistantPartial(session: AcpSessionState) { this.partialPersistence.flush(session.threadId); }
+  discardAssistantPartial(session: AcpSessionState) { this.partialPersistence.discard(session.threadId); }
+  close() { this.partialPersistence.close(); }
 
   endRun(runId: string, status: 'completed' | 'failed' = 'completed') {
     this.traceProjector?.endRun(runId, status);
@@ -69,12 +79,14 @@ export class LocalCoreAcpTurnCoordinator {
   }
 
   closePendingAssistantSegment(session: AcpSessionState) {
+    this.discardAssistantPartial(session);
     const currentTurn = session.currentTurn;
     const currentRunId = session.currentRunId;
     if (!currentTurn || !currentRunId) {
       return;
     }
     const projection = closeAssistantMessageSegment(currentTurn);
+    this.options.clearAssistantPartial?.(session.threadId, currentRunId);
     if (!projection) {
       return;
     }
@@ -300,25 +312,9 @@ export class LocalCoreAcpTurnCoordinator {
     }
     const filePath = String(payload.params?.path || '').trim();
     try {
-      if (payload.method === 'fs/read_text_file') {
-        const res = await this.options.executeMesh({
-          nodeId: session.meshNodeId,
-          capability: 'filesystem.read',
-          args: { path: filePath },
-        });
-        const executionResult = (res && typeof res === 'object' && 'result' in res) ? (res as any).result : res;
-        const raw = executionResult?.content || '';
-        const content = executionResult?.encoding === 'base64' ? Buffer.from(raw, 'base64').toString('utf8') : raw;
-        this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, result: { content } });
-      } else {
-        const content = String(payload.params?.content ?? '');
-        await this.options.executeMesh({
-          nodeId: session.meshNodeId,
-          capability: 'filesystem.write',
-          args: { path: filePath, content },
-        });
-        this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, result: {} });
-      }
+      const result = await executeMeshFilesystemRequest(this.options.executeMesh, session.meshNodeId,
+        payload.method, filePath, String(payload.params?.content ?? ''));
+      this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, result });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Mesh filesystem operation failed';
       this.options.sendRaw(session, { jsonrpc: '2.0', id: payload.id, error: { code: -32603, message } });
@@ -410,6 +406,13 @@ export class LocalCoreAcpTurnCoordinator {
     if (!projection) {
       return;
     }
+    this.persistAssistantProjection(session.threadId, currentRunId, currentTurn, projection);
+  }
+
+  private persistAssistantProjection(threadId: string, runId: string, turn: RunningTurn, projection: { previewHandle: string; content: string }) {
+    const messageId = turn.assistantMessageId || projection.previewHandle;
+    this.partialPersistence.schedule(threadId, () =>
+      this.options.saveAssistantPartial?.(threadId, runId, messageId, projection.content));
   }
 
   private handleThoughtChunkUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
@@ -647,6 +650,18 @@ export class LocalCoreAcpTurnCoordinator {
       message.kind === 'tool' && message.content.includes(needle));
   }
 
+}
+
+async function executeMeshFilesystemRequest(executeMesh: NonNullable<LocalCoreAcpTurnCoordinatorOptions['executeMesh']>,
+  nodeId: string, method: string, path: string, content: string) {
+  if (method !== 'fs/read_text_file') {
+    await executeMesh({ nodeId, capability: 'filesystem.write', args: { path, content } });
+    return {};
+  }
+  const response = await executeMesh({ nodeId, capability: 'filesystem.read', args: { path } });
+  const result = (response && typeof response === 'object' && 'result' in response) ? (response as any).result : response;
+  const raw = result?.content || '';
+  return { content: result?.encoding === 'base64' ? Buffer.from(raw, 'base64').toString('utf8') : raw };
 }
 
 function compactToolInput(input: unknown) {

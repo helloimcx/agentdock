@@ -89,7 +89,7 @@ export function formatSuccessfulRunUpdate(
     threadId: result.threadId,
     acpRunId: result.acpRunId,
     finishedAt: nowIsoString,
-    deliveryStatus: result.deliveryStatus === 'failed' ? 'failed' as const : 'delivered' as const,
+    deliveryStatus: result.deliveryStatus === 'pending' ? 'pending' as const : result.deliveryStatus === 'failed' ? 'failed' as const : 'delivered' as const,
     ...(result.deliveryError ? { error: normalizeAutomationError(result.deliveryError) } : {}),
     ...(Object.keys(bridgeActivity).length > 0 ? { bridgeActivity } : {}),
   };

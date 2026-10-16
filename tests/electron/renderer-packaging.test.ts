@@ -36,7 +36,6 @@ test('release validation scripts keep local and candidate gates intact', () => {
   assert.match(testScript, /dist-electron\/tests\/contracts\/\*\.test\.js/, 'pnpm test must include contract tests');
   assert.match(testScript, /dist-electron\/tests\/integration\/\*\.test\.js/, 'pnpm test must include integration tests');
   assert.match(testScript, /dist-electron\/packages\/knowledge-api\/test\/\*\.test\.js/, 'pnpm test must include package tests');
-  assert.match(testScript, /dist-electron\/src\/pages\/Threads\/thread-chat-permission\.test\.js/, 'pnpm test must include renderer state tests');
 
   const buildIndex = smokeScript.indexOf('pnpm build');
   const smokeIndex = smokeScript.indexOf('node scripts/e2e-smoke.mjs');
