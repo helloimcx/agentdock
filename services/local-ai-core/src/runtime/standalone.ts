@@ -36,16 +36,26 @@ async function main() {
   });
   await server.start();
   await controller.init();
-  process.on('SIGINT', async () => {
-    await server.stop();
-    await controller.close();
-    process.exit(0);
-  });
-  process.on('SIGTERM', async () => {
-    await server.stop();
-    await controller.close();
-    process.exit(0);
-  });
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    // Bounded shutdown: a hang in stop/close must not pin the process until
+    // systemd gives up and SIGKILLs it, losing graceful-close side effects.
+    setTimeout(() => process.exit(0), 10000).unref();
+    process.stderr.write(`[local-ai-core] Received ${signal}; shutting down.\n`);
+    void (async () => {
+      try {
+        await server.stop();
+        await controller.close();
+      } catch (error) {
+        process.stderr.write(`[local-ai-core] Shutdown error: ${error instanceof Error ? error.stack || error.message : String(error)}\n`);
+      }
+      process.exit(0);
+    })();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 void main().catch((error) => {
