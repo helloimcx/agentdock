@@ -178,12 +178,14 @@ export class LocalAiCoreServer {
       }
     }
     this.openAiRunStreams.clear();
-    await new Promise<void>((resolve, reject) => {
-      this.server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+    await new Promise<void>((resolve) => {
+      // A stopping server must not wait on in-flight requests (mesh tunnels,
+      // unterminated clients) — sever them after a short grace so shutdown
+      // stays bounded. Errors (e.g. double stop) resolve instead of rejecting:
+      // a rejection here would skip process.exit in the signal handlers.
+      const grace = setTimeout(() => this.server.closeAllConnections(), 2000);
+      this.server.close(() => {
+        clearTimeout(grace);
         resolve();
       });
     });
