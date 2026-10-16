@@ -34,6 +34,7 @@ export interface ChannelRuntime {
   }): (() => void) | Promise<() => void>;
   markScheduledThreadRunOwned?(sessionKey: string, runId: string): void;
   sendOutboundMessage?(workspaceId: string, input: import('@cc/superai-contracts').ChannelOutboundMessageInput): Promise<import('@cc/superai-contracts').ChannelOutboundMessageResult> | import('@cc/superai-contracts').ChannelOutboundMessageResult;
+  sendBotMessage?(workspaceId: string, input: import('@cc/superai-contracts').ChannelBotMessageInput): Promise<import('@cc/superai-contracts').ChannelBotMessageResult> | import('@cc/superai-contracts').ChannelBotMessageResult;
   sendFile?(workspaceId: string, input: import('@cc/superai-contracts').ChannelFileSendInput): Promise<import('@cc/superai-contracts').ChannelFileSendResult> | import('@cc/superai-contracts').ChannelFileSendResult;
   muteThreadBridge?(threadId: string): void;
   unmuteThreadBridge?(threadId: string): void;

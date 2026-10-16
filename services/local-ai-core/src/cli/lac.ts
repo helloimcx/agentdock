@@ -21,6 +21,7 @@ import { runSkillDomain } from './skill-cli-handlers.js';
 import { runRulesDomain } from './standards-cli-handlers.js';
 import { runMemoryDomain } from './memory-cli-handlers.js';
 import { runAcpDomain } from './acp-cli-handlers.js';
+import { runButlerDomain } from './butler-cli-handlers.js';
 import type { StdIo, ParsedFlags, CliContext } from './cli-helpers.js';
 import {
   request,
@@ -64,6 +65,8 @@ async function dispatchDomain(
       return await runMemoryDomain(action, maybeId, flags, env, io, json);
     case 'acp':
       return await runAcpDomain(action, flags, env, io);
+    case 'butler':
+      return await runButlerDomain(action, maybeId, flags, env, io, json);
     default:
       printUsage(io.stderr);
       return 2;
@@ -751,6 +754,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac memory del <category>/<slug> [--json]',
     '  lac memory sync [--json]',
     '  lac acp serve --workspace <id> [--base-url <url>]',
+    '  lac butler profile|bots|setup|create|delegate|list|info|followup|cancel|complete [--owner-thread <id>] [--json]',
   ].join('\n') + '\n');
 }
 

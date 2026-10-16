@@ -89,6 +89,7 @@ export interface DomainEventPayloadMap {
     text: string;
     messageId: string;
   };
+  'channel.bot-message.received': import('@cc/superai-contracts').ButlerBotInboundMessage;
   'thread.message.accepted': {
     threadId: string;
     workspaceId: string;

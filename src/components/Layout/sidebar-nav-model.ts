@@ -6,7 +6,7 @@
 export type SidebarNavGroup = { label: string; ids: string[] };
 
 export const sidebarNavGroups: SidebarNavGroup[] = [
-  { label: 'Core', ids: ['dashboard', 'chat', 'workspace', 'providers', 'projects', 'sessions', 'costs'] },
+  { label: 'Core', ids: ['dashboard', 'chat', 'butler', 'workspace', 'providers', 'projects', 'sessions', 'costs'] },
   { label: 'Knowledge', ids: ['knowledge', 'skills'] },
   { label: 'Automation', ids: ['automations'] },
   { label: 'System', ids: ['mesh', 'system'] },

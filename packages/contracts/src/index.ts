@@ -12,3 +12,4 @@ export * from './memory.js';
 export * from './mesh.js';
 export * from './thread-runtime.js';
 export * from './delivery.js';
+export * from './butler.js';

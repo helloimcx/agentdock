@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "管家 Bot 与受管 Bot 的消息闭环",
+    "output": "docs/architecture/changes/2026-10-13-butler-channel-bot-management.html",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [980, 480]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "任务 / 验收" },
+    { "id": "butlerBot", "type": "external", "label": "管家 Bot", "sublabel": "平台实例 A" },
+    { "id": "core", "type": "backend", "label": "Local AI Core", "sublabel": "跟踪与授权" },
+    { "id": "store", "type": "database", "label": "管家状态库", "sublabel": "任务与回执" },
+    { "id": "channel", "type": "cloud", "label": "Lark 平台", "sublabel": "原生消息路由" },
+    { "id": "managedBot", "type": "external", "label": "受管 Bot", "sublabel": "具体平台实例 B" }
+  ],
+  "messages": [
+    { "from": "user", "to": "butlerBot", "y": 160, "label": "发送任务命令", "variant": "emphasis" },
+    { "from": "butlerBot", "to": "core", "y": 188, "label": "携带管家 Bot 身份与用户投递上下文" },
+    { "from": "core", "to": "channel", "y": 216, "label": "持久化目标 Bot 与操作 ID，再以 A 身份定向 @B", "variant": "emphasis" },
+    { "from": "channel", "to": "managedBot", "y": 244, "label": "平台投递到共享会话" },
+    { "from": "managedBot", "to": "channel", "y": 272, "label": "B 返回 ACK / 进展 / 结果", "variant": "return" },
+    { "from": "channel", "to": "core", "y": 300, "label": "回传真实发送者与操作 ID" },
+    { "from": "core", "to": "store", "y": 328, "label": "验证 B 并持久化任务状态", "variant": "emphasis" },
+    { "from": "core", "to": "butlerBot", "y": 356, "label": "报告进展或待用户验收" },
+    { "from": "butlerBot", "to": "user", "y": 384, "label": "持续跟踪并交付结果", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "butlerBot", "from": 152, "to": 390, "type": "external" },
+    { "participant": "core", "from": 180, "to": 362, "type": "backend" },
+    { "participant": "store", "from": 320, "to": 336, "type": "database" },
+    { "participant": "channel", "from": 236, "to": 308, "type": "cloud" },
+    { "participant": "managedBot", "from": 264, "to": 280, "type": "external" }
+  ]
+}

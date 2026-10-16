@@ -99,6 +99,7 @@ import { LocalSkillSourceStore } from './skill-source-store.js';
 import { LocalCoreSessionHandoffStore } from './session-handoff-store.js';
 import { LocalCoreWorkspaceMemoryStore } from './workspace-memory-store.js';
 import { LocalSubmissionStore } from './submission-store.js';
+import { ButlerStore } from './butler-store.js';
 import { MeshStore } from '../../mesh/mesh-store.js';
 import type { SkillSource, SkillScope } from '@cc/superai-contracts/skills';
 
@@ -129,6 +130,7 @@ export class LocalCoreAcpStore {
   readonly deliveries: DeliveryOutboxStore;
   readonly channelCommands: ChannelCommandStore;
   readonly submissions: LocalSubmissionStore;
+  readonly butler: ButlerStore;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
@@ -176,6 +178,7 @@ export class LocalCoreAcpStore {
       }
     });
     this.submissions = new LocalSubmissionStore(this.db);
+    this.butler = new ButlerStore(this.db);
     this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
     this.threadRuntime = new LocalThreadRuntimeStore(this.db);
   }

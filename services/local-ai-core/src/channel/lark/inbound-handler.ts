@@ -2,6 +2,7 @@ import { extname, isAbsolute, join, resolve } from 'node:path';
 import type { ChannelInboundContentPart } from '@cc/superai-contracts';
 import type { WorkspaceRouter } from '../../router/workspace-router.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
+import type { EventBus } from '@cc/plugin-sdk';
 import { FileSystemInboundAttachmentStore, resolveInboundAttachmentUri } from '../shared/inbound-attachment-store.js';
 import { channelPlatformKey } from '../shared/channel-keys.js';
 import { normalizeLarkInboundMessageEvent, summarizeLarkInboundPayload } from './inbound.js';
@@ -20,6 +21,7 @@ export class LarkInboundHandler {
 
   constructor(private readonly options: {
     store: LocalCoreAcpStore;
+    eventBus: EventBus;
     getWorkspaceRouter: () => WorkspaceRouter;
     getRuntimeState: (workspaceId: string, instanceId?: string) => LarkRuntimeState | undefined;
     getBinding: (workspaceId: string, instanceId?: string) => Promise<LarkWorkspaceBinding>;
@@ -52,6 +54,8 @@ export class LarkInboundHandler {
       parsedContent,
       messageType,
       chatType,
+      senderType,
+      senderOpenId,
       mentions,
       text,
       platformUserId,
@@ -59,6 +63,32 @@ export class LarkInboundHandler {
       displayName,
       messageId,
     } = normalized.message;
+    if (senderType === 'app' || senderType === 'bot') {
+      if (chatType !== 'group' || !runtimeState?.botOpenId || !isSelfBotMentioned(mentions, runtimeState.botOpenId)) {
+        this.options.log?.(`localcore-lark ignored bot message without a verified recipient mention: sender=${senderOpenId || platformUserId} chat=${chatId}`);
+        return;
+      }
+      if (senderOpenId && senderOpenId === runtimeState.botOpenId) return;
+      this.options.eventBus.emit({
+        type: 'channel.bot-message.received',
+        payload: {
+          platform: 'lark',
+          workspaceId,
+          instanceId,
+          appId: runtimeState.appId,
+          botOpenId: runtimeState.botOpenId,
+          senderOpenId: senderOpenId || platformUserId,
+          chatId,
+          messageId,
+          text,
+        },
+      });
+      return;
+    }
+    if (senderType !== 'user') {
+      this.options.log?.(`localcore-lark ignored message with unsupported sender type=${senderType}`);
+      return;
+    }
     const mayMaterializeAttachments = Boolean(
       runtimeState?.autoApprove || this.options.store.getAuthorizedUser(workspaceId, platformUserId, platformKey),
     );
@@ -226,4 +256,13 @@ export class LarkInboundHandler {
       sandboxWorkspacePath: sandbox.workspace_mount_path,
     });
   }
+}
+
+function isSelfBotMentioned(mentions: unknown[], botOpenId: string) {
+  return mentions.some((mention) => {
+    if (!mention || typeof mention !== 'object') return false;
+    const item = mention as Record<string, any>;
+    const id = item.id || item.user_id || item.userId || {};
+    return String(id.open_id || id.openId || item.open_id || item.openId || '').trim() === botOpenId;
+  });
 }

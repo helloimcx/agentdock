@@ -1,4 +1,7 @@
+import { parseButlerRoute, type ButlerRoute } from './butler-routes.js';
+
 export type LocalAiCoreRoute =
+  | ButlerRoute
   | { name: 'health' }
   | { name: 'runtime.status' }
   | { name: 'runtime.service.start' }
@@ -221,6 +224,7 @@ export function parseLocalAiCoreRoute(method: string | undefined, path: string):
 type SegmentRouteParser = (method: string, segments: string[]) => LocalAiCoreRoute | null;
 
 const SEGMENT_ROUTE_PARSERS: Record<string, SegmentRouteParser> = {
+  butler: parseButlerRoute,
   runtimes: parseRuntimesRoute,
   automations: parseAutomationsRoute,
   'automation-scripts': parseAutomationScriptsRoute,
@@ -899,4 +903,3 @@ function parseBudgetsRoute(method: string, segments: string[]): LocalAiCoreRoute
 function splitRouteSegments(path: string) {
   return path.split('/').filter(Boolean);
 }
-

@@ -53,6 +53,20 @@
           "device_nodes"
         ],
         "note": "结构化 MCP 与独立 lac 命令走主机 allowlist；普通 Shell 命令仍发往绑定设备"
+      },
+      {
+        "id": "butler-orchestration",
+        "label": "管家与 Channel Bot 协作",
+        "focus": [
+          "renderer",
+          "channels",
+          "core_api",
+          "butler",
+          "kernel",
+          "sqlite",
+          "acp_engine"
+        ],
+        "note": "管家以具体 Lark bot 身份向受管 bot 发消息；群聊仅作投递上下文，工作区 Agent 保留自身权限。"
       }
     ]
   },
@@ -251,6 +265,20 @@
         160,
         70
       ]
+    },
+    {
+      "id": "butler",
+      "type": "backend",
+      "label": "管家 Bot 协调服务",
+      "sublabel": "Bot roster · 消息委托 · 持续跟踪",
+      "pos": [
+        330,
+        470
+      ],
+      "size": [
+        190,
+        70
+      ]
     }
   ],
   "boundaries": [
@@ -273,7 +301,8 @@
         "acp_engine",
         "scheduler",
         "mesh_gateway",
-        "pi_durable_sqlite"
+        "pi_durable_sqlite",
+        "butler"
       ],
       "pad": 24
     },
@@ -313,7 +342,11 @@
       "from": "external_client",
       "to": "core_api",
       "toSide": "bottom",
-      "label": "API 调用 · Webhook 触发"
+      "label": "API 调用 · Webhook 触发",
+      "labelAt": [
+        150,
+        480
+      ]
     },
     {
       "id": "core-to-kernel",
@@ -414,6 +447,18 @@
           1340,
           485
         ]
+      ]
+    },
+    {
+      "id": "core-to-butler",
+      "from": "core_api",
+      "to": "butler",
+      "label": "Butler REST / Bot 回调",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        430,
+        420
       ]
     }
   ],

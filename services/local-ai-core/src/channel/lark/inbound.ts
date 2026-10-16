@@ -10,6 +10,8 @@ export type NormalizedLarkInboundMessage = {
   parsedContent: Record<string, unknown>;
   messageType: string;
   chatType: string;
+  senderType: string;
+  senderOpenId: string;
   mentions: LarkInboundMention[];
   text: string;
   platformUserId: string;
@@ -44,6 +46,7 @@ export function normalizeLarkInboundMessageEvent(
 
   const messageType = String(message.message_type || '').trim().toLowerCase();
   const chatType = String(message.chat_type || '').trim().toLowerCase();
+  const senderType = String(sender.sender_type || (sender.sender_id?.user_id ? 'user' : 'unknown')).trim().toLowerCase();
   const mentions = Array.isArray(message.mentions) ? message.mentions : [];
   const botOpenId = String(options.botOpenId || '').trim();
   if (chatType === 'group' && !options.groupReplyAll && botOpenId && !isLarkBotMentioned(mentions, botOpenId)) {
@@ -59,6 +62,7 @@ export function normalizeLarkInboundMessageEvent(
     : String(parsedContent.text || '').trim();
   const text = stripLarkMentions(rawText, mentions, botOpenId);
   const platformUserId = String(sender.sender_id?.user_id || sender.sender_id?.open_id || '').trim();
+  const senderOpenId = String(sender.sender_id?.open_id || '').trim();
   const chatId = String(message.chat_id || platformUserId).trim();
   if (!platformUserId || !chatId) {
     return {
@@ -77,6 +81,8 @@ export function normalizeLarkInboundMessageEvent(
       parsedContent,
       messageType,
       chatType,
+      senderType,
+      senderOpenId,
       mentions,
       text,
       platformUserId,

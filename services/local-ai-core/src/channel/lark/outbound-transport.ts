@@ -94,6 +94,18 @@ export class LarkOutboundTransport {
     };
   }
 
+  async sendBotMessage(state: LarkRuntimeState, chatId: string, recipientBotOpenId: string, recipientBotName: string, text: string) {
+    const content = `<at user_id="${escapeLarkAttribute(recipientBotOpenId)}">${escapeLarkText(recipientBotName)}</at> ${text}`;
+    const response = await state.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text: content }) },
+    });
+    const messageId = String(response?.data?.message_id || '').trim();
+    if (!messageId) throw new Error('Lark bot message did not return a message id');
+    this.log?.(`localcore-lark sent bot message to ${recipientBotOpenId} in ${chatId}`);
+    return messageId;
+  }
+
   async patchTextCard(
     state: LarkRuntimeState,
     messageId: string,
@@ -128,6 +140,14 @@ export class LarkOutboundTransport {
     this.log?.(`localcore-lark ${label} took ${Date.now() - startedAt}ms${fields ? ` ${fields}` : ''} textBytes=${Buffer.byteLength(text || '', 'utf8')}`);
     return result;
   }
+}
+
+function escapeLarkAttribute(value: string) {
+  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeLarkText(value: string) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function resolveReceiveIdType(receiveId: string) {

@@ -7,10 +7,13 @@ import type {
   LocalCoreChannelQrCodeStatus,
   ChannelFileSendInput,
   ChannelFileSendResult,
+  ChannelBotMessageInput,
+  ChannelBotMessageResult,
   ChannelOutboundMessageInput,
   ChannelOutboundMessageResult,
 } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
+import type { ButlerBotEndpoint } from '@cc/superai-contracts';
 
 export class ChannelService {
   constructor(private readonly runtimes: Map<string, ChannelRuntime>) {}
@@ -23,6 +26,26 @@ export class ChannelService {
       return statuses.flat();
     }
     return this.resolve(platform).listStatuses();
+  }
+
+  async listButlerBotEndpoints(): Promise<ButlerBotEndpoint[]> {
+    const statuses = await this.listStatuses('lark');
+    const endpoints = statuses.flatMap((status) => {
+      if (!status.appId || !status.botOpenId || !status.instanceId) return [];
+      return [{
+        id: `lark:${status.appId}:${status.botOpenId}`,
+        platform: 'lark' as const,
+        appId: status.appId,
+        botOpenId: status.botOpenId,
+        workspaceId: status.workspaceId,
+        instanceId: status.instanceId,
+        displayName: status.displayName || status.workspaceId,
+        connected: status.connected,
+      }];
+    });
+    const unique = new Map<string, ButlerBotEndpoint>();
+    for (const endpoint of endpoints) if (!unique.has(endpoint.id)) unique.set(endpoint.id, endpoint);
+    return [...unique.values()];
   }
 
   async getStatus(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelGatewayStatus> {
@@ -99,6 +122,12 @@ export class ChannelService {
       throw new Error(`Channel platform does not support outbound messages: ${platform}`);
     }
     return runtime.sendOutboundMessage(workspaceId, input);
+  }
+
+  async sendBotMessage(platform: string, workspaceId: string, input: ChannelBotMessageInput): Promise<ChannelBotMessageResult> {
+    const runtime = this.resolve(platform);
+    if (!runtime.sendBotMessage) throw new Error(`Channel platform does not support bot-to-bot messages: ${platform}`);
+    return runtime.sendBotMessage(workspaceId, input);
   }
 
   async getQrCode(platform: string, workspaceId: string, instanceId?: string): Promise<LocalCoreChannelQrCode> {
