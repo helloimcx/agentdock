@@ -62,7 +62,7 @@ export default function SystemLogs() {
     <div className="space-y-4 animate-fade-in">
       <PageHeader
         title={t('system.logs')}
-        description="Filtered runtime logs for troubleshooting."
+        description={t('system.logsDescription')}
         actions={(
           <Link to="/system">
             <Button variant="secondary" size="sm"><ArrowLeft size={14} /> {t('nav.system')}</Button>
@@ -102,15 +102,15 @@ export default function SystemLogs() {
           variant={autoRefresh ? 'primary' : 'secondary'}
           onClick={() => setAutoRefresh((current) => !current)}
         >
-          Auto
+          {t('system.auto')}
         </Button>
         <div className="relative min-w-[16rem] flex-1">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search logs"
-            aria-label="Search logs"
+            placeholder={t('system.searchLogs')}
+            aria-label={t('system.searchLogs')}
             className="pl-9"
           />
         </div>
@@ -119,7 +119,7 @@ export default function SystemLogs() {
       {/* Log entries */}
       <Card className="app-panel">
         {loading ? (
-          <div className="text-muted-foreground animate-pulse text-sm">Loading...</div>
+          <div className="text-muted-foreground animate-pulse text-sm">{t('common.loading')}</div>
         ) : filteredEntries.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">{t('common.noData')}</p>
         ) : (

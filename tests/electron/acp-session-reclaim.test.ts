@@ -246,6 +246,132 @@ test('ACP session coordinator restores session via session/load after idle recla
   }
 });
 
+test('LocalCoreAcpBackend evicts runThreadMap entry once the run reaches a terminal state', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-backend-run-thread-map-'));
+  let store: LocalCoreAcpStore | null = null;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-test', 'Thread 1');
+    const runThreadMap = new Map<string, string>();
+    const { LocalCoreAcpBackend } = await import('../../services/local-ai-core/src/acp/local-core-acp-backend.js');
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap,
+      emitBridge: () => {},
+      eventBus: { emit: () => {}, on: () => () => {} },
+      scheduler: {
+        createJob: async () => { throw new Error('not used'); },
+        listJobsForThread: async () => [],
+        deleteJob: async () => {},
+      },
+    } as any);
+
+    const session: any = {
+      threadId: thread.id,
+      bridgeSessionKey: `session:${thread.id}`,
+      closed: false,
+      sessionId: 'session:agentdock::local::c83e028b-b72e-4b77-8da7-111122223333',
+      supportsLoad: false,
+      currentRunId: null,
+      currentTurn: null,
+      pendingPermissionByRun: new Map(),
+      schedulerJobCreatedByRun: new Map(),
+      promptPromise: null,
+    };
+
+    let sawEntryDuringRun = false;
+    (backend as any).sessionCoordinator.ensureSession = async () => session;
+    (backend as any).sessionCoordinator.releaseThreadSession = () => {};
+    (backend as any).transport.request = async () => {
+      sawEntryDuringRun = runThreadMap.size > 0;
+      if (session.currentRunId) {
+        session.schedulerJobCreatedByRun.set(session.currentRunId, true);
+      }
+      return { stopReason: 'endTurn' };
+    };
+
+    const localConfig: LocalCoreProjectConfig = {
+      workspaceId: 'workspace-test',
+      agentType: 'claudecode',
+      command: 'claude',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-test',
+      model: '',
+    };
+
+    await backend.sendThreadMessage(thread.id, 'Hello', localConfig);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.ok(sawEntryDuringRun, 'runThreadMap should map the active run to its thread while the run is in flight');
+    assert.equal(runThreadMap.size, 0, 'runThreadMap entry must be evicted once the run reaches a terminal state');
+    assert.equal(session.schedulerJobCreatedByRun.size, 0, 'schedulerJobCreatedByRun entry must be evicted once the run reaches a terminal state');
+  } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('LocalCoreAcpBackend keeps runThreadMap empty when the prompt fails before the run starts', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-backend-run-thread-map-error-'));
+  let store: LocalCoreAcpStore | null = null;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-test', 'Thread 1');
+    const runThreadMap = new Map<string, string>();
+    const { LocalCoreAcpBackend } = await import('../../services/local-ai-core/src/acp/local-core-acp-backend.js');
+    const backend = new LocalCoreAcpBackend({
+      store,
+      runThreadMap,
+      emitBridge: () => {
+        throw new Error('bridge unavailable');
+      },
+      eventBus: { emit: () => {}, on: () => () => {} },
+      scheduler: {
+        createJob: async () => { throw new Error('not used'); },
+        listJobsForThread: async () => [],
+        deleteJob: async () => {},
+      },
+    } as any);
+
+    const session: any = {
+      threadId: thread.id,
+      bridgeSessionKey: `session:${thread.id}`,
+      closed: false,
+      sessionId: 'session:agentdock::local::c83e028b-b72e-4b77-8da7-111122223333',
+      supportsLoad: false,
+      currentRunId: null,
+      currentTurn: null,
+      pendingPermissionByRun: new Map(),
+      schedulerJobCreatedByRun: new Map(),
+      promptPromise: null,
+    };
+
+    (backend as any).sessionCoordinator.ensureSession = async () => session;
+    (backend as any).sessionCoordinator.releaseThreadSession = () => {};
+    (backend as any).transport.request = async () => ({ stopReason: 'endTurn' });
+
+    const localConfig: LocalCoreProjectConfig = {
+      workspaceId: 'workspace-test',
+      agentType: 'claudecode',
+      command: 'claude',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-test',
+      model: '',
+    };
+
+    await backend.sendThreadMessage(thread.id, 'Hello', localConfig);
+    // The submission dispatcher drains asynchronously and absorbs the prompt error.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.equal(runThreadMap.size, 0, 'a failed prompt must not leave a runThreadMap entry behind');
+  } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('LocalCoreAcpBackend releases session for local mode runs upon completion', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-backend-release-'));
   let store: LocalCoreAcpStore | null = null;

@@ -433,7 +433,6 @@ export class LocalCoreAcpBackend {
       if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'completed' });
       return;
     }
-    this.options.runThreadMap.set(runId, threadId);
     this.options.store.updateRun(runId, threadId, 'running');
     this.options.store.submissions.finish(submission.id, 'running');
     if (submission.taskId) this.options.store.updateAgentTask(submission.taskId, { status: 'running' });
@@ -490,16 +489,17 @@ export class LocalCoreAcpBackend {
     if (!row) {
       throw new Error(`Thread not found: ${threadId}`);
     }
-    this.emitBridgeEvent({
-      type: 'typing_start',
-      sessionKey: bridgeSessionKey,
-      replyCtx: runId,
-    });
-    const message = normalizeThreadMessageInput(input);
-    const content = message.displayText;
     let session: AcpSessionState | null = null;
     const runStartedAt = Date.now();
     try {
+      this.options.runThreadMap.set(runId, threadId);
+      this.emitBridgeEvent({
+        type: 'typing_start',
+        sessionKey: bridgeSessionKey,
+        replyCtx: runId,
+      });
+      const message = normalizeThreadMessageInput(input);
+      const content = message.displayText;
       if (row.agent_type === 'pi-durable') {
         await this.durable.runPrompt(threadId, runId, bridgeSessionKey, config, content, options, runStartedAt);
         return;
@@ -754,8 +754,10 @@ export class LocalCoreAcpBackend {
       }
       if (session) {
         session.promptPromise = null;
+        session.schedulerJobCreatedByRun.delete(runId);
       }
       this.sessionCoordinator.releaseThreadSession(threadId, config);
+      this.options.runThreadMap.delete(runId);
     }
   }
 

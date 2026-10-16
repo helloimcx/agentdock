@@ -269,7 +269,7 @@ function StandardsControls({
       </Select>
 
       <Select
-        label="规范注入强度 (Ponytail Intensity)"
+        label="规范注入强度"
         value={form.intensity}
         onChange={(e) => onChange({ intensity: e.target.value as StandardsForm['intensity'] })}
       >
