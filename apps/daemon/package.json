@@ -1,5 +1,5 @@
 {
-  "name": "@cc/local-ai-core",
+  "name": "@agentdock/daemon",
   "private": true,
   "version": "0.1.0",
   "type": "module",
