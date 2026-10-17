@@ -2,40 +2,40 @@
 
 ## Project Overview & Monorepo Architecture
 
-AgentDock is a pnpm monorepo consisting of an Electron desktop shell, a React renderer, and a dedicated **Local AI Core** backend runtime.
+AgentDock is a pnpm monorepo consisting of an Electron desktop shell, a React renderer, and a dedicated **AgentDock Daemon** (`agentdock-daemon`, historically `local-ai-core`) backend runtime.
 
 ### Directory Layout
 
-- `packages/`: Shared workspace packages
-  - `contracts` (`@cc/superai-contracts`): Shared API and cross-process data contracts
-  - `core-sdk` (`@cc/core-sdk`): Client SDK for Local AI Core REST, WebSocket, and SSE APIs (used by renderer and external clients)
-  - `knowledge-api` (`@cc/knowledge-api`): Knowledge base SQLite store, indexing, and vector search abstractions
-  - `plugin-sdk` (`@cc/plugin-sdk`): Plugin contracts, agent runtime, channel, scheduler, and sandbox interfaces
-- `services/`: Core backend services
-  - `local-ai-core/`: The Node.js backend daemon (HTTP server, WebSocket event bus, ACP session orchestration, scheduler, channels)
-- `apps/`: Target application shell stubs (`shell-desktop`, `shell-web`)
-- `electron/`: Electron desktop shell (main process, window lifecycle, managed skill definitions)
-- `src/`: React 19 web/desktop renderer (pages, shared components, Zustand state, i18n)
-- `shared/`: Cross-process shared types (`shared/desktop.ts`)
+A normalized two-tier peer topology separates applications (`apps/`) from shared libraries (`packages/`):
+
+- `apps/`: Application shells and standalone services
+  - `daemon/` (`@agentdock/daemon`): The Node.js backend daemon runtime (HTTP server, WebSocket event bus, ACP session orchestration, scheduler, channels)
+  - `desktop/` (`@agentdock/desktop`): Electron desktop shell (main process, window lifecycle, managed skill definitions)
+  - `web/` (`@agentdock/web`): React 19 web/desktop renderer (pages, shared components, Zustand state, i18n)
+- `packages/`: Shared workspace libraries
+  - `contracts/` (`@agentdock/contracts`, alias `@cc/superai-contracts`): Shared API, desktop models, and cross-process data contracts
+  - `sdk/` (`@agentdock/sdk`, alias `@cc/core-sdk`): Client SDK for AgentDock Daemon REST, WebSocket, and SSE APIs (used by renderer and external clients)
+  - `knowledge/` (`@agentdock/knowledge`, alias `@cc/knowledge-api`): Knowledge base SQLite store, indexing, and vector search abstractions
+  - `plugin-sdk/` (`@agentdock/plugin-sdk`, alias `@cc/plugin-sdk`): Plugin contracts, agent runtime, channel, scheduler, and sandbox interfaces
 - `tests/`: Cross-layer tests (`tests/electron/`, `tests/contracts/`, `tests/integration/`, and `tests/bdd/`)
 - `public/`: Static assets
 - Build outputs: `dist/renderer/` (Vite output) and `dist-electron/` (compiled TypeScript output); do not edit them directly
 
 ### Runtime Modes & Process Boundaries
 
-1. **Desktop Mode**: Electron launches Local AI Core as a child process (`ELECTRON_RUN_AS_NODE=1`), verifies health at `http://127.0.0.1:9831/api/local/v1/health`, then opens the renderer window. `electron/preload.ts` is intentionally empty — there is no Electron IPC bridge. All renderer-to-backend communication uses HTTP/WebSocket via `@cc/core-sdk`.
-2. **Web Admin Mode**: Connects directly to a remote or standalone Local AI Core instance via API token + server URL.
+1. **Desktop Mode**: Electron launches AgentDock Daemon as a child process (`ELECTRON_RUN_AS_NODE=1`), verifies health at `http://127.0.0.1:9831/api/local/v1/health`, then opens the renderer window. `apps/desktop/src/preload.ts` is intentionally empty — there is no Electron IPC bridge. All renderer-to-backend communication uses HTTP/WebSocket via `@agentdock/sdk`.
+2. **Web Admin Mode**: Connects directly to a remote or standalone AgentDock Daemon instance via API token + server URL.
 
-The `desktopManaged` flag and `managedBy` state in `src/store/auth.ts` control the active mode, routing, and available desktop-specific features.
+The `desktopManaged` flag and `managedBy` state in `apps/web/src/store/auth.ts` control the active mode, routing, and available desktop-specific features.
 
 ### Two Separate TypeScript Compilations
 
-1. **Renderer** (`src/`): Compiled by Vite with ESM/react-jsx, outputs to `dist/renderer/`.
-2. **Backend & Electron** (`electron/`, `services/`, `packages/`): Compiled by `tsc -p tsconfig.electron.json` with CommonJS and alias resolution via `tsc-alias`, outputs to `dist-electron/`.
+1. **Renderer** (`apps/web/`): Compiled by Vite with ESM/react-jsx, outputs to `dist/renderer/`.
+2. **Backend & Desktop** (`apps/desktop/`, `apps/daemon/`, `packages/`): Compiled by `tsc -p tsconfig.electron.json` with CommonJS and alias resolution via `tsc-alias`, outputs to `dist-electron/`.
 
-Both compilation pipelines share contracts from `shared/` and `packages/contracts/`.
+Both compilation pipelines share contracts from `packages/contracts/`.
 
-### Local AI Core Subsystems (`services/local-ai-core/`)
+### AgentDock Daemon Subsystems (`apps/daemon/`)
 
 - **ACP** (`src/acp/`): Agent Client Protocol orchestration — session coordinator, transport, turn management, permissions, and streaming
 - **Kernel** (`src/kernel/`): Process bootstrap, event bus, SQLite database migrations, configuration management, plugin registry, and capability registry
@@ -50,14 +50,15 @@ Both compilation pipelines share contracts from `shared/` and `packages/contract
 - **Cost** (`src/cost/`): Token usage tracking, budget constraints, and cost analytics
 - **Agents** (`src/agents/`): Agent runtime adapters and protocol translations (Claude Code, Codex, Pi, OpenCode)
 - **Thread** (`src/thread/`): Workspace thread ID management and thread knowledge bindings
+- **Butler** (`src/butler/`): Butler bot coordination, multi-bot delegation, and cross-application callback tracking
 - **Plugins** (`src/plugins/builtin/`): Built-in plugins with lowercase dotted IDs (e.g. `channel.lark`, `scheduler.cron`, `knowledge.ai-vector`)
 - **CLI** (`src/cli/`): Command-line entry points
 
-### Renderer Structure (`src/`)
+### Renderer Structure (`apps/web/`)
 
 - **Pages** (`src/pages/`): Feature views — `Automation/`, `Cost/`, `Cron/`, `Dashboard.tsx`, `Desktop/` (Workspaces), `Knowledge/`, `Providers/`, `Skills/`, `System/`, `Threads/` (ThreadChat, permission decisions)
 - **UI Components** (`src/components/`): Reusable UI built on Radix UI primitives (`src/components/ui/`), artifact visualizers (`src/components/artifacts/`), and execution timelines (`src/components/traces/`)
-- **API Client**: Consumes `@cc/core-sdk` (`packages/core-sdk`) rather than internal ad-hoc fetchers
+- **API Client**: Consumes `@agentdock/sdk` (`packages/sdk`) rather than internal ad-hoc fetchers
 - **State** (`src/store/`): Zustand stores — `auth.ts` (auth, server connection, runtime mode), `theme.ts`
 - **App Registry** (`src/app/`): Dynamic UI contribution registry for nav items and views controlled by runtime capability detection
 - **i18n** (`src/i18n/`): Multi-language support (en, zh, zh-TW, ja, es)
@@ -72,10 +73,10 @@ Use `pnpm` for all local work.
 |---|---|
 | `pnpm dev` | Starts Vite renderer + Electron app through `scripts/dev.mjs` |
 | `pnpm dev:web` | Starts standalone Vite renderer at `127.0.0.1:5173` |
-| `pnpm dev:core` | Builds Electron/Core and launches Local AI Core standalone via `scripts/launch-core.mjs` |
+| `pnpm dev:daemon` | Builds Desktop/Daemon and launches AgentDock Daemon standalone via `scripts/launch-daemon.mjs` (alias: `pnpm dev:core`) |
 | `pnpm build` | Full production build (`build:web` + `build:electron`) |
 | `pnpm build:renderer` | Builds web renderer into `dist/renderer/` |
-| `pnpm build:electron` | Compiles Electron, services, and packages into `dist-electron/` |
+| `pnpm build:electron` | Compiles Electron, apps, and packages into `dist-electron/` |
 | `pnpm start:prod` | Launches packaged app from current `dist-electron/` build |
 | `pnpm typecheck` | Runs TypeScript typechecks (`tsconfig.json` and `tests/bdd/tsconfig.json`) |
 | `pnpm test` | Runs typecheck, builds renderer + Electron, runs Node.js test runner, then executes BDD suite |
@@ -105,23 +106,23 @@ Use `pnpm` for all local work.
 ## Coding Style & Naming Conventions
 
 - TypeScript with `strict` mode enabled across all packages.
-- Path aliases: `@/` maps to `src/`, `@cc/*` maps to workspace packages in `packages/*`.
+- Path aliases: `@/` maps to `apps/web/src/`, `@agentdock/*` maps to workspace packages in `packages/*` and apps in `apps/*` (with backward-compatible `@cc/*` aliases preserved).
 - Formatting: 2-space indentation, semicolons in renderer code, and clear ESM imports.
-- Naming: `PascalCase` for React components and page folders (`src/pages/Desktop/Workspace.tsx`, `src/pages/Threads/ThreadChat.tsx`), `camelCase` for functions and helpers, and lowercase filenames for stores and SDK modules (`src/store/auth.ts`, `packages/core-sdk/src/client.ts`).
+- Naming: `PascalCase` for React components and page folders (`apps/web/src/pages/Desktop/Workspace.tsx`, `apps/web/src/pages/Threads/ThreadChat.tsx`), `camelCase` for functions and helpers, and lowercase filenames for stores and SDK modules (`apps/web/src/store/auth.ts`, `packages/sdk/src/client.ts`).
 - UI styling: Tailwind CSS with class-based dark mode, `@tailwindcss/typography`, and the project accent color `#42ff9c` (bright green).
-- Keep shared desktop and API contracts in `shared/` and `packages/contracts/` so renderer, Electron, and Local AI Core stay aligned.
+- Keep shared desktop and API contracts in `packages/contracts/` so renderer, Electron, and AgentDock Daemon stay aligned.
 
 ---
 
 ## Architecture Boundaries
 
 Keep the directory structure intentional, with clear ownership and single-purpose modules:
-- Page components orchestrate UI and data flow; shared components stay presentation-focused; stores own state transitions; API communication is isolated in `@cc/core-sdk`.
-- Electron and Local AI Core internals must never leak into renderer code except through shared contracts and SDK APIs.
+- Page components orchestrate UI and data flow; shared components stay presentation-focused; stores own state transitions; API communication is isolated in `@agentdock/sdk` (and `@cc/core-sdk`).
+- Electron and AgentDock Daemon internals must never leak into renderer code except through shared contracts and SDK APIs.
 - Strict one-way inward dependencies: low-level modules (shared contracts, SDKs, kernel interfaces) must never depend on higher-level modules (UI pages, components, specific plugins, or desktop shell code).
 - Prefer small, cohesive files over broad utility modules, and move reusable behavior to the nearest appropriate shared layer only after a real second use appears.
 - When a code file exceeds 1000 lines, consider splitting it.
-- Keep agent runtime quirks in `services/local-ai-core/src/agents/<agent-id>/` first, and only move behavior into shared ACP/router/storage/renderer layers when the invariant truly applies across agents.
+- Keep agent runtime quirks in `apps/daemon/src/agents/<agent-id>/` first, and only move behavior into shared ACP/router/storage/renderer layers when the invariant truly applies across agents.
 - When changing chat UI styles, consider all chat surfaces together: desktop app, web, mobile H5, and the different channel/session entry points.
 
 <!-- project-setup:architecture-maintenance:start -->
@@ -159,9 +160,9 @@ When designing or connecting multi-entity models (such as `AutomationRun` wrappi
 ## Plugin Development
 
 - Plugin contracts and runtime types belong in `packages/plugin-sdk/`; keep cross-process data shapes in shared contracts instead of duplicating them in plugins.
-- Built-in Local AI Core plugins live under `services/local-ai-core/src/plugins/builtin/`, with one focused file or folder per plugin and lowercase dotted IDs such as `channel.lark`, `scheduler.cron`, or `knowledge.ai-vector`.
+- Built-in AgentDock Daemon plugins live under `apps/daemon/src/plugins/builtin/`, with one focused file or folder per plugin and lowercase dotted IDs such as `channel.lark`, `scheduler.cron`, or `knowledge.ai-vector`.
 - Register plugins through the local core registry and declare dependencies in the manifest rather than relying on implicit load order.
-- Put reusable kernel behavior in `services/local-ai-core/src/kernel/`, not inside individual plugins, and avoid adding dynamic plugin loading until the static registration path is stable.
+- Put reusable kernel behavior in `apps/daemon/src/kernel/`, not inside individual plugins, and avoid adding dynamic plugin loading until the static registration path is stable.
 
 ---
 

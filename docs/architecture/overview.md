@@ -75,25 +75,25 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 
 ### Renderer
 
-- lives in `src/`
+- lives in `apps/web/`
 - renders Dashboard, Workspace, Threads, Knowledge
-- consumes Local AI Core runtime and SSE events
+- consumes AgentDock Daemon runtime and SSE events via `@agentdock/sdk`
 
 ### Electron
 
-- lives in `electron/`
+- lives in `apps/desktop/`
 - opens the desktop window
-- starts Local AI Core as a local companion process
+- starts AgentDock Daemon as a local companion process
 - does not own chat routing or platform gateway logic
 
-### Local AI Core
+### AgentDock Daemon
 
-- lives in `services/local-ai-core/`
+- lives in `apps/daemon/`
 - exposes `/api/local/v1/*`
 - owns thread routing, SQLite persistence, ACP streaming, scheduler execution, channel ingress/delivery, sandbox launch, coding standards materialization, and external API mappings
 - provides multi-scope rule pack loading, security scan gates (T01-T04), Ponytail 5-level decision ladder rendering, and non-destructive materialization into target instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`)
 
-Local AI Core exposes external run APIs under `/api/local/v1/external/*`:
+AgentDock Daemon exposes external run APIs under `/api/local/v1/external/*`:
 
 - `POST /external/projects` creates or reuses an external workspace mapping.
 - `POST /external/runs` ensures the workspace/thread, sends the prompt, and returns the run id and per-run SSE URL.
@@ -103,9 +103,9 @@ Cloud sandbox mode is configured on projects and materialized at runtime:
 
 - sandbox providers select OpenSandbox connection details and auth env.
 - runtime images select the agent ACP image, bridge transport, ports, and mount paths.
-- Local AI Core mounts workspace and agent state, starts the sandbox through OpenSandbox, and communicates with the container through HTTP NDJSON ACP.
+- AgentDock Daemon mounts workspace and agent state, starts the sandbox through OpenSandbox, and communicates with the container through HTTP NDJSON ACP.
 
-Local AI Core keeps scheduler responsibilities split by lifecycle:
+AgentDock Daemon keeps scheduler responsibilities split by lifecycle:
 
 - `ScheduledJobApplicationService` resolves scheduled job create/update input and derives channel routes from thread bindings.
 - `SchedulerService` owns due polling, run concurrency, and adapter selection.
@@ -120,10 +120,10 @@ See [Cloud Sandbox And External Agent API](cloud-sandbox-and-external-api.md) fo
 
 ### Shared Packages
 
-- `packages/contracts`: shared API and data contracts
-- `packages/core-sdk`: Local AI Core browser client
-- `packages/knowledge-api`: knowledge abstraction and noop fallback runtime
-- `packages/plugin-sdk`: plugin, agent runtime, channel, scheduler, monitor, and sandbox launch contracts
+- `packages/contracts`: shared API, desktop models, and cross-process data contracts (`@agentdock/contracts`)
+- `packages/sdk`: AgentDock Daemon client SDK (`@agentdock/sdk`)
+- `packages/knowledge`: knowledge base abstraction and vector search abstractions (`@agentdock/knowledge`)
+- `packages/plugin-sdk`: plugin, agent runtime, channel, scheduler, monitor, and sandbox launch contracts (`@agentdock/plugin-sdk`)
 
 ## Runtime Model
 
