@@ -4,6 +4,7 @@ import { createThreadRuntimeWatch } from './thread-runtime-watch.js';
 import type { DesktopBridgeEvent, LocalCoreEvent, ThreadExecutionSnapshot } from '@cc/superai-contracts';
 
 declare const __LOCAL_AI_CORE_BASE__: string | undefined;
+declare const __AGENTDOCK_DAEMON_BASE__: string | undefined;
 
 const DEFAULT_LOCAL_AI_CORE_ORIGIN = 'http://127.0.0.1:9831';
 const DEFAULT_LOCAL_AI_CORE_BASE = `${DEFAULT_LOCAL_AI_CORE_ORIGIN}/api/local/v1`;
@@ -682,7 +683,11 @@ export function createCoreClient(options: CoreClientOptions) {
 }
 
 export const LOCAL_AI_CORE_BASE = normalizeLocalAiCoreBase(
-  typeof __LOCAL_AI_CORE_BASE__ !== 'undefined' ? __LOCAL_AI_CORE_BASE__ : '',
+  typeof __AGENTDOCK_DAEMON_BASE__ !== 'undefined' && __AGENTDOCK_DAEMON_BASE__
+    ? __AGENTDOCK_DAEMON_BASE__
+    : typeof __LOCAL_AI_CORE_BASE__ !== 'undefined'
+      ? __LOCAL_AI_CORE_BASE__
+      : '',
 );
 export const LOCAL_AI_CORE_ORIGIN = LOCAL_AI_CORE_BASE.endsWith('/api/local/v1')
   ? LOCAL_AI_CORE_BASE.slice(0, -'/api/local/v1'.length) || DEFAULT_LOCAL_AI_CORE_ORIGIN

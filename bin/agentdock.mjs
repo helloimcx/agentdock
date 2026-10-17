@@ -110,7 +110,13 @@ async function isCoreHealthy(coreOrigin = defaultCoreOrigin) {
       signal: AbortSignal.timeout(500),
     });
     const json = await response.json();
-    return response.ok && json?.ok && json?.data?.name === 'local-ai-core';
+    return (
+      response.ok &&
+      json?.ok &&
+      (json?.data?.name === 'agentdock-daemon' ||
+        json?.data?.name === 'local-ai-core' ||
+        json?.data?.legacyName === 'local-ai-core')
+    );
   } catch {
     return false;
   }

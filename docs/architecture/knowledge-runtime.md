@@ -6,9 +6,9 @@ Knowledge runtime 原先通过 Local AI Core plugin 接入外部向量数据库�
 
 | 模块 | 关键文件 | 职责 |
 | --- | --- | --- |
-| Knowledge plugin | `services/local-ai-core/src/plugins/builtin/knowledge-noop-plugin.ts` | 提供默认的 Noop 兜底知识库插件。 |
-| Noop Provider | `packages/knowledge-api/src/index.ts` | 提供安全的空操作与默认配置返回，无外部网络依赖。 |
-| Controller API | `services/local-ai-core/src/runtime/handlers/knowledge-handler.ts` | 将 knowledge HTTP 路由映射到 KnowledgeRuntime provider。 |
+| Knowledge plugin | `apps/daemon/src/plugins/builtin/knowledge-noop-plugin.ts` | 提供默认的 Noop 兜底知识库插件。 |
+| Noop Provider | `packages/knowledge/src/index.ts` | 提供安全的空操作与默认配置返回，无外部网络依赖。 |
+| Controller API | `apps/daemon/src/runtime/handlers/knowledge-handler.ts` | 将 knowledge HTTP 路由映射到 KnowledgeRuntime provider。 |
 
 ## API 请求流程 (Noop 兜底)
 

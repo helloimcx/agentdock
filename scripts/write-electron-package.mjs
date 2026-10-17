@@ -25,7 +25,7 @@ export function writeElectronPackageMetadata(rootDir = process.cwd()) {
   fs.mkdirSync(legacyCoreRuntimeDir, { recursive: true });
   fs.writeFileSync(
     path.join(legacyCoreRuntimeDir, 'standalone.js'),
-    `module.exports = require('../../../../../apps/daemon/src/runtime/standalone.js');\n`,
+    `module.exports = require('../../../../apps/daemon/src/runtime/standalone.js');\n`,
     'utf8',
   );
 }

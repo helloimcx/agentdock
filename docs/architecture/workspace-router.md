@@ -6,11 +6,11 @@ Workspace Router 是 Local AI Core 内部的工作区路由层。它把配置中
 
 | 模块 | 关键文件 | 职责 |
 | --- | --- | --- |
-| Router | `services/local-ai-core/src/router/workspace-router.ts` | 解析 workspace route，管理线程操作、消息发送、approval、task、registry 和 bridge event。 |
-| Route config | `services/local-ai-core/src/router/workspace-route-config.ts` | 归一化 project 配置，判断 Local Core ACP project。 |
-| Thread id | `services/local-ai-core/src/thread/workspace-thread-id.ts` | workspace/thread id 编解码。 |
-| ACP backend | `services/local-ai-core/src/acp/local-core-acp-backend.ts` | 执行 ACP 会话、流式事件、权限生命周期和持久化。 |
-| Store | `services/local-ai-core/src/acp/local-core-acp-store.ts` | SQLite 持久化线程、消息、运行、approval、audit、channel binding。 |
+| Router | `apps/daemon/src/router/workspace-router.ts` | 解析 workspace route，管理线程操作、消息发送、approval、task、registry 和 bridge event。 |
+| Route config | `apps/daemon/src/router/workspace-route-config.ts` | 归一化 project 配置，判断 Local Core ACP project。 |
+| Thread id | `apps/daemon/src/thread/workspace-thread-id.ts` | workspace/thread id 编解码。 |
+| ACP backend | `apps/daemon/src/acp/local-core-acp-backend.ts` | 执行 ACP 会话、流式事件、权限生命周期和持久化。 |
+| Store | `apps/daemon/src/acp/local-core-acp-store.ts` | SQLite 持久化线程、消息、运行、approval、audit、channel binding。 |
 
 ## Thread 消息流程
 
