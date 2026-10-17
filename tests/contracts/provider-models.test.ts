@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalModelProviderStore } from '../../services/local-ai-core/src/acp/store/model-provider-store.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalModelProviderStore } from '../../apps/daemon/src/acp/store/model-provider-store.js';
 import {
   applyProviderPreset,
   getProviderPresetValue,
   PROVIDER_PRESETS,
   providerToDraft,
   type DesktopModelProvider,
-} from '../../shared/desktop.js';
+} from '../../packages/contracts/src/desktop.js';
 
 test('LocalModelProviderStore correctly persists and retrieves multiple models', () => {
   const db = new DatabaseSync(':memory:');

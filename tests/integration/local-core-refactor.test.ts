@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpResponseProcessor } from '../../services/local-ai-core/src/acp/local-core-acp-response-processor.js';
-import { agentHelpText, formatAgentMode, modeHelpText, normalizeAgentCommandTarget, normalizeAgentMode, parseSlashCommand } from '../../services/local-ai-core/src/acp/local-core-slash-commands.js';
-import { ScheduledConversationExecutor } from '../../services/local-ai-core/src/scheduler/scheduled-conversation-executor.js';
-import { SchedulerRunLifecycle } from '../../services/local-ai-core/src/scheduler/scheduler-run-lifecycle.js';
-import { createChannelExecutionPolicy } from '../../services/local-ai-core/src/scheduler/channel-execution-policy.js';
+import { LocalCoreAcpResponseProcessor } from '../../apps/daemon/src/acp/local-core-acp-response-processor.js';
+import { agentHelpText, formatAgentMode, modeHelpText, normalizeAgentCommandTarget, normalizeAgentMode, parseSlashCommand } from '../../apps/daemon/src/acp/local-core-slash-commands.js';
+import { ScheduledConversationExecutor } from '../../apps/daemon/src/scheduler/scheduled-conversation-executor.js';
+import { SchedulerRunLifecycle } from '../../apps/daemon/src/scheduler/scheduler-run-lifecycle.js';
+import { createChannelExecutionPolicy } from '../../apps/daemon/src/scheduler/channel-execution-policy.js';
 
 const createLarkExecutionPolicy = (
   job: Parameters<typeof createChannelExecutionPolicy>[0],
@@ -21,13 +21,13 @@ const createLarkExecutionPolicy = (
   legacySideThreadTitles: (nextJob: { description?: string; id: string }) => [`[Scheduled] ${nextJob.description || nextJob.id}`],
   preferredAgentType,
 });
-import { LocalScheduleAdapter } from '../../services/local-ai-core/src/scheduler/local-schedule-adapter.js';
-import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../services/local-ai-core/src/channel/lark/cards.js';
-import { ChannelSessionCommandRuntime } from '../../services/local-ai-core/src/channel/shared/session-command-runtime.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { SessionCommandService, matchThread } from '../../services/local-ai-core/src/thread/session-command-service.js';
-import { ThreadSlashCommandDispatcher, slashHelpText } from '../../services/local-ai-core/src/thread/thread-slash-command-dispatcher.js';
+import { LocalScheduleAdapter } from '../../apps/daemon/src/scheduler/local-schedule-adapter.js';
+import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../apps/daemon/src/channel/lark/cards.js';
+import { ChannelSessionCommandRuntime } from '../../apps/daemon/src/channel/shared/session-command-runtime.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { SessionCommandService, matchThread } from '../../apps/daemon/src/thread/session-command-service.js';
+import { ThreadSlashCommandDispatcher, slashHelpText } from '../../apps/daemon/src/thread/thread-slash-command-dispatcher.js';
 
 test('response processor derives slash fallback replies and cron system responses', async () => {
   const processor = new LocalCoreAcpResponseProcessor({

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCoreClient, type CoreEventSource } from '../../packages/core-sdk/src/client.js';
+import { createCoreClient, type CoreEventSource } from '../../packages/sdk/src/client.js';
 
 class FakeEventSource implements CoreEventSource {
   readonly listeners = new Map<string, Set<(event: { data: string }) => void>>();

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalCoreCostStore } from '../../services/local-ai-core/src/acp/store/cost-store.js';
-import { LocalCoreBudgetStore } from '../../services/local-ai-core/src/acp/store/budget-store.js';
-import { LocalModelProviderStore } from '../../services/local-ai-core/src/acp/store/model-provider-store.js';
-import { calculateCostUsd } from '../../services/local-ai-core/src/cost/cost-calculator.js';
-import { resolveModelPricing, KNOWN_MODEL_PRESETS } from '../../services/local-ai-core/src/cost/cost-presets.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalCoreCostStore } from '../../apps/daemon/src/acp/store/cost-store.js';
+import { LocalCoreBudgetStore } from '../../apps/daemon/src/acp/store/budget-store.js';
+import { LocalModelProviderStore } from '../../apps/daemon/src/acp/store/model-provider-store.js';
+import { calculateCostUsd } from '../../apps/daemon/src/cost/cost-calculator.js';
+import { resolveModelPricing, KNOWN_MODEL_PRESETS } from '../../apps/daemon/src/cost/cost-presets.js';
 
 function createTestDb() {
   const db = new DatabaseSync(':memory:');

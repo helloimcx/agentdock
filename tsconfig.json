@@ -18,15 +18,40 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["apps/web/src/*"],
+      "@agentdock/contracts": ["packages/contracts/src/index.ts"],
+      "@agentdock/contracts/*": ["packages/contracts/src/*"],
+      "@agentdock/sdk": ["packages/sdk/src/index.ts"],
+      "@agentdock/sdk/*": ["packages/sdk/src/*"],
+      "@agentdock/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],
+      "@agentdock/plugin-sdk/*": ["packages/plugin-sdk/src/*"],
+      "@agentdock/knowledge": ["packages/knowledge/src/index.ts"],
+      "@agentdock/knowledge/*": ["packages/knowledge/src/*"],
+      "@agentdock/daemon": ["apps/daemon/src/index.ts"],
+      "@agentdock/daemon/*": ["apps/daemon/src/*"],
+      "@daemon/*": ["apps/daemon/src/*"],
+      "@agentdock/desktop": ["apps/desktop/src/main.ts"],
+      "@agentdock/desktop/*": ["apps/desktop/src/*"],
+      "@desktop/*": ["apps/desktop/src/*"],
+      "@agentdock/web": ["apps/web/src/main.tsx"],
+      "@agentdock/web/*": ["apps/web/src/*"],
       "@cc/superai-contracts": ["packages/contracts/src/index.ts"],
       "@cc/superai-contracts/*": ["packages/contracts/src/*"],
-      "@cc/core-sdk": ["packages/core-sdk/src/index.ts"],
-      "@cc/core-sdk/*": ["packages/core-sdk/src/*"],
+      "@cc/core-sdk": ["packages/sdk/src/index.ts"],
+      "@cc/core-sdk/*": ["packages/sdk/src/*"],
       "@cc/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],
       "@cc/plugin-sdk/*": ["packages/plugin-sdk/src/*"],
-      "@cc/knowledge-api": ["packages/knowledge-api/src/index.ts"]
+      "@cc/knowledge-api": ["packages/knowledge/src/index.ts"],
+      "@cc/knowledge-api/*": ["packages/knowledge/src/*"],
+      "@cc/local-ai-core": ["apps/daemon/src/index.ts"],
+      "@cc/local-ai-core/*": ["apps/daemon/src/*"]
     }
   },
-  "include": ["src", "shared", "packages", "services", "vite-env.d.ts"]
+  "include": [
+    "apps",
+    "packages",
+    "tests",
+    "scripts",
+    "apps/web/vite-env.d.ts"
+  ]
 }

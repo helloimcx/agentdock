@@ -5,8 +5,8 @@ import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
 
 let mainWindow: BrowserWindow | null = null;
-let localCoreProcess: ChildProcess | null = null;
-let localCoreStartupPromise: Promise<void> | null = null;
+let daemonProcess: ChildProcess | null = null;
+let daemonStartupPromise: Promise<void> | null = null;
 const userDataOverride = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim();
 const smokeOutputPath = process.env.AI_WORKSTATION_SMOKE_OUTPUT?.trim();
 
@@ -19,7 +19,11 @@ if (userDataOverride) {
   app.setPath('userData', userDataOverride);
 }
 
-function localCoreEntryPath() {
+function daemonEntryPath() {
+  const primary = appResourcePath('dist-electron', 'apps', 'daemon', 'src', 'runtime', 'standalone.js');
+  if (existsSync(primary)) {
+    return primary;
+  }
   return appResourcePath('dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
 }
 
@@ -27,7 +31,7 @@ function appIconPath() {
   return appResourcePath('build', 'icon.png');
 }
 
-async function isLocalCoreHealthy(timeoutMs = 350) {
+async function isDaemonHealthy(timeoutMs = 350) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -42,7 +46,7 @@ async function isLocalCoreHealthy(timeoutMs = 350) {
   }
 }
 
-async function isLocalCorePortListening(timeoutMs = 350) {
+async function isDaemonPortListening(timeoutMs = 350) {
   return new Promise<boolean>((resolve) => {
     const socket = createConnection({ host: '127.0.0.1', port: 9831 });
     let settled = false;
@@ -60,15 +64,15 @@ async function isLocalCorePortListening(timeoutMs = 350) {
   });
 }
 
-async function waitForLocalCoreHealthy(timeoutMs = 60000) {
+async function waitForDaemonHealthy(timeoutMs = 60000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (await isLocalCoreHealthy(500)) {
+    if (await isDaemonHealthy(500)) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Local AI Core did not become healthy within ${timeoutMs}ms`);
+  throw new Error(`AgentDock daemon did not become healthy within ${timeoutMs}ms`);
 }
 
 async function fetchSmokeJson(path: string) {
@@ -79,22 +83,22 @@ async function fetchSmokeJson(path: string) {
   return response.json() as Promise<unknown>;
 }
 
-async function ensureLocalCoreProcess() {
-  if (await isLocalCoreHealthy()) {
+async function ensureDaemonProcess() {
+  if (await isDaemonHealthy()) {
     return;
   }
-  if (localCoreStartupPromise) {
-    return localCoreStartupPromise;
+  if (daemonStartupPromise) {
+    return daemonStartupPromise;
   }
-  localCoreStartupPromise = (async () => {
-    if (await isLocalCorePortListening()) {
-      await waitForLocalCoreHealthy();
+  daemonStartupPromise = (async () => {
+    if (await isDaemonPortListening()) {
+      await waitForDaemonHealthy();
       return;
     }
-    if (!localCoreProcess) {
-      const entry = localCoreEntryPath();
+    if (!daemonProcess) {
+      const entry = daemonEntryPath();
       if (!existsSync(entry)) {
-        throw new Error(`Missing Local AI Core entry: ${entry}`);
+        throw new Error(`Missing AgentDock daemon entry: ${entry}`);
       }
       const child = spawn(process.execPath, [entry], {
         cwd: app.getAppPath(),
@@ -105,26 +109,26 @@ async function ensureLocalCoreProcess() {
         },
         stdio: 'inherit',
       });
-      localCoreProcess = child;
+      daemonProcess = child;
       child.on('exit', () => {
-        localCoreProcess = null;
+        daemonProcess = null;
       });
     }
-    await waitForLocalCoreHealthy();
+    await waitForDaemonHealthy();
   })();
   try {
-    await localCoreStartupPromise;
+    await daemonStartupPromise;
   } finally {
-    localCoreStartupPromise = null;
+    daemonStartupPromise = null;
   }
 }
 
-function stopLocalCoreProcess() {
-  if (!localCoreProcess) {
+function stopDaemonProcess() {
+  if (!daemonProcess) {
     return;
   }
-  localCoreProcess.kill('SIGTERM');
-  localCoreProcess = null;
+  daemonProcess.kill('SIGTERM');
+  daemonProcess = null;
 }
 
 function createWindow() {
@@ -170,7 +174,7 @@ function writeSmokeResult(payload: Record<string, unknown>) {
 }
 
 app.whenReady().then(async () => {
-  await ensureLocalCoreProcess();
+  await ensureDaemonProcess();
   createWindow();
   if (smokeOutputPath) {
     const [capabilities, pluginDiagnostics] = await Promise.all([
@@ -198,5 +202,5 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  stopLocalCoreProcess();
+  stopDaemonProcess();
 });

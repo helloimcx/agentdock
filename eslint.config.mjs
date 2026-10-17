@@ -22,9 +22,10 @@ export default tseslint.config(
   },
   {
     files: [
+      'apps/**/*.{ts,tsx}',
+      'packages/**/*.ts',
       'src/**/*.{ts,tsx}',
       'services/**/*.ts',
-      'packages/**/*.ts',
       'electron/**/*.ts',
       'shared/**/*.ts',
     ],

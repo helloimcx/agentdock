@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import {
   FileSystemInboundAttachmentStore,
   resolveInboundAttachmentUri,
-} from '../../services/local-ai-core/src/channel/shared/inbound-attachment-store.js';
+} from '../../apps/daemon/src/channel/shared/inbound-attachment-store.js';
 
 test('inbound attachment store streams a platform source into an atomic local file', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'channel-inbound-store-'));

@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { composeAgentMessage } from '../../services/local-ai-core/src/thread/agent-message-policy.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
+import { composeAgentMessage } from '../../apps/daemon/src/thread/agent-message-policy.js';
 
-const sourceSkillPath = join(process.cwd(), 'electron', 'managed-skills', 'stock-monitor', 'SKILL.md');
+const managedSkillsDir = existsSync(join(process.cwd(), 'apps', 'desktop', 'managed-skills'))
+  ? join(process.cwd(), 'apps', 'desktop', 'managed-skills')
+  : (existsSync(join(process.cwd(), 'electron', 'managed-skills'))
+    ? join(process.cwd(), 'electron', 'managed-skills')
+    : join(process.cwd(), 'apps', 'daemon', 'src', 'skills', 'builtin'));
+const sourceSkillPath = join(managedSkillsDir, 'stock-monitor', 'SKILL.md');
 
 test('stock monitor skill defines comprehensive market formats, metrics, strategies, and CLI commands', () => {
   const content = readFileSync(sourceSkillPath, 'utf8');
@@ -58,7 +63,7 @@ test('stock monitor skill defines comprehensive market formats, metrics, strateg
 });
 
 test('managed skill catalog loads exact source stock-monitor skill', () => {
-  const legacyCatalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const legacyCatalog = new ManagedSkillCatalog({ rootDir: managedSkillsDir });
   const source = legacyCatalog.get('stock-monitor');
   assert(source, 'stock-monitor skill should be found in legacy catalog');
   assert.equal(source.scope, 'builtin');
@@ -78,7 +83,7 @@ test('managed skill catalog loads exact source stock-monitor skill', () => {
 });
 
 test('agent message policy injects stock-monitor skill when message is about stock watching or market queries', () => {
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const catalog = new ManagedSkillCatalog({ rootDir: managedSkillsDir });
   const stockSkill = catalog.get('stock-monitor');
   assert(stockSkill);
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
-import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+import { LocalCoreWeixinGateway } from '../../apps/daemon/src/channel/weixin/local-core-weixin-gateway.js';
+import { LocalCoreLarkGateway } from '../../apps/daemon/src/channel/lark/local-core-lark-gateway.js';
 
 
 

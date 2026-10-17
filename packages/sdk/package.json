@@ -1,10 +1,10 @@
 {
-  "name": "@cc/core-sdk",
+  "name": "@agentdock/sdk",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@cc/superai-contracts": "workspace:*"
+    "@agentdock/contracts": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",

@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { runMemoryDomain } from '../../services/local-ai-core/src/cli/memory-cli-handlers.js';
-import { parseArgs } from '../../services/local-ai-core/src/cli/cli-helpers.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
+import { runMemoryDomain } from '../../apps/daemon/src/cli/memory-cli-handlers.js';
+import { parseArgs } from '../../apps/daemon/src/cli/cli-helpers.js';
 
-const sourceSkillPath = join(process.cwd(), 'electron', 'managed-skills', 'memory', 'SKILL.md');
-const queryScriptPath = join(process.cwd(), 'electron', 'managed-skills', 'memory', 'scripts', 'query-memory.sh');
-const writeScriptPath = join(process.cwd(), 'electron', 'managed-skills', 'memory', 'scripts', 'write-memory.sh');
+const managedSkillsDir = join(process.cwd(), 'apps', 'desktop', 'managed-skills');
+const sourceSkillPath = join(managedSkillsDir, 'memory', 'SKILL.md');
+const queryScriptPath = join(managedSkillsDir, 'memory', 'scripts', 'query-memory.sh');
+const writeScriptPath = join(managedSkillsDir, 'memory', 'scripts', 'write-memory.sh');
 
 test('memory managed skill definition exists and has valid metadata', () => {
   assert.equal(existsSync(sourceSkillPath), true, 'SKILL.md should exist');
@@ -33,7 +34,7 @@ test('memory managed skill definition exists and has valid metadata', () => {
 });
 
 test('managed skill catalog loads memory skill', () => {
-  const legacyCatalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const legacyCatalog = new ManagedSkillCatalog({ rootDir: managedSkillsDir });
   const memorySkill = legacyCatalog.get('memory');
   assert(memorySkill, 'ManagedSkillCatalog should return memory skill from legacy path');
   assert.equal(memorySkill.id, 'memory');

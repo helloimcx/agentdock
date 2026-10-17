@@ -9,10 +9,10 @@ import type { DesktopProjectConfig, RuntimeConfigState } from '../../packages/co
 import {
   normalizeMcpServerOptions,
   toLocalCoreProjectConfig,
-} from '../../services/local-ai-core/src/router/workspace-route-config.js';
-import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import type { LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
+} from '../../apps/daemon/src/router/workspace-route-config.js';
+import { LocalCoreAcpSessionCoordinator } from '../../apps/daemon/src/acp/local-core-acp-session-coordinator.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import type { LocalCoreAcpTransport } from '../../apps/daemon/src/acp/local-core-acp-transport.js';
 
 function configState(path: string): RuntimeConfigState {
   return {

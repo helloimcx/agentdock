@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createThreadRuntimeWatch } from '../../packages/core-sdk/src/thread-runtime-watch.js';
+import { createThreadRuntimeWatch } from '../../packages/sdk/src/thread-runtime-watch.js';
 
 test('thread watch applies full baselines across gaps/reconnect and ignores old source or cross-thread frames', () => {
   const threadId = 'agentdock::fd9e88b4-1515-489b-8748-8ebf5b67b96c';

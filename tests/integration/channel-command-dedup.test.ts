@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
-import { ChannelCommandStore } from '../../services/local-ai-core/src/acp/store/channel-command-store.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreLarkGateway } from '../../apps/daemon/src/channel/lark/local-core-lark-gateway.js';
+import { ChannelCommandStore } from '../../apps/daemon/src/acp/store/channel-command-store.js';
 import { DatabaseSync } from 'node:sqlite';
 
 for (const initiallyBound of [true, false]) test(`Lark /new dedup survives restart with ${initiallyBound ? 'existing' : 'new'} channel binding`, async () => {

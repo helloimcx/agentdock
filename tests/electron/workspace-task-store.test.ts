@@ -4,17 +4,17 @@ import { mkdtempSync, rmSync, mkdirSync, symlinkSync, writeFileSync } from 'node
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { configureSqlitePragmas } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
-import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import { buildAcpChildEnvironment, LocalCoreAcpTransport } from '../../services/local-ai-core/src/acp/local-core-acp-transport.js';
-import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
-import { SchedulerService } from '../../services/local-ai-core/src/scheduler/scheduler-service.js';
-import { LarkScheduleAdapter } from '../../services/local-ai-core/src/scheduler/lark-schedule-adapter.js';
-import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
-import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
-import { getPathEnv } from '../../services/local-ai-core/src/runtime/env-utils.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { configureSqlitePragmas } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
+import { buildAgentPath, LocalCoreAcpSessionCoordinator } from '../../apps/daemon/src/acp/local-core-acp-session-coordinator.js';
+import { buildAcpChildEnvironment, LocalCoreAcpTransport } from '../../apps/daemon/src/acp/local-core-acp-transport.js';
+import { LocalCoreAcpTurnCoordinator } from '../../apps/daemon/src/acp/local-core-acp-turn-coordinator.js';
+import { SchedulerService } from '../../apps/daemon/src/scheduler/scheduler-service.js';
+import { LarkScheduleAdapter } from '../../apps/daemon/src/scheduler/lark-schedule-adapter.js';
+import { bootstrapLocalCoreRuntime } from '../../apps/daemon/src/kernel/bootstrap.js';
+import { LocalCoreController } from '../../apps/daemon/src/runtime/local-core-controller.js';
+import { getPathEnv } from '../../apps/daemon/src/runtime/env-utils.js';
 
 test('workspace registry entries persist in LocalCoreAcpStore', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'workspace-registry-'));

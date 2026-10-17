@@ -5,15 +5,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { RuntimePlugin } from '../../packages/plugin-sdk/src/index.js';
-import { bootstrapLocalCoreKernel } from '../../services/local-ai-core/src/kernel/bootstrap.js';
-import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
-import { LocalCoreCapabilityRegistry } from '../../services/local-ai-core/src/kernel/capability-registry.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
-import { LocalCoreLifecycleManager } from '../../services/local-ai-core/src/kernel/lifecycle-manager.js';
-import { LocalCorePluginRegistry } from '../../services/local-ai-core/src/kernel/plugin-registry.js';
-import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
-import { createLocalCoreRuntimeState } from '../../services/local-ai-core/src/runtime/local-core-runtime-state.js';
-import { LocalAiCoreServer } from '../../services/local-ai-core/src/runtime/server.js';
+import { bootstrapLocalCoreKernel } from '../../apps/daemon/src/kernel/bootstrap.js';
+import { bootstrapLocalCoreRuntime } from '../../apps/daemon/src/kernel/bootstrap.js';
+import { LocalCoreCapabilityRegistry } from '../../apps/daemon/src/kernel/capability-registry.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
+import { LocalCoreLifecycleManager } from '../../apps/daemon/src/kernel/lifecycle-manager.js';
+import { LocalCorePluginRegistry } from '../../apps/daemon/src/kernel/plugin-registry.js';
+import { LocalCoreController } from '../../apps/daemon/src/runtime/local-core-controller.js';
+import { createLocalCoreRuntimeState } from '../../apps/daemon/src/runtime/local-core-runtime-state.js';
+import { LocalAiCoreServer } from '../../apps/daemon/src/runtime/server.js';
 
 function withLogEnv<T>(logDir: string, fn: () => T, options: {
   maxBytes?: number;
@@ -1446,9 +1446,9 @@ test('agent runtime selection is registry-based and disabled runtimes do not rou
 });
 
 test('renderer route and nav rendering are sourced from the contribution registry', () => {
-  const appSource = readFileSync(join(process.cwd(), 'src', 'App.tsx'), 'utf8');
-  const sidebarSource = readFileSync(join(process.cwd(), 'src', 'components', 'Layout', 'Sidebar.tsx'), 'utf8');
-  const headerSource = readFileSync(join(process.cwd(), 'src', 'components', 'Layout', 'Header.tsx'), 'utf8');
+  const appSource = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'App.tsx'), 'utf8');
+  const sidebarSource = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'components', 'Layout', 'Sidebar.tsx'), 'utf8');
+  const headerSource = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'components', 'Layout', 'Header.tsx'), 'utf8');
 
   assert.match(appSource, /rendererUiContributions\.listRoutes\(\)\.map/);
   assert.match(sidebarSource, /rendererUiContributions\s*\.\s*listNavItems\(\)/);
@@ -1456,9 +1456,9 @@ test('renderer route and nav rendering are sourced from the contribution registr
 });
 
 test('renderer feature visibility is capability-driven', () => {
-  const runtimeSource = readFileSync(join(process.cwd(), 'src', 'app', 'runtime.ts'), 'utf8');
-  const sidebarSource = readFileSync(join(process.cwd(), 'src', 'components', 'Layout', 'Sidebar.tsx'), 'utf8');
-  const dashboardSource = readFileSync(join(process.cwd(), 'src', 'pages', 'Dashboard.tsx'), 'utf8');
+  const runtimeSource = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'app', 'runtime.ts'), 'utf8');
+  const sidebarSource = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'components', 'Layout', 'Sidebar.tsx'), 'utf8');
+  const dashboardSource = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'pages', 'Dashboard.tsx'), 'utf8');
 
   assert.match(runtimeSource, /snapshot\?\.knowledge\.some/);
   assert.match(runtimeSource, /snapshot\?\.schedulers\.some/);

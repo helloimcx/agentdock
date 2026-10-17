@@ -80,8 +80,8 @@ test('message and channel contract docs cover canonical concepts and field lifec
 });
 
 test('thread chat renderer state types reuse canonical contracts instead of ad hoc duplicates', () => {
-  const taskStateSource = readFileSync(join(rootDir, 'src', 'pages', 'Threads', 'thread-chat-task-state.ts'), 'utf8');
-  const permissionSource = readFileSync(join(rootDir, 'src', 'pages', 'Threads', 'thread-chat-permission.ts'), 'utf8');
+  const taskStateSource = readFileSync(join(rootDir, 'apps', 'web', 'src', 'pages', 'Threads', 'thread-chat-task-state.ts'), 'utf8');
+  const permissionSource = readFileSync(join(rootDir, 'apps', 'web', 'src', 'pages', 'Threads', 'thread-chat-permission.ts'), 'utf8');
 
   assert.match(
     taskStateSource,
@@ -106,25 +106,26 @@ test('thread chat renderer state types reuse canonical contracts instead of ad h
 });
 
 test('production code imports workspace packages through public package names', () => {
-  const offenders = ['src', 'services', 'packages']
+  const offenders = ['apps', 'packages']
     .flatMap(readSourceFiles)
-    .filter(({ relativePath }) => !relativePath.startsWith('packages/contracts/src/'))
-    .filter(({ content }) => /(?:packages\/(?:contracts|core-sdk|plugin-sdk|knowledge-api)|(?:contracts|core-sdk|plugin-sdk))\/src/.test(content))
+    .filter(({ relativePath }) => !relativePath.startsWith('packages/contracts/src/') && !relativePath.endsWith('.config.ts'))
+    .filter(({ content }) => /(?:packages\/(?:contracts|sdk|plugin-sdk|knowledge)|(?:contracts|sdk|plugin-sdk))\/src/.test(content))
     .map(({ relativePath }) => relativePath);
 
   assert.deepEqual(
     offenders,
     [],
-    'production code must import workspace dependencies through @cc/* public entrypoints',
+    'production code must import workspace dependencies through public package entrypoints',
   );
 });
 
 test('renderer does not import Electron or Local AI Core internals', () => {
-  const offenders = readSourceFiles('src')
+  const offenders = readSourceFiles('apps/web/src')
     .filter(({ content }) => {
       return (
         /from ['"]electron(?:\/[^'"]*)?['"]/.test(content) ||
-        /from ['"][^'"]*\/electron(?:\/[^'"]*)?['"]/.test(content) ||
+        /from ['"][^'"]*apps\/desktop(?:\/[^'"]*)?['"]/.test(content) ||
+        /from ['"][^'"]*apps\/daemon\/src/.test(content) ||
         /from ['"][^'"]*services\/local-ai-core\/src/.test(content)
       );
     })
@@ -140,7 +141,7 @@ test('renderer does not import Electron or Local AI Core internals', () => {
 test('workspace packages declare public package entrypoints', () => {
   for (const packagePath of [
     'packages/contracts/package.json',
-    'packages/core-sdk/package.json',
+    'packages/sdk/package.json',
     'packages/plugin-sdk/package.json',
   ]) {
     const packageJson = JSON.parse(readFileSync(join(rootDir, packagePath), 'utf8')) as {
@@ -161,7 +162,7 @@ test('workspace packages declare public package entrypoints', () => {
     assert.ok(contracts.exports?.[`./${domain}`], `contracts must expose the ${domain} domain entrypoint`);
   }
 
-  for (const packageName of ['contracts', 'core-sdk', 'plugin-sdk']) {
+  for (const packageName of ['contracts', 'sdk', 'plugin-sdk']) {
     const packageJson = JSON.parse(readFileSync(join(rootDir, `packages/${packageName}/package.json`), 'utf8')) as {
       exports?: Record<string, string>;
     };
@@ -177,18 +178,18 @@ test('workspace packages declare public package entrypoints', () => {
 
 test('core sdk domain entrypoints do not re-export the top-level sdk', () => {
   for (const domain of ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge']) {
-    const source = readFileSync(join(rootDir, `packages/core-sdk/src/${domain}.ts`), 'utf8');
+    const source = readFileSync(join(rootDir, `packages/sdk/src/${domain}.ts`), 'utf8');
     assert.doesNotMatch(
       source,
       /(?:from|import\s*\()\s*['"]\.\/index\.js['"]/,
-      `core-sdk/${domain} must own its implementation without depending on the aggregate entrypoint`,
+      `sdk/${domain} must own its implementation without depending on the aggregate entrypoint`,
     );
-    assert.match(source, /coreRequest|coreClient/, `core-sdk/${domain} must own executable domain behavior`);
+    assert.match(source, /coreRequest|coreClient/, `sdk/${domain} must own executable domain behavior`);
   }
 });
 
 test('package domain modules do not depend on aggregate entrypoints', () => {
-  for (const packageName of ['contracts', 'core-sdk', 'plugin-sdk']) {
+  for (const packageName of ['contracts', 'sdk', 'plugin-sdk']) {
     for (const domain of ['runtime', 'threads', 'channels', 'scheduler', 'automation', 'knowledge']) {
       const source = readFileSync(join(rootDir, `packages/${packageName}/src/${domain}.ts`), 'utf8');
       assert.doesNotMatch(
@@ -201,7 +202,7 @@ test('package domain modules do not depend on aggregate entrypoints', () => {
 });
 
 test('desktop contracts are consumed through the contracts package outside their owner', () => {
-  const offenders = ['src', 'services', 'packages']
+  const offenders = ['apps', 'packages']
     .flatMap(readSourceFiles)
     .filter(({ relativePath }) => !relativePath.startsWith('packages/contracts/src/'))
     .filter(({ content }) => /shared\/desktop/.test(content))
@@ -211,7 +212,7 @@ test('desktop contracts are consumed through the contracts package outside their
 });
 
 test('renderer does not branch features through the retired runtime provider string', () => {
-  const offenders = readSourceFiles('src')
+  const offenders = readSourceFiles('apps/web/src')
     .filter(({ content }) => /RuntimeProvider|getRuntimeProvider|runtimeProvider\s*(?:===|!==)/.test(content))
     .map(({ relativePath }) => relativePath);
 
@@ -219,8 +220,8 @@ test('renderer does not branch features through the retired runtime provider str
 });
 
 test('chat syntax highlighting stays behind a lazy code-block boundary', () => {
-  const markdown = readFileSync(join(rootDir, 'src/components/chat/ChatMarkdown.tsx'), 'utf8');
-  const highlighted = readFileSync(join(rootDir, 'src/components/chat/HighlightedMarkdown.tsx'), 'utf8');
+  const markdown = readFileSync(join(rootDir, 'apps/web/src/components/chat/ChatMarkdown.tsx'), 'utf8');
+  const highlighted = readFileSync(join(rootDir, 'apps/web/src/components/chat/HighlightedMarkdown.tsx'), 'utf8');
 
   assert.doesNotMatch(markdown, /from ['"]rehype-highlight['"]/, 'base chat markdown must not eagerly load highlighting');
   assert.match(markdown, /lazy\(\(\) =>\s*import\('\.\/HighlightedMarkdown'\)/, 'highlighting must use a lazy chunk');

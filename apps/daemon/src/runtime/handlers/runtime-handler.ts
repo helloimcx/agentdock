@@ -28,7 +28,7 @@ export function registerRuntimeHandlers(
   attachSseClient: (res: ServerResponse) => void,
 ) {
   map.set('health', async (_route, _req, res) => {
-    json(res, 200, { name: 'local-ai-core', version: '0.1.0' });
+    json(res, 200, { name: 'agentdock-daemon', legacyName: 'local-ai-core', version: '0.1.0' });
   });
   map.set('runtime.status', async (_route, _req, res) => {
     json(res, 200, await controller.getRuntimeStatus());

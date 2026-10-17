@@ -1,11 +1,11 @@
 {
-  "name": "@cc/knowledge-api",
+  "name": "@agentdock/knowledge",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@cc/plugin-sdk": "workspace:*",
-    "@cc/superai-contracts": "workspace:*"
+    "@agentdock/contracts": "workspace:*",
+    "@agentdock/plugin-sdk": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts"

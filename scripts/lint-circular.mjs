@@ -11,11 +11,14 @@
  * Resolution honors the `@cc/*` and `@/*` aliases from the root tsconfig.
  */
 import madge from 'madge';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const ROOT = process.cwd();
 const TS_CONFIG = `${ROOT}/tsconfig.json`;
-const ENTRY_DIRS = ['src', 'services', 'packages', 'electron', 'shared'];
+const ENTRY_DIRS = ['apps', 'packages', 'src', 'services', 'electron', 'shared'].filter((dir) =>
+  existsSync(resolve(ROOT, dir))
+);
 const FAIL = process.argv.includes('--fail');
 
 // tsconfig.json is JSON5 (TypeScript permits comments), so strip comments

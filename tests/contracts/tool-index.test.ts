@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ToolIndex } from '../../services/local-ai-core/src/skills/tool-index.js';
+import { ToolIndex } from '../../apps/daemon/src/skills/tool-index.js';
 
 test('tool index detects presence of node executable on PATH', () => {
   const toolIndex = new ToolIndex();

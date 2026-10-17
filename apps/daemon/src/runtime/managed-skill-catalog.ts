@@ -591,21 +591,31 @@ export function resolveManagedSkillsRoot(explicitDir?: string): string {
   }
 
   // 2. Source tree builtin skills directory
+  const daemonSource = resolve(process.cwd(), 'apps', 'daemon', 'src', 'skills', 'builtin');
+  if (existsSync(daemonSource)) return daemonSource;
+
   const coreSource = resolve(process.cwd(), 'services', 'local-ai-core', 'src', 'skills', 'builtin');
   if (existsSync(coreSource)) return coreSource;
 
-  // 3. Compiled Core destination directory
+  // 3. Compiled Daemon destination directory
+  const daemonPackaged = resolve(process.cwd(), 'dist-electron', 'apps', 'daemon', 'src', 'skills', 'builtin');
+  if (existsSync(daemonPackaged)) return daemonPackaged;
+
   const corePackaged = resolve(process.cwd(), 'dist-electron', 'services', 'local-ai-core', 'src', 'skills', 'builtin');
   if (existsSync(corePackaged)) return corePackaged;
 
-  // 4. Legacy fallback destinations (for backward compatibility)
+  // 4. Desktop skills directory
+  const desktopSource = resolve(process.cwd(), 'apps', 'desktop', 'managed-skills');
+  if (existsSync(desktopSource)) return desktopSource;
+
+  // 5. Legacy fallback destinations (for backward compatibility)
   const legacyPackaged = resolve(process.cwd(), 'dist-electron', 'electron', 'managed-skills');
   if (existsSync(legacyPackaged)) return legacyPackaged;
 
   const legacySource = resolve(process.cwd(), 'electron', 'managed-skills');
   if (existsSync(legacySource)) return legacySource;
 
-  return coreSource;
+  return daemonSource;
 }
 
 function resolveUserSkillsRoot() {

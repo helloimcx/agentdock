@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
-import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
-import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../services/local-ai-core/src/channel/lark/cards.js';
-import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../services/local-ai-core/src/channel/lark/runtime-state.js';
+import { LocalCoreLarkGateway } from '../../apps/daemon/src/channel/lark/local-core-lark-gateway.js';
+import { buildSessionCommandCard, extractSessionCommandActionValue } from '../../apps/daemon/src/channel/lark/cards.js';
+import { createLarkTurnState, renderLarkBridgeEventMessage } from '../../apps/daemon/src/channel/lark/runtime-state.js';
 
 function extractLarkCreatedMessage(request: any) {
   const msgType = String(request.data?.msg_type || '');

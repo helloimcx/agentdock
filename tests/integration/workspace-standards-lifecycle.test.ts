@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StandardsService } from '../../services/local-ai-core/src/standards/standards-service.js';
-import { detectWorkspaceTechStack } from '../../services/local-ai-core/src/standards/standards-detector.js';
-import { toLocalCoreProjectConfig } from '../../services/local-ai-core/src/router/workspace-route-config.js';
+import { StandardsService } from '../../apps/daemon/src/standards/standards-service.js';
+import { detectWorkspaceTechStack } from '../../apps/daemon/src/standards/standards-detector.js';
+import { toLocalCoreProjectConfig } from '../../apps/daemon/src/router/workspace-route-config.js';
 import type { DesktopProjectConfig, RuntimeConfigState } from '../../packages/contracts/src/index.js';
 import {
   STANDARDS_MARKER_START,
@@ -232,7 +232,7 @@ test('toLocalCoreProjectConfig automatically materializes enabled standards on a
 });
 
 test('parseLocalAiCoreRoute resolves workspaces standards routes with both GET and POST for detect', async () => {
-  const { parseLocalAiCoreRoute } = await import('../../services/local-ai-core/src/runtime/server-routes.js');
+  const { parseLocalAiCoreRoute } = await import('../../apps/daemon/src/runtime/server-routes.js');
 
   // Detect route with GET
   const routeGet = parseLocalAiCoreRoute('GET', '/api/local/v1/workspaces/ws-detect-123/standards/detect');

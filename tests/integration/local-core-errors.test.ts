@@ -4,7 +4,7 @@ import {
   LocalCoreError,
   formatLogError,
   toLocalCoreErrorInfo,
-} from '../../services/local-ai-core/src/kernel/local-core-errors.js';
+} from '../../apps/daemon/src/kernel/local-core-errors.js';
 
 test('LocalCoreError coerces non-string message into a string', () => {
   const err = new LocalCoreError('internal_error', { weird: 'shape' } as unknown as string);

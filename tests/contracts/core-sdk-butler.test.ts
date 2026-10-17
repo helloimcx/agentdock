@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coreClient } from '../../packages/core-sdk/src/client.js';
-import * as butler from '../../packages/core-sdk/src/butler.js';
+import { coreClient } from '../../packages/sdk/src/client.js';
+import * as butler from '../../packages/sdk/src/butler.js';
 
 const ownerThreadId = 'thread:agentdock::e8b0e907-b0d8-4e3c-a237-04349c7fb56d';
 const taskId = 'butler-task:6e6d6cd2-e41c-4d78-910d-34a687238a8a';

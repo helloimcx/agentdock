@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
-import { automationSandboxDiagnosticChecks } from '../../services/local-ai-core/src/runtime/deployment-diagnostics.js';
+import { automationSandboxDiagnosticChecks } from '../../apps/daemon/src/runtime/deployment-diagnostics.js';
 
 test('Linux automation diagnostics report every sandbox prerequisite independently', () => {
   const checks = automationSandboxDiagnosticChecks({

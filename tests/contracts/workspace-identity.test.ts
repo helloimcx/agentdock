@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { desktopProjectWorkspaceId } from '../../src/pages/Desktop/workspace-model.js';
+import { desktopProjectWorkspaceId } from '../../apps/web/src/pages/Desktop/workspace-model.js';
 
 test('desktop workspace operations keep using stable identity after a display-name change', () => {
   assert.equal(desktopProjectWorkspaceId({

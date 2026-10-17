@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { LocalThreadRuntimeStore } from '../../services/local-ai-core/src/acp/store/thread-runtime-store.js';
+import { LocalThreadRuntimeStore } from '../../apps/daemon/src/acp/store/thread-runtime-store.js';
 
 test('runtime revisions commit with facts, roll back together, and survive reopening the projector', () => {
   const db = new DatabaseSync(':memory:');
@@ -24,7 +24,7 @@ test('runtime revisions commit with facts, roll back together, and survive reope
 });
 
 test('Core restart retains tools and partial answers but expires old ACP approvals', async () => {
-  const { LocalCoreAcpStore } = await import('../../services/local-ai-core/src/acp/local-core-acp-store.js');
+  const { LocalCoreAcpStore } = await import('../../apps/daemon/src/acp/local-core-acp-store.js');
   const { mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -56,7 +56,7 @@ test('Core restart retains tools and partial answers but expires old ACP approva
 });
 
 test('watch subscribes before baseline, coalesces attach races and rejects stale revisions', async () => {
-  const { watchThreadSnapshot } = await import('../../services/local-ai-core/src/runtime/thread-snapshot-watch.js');
+  const { watchThreadSnapshot } = await import('../../apps/daemon/src/runtime/thread-snapshot-watch.js');
   let notify = () => {};
   let resolveBaseline!: (snapshot: any) => void;
   let reads = 0;
@@ -80,8 +80,8 @@ test('watch subscribes before baseline, coalesces attach races and rejects stale
 });
 
 test('streaming assistant commits a coalesced partial and final persistence removes it atomically', async () => {
-  const { LocalCoreAcpStore } = await import('../../services/local-ai-core/src/acp/local-core-acp-store.js');
-  const { LocalCoreAcpTurnCoordinator } = await import('../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js');
+  const { LocalCoreAcpStore } = await import('../../apps/daemon/src/acp/local-core-acp-store.js');
+  const { LocalCoreAcpTurnCoordinator } = await import('../../apps/daemon/src/acp/local-core-acp-turn-coordinator.js');
   const { mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');

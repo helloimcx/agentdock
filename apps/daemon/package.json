@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@cc/knowledge-api": "workspace:*",
-    "@cc/plugin-sdk": "workspace:*",
-    "@cc/superai-contracts": "workspace:*",
+    "@agentdock/contracts": "workspace:*",
+    "@agentdock/knowledge": "workspace:*",
+    "@agentdock/plugin-sdk": "workspace:*",
     "ws": "8.20.0"
   }
 }

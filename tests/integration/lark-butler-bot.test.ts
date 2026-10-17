@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeLarkInboundMessageEvent } from '../../services/local-ai-core/src/channel/lark/inbound.js';
-import { LarkInboundHandler } from '../../services/local-ai-core/src/channel/lark/inbound-handler.js';
-import { LarkOutboundTransport } from '../../services/local-ai-core/src/channel/lark/outbound-transport.js';
-import { decodeButlerBotProtocolMessage, encodeButlerBotProtocolMessage } from '../../services/local-ai-core/src/butler/butler-bot-protocol.js';
+import { normalizeLarkInboundMessageEvent } from '../../apps/daemon/src/channel/lark/inbound.js';
+import { LarkInboundHandler } from '../../apps/daemon/src/channel/lark/inbound-handler.js';
+import { LarkOutboundTransport } from '../../apps/daemon/src/channel/lark/outbound-transport.js';
+import { decodeButlerBotProtocolMessage, encodeButlerBotProtocolMessage } from '../../apps/daemon/src/butler/butler-bot-protocol.js';
 
 const protocol = {
   protocol: 'agentdock.butler' as const,

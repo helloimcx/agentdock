@@ -4,8 +4,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-contracts';
-import { AutomationActionExecutor } from '../../services/local-ai-core/src/automation/automation-action-executor.js';
-import { DecisionLogService } from '../../services/local-ai-core/src/automation/decision-log-service.js';
+import { AutomationActionExecutor } from '../../apps/daemon/src/automation/automation-action-executor.js';
+import { DecisionLogService } from '../../apps/daemon/src/automation/decision-log-service.js';
 
 test('AutomationActionExecutor wraps deep-analysis prompt and logs structured decision', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'agentdock-executor-test-'));

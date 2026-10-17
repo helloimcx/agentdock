@@ -646,8 +646,8 @@ export function createCoreClient(options: CoreClientOptions) {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetchImpl(`${baseUrl}/health`, { signal: controller.signal });
-        const json = await response.json() as JsonEnvelope<{ name: string }>;
-        return response.ok && json.ok && json.data?.name === 'local-ai-core';
+        const json = await response.json() as JsonEnvelope<{ name: string; legacyName?: string }>;
+        return response.ok && json.ok && (json.data?.name === 'agentdock-daemon' || json.data?.name === 'local-ai-core' || json.data?.legacyName === 'local-ai-core');
       } catch {
         return false;
       } finally {

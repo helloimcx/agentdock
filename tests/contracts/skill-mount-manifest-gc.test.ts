@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
 import {
   mountActiveSkillsSync,
   mountActiveSkillsForAgent,
-} from '../../services/local-ai-core/src/runtime/skill-mounter.js';
+} from '../../apps/daemon/src/runtime/skill-mounter.js';
 
 const TEST_DIR = join(process.cwd(), 'tmp', 'test-skill-mount-manifest-gc');
 

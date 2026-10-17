@@ -1,7 +1,7 @@
 import { When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { summarizeLarkInboundContentParts } from '../../../services/local-ai-core/src/channel/lark/gateway-utils.js';
-import { normalizeThreadMessageInput } from '../../../services/local-ai-core/src/acp/local-core-acp-content.js';
+import { summarizeLarkInboundContentParts } from '../../../apps/daemon/src/channel/lark/gateway-utils.js';
+import { normalizeThreadMessageInput } from '../../../apps/daemon/src/acp/local-core-acp-content.js';
 import type { BddWorld } from '../support/world.js';
 
 When<BddWorld>(/^lark inbound parts are summarized:$/, function (json: string) {

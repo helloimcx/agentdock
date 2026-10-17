@@ -7,7 +7,7 @@ const LOCALES = ['en', 'zh', 'zh-TW', 'ja', 'es'] as const;
 type LocaleName = (typeof LOCALES)[number];
 
 function loadLocale(name: LocaleName): Record<string, any> {
-  return JSON.parse(readFileSync(join(process.cwd(), 'src', 'i18n', 'locales', `${name}.json`), 'utf8'));
+  return JSON.parse(readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'i18n', 'locales', `${name}.json`), 'utf8'));
 }
 
 test('the system section declares the same keys in every locale', () => {
@@ -40,7 +40,7 @@ test('zh cost labels no longer mix in untranslated English parentheticals', () =
 });
 
 test('the internal Ponytail codename never ships in UI copy or locale files', () => {
-  const standardsSection = readFileSync(join(process.cwd(), 'src', 'pages', 'Desktop', 'workspace-standards-section.tsx'), 'utf8');
+  const standardsSection = readFileSync(join(process.cwd(), 'apps', 'web', 'src', 'pages', 'Desktop', 'workspace-standards-section.tsx'), 'utf8');
   assert.ok(!standardsSection.includes('Ponytail'), 'workspace-standards-section.tsx still exposes the internal Ponytail codename');
   for (const name of LOCALES) {
     assert.ok(!JSON.stringify(loadLocale(name)).includes('Ponytail'), `${name}.json still exposes the internal Ponytail codename`);
