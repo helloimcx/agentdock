@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SandboxRunInput, SandboxRunResult } from '../../services/local-ai-core/src/automation/scripts/sandbox-runner.js';
+import type { SandboxRunInput, SandboxRunResult } from '../../apps/daemon/src/automation/scripts/sandbox-runner.js';
 import {
   AnthropicSandboxRunner,
   buildSandboxRuntimeConfig,
   PRIVATE_NETWORK_DENY_HOSTS,
   isPrivateNetworkAddress,
   type SandboxManagerLike,
-} from '../../services/local-ai-core/src/automation/scripts/anthropic-sandbox-runner.js';
+} from '../../apps/daemon/src/automation/scripts/anthropic-sandbox-runner.js';
 
 class FakeManager implements SandboxManagerLike {
   config: unknown;

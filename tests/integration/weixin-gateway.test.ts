@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.js';
+import { createWeixinAttachmentContentPart, LocalCoreWeixinGateway } from '../../apps/daemon/src/channel/weixin/local-core-weixin-gateway.js';
 
 test('weixin inbound attachment source streams AES-decrypted files into the shared store', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'weixin-file-receive-'));

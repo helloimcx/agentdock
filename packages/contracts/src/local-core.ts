@@ -1,7 +1,7 @@
 import type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, ThreadGetOptions, RunSummary } from './thread-types.js';
 export type { ThreadSummary, ThreadMessage, ThreadPendingPermissionRequest, ThreadDetail, ThreadGetOptions, RunSummary } from './thread-types.js';
-import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from '../../../shared/desktop.js';
-import type { DesktopBridgeButtonOption } from '../../../shared/desktop.js';
+import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopRuntimeStatus } from './desktop.js';
+import type { DesktopBridgeButtonOption } from './desktop.js';
 export * from './knowledge.js';
 export * from './workspace.js';
 export * from './security.js';

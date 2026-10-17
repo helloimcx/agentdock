@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { MobileUiClient } from '../../services/local-ai-core/src/mesh/mobile-ui/client.js';
-import { formatElementsCompact } from '../../services/local-ai-core/src/mesh/mobile-ui/formatter.js';
-import { runMobileUiCli } from '../../services/local-ai-core/src/mesh/mobile-ui/cli.js';
+import { MobileUiClient } from '../../apps/daemon/src/mesh/mobile-ui/client.js';
+import { formatElementsCompact } from '../../apps/daemon/src/mesh/mobile-ui/formatter.js';
+import { runMobileUiCli } from '../../apps/daemon/src/mesh/mobile-ui/cli.js';
 
 const ready = { ok: true, interactive: true, locked: false, keepAwake: true, remainingMs: 120000, ownerRemainingMs: 120000, cliProtocol: 2, screenProtocol: 2 };
 

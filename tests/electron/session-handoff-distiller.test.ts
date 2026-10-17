@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { distillSessionHandoff, SessionHandoffDistiller } from '../../services/local-ai-core/src/acp/session-handoff-distiller.js';
+import { distillSessionHandoff, SessionHandoffDistiller } from '../../apps/daemon/src/acp/session-handoff-distiller.js';
 import type { RunSpan, ThreadMessage } from '@cc/superai-contracts';
 
 test('SessionHandoffDistiller handles empty inputs safely and quickly (< 2ms)', () => {

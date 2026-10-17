@@ -6,9 +6,9 @@ import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
-import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
-import { NodeAgent, enrollNode, meshUrl } from '../../services/local-ai-core/src/mesh/node-agent.js';
+import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
+import { MeshGateway } from '../../apps/daemon/src/mesh/mesh-gateway.js';
+import { NodeAgent, enrollNode, meshUrl } from '../../apps/daemon/src/mesh/node-agent.js';
 import type { MeshExecution, MeshPairing } from '../../packages/contracts/src/mesh.js';
 import { WebSocketServer } from 'ws';
 

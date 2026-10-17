@@ -9,14 +9,14 @@ import type {
   AutomationDefinition,
   AutomationEvaluation,
 } from '../../packages/contracts/src/automations.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
-import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
+import { bootstrapLocalCoreRuntime } from '../../apps/daemon/src/kernel/bootstrap.js';
 import {
   AutomationService,
   type AutomationServiceOptions,
-} from '../../services/local-ai-core/src/automation/automation-service.js';
-import { ScriptProtocolError } from '../../services/local-ai-core/src/automation/scripts/script-protocol-runner.js';
+} from '../../apps/daemon/src/automation/automation-service.js';
+import { ScriptProtocolError } from '../../apps/daemon/src/automation/scripts/script-protocol-runner.js';
 
 const NOW = new Date('2026-07-05T08:00:00.000Z');
 

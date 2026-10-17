@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
-import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
-import { createMeshClient } from '../../packages/core-sdk/src/mesh.js';
+import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
+import { MeshGateway } from '../../apps/daemon/src/mesh/mesh-gateway.js';
+import { createMeshClient } from '../../packages/sdk/src/mesh.js';
 import type { MeshEnrollment } from '../../packages/contracts/src/mesh.js';
 
 test('Mesh fences results by device and session, including replacement and late completion', async () => {

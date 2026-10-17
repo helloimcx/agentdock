@@ -11,20 +11,21 @@ RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/contracts/package.json ./packages/contracts/package.json
-COPY packages/core-sdk/package.json ./packages/core-sdk/package.json
-COPY packages/knowledge-api/package.json ./packages/knowledge-api/package.json
+COPY packages/sdk/package.json ./packages/sdk/package.json
+COPY packages/knowledge/package.json ./packages/knowledge/package.json
 COPY packages/plugin-sdk/package.json ./packages/plugin-sdk/package.json
-COPY services/local-ai-core/package.json ./services/local-ai-core/package.json
+COPY apps/daemon/package.json ./apps/daemon/package.json
+COPY apps/desktop/package.json ./apps/desktop/package.json
+COPY apps/web/package.json ./apps/web/package.json
 RUN --mount=type=cache,id=agentdock-pnpm-store,target=/pnpm/store \
   pnpm config set store-dir /pnpm/store \
   && pnpm install --frozen-lockfile
 
 COPY packages ./packages
-COPY shared ./shared
-COPY src ./src
-COPY public ./public
+COPY apps ./apps
 COPY bin ./bin
-COPY vite.config.ts vite-env.d.ts tsconfig*.json postcss.config.js tailwind.config.ts index.html ./
+COPY scripts ./scripts
+COPY tsconfig*.json ./
 RUN pnpm build:renderer
 
 FROM node:22-bookworm-slim

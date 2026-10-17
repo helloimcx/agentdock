@@ -4,17 +4,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { AutomationMonitorService, WebhookTriggerError } from '../../services/local-ai-core/src/automation/automation-monitor-service.js';
-import { AutomationService } from '../../services/local-ai-core/src/automation/automation-service.js';
-import { DecisionLogService } from '../../services/local-ai-core/src/automation/decision-log-service.js';
-import { toPublicAutomationMonitorId } from '../../services/local-ai-core/src/automation/monitor-id.js';
-import { WebhookMonitorProvider } from '../../services/local-ai-core/src/automation/webhook-provider.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
-import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
-import { registerAutomationHandlers } from '../../services/local-ai-core/src/runtime/handlers/automation-handler.js';
-import type { RouteHandler } from '../../services/local-ai-core/src/runtime/server-helpers.js';
-import { parseMonitorCondition } from '../../services/local-ai-core/src/cli/monitor-cli-parsers.js';
+import { AutomationMonitorService, WebhookTriggerError } from '../../apps/daemon/src/automation/automation-monitor-service.js';
+import { AutomationService } from '../../apps/daemon/src/automation/automation-service.js';
+import { DecisionLogService } from '../../apps/daemon/src/automation/decision-log-service.js';
+import { toPublicAutomationMonitorId } from '../../apps/daemon/src/automation/monitor-id.js';
+import { WebhookMonitorProvider } from '../../apps/daemon/src/automation/webhook-provider.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
+import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
+import { registerAutomationHandlers } from '../../apps/daemon/src/runtime/handlers/automation-handler.js';
+import type { RouteHandler } from '../../apps/daemon/src/runtime/server-helpers.js';
+import { parseMonitorCondition } from '../../apps/daemon/src/cli/monitor-cli-parsers.js';
 
 function fixture(execute?: (automationId: string) => Promise<void>) {
   const path = mkdtempSync(join(tmpdir(), 'webhook-monitor-test-'));

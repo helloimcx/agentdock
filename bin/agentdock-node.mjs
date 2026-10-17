@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { runNodeCli } from '../dist-electron/services/local-ai-core/src/mesh/node-cli.js';
+import { runNodeCli } from '../dist-electron/apps/daemon/src/mesh/node-cli.js';
 
 runNodeCli().catch(() => {
   // Request and credential-file errors can contain credentials; do not dump them.

@@ -5,9 +5,9 @@ import type { AutomationScriptVersion } from '../../packages/contracts/src/autom
 import {
   ScriptProtocolError,
   ScriptProtocolRunner,
-} from '../../services/local-ai-core/src/automation/scripts/script-protocol-runner.js';
-import type { SandboxRunInput, SandboxRunResult, SandboxRunner } from '../../services/local-ai-core/src/automation/scripts/sandbox-runner.js';
-import { SandboxUnavailableError } from '../../services/local-ai-core/src/automation/scripts/anthropic-sandbox-runner.js';
+} from '../../apps/daemon/src/automation/scripts/script-protocol-runner.js';
+import type { SandboxRunInput, SandboxRunResult, SandboxRunner } from '../../apps/daemon/src/automation/scripts/sandbox-runner.js';
+import { SandboxUnavailableError } from '../../apps/daemon/src/automation/scripts/anthropic-sandbox-runner.js';
 
 class FakeSandbox implements SandboxRunner {
   input?: SandboxRunInput;

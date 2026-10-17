@@ -4,7 +4,7 @@ import {
   nextActivationAt,
   isActivationDue,
   missedActivationAt,
-} from '../../../services/local-ai-core/src/automation/automation-trigger-engine.js';
+} from '../../../apps/daemon/src/automation/automation-trigger-engine.js';
 import { iso } from '../support/date-helpers.js';
 import type { BddWorld } from '../support/world.js';
 

@@ -1,0 +1,206 @@
+import { app, BrowserWindow } from 'electron';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
+import { dirname, join } from 'node:path';
+
+let mainWindow: BrowserWindow | null = null;
+let daemonProcess: ChildProcess | null = null;
+let daemonStartupPromise: Promise<void> | null = null;
+const userDataOverride = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim();
+const smokeOutputPath = process.env.AI_WORKSTATION_SMOKE_OUTPUT?.trim();
+
+function appResourcePath(...segments: string[]) {
+  return join(app.getAppPath(), ...segments);
+}
+
+if (userDataOverride) {
+  mkdirSync(userDataOverride, { recursive: true });
+  app.setPath('userData', userDataOverride);
+}
+
+function daemonEntryPath() {
+  const primary = appResourcePath('dist-electron', 'apps', 'daemon', 'src', 'runtime', 'standalone.js');
+  if (existsSync(primary)) {
+    return primary;
+  }
+  return appResourcePath('dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
+}
+
+function appIconPath() {
+  return appResourcePath('build', 'icon.png');
+}
+
+async function isDaemonHealthy(timeoutMs = 350) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch('http://127.0.0.1:9831/api/local/v1/health', {
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function isDaemonPortListening(timeoutMs = 350) {
+  return new Promise<boolean>((resolve) => {
+    const socket = createConnection({ host: '127.0.0.1', port: 9831 });
+    let settled = false;
+    const finish = (listening: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function waitForDaemonHealthy(timeoutMs = 60000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await isDaemonHealthy(500)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`AgentDock daemon did not become healthy within ${timeoutMs}ms`);
+}
+
+async function fetchSmokeJson(path: string) {
+  const response = await fetch(`http://127.0.0.1:9831${path}`);
+  if (!response.ok) {
+    throw new Error(`Smoke request failed for ${path}: HTTP ${response.status}`);
+  }
+  return response.json() as Promise<unknown>;
+}
+
+async function ensureDaemonProcess() {
+  if (await isDaemonHealthy()) {
+    return;
+  }
+  if (daemonStartupPromise) {
+    return daemonStartupPromise;
+  }
+  daemonStartupPromise = (async () => {
+    if (await isDaemonPortListening()) {
+      await waitForDaemonHealthy();
+      return;
+    }
+    if (!daemonProcess) {
+      const entry = daemonEntryPath();
+      if (!existsSync(entry)) {
+        throw new Error(`Missing AgentDock daemon entry: ${entry}`);
+      }
+      const child = spawn(process.execPath, [entry], {
+        cwd: app.getAppPath(),
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          AI_WORKSTATION_USER_DATA_DIR: app.getPath('userData'),
+        },
+        stdio: 'inherit',
+      });
+      daemonProcess = child;
+      child.on('exit', () => {
+        daemonProcess = null;
+      });
+    }
+    await waitForDaemonHealthy();
+  })();
+  try {
+    await daemonStartupPromise;
+  } finally {
+    daemonStartupPromise = null;
+  }
+}
+
+function stopDaemonProcess() {
+  if (!daemonProcess) {
+    return;
+  }
+  daemonProcess.kill('SIGTERM');
+  daemonProcess = null;
+}
+
+function createWindow() {
+  const iconPath = appIconPath();
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 920,
+    minWidth: 1100,
+    minHeight: 700,
+    title: 'AgentDock',
+    icon: existsSync(iconPath) ? iconPath : undefined,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: { x: 12, y: 12 },
+    vibrancy: process.platform === 'darwin' ? 'sidebar' : undefined,
+    visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
+    backgroundColor: process.platform === 'darwin' ? '#00ffffff' : '#f5f5f7',
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const devServerUrl = process.env.AI_WORKSTATION_DEV_SERVER_URL?.trim();
+  if (devServerUrl) {
+    void mainWindow.loadURL(devServerUrl);
+    return;
+  }
+
+  const indexHtmlPath = appResourcePath('dist', 'renderer', 'index.html');
+  if (!existsSync(indexHtmlPath)) {
+    throw new Error(`Renderer build output was not found at ${indexHtmlPath}. Run "pnpm build" first.`);
+  }
+  void mainWindow.loadFile(indexHtmlPath);
+}
+
+function writeSmokeResult(payload: Record<string, unknown>) {
+  if (!smokeOutputPath) {
+    return;
+  }
+  mkdirSync(dirname(smokeOutputPath), { recursive: true });
+  writeFileSync(smokeOutputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+app.whenReady().then(async () => {
+  await ensureDaemonProcess();
+  createWindow();
+  if (smokeOutputPath) {
+    const [capabilities, pluginDiagnostics] = await Promise.all([
+      fetchSmokeJson('/api/local/v1/capabilities/snapshot'),
+      fetchSmokeJson('/api/local/v1/plugins/diagnostics'),
+    ]);
+    writeSmokeResult({ ok: true, capabilities, pluginDiagnostics });
+    setTimeout(() => app.quit(), 300);
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+}).catch((error) => {
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  app.quit();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('before-quit', () => {
+  stopDaemonProcess();
+});

@@ -12,13 +12,15 @@
  * `--min-tokens` to focus on meaningful clones; lower them to catch more.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const ROOT = process.cwd();
 const JSCPD = join(ROOT, 'node_modules', 'jscpd', 'run-jscpd.js');
-const ENTRY_DIRS = ['src', 'services', 'packages', 'electron', 'shared'];
+const ENTRY_DIRS = ['apps', 'packages', 'src', 'services', 'electron', 'shared'].filter((dir) =>
+  existsSync(resolve(ROOT, dir))
+);
 const FAIL = process.argv.includes('--fail');
 
 const MIN_LINES = Number(process.env.JSCPD_MIN_LINES || 5);

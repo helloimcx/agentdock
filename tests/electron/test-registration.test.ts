@@ -12,7 +12,7 @@ const ROOT = process.cwd();
 test('renderer test files registered in tsconfig are wired into both test runners', () => {
   const tsconfig = JSON.parse(readFileSync(join(ROOT, 'tsconfig.electron.json'), 'utf8'));
   const tsconfigTests = (tsconfig.include as string[])
-    .filter((entry) => /^src\/.+\.test\.ts$/.test(entry))
+    .filter((entry) => /^(?:apps\/web\/)?src\/.+\.test\.ts$/.test(entry))
     .map((entry) => `dist-electron/${entry.replace(/\.ts$/, '.js')}`);
   assert.ok(tsconfigTests.length >= 2, 'tsconfig include should register renderer tests');
 
@@ -37,7 +37,7 @@ test('renderer test files registered in tsconfig are wired into both test runner
       testScript.includes(entry),
       `${entry} is in scripts/coverage.mjs TEST_FILES but missing from package.json scripts.test`,
     );
-    if (entry.startsWith('dist-electron/src/')) {
+    if (entry.startsWith('dist-electron/apps/web/src/') || entry.startsWith('dist-electron/src/')) {
       assert.ok(
         tsconfigTests.includes(entry),
         `${entry} is in scripts/coverage.mjs TEST_FILES but not registered in tsconfig.electron.json`,

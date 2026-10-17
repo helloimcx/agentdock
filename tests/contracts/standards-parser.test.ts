@@ -4,8 +4,8 @@ import {
   parseStandardPack,
   renderStandardsContent,
   renderPonytailDecisionLadder,
-} from '../../services/local-ai-core/src/standards/standards-rule-parser.js';
-import { CURATED_STANDARD_PACKS } from '../../services/local-ai-core/src/standards/curated-standards.js';
+} from '../../apps/daemon/src/standards/standards-rule-parser.js';
+import { CURATED_STANDARD_PACKS } from '../../apps/daemon/src/standards/curated-standards.js';
 import type { StandardRule, StandardPackMetadata } from '@cc/superai-contracts/standards';
 
 test('parseStandardPack parses frontmatter, rules, and <important if> conditions', () => {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyWorkspaceWrite, prepareWorkspaceWrite } from '../../services/local-ai-core/src/agents/pi-durable/workspace-write.js';
+import { applyWorkspaceWrite, prepareWorkspaceWrite } from '../../apps/daemon/src/agents/pi-durable/workspace-write.js';
 
 test('Pi Durable Core writes new and existing workspace text atomically after a stable baseline', () => {
   const root = mkdtempSync(join(tmpdir(), 'pi-durable-write-safe-'));

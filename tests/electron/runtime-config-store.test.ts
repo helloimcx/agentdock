@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
-import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
-import { LocalCoreController } from '../../services/local-ai-core/src/runtime/local-core-controller.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
+import { bootstrapLocalCoreRuntime } from '../../apps/daemon/src/kernel/bootstrap.js';
+import { LocalCoreController } from '../../apps/daemon/src/runtime/local-core-controller.js';
 
 test('runtime config ignores legacy config.toml and stays sqlite-only', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-runtime-config-'));

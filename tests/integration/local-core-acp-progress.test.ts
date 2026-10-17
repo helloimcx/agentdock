@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpTurnCoordinator } from '../../apps/daemon/src/acp/local-core-acp-turn-coordinator.js';
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
@@ -23,7 +23,7 @@ import {
   resolveToolUpdateDisplayTitle,
   stripObservedToolTranscriptsFromAssistantText,
   syncLegacyPendingToolCall,
-} from '../../services/local-ai-core/src/acp/local-core-acp-progress.js';
+} from '../../apps/daemon/src/acp/local-core-acp-progress.js';
 import {
   applyPendingPermissionRequest,
   createPermissionApprovalInput,
@@ -31,8 +31,8 @@ import {
   createRunningPermissionRequest,
   isSchedulerAddCommand,
   parsePermissionOptions,
-} from '../../services/local-ai-core/src/acp/local-core-acp-permission-lifecycle.js';
-import { normalizePermissionAction, normalizePermissionOptionAction } from '../../services/local-ai-core/src/acp/workspace-acp-permissions.js';
+} from '../../apps/daemon/src/acp/local-core-acp-permission-lifecycle.js';
+import { normalizePermissionAction, normalizePermissionOptionAction } from '../../apps/daemon/src/acp/workspace-acp-permissions.js';
 
 test('ACP tool call update is emitted with its pending tool name', () => {
   const appended: Array<{ content: string; kind: string }> = [];

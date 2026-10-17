@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SkillRouter } from '../../services/local-ai-core/src/skills/skill-router.js';
-import { ToolIndex } from '../../services/local-ai-core/src/skills/tool-index.js';
+import { SkillRouter } from '../../apps/daemon/src/skills/skill-router.js';
+import { ToolIndex } from '../../apps/daemon/src/skills/tool-index.js';
 import type { SkillInfo } from '@cc/superai-contracts/skills';
 
 const testSkills: SkillInfo[] = [

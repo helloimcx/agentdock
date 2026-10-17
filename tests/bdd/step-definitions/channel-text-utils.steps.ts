@@ -5,7 +5,7 @@ import {
   splitTextByUtf8Bytes,
   truncateTextByUtf8Bytes,
   utf8ByteLength,
-} from '../../../services/local-ai-core/src/channel/weixin/text-utils.js';
+} from '../../../apps/daemon/src/channel/weixin/text-utils.js';
 import type { BddWorld } from '../support/world.js';
 
 When<BddWorld>(/^the text "([^"]+)" is stripped of WeChat HTML$/, function (text) {

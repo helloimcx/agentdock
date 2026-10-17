@@ -22,11 +22,8 @@ export default tseslint.config(
   },
   {
     files: [
-      'src/**/*.{ts,tsx}',
-      'services/**/*.ts',
+      'apps/**/*.{ts,tsx}',
       'packages/**/*.ts',
-      'electron/**/*.ts',
-      'shared/**/*.ts',
     ],
     languageOptions: {
       parser: tseslint.parser,

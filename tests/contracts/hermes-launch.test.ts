@@ -7,7 +7,7 @@ import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contr
 import {
   buildHermesLaunchConfig,
   resolveHermesModel,
-} from '../../services/local-ai-core/src/agents/hermes/launch.js';
+} from '../../apps/daemon/src/agents/hermes/launch.js';
 
 function makeConfigState(): RuntimeConfigState & { __tmpDir: string } {
   const tmpDir = mkdtempSync(join(tmpdir(), 'hermes-launch-'));

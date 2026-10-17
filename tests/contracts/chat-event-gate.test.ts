@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createChatEventGate } from '../../src/components/chat/chat-event-gate.js';
+import { createChatEventGate } from '../../apps/web/src/components/chat/chat-event-gate.js';
 
 test('chat event gate rejects duplicate bridge events', () => {
   const gate = createChatEventGate();

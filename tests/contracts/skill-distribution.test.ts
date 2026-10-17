@@ -5,9 +5,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { LocalSkillSourceStore } from '../../services/local-ai-core/src/acp/store/skill-source-store.js';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
+import { LocalSkillSourceStore } from '../../apps/daemon/src/acp/store/skill-source-store.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
 
 function git(cwd: string, ...args: string[]) {
   execFileSync('git', args, {

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DeliveryOutboxStore } from '../../services/local-ai-core/src/acp/store/delivery-outbox-store.js';
+import { DeliveryOutboxStore } from '../../apps/daemon/src/acp/store/delivery-outbox-store.js';
 
 const input = {
   ownerRunId: 'automation-run:11111111-1111-4111-8111-111111111111',
@@ -56,7 +56,7 @@ test('execution result and outbox intent roll back together; immutable dedup rej
   } finally { db.close(); }
 });
 
-import { DeliveryOutboxService } from '../../services/local-ai-core/src/automation/delivery-outbox-service.js';
+import { DeliveryOutboxService } from '../../apps/daemon/src/automation/delivery-outbox-service.js';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 
 test('only a platform acknowledgement delivers; timeout and synthetic IDs remain unknown', async () => {
@@ -161,8 +161,8 @@ test('instance-qualified platform delivery resolves the original bot rather than
   } finally { db.close(); }
 });
 
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { AutomationActionExecutor } from '../../services/local-ai-core/src/automation/automation-action-executor.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { AutomationActionExecutor } from '../../apps/daemon/src/automation/automation-action-executor.js';
 
 test('startup saves a completed execution and report atomically; pending recovery never invokes the Agent', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'delivery-owner-'));

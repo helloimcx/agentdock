@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeAgentMessage } from '../../services/local-ai-core/src/thread/agent-message-policy.js';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
+import { composeAgentMessage } from '../../apps/daemon/src/thread/agent-message-policy.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -22,7 +22,7 @@ test('agent message policy leaves slash commands untouched', () => {
 });
 
 test('agent message policy injects the exact managed condition trigger skill only for condition automations', () => {
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'apps', 'desktop', 'managed-skills') });
   const skill = catalog.get('condition-trigger');
   assert(skill);
   const matching = composeAgentMessage('Create an automation when a script condition matches.', [], catalog);
@@ -32,7 +32,7 @@ test('agent message policy injects the exact managed condition trigger skill onl
 });
 
 test('condition trigger skill is injected for explicit Chinese condition automation requests, not generic trigger words', () => {
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'apps', 'desktop', 'managed-skills') });
   for (const message of ['创建一个条件自动化，在脚本条件满足时触发', '请设置条件触发任务', '为这个脚本条件创建自动化']) {
     assert.match(composeAgentMessage(message, [], catalog), /\[Condition Trigger Skill\]/);
   }
@@ -42,7 +42,7 @@ test('condition trigger skill is injected for explicit Chinese condition automat
 });
 
 test('condition helper path is catalog-owned and remains valid outside the repository cwd', () => {
-  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') });
+  const catalog = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'apps', 'desktop', 'managed-skills') });
   const helperPath = catalog.getHelperPath('condition-trigger', 'scripts/register-condition-trigger.sh');
   assert(helperPath);
   const message = composeAgentMessage('Create a script condition automation.', [], catalog);
