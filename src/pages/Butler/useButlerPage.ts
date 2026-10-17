@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cancelButlerTask, completeButlerTask, followupButlerTask, getButlerProfile, listButlerBots, listButlerTasks, setButlerProfile } from '@cc/core-sdk/butler';
 import { listWorkspaces } from '@cc/core-sdk/threads';
-import type { ButlerBotEndpoint, ButlerProfile, ButlerTask, WorkspaceSummary } from '@cc/superai-contracts';
+import type { ButlerBotEndpoint, ButlerProfile, ButlerTask, ButlerTrackingPolicy, WorkspaceSummary } from '@cc/superai-contracts';
 
 export function useButlerPage() {
   const [profile, setProfile] = useState<ButlerProfile | null>(null);
@@ -60,8 +60,10 @@ export function useButlerPage() {
       return false;
     } finally { if (alive.current) setBusy(false); }
   };
-  const configure = (managerBotId: string, managedBots: Array<{ botId: string; sharedChatId: string; managedBotName: string; managerBotName: string }>) => perform(async () => {
-    const next = await setButlerProfile({ managerBotId, managedBots });
+  const configure = (managerBotId: string, managerBindingId: string | undefined,
+    managedBots: Array<{ botId: string; bindingId?: string; sharedChatId: string; managedBotName: string; managerBotName: string }>,
+    transport: 'channel' | 'core', trackingPolicy: ButlerTrackingPolicy) => perform(async () => {
+    const next = await setButlerProfile({ managerBotId, managerBindingId, managedBots, transport, trackingPolicy });
     if (alive.current) { owner.current = next.threadId; setProfile(next); setTasks([]); }
   });
   const followup = (task: ButlerTask, delegationId: string, content: string) => perform(async () => {

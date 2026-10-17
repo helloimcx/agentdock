@@ -8,12 +8,12 @@ AgentDock 完整可点击静态原型，以 `index.html` 为唯一入口，通�
 
 | 页面 | 文件 | 状态 | 对应实现 |
 |---|---|---|---|
-| AgentDock 全局可点击原型 | `index.html` | 已确认并实现（2026-10-16） | `src/app/ui-contributions.tsx` 中的可见导航与对应页面；管家配置位于 `/butler`，配置表单已增加跨应用群内机器人名称 |
+| AgentDock 全局可点击原型 | `index.html` | 已确认并实现（2026-10-17；`src/pages/Butler/`） | 全局导航与主要模块保持完整；管家配置支持 LAC 内部委派、工作区 Agent 绑定、长任务跟踪策略和任务进展查看 |
 
 状态词汇：`待确认`（等用户看）→ `已确认`（可开发）→ `已确认并实现`（附日期，原型保留为设计事实源）。
 
 - 所有样式、脚本和假数据都内联在 `index.html`，不依赖构建流程或外部资源。
-- 管家配置页面的演示截图（假数据）：`screenshots/butler-config-prototype.1440x1100.light.png`。
+- 管家配置页面的演示截图（假数据）：`screenshots/butler-config-prototype.1440x1800.light.png`（2026-10-17 按已确认原型重新生成）。
 - 校验清单一致性：运行 prototype-first skill 中的 `scripts/check_design.py design/`。
 
 ## 本地预览
@@ -22,4 +22,4 @@ AgentDock 完整可点击静态原型，以 `index.html` 为唯一入口，通�
 
 ## 口径基准
 
-应用导航以 `src/app/ui-contributions.tsx` 与 `src/components/Layout/sidebar-nav-model.ts` 为准；各视图交互以 `src/pages/` 下对应实现为准。管家 Bot 的身份、受管 Bot、工作区/Channel 实例绑定及共享群聊路由，以 `docs/architecture/changes/2026-10-13-butler-channel-bot-management.md` 为准。原型数据为假数据，不连接 Local AI Core。
+应用导航以 `src/app/ui-contributions.tsx` 与 `src/components/Layout/sidebar-nav-model.ts` 为准；各视图交互以 `src/pages/` 下对应实现为准。管家 Bot 的身份、受管 Bot、LAC 内部工作区委派与旧共享群聊路由，以 [管家 LAC 委派变更记录](../docs/architecture/changes/2026-10-17-butler-lac-orchestration.md) 为准。原型数据为假数据，不连接 Local AI Core。

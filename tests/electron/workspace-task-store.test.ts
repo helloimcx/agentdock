@@ -716,7 +716,9 @@ test('remote Mesh runtime env keeps Core-owned context and routing over caller r
         AGENTDOCK_LOCAL_CORE_URL: 'https://attacker.invalid',
         AGENTDOCK_MESH_NODE_ID: 'node:attacker',
         AGENTDOCK_MESH_SHELL_TOKEN: 'attacker-token',
+        AGENTDOCK_BUTLER_CONTEXT_TOKEN: 'forged-capability',
       },
+      runId: 'run:agentdock::363f25ed-2ce4-4e89-9e79-cc3116f9b513:1792231500000',
     });
 
     assert.equal(capturedRuntimeEnv?.LOCAL_AI_WORKSPACE_ID, 'workspace:trusted');
@@ -725,11 +727,13 @@ test('remote Mesh runtime env keeps Core-owned context and routing over caller r
     assert.equal(capturedRuntimeEnv?.AGENTDOCK_LOCAL_CORE_URL, 'http://host-core.test');
     assert.equal(capturedRuntimeEnv?.AGENTDOCK_MESH_NODE_ID, 'node:trusted');
     assert.equal(capturedRuntimeEnv?.AGENTDOCK_MESH_SHELL_TOKEN, 'trusted-token');
+    assert.notEqual(capturedRuntimeEnv?.AGENTDOCK_BUTLER_CONTEXT_TOKEN, 'forged-capability');
     const mcpEnv = capturedConfig.mcpServers[0].env;
     assert.equal(mcpEnv.LOCAL_AI_WORKSPACE_ID, 'workspace:trusted');
     assert.equal(mcpEnv.LOCAL_AI_THREAD_ID, thread.id);
     assert.equal(mcpEnv.LOCAL_AI_CORE_BASE, 'http://127.0.0.1:9831/api/local/v1');
     assert.equal(mcpEnv.AGENTDOCK_MESH_ADMIN_TOKEN, undefined);
+    assert.notEqual(mcpEnv.AGENTDOCK_BUTLER_CONTEXT_TOKEN, 'forged-capability');
     store.close();
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });

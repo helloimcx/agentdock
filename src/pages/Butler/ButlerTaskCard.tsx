@@ -18,30 +18,85 @@ type Props = {
 function ButlerStatus({ status }: { status: string }) {
   const { t } = useTranslation();
   const variant = status === 'completed' ? 'success' : status === 'failed' ? 'danger'
-    : ['waiting_for_user', 'reviewing'].includes(status) ? 'warning' : 'secondary';
+    : ['waiting_for_user', 'reviewing', 'waiting_external', 'waiting_for_manager', 'blocked', 'cancellation_requested'].includes(status) ? 'warning' : 'secondary';
   return <Badge variant={variant}>{t(`butler.status.${status}`)}</Badge>;
 }
 
-function DelegationCard({ delegation, task, workspaces, busy, onFollowup }: Pick<Props, 'task' | 'workspaces' | 'busy' | 'onFollowup'> & { delegation: ButlerDelegation }) {
+function DelegationNotices({ delegation }: { delegation: ButlerDelegation }) {
+  const { t } = useTranslation();
+  return <>
+    {delegation.summary && <p className="text-sm whitespace-pre-wrap break-words">{delegation.summary}</p>}
+    {delegation.error && <div className={`rounded-md p-3 text-sm whitespace-pre-wrap break-words ${delegation.status === 'blocked' ? 'border border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-300' : 'text-destructive'}`}>
+      {delegation.status === 'blocked' && <strong className="mb-1 block">{t('butler.blockedReason')}</strong>}{delegation.error}</div>}
+    {delegation.status === 'waiting_for_user' && <p className="text-sm text-amber-600 dark:text-amber-400">{t('butler.approvalHint')}</p>}
+    {delegation.pendingFollowups.length > 0 && <p className="text-xs text-muted-foreground">{t('butler.followupQueued', { count: delegation.pendingFollowups.length })}</p>}
+  </>;
+}
+
+function DelegationProgress({ report }: { report: ButlerDelegation['report'] }) {
+  if (!report?.progress) return null;
+  return <div className="space-y-1.5">
+    {report.progress.message && <p className="text-sm text-muted-foreground">{report.progress.message}</p>}
+    {report.progress.percent !== undefined && <div className="flex items-center gap-2">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${report.progress.percent}%` }} /></div>
+      <span className="text-xs text-muted-foreground">{report.progress.percent}%</span>
+    </div>}
+  </div>;
+}
+
+function DelegationReferences({ references }: { references: NonNullable<ButlerDelegation['report']>['externalRefs'] }) {
+  const { t } = useTranslation();
+  if (!references?.length) return null;
+  return <div className="space-y-1 rounded-md bg-muted/40 p-3">
+    <p className="text-xs font-medium text-muted-foreground">{t('butler.externalReferences')}</p>
+    {references.map((reference) => <p key={`${reference.system}:${reference.id}`} className="break-all text-xs">
+      {reference.system} · {reference.kind}: <code>{reference.id}</code></p>)}
+  </div>;
+}
+
+function DelegationCheckStatus({ delegation }: { delegation: ButlerDelegation }) {
+  const { t } = useTranslation();
+  return <>
+    {delegation.nextCheckAt && <p className="text-xs text-muted-foreground">{t('butler.nextCheck')}: {new Date(delegation.nextCheckAt).toLocaleString()}</p>}
+    {delegation.lastCheckedAt && <p className="text-xs text-muted-foreground">{t('butler.lastCheck')}: {new Date(delegation.lastCheckedAt).toLocaleString()}
+      {delegation.checkBudgetRemaining !== undefined ? ` · ${t('butler.checksRemaining', { count: delegation.checkBudgetRemaining })}` : ''}</p>}
+  </>;
+}
+
+function DelegationActivity({ delegation }: { delegation: ButlerDelegation }) {
+  const references = delegation.report?.externalRefs || delegation.checkpoint?.externalRefs;
+  return <>
+    <DelegationProgress report={delegation.report || delegation.checkpoint} />
+    <DelegationReferences references={references} />
+    <DelegationCheckStatus delegation={delegation} />
+  </>;
+}
+
+function DelegationActions({ delegation, task, busy, onFollowup }: Pick<Props, 'task' | 'busy' | 'onFollowup'> & { delegation: ButlerDelegation }) {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
-  const workspace = workspaces.find((entry) => entry.id === delegation.workspaceId);
   const canFollowup = canFollowupButlerTask(task) && !task.cancellationRequested && delegation.status !== 'cancelled';
   const submit = async () => { if (await onFollowup(task, delegation.id, content.trim())) setContent(''); };
+  return <>
+    {delegation.threadId && <Button asChild variant="secondary" size="sm"><Link to={butlerChatHref(delegation.workspaceId, delegation.threadId)}><ArrowUpRight size={14} />
+      {t(delegation.status === 'waiting_for_user' ? 'butler.handleDecision' : 'butler.openAgent')}</Link></Button>}
+    {canFollowup && <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+      <Textarea aria-label={t('butler.followup')} placeholder={t('butler.followupPlaceholder')} value={content} onChange={(event) => setContent(event.target.value)} disabled={busy} rows={2} />
+      <Button type="submit" variant="ghost" size="sm" disabled={busy || !content.trim()}><Send size={14} />{t('butler.followup')}</Button>
+    </form>}
+  </>;
+}
+
+function DelegationCard({ delegation, task, workspaces, busy, onFollowup }: Pick<Props, 'task' | 'workspaces' | 'busy' | 'onFollowup'> & { delegation: ButlerDelegation }) {
+  const workspace = workspaces.find((entry) => entry.id === delegation.workspaceId);
   return <div className="rounded-lg border border-border bg-background/50 p-4 space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="min-w-0"><p className="font-medium break-words">{delegation.title}</p><p className="text-xs text-muted-foreground">{delegation.targetBot.displayName} · {workspace?.name || delegation.workspaceId}{workspace?.agentType ? ` · ${workspace.agentType}` : ''}</p></div>
       <ButlerStatus status={delegation.status} />
     </div>
-    {delegation.summary && <p className="text-sm whitespace-pre-wrap break-words">{delegation.summary}</p>}
-    {delegation.error && <p className="text-sm text-destructive whitespace-pre-wrap break-words">{delegation.error}</p>}
-    {delegation.status === 'waiting_for_user' && <p className="text-sm text-amber-600 dark:text-amber-400">{t('butler.approvalHint')}</p>}
-    {delegation.pendingFollowups.length > 0 && <p className="text-xs text-muted-foreground">{t('butler.followupQueued', { count: delegation.pendingFollowups.length })}</p>}
-    {delegation.threadId && <Button asChild variant="secondary" size="sm"><Link to={butlerChatHref(delegation.workspaceId, delegation.threadId)}><ArrowUpRight size={14} />{t(delegation.status === 'waiting_for_user' ? 'butler.handleDecision' : 'butler.openAgent')}</Link></Button>}
-    {canFollowup && <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-      <Textarea aria-label={t('butler.followup')} placeholder={t('butler.followupPlaceholder')} value={content} onChange={(event) => setContent(event.target.value)} disabled={busy} rows={2} />
-      <Button type="submit" variant="ghost" size="sm" disabled={busy || !content.trim()}><Send size={14} />{t('butler.followup')}</Button>
-    </form>}
+    <DelegationNotices delegation={delegation} />
+    <DelegationActivity delegation={delegation} />
+    <DelegationActions delegation={delegation} task={task} busy={busy} onFollowup={onFollowup} />
   </div>;
 }
 
