@@ -40,3 +40,29 @@ export type MeshServerMessage =
   | { version: 1; type: 'heartbeat' }
   | { version: 1; type: 'execute'; request: MeshExecution }
   | { version: 1; type: 'cancel'; requestId: string };
+
+export type TailscalePeer = {
+  id: string;
+  name: string;
+  dnsName: string;
+  ips: string[];
+  os: string;
+  online: boolean;
+  isSelf?: boolean;
+  meshNodeId?: string;
+};
+
+export type TailscaleStatusResponse = {
+  available: boolean;
+  error?: string;
+  self?: TailscalePeer;
+  peers: TailscalePeer[];
+};
+
+export type TailscaleBindInput = {
+  name: string;
+  dnsName?: string;
+  ips?: string[];
+  os?: string;
+  allowShell?: boolean;
+};

@@ -14,7 +14,17 @@ import {
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
 } from '@cc/superai-contracts';
-import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection, StandardsSection } from './workspace-sections';
+import {
+  BasicProjectSection,
+  McpServersSection,
+  PlatformsSection,
+  ProvidersSection,
+  SandboxSection,
+  StandardsSection,
+  ensureTailscaleNodeBound,
+  renderDeviceOptions,
+  resolveDeviceLabel,
+} from './workspace-sections';
 import { WorkspaceMemorySection } from './WorkspaceMemorySection';
 import {
   CUSTOM_SELECT_VALUE,
@@ -291,9 +301,19 @@ type AddProjectDialogProps = {
   onConfirm: () => void;
   onClose: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
-export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, meshNodes }: AddProjectDialogProps) {
+export function AddProjectDialog({
+  dialog,
+  updateDialog,
+  onConfirm,
+  onClose,
+  meshNodes,
+  tailscalePeers,
+  onNodeBound,
+}: AddProjectDialogProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
@@ -321,14 +341,14 @@ export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, mes
             <Select
               label="Execution device"
               value={dialog.deviceId || 'local'}
-              onChange={(event) => updateDialog({ deviceId: event.target.value })}
+              onChange={async (event) => {
+                const val = event.target.value;
+                await ensureTailscaleNodeBound(val, tailscalePeers, onNodeBound);
+                updateDialog({ deviceId: val });
+              }}
             >
               <option value="local">本机 (Local)</option>
-              {(meshNodes || []).map((node) => (
-                <option key={node.id} value={node.id.startsWith('node:') ? node.id : `node:${node.id}`}>
-                  {node.label || node.id} ({node.platform}) - {node.status}
-                </option>
-              ))}
+              {renderDeviceOptions(meshNodes, tailscalePeers)}
             </Select>
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -372,11 +392,7 @@ export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, mes
           onSelect={(selectedPath) => updateDialog({ workDir: selectedPath })}
           initialPath={dialog.workDir}
           deviceId={dialog.deviceId || 'local'}
-          deviceLabel={
-            dialog.deviceId && dialog.deviceId !== 'local'
-              ? meshNodes?.find((n) => n.id === dialog.deviceId || `node:${n.id}` === dialog.deviceId)?.label || dialog.deviceId
-              : '本机 (Local)'
-          }
+          deviceLabel={resolveDeviceLabel(dialog.deviceId || 'local', meshNodes, tailscalePeers)}
         />
       )}
     </>
@@ -400,6 +416,8 @@ type ProjectDetailsProps = {
   openPlatformDialog: (index: number | null) => void;
   onSaveConfig: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 const PROJECT_TABS: Array<[ProjectTab, string]> = [
@@ -425,6 +443,8 @@ type ProjectTabContentProps = {
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 function ProjectTabContent({
@@ -440,9 +460,19 @@ function ProjectTabContent({
   updateDeploymentProfile,
   openPlatformDialog,
   meshNodes,
+  tailscalePeers,
+  onNodeBound,
 }: ProjectTabContentProps) {
   if (projectTab === 'basic') {
-    return <BasicProjectSection project={project} updateProject={updateProject} meshNodes={meshNodes} />;
+    return (
+      <BasicProjectSection
+        project={project}
+        updateProject={updateProject}
+        meshNodes={meshNodes}
+        tailscalePeers={tailscalePeers}
+        onNodeBound={onNodeBound}
+      />
+    );
   }
   if (projectTab === 'providers') {
     return <ProvidersSection project={project} modelProviders={modelProviders} updateProject={updateProject} />;
@@ -489,6 +519,8 @@ export function ProjectDetails({
   openPlatformDialog,
   onSaveConfig,
   meshNodes,
+  tailscalePeers,
+  onNodeBound,
 }: ProjectDetailsProps) {
   return (
     <SectionCard
@@ -536,6 +568,8 @@ export function ProjectDetails({
             updateDeploymentProfile={updateDeploymentProfile}
             openPlatformDialog={openPlatformDialog}
             meshNodes={meshNodes}
+            tailscalePeers={tailscalePeers}
+            onNodeBound={onNodeBound}
           />
 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">

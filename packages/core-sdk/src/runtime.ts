@@ -35,6 +35,8 @@ import type {
   WorkspaceStreamingProbeResult,
   MeshExecution,
   MeshNode,
+  TailscaleBindInput,
+  TailscaleStatusResponse,
 } from '@cc/superai-contracts';
 import { coreClient } from './client.js';
 import { buildQuery, coreRequest } from './request.js';
@@ -266,6 +268,24 @@ export function listMeshNodes(adminToken?: string) {
     headers.Authorization = `Bearer ${token}`;
   }
   return coreRequest<{ nodes: MeshNode[] }>('GET', '/mesh/nodes', undefined, headers);
+}
+
+export function getTailscaleStatus(adminToken?: string) {
+  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return coreRequest<TailscaleStatusResponse>('GET', '/mesh/tailscale/status', undefined, headers);
+}
+
+export function bindTailscaleNode(input: TailscaleBindInput, adminToken?: string) {
+  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return coreRequest<MeshNode>('POST', '/mesh/tailscale/bind', input, headers);
 }
 
 export interface DirectoryListingResult {
