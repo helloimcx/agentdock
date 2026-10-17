@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import type { DatabaseSync } from 'node:sqlite';
 import type { RunSpan, RunSpanKind, RunSpanStatus, RunTraceSummary, TokenUsage } from '@cc/superai-contracts';
+import { ACTIVE_RUN_STATUSES_SQL, RETENTION_HORIZON_MS, RETENTION_PRUNE_INTERVAL_MS, isRetentionPruneDue } from './utils.js';
 
 export interface LocalRunSpanRow {
   id: string;
@@ -17,8 +19,61 @@ export interface LocalRunSpanRow {
   usage_json: string | null;
 }
 
+// Trace spans are diagnostic data; without retention the table grows without
+// bound (55k rows / 300MB+ in two months on a long-running deployment) and
+// every hydrate/serialize path pays for it. Runs and messages are never pruned
+// here — only span rows past the horizon on runs that already reached a
+// terminal state.
+// Batches and the time budget bound the synchronous delete so the first prune
+// after deploy cannot stall the shared connection for the whole
+// multi-hundred-MB backlog; the backlog drains over subsequent hourly ticks.
+const SPAN_PRUNE_BATCH_SIZE = 2000;
+const SPAN_PRUNE_MAX_BATCHES = 10;
+const SPAN_PRUNE_BUDGET_MS = 100;
+
 export class LocalCoreTraceStore {
+  private lastSpanPruneAt = 0;
+
   constructor(private readonly db: DatabaseSync) {}
+
+  pruneSpans(now: Date, options: { batchSize?: number; maxBatches?: number } = {}): number {
+    if (Number.isNaN(now.getTime())) throw new Error('Span retention time must be a valid date.');
+    const cutoff = new Date(now.getTime() - RETENTION_HORIZON_MS).toISOString();
+    const batchSize = options.batchSize ?? SPAN_PRUNE_BATCH_SIZE;
+    const maxBatches = options.maxBatches ?? SPAN_PRUNE_MAX_BATCHES;
+    const startedAt = performance.now();
+    let removed = 0;
+    for (let batch = 0; batch < maxBatches; batch += 1) {
+      if (performance.now() - startedAt > SPAN_PRUNE_BUDGET_MS) break;
+      const result = this.db.prepare(`
+        DELETE FROM run_spans
+        WHERE id IN (
+          SELECT id FROM run_spans
+          WHERE started_at < ?
+            AND run_id NOT IN (
+              SELECT id FROM runs WHERE status IN ${ACTIVE_RUN_STATUSES_SQL}
+            )
+          LIMIT ?
+        )
+      `).run(cutoff, batchSize);
+      const changes = Number(result.changes);
+      removed += changes;
+      if (changes < batchSize) break;
+    }
+    return removed;
+  }
+
+  private maybePruneSpans(now: Date) {
+    if (!isRetentionPruneDue(this.lastSpanPruneAt, now, RETENTION_PRUNE_INTERVAL_MS)) return;
+    this.lastSpanPruneAt = now.getTime();
+    try {
+      this.pruneSpans(now);
+    } catch (error) {
+      // Pruning is opportunistic: a failure must never break the span write
+      // that an in-flight agent run is performing, but it must stay visible.
+      console.warn(`[local-ai-core] Span retention prune failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   insertSpan(input: {
     id?: string;
@@ -30,6 +85,7 @@ export class LocalCoreTraceStore {
     startedAt?: string;
     inputJson?: Record<string, unknown> | string | null;
   }): RunSpan {
+    this.maybePruneSpans(new Date());
     const id = input.id || `span:${randomUUID()}`;
     const startedAt = input.startedAt || new Date().toISOString();
     const status = input.status || 'running';

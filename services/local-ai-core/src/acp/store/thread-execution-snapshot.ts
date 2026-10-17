@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { ThreadDetail, ThreadExecutionSnapshot, ThreadRuntimePermission, RunSummary } from '@cc/superai-contracts';
 import type { LocalThreadRuntimeStore } from './thread-runtime-store.js';
+import { isActiveRunStatus } from './utils.js';
 
 export function readThreadExecutionSnapshot(
   db: DatabaseSync,
@@ -16,7 +17,7 @@ export function readThreadExecutionSnapshot(
     const runs = db.prepare(`SELECT id, thread_id AS threadId, status, started_at AS startedAt,
       updated_at AS updatedAt FROM runs WHERE thread_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 20`).all(threadId) as unknown as RunSummary[];
     const permissions = readPermissions(db, threadId, runtime.epoch);
-    const active = runs.find((run) => ['running', 'awaiting_input'].includes(run.status));
+    const active = runs.find((run) => isActiveRunStatus(run.status));
     thread.runId = active?.id;
     thread.live = !!active;
     const pending = permissions.find((entry) => entry.actionable);
