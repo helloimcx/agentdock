@@ -9,4 +9,4 @@ export type {
   LocalCorePluginDiagnostics,
   RuntimeDetectionListResponse,
 } from './local-core.js';
-export type { DesktopRuntimeStatus, RuntimeConfigState } from '../../../shared/desktop.js';
+export type { DesktopRuntimeStatus, RuntimeConfigState } from './desktop.js';
