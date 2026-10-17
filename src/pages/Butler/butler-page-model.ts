@@ -18,7 +18,7 @@ export function canCancelButlerTask(task: ButlerTask) {
 }
 
 export function orderButlerTasks(tasks: ButlerTask[]) {
-  const priority = (task: ButlerTask) => ['waiting_for_user', 'failed', 'reviewing'].includes(task.status)
+  const priority = (task: ButlerTask) => ['waiting_for_user', 'failed', 'reviewing', 'blocked', 'waiting_for_manager'].includes(task.status)
     ? 0 : ['completed', 'cancelled'].includes(task.status) ? 2 : 1;
   return [...tasks].sort((a, b) => priority(a) - priority(b) || b.updatedAt.localeCompare(a.updatedAt));
 }

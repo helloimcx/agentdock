@@ -16,6 +16,8 @@ const CONTEXT_ENV_KEYS = [
   'LOCAL_AI_CHAT_ID',
   'LOCAL_AI_PLATFORM_USER_ID',
   'LOCAL_AI_ROUTE_TYPE',
+  'AGENTDOCK_SANDBOX_RUN_ID',
+  'AGENTDOCK_BUTLER_CONTEXT_TOKEN',
 ] as const;
 
 const CLI_POLICY: Record<string, { positionals: number; flags: readonly string[] }> = {
@@ -43,6 +45,18 @@ const CLI_POLICY: Record<string, { positionals: number; flags: readonly string[]
   'automation.edit': { positionals: 1, flags: ['title', 'enabled', 'json'] },
   'automation.del': { positionals: 1, flags: ['json'] },
   'automation.check': { positionals: 1, flags: ['json'] },
+  'butler.list': { positionals: 0, flags: ['json'] },
+  'butler.info': { positionals: 1, flags: ['json'] },
+  'butler.orphans': { positionals: 0, flags: ['json'] },
+  'butler.reattach': { positionals: 1, flags: ['json'] },
+  'butler.create': { positionals: 0, flags: ['title', 'assignments', 'request-id', 'completion-criteria', 'json'] },
+  'butler.delegate': { positionals: 1, flags: ['task', 'bot', 'key', 'title', 'message', 'request-id', 'json'] },
+  'butler.followup': { positionals: 1, flags: ['delegation', 'message', 'request-id', 'json'] },
+  'butler.cancel': { positionals: 1, flags: ['mode', 'json'] },
+  'butler.complete': { positionals: 1, flags: ['summary', 'json'] },
+  'butler.accept': { positionals: 1, flags: ['delegation', 'report-version', 'json'] },
+  'butler.watch': { positionals: 1, flags: ['delegation', 'instructions', 'interval', 'json'] },
+  'butler.report': { positionals: 0, flags: ['phase', 'outcome', 'summary', 'request-id', 'external-refs', 'progress', 'evidence', 'check-after', 'json'] },
 };
 
 function isShellOperator(char: string): boolean {

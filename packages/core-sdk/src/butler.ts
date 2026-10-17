@@ -1,4 +1,4 @@
-import type { ButlerBotEndpoint, ButlerFollowupInput, ButlerProfile, ButlerProfileInput, ButlerTask, ButlerTaskCreateInput } from '@cc/superai-contracts';
+import type { ButlerBotEndpoint, ButlerFollowupInput, ButlerProfile, ButlerProfileInput, ButlerTask, ButlerTaskCreateInput, ButlerTaskDelegateInput } from '@cc/superai-contracts';
 import { buildQuery, coreRequest } from './request.js';
 
 export function getButlerProfile() {
@@ -23,6 +23,10 @@ export function getButlerTask(taskId: string, ownerThreadId: string) {
 
 export function createButlerTask(input: ButlerTaskCreateInput) {
   return coreRequest<ButlerTask>('POST', '/butler/tasks', input);
+}
+
+export function delegateButlerTask(taskId: string, input: ButlerTaskDelegateInput) {
+  return coreRequest<ButlerTask>('POST', `/butler/tasks/${encodeURIComponent(taskId)}/delegations`, input);
 }
 
 export function followupButlerTask(taskId: string, input: ButlerFollowupInput) {

@@ -56,7 +56,7 @@
       },
       {
         "id": "butler-orchestration",
-        "label": "管家与 Channel Bot 协作",
+        "label": "管家 Channel 入口与 LAC 跟踪",
         "focus": [
           "renderer",
           "channels",
@@ -66,7 +66,7 @@
           "sqlite",
           "acp_engine"
         ],
-        "note": "管家以具体 Lark bot 身份向受管 bot 发消息；群聊仅作投递上下文，工作区 Agent 保留自身权限。"
+        "note": "Core transport 将任务直接提交给受管 Bot 绑定的工作区 Agent，持久检查外部任务；旧 Channel Bot 消息 transport 保留兼容。"
       }
     ]
   },
@@ -270,7 +270,7 @@
       "id": "butler",
       "type": "backend",
       "label": "管家 Bot 协调服务",
-      "sublabel": "Bot roster · 消息委托 · 持续跟踪",
+      "sublabel": "LAC dispatch · durable checks",
       "pos": [
         330,
         470
@@ -453,7 +453,7 @@
       "id": "core-to-butler",
       "from": "core_api",
       "to": "butler",
-      "label": "Butler REST / Bot 回调",
+      "label": "Butler REST · LAC",
       "fromSide": "bottom",
       "toSide": "top",
       "labelAt": [

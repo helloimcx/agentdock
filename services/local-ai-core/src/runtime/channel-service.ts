@@ -35,6 +35,7 @@ export class ChannelService {
       if (!status.appId || !status.botOpenId || !status.instanceId) return [];
       return [{
         id: `lark:${status.appId}:${status.botOpenId}`,
+        bindingId: `lark:${status.appId}:${status.botOpenId}:${status.workspaceId}:${status.instanceId}`,
         platform: 'lark' as const,
         appId: status.appId,
         botOpenId: status.botOpenId,
@@ -45,7 +46,7 @@ export class ChannelService {
       }];
     });
     const unique = new Map<string, ButlerBotEndpoint>();
-    for (const endpoint of endpoints) if (!unique.has(endpoint.id)) unique.set(endpoint.id, endpoint);
+    for (const endpoint of endpoints) if (!unique.has(endpoint.bindingId || endpoint.id)) unique.set(endpoint.bindingId || endpoint.id, endpoint);
     return [...unique.values()];
   }
 
