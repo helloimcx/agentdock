@@ -514,12 +514,12 @@ export class LocalCoreAcpBackend {
         this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
         return;
       }
-      const priorThreadMessages = this.options.store.getThread(threadId, []).messages;
+      const priorThreadMessages = this.options.store.listAssistantTurnMessages(threadId);
       const priorAssistantFinalMessages = priorThreadMessages
-        .filter((entry) => entry.role === 'assistant' && entry.kind === 'final')
+        .filter((entry) => entry.kind === 'final')
         .map((entry) => entry.content);
       const priorAssistantProgressMessages = priorThreadMessages
-        .filter((entry) => entry.role === 'assistant' && entry.kind === 'progress')
+        .filter((entry) => entry.kind === 'progress')
         .map((entry) => ({
           kind: entry.bridgeKind,
           content: entry.content,

@@ -17,7 +17,7 @@ import type {
   LocalAutomationRunRow,
   LocalScheduledJobRow,
 } from './acp-store-types.js';
-import { SqlPredicateBuilder } from './utils.js';
+import { RETENTION_HORIZON_MS, SqlPredicateBuilder } from './utils.js';
 import { AUTOMATION_MONITOR_COLUMNS } from './automation-monitor-store.js';
 import { SCHEDULED_JOB_COLUMNS } from './scheduler-store.js';
 import { legacyCronActivation } from '../../automation/legacy-automation-mappers.js';
@@ -499,7 +499,7 @@ export class LocalAutomationStore {
 
   pruneEvaluations(now: Date): number {
     if (Number.isNaN(now.getTime())) throw new Error('Evaluation retention time must be a valid date.');
-    const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000).toISOString();
+    const cutoff = new Date(now.getTime() - RETENTION_HORIZON_MS).toISOString();
     const result = this.db.prepare(`
       WITH ranked AS (
         SELECT id, automation_id, started_at,

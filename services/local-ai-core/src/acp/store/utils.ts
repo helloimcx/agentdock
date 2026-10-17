@@ -44,6 +44,24 @@ export function clampLimit(limit: unknown, fallback = 50, max = 100): number {
   return Math.max(1, Math.min(Number(limit || fallback), max));
 }
 
+/** Run statuses that can still produce new work (and new spans). */
+export const ACTIVE_RUN_STATUSES = ['running', 'awaiting_input'];
+
+export function isActiveRunStatus(status: string): boolean {
+  return ACTIVE_RUN_STATUSES.includes(status);
+}
+
+export const ACTIVE_RUN_STATUSES_SQL = `('${ACTIVE_RUN_STATUSES.join("', '")}')`;
+
+export function isRetentionPruneDue(lastPruneAt: number, now: Date, intervalMs: number): boolean {
+  return now.getTime() - lastPruneAt >= intervalMs;
+}
+
+/** Shared retention policy: diagnostic/telemetry tables keep 30 days and are
+ * pruned opportunistically at most hourly. */
+export const RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000;
+export const RETENTION_PRUNE_INTERVAL_MS = 60 * 60_000;
+
 export function normalizeBridgeKind(value: string | null | undefined): DesktopBridgeEventKind | undefined {
   switch (value) {
     case 'assistant':
