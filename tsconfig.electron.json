@@ -27,9 +27,7 @@
       "@cc/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],
       "@cc/plugin-sdk/*": ["packages/plugin-sdk/src/*"],
       "@cc/knowledge-api": ["packages/knowledge/src/index.ts"],
-      "@cc/knowledge-api/*": ["packages/knowledge/src/*"],
-      "@cc/local-ai-core": ["apps/daemon/src/index.ts"],
-      "@cc/local-ai-core/*": ["apps/daemon/src/*"]
+      "@cc/knowledge-api/*": ["packages/knowledge/src/*"]
     },
     "outDir": "dist-electron",
     "rootDir": ".",

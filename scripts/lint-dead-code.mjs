@@ -9,7 +9,7 @@
  *
  * Detection honors the same source roots knip discovers from the workspace
  * manifests. Accuracy improves once a knip config declares the project's entry
- * points (e.g. electron/main.ts, services/local-ai-core) — without it, knip may
+ * points (e.g. apps/desktop/src/main.ts, apps/daemon) — without it, knip may
  * under-report symbols that entries consume. Raise `--include` to widen the
  * surface; add a `knip.json` to tune entry points and ignore patterns.
  */

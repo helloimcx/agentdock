@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { automationSandboxDiagnosticChecks } from '../../apps/daemon/src/runtime/deployment-diagnostics.js';
@@ -66,3 +66,29 @@ test('Linux core image installs conditional automation sandbox dependencies', ()
   }
   assert.match(dockerfile, /rm -rf \/var\/lib\/apt\/lists\/\*/);
 });
+
+test('Dockerfiles in docker/agentdock have valid COPY source paths', () => {
+  const dockerfiles = ['core.Dockerfile', 'Dockerfile', 'web.Dockerfile'];
+  for (const file of dockerfiles) {
+    const content = readFileSync(join(process.cwd(), 'docker', 'agentdock', file), 'utf8');
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('COPY ')) continue;
+      if (trimmed.includes('--from=')) continue;
+      const parts = trimmed.slice(5).trim().split(/\s+/);
+      parts.pop(); // remove destination
+      for (const src of parts) {
+        if (src.startsWith('--')) continue;
+        if (src.includes('*')) {
+          const prefix = src.slice(0, src.indexOf('*'));
+          const dir = join(process.cwd(), prefix ? prefix.slice(0, prefix.lastIndexOf('/') + 1) : '');
+          assert.ok(existsSync(dir), `${file}: directory for wildcard ${src} must exist`);
+        } else {
+          assert.ok(existsSync(join(process.cwd(), src)), `${file}: source path "${src}" must exist`);
+        }
+      }
+    }
+  }
+});
+

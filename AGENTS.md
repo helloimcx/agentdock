@@ -18,7 +18,7 @@ A normalized two-tier peer topology separates applications (`apps/`) from shared
   - `knowledge/` (`@agentdock/knowledge`, alias `@cc/knowledge-api`): Knowledge base SQLite store, indexing, and vector search abstractions
   - `plugin-sdk/` (`@agentdock/plugin-sdk`, alias `@cc/plugin-sdk`): Plugin contracts, agent runtime, channel, scheduler, and sandbox interfaces
 - `tests/`: Cross-layer tests (`tests/electron/`, `tests/contracts/`, `tests/integration/`, and `tests/bdd/`)
-- `public/`: Static assets
+- `apps/web/public/`: Static web assets
 - Build outputs: `dist/renderer/` (Vite output) and `dist-electron/` (compiled TypeScript output); do not edit them directly
 
 ### Runtime Modes & Process Boundaries
@@ -168,7 +168,7 @@ When designing or connecting multi-entity models (such as `AutomationRun` wrappi
 
 ## Testing Guidelines
 
-- The primary verification suite is `pnpm test`, which runs `typecheck`, builds renderer and Electron outputs, executes the Node.js test runner across compiled tests (`dist-electron/tests/electron/*.test.js`, `dist-electron/tests/contracts/*.test.js`, `dist-electron/tests/integration/*.test.js`, `dist-electron/packages/knowledge-api/test/*.test.js`, `dist-electron/src/pages/Threads/thread-chat-permission.test.js`), and runs Cucumber BDD tests (`pnpm test:bdd`).
+- The primary verification suite is `pnpm test`, which runs `typecheck`, builds renderer and Electron outputs, executes the Node.js test runner across compiled tests (`dist-electron/tests/electron/*.test.js`, `dist-electron/tests/contracts/*.test.js`, `dist-electron/tests/integration/*.test.js`, `dist-electron/packages/knowledge/test/*.test.js`, `dist-electron/apps/web/src/pages/Threads/thread-chat-permission.test.js`), and runs Cucumber BDD tests (`pnpm test:bdd`).
 - BDD feature specifications live under `tests/bdd/features/` with step definitions in `tests/bdd/step-definitions/`. They execute against TypeScript source using the `tsx` loader. Reach for a `.feature` when a behavior reads naturally as Given/When/Then scenarios.
 - Use `pnpm e2e:smoke` for packaged app smoke coverage.
 - Keep single-module renderer tests near the feature they cover, put cross-layer tests under `tests/electron/`, `tests/contracts/`, or `tests/integration/`, and keep package-private tests under `packages/<name>/test/`.
