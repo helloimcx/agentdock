@@ -1,4 +1,4 @@
-import type { MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput } from '@cc/superai-contracts';
+import type { MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput, TailscaleBindInput, TailscaleStatusResponse } from '@cc/superai-contracts';
 import { LOCAL_AI_CORE_BASE } from './client.js';
 
 /** Keep administrator credentials in caller memory; never place tokens in URLs or storage. */
@@ -24,5 +24,7 @@ export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, f
     listRequests: () => request<{ requests: MeshExecution[] }>('/requests'),
     getRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}`),
     cancelRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}/cancel`, 'POST'),
+    getTailscaleStatus: () => request<TailscaleStatusResponse>('/tailscale/status'),
+    bindTailscaleNode: (input: TailscaleBindInput) => request<MeshNode>('/tailscale/bind', 'POST', input),
   };
 }
