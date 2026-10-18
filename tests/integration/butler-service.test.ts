@@ -478,6 +478,8 @@ test('core worker reports are scoped to the live bound run and reject stale or f
     const capability = f.core.butler.issueAgentCapability(validContext.threadId, validContext.runId)!;
     assert.equal(f.core.butler.verifyAgentCapability(capability, validContext.threadId, `${validContext.runId}:forged`), undefined);
     assert.equal(f.core.butler.verifyAgentCapability(`${capability.slice(0, -1)}x`, validContext.threadId, validContext.runId), undefined);
+    assert.equal(f.core.butler.verifyAgentCapability(`${capability}\n`, validContext.threadId, validContext.runId), undefined);
+    assert.equal(f.core.butler.verifyAgentCapability(`${capability}=`, validContext.threadId, validContext.runId), undefined);
     await assert.rejects(f.service.runAgentCommand(validContext, { action: 'report', report }, ''), /Core-issued Butler execution capability/i);
     await assert.rejects(agentCommand(f, { ...validContext, threadId: profile.threadId }, { action: 'report', report }), /authorized|live Core execution/i);
     await assert.rejects(agentCommand(f, validContext, { action: 'report', report: { ...report, schemaVersion: 2 } }), /schemaVersion=1/i);
