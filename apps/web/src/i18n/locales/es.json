@@ -274,7 +274,7 @@
     "path": "Path within the approved directory",
     "program": "Program",
     "arguments": "Arguments as a JSON array",
-    "authenticationHelp": "Enter the Mesh administrator token configured on your server. It stays in this page’s memory only.",
+    "authenticationHelp": "Ingrese el token de administrador de Mesh configurado en su servidor. Se guarda en el almacenamiento local del navegador para autorizar el descubrimiento y la vinculación.",
     "adminToken": "Mesh administrator token",
     "connect": "Connect",
     "disconnect": "Disconnect",

@@ -73,7 +73,7 @@ export function tailscaleNodeId(rawName: string, dnsName?: string): string;
   - 请求头：`Authorization: Bearer <AGENTDOCK_MESH_ADMIN_TOKEN>`
   - 请求体：`TailscaleBindInput`
   - 未鉴权时返回 `401 Unauthorized`
-  - 逻辑：使用确定性命名工具 `tailscaleNodeId(name, dnsName)` 以 `node:ts:<safe-name>` 形式在 `mesh_nodes` 中插入或幂等更新节点（包括 label 中的 IP 标注及 capabilities），初始状态为 `status: 'offline'`，`token_hash` 为 NULL；执行派发操作需等待设备通过 `agentdock-node` 建立 WebSocket 连接，否则返回 409 Conflict。返回登记的 `MeshNode`。
+  - 逻辑：使用确定性命名工具 `tailscaleNodeId(name, dnsName)` 以 `node:ts:<safe-name>` 形式在 `mesh_nodes` 中插入或幂等更新节点（包括 label 中的 IP 标注及 capabilities），初始状态为 `status: 'offline'`，`token_hash` 为 NULL；若符号清洗导致多台设备 ID 碰撞（如 `gpu--server` 与 `gpu-server`），则后绑定的设备将更新现有节点而非新建独立节点；若节点处于 `revoked` 状态则拒绝重新绑定（防止绕过吊销）；执行派发操作需等待设备通过 `agentdock-node` 建立 WebSocket 连接，否则返回 409 Conflict。返回登记的 `MeshNode`。
 
 ## 5. 约束与兼容性 (Constraints / Compatibility)
 

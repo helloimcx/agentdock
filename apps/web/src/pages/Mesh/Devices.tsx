@@ -24,7 +24,6 @@ function AdminTokenCard({ onTokenChange }: { onTokenChange: () => void }) {
 
   const handleClear = () => {
     localStorage.removeItem('agentdock_mesh_token');
-    localStorage.removeItem('agentdock_token');
     setHasToken(false);
     setIsEditing(false);
     setTokenInput('');

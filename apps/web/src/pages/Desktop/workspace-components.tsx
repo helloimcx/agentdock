@@ -302,6 +302,7 @@ type AddProjectDialogProps = {
   onClose: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
   tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
@@ -313,6 +314,7 @@ type ProjectDialogFormProps = {
   onOpenPicker: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
   tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
@@ -324,6 +326,7 @@ function ProjectDialogForm({
   onOpenPicker,
   meshNodes,
   tailscalePeers,
+  tailscaleError,
   onNodeBound,
 }: ProjectDialogFormProps) {
   const [bindError, setBindError] = useState<string | null>(null);
@@ -362,6 +365,11 @@ function ProjectDialogForm({
           {renderDeviceOptions(meshNodes, tailscalePeers)}
         </Select>
         {bindError && <p className="text-xs text-red-400">{bindError}</p>}
+        {tailscaleError === 'auth_required' && (
+          <p className="text-xs text-muted-foreground">
+            Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.
+          </p>
+        )}
       </div>
       <div className="flex items-end gap-2">
         <div className="flex-1">
@@ -405,6 +413,7 @@ export function AddProjectDialog({
   onClose,
   meshNodes,
   tailscalePeers,
+  tailscaleError,
   onNodeBound,
 }: AddProjectDialogProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -421,6 +430,7 @@ export function AddProjectDialog({
             onOpenPicker={() => setPickerOpen(true)}
             meshNodes={meshNodes}
             tailscalePeers={tailscalePeers}
+            tailscaleError={tailscaleError}
             onNodeBound={onNodeBound}
           />
         ) : null}
@@ -458,6 +468,7 @@ type ProjectDetailsProps = {
   onSaveConfig: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
   tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
@@ -485,6 +496,7 @@ type ProjectTabContentProps = {
   openPlatformDialog: (index: number | null) => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
   tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
@@ -502,6 +514,7 @@ function ProjectTabContent({
   openPlatformDialog,
   meshNodes,
   tailscalePeers,
+  tailscaleError,
   onNodeBound,
 }: ProjectTabContentProps) {
   if (projectTab === 'basic') {
@@ -511,6 +524,7 @@ function ProjectTabContent({
         updateProject={updateProject}
         meshNodes={meshNodes}
         tailscalePeers={tailscalePeers}
+        tailscaleError={tailscaleError}
         onNodeBound={onNodeBound}
       />
     );
@@ -561,6 +575,7 @@ export function ProjectDetails({
   onSaveConfig,
   meshNodes,
   tailscalePeers,
+  tailscaleError,
   onNodeBound,
 }: ProjectDetailsProps) {
   return (
@@ -610,6 +625,7 @@ export function ProjectDetails({
             openPlatformDialog={openPlatformDialog}
             meshNodes={meshNodes}
             tailscalePeers={tailscalePeers}
+            tailscaleError={tailscaleError}
             onNodeBound={onNodeBound}
           />
 

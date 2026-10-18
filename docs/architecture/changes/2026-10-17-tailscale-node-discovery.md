@@ -18,13 +18,14 @@
   - SDK Mesh client (`packages/sdk/src/mesh.ts`) and runtime client dynamically resolve admin tokens per request from caller memory or `localStorage` fallback without needing client recreation.
 - Bound node identity & state model:
   - Discovered Tailscale nodes are registered via shared ID helper `tailscaleNodeId(name, dnsName)` yielding `node:ts:<sanitized-name>`.
-  - Deterministic naming allows re-binding with identical sanitized names to idempotently update node records (persisting primary Tailscale IP in `label` and updating capabilities) while preserving `createdAt`.
+  - Deterministic naming allows re-binding with identical sanitized names to idempotently update node records (persisting primary Tailscale IP in `label` and updating capabilities) while preserving `createdAt`. Sanitization symbol collapse (e.g. `gpu--server` vs `gpu-server`) updates the existing record rather than duplicating nodes.
+  - Revocation preservation: re-binding a node whose status is `revoked` is strictly rejected to prevent bypassing administrator revocation.
   - Bound nodes are created with `status: 'offline'` and `token_hash: NULL`. Because Mesh dispatch requires a live connected WebSocket session, bound devices remain offline until an agent connects via `agentdock-node pair/connect`.
   - Single-source sanitization helper `sanitizeTailscaleName` and `tailscaleNodeId` exported from `@cc/superai-contracts` and `@cc/core-sdk/mesh`.
 - Renderer UI:
   - Mesh Devices page (`apps/web/src/pages/Mesh/Devices.tsx`) renders discovered Tailnet peers with status badges, one-click bind actions, and English default fallbacks.
-  - Added `AdminTokenCard` credential management card allowing users to configure or update `agentdock_mesh_token` directly in the renderer, with dedicated `mesh.authRequired` messaging upon 401 Unauthorized responses.
-  - Workspace configuration (`apps/web/src/pages/Desktop/workspace-sections.tsx` and `workspace-components.tsx`) displays discovered Tailscale devices in the execution target dropdown, surfacing binding errors and preventing silent corrupted selection.
+  - Added `AdminTokenCard` credential management card allowing users to configure or update `agentdock_mesh_token` stored in browser local storage, with dedicated `mesh.authRequired` messaging upon 401 Unauthorized responses.
+  - Workspace configuration (`apps/web/src/pages/Desktop/workspace-sections.tsx` and `workspace-components.tsx`) displays discovered Tailscale devices in the execution target dropdown, surfacing binding errors and displaying a helpful configuration pointer when Mesh administrator authentication is required.
 
 ## Evidence
 

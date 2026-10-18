@@ -6,7 +6,8 @@ export function useMesh() {
   const client = useMemo(() => createMeshClient(), []);
   const [nodes, setNodes] = useState<MeshNode[]>([]);
   const [tailscale, setTailscale] = useState<TailscaleStatusResponse>({ available: false, peers: [] });
-  const [error, setError] = useState('');
+  const [refreshError, setRefreshError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -21,9 +22,9 @@ export function useMesh() {
       ]);
       setNodes(devices.nodes);
       setTailscale(ts);
-      setError('');
+      setRefreshError('');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to reach devices.');
+      setRefreshError(cause instanceof Error ? cause.message : 'Unable to reach devices.');
     } finally {
       setLoading(false);
     }
@@ -31,23 +32,27 @@ export function useMesh() {
 
   const bindTailscale = useCallback(async (input: TailscaleBindInput) => {
     try {
-      setError('');
+      setActionError('');
       const node = await client.bindTailscaleNode(input);
       await refresh();
       return node;
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : 'Failed to bind Tailscale node.';
-      setError(msg);
+      setActionError(msg);
       throw cause;
     }
   }, [client, refresh]);
 
   useEffect(() => {
-    setNodes([]); setError('');
+    setNodes([]);
+    setRefreshError('');
+    setActionError('');
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 3000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  const error = actionError || refreshError;
 
   return { nodes, tailscale, bindTailscale, error, loading, refresh };
 }

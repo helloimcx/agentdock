@@ -126,6 +126,7 @@ export default function DesktopWorkspace() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
   const [tailscalePeers, setTailscalePeers] = useState<TailscalePeer[]>([]);
+  const [tailscaleError, setTailscaleError] = useState<string | null>(null);
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
 
   const handleNodeBound = useCallback((node: MeshNode) => {
@@ -143,7 +144,15 @@ export default function DesktopWorkspace() {
         listModelProviders(),
       ]);
       void listMeshNodes().then((res) => setMeshNodes(res?.nodes || [])).catch(() => {});
-      void getTailscaleStatus().then((res) => setTailscalePeers(res?.peers || [])).catch(() => {});
+      void getTailscaleStatus()
+        .then((res) => {
+          setTailscalePeers(res?.peers || []);
+          setTailscaleError(null);
+        })
+        .catch((err: unknown) => {
+          const is401 = err instanceof Error && /401|unauthorized/i.test(err.message);
+          setTailscaleError(is401 ? 'auth_required' : 'unavailable');
+        });
       const parsed = clone(configState.config || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
@@ -440,6 +449,7 @@ export default function DesktopWorkspace() {
           onSaveConfig={() => void handleSaveConfig()}
           meshNodes={meshNodes}
           tailscalePeers={tailscalePeers}
+          tailscaleError={tailscaleError}
           onNodeBound={handleNodeBound}
         />
       </div>
@@ -451,6 +461,7 @@ export default function DesktopWorkspace() {
         onClose={() => setProjectDialog(null)}
         meshNodes={meshNodes}
         tailscalePeers={tailscalePeers}
+        tailscaleError={tailscaleError}
         onNodeBound={handleNodeBound}
       />
 

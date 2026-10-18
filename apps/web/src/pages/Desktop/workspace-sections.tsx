@@ -40,6 +40,7 @@ type BasicProjectSectionProps = {
   updateProject: ProjectUpdater;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
   tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
@@ -176,11 +177,49 @@ function HostWorkspacePathField({
   );
 }
 
+type ExecutionDeviceFieldProps = {
+  selectedDevice: string;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  bindError: string | null;
+  onDeviceChange: (device: string) => void;
+};
+
+function ExecutionDeviceField({
+  selectedDevice,
+  meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  bindError,
+  onDeviceChange,
+}: ExecutionDeviceFieldProps) {
+  return (
+    <div className="space-y-1">
+      <Select
+        label="Execution device"
+        value={selectedDevice}
+        onChange={(event) => onDeviceChange(event.target.value)}
+      >
+        <option value="local">本机 (Local)</option>
+        {renderDeviceOptions(meshNodes, tailscalePeers)}
+      </Select>
+      {bindError && <p className="text-xs text-red-400">{bindError}</p>}
+      {tailscaleError === 'auth_required' && (
+        <p className="text-xs text-muted-foreground">
+          Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function BasicProjectSection({
   project,
   updateProject,
   meshNodes,
   tailscalePeers,
+  tailscaleError,
   onNodeBound,
 }: BasicProjectSectionProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -199,6 +238,16 @@ export function BasicProjectSection({
     }));
   };
 
+  const handleDeviceChange = async (newDevice: string) => {
+    setBindError(null);
+    try {
+      await ensureTailscaleNodeBound(newDevice, tailscalePeers, onNodeBound);
+      updateProject((current) => applyDeviceChange(current, newDevice));
+    } catch (err) {
+      setBindError(err instanceof Error ? err.message : 'Failed to bind Tailscale node.');
+    }
+  };
+
   return (
     <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -215,26 +264,14 @@ export function BasicProjectSection({
           {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           <option value={CUSTOM_SELECT_VALUE}>custom</option>
         </Select>
-        <div className="space-y-1">
-          <Select
-            label="Execution device"
-            value={selectedDevice}
-            onChange={async (event) => {
-              const newDevice = event.target.value;
-              setBindError(null);
-              try {
-                await ensureTailscaleNodeBound(newDevice, tailscalePeers, onNodeBound);
-                updateProject((current) => applyDeviceChange(current, newDevice));
-              } catch (err) {
-                setBindError(err instanceof Error ? err.message : 'Failed to bind Tailscale node.');
-              }
-            }}
-          >
-            <option value="local">本机 (Local)</option>
-            {renderDeviceOptions(meshNodes, tailscalePeers)}
-          </Select>
-          {bindError && <p className="text-xs text-red-400">{bindError}</p>}
-        </div>
+        <ExecutionDeviceField
+          selectedDevice={selectedDevice}
+          meshNodes={meshNodes}
+          tailscalePeers={tailscalePeers}
+          tailscaleError={tailscaleError}
+          bindError={bindError}
+          onDeviceChange={(device) => { void handleDeviceChange(device); }}
+        />
         <HostWorkspacePathField
           workDir={workDir}
           selectedDevice={selectedDevice}

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { tailscaleNodeId, type MeshNode, type TailscaleBindInput, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
+import { tailscaleNodeId, type MeshCapability, type MeshNode, type TailscaleBindInput, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
 import type { MeshStore } from './mesh-store.js';
 
 function resolveTailscaleBin(): string {
@@ -32,6 +32,65 @@ function defaultTailscaleRunner(): Promise<string> {
       resolve(stdout);
     });
   });
+}
+
+type RawTailscalePeer = {
+  ID?: string;
+  PublicKey?: string;
+  HostName?: string;
+  DNSName?: string;
+  TailscaleIPs?: string[];
+  OS?: string;
+  Online?: boolean;
+};
+
+function parseSelfPeer(raw?: RawTailscalePeer): TailscalePeer | undefined {
+  if (!raw) return undefined;
+  return {
+    id: raw.PublicKey || raw.ID || 'self',
+    name: raw.HostName || 'self',
+    dnsName: raw.DNSName || '',
+    ips: raw.TailscaleIPs || [],
+    os: raw.OS || 'unknown',
+    online: Boolean(raw.Online),
+    isSelf: true,
+  };
+}
+
+function parseRemotePeers(peerMap: Record<string, RawTailscalePeer> | undefined, meshNodes: MeshNode[]): TailscalePeer[] {
+  if (!peerMap) return [];
+  const peers: TailscalePeer[] = [];
+  for (const [key, p] of Object.entries(peerMap)) {
+    const name = p.HostName || key;
+    const expectedId = tailscaleNodeId(name, p.DNSName);
+    const matchedMeshNode = meshNodes.find(n => n.id === expectedId);
+
+    peers.push({
+      id: p.PublicKey || p.ID || key,
+      name,
+      dnsName: p.DNSName || '',
+      ips: p.TailscaleIPs || [],
+      os: p.OS || 'unknown',
+      online: Boolean(p.Online),
+      isSelf: false,
+      meshNodeId: matchedMeshNode?.id,
+    });
+  }
+  return peers.sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function resolveNodeLabel(rawName: string, os?: string, ips?: string[]): string {
+  const primaryIp = Array.isArray(ips) && ips.length > 0 ? ips[0] : undefined;
+  const ipSuffix = primaryIp ? ` · ${primaryIp}` : '';
+  return `${rawName} (${os || 'tailscale'}${ipSuffix})`;
+}
+
+function resolveCapabilities(allowShell: boolean): MeshCapability[] {
+  const base: MeshCapability[] = ['filesystem.list', 'filesystem.read', 'filesystem.write'];
+  return allowShell ? [...base, 'shell.exec'] : base;
 }
 
 export class TailscaleService {
@@ -71,66 +130,12 @@ export class TailscaleService {
     try {
       const raw = await this.runner();
       const data = JSON.parse(raw) as {
-        Self?: {
-          ID?: string;
-          PublicKey?: string;
-          HostName?: string;
-          DNSName?: string;
-          TailscaleIPs?: string[];
-          OS?: string;
-          Online?: boolean;
-        };
-        Peer?: Record<string, {
-          ID?: string;
-          PublicKey?: string;
-          HostName?: string;
-          DNSName?: string;
-          TailscaleIPs?: string[];
-          OS?: string;
-          Online?: boolean;
-        }>;
+        Self?: RawTailscalePeer;
+        Peer?: Record<string, RawTailscalePeer>;
       };
-
       const meshNodes = this.store.listNodes();
-
-      let self: TailscalePeer | undefined;
-      if (data.Self) {
-        self = {
-          id: data.Self.PublicKey || data.Self.ID || 'self',
-          name: data.Self.HostName || 'self',
-          dnsName: data.Self.DNSName || '',
-          ips: data.Self.TailscaleIPs || [],
-          os: data.Self.OS || 'unknown',
-          online: Boolean(data.Self.Online),
-          isSelf: true,
-        };
-      }
-
-      const peers: TailscalePeer[] = [];
-      if (data.Peer) {
-        for (const [key, p] of Object.entries(data.Peer)) {
-          const name = p.HostName || key;
-          const expectedId = tailscaleNodeId(name, p.DNSName);
-          const matchedMeshNode = meshNodes.find(n => n.id === expectedId);
-
-          peers.push({
-            id: p.PublicKey || p.ID || key,
-            name,
-            dnsName: p.DNSName || '',
-            ips: p.TailscaleIPs || [],
-            os: p.OS || 'unknown',
-            online: Boolean(p.Online),
-            isSelf: false,
-            meshNodeId: matchedMeshNode?.id,
-          });
-        }
-      }
-
-      // Sort: online first, then by name
-      peers.sort((a, b) => {
-        if (a.online !== b.online) return a.online ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
+      const self = parseSelfPeer(data.Self);
+      const peers = parseRemotePeers(data.Peer, meshNodes);
 
       return { available: true, self, peers };
     } catch (cause) {
@@ -148,21 +153,19 @@ export class TailscaleService {
     const id = tailscaleNodeId(rawName, input.dnsName);
 
     const existing = this.store.getNode(id);
+    if (existing?.status === 'revoked') {
+      throw new Error(`Device ${id} is revoked. Revoked devices cannot be rebound via Tailscale discovery.`);
+    }
     const allowShell = input.allowShell !== false;
     const now = new Date().toISOString();
-    const primaryIp = Array.isArray(input.ips) && input.ips.length > 0 ? input.ips[0] : undefined;
-    const ipSuffix = primaryIp ? ` · ${primaryIp}` : '';
+    const caps = resolveCapabilities(allowShell);
 
     const node: MeshNode = {
       id,
-      label: `${rawName} (${input.os || 'tailscale'}${ipSuffix})`,
+      label: resolveNodeLabel(rawName, input.os, input.ips),
       platform: input.os || existing?.platform || 'unknown',
-      capabilities: allowShell
-        ? ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec']
-        : ['filesystem.list', 'filesystem.read', 'filesystem.write'],
-      allowedCapabilities: allowShell
-        ? ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec']
-        : ['filesystem.list', 'filesystem.read', 'filesystem.write'],
+      capabilities: caps,
+      allowedCapabilities: caps,
       status: 'offline',
       lastSeenAt: existing?.lastSeenAt ?? null,
       createdAt: existing?.createdAt || now,

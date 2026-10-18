@@ -52,7 +52,7 @@ flowchart TD
   - 执行 `tailscale status --json`，设置 3000ms 超时限制与 5s TTL 缓存/请求合并；
   - 解析 `Self` 与 `Peer`，提取主机名、DNS 域名、Tailscale IP、OS、在线状态；
   - 与 `MeshStore.listNodes()` 做标识匹配；
-  - `bindTailscaleNode`：使用确定性命名工具 `tailscaleNodeId(name, dnsName)` 生成 `node:ts:<sanitized-name>`，若重复调用则幂等更新对应节点的 platform/capabilities/label 等字段，且保留初次创建时间；登记节点初始为离线登记清单记录（`status: 'offline'`, `token_hash: NULL`）；实际执行命令与派发仍需在对端通过标准的 `agentdock-node pair/connect` 流程配对接入。
+  - `bindTailscaleNode`：使用确定性命名工具 `tailscaleNodeId(name, dnsName)` 生成 `node:ts:<sanitized-name>`，若重复调用则幂等更新对应节点的 platform/capabilities/label 等字段，且保留初次创建时间；注意名称清洗会折叠符号差异（如 `gpu--server` 与 `gpu-server` 映射至同一 ID），发生碰撞时后绑定的设备将更新现有记录；若节点状态为 `revoked` 则明确拒绝重新绑定；登记节点初始为离线登记清单记录（`status: 'offline'`, `token_hash: NULL`）；实际执行命令与派发仍需在对端通过标准的 `agentdock-node pair/connect` 流程配对接入。
 
 ### 步骤 3：路由接入与管理鉴权 (`apps/daemon`)
 - 文件：`apps/daemon/src/mesh/mesh-gateway.ts`

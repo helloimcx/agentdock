@@ -143,6 +143,17 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes as off
     os: 'linux',
   });
   assert.equal(symbolBound.id, 'node:ts:peer');
+
+  // 7. Revoking a node marks it revoked; re-binding a revoked node must throw and preserve revoked state
+  store.revoke('node:ts:fnos');
+  const revokedNode = store.getNode('node:ts:fnos');
+  assert.equal(revokedNode?.status, 'revoked');
+  assert.throws(
+    () => service.bindNode({ name: 'fnos', os: 'linux' }),
+    /is revoked/,
+  );
+  const stillRevoked = store.getNode('node:ts:fnos');
+  assert.equal(stillRevoked?.status, 'revoked');
 });
 
 test('TailscaleService implements 5-second TTL cache and in-flight deduplication', async () => {

@@ -13,7 +13,7 @@ import { LOCAL_AI_CORE_BASE } from './client.js';
 
 export { sanitizeTailscaleName, tailscaleNodeId };
 
-/** Keep administrator credentials in caller memory; never place tokens in URLs or storage. */
+/** Create a Mesh API client. Tokens can be provided in memory or resolved dynamically from local storage. */
 export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, '');
   const resolveToken = () => token || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || undefined : undefined);

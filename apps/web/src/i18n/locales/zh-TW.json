@@ -274,7 +274,7 @@
     "path": "Path within the approved directory",
     "program": "Program",
     "arguments": "Arguments as a JSON array",
-    "authenticationHelp": "Enter the Mesh administrator token configured on your server. It stays in this page’s memory only.",
+    "authenticationHelp": "輸入伺服器配置的 Mesh 管理員權杖。權杖保存在瀏覽器的本機儲存空間中，用於授權裝置探索與綁定。",
     "adminToken": "Mesh administrator token",
     "connect": "Connect",
     "disconnect": "Disconnect",
