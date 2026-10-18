@@ -281,12 +281,14 @@ export class ButlerDispatcher {
       this.store.butler.updateDelegation(delegation.id, { threadId, runId: sent.runId,
         runIds: [...new Set([...delegation.runIds, sent.runId])], operationId: operation.id,
         status: 'running', deliveryState: 'sent', summary: undefined, error: undefined,
-        approvalIds: [], nextCheckAt: undefined, checkLeaseUntil: undefined, resultDeliveryState: 'pending' });
+        approvalIds: [], nextCheckAt: undefined, checkLeaseUntil: undefined, resultDeliveryState: 'pending',
+        pendingFollowups: this.store.butler.operations(delegation.id).filter((item) => item.status === 'pending').map((item) => item.content) });
     } catch (error) {
       const detail = messageOf(error);
       this.store.butler.updateOperation({ ...operation, status: 'failed', error: detail });
       this.store.butler.updateDelegation(delegation.id, { status: 'blocked', nextCheckAt: undefined, checkLeaseUntil: undefined,
-        error: `Internal workspace dispatch failed: ${detail}` });
+        error: `Internal workspace dispatch failed: ${detail}`,
+        pendingFollowups: this.store.butler.operations(delegation.id).filter((item) => item.status === 'pending').map((item) => item.content) });
     }
   }
 

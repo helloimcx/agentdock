@@ -141,6 +141,44 @@ test('an agent run without a Core-issued Butler capability cannot fall back to m
   });
 });
 
+test('butler setup inside an agent run uses the local Core profile route and forwards full flags', async () => {
+  await withCore(async (baseUrl, requests) => {
+    const roster = JSON.stringify([{ botId: researchBot }]);
+    const result = await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster,
+      '--transport', 'core', '--json'], baseUrl, {
+      LOCAL_AI_THREAD_ID: owner,
+      AGENTDOCK_SANDBOX_RUN_ID: 'run:agentdock::98df2f10-3eeb-45d9-bd43-571bbce6cd52:1792231500000',
+      AGENTDOCK_BUTLER_CONTEXT_TOKEN: 'valid-token',
+    });
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(requests[0].method, 'PUT');
+    assert.equal(requests[0].url, '/api/local/v1/butler/profile');
+    assert.deepEqual(requests[0].body, {
+      managerBotId: managerBot,
+      managedBots: JSON.parse(roster),
+      transport: 'core',
+      threadId: owner,
+    });
+  });
+});
+
+test('butler watch omits intervalSeconds when --interval is absent', async () => {
+  await withCore(async (baseUrl, requests) => {
+    const env = { LOCAL_AI_THREAD_ID: owner };
+    const result = await invoke(['butler', 'watch', taskId, '--delegation', delegationId,
+      '--instructions', 'Check progress', '--json'], baseUrl, env);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(requests[0].method, 'POST');
+    assert.equal(requests[0].url, `/api/local/v1/butler/tasks/${encodeURIComponent(taskId)}/watch`);
+    assert.deepEqual(requests[0].body, {
+      ownerThreadId: owner,
+      delegationId,
+      instructions: 'Check progress',
+    });
+  });
+});
+
+
 test('butler usage errors cannot become mutations or invent request identities', async () => {
   await withCore(async (baseUrl, requests) => {
     const env = { LOCAL_AI_THREAD_ID: owner };

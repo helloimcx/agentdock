@@ -116,7 +116,7 @@ async function executeAgentButlerCommand(action: string, taskId: string, flags: 
   agent: { threadId: string; runId: string; capability: string } | undefined): Promise<{ handled: boolean; payload?: unknown }> {
   if (!agent) return { handled: false };
   const headers = agentContextHeaders(agent.threadId, agent.runId, agent.capability);
-  if (action === 'profile' || action === 'bots' || action === 'setup') {
+  if (action === 'profile' || action === 'bots') {
     return { handled: true, payload: await request(baseUrl, 'POST', '/butler/agent', { action }, headers) };
   }
   if (action === 'report') return { handled: true, payload: await postWorkerReport(flags, baseUrl, headers) };
@@ -230,6 +230,7 @@ async function taskOperation(action: string, taskId: string, flags: ParsedFlags,
     body.mode = mode;
   }
   if (action === 'accept') body = { ...body, delegationId: requiredValue(flags, 'delegation'), reportVersion: Number(requiredValue(flags, 'report-version')) };
-  if (action === 'watch') body = { ...body, delegationId: requiredValue(flags, 'delegation'), instructions: requiredValue(flags, 'instructions'), intervalSeconds: Number(getFlag(flags, 'interval') || '600') };
+  if (action === 'watch') body = { ...body, delegationId: requiredValue(flags, 'delegation'), instructions: requiredValue(flags, 'instructions'),
+    ...(getFlag(flags, 'interval') ? { intervalSeconds: Number(getFlag(flags, 'interval')) } : {}) };
   return request(baseUrl, 'POST', `${path}/${action}`, body);
 }

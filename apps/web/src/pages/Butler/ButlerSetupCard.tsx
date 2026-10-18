@@ -4,14 +4,16 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ButlerBotEndpoint, ButlerProfile, ButlerTrackingPolicy, WorkspaceSummary } from '@cc/superai-contracts';
 import { Badge, Button, Card, Input, Select } from '@/components/ui';
-import { butlerChatHref } from './butler-page-model';
-
-type ButlerTransport = 'channel' | 'core';
-type ManagedBotInput = { botId: string; bindingId?: string; sharedChatId: string; managedBotName: string; managerBotName: string };
-
-function botSelectionKey(bot: ButlerBotEndpoint) {
-  return bot.bindingId || bot.id;
-}
+import {
+  butlerChatHref,
+  botSelectionKey,
+  isConnectedBinding,
+  isResolvedBinding,
+  canSaveButlerSetup,
+  buildManagedBotInputs,
+  type ButlerTransport,
+  type ManagedBotInput,
+} from './butler-page-model';
 
 interface ButlerSetupCardProps {
   profile: ButlerProfile | null;
@@ -161,38 +163,12 @@ interface ButlerSetupFormProps {
   onManagerBotNameChange: (botId: string, name: string) => void;
 }
 
-function hasValidTrackingPolicy(policy: ButlerTrackingPolicy) {
-  return Number.isInteger(policy.defaultCheckIntervalSeconds) && policy.defaultCheckIntervalSeconds >= 60 && policy.defaultCheckIntervalSeconds <= 86400
-    && Number.isInteger(policy.checkBudget) && policy.checkBudget >= 1 && policy.checkBudget <= 200
-    && Number.isInteger(policy.deadlineSeconds) && policy.deadlineSeconds >= 86400 && policy.deadlineSeconds <= 30 * 86400;
-}
-
-function isConnectedBinding(key: string, bots: ButlerBotEndpoint[]) {
-  return bots.find((bot) => botSelectionKey(bot) === key)?.connected === true;
-}
-
-function canSaveButlerSetup(props: ButlerSetupFormProps) {
-  const usesCore = props.transport === 'core';
-  const channelWorkersConnected = usesCore || props.managedBotIds.every((key) => isConnectedBinding(key, props.bots));
-  const hasChannelRoutes = props.managedBotIds.every((key) => props.sharedChatIds[key]?.trim().startsWith('oc_')
-    && props.managedBotNames[key]?.trim() && props.managerBotNames[key]?.trim());
-  return Boolean(props.managerBotId && isConnectedBinding(props.managerBotId, props.bots) && channelWorkersConnected
-    && props.managedBotIds.length > 0 && hasValidTrackingPolicy(props.trackingPolicy) && (usesCore || hasChannelRoutes));
-}
-
-function buildManagedBotInputs(props: ButlerSetupFormProps) {
-  return props.managedBotIds.flatMap((key) => {
-    const bot = props.bots.find((entry) => botSelectionKey(entry) === key);
-    if (!bot) return [];
-    return [{ botId: bot.id, bindingId: bot.bindingId, sharedChatId: props.sharedChatIds[key]?.trim() || '',
-      managedBotName: props.managedBotNames[key]?.trim() || '', managerBotName: props.managerBotNames[key]?.trim() || '' }];
-  });
-}
-
 function saveButlerSetup(props: ButlerSetupFormProps) {
   const manager = props.bots.find((bot) => botSelectionKey(bot) === props.managerBotId);
   if (!manager) return;
-  void props.onConfigure(manager.id, manager.bindingId, buildManagedBotInputs(props), props.transport, props.trackingPolicy);
+  const managed = buildManagedBotInputs(props);
+  if (managed.length !== props.managedBotIds.length) return;
+  void props.onConfigure(manager.id, manager.bindingId, managed, props.transport, props.trackingPolicy);
 }
 
 function ManagedBotsField({ props, usesCore }: { props: ButlerSetupFormProps; usesCore: boolean }) {
@@ -209,6 +185,7 @@ function ManagedBotsField({ props, usesCore }: { props: ButlerSetupFormProps; us
       {!usesCore && <p className="text-xs text-muted-foreground">{t('butler.sharedChatHint')}</p>}
     </fieldset>
     {!usesCore && !props.managedBotIds.every((key) => isConnectedBinding(key, props.bots)) && <p className="text-sm text-amber-600 dark:text-amber-400">{t('butler.channelRequiresConnected')}</p>}
+    {!props.managedBotIds.every((key) => isResolvedBinding(key, props.bots)) && <p className="text-sm text-amber-600 dark:text-amber-400">{t('butler.notDiscovered')}</p>}
   </>;
 }
 

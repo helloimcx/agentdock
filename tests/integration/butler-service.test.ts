@@ -1177,3 +1177,52 @@ test('failed followup admission remains failed without automatic retries or acce
     assert.equal(resumed.status, 'running');
   } finally { f.close(); }
 });
+
+test('core transport followups clear pending followups so the task can be accepted and completed', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({ ownerThreadId: profile.threadId, requestId: 'request:core-followup:1a2b3c4d',
+      title: 'Research topic', completionCriteria: 'The report is completed.',
+      assignments: [{ key: 'research', botId: BOTS.research.id, title: 'Research', prompt: 'Research the topic.' }] });
+    const delegation = task.delegations[0];
+    const initialRun = delegation.runId!;
+    await agentCommand(f, { threadId: delegation.threadId!, runId: initialRun }, { action: 'report', report: workerReport('research-1', {
+      outcome: 'succeeded', summary: 'Initial research completed.',
+    }) });
+    finish(f, initialRun, 'Initial research report');
+    await f.service.reconcile();
+
+    const reviewingInitial = f.service.get(task.id, profile.threadId);
+    assert.equal(reviewingInitial.status, 'reviewing');
+
+    const followupInput = { ownerThreadId: profile.threadId, delegationId: delegation.id, content: 'Add more details', requestId: 'request:followup:1a2b3c4d' };
+    await f.service.followup(task.id, followupInput);
+    await f.service.reconcile();
+
+    const afterFollowup = f.service.get(task.id, profile.threadId);
+    const followupDelegation = afterFollowup.delegations[0];
+    assert.equal(afterFollowup.status, 'running');
+    assert.equal(followupDelegation.pendingFollowups.length, 0);
+    const followupRun = followupDelegation.runId!;
+    assert.notEqual(followupRun, initialRun);
+
+    await agentCommand(f, { threadId: followupDelegation.threadId!, runId: followupRun }, { action: 'report', report: workerReport('research-2', {
+      outcome: 'succeeded', summary: 'Followup research completed.',
+    }) });
+    finish(f, followupRun, 'Followup research report');
+    await f.service.reconcile();
+
+    const reviewingFollowup = f.service.get(task.id, profile.threadId);
+    assert.equal(reviewingFollowup.status, 'reviewing');
+    assert.equal(reviewingFollowup.delegations[0].status, 'reviewing');
+
+    const acceptContext = await managerRun(f, profile.threadId);
+    const accepted = await agentCommand(f, acceptContext, { action: 'accept', taskId: task.id,
+      delegationId: delegation.id, reportVersion: reviewingFollowup.delegations[0].reportVersion });
+    assert.equal((accepted as any).status, 'completed');
+    assert.equal(f.service.get(task.id, profile.threadId).status, 'completed');
+    assert.equal(f.service.get(task.id, profile.threadId).delegations[0].status, 'completed');
+  } finally { f.close(); }
+});

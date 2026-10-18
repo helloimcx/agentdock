@@ -305,7 +305,6 @@ export class ButlerService {
     const delegation = task.delegations.find((entry) => entry.id === delegationId);
     const interval = resolveWatchInterval(task, delegation, intervalSeconds);
     validateWatchTarget(delegation, instructions);
-    if (!delegation) throw new ButlerError('A waiting external operation with a stable reference and read-only check instructions is required.', 409);
     const now = Date.now();
     this.store.butler.updateDelegation(delegationId, buildWatchPatch(task, delegation, instructions, interval, now));
     await this.reconcile();
@@ -598,7 +597,7 @@ function resolveWatchInterval(task: ButlerTask, delegation: ButlerTask['delegati
   return interval;
 }
 
-function validateWatchTarget(delegation: ButlerTask['delegations'][number] | undefined, instructions: string) {
+function validateWatchTarget(delegation: ButlerTask['delegations'][number] | undefined, instructions: string): asserts delegation is ButlerTask['delegations'][number] {
   const externalRefs = firstExternalRefs(delegation?.report?.externalRefs, delegation?.checkpoint?.externalRefs);
   if (!delegation || delegation.transport !== 'core' || !['waiting_for_manager', 'blocked'].includes(delegation.status)
     || !externalRefs?.length || !instructions.trim()) {
