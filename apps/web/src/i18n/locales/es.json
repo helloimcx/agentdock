@@ -287,7 +287,7 @@
     "tailscaleNotRunning": "Tailscale no se está ejecutando o la CLI no está disponible.",
     "bindAsMeshNode": "Vincular como nodo Mesh",
     "bound": "Vinculado",
-    "onlineDevices": "Dispositivos en línea Tailscale",
+    "authRequired": "Se requiere el token de administrador de Mesh para descubrir dispositivos. Configure el token arriba.",
     "tailscaleNoPeers": "No se detectaron otros dispositivos pares en la Tailnet actual.",
     "revoke": "Revoke access",
     "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",

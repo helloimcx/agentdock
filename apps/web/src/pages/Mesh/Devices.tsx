@@ -1,8 +1,81 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, PageHeader } from '@/components/ui';
+import { Button, Card, Input, PageHeader } from '@/components/ui';
 import { tailscaleNodeId, type MeshNode, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
 import { useMesh } from './useMesh';
+
+function AdminTokenCard({ onTokenChange }: { onTokenChange: () => void }) {
+  const { t } = useTranslation();
+  const [tokenInput, setTokenInput] = useState('');
+  const [hasToken, setHasToken] = useState(() => Boolean(localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token')));
+  const [isEditing, setIsEditing] = useState(false);
+
+  const handleSave = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const trimmed = tokenInput.trim();
+    if (trimmed) {
+      localStorage.setItem('agentdock_mesh_token', trimmed);
+      setHasToken(true);
+      setIsEditing(false);
+      setTokenInput('');
+      onTokenChange();
+    }
+  };
+
+  const handleClear = () => {
+    localStorage.removeItem('agentdock_mesh_token');
+    localStorage.removeItem('agentdock_token');
+    setHasToken(false);
+    setIsEditing(false);
+    setTokenInput('');
+    onTokenChange();
+  };
+
+  if (!hasToken || isEditing) {
+    return (
+      <Card className="space-y-3 p-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">{t('mesh.adminToken')}</h3>
+          <p className="text-xs text-muted-foreground">{t('mesh.authenticationHelp')}</p>
+        </div>
+        <form className="flex gap-2" onSubmit={handleSave}>
+          <Input
+            aria-label={t('mesh.adminToken')}
+            type="password"
+            autoComplete="off"
+            placeholder={t('mesh.adminToken')}
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+          />
+          <Button type="submit" disabled={!tokenInput.trim()}>{t('mesh.connect')}</Button>
+          {isEditing && (
+            <Button variant="secondary" type="button" onClick={() => setIsEditing(false)}>
+              {t('common.cancel', 'Cancel')}
+            </Button>
+          )}
+        </form>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="flex items-center justify-between p-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full bg-emerald-400" />
+        <span className="font-medium">{t('mesh.adminToken')}:</span>
+        <span className="text-xs text-muted-foreground">••••••••</span>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+          {t('common.edit', 'Change')}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={handleClear}>
+          {t('mesh.disconnect')}
+        </Button>
+      </div>
+    </Card>
+  );
+}
 
 function PairedNodesCard({ nodes, loading }: { nodes: MeshNode[]; loading: boolean }) {
   const { t } = useTranslation();
@@ -45,10 +118,13 @@ function TailscalePeersCard({
   const { t } = useTranslation();
 
   if (!tailscale.available) {
+    const isAuthError = tailscale.error && /401|unauthorized|authentication/i.test(tailscale.error);
     return (
       <Card className="p-4">
         <p className="text-sm text-amber-400">
-          {tailscale.error || t('mesh.tailscaleNotRunning', 'Tailscale is not running or CLI is not available.')}
+          {isAuthError
+            ? t('mesh.authRequired', 'Mesh administrator token is required to discover devices. Please configure the administrator token above.')
+            : (tailscale.error || t('mesh.tailscaleNotRunning', 'Tailscale is not running or CLI is not available.'))}
         </p>
       </Card>
     );
@@ -140,6 +216,8 @@ export default function Devices() {
         os: peer.os,
         allowShell: true,
       });
+    } catch {
+      // Error is caught and surfaced via error in useMesh
     } finally {
       setBindingId(null);
     }
@@ -153,6 +231,8 @@ export default function Devices() {
           {t('mesh.refresh')}
         </Button>
       </div>
+
+      <AdminTokenCard onTokenChange={() => { void refresh(); }} />
 
       {error && <p role="alert" className="text-red-400">{error}</p>}
 

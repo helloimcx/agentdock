@@ -37,6 +37,7 @@ function defaultTailscaleRunner(): Promise<string> {
 export class TailscaleService {
   private cachedStatus?: { response: TailscaleStatusResponse; expiresAt: number };
   private inflightStatus?: Promise<TailscaleStatusResponse>;
+  private cacheVersion = 0;
 
   constructor(
     private readonly store: MeshStore,
@@ -52,9 +53,10 @@ export class TailscaleService {
     if (this.inflightStatus) {
       return this.inflightStatus;
     }
+    const currentVersion = this.cacheVersion;
     this.inflightStatus = this.fetchStatus()
       .then(response => {
-        if (response.available) {
+        if (response.available && this.cacheVersion === currentVersion) {
           this.cachedStatus = { response, expiresAt: Date.now() + this.cacheTtlMs };
         }
         return response;
@@ -148,10 +150,12 @@ export class TailscaleService {
     const existing = this.store.getNode(id);
     const allowShell = input.allowShell !== false;
     const now = new Date().toISOString();
+    const primaryIp = Array.isArray(input.ips) && input.ips.length > 0 ? input.ips[0] : undefined;
+    const ipSuffix = primaryIp ? ` · ${primaryIp}` : '';
 
     const node: MeshNode = {
       id,
-      label: `${rawName} (${input.os || 'tailscale'})`,
+      label: `${rawName} (${input.os || 'tailscale'}${ipSuffix})`,
       platform: input.os || existing?.platform || 'unknown',
       capabilities: allowShell
         ? ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec']
@@ -165,6 +169,7 @@ export class TailscaleService {
     };
 
     this.store.upsertNode(node);
+    this.cacheVersion++;
     this.cachedStatus = undefined;
     return node;
   }

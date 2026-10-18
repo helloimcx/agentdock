@@ -13,7 +13,11 @@ export function useMesh() {
     try {
       const [devices, ts] = await Promise.all([
         client.listNodes(),
-        client.getTailscaleStatus().catch(() => ({ available: false, peers: [] })),
+        client.getTailscaleStatus().catch((err: unknown) => ({
+          available: false,
+          error: err instanceof Error ? err.message : String(err),
+          peers: [],
+        })),
       ]);
       setNodes(devices.nodes);
       setTailscale(ts);
@@ -26,9 +30,16 @@ export function useMesh() {
   }, [client]);
 
   const bindTailscale = useCallback(async (input: TailscaleBindInput) => {
-    const node = await client.bindTailscaleNode(input);
-    await refresh();
-    return node;
+    try {
+      setError('');
+      const node = await client.bindTailscaleNode(input);
+      await refresh();
+      return node;
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : 'Failed to bind Tailscale node.';
+      setError(msg);
+      throw cause;
+    }
   }, [client, refresh]);
 
   useEffect(() => {

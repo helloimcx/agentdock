@@ -83,7 +83,7 @@ flowchart LR
 
 - **Tailscale 节点自动发现与免配置绑定**：
   - Mesh 节点管理页面和工作区配置对话框支持自动读取并展示当前 Tailnet 私有网中的可用设备（包含主机名、OS、内网 IP 与 Tailnet 在线状态），内置 5 秒 TTL 缓存与请求防抖。
-  - 用户无需手动输入 IP 或生成传递配对码，点击即可将 Tailscale 设备一键登记为 Mesh 节点（初始为离线登记状态，对端节点代理连接后激活调度）。
+  - 用户无需手动输入 IP，点击即可将 Tailscale 设备一键登记为 Mesh 节点清单记录（使用确定性 ID `node:ts:<sanitized-name>`，重复登记幂等更新现有节点；初始状态为离线清单记录，执行命令与激活调度需在对端通过标准的 `agentdock-node pair/connect` 流程配对建立 WebSocket 会话）。
 
 ### 2026-10-16
 

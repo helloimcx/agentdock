@@ -16,10 +16,11 @@ export { sanitizeTailscaleName, tailscaleNodeId };
 /** Keep administrator credentials in caller memory; never place tokens in URLs or storage. */
 export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, '');
-  const resolvedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || undefined : undefined);
+  const resolveToken = () => token || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || undefined : undefined);
   async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (resolvedToken) headers.Authorization = `Bearer ${resolvedToken}`;
+    const activeToken = resolveToken();
+    if (activeToken) headers.Authorization = `Bearer ${activeToken}`;
     const response = await fetchImpl(`${base}/mesh${path}`, {
       method, headers,
       body: body === undefined ? undefined : JSON.stringify(body), redirect: 'error',

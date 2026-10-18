@@ -98,6 +98,7 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes as off
   });
 
   assert.equal(bound.id, 'node:ts:dobby');
+  assert.equal(bound.label, 'dobby (linux · 100.105.207.63)');
   assert.equal(bound.status, 'offline');
   assert.equal(bound.lastSeenAt, null);
   assert.equal(bound.platform, 'linux');
@@ -115,6 +116,7 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes as off
     allowShell: false,
   });
   assert.equal(fnosBound.id, 'node:ts:fnos');
+  assert.equal(fnosBound.label, 'fnos (linux)');
   assert.equal(fnosBound.status, 'offline');
   assert.equal(fnosBound.capabilities.includes('shell.exec'), false);
 
@@ -188,6 +190,54 @@ test('TailscaleService implements 5-second TTL cache and in-flight deduplication
   assert.equal(slowRuns, 1);
   assert.equal(concurrent1.available, true);
   assert.equal(concurrent2.available, true);
+});
+
+test('TailscaleService invalidates cache on bindNode and discards in-flight stale cache', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-race-'));
+  const db = new DatabaseSync(join(temp, 'mesh.db'));
+  const store = new MeshStore(db);
+
+  let runnerCallCount = 0;
+  let finishFirstRunner: () => void = () => {};
+  const mockTailscaleJson = JSON.stringify({
+    Self: { HostName: 'laptop', TailscaleIPs: ['100.1.2.3'], OS: 'macOS', Online: true },
+    Peer: {
+      'node-1': { HostName: 'worker', OS: 'linux', TailscaleIPs: ['100.1.2.4'], Online: true },
+    },
+  });
+
+  const runner = async () => {
+    runnerCallCount++;
+    if (runnerCallCount === 1) {
+      await new Promise<void>(resolve => {
+        finishFirstRunner = resolve;
+      });
+    }
+    return mockTailscaleJson;
+  };
+
+  const service = new TailscaleService(store, runner, 5000);
+
+  // 1. Start getStatus() while worker is NOT bound in store
+  const inflightPromise = service.getStatus();
+
+  // 2. While in-flight, bind the worker node
+  service.bindNode({
+    name: 'worker',
+    os: 'linux',
+    ips: ['100.1.2.4'],
+  });
+
+  // 3. Complete the in-flight runner
+  finishFirstRunner();
+  const inflightResult = await inflightPromise;
+  assert.equal(inflightResult.available, true);
+
+  // 4. Stale inflight result must NOT be cached because cacheVersion changed during execution.
+  // Next getStatus() call must execute runner again and reflect the bound node.
+  const freshStatus = await service.getStatus();
+  assert.equal(runnerCallCount, 2);
+  assert.equal(freshStatus.peers[0].meshNodeId, 'node:ts:worker');
 });
 
 test('TailscaleService strictly validates non-existent TAILSCALE_CMD', async () => {

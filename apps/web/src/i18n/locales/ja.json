@@ -287,7 +287,7 @@
     "tailscaleNotRunning": "Tailscale が実行されていないか、CLI が利用できません。",
     "bindAsMeshNode": "Mesh ノードとしてバインド",
     "bound": "バインド済み",
-    "onlineDevices": "Tailscale オンラインデバイス",
+    "authRequired": "デバイスを検出するには Mesh 管理トークンが必要です。上記で管理トークンを設定してください。",
     "tailscaleNoPeers": "現在の Tailnet で他のピアデバイスが検出されませんでした。",
     "revoke": "Revoke access",
     "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",

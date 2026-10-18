@@ -84,7 +84,7 @@ Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata witho
 | GET | `/tailscale/status` | Discover peers on current Tailscale tailnet (cached 5s; admin token required) |
 | POST | `/tailscale/bind` | Bind a Tailscale peer as a Mesh node (`name`, optional `dnsName`, `ips`, `os`, `allowShell`; admin token required) |
 
-Bound Tailscale nodes are initially registered with `status: 'offline'` and `token_hash: NULL`. Because Mesh execution dispatch requires a live connected WebSocket session, dispatched operations will return conflict (409) until an agent connects with paired credentials.
+Bound Tailscale nodes are registered via the deterministic ID helper `tailscaleNodeId(name, dnsName)` yielding `node:ts:<sanitized-name>`. Identical sanitized names idempotently update existing node records (updating capabilities and label with primary IP) while preserving creation timestamps. Bound nodes are initially registered as offline inventory records with `status: 'offline'` and `token_hash: NULL`. Because Mesh execution dispatch requires a live connected WebSocket session, dispatched operations will return conflict (409) until an agent connects with paired credentials via standard `agentdock-node pair/connect` enrollment.
 
 ## Running two devices
 

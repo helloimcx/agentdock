@@ -327,7 +327,7 @@
     "tailscaleNotRunning": "Tailscale 未运行或 CLI 不可用。",
     "bindAsMeshNode": "一键绑定为 Mesh 节点",
     "bound": "已绑定",
-    "onlineDevices": "Tailscale 在线设备",
+    "authRequired": "探测 Tailscale 设备需要 Mesh 管理凭据。请在上方配置管理凭据。",
     "tailscaleNoPeers": "未在当前 Tailnet 中探测到其他对端设备。",
     "revoke": "撤销访问",
     "revokeConfirm": "撤销 {{label}} 的访问权限？正在执行的请求将被中断。",

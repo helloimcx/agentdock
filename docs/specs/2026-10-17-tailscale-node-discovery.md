@@ -26,7 +26,7 @@
 
 - 不接管 Tailscale 本身的安装与登录进程（用户依然通过 Tailscale 官方客户端或命令行登录）。
 - 不绕过 Tailscale 的 ACL 或安全策略。
-- 不伪造 WebSocket 会话在线状态；新绑定的 Tailscale 节点明确保持 `status: 'offline'`，直到节点代理通过有效凭证握手连接。
+- 不伪造 WebSocket 会话在线状态；新绑定的 Tailscale 节点明确保持 `status: 'offline'`，执行命令与调度需在对端通过标准的 `agentdock-node pair/connect` 流程配对建立 WebSocket 会话。
 
 ## 4. 行为与接口 (Behavior / Interface)
 
@@ -73,7 +73,7 @@ export function tailscaleNodeId(rawName: string, dnsName?: string): string;
   - 请求头：`Authorization: Bearer <AGENTDOCK_MESH_ADMIN_TOKEN>`
   - 请求体：`TailscaleBindInput`
   - 未鉴权时返回 `401 Unauthorized`
-  - 逻辑：以 `node:ts:<safe-name>` 形式在 `mesh_nodes` 中插入或更新节点，初始状态为 `status: 'offline'`，返回已绑定的 `MeshNode`。
+  - 逻辑：使用确定性命名工具 `tailscaleNodeId(name, dnsName)` 以 `node:ts:<safe-name>` 形式在 `mesh_nodes` 中插入或幂等更新节点（包括 label 中的 IP 标注及 capabilities），初始状态为 `status: 'offline'`，`token_hash` 为 NULL；执行派发操作需等待设备通过 `agentdock-node` 建立 WebSocket 连接，否则返回 409 Conflict。返回登记的 `MeshNode`。
 
 ## 5. 约束与兼容性 (Constraints / Compatibility)
 
