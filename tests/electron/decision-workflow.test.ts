@@ -8,8 +8,8 @@ import {
   composeDeepAnalysisPrompt,
   extractDecisionRecord,
   composeRetrospectivePrompt,
-} from '../../services/local-ai-core/src/automation/decision-workflow.js';
-import { DecisionLogService } from '../../services/local-ai-core/src/automation/decision-log-service.js';
+} from '../../apps/daemon/src/automation/decision-workflow.js';
+import { DecisionLogService } from '../../apps/daemon/src/automation/decision-log-service.js';
 
 test('formatGroundedDataContract formats verified snapshot and strict grounding rules', () => {
   const payload = {

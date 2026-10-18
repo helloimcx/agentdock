@@ -5,11 +5,11 @@ import { AddressInfo } from 'node:net';
 import {
   formatElementsCompact,
   sortElementsByReadingOrder,
-} from '../../services/local-ai-core/src/mesh/mobile-ui/formatter.js';
-import { MobileUiClient } from '../../services/local-ai-core/src/mesh/mobile-ui/client.js';
-import { runMobileUiCli } from '../../services/local-ai-core/src/mesh/mobile-ui/cli.js';
-import { buildAndroidMobileInstructions } from '../../services/local-ai-core/src/execution/remote-mesh/device-environment.js';
-import type { UIElement, UIDumpResult, UIStatusResult } from '../../services/local-ai-core/src/mesh/mobile-ui/types.js';
+} from '../../apps/daemon/src/mesh/mobile-ui/formatter.js';
+import { MobileUiClient } from '../../apps/daemon/src/mesh/mobile-ui/client.js';
+import { runMobileUiCli } from '../../apps/daemon/src/mesh/mobile-ui/cli.js';
+import { buildAndroidMobileInstructions } from '../../apps/daemon/src/execution/remote-mesh/device-environment.js';
+import type { UIElement, UIDumpResult, UIStatusResult } from '../../apps/daemon/src/mesh/mobile-ui/types.js';
 
 test('Mobile UI Formatter sorts and formats elements compactly', () => {
   const rawElements: UIElement[] = [

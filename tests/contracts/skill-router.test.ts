@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SkillRouter } from '../../services/local-ai-core/src/skills/skill-router.js';
-import { ToolIndex } from '../../services/local-ai-core/src/skills/tool-index.js';
+import { SkillRouter } from '../../apps/daemon/src/skills/skill-router.js';
+import { ToolIndex } from '../../apps/daemon/src/skills/tool-index.js';
 import type { SkillInfo } from '@cc/superai-contracts/skills';
 
 const mockSkills: SkillInfo[] = [
@@ -92,8 +92,8 @@ test('skill router returns empty selectedSkills for generic conversation', () =>
 });
 
 test('skills.route HTTP handler processes POST and GET route requests', async () => {
-  const { registerSkillsHandlers } = await import('../../services/local-ai-core/src/runtime/handlers/skills-handler.js');
-  const { ManagedSkillCatalog } = await import('../../services/local-ai-core/src/runtime/managed-skill-catalog.js');
+  const { registerSkillsHandlers } = await import('../../apps/daemon/src/runtime/handlers/skills-handler.js');
+  const { ManagedSkillCatalog } = await import('../../apps/daemon/src/runtime/managed-skill-catalog.js');
   const { join } = await import('node:path');
 
   const catalog = new ManagedSkillCatalog();
@@ -149,7 +149,7 @@ test('skills.route HTTP handler processes POST and GET route requests', async ()
 });
 
 test('skill router matches mobile-automation intent when tools are available', async () => {
-  const { ManagedSkillCatalog } = await import('../../services/local-ai-core/src/runtime/managed-skill-catalog.js');
+  const { ManagedSkillCatalog } = await import('../../apps/daemon/src/runtime/managed-skill-catalog.js');
   const router = new SkillRouter({
     toolIndex: new ToolIndex({ resolver: (tool) => ['mobile-apps', 'mobile-ui'].includes(tool) ? '/bin/' + tool : null }),
   });

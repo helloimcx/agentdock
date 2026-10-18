@@ -3,8 +3,8 @@ import test from 'node:test';
 import {
   normalizeSymbolForTencent,
   normalizeSymbolForYahoo,
-} from '../../services/local-ai-core/src/automation/real-stock-quote-fetcher.js';
-import { StockQuoteProvider } from '../../services/local-ai-core/src/automation/mock-stock-provider.js';
+} from '../../apps/daemon/src/automation/real-stock-quote-fetcher.js';
+import { StockQuoteProvider } from '../../apps/daemon/src/automation/mock-stock-provider.js';
 
 test('stock symbol normalization for Tencent and Yahoo', () => {
   // US stocks

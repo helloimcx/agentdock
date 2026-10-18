@@ -5,8 +5,8 @@ import { dirname, join } from 'node:path';
 import process from 'node:process';
 import test from 'node:test';
 
-import { stageImmutableScriptPackage } from '../../services/local-ai-core/src/automation/scripts/script-package.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { stageImmutableScriptPackage } from '../../apps/daemon/src/automation/scripts/script-package.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 
 type ScriptPackageTestHooks = {
   beforeDirectoryRead?: (directory: string) => void;

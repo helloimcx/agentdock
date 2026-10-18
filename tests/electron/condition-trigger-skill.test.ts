@@ -4,9 +4,9 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
 
-const sourceSkillPath = join(process.cwd(), 'electron', 'managed-skills', 'condition-trigger', 'SKILL.md');
+const sourceSkillPath = join(process.cwd(), 'apps', 'desktop', 'managed-skills', 'condition-trigger', 'SKILL.md');
 
 test('condition trigger skill requires the staged two-approval workflow and helper owns exact LAC requests', () => {
   const content = readFileSync(sourceSkillPath, 'utf8');
@@ -23,7 +23,7 @@ test('condition trigger skill requires the staged two-approval workflow and help
   assert.match(content, /Do not write.*managed script directory/i);
   assert.doesNotMatch(content, /automations\/scripts\/[^\s]+\/(?:sha|hash)/i);
 
-  const helper = readFileSync(join(process.cwd(), 'electron', 'managed-skills', 'condition-trigger', 'scripts', 'register-condition-trigger.sh'), 'utf8');
+  const helper = readFileSync(join(process.cwd(), 'apps', 'desktop', 'managed-skills', 'condition-trigger', 'scripts', 'register-condition-trigger.sh'), 'utf8');
   assert.match(helper, /lac script stage --script/);
   assert.match(helper, /lac script create --title/);
   assert.match(helper, /lac script test-approval/);
@@ -39,10 +39,10 @@ test('condition trigger skill requires the staged two-approval workflow and help
 });
 
 test('managed skill catalog loads exact source and packaged condition-trigger skill layouts', () => {
-  const source = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'electron', 'managed-skills') }).get('condition-trigger');
+  const source = new ManagedSkillCatalog({ rootDir: join(process.cwd(), 'apps', 'desktop', 'managed-skills') }).get('condition-trigger');
   assert(source);
   assert.equal(source.content, readFileSync(sourceSkillPath, 'utf8'));
-  const packagedRoot = join(process.cwd(), 'dist-electron', 'electron', 'managed-skills');
+  const packagedRoot = join(process.cwd(), 'dist-electron', 'apps', 'desktop', 'managed-skills');
   assert.equal(existsSync(join(packagedRoot, 'condition-trigger', 'SKILL.md')), true);
   const packaged = new ManagedSkillCatalog({ rootDir: packagedRoot }).get('condition-trigger');
   assert(packaged);
@@ -62,7 +62,7 @@ test('condition trigger helper creates source-only staging input through a tempo
   const fakeLac = join(bin, 'lac');
   writeFileSync(fakeLac, '#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE_ARGS"\nfor argument in "$@"; do last="$argument"; done\ncat "$last" > "$CAPTURE_BODY"\n');
   chmodSync(fakeLac, 0o755);
-  const helper = join(process.cwd(), 'electron', 'managed-skills', 'condition-trigger', 'scripts', 'register-condition-trigger.sh');
+  const helper = join(process.cwd(), 'apps', 'desktop', 'managed-skills', 'condition-trigger', 'scripts', 'register-condition-trigger.sh');
   const run = (args: string[]) => new Promise<void>((resolve, reject) => {
     execFile(helper, args, {
       env: { ...process.env, PATH: `${bin}:${process.env.PATH || ''}`, CAPTURE_ARGS: captureArgs, CAPTURE_BODY: captureBody },

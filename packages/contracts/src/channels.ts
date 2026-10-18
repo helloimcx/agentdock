@@ -17,4 +17,4 @@ export type {
   LocalCoreChannelQrCodeStatus,
 } from './local-core.js';
 export type { ChannelRoute } from './scheduler.js';
-export type { DesktopBridgeEvent } from '../../../shared/desktop.js';
+export type { DesktopBridgeEvent } from './desktop.js';

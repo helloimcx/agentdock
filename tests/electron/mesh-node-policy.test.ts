@@ -4,8 +4,8 @@ import { mkdtemp, writeFile, readFile, chmod, stat, rm } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { NodeCapabilities } from '../../services/local-ai-core/src/mesh/node-capabilities.js';
-import { createPrivateJson, readPrivateJson, writePrivateJson } from '../../services/local-ai-core/src/mesh/node-credentials.js';
+import { NodeCapabilities } from '../../apps/daemon/src/mesh/node-capabilities.js';
+import { createPrivateJson, readPrivateJson, writePrivateJson } from '../../apps/daemon/src/mesh/node-credentials.js';
 import type { MeshExecution } from '../../packages/contracts/src/mesh.js';
 
 test('Node independently rejects shell without opt-in, oversized files and command output', async () => {

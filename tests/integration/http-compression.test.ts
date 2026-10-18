@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { json, rawJson } from '../../services/local-ai-core/src/runtime/server-helpers.js';
+import { json, rawJson } from '../../apps/daemon/src/runtime/server-helpers.js';
 
 class MockResponse extends EventEmitter {
   statusCode = 200;

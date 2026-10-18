@@ -6,12 +6,12 @@ import {
   getMobileApp,
   buildAmStartCommand,
   buildDirectIntentCommand,
-} from '../../services/local-ai-core/src/mesh/mobile-apps/index.js';
-import { runMobileAppsCli } from '../../services/local-ai-core/src/mesh/mobile-apps/cli.js';
+} from '../../apps/daemon/src/mesh/mobile-apps/index.js';
+import { runMobileAppsCli } from '../../apps/daemon/src/mesh/mobile-apps/cli.js';
 import {
   buildDeviceClaudeMd,
   buildDeviceSystemPrompt,
-} from '../../services/local-ai-core/src/execution/remote-mesh/device-environment.js';
+} from '../../apps/daemon/src/execution/remote-mesh/device-environment.js';
 
 test('Mobile Apps Registry contains at least 30 supported actions across key applications', () => {
   const apps = listMobileApps();

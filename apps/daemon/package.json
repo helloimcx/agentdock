@@ -1,0 +1,12 @@
+{
+  "name": "@agentdock/daemon",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@agentdock/contracts": "workspace:*",
+    "@agentdock/knowledge": "workspace:*",
+    "@agentdock/plugin-sdk": "workspace:*",
+    "ws": "8.20.0"
+  }
+}

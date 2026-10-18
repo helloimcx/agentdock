@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Readable } from 'node:stream';
-import { registerSchedulerHandlers } from '../../services/local-ai-core/src/runtime/handlers/scheduler-handler.js';
-import type { RouteHandler } from '../../services/local-ai-core/src/runtime/server-helpers.js';
+import { registerSchedulerHandlers } from '../../apps/daemon/src/runtime/handlers/scheduler-handler.js';
+import type { RouteHandler } from '../../apps/daemon/src/runtime/server-helpers.js';
 
 test('scheduler ID routes reject jobs outside the supplied workspace', async () => {
   const calls: string[] = [];

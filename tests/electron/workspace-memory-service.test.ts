@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 import {
   WorkspaceMemoryService,
   MemoryPathError,
   parseMemoryMarkdown,
   serializeMemoryMarkdown,
-} from '../../services/local-ai-core/src/memory/workspace-memory-service.js';
-import type { LocalCoreWorkspaceMemoryStore } from '../../services/local-ai-core/src/acp/store/workspace-memory-store.js';
+} from '../../apps/daemon/src/memory/workspace-memory-service.js';
+import type { LocalCoreWorkspaceMemoryStore } from '../../apps/daemon/src/acp/store/workspace-memory-store.js';
 
 function assertMemoryPathError(status: 400 | 403 | 404, pattern?: RegExp) {
   return (error: unknown): boolean => {

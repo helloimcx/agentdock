@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
-import { WorkspaceRouter } from '../../services/local-ai-core/src/router/workspace-router.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
+import { WorkspaceRouter } from '../../apps/daemon/src/router/workspace-router.js';
 import { parseSessionHandoffDelimiter } from '@cc/superai-contracts/handoff';
 
 test('cross-agent handoff end-to-end: switch agent creates pending handoff and next prompt injects it', async () => {

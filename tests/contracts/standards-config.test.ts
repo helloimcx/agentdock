@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import {
   StandardsService,
   standardsConfigFromOptions,
-} from '../../services/local-ai-core/src/standards/standards-service.js';
-import type { DesktopStandardsOptions } from '../../shared/desktop.js';
+} from '../../apps/daemon/src/standards/standards-service.js';
+import type { DesktopStandardsOptions } from '../../packages/contracts/src/desktop.js';
 
 test('standardsConfigFromOptions maps snake_case options with documented defaults', () => {
   const config = standardsConfigFromOptions({

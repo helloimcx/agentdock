@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { ButlerService } from '../../services/local-ai-core/src/butler/butler-service.js';
-import { encodeButlerBotProtocolMessage } from '../../services/local-ai-core/src/butler/butler-bot-protocol.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { ButlerService } from '../../apps/daemon/src/butler/butler-service.js';
+import { encodeButlerBotProtocolMessage } from '../../apps/daemon/src/butler/butler-bot-protocol.js';
 
 const BOTS = {
   manager: { id: 'lark:app-butler:ou-butler', platform: 'lark' as const, appId: 'app-butler', botOpenId: 'ou-butler', workspaceId: 'butler', instanceId: 'assistant', displayName: 'Butler bot', connected: true },

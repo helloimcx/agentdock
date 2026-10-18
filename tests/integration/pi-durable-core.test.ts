@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
 
 test('Core Pi Durable runs persist in one global SQLite and publish an exact final result', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'agentdock-pi-durable-core-'));

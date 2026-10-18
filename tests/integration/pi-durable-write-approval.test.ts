@@ -4,9 +4,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import type { DesktopBridgeEvent } from '../../shared/desktop.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
+import type { DesktopBridgeEvent } from '../../packages/contracts/src/desktop.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
 
 test('Pi Durable write tool requires the existing per-write approval and Core performs the approved file write', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'pi-durable-write-approval-'));

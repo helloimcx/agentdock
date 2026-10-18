@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 
 function runScript(args: string[], env: Record<string, string>) {
-  const scriptPath = join(process.cwd(), 'electron', 'managed-skills', 'knowledge-base', 'scripts', 'search-knowledge.sh');
+  const scriptPath = join(process.cwd(), 'apps', 'desktop', 'managed-skills', 'knowledge-base', 'scripts', 'search-knowledge.sh');
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     execFile('sh', [scriptPath, ...args], {
       cwd: process.cwd(),

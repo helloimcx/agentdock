@@ -4,10 +4,10 @@ import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAiCoreServer } from '../../services/local-ai-core/src/runtime/server.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
-import { DeliveryOutboxService } from '../../services/local-ai-core/src/automation/delivery-outbox-service.js';
+import { LocalAiCoreServer } from '../../apps/daemon/src/runtime/server.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
+import { DeliveryOutboxService } from '../../apps/daemon/src/automation/delivery-outbox-service.js';
 
 test('real HTTP admission and SSE baseline recover across Core restart without rerunning a delivered result', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'durable-http-'));

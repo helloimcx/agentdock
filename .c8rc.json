@@ -1,11 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/c8rc.json",
   "include": [
-    "services/**/*.ts",
-    "packages/**/*.ts",
-    "electron/**/*.ts",
-    "shared/**/*.ts",
-    "src/**/*.ts"
+    "apps/**/*.ts",
+    "packages/**/*.ts"
   ],
   "exclude": [
     "**/*.test.ts",

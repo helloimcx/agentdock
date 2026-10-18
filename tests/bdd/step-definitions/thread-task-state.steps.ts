@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   taskStateFromControllerStatus,
   chatControllerActionForTaskState,
-} from '../../../src/pages/Threads/thread-chat-model.js';
+} from '../../../apps/web/src/pages/Threads/thread-chat-model.js';
 import type { BddWorld } from '../support/world.js';
 
 Given<BddWorld>(/^a controller status of "([^"]+)"$/, function (status: string) {

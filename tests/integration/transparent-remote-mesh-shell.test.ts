@@ -5,16 +5,16 @@ import {
   resolvePlatformHint,
   buildDeviceClaudeMd,
   buildDeviceSystemPrompt,
-} from '../../services/local-ai-core/src/execution/remote-mesh/device-environment.js';
+} from '../../apps/daemon/src/execution/remote-mesh/device-environment.js';
 import {
   extractCommandFromArgv,
   parseShellArgv,
   executeMeshShell,
-} from '../../services/local-ai-core/src/execution/remote-mesh/agentdock-mesh-shell.js';
+} from '../../apps/daemon/src/execution/remote-mesh/agentdock-mesh-shell.js';
 import { readFileSync, unlinkSync, existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { classifyLacShellCommand } from '../../services/local-ai-core/src/execution/remote-mesh/lac-control.js';
+import { classifyLacShellCommand } from '../../apps/daemon/src/execution/remote-mesh/lac-control.js';
 
 test('device-environment resolves platform hints accurately without hardcoding', () => {
   const androidHint = resolvePlatformHint('android');

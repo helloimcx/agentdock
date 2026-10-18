@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import { EventEmitter } from 'node:events';
-import { LocalAiCoreServer } from '../../services/local-ai-core/src/runtime/server.js';
+import { LocalAiCoreServer } from '../../apps/daemon/src/runtime/server.js';
 
 test('LocalAiCoreServer.stop() does not hang on a client with an unterminated in-flight request', async () => {
   const server = new LocalAiCoreServer({ controller: new EventEmitter() } as any, { port: 0 });

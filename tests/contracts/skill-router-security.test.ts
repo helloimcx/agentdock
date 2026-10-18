@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SkillRouter } from '../../services/local-ai-core/src/skills/skill-router.js';
+import { SkillRouter } from '../../apps/daemon/src/skills/skill-router.js';
 import type { SkillInfo, SkillRoutingRule } from '@cc/superai-contracts/skills';
 
 function skillWithMetadata(id: string, metadata: Record<string, unknown>): SkillInfo {

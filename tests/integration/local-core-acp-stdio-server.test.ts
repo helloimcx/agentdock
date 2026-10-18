@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { PassThrough } from 'node:stream';
 import { randomUUID } from 'node:crypto';
-import { AcpStdioServer } from '../../services/local-ai-core/src/acp/server/acp-stdio-server.js';
-import { LocalCoreApiClient } from '../../services/local-ai-core/src/acp/server/local-core-client.js';
+import { AcpStdioServer } from '../../apps/daemon/src/acp/server/acp-stdio-server.js';
+import { LocalCoreApiClient } from '../../apps/daemon/src/acp/server/local-core-client.js';
 
 interface FakeCoreRequest {
   method: string;

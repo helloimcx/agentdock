@@ -12,11 +12,11 @@ import {
   compareSeverity,
   aggregateAuditResults,
   SkillSecurityError,
-} from '../../services/local-ai-core/src/security/skill-content-scan.js';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { LocalSkillSourceStore } from '../../services/local-ai-core/src/acp/store/skill-source-store.js';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { computeSkillContentHash } from '../../services/local-ai-core/src/runtime/skill-distribution-service.js';
+} from '../../apps/daemon/src/security/skill-content-scan.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
+import { LocalSkillSourceStore } from '../../apps/daemon/src/acp/store/skill-source-store.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { computeSkillContentHash } from '../../apps/daemon/src/runtime/skill-distribution-service.js';
 
 function git(cwd: string, ...args: string[]) {
   execFileSync('git', args, {
@@ -361,7 +361,7 @@ test('HTTP route handler for skills.scan returns report and audit results', asyn
     writeFileSync(join(userDir, 'demo-skill', 'SKILL.md'), '---\nname: Demo\n---\n# Demo\n');
 
     const catalog = new ManagedSkillCatalog({ userSkillsDir: userDir });
-    const { registerSkillsHandlers } = await import('../../services/local-ai-core/src/runtime/handlers/skills-handler.js');
+    const { registerSkillsHandlers } = await import('../../apps/daemon/src/runtime/handlers/skills-handler.js');
     const routeMap = new Map();
     registerSkillsHandlers(routeMap, catalog);
 

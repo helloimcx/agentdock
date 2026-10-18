@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   StandardsService,
   StandardSecurityError,
-} from '../../services/local-ai-core/src/standards/standards-service.js';
+} from '../../apps/daemon/src/standards/standards-service.js';
 
 test('scanStandardPack detects prompt injection (T01) and fails report', () => {
   const service = new StandardsService();

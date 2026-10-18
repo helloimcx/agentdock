@@ -38,7 +38,16 @@ function spawnManaged(command, args, options = {}) {
   return child;
 }
 
-const viteProcess = spawnManaged('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', '5173']);
+const viteProcess = spawnManaged('pnpm', [
+  'exec',
+  'vite',
+  '--config',
+  'apps/web/vite.config.ts',
+  '--host',
+  '127.0.0.1',
+  '--port',
+  '5173',
+]);
 const tscProcess = spawnManaged('pnpm', ['exec', 'tsc', '-p', 'tsconfig.electron.json', '--watch', '--preserveWatchOutput'], {
   stdio: ['inherit', 'pipe', 'pipe'],
 });

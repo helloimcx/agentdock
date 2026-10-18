@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMarkdownFrontmatter } from '../../services/local-ai-core/src/kernel/frontmatter.js';
+import { parseMarkdownFrontmatter } from '../../apps/daemon/src/kernel/frontmatter.js';
 
 test('parseMarkdownFrontmatter returns null when no frontmatter block is present', () => {
   assert.equal(parseMarkdownFrontmatter('just body text\n'), null);

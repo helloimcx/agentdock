@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
-import { registerFilesystemHandlers } from '../../services/local-ai-core/src/runtime/handlers/fs-handler.js';
-import type { RouteHandler } from '../../services/local-ai-core/src/runtime/server-helpers.js';
+import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
+import { registerFilesystemHandlers } from '../../apps/daemon/src/runtime/handlers/fs-handler.js';
+import type { RouteHandler } from '../../apps/daemon/src/runtime/server-helpers.js';
 
 test('parseLocalAiCoreRoute recognizes fs.directories route', () => {
   assert.deepEqual(parseLocalAiCoreRoute('POST', '/api/local/v1/fs/directories'), { name: 'fs.directories' });

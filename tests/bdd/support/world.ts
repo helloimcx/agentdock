@@ -4,11 +4,11 @@
  * their defaults every time — no manual reset hook is required.
  */
 import { setWorldConstructor, World, type IWorldOptions } from '@cucumber/cucumber';
-import type { TriggerDecision } from '../../../services/local-ai-core/src/automation/automation-condition-engine.js';
+import type { TriggerDecision } from '../../../apps/daemon/src/automation/automation-condition-engine.js';
 import type {
   ConditionDecision,
   ConditionEvaluation,
-} from '../../../services/local-ai-core/src/automation/automation-condition-engine.js';
+} from '../../../apps/daemon/src/automation/automation-condition-engine.js';
 import type { AutomationActivation, AutomationCondition } from '@cc/superai-contracts';
 
 export class BddWorld extends World {

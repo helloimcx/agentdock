@@ -1,6 +1,6 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { createChatEventGate } from '../../../src/components/chat/chat-event-gate.js';
+import { createChatEventGate } from '../../../apps/web/src/components/chat/chat-event-gate.js';
 import type { BddWorld } from '../support/world.js';
 
 const SESSION = 'workspace:thread-1';
