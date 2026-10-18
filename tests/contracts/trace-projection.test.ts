@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalCoreTraceStore } from '../../services/local-ai-core/src/acp/store/trace-store.js';
-import { AcpTraceProjector } from '../../services/local-ai-core/src/acp/local-core-acp-trace-projector.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalCoreTraceStore } from '../../apps/daemon/src/acp/store/trace-store.js';
+import { AcpTraceProjector } from '../../apps/daemon/src/acp/local-core-acp-trace-projector.js';
 
 const SAMPLE_THREAD_ID = 'thread:agentdock::8fcbb1be-fab3-4a2a-925d-fa0b1bc5a49b';
 const SAMPLE_ACP_RUN_ID = 'run:agentdock::8fcbb1be-fab3-4a2a-925d-fa0b1bc5a49b:1786824010461';

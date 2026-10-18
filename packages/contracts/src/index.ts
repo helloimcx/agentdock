@@ -1,4 +1,4 @@
-export * from '../../../shared/desktop.js';
+export * from './desktop.js';
 export * from './local-core.js';
 export * from './automations.js';
 export * from './scheduler.js';

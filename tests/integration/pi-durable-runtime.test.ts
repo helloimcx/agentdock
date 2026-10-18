@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { PiDurableHost } from '../../services/local-ai-core/src/agents/pi-durable/host.js';
-import { checkDurableExecutor } from '../../services/local-ai-core/src/agents/pi-durable/capability.js';
+import { PiDurableHost } from '../../apps/daemon/src/agents/pi-durable/host.js';
+import { checkDurableExecutor } from '../../apps/daemon/src/agents/pi-durable/capability.js';
 
 test('Durable SQLite has one owner, independent conversations, and stable submissions across restart', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'agentdock-pi-durable-'));

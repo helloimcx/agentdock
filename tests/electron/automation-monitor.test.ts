@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import {
   evaluateMonitorCondition,
   validateRestrictedExpression,
-} from '../../services/local-ai-core/src/automation/condition-evaluator.js';
-import { AutomationMonitorService } from '../../services/local-ai-core/src/automation/automation-monitor-service.js';
-import { isMonitorWithinSchedule } from '../../services/local-ai-core/src/automation/automation-monitor-service.js';
-import { AutomationService } from '../../services/local-ai-core/src/automation/automation-service.js';
-import { monitorToAutomationInput } from '../../services/local-ai-core/src/automation/legacy-automation-mappers.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
+} from '../../apps/daemon/src/automation/condition-evaluator.js';
+import { AutomationMonitorService } from '../../apps/daemon/src/automation/automation-monitor-service.js';
+import { isMonitorWithinSchedule } from '../../apps/daemon/src/automation/automation-monitor-service.js';
+import { AutomationService } from '../../apps/daemon/src/automation/automation-service.js';
+import { monitorToAutomationInput } from '../../apps/daemon/src/automation/legacy-automation-mappers.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
 
 const event = {
   id: 'event-1',

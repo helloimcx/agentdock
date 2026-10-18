@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const sourceRoot = join(process.cwd(), 'services', 'local-ai-core', 'src');
+const sourceRoot = join(process.cwd(), 'apps', 'daemon', 'src');
 
 test('all background agent entry points use the shared execution deadline', () => {
   const entryPoints = [

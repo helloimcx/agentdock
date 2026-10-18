@@ -1,7 +1,7 @@
 import { When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { createChannelThreadMessageInput } from '../../../services/local-ai-core/src/channel/shared/content.js';
-import { resolveChannelFilePath } from '../../../services/local-ai-core/src/channel/shared/file-utils.js';
+import { createChannelThreadMessageInput } from '../../../apps/daemon/src/channel/shared/content.js';
+import { resolveChannelFilePath } from '../../../apps/daemon/src/channel/shared/file-utils.js';
 import type { BddWorld } from '../support/world.js';
 
 When<BddWorld>(

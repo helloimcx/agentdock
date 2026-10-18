@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AnthropicSandboxRunner } from '../../services/local-ai-core/src/automation/scripts/anthropic-sandbox-runner.js';
+import { AnthropicSandboxRunner } from '../../apps/daemon/src/automation/scripts/anthropic-sandbox-runner.js';
 
 const root = mkdtempSync(join(tmpdir(), 'automation-sandbox-runtime-'));
 const packagePath = join(root, 'package');

@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { EventEmitter } from 'node:events';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/store/local-core-acp-store.js';
-import { CostService } from '../../services/local-ai-core/src/cost/cost-service.js';
-import { AutomationActionExecutor } from '../../services/local-ai-core/src/automation/automation-action-executor.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/store/local-core-acp-store.js';
+import { CostService } from '../../apps/daemon/src/cost/cost-service.js';
+import { AutomationActionExecutor } from '../../apps/daemon/src/automation/automation-action-executor.js';
 import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-contracts';
 
 function createMockEventBus() {
@@ -29,8 +29,8 @@ test('CostService records usage, emits events, and enforces budget preflight', a
   `).run();
 
   const store = {
-    cost: new (await import('../../services/local-ai-core/src/acp/store/cost-store.js')).LocalCoreCostStore(db),
-    budgets: new (await import('../../services/local-ai-core/src/acp/store/budget-store.js')).LocalCoreBudgetStore(db),
+    cost: new (await import('../../apps/daemon/src/acp/store/cost-store.js')).LocalCoreCostStore(db),
+    budgets: new (await import('../../apps/daemon/src/acp/store/budget-store.js')).LocalCoreBudgetStore(db),
     getModelProvider: () => undefined,
   } as any;
 

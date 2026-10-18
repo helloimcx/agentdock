@@ -5,13 +5,13 @@ import {
   isActivationDue,
   missedActivationAt,
   nextActivationAt,
-} from '../../services/local-ai-core/src/automation/automation-trigger-engine.js';
+} from '../../apps/daemon/src/automation/automation-trigger-engine.js';
 import {
   admitConditionEvaluation,
   decideCondition,
   decideTrigger,
   evaluateCondition,
-} from '../../services/local-ai-core/src/automation/automation-condition-engine.js';
+} from '../../apps/daemon/src/automation/automation-condition-engine.js';
 import {
   compileCronExpression,
   cronMatchesDate,
@@ -20,7 +20,7 @@ import {
   findNextCronMatchUtc,
   findPreviousCronMatchInTimezone,
   findPreviousCronMatchUtc,
-} from '../../services/local-ai-core/src/scheduler/cron.js';
+} from '../../apps/daemon/src/scheduler/cron.js';
 
 const at = (value: string) => new Date(value);
 

@@ -39,7 +39,7 @@ Legacy tasks continue to use Lark group messages with explicit app-scoped bot me
 
 ## Interfaces and artifacts
 
-The Core API supports bot discovery and profile configuration, owner-scoped task create/list/get, `followup`, `cancel`, `complete`, `accept`, `watch`, and appending delegations. Agent commands use the capability-protected `/butler/agent` endpoint; local management HTTP routes follow the same-user trust model used by other Local AI Core APIs. Shared contracts and the SDK are in `packages/contracts/src/butler.ts` and `packages/core-sdk/src/butler.ts`; CLI handlers are in `services/local-ai-core/src/cli/butler-cli-handlers.ts`.
+The Core API supports bot discovery and profile configuration, owner-scoped task create/list/get, `followup`, `cancel`, `complete`, `accept`, `watch`, and appending delegations. Agent commands use the capability-protected `/butler/agent` endpoint; local management HTTP routes follow the same-user trust model used by other Local AI Core APIs. Shared contracts and the SDK are in `packages/contracts/src/butler.ts` and `packages/sdk/src/butler.ts`; CLI handlers are in `apps/daemon/src/cli/butler-cli-handlers.ts`.
 
 - [Current Butler workflow](butler-orchestration.html) and [typed source](butler-orchestration.workflow.json)
 - [2026-10-17 implementation specification](../specs/2026-10-17-butler-lac-orchestration.md) and [implementation plan](../plans/2026-10-17-butler-lac-orchestration.md)

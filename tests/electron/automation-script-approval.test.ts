@@ -9,9 +9,9 @@ import type {
   AutomationScriptTestReport,
   AutomationScriptVersion,
 } from '@cc/superai-contracts';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import type { LocalSecurityStore } from '../../services/local-ai-core/src/acp/store/security-store.js';
-import { AutomationScriptService } from '../../services/local-ai-core/src/automation/automation-script-service.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import type { LocalSecurityStore } from '../../apps/daemon/src/acp/store/security-store.js';
+import { AutomationScriptService } from '../../apps/daemon/src/automation/automation-script-service.js';
 
 const NOW = '2026-07-08T12:00:00.000Z';
 

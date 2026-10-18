@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import type { LocalCoreProjectConfig } from '../../services/local-ai-core/src/router/workspace-router-types.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpSessionCoordinator } from '../../apps/daemon/src/acp/local-core-acp-session-coordinator.js';
+import type { LocalCoreProjectConfig } from '../../apps/daemon/src/router/workspace-router-types.js';
 
 test('ACP session coordinator schedules idle close for local mode sessions on release', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-session-reclaim-'));
@@ -253,7 +253,7 @@ test('LocalCoreAcpBackend evicts runThreadMap entry once the run reaches a termi
     store = new LocalCoreAcpStore(userDataPath);
     const thread = store.createThread('workspace-test', 'Thread 1');
     const runThreadMap = new Map<string, string>();
-    const { LocalCoreAcpBackend } = await import('../../services/local-ai-core/src/acp/local-core-acp-backend.js');
+    const { LocalCoreAcpBackend } = await import('../../apps/daemon/src/acp/local-core-acp-backend.js');
     const backend = new LocalCoreAcpBackend({
       store,
       runThreadMap,
@@ -319,7 +319,7 @@ test('LocalCoreAcpBackend keeps runThreadMap empty when the prompt fails before 
     store = new LocalCoreAcpStore(userDataPath);
     const thread = store.createThread('workspace-test', 'Thread 1');
     const runThreadMap = new Map<string, string>();
-    const { LocalCoreAcpBackend } = await import('../../services/local-ai-core/src/acp/local-core-acp-backend.js');
+    const { LocalCoreAcpBackend } = await import('../../apps/daemon/src/acp/local-core-acp-backend.js');
     const backend = new LocalCoreAcpBackend({
       store,
       runThreadMap,
@@ -378,7 +378,7 @@ test('LocalCoreAcpBackend releases session for local mode runs upon completion',
   try {
     store = new LocalCoreAcpStore(userDataPath);
     const thread = store.createThread('workspace-test', 'Thread 1');
-    const { LocalCoreAcpBackend } = await import('../../services/local-ai-core/src/acp/local-core-acp-backend.js');
+    const { LocalCoreAcpBackend } = await import('../../apps/daemon/src/acp/local-core-acp-backend.js');
     const backend = new LocalCoreAcpBackend({
       store,
       runThreadMap: new Map(),

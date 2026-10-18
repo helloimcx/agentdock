@@ -10,7 +10,10 @@ import { createBrotliCompress, createGzip } from 'node:zlib';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rendererRoot = path.join(packageRoot, 'dist', 'renderer');
-const coreEntry = path.join(packageRoot, 'dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
+const daemonEntry = existsSync(path.join(packageRoot, 'dist-electron', 'apps', 'daemon', 'src', 'runtime', 'standalone.js'))
+  ? path.join(packageRoot, 'dist-electron', 'apps', 'daemon', 'src', 'runtime', 'standalone.js')
+  : path.join(packageRoot, 'dist-electron', 'services', 'local-ai-core', 'src', 'runtime', 'standalone.js');
+const coreEntry = daemonEntry;
 const defaultHost = '127.0.0.1';
 const defaultWebPort = 14173;
 const defaultCoreOrigin = 'http://127.0.0.1:9831';
@@ -64,7 +67,7 @@ function printHelp() {
   console.log(`AgentDock
 
 Usage:
-  agentdock core
+  agentdock daemon (or agentdock core)
   agentdock web [--host 127.0.0.1] [--port 14173] [--core-origin http://127.0.0.1:9831]
   agentdock serve [--host 127.0.0.1] [--port 14173] [--core-origin http://127.0.0.1:9831]
 
@@ -107,7 +110,13 @@ async function isCoreHealthy(coreOrigin = defaultCoreOrigin) {
       signal: AbortSignal.timeout(500),
     });
     const json = await response.json();
-    return response.ok && json?.ok && json?.data?.name === 'local-ai-core';
+    return (
+      response.ok &&
+      json?.ok &&
+      (json?.data?.name === 'agentdock-daemon' ||
+        json?.data?.name === 'local-ai-core' ||
+        json?.data?.legacyName === 'local-ai-core')
+    );
   } catch {
     return false;
   }
@@ -374,7 +383,7 @@ async function runServe(flags) {
 const { command, flags } = parseArgs(process.argv.slice(2));
 
 try {
-  if (command === 'core') {
+  if (command === 'daemon' || command === 'core') {
     await runCore();
   } else if (command === 'web') {
     await runWeb(flags);

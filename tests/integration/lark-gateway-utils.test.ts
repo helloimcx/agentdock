@@ -4,7 +4,7 @@ import {
   extractLarkHeaderMimeType,
   sniffLarkImageExtension,
   summarizeLarkInboundContentParts,
-} from '../../services/local-ai-core/src/channel/lark/gateway-utils.js';
+} from '../../apps/daemon/src/channel/lark/gateway-utils.js';
 
 test('lark gateway attachment utilities preserve content summaries and mime detection', () => {
   assert.equal(summarizeLarkInboundContentParts([{ type: 'file', fileName: 'report.pdf' }]), '[File: report.pdf]');

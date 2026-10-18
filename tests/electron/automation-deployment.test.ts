@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
-import { automationSandboxDiagnosticChecks } from '../../services/local-ai-core/src/runtime/deployment-diagnostics.js';
+import { automationSandboxDiagnosticChecks } from '../../apps/daemon/src/runtime/deployment-diagnostics.js';
 
 test('Linux automation diagnostics report every sandbox prerequisite independently', () => {
   const checks = automationSandboxDiagnosticChecks({
@@ -66,3 +66,32 @@ test('Linux core image installs conditional automation sandbox dependencies', ()
   }
   assert.match(dockerfile, /rm -rf \/var\/lib\/apt\/lists\/\*/);
 });
+
+test('Dockerfiles in docker/agentdock have valid COPY source paths', () => {
+  const dockerfiles = ['core.Dockerfile', 'Dockerfile', 'web.Dockerfile'];
+  for (const file of dockerfiles) {
+    const content = readFileSync(join(process.cwd(), 'docker', 'agentdock', file), 'utf8');
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('COPY ')) continue;
+      if (trimmed.includes('--from=')) continue;
+      const parts = trimmed.slice(5).trim().split(/\s+/);
+      parts.pop(); // remove destination
+      for (const src of parts) {
+        if (src.startsWith('--')) continue;
+        if (src.includes('*')) {
+          const dir = join(process.cwd(), src.includes('/') ? src.slice(0, src.lastIndexOf('/')) : '.');
+          const filePattern = src.includes('/') ? src.slice(src.lastIndexOf('/') + 1) : src;
+          const regex = new RegExp(`^${filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`);
+          assert.ok(existsSync(dir), `${file}: directory for wildcard ${src} must exist`);
+          const matches = readdirSync(dir).filter((fileName) => regex.test(fileName));
+          assert.ok(matches.length > 0, `${file}: wildcard ${src} must match at least one file, found 0`);
+        } else {
+          assert.ok(existsSync(join(process.cwd(), src)), `${file}: source path "${src}" must exist`);
+        }
+      }
+    }
+  }
+});
+

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MeshStore } from '../../dist-electron/services/local-ai-core/src/mesh/mesh-store.js';
-import { MeshGateway } from '../../dist-electron/services/local-ai-core/src/mesh/mesh-gateway.js';
+import { MeshStore } from '../../dist-electron/apps/daemon/src/mesh/mesh-store.js';
+import { MeshGateway } from '../../dist-electron/apps/daemon/src/mesh/mesh-gateway.js';
 
 async function runRealDeviceQA() {
   console.log('=== [1/6] 准备真机测试环境与 Mesh Gateway ===');

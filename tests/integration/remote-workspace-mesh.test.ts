@@ -6,13 +6,13 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
-import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
-import { NodeAgent, enrollNode } from '../../services/local-ai-core/src/mesh/node-agent.js';
-import { createMeshShellToken } from '../../services/local-ai-core/src/mesh/mesh-shell-token.js';
-import { prepareAgentExecutionLaunch } from '../../services/local-ai-core/src/execution/agent-execution-backend.js';
-import { LocalCoreAcpTurnCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-turn-coordinator.js';
-import type { AcpSessionState } from '../../services/local-ai-core/src/router/workspace-router-types.js';
+import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
+import { MeshGateway } from '../../apps/daemon/src/mesh/mesh-gateway.js';
+import { NodeAgent, enrollNode } from '../../apps/daemon/src/mesh/node-agent.js';
+import { createMeshShellToken } from '../../apps/daemon/src/mesh/mesh-shell-token.js';
+import { prepareAgentExecutionLaunch } from '../../apps/daemon/src/execution/agent-execution-backend.js';
+import { LocalCoreAcpTurnCoordinator } from '../../apps/daemon/src/acp/local-core-acp-turn-coordinator.js';
+import type { AcpSessionState } from '../../apps/daemon/src/router/workspace-router-types.js';
 import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
 
 async function until(check: () => boolean, timeout = 4000) {

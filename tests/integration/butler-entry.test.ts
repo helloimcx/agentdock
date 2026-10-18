@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
-import { composeButlerMessage } from '../../services/local-ai-core/src/thread/butler-message-policy.js';
+import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
+import { composeButlerMessage } from '../../apps/daemon/src/thread/butler-message-policy.js';
 
 test('Butler routes preserve goal ID domain and reject unrecognized actions or extra path segments', () => {
   const taskId = 'butler-task:02eb1c50-43b2-4ed7-a050-92794724c352';

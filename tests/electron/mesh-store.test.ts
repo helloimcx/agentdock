@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
+import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
 
 test('Mesh pairing is single-use, expires, persists hashes and supports revocation', () => {
   const db = new DatabaseSync(':memory:');

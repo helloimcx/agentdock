@@ -1,6 +1,6 @@
 import { Given, When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { decideTrigger } from '../../../services/local-ai-core/src/automation/automation-condition-engine.js';
+import { decideTrigger } from '../../../apps/daemon/src/automation/automation-condition-engine.js';
 import type { BddWorld } from '../support/world.js';
 
 Given<BddWorld>(/^the previous match was (unknown|true|false)$/, function (previous) {

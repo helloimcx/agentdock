@@ -35,7 +35,7 @@ test('release validation scripts keep local and candidate gates intact', () => {
   assert.match(testScript, /dist-electron\/tests\/electron\/\*\.test\.js/, 'pnpm test must include Electron tests');
   assert.match(testScript, /dist-electron\/tests\/contracts\/\*\.test\.js/, 'pnpm test must include contract tests');
   assert.match(testScript, /dist-electron\/tests\/integration\/\*\.test\.js/, 'pnpm test must include integration tests');
-  assert.match(testScript, /dist-electron\/packages\/knowledge-api\/test\/\*\.test\.js/, 'pnpm test must include package tests');
+  assert.match(testScript, /dist-electron\/packages\/(?:knowledge|knowledge-api)\/test\/\*\.test\.js/, 'pnpm test must include package tests');
 
   const buildIndex = smokeScript.indexOf('pnpm build');
   const smokeIndex = smokeScript.indexOf('node scripts/e2e-smoke.mjs');
@@ -99,7 +99,10 @@ test('release workflow keeps validation artifacts separate from formal releases'
 
 test('production smoke gate launches the built app and checks runtime capabilities', () => {
   const smokeScript = readFileSync(join(rootDir, 'scripts', 'e2e-smoke.mjs'), 'utf8');
-  const mainSource = readFileSync(join(rootDir, 'electron', 'main.ts'), 'utf8');
+  const mainPath = existsSync(join(rootDir, 'apps', 'desktop', 'src', 'main.ts'))
+    ? join(rootDir, 'apps', 'desktop', 'src', 'main.ts')
+    : join(rootDir, 'electron', 'main.ts');
+  const mainSource = readFileSync(mainPath, 'utf8');
 
   assert.match(smokeScript, /scripts\/launch-electron\.mjs/, 'smoke gate must launch the production Electron entry');
   assert.match(smokeScript, /AI_WORKSTATION_SMOKE_OUTPUT/, 'smoke gate must wait for an app-written smoke snapshot');

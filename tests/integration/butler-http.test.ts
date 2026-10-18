@@ -5,12 +5,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalAiCoreServer } from '../../services/local-ai-core/src/runtime/server.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
-import { WorkspaceRouter } from '../../services/local-ai-core/src/router/workspace-router.js';
-import { ButlerService } from '../../services/local-ai-core/src/butler/butler-service.js';
-import { runCli } from '../../services/local-ai-core/src/cli/lac.js';
+import { LocalAiCoreServer } from '../../apps/daemon/src/runtime/server.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
+import { WorkspaceRouter } from '../../apps/daemon/src/router/workspace-router.js';
+import { ButlerService } from '../../apps/daemon/src/butler/butler-service.js';
+import { runCli } from '../../apps/daemon/src/cli/lac.js';
 
 const ACP_FIXTURE = `
 import { createInterface } from 'node:readline';

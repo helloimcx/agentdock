@@ -1,4 +1,4 @@
-import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopBridgeButtonOption } from '../../../shared/desktop.js';
+import type { DesktopBridgeEvent, DesktopBridgeToolCall, DesktopBridgeButtonOption } from './desktop.js';
 
 export interface ThreadSummary {
   id: string;

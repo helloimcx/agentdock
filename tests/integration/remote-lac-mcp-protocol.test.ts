@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 
 test('LAC MCP stdio server completes initialize and responds to ping', async () => {
-  const serverPath = resolve(__dirname, '../../services/local-ai-core/src/execution/remote-mesh/lac-control-mcp-server.js');
+  const serverPath = resolve(__dirname, '../../apps/daemon/src/execution/remote-mesh/lac-control-mcp-server.js');
   const server = spawn(process.execPath, [serverPath], { stdio: ['pipe', 'pipe', 'pipe'] });
   const output = createInterface({ input: server.stdout });
   const nextResponse = () => new Promise<Record<string, unknown>>((resolveResponse, reject) => {

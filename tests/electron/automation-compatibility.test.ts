@@ -5,18 +5,18 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import type { AutomationMonitorEventSnapshot } from '../../packages/contracts/src/local-core.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { AutomationMonitorService } from '../../services/local-ai-core/src/automation/automation-monitor-service.js';
-import { AutomationService, type AutomationServiceOptions } from '../../services/local-ai-core/src/automation/automation-service.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { AutomationMonitorService } from '../../apps/daemon/src/automation/automation-monitor-service.js';
+import { AutomationService, type AutomationServiceOptions } from '../../apps/daemon/src/automation/automation-service.js';
 import {
   automationToMonitor,
   automationToScheduledJob,
   monitorToAutomationInput,
   scheduledJobToAutomationInput,
-} from '../../services/local-ai-core/src/automation/legacy-automation-mappers.js';
-import { LocalCoreEventBus } from '../../services/local-ai-core/src/kernel/event-bus.js';
-import { ScheduledJobApplicationService } from '../../services/local-ai-core/src/scheduler/scheduled-job-application-service.js';
-import { SchedulerService } from '../../services/local-ai-core/src/scheduler/scheduler-service.js';
+} from '../../apps/daemon/src/automation/legacy-automation-mappers.js';
+import { LocalCoreEventBus } from '../../apps/daemon/src/kernel/event-bus.js';
+import { ScheduledJobApplicationService } from '../../apps/daemon/src/scheduler/scheduled-job-application-service.js';
+import { SchedulerService } from '../../apps/daemon/src/scheduler/scheduler-service.js';
 
 function fixture(
   executeAction?: () => Promise<{ threadId: string; acpRunId: string; deliveryStatus: 'succeeded' }>,

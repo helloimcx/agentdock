@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { LocalSubmissionStore, SubmissionConflictError } from '../../services/local-ai-core/src/acp/store/submission-store.js';
+import { LocalSubmissionStore, SubmissionConflictError } from '../../apps/daemon/src/acp/store/submission-store.js';
 
 test('submission admission is atomic and deduplicates competing identical intents', async () => {
   const db = new DatabaseSync(':memory:');
@@ -49,8 +49,8 @@ test('admission rolls back its effects and retries FIFO claims without replaying
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
 
 function fixture() {
   const path = mkdtempSync(join(tmpdir(), 'agentdock-submission-'));
@@ -211,7 +211,7 @@ test('final message and exact run result roll back together', () => {
   } finally { f.close(); }
 });
 
-import { ExternalService } from '../../services/local-ai-core/src/runtime/external-service.js';
+import { ExternalService } from '../../apps/daemon/src/runtime/external-service.js';
 
 test('external request conflict is rejected before workspace/provider configuration can change', async () => {
   const f = fixture();

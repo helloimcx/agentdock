@@ -4,12 +4,12 @@ import {
   taskStateAfterTypingStop,
   taskStateForBridgeButtons,
   taskStateReasonForBridgeButtons,
-} from '../../../src/pages/Threads/thread-chat-task-state.js';
+} from '../../../apps/web/src/pages/Threads/thread-chat-task-state.js';
 import {
   shouldEchoBridgeActionResponse,
   isStructuredPermissionMessage,
-} from '../../../src/pages/Threads/thread-chat-permission.js';
-import { shouldAcceptLiveBridgeEvent } from '../../../src/pages/Threads/thread-chat-model.js';
+} from '../../../apps/web/src/pages/Threads/thread-chat-permission.js';
+import { shouldAcceptLiveBridgeEvent } from '../../../apps/web/src/pages/Threads/thread-chat-model.js';
 import type { BddWorld } from '../support/world.js';
 
 const bool = (value: string) => value === 'present' || value === 'interactive' || value === 'true';

@@ -5,7 +5,7 @@ import {
   stripWeixinHtml,
   truncateTextByUtf8Bytes,
   utf8ByteLength,
-} from '../../services/local-ai-core/src/channel/weixin/text-utils.js';
+} from '../../apps/daemon/src/channel/weixin/text-utils.js';
 
 test('weixin text utilities preserve utf8 boundaries and decode simple html', () => {
   assert.equal(stripWeixinHtml('<p>A&amp;B</p>'), 'A&B');

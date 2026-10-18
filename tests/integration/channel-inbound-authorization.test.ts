@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveInboundChannelAuthorization } from '../../services/local-ai-core/src/channel/shared/inbound-authorization.js';
+import { resolveInboundChannelAuthorization } from '../../apps/daemon/src/channel/shared/inbound-authorization.js';
 
 function createStore() {
   const authorizedUsers: any[] = [];

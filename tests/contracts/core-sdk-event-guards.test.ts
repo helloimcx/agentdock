@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCoreClient } from '../../packages/core-sdk/src/client.js';
+import { createCoreClient } from '../../packages/sdk/src/client.js';
 import type { LocalCoreEvent } from '@cc/superai-contracts';
 
 let baseUrlCounter = 0;

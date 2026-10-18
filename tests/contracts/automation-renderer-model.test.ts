@@ -10,7 +10,7 @@ import {
   formatRun,
   originLabel,
   redactSecretName,
-} from '../../src/pages/Automation/automation-page-model.js';
+} from '../../apps/web/src/pages/Automation/automation-page-model.js';
 
 const base = {
   id: 'automation:1', workspaceId: 'workspace:1', title: 'Check API', enabled: true,

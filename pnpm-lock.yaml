@@ -11,18 +11,30 @@ importers:
       '@agentclientprotocol/claude-agent-acp':
         specifier: ^0.30.0
         version: 0.30.0(supports-color@10.2.2)
+      '@agentdock/contracts':
+        specifier: workspace:*
+        version: link:packages/contracts
+      '@agentdock/daemon':
+        specifier: workspace:*
+        version: link:apps/daemon
+      '@agentdock/desktop':
+        specifier: workspace:*
+        version: link:apps/desktop
+      '@agentdock/knowledge':
+        specifier: workspace:*
+        version: link:packages/knowledge
+      '@agentdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:packages/plugin-sdk
+      '@agentdock/sdk':
+        specifier: workspace:*
+        version: link:packages/sdk
+      '@agentdock/web':
+        specifier: workspace:*
+        version: link:apps/web
       '@anthropic-ai/sandbox-runtime':
         specifier: 0.0.63
         version: 0.0.63
-      '@cc/core-sdk':
-        specifier: workspace:*
-        version: link:packages/core-sdk
-      '@cc/plugin-sdk':
-        specifier: workspace:*
-        version: link:packages/plugin-sdk
-      '@cc/superai-contracts':
-        specifier: workspace:*
-        version: link:packages/contracts
       '@earendil-works/chord':
         specifier: 1.0.1
         version: 1.0.1
@@ -166,43 +178,47 @@ importers:
         specifier: ^6.3.2
         version: 6.4.2(@types/node@24.12.2)(jiti@1.21.7)(tsx@4.23.1)(yaml@2.9.0)
 
-  packages/contracts: {}
-
-  packages/core-sdk:
+  apps/daemon:
     dependencies:
-      '@cc/superai-contracts':
-        specifier: workspace:*
-        version: link:../contracts
-
-  packages/knowledge-api:
-    dependencies:
-      '@cc/plugin-sdk':
-        specifier: workspace:*
-        version: link:../plugin-sdk
-      '@cc/superai-contracts':
-        specifier: workspace:*
-        version: link:../contracts
-
-  packages/plugin-sdk:
-    dependencies:
-      '@cc/superai-contracts':
-        specifier: workspace:*
-        version: link:../contracts
-
-  services/local-ai-core:
-    dependencies:
-      '@cc/knowledge-api':
-        specifier: workspace:*
-        version: link:../../packages/knowledge-api
-      '@cc/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
-      '@cc/superai-contracts':
+      '@agentdock/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@agentdock/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
+      '@agentdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       ws:
         specifier: 8.20.0
         version: 8.20.0
+
+  apps/desktop: {}
+
+  apps/web: {}
+
+  packages/contracts: {}
+
+  packages/knowledge:
+    dependencies:
+      '@agentdock/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@agentdock/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+
+  packages/plugin-sdk:
+    dependencies:
+      '@agentdock/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/sdk:
+    dependencies:
+      '@agentdock/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
 packages:
 

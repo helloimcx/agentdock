@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync, existsSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { mountActiveSkillsForAgent, mountActiveSkillsSync, resolveAgentSkillsDirectory } from '../../services/local-ai-core/src/runtime/skill-mounter.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
+import { mountActiveSkillsForAgent, mountActiveSkillsSync, resolveAgentSkillsDirectory } from '../../apps/daemon/src/runtime/skill-mounter.js';
 
 const TEST_DIR = join(process.cwd(), 'tmp', 'test-skills-multi-source');
 

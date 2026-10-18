@@ -1,0 +1,379 @@
+import { randomUUID } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
+import type {
+  ThreadDetail,
+  ThreadGetOptions,
+  ThreadSummary,
+} from '@cc/superai-contracts';
+import { normalizeRunStatus } from '@cc/superai-contracts';
+import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
+import type { DesktopBridgeToolCall } from '@cc/superai-contracts';
+import type {
+  LocalMessageRow,
+  LocalRunRow,
+  LocalThreadRow,
+  MessageContentArgs,
+} from './acp-store-types.js';
+import { normalizeMessageContent } from '../../thread/workspace-thread-mappers.js';
+import { encodeThreadId } from '../../thread/workspace-thread-id.js';
+import { normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.js';
+
+// Order matters: also reused by INSERT INTO messages below — keep its VALUES placeholder count in sync.
+const MESSAGE_COLUMNS = 'id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq';
+// Shared by listSummaries and getRow; getRow alone appends acp_launch_config_key.
+const THREAD_COLUMNS = 'id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode';
+// Also reused by the INSERT INTO runs in updateRun — keep its VALUES placeholder count in sync.
+const RUN_COLUMNS = 'id, thread_id, status, started_at, updated_at';
+
+export class LocalThreadStore {
+  constructor(private readonly db: DatabaseSync) {}
+
+  listSummaries(workspaceId: string): ThreadSummary[] {
+    const rows = this.db.prepare(`
+      SELECT ${THREAD_COLUMNS}
+      FROM threads
+      WHERE workspace_id = ?
+      ORDER BY updated_at DESC
+    `).all(workspaceId) as LocalThreadRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspace_id,
+      title: row.title,
+      live: false,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+      historyCount: row.history_count,
+      excerpt: row.excerpt,
+      runId: undefined,
+      bridgeSessionKey: row.bridge_session_key,
+      agentType: row.agent_type,
+      agentMode: row.agent_mode,
+    }));
+  }
+
+  countByWorkspace(workspaceIds: ReadonlyArray<string>): Map<string, number> {
+    const result = new Map<string, number>();
+    if (workspaceIds.length === 0) return result;
+    const placeholders = workspaceIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT workspace_id, COUNT(*) AS total
+      FROM threads
+      WHERE workspace_id IN (${placeholders})
+      GROUP BY workspace_id
+    `).all(...workspaceIds) as Array<{ workspace_id: string; total: number }>;
+    for (const id of workspaceIds) {
+      result.set(id, 0);
+    }
+    for (const row of rows) {
+      result.set(row.workspace_id, Number(row.total || 0));
+    }
+    return result;
+  }
+
+  create(workspaceId: string, title: string, agentType = LOCALCORE_ACP_AGENT_TYPE, agentMode = 'default'): ThreadDetail {
+    const sessionId = randomUUID();
+    const threadId = encodeThreadId(workspaceId, sessionId);
+    const now = new Date().toISOString();
+    const bridgeSessionKey = `${LOCALCORE_ACP_AGENT_TYPE}:${workspaceId}:${sessionId}`;
+    this.db.prepare(`
+      INSERT INTO threads (id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, agent_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?)
+    `).run(threadId, workspaceId, sessionId, bridgeSessionKey, title, agentType, now, now, agentMode || 'default');
+    return {
+      id: threadId,
+      workspaceId,
+      title,
+      live: false,
+      updatedAt: now,
+      createdAt: now,
+      historyCount: 0,
+      excerpt: '',
+      bridgeSessionKey,
+      agentType,
+      agentMode: agentMode || 'default',
+      messages: [],
+      selectedKnowledgeBaseIds: [],
+      pendingPermissionRequest: null,
+    };
+  }
+
+  get(threadId: string, selectedKnowledgeBaseIds: string[], options?: ThreadGetOptions): ThreadDetail {
+    const row = this.getRow(threadId);
+    if (!row) {
+      throw new Error(`Thread not found: ${threadId}`);
+    }
+
+    let messages: LocalMessageRow[];
+    let hasMore = false;
+
+    const limit = options?.limit;
+    if (limit !== undefined && limit > 0) {
+      const rows = this.selectMessageWindow(threadId, limit, options?.beforeSeq);
+      hasMore = rows.length > limit;
+      if (hasMore) rows.pop();
+      messages = rows.reverse();
+    } else {
+      messages = this.db.prepare(`
+        SELECT ${MESSAGE_COLUMNS}
+        FROM messages
+        WHERE thread_id = ?
+        ORDER BY seq ASC
+      `).all(threadId) as LocalMessageRow[];
+    }
+
+    const firstSeq = messages.length > 0 ? messages[0].seq : undefined;
+    const lastSeq = messages.length > 0 ? messages[messages.length - 1].seq : undefined;
+
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      title: row.title,
+      live: false,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+      historyCount: row.history_count,
+      excerpt: row.excerpt,
+      bridgeSessionKey: row.bridge_session_key,
+      agentType: row.agent_type,
+      agentMode: row.agent_mode,
+      messages: messages.map((message) => {
+        const toolCall = parseJson<DesktopBridgeToolCall | null>(message.tool_call_json || 'null', null) || undefined;
+        if (toolCall?.output && toolCall.output.length > 65536) {
+          toolCall.output = `${toolCall.output.slice(0, 65536)}\n... [output truncated for performance]`;
+        }
+        return {
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          toolCall,
+          bridgeKind: normalizeBridgeKind(message.bridge_kind),
+          bridgeStatus: normalizeBridgeStatus(message.bridge_status),
+          timestamp: message.timestamp,
+          kind: message.kind,
+          seq: message.seq,
+        };
+      }),
+      selectedKnowledgeBaseIds,
+      pendingPermissionRequest: null,
+      hasMore,
+      firstSeq,
+      lastSeq,
+    };
+  }
+
+  /** Narrow read for runPrompt turn state: skips user rows and the fat
+   * tool_call_json column, so a whale thread costs bytes of content instead of
+   * a full ThreadDetail hydration per run. Unlike get(), a missing thread
+   * yields [] rather than throwing — runPrompt has already verified the row. */
+  listAssistantTurnMessages(threadId: string): Array<{ kind: LocalMessageRow['kind']; content: string; bridgeKind: ReturnType<typeof normalizeBridgeKind> }> {
+    const rows = this.db.prepare(`
+      SELECT kind, content, bridge_kind
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant'
+      ORDER BY seq ASC
+    `).all(threadId) as Array<Pick<LocalMessageRow, 'kind' | 'content' | 'bridge_kind'>>;
+    return rows.map((row) => ({
+      kind: row.kind,
+      content: row.content,
+      bridgeKind: normalizeBridgeKind(row.bridge_kind),
+    }));
+  }
+
+  private selectMessageWindow(threadId: string, limit: number, beforeSeq?: number): LocalMessageRow[] {
+    if (beforeSeq !== undefined) {
+      return this.db.prepare(`
+        SELECT ${MESSAGE_COLUMNS}
+        FROM messages
+        WHERE thread_id = ? AND seq < ?
+        ORDER BY seq DESC
+        LIMIT ?
+      `).all(threadId, beforeSeq, limit + 1) as LocalMessageRow[];
+    }
+    return this.db.prepare(`
+      SELECT ${MESSAGE_COLUMNS}
+      FROM messages
+      WHERE thread_id = ?
+      ORDER BY seq DESC
+      LIMIT ?
+    `).all(threadId, limit + 1) as LocalMessageRow[];
+  }
+
+  rename(threadId: string, title: string) {
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE threads SET title = ?, updated_at = ? WHERE id = ?').run(title, now, threadId);
+  }
+
+  delete(threadId: string) {
+    this.db.prepare('DELETE FROM threads WHERE id = ?').run(threadId);
+  }
+
+  appendMessage(threadId: string, ...args: MessageContentArgs) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = this.appendMessageInTransaction(threadId, ...args);
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** Caller owns a transaction, allowing admission and message metadata to commit together. */
+  appendMessageInTransaction(threadId: string, ...args: MessageContentArgs) {
+    const timestamp = new Date().toISOString();
+    const id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
+    this.db.prepare(`UPDATE threads SET updated_at = ?, history_count = history_count + 1, excerpt = ? WHERE id = ?`)
+      .run(timestamp, normalizeMessageContent(args[1]), threadId);
+    return { id, timestamp };
+  }
+
+  upsertMessage(threadId: string, id: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
+    const timestamp = new Date().toISOString();
+    const excerpt = normalizeMessageContent(content);
+    const existing = this.db.prepare('SELECT id FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as { id: string } | undefined;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (existing) {
+        this.db.prepare(`
+          UPDATE messages
+          SET content = ?, tool_call_json = ?, bridge_kind = ?, bridge_status = ?, timestamp = ?, kind = ?
+          WHERE id = ? AND thread_id = ?
+        `).run(content, toolCall ? JSON.stringify(toolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, id, threadId);
+      } else {
+        this.insertMessageRow(threadId, id, timestamp, role, content, kind, toolCall, bridgeKind, bridgeStatus);
+        this.db.prepare(`
+          UPDATE threads
+          SET history_count = history_count + 1
+          WHERE id = ?
+        `).run(threadId);
+      }
+      this.db.prepare(`
+        UPDATE threads
+        SET updated_at = ?, excerpt = ?
+        WHERE id = ?
+      `).run(timestamp, excerpt, threadId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { id, timestamp };
+  }
+
+  private insertMessageRow(
+    threadId: string,
+    id: string | undefined,
+    timestamp: string,
+    ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs
+  ) {
+    const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
+    const nextSeq = Number(nextSequenceRow?.next_seq || 0);
+    const messageId = id ?? `${timestamp}-${role}-${nextSeq}`;
+    this.db.prepare(`
+      INSERT INTO messages (${MESSAGE_COLUMNS})
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      messageId,
+      threadId,
+      role,
+      content,
+      toolCall ? JSON.stringify(toolCall) : null,
+      bridgeKind || null,
+      bridgeStatus || null,
+      timestamp,
+      kind,
+      nextSeq,
+    );
+    return messageId;
+  }
+
+  updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {
+    const now = new Date().toISOString();
+    const normalizedStatus = normalizeRunStatus(status);
+    const existing = this.db.prepare('SELECT id FROM runs WHERE id = ?').get(runId) as { id: string } | undefined;
+    if (existing) {
+      this.db.prepare('UPDATE runs SET status = ?, updated_at = ? WHERE id = ?').run(normalizedStatus, now, runId);
+      return;
+    }
+    this.db.prepare(`
+      INSERT INTO runs (${RUN_COLUMNS})
+      VALUES (?, ?, ?, ?, ?)
+    `).run(runId, threadId, normalizedStatus, now, now);
+  }
+
+  getLatestRunForThread(threadId: string) {
+    const row = this.db.prepare(`
+      SELECT ${RUN_COLUMNS}
+      FROM runs
+      WHERE thread_id = ?
+      ORDER BY updated_at DESC, rowid DESC
+      LIMIT 1
+    `).get(threadId) as LocalRunRow | undefined;
+    return row ? { ...row, status: normalizeRunStatus(row.status) } : undefined;
+  }
+
+  getRun(runId: string) {
+    const row = this.db.prepare(`
+      SELECT ${RUN_COLUMNS}
+      FROM runs
+      WHERE id = ?
+    `).get(runId) as LocalRunRow | undefined;
+    return row ? { ...row, status: normalizeRunStatus(row.status) } : undefined;
+  }
+
+  getRow(threadId: string) {
+    return this.db.prepare(`
+      SELECT ${THREAD_COLUMNS}, acp_launch_config_key
+      FROM threads
+      WHERE id = ?
+    `).get(threadId) as LocalThreadRow | undefined;
+  }
+
+  updateAgentMode(threadId: string, mode: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET agent_mode = ?, updated_at = ?
+      WHERE id = ?
+    `).run(mode, new Date().toISOString(), threadId);
+  }
+
+  updateAgentType(threadId: string, agentType: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET agent_type = ?, acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(agentType, new Date().toISOString(), threadId);
+  }
+
+  updateSession(threadId: string, sessionId: string, supportsLoad: boolean, launchConfigKey?: string | null) {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = ?, acp_supports_load = ?, acp_launch_config_key = ?, updated_at = COALESCE(updated_at, ?)
+      WHERE id = ?
+    `).run(sessionId, supportsLoad ? 1 : 0, launchConfigKey ?? null, new Date().toISOString(), threadId);
+  }
+
+  clearSession(threadId: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), threadId);
+  }
+
+  clearWorkspaceSessions(workspaceId: string) {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+      WHERE workspace_id = ?
+    `).run(new Date().toISOString(), workspaceId);
+  }
+
+  clearAllSessions() {
+    this.db.prepare(`
+      UPDATE threads
+      SET acp_session_id = NULL, acp_supports_load = 0, acp_launch_config_key = NULL, updated_at = ?
+    `).run(new Date().toISOString());
+  }
+}

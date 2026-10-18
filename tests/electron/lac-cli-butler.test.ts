@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { runCli } from '../../services/local-ai-core/src/cli/lac.js';
+import { runCli } from '../../apps/daemon/src/cli/lac.js';
 
 const owner = 'thread:butler::66354b58-ec85-45ea-b034-38d47e8f8af0';
 const taskId = 'butler-task:05d7a5fc-f107-45d0-88d9-4c446028ef81';

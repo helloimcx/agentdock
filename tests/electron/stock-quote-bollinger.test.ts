@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculateBollingerBands } from '../../services/local-ai-core/src/automation/bollinger-bands.js';
+import { calculateBollingerBands } from '../../apps/daemon/src/automation/bollinger-bands.js';
 import {
   evaluateMonitorCondition,
   evaluateExpression,
   readMetric,
-} from '../../services/local-ai-core/src/automation/condition-evaluator.js';
-import { StockQuoteProvider } from '../../services/local-ai-core/src/automation/mock-stock-provider.js';
+} from '../../apps/daemon/src/automation/condition-evaluator.js';
+import { StockQuoteProvider } from '../../apps/daemon/src/automation/mock-stock-provider.js';
 
 test('calculateBollingerBands correctly computes SMA, StdDev, Upper, Middle, Lower, and %B', () => {
   // 20 weekly prices: 100, 102, 104, ..., 138 (arithmetic progression with mean 119)
