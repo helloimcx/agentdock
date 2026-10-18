@@ -1226,3 +1226,44 @@ test('core transport followups clear pending followups so the task can be accept
     assert.equal(f.service.get(task.id, profile.threadId).delegations[0].status, 'completed');
   } finally { f.close(); }
 });
+
+test('failed core followup dispatch updates operation to failed, clears pending followups, and blocks delegation', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({ ownerThreadId: profile.threadId, requestId: 'request:core-fail-followup:9f8e7d',
+      title: 'Fail followup test', completionCriteria: 'The task completes.',
+      assignments: [{ key: 'research', botId: BOTS.research.id, title: 'Research', prompt: 'Initial prompt.' }] });
+    const delegation = task.delegations[0];
+    const initialRun = delegation.runId!;
+    await agentCommand(f, { threadId: delegation.threadId!, runId: initialRun }, { action: 'report', report: workerReport('research-1', {
+      outcome: 'succeeded', summary: 'Initial run done.',
+    }) });
+    finish(f, initialRun, 'Initial report');
+    await f.service.reconcile();
+
+    const originalSend = f.router.sendThreadMessage;
+    f.router.sendThreadMessage = async (threadId, content, options) => {
+      if (threadId === delegation.threadId) throw new Error('Simulated workspace dispatch failure');
+      return originalSend(threadId, content, options);
+    };
+
+    const followupInput = { ownerThreadId: profile.threadId, delegationId: delegation.id, content: 'Retry with details', requestId: 'request:fail-followup:1' };
+    await f.service.followup(task.id, followupInput);
+    await f.service.reconcile();
+
+    const failedTask = f.service.get(task.id, profile.threadId);
+    const failedDelegation = failedTask.delegations[0];
+    assert.equal(failedTask.status, 'blocked');
+    assert.equal(failedDelegation.status, 'blocked');
+    assert.equal(failedDelegation.pendingFollowups.length, 0);
+    assert.match(failedDelegation.error || '', /Internal workspace dispatch failed.*Simulated workspace dispatch failure/);
+
+    const operations = f.core.butler.operations(delegation.id);
+    const failedOp = operations.find((op) => op.kind === 'followup');
+    assert.ok(failedOp);
+    assert.equal(failedOp.status, 'failed');
+    assert.match(failedOp.error || '', /Simulated workspace dispatch failure/);
+  } finally { f.close(); }
+});

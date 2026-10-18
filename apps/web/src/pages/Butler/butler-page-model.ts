@@ -1,4 +1,4 @@
-import type { ButlerTask } from '@cc/superai-contracts';
+import type { ButlerBotEndpoint, ButlerTask, ButlerTrackingPolicy } from '@cc/superai-contracts';
 
 export function butlerChatHref(workspaceId: string, threadId: string) {
   return `/chat?${new URLSearchParams({ project: workspaceId, session: threadId }).toString()}`;
@@ -22,8 +22,6 @@ export function orderButlerTasks(tasks: ButlerTask[]) {
     ? 0 : ['completed', 'cancelled'].includes(task.status) ? 2 : 1;
   return [...tasks].sort((a, b) => priority(a) - priority(b) || b.updatedAt.localeCompare(a.updatedAt));
 }
-
-import type { ButlerBotEndpoint, ButlerTrackingPolicy } from '@cc/superai-contracts';
 
 export type ButlerTransport = 'channel' | 'core';
 export type ManagedBotInput = {

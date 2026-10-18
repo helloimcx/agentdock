@@ -123,8 +123,8 @@ export class ButlerStore {
     return claims && this.matchesCurrentCapabilityScope(claims, threadId, runId) ? claims : undefined;
   }
   private hasValidCapabilitySignature(payload: string, supplied: string): boolean {
-    const expected = createHmac('sha256', this.capabilityKey).update(payload).digest();
-    const actual = Buffer.from(supplied, 'base64url');
+    const expected = Buffer.from(createHmac('sha256', this.capabilityKey).update(payload).digest('base64url'), 'utf8');
+    const actual = Buffer.from(supplied, 'utf8');
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   }
   private matchesCurrentCapabilityScope(claims: ButlerAgentCapability, threadId: string, runId: string): boolean {
