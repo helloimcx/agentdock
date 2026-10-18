@@ -1,6 +1,8 @@
 /** A platform bot identity is distinct from its local runtime/workspace binding. */
 export interface ButlerBotEndpoint {
   id: string;
+  /** Stable selection key for a concrete app runtime binding; one app identity may have several bindings. */
+  bindingId?: string;
   platform: 'lark';
   appId: string;
   botOpenId: string;
@@ -11,7 +13,7 @@ export interface ButlerBotEndpoint {
 }
 
 export interface ButlerManagedBot extends ButlerBotEndpoint {
-  /** Shared group containing both this bot and the Butler bot; one group may contain multiple managed bots. */
+  /** Legacy channel transport route; core transport does not require a shared group. */
   sharedChatId: string;
   /** Exact name shown to the Butler app when it mentions this managed bot in the shared group. */
   managedBotName: string;
@@ -25,12 +27,32 @@ export interface ButlerProfile {
   threadId: string;
   managerBot: ButlerBotEndpoint;
   managedBots: ButlerManagedBot[];
+  /** New core mode dispatches directly to the configured workspace runtime. Missing means legacy channel mode. */
+  transport?: 'channel' | 'core';
+  trackingPolicy?: ButlerTrackingPolicy;
+}
+
+export interface ButlerTrackingPolicy {
+  defaultCheckIntervalSeconds: number;
+  checkBudget: number;
+  deadlineSeconds: number;
 }
 
 export interface ButlerProfileInput {
   managerBotId: string;
-  managedBots: Array<{ botId: string; sharedChatId: string; managedBotName: string; managerBotName: string }>;
+  managerBindingId?: string;
+  managedBots: Array<{ botId: string; bindingId?: string; sharedChatId?: string; managedBotName?: string; managerBotName?: string }>;
   threadId?: string;
+  transport?: 'channel' | 'core';
+  trackingPolicy?: ButlerTrackingPolicy;
+}
+
+export interface ButlerExecutionBinding {
+  workspaceId: string;
+  deviceId: string;
+  runtimeId?: string;
+  agentType: string;
+  providerId?: string;
 }
 
 export interface ButlerBotInboundMessage {
@@ -66,7 +88,8 @@ export interface ButlerBotProtocolMessage {
   workerStatus?: 'running' | 'waiting_for_user' | 'failed' | 'cancelled';
 }
 
-export type ButlerStatus = 'queued' | 'sending' | 'waiting_for_bot' | 'running' | 'waiting_for_user' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
+export type ButlerStatus = 'queued' | 'sending' | 'waiting_for_bot' | 'running' | 'waiting_external' | 'waiting_for_manager'
+  | 'waiting_for_user' | 'reviewing' | 'blocked' | 'cancellation_requested' | 'completed' | 'failed' | 'cancelled';
 
 export interface ButlerAssignmentInput {
   key: string;
@@ -85,6 +108,12 @@ export interface ButlerTaskCreateInput {
   assignments: ButlerAssignmentInput[];
 }
 
+export interface ButlerTaskDelegateInput {
+  ownerThreadId: string;
+  requestId: string;
+  assignments: ButlerAssignmentInput[];
+}
+
 export interface ButlerDeliveryContext {
   platform: 'lark';
   botChatId: string;
@@ -99,7 +128,7 @@ export interface ButlerDelegation extends ButlerAssignmentInput {
   deliveryContext: ButlerDeliveryContext;
   operationId: string;
   status: ButlerStatus;
-  deliveryState: 'pending' | 'sending' | 'sent' | 'unknown';
+  deliveryState: 'pending' | 'sending' | 'sent' | 'unknown' | 'failed';
   resultDeliveryState: 'pending' | 'sending' | 'sent' | 'unknown' | 'failed';
   lastProgressSignature?: string;
   threadId?: string;
@@ -113,6 +142,40 @@ export interface ButlerDelegation extends ButlerAssignmentInput {
   approvalIds: string[];
   updatedAt: string;
   pendingFollowups: string[];
+  transport?: 'channel' | 'core';
+  executionBinding?: ButlerExecutionBinding;
+  /** Latest durable checkpoint created after an external side effect; it is not an accepted result. */
+  checkpoint?: ButlerWorkerReport;
+  report?: ButlerWorkerReport;
+  reportVersion?: number;
+  nextCheckAt?: string;
+  checkIntervalSeconds?: number;
+  checkDeadlineAt?: string;
+  checkInstructions?: string;
+  checkLeaseUntil?: string;
+  checkBudgetRemaining?: number;
+  lastCheckedAt?: string;
+  unchangedCheckCount?: number;
+  checkFailureCount?: number;
+  stateVersion?: number;
+  acceptedReportVersion?: number;
+}
+
+export interface ButlerWorkerReport {
+  schemaVersion: 1;
+  phase?: 'checkpoint' | 'final';
+  requestId: string;
+  outcome: 'succeeded' | 'waiting_external' | 'needs_input' | 'failed';
+  summary: string;
+  externalRefs?: Array<{ kind: string; system: string; id: string }>;
+  progress?: { percent?: number; message?: string };
+  evidence?: Array<{ source: string; observedAt: string; value: unknown }>;
+  suggestedCheckAfterSeconds?: number;
+}
+
+export interface ButlerAgentContext {
+  threadId: string;
+  runId: string;
 }
 
 export interface ButlerTask {
@@ -127,6 +190,11 @@ export interface ButlerTask {
   summary?: string;
   error?: string;
   cancellationRequested?: boolean;
+  ownerReassociationRequired?: boolean;
+  transport?: 'channel' | 'core';
+  completionPolicy?: 'butler' | 'user';
+  cancellationMode?: 'tracking' | 'external';
+  trackingPolicy?: ButlerTrackingPolicy;
 }
 
 export interface ButlerFollowupInput {
@@ -138,6 +206,7 @@ export interface ButlerFollowupInput {
 
 export interface ButlerCancelInput {
   ownerThreadId: string;
+  mode?: 'tracking' | 'external';
 }
 
 export interface ButlerCompleteInput {

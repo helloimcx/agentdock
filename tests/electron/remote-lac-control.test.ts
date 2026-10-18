@@ -122,3 +122,34 @@ test('executeMeshShell sends standalone lac commands to the host Core', async ()
     server.close();
   }
 });
+
+test('remote Butler workers can only send reports through the host Core using the trusted thread and run context', async () => {
+  let received: { url?: string; headers: NodeJS.Dict<string | string[]>; body: any } | undefined;
+  const server = createServer(async (req, res) => {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    received = { url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : undefined };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, data: { accepted: true } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const code = await executeMeshShell(['node', 'agentdock-mesh-shell.js', '-c',
+      'lac butler report --phase checkpoint --outcome waiting_external --summary "Download task created" --request-id report:download:1 --external-refs \'[{"kind":"download","system":"fnos","id":"DL-8021"}]\' --json'], {
+      AGENTDOCK_LOCAL_CORE_URL: `http://127.0.0.1:${port}`,
+      AGENTDOCK_SANDBOX_RUN_ID: 'run:thread:fnos:acp-001:1792231500000',
+      AGENTDOCK_BUTLER_CONTEXT_TOKEN: 'opaque-core-issued-capability',
+      LOCAL_AI_THREAD_ID: 'thread:fnos::f8ef0f59-d9af-4abc-923f-fb2a87f1b3dd',
+      LOCAL_AI_WORKSPACE_ID: 'fnos',
+    });
+    assert.equal(code, 0);
+    assert.equal(received?.url, '/api/local/v1/butler/agent');
+    assert.equal((received?.body as any)?.report?.phase, 'checkpoint');
+    assert.equal(received?.headers['x-agentdock-thread-id'], 'thread:fnos::f8ef0f59-d9af-4abc-923f-fb2a87f1b3dd');
+    assert.equal(received?.headers['x-agentdock-run-id'], 'run:thread:fnos:acp-001:1792231500000');
+    assert.equal(received?.headers['x-agentdock-butler-capability'], 'opaque-core-issued-capability');
+    assert.equal(received?.body.action, 'report');
+    assert.equal(received?.body.report.externalRefs[0].id, 'DL-8021');
+  } finally { server.close(); }
+});

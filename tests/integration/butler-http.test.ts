@@ -14,6 +14,7 @@ import { runCli } from '../../apps/daemon/src/cli/lac.js';
 
 const ACP_FIXTURE = `
 import { createInterface } from 'node:readline';
+import { createHash } from 'node:crypto';
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
 for await (const line of createInterface({ input: process.stdin })) {
   const input = JSON.parse(line);
@@ -21,7 +22,9 @@ for await (const line of createInterface({ input: process.stdin })) {
   else if (input.method === 'session/new') send({ jsonrpc: '2.0', id: input.id, result: { sessionId: 'controlled-session' } });
   else if (input.method === 'session/prompt') {
     send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: input.params.sessionId, update: {
-      sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Verified fixture result for ' + process.env.LOCAL_AI_WORKSPACE_ID }
+      sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Verified fixture result for ' + process.env.LOCAL_AI_WORKSPACE_ID
+        + '; Butler capability=' + (process.env.AGENTDOCK_BUTLER_CONTEXT_TOKEN
+          ? createHash('sha256').update(process.env.AGENTDOCK_BUTLER_CONTEXT_TOKEN).digest('hex').slice(0, 12) : 'none') }
     } } });
     send({ jsonrpc: '2.0', id: input.id, result: { stopReason: 'end_turn' } });
   } else if (input.id !== undefined) send({ jsonrpc: '2.0', id: input.id, result: {} });
@@ -87,8 +90,8 @@ test('real Butler HTTP and CLI delegate through ACP processes, persist facts, sc
   try {
     await server.start();
     const base = `http://127.0.0.1:${(server as any).server.address().port}/api/local/v1`;
-    const request = async (method: string, path: string, body?: unknown) => {
-      const response = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const request = async (method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}) => {
+      const response = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', ...extraHeaders }, body: body === undefined ? undefined : JSON.stringify(body) });
       return { status: response.status, payload: await response.json() as any };
     };
     const managerBotId = bots[0].id;
@@ -101,6 +104,9 @@ test('real Butler HTTP and CLI delegate through ACP processes, persist facts, sc
     const configured = await request('PUT', '/butler/profile', { managerBotId, managedBots: roster });
     assert.equal(configured.status, 200);
     const owner = configured.payload.data.threadId;
+    assert.equal((await request('POST', '/butler/agent', { action: 'list' }, {
+      'x-agentdock-thread-id': owner, 'x-agentdock-run-id': 'run:agentdock::66354b58-ec85-45ea-b034-38d47e8f8af0:1792231500000',
+    })).status, 400, 'thread and run headers alone must not authorize the manager endpoint');
     assert.equal((await request('GET', '/butler/tasks')).status, 400);
     const input = { ownerThreadId: owner, requestId: 'request:5ba7c600-f181-43af-ad26-3baf9f0d1d60', title: 'Compare and prototype',
       completionCriteria: 'Research and working prototype', assignments: [
@@ -129,12 +135,18 @@ test('real Butler HTTP and CLI delegate through ACP processes, persist facts, sc
     assert.equal((await request('POST', `/butler/tasks/${taskId}/complete`, { ownerThreadId: owner, summary: 'Verified both deliverables' })).payload.data.status, 'completed');
     const ownerRun = await router.sendThreadMessage(owner, '现在怎么样？', { requestId: 'request:71333717-26ce-4144-a2e2-92d4a0a7fc39' });
     assert.ok(store.getThread(owner, []).messages.some((message) => message.role === 'user' && message.content.includes('[Butler Role]')));
+    await waitFor(async () => store.submissions.byRun(ownerRun.runId)?.status === 'completed');
+    const nextOwnerRun = await router.sendThreadMessage(owner, '继续跟踪。', { requestId: 'request:94a04085-e7fc-4eca-89d3-09babdcd583d' });
+    await waitFor(async () => store.submissions.byRun(nextOwnerRun.runId)?.status === 'completed');
+    const managerCapabilities = new Set(store.getThread(owner, []).messages.filter((message) => message.role === 'assistant')
+      .flatMap((message) => [...message.content.matchAll(/Butler capability=([a-f0-9]{12})/g)].map((match) => match[1])));
+    assert.ok(managerCapabilities.size >= 2, 'Core must refresh Butler credentials across manager runs');
     const ordinary = await router.createThread('research', 'Ordinary user chat');
     const ordinaryRun = await router.sendThreadMessage(ordinary.id, '普通问题', { requestId: 'request:c492312e-1e3e-4fc9-9f5b-40f1cda42e2a' });
     assert.ok(store.getThread(ordinary.id, []).messages.every((message) => !message.content.includes('[Butler Role]')));
     const malformed = await request('POST', '/butler/tasks', { ...input, requestId: 'request:6fe527be-53d4-4f36-80e3-719d890b9a83', assignments: [{ key: 'bad', dependsOn: 'bad' }] });
     assert.equal(malformed.status, 400);
-    await waitFor(async () => [ownerRun.runId, ordinaryRun.runId].every((runId) => store.submissions.byRun(runId)?.status === 'completed'));
+    await waitFor(async () => [ownerRun.runId, nextOwnerRun.runId, ordinaryRun.runId].every((runId) => store.submissions.byRun(runId)?.status === 'completed'));
   } finally {
     await service.stop(); await server.stop(); await router.close(); rmSync(dir, { recursive: true, force: true });
   }

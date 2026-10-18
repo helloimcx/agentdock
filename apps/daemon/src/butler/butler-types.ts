@@ -7,7 +7,7 @@ export interface ButlerChannelTransport {
   resolveBotMemberId(platform: string, workspaceId: string, input: ChannelBotMemberLookupInput): Promise<string>;
 }
 
-export type ButlerRouter = Pick<WorkspaceRouter, 'createThread' | 'sendThreadMessage' | 'interruptRun'>;
+export type ButlerRouter = Pick<WorkspaceRouter, 'createThread' | 'sendThreadMessage' | 'interruptRun' | 'getWorkspaceAgentType' | 'getWorkspaceDefaultProviderId'>;
 export interface ButlerServiceOptions {
   intervalMs?: number;
   onError?: (error: unknown) => void;

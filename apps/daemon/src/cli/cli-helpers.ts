@@ -28,13 +28,14 @@ export type ParsedFlags = Map<string, string[]>;
 
 export const DEFAULT_BASE_URL = 'http://127.0.0.1:9831/api/local/v1';
 
-export async function request<T>(baseUrl: string, method: string, path: string, body?: unknown) {
+export async function request<T>(baseUrl: string, method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>) {
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
+        ...extraHeaders,
       },
       body: body ? JSON.stringify(body) : undefined,
     });

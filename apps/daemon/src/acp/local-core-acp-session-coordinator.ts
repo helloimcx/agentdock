@@ -68,7 +68,7 @@ type EnsureSessionOptions = {
 const MESH_RUNTIME_RESERVED_ENV = new Set([
   'LOCAL_AI_CORE_BASE', 'LOCAL_AI_WORKSPACE_ID', 'LOCAL_AI_THREAD_ID', 'LOCAL_AI_WORKSPACE_PATH',
   'LOCAL_AI_PLATFORM', 'LOCAL_AI_PLATFORM_INSTANCE_ID', 'LOCAL_AI_CHAT_ID', 'LOCAL_AI_PLATFORM_USER_ID', 'LOCAL_AI_ROUTE_TYPE',
-  'AGENTDOCK_SANDBOX_RUN_ID', 'AGENTDOCK_LOCAL_CORE_URL', 'AGENTDOCK_MESH_NODE_ID', 'AGENTDOCK_MESH_SHELL_TOKEN',
+  'AGENTDOCK_SANDBOX_RUN_ID', 'AGENTDOCK_BUTLER_CONTEXT_TOKEN', 'AGENTDOCK_LOCAL_CORE_URL', 'AGENTDOCK_MESH_NODE_ID', 'AGENTDOCK_MESH_SHELL_TOKEN',
   'AGENTDOCK_MESH_ADMIN_TOKEN', 'AGENTDOCK_MESH_TIMEOUT_MS', 'AGENTDOCK_MESH_NODE_PLATFORM', 'AGENTDOCK_MESH_NODE_LABEL',
   'AGENTDOCK_MESH_CWD_DIR', 'TMPDIR', 'TMP', 'TEMP', 'PATH', 'SHELL', 'CLAUDE_CODE_SHELL',
 ]);
@@ -77,11 +77,50 @@ function filterMeshRuntimeEnv(runtimeEnv: Record<string, string>): Record<string
   return Object.fromEntries(Object.entries(runtimeEnv).filter(([key]) => !MESH_RUNTIME_RESERVED_ENV.has(key)));
 }
 
+function buildMeshLaunchEnv(config?: LocalCoreProjectConfig): Record<string, string> {
+  if (config?.execution?.mode !== 'mesh') return {};
+  const launchKeys = ['AGENTDOCK_LOCAL_CORE_URL', 'AGENTDOCK_MESH_NODE_ID', 'AGENTDOCK_MESH_SHELL_TOKEN',
+    'AGENTDOCK_MESH_TIMEOUT_MS', 'AGENTDOCK_MESH_NODE_PLATFORM', 'AGENTDOCK_MESH_NODE_LABEL',
+    'AGENTDOCK_MESH_CWD_DIR', 'TMPDIR', 'TMP', 'TEMP'];
+  return Object.fromEntries(launchKeys.flatMap((key) => config.env?.[key] === undefined ? [] : [[key, config.env[key]]]));
+}
+
+function buildTrustedAgentEnv(store: LocalCoreAcpStore, threadId: string, existingPath: string, runId: string,
+  localCoreBase: string | undefined, cliBinDir: string | undefined): Record<string, string> | undefined {
+  const row = store.getThreadRow(threadId);
+  if (!row) return undefined;
+  const env: Record<string, string> = { LOCAL_AI_CORE_BASE: localCoreBase || 'http://127.0.0.1:9831/api/local/v1',
+    LOCAL_AI_WORKSPACE_ID: row.workspace_id, LOCAL_AI_THREAD_ID: threadId,
+    ...(runId ? { AGENTDOCK_SANDBOX_RUN_ID: runId } : {}) };
+  const workspace = store.getWorkspaceRegistryEntry(row.workspace_id);
+  if (workspace?.path) env.LOCAL_AI_WORKSPACE_PATH = workspace.path;
+  const binding = store.getPlatformThreadBindingByThreadId(threadId);
+  if (binding) applyPlatformBindingEnv(env, binding);
+  env.PATH = buildAgentPath(existingPath, cliBinDir);
+  return env;
+}
+
+function applyPlatformBindingEnv(env: Record<string, string>, binding: NonNullable<ReturnType<LocalCoreAcpStore['getPlatformThreadBindingByThreadId']>>) {
+  env.LOCAL_AI_PLATFORM = getChannelPlatformBase(binding.platform);
+  env.LOCAL_AI_ROUTE_TYPE = routeTypeForPlatform(binding.platform);
+  const instanceId = getChannelPlatformInstanceId(binding.platform);
+  if (instanceId) env.LOCAL_AI_PLATFORM_INSTANCE_ID = instanceId;
+  env.LOCAL_AI_CHAT_ID = binding.chat_id;
+  env.LOCAL_AI_PLATFORM_USER_ID = binding.platform_user_id;
+}
+
+function filterRuntimeOverrides(runtimeEnv: Record<string, string>, isRemoteMesh: boolean): Record<string, string> {
+  return isRemoteMesh ? filterMeshRuntimeEnv(runtimeEnv) : Object.fromEntries(
+    Object.entries(runtimeEnv).filter(([key]) => key !== 'AGENTDOCK_BUTLER_CONTEXT_TOKEN'),
+  );
+}
+
 function bindMeshLacMcpContext(config: LocalCoreProjectConfig, runtimeEnv: Record<string, string>): LocalCoreProjectConfig {
   if (config.execution?.mode !== 'mesh') return config;
   const contextKeys = [
     'LOCAL_AI_CORE_BASE', 'LOCAL_AI_WORKSPACE_ID', 'LOCAL_AI_THREAD_ID', 'LOCAL_AI_PLATFORM',
-    'LOCAL_AI_PLATFORM_INSTANCE_ID', 'LOCAL_AI_CHAT_ID', 'LOCAL_AI_PLATFORM_USER_ID', 'LOCAL_AI_ROUTE_TYPE',
+    'LOCAL_AI_PLATFORM_INSTANCE_ID', 'LOCAL_AI_CHAT_ID', 'LOCAL_AI_PLATFORM_USER_ID', 'LOCAL_AI_ROUTE_TYPE', 'AGENTDOCK_SANDBOX_RUN_ID',
+    'AGENTDOCK_BUTLER_CONTEXT_TOKEN',
   ];
   const contextEnv = Object.fromEntries(contextKeys.flatMap((key) => runtimeEnv[key] === undefined ? [] : [[key, runtimeEnv[key]]])) as Record<string, string>;
   return {
@@ -151,10 +190,10 @@ export class LocalCoreAcpSessionCoordinator {
       ...process.env,
       ...config.env,
     };
-    const runtimeEnv = this.buildAgentRuntimeEnv(threadId, getPathEnv(baseEnv), options.runtimeEnv, options.runId, config);
+    const runtimeEnv: Record<string, string> = this.buildAgentRuntimeEnv(threadId, getPathEnv(baseEnv), options.runtimeEnv, options.runId, config);
     const sessionConfig = bindMeshLacMcpContext(config, runtimeEnv);
     const configKey = this.buildLaunchConfigKey(sessionConfig);
-    const runtimeEnvKey = this.buildRuntimeEnvKey(options.runtimeEnv);
+    const runtimeEnvKey = this.buildRuntimeEnvKey(options.runtimeEnv, runtimeEnv.AGENTDOCK_BUTLER_CONTEXT_TOKEN);
     if (
       existing
       && !existing.closed
@@ -354,10 +393,11 @@ export class LocalCoreAcpSessionCoordinator {
     }
   }
 
-  private buildRuntimeEnvKey(runtimeEnv: Record<string, string> = {}) {
+  private buildRuntimeEnvKey(runtimeEnv: Record<string, string> = {}, butlerCapability = '') {
     return Object.keys(runtimeEnv)
       .sort()
       .map((key) => `${key}=${runtimeEnv[key]}`)
+      .concat(butlerCapability ? [`AGENTDOCK_BUTLER_CONTEXT_TOKEN=${butlerCapability}`] : [])
       .join('\n');
   }
 
@@ -368,47 +408,20 @@ export class LocalCoreAcpSessionCoordinator {
     runId = '',
     config?: LocalCoreProjectConfig,
   ) {
-    const row = this.options.store.getThreadRow(threadId);
-    if (!row) {
-      return {};
-    }
-    const binding = this.options.store.getPlatformThreadBindingByThreadId(threadId);
-    const env: Record<string, string> = {
-      LOCAL_AI_CORE_BASE: this.options.localCoreBase || 'http://127.0.0.1:9831/api/local/v1',
-      LOCAL_AI_WORKSPACE_ID: row.workspace_id,
-      LOCAL_AI_THREAD_ID: threadId,
-      ...(runId ? { AGENTDOCK_SANDBOX_RUN_ID: runId } : {}),
-    };
-    const workspace = this.options.store.getWorkspaceRegistryEntry(row.workspace_id);
-    if (workspace?.path) {
-      env.LOCAL_AI_WORKSPACE_PATH = workspace.path;
-    }
-    if (binding) {
-      env.LOCAL_AI_PLATFORM = getChannelPlatformBase(binding.platform);
-      env.LOCAL_AI_ROUTE_TYPE = routeTypeForPlatform(binding.platform);
-      const instanceId = getChannelPlatformInstanceId(binding.platform);
-      if (instanceId) {
-        env.LOCAL_AI_PLATFORM_INSTANCE_ID = instanceId;
-      }
-      env.LOCAL_AI_CHAT_ID = binding.chat_id;
-      env.LOCAL_AI_PLATFORM_USER_ID = binding.platform_user_id;
-    }
-    if (this.options.cliBinDir) {
-      env.PATH = buildAgentPath(existingPath, this.options.cliBinDir);
-    } else {
-      env.PATH = buildAgentPath(existingPath);
-    }
+    const capability = runId && this.options.store.submissions.byRun(runId)?.threadId === threadId
+      ? this.options.store.butler?.issueAgentCapability(threadId, runId)
+      : undefined;
     const isRemoteMesh = config?.execution?.mode === 'mesh';
-    const meshLaunchEnv = isRemoteMesh
-      ? Object.fromEntries(['AGENTDOCK_LOCAL_CORE_URL', 'AGENTDOCK_MESH_NODE_ID', 'AGENTDOCK_MESH_SHELL_TOKEN',
-        'AGENTDOCK_MESH_TIMEOUT_MS', 'AGENTDOCK_MESH_NODE_PLATFORM', 'AGENTDOCK_MESH_NODE_LABEL',
-        'AGENTDOCK_MESH_CWD_DIR', 'TMPDIR', 'TMP', 'TEMP']
-        .flatMap((key) => config?.env?.[key] === undefined ? [] : [[key, config.env[key]]]))
-      : {};
+    const env = buildTrustedAgentEnv(this.options.store, threadId, existingPath, runId,
+      this.options.localCoreBase, this.options.cliBinDir);
+    if (!env) return {};
     return {
       ...env,
-      ...meshLaunchEnv,
-      ...(isRemoteMesh ? filterMeshRuntimeEnv(runtimeEnv) : runtimeEnv),
+      ...buildMeshLaunchEnv(config),
+      ...filterRuntimeOverrides(runtimeEnv, isRemoteMesh),
+      ...(runId ? { AGENTDOCK_SANDBOX_RUN_ID: runId } : {}),
+      LOCAL_AI_THREAD_ID: threadId,
+      ...(capability ? { AGENTDOCK_BUTLER_CONTEXT_TOKEN: capability } : {}),
     };
   }
 

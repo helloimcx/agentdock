@@ -8,6 +8,7 @@ test('Butler routes preserve goal ID domain and reject unrecognized actions or e
   assert.deepEqual(parseLocalAiCoreRoute('PUT', '/api/local/v1/butler/profile'), { name: 'butler.profile.configure' });
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/butler/tasks'), { name: 'butler.tasks.list' });
   assert.deepEqual(parseLocalAiCoreRoute('POST', `/butler/tasks/${encodeURIComponent(taskId)}/followup`), { name: 'butler.task.followup', taskId });
+  assert.deepEqual(parseLocalAiCoreRoute('POST', `/butler/tasks/${encodeURIComponent(taskId)}/delegations`), { name: 'butler.task.delegate', taskId });
   assert.deepEqual(parseLocalAiCoreRoute('POST', `/butler/tasks/${encodeURIComponent(taskId)}/complete`), { name: 'butler.task.complete', taskId });
   assert.equal(parseLocalAiCoreRoute('POST', `/butler/tasks/${taskId}/approve`), null);
   assert.equal(parseLocalAiCoreRoute('GET', '/butler/profile/extra'), null);

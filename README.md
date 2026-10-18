@@ -13,7 +13,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## 系统架构
 
-AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`apps/web`)、AgentDock Daemon (`apps/daemon`)、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 daemon 启动；React/Web 通过 SDK (`@agentdock/sdk`) 访问 AgentDock Daemon；AgentDock Daemon 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Daemon 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家本身是一个飞书 bot，可向配置的受管 bot 发消息并持续跟踪任务。
+AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`apps/web`)、AgentDock Daemon (`apps/daemon`)、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 daemon 启动；React/Web 通过 SDK (`@agentdock/sdk`) 访问 AgentDock Daemon；AgentDock Daemon 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Daemon 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家是用户对接的 Channel Bot；Core transport 通过受限的 `lac butler` 调用受管 Bot 绑定的工作区 Agent，并持久跟踪外部任务，旧的 Channel Bot 间消息委派仍可用。
 
 <!-- project-setup:architecture-diagram:start -->
 ```mermaid
@@ -24,9 +24,9 @@ flowchart LR
   external[External clients] --> api
   api --> kernel[Daemon kernel and workspace router]
   api --> butler[Butler orchestration]
-  butler -->|Persist task, progress and acceptance| sqlite
-  butler -->|Per-app bot mention IDs / callbacks| channels
-  butler -->|Target bot workspace; existing permissions| acp
+  butler -->|Core: worker submit / read-only check| acp
+  butler -->|Legacy Channel: bot mentions / callbacks| channels
+  butler -->|Task, report, checkpoint, next check and lease| sqlite
   kernel --> sqlite[(SQLite)]
   kernel --> acp[ACP session runtime]
   kernel --> scheduler[Scheduler / Automation]
@@ -78,6 +78,10 @@ flowchart LR
     - **核心服务更名**：服务更名为 `agentdock-daemon`（`@agentdock/daemon`），健康探测支持双向兼容识别，保留 `local-ai-core` 别名与历史包名兼容导出。
     - **执行追踪优化与诊断保留策略 (#225)**：增加 `run_spans` 自动过期清理与窄回合历史消息读取，避免诊断表无限增长。
     - **零回归质量保障**：1090+ 单元测试、80 个 BDD 场景、C8 覆盖率、ESLint 复杂度（108）、Knip 无用符号（171）及 Archify 架构检查全部通过。
+
+### 2026-10-17
+
+- **管家通过 LAC 委派工作区 Agent 并持续跟踪（本分支实现）**：新增 Core 内部委派 transport，沿用受管 Bot 名单绑定目标 workspace，不要求共享群或机器人互相 @；worker 通过 Core 签发的 run 范围凭证提交结构化报告，外部任务 ID 可先以 checkpoint 持久保存。Core 按已登记的只读计划跨重启检查；如果 owner 会话被删除，任务保留并可从新管家会话重新关联。原 Channel transport 保留兼容；明确 HTTP 400 的首次提交会记为失败，管家配置保存时只本地收尾无 runId 和消息 ID 的同类历史记录，不发送机器人消息。
 
 ### 2026-10-16
 
