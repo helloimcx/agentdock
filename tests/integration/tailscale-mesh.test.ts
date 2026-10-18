@@ -5,10 +5,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MeshStore } from '../../services/local-ai-core/src/mesh/mesh-store.js';
-import { MeshGateway } from '../../services/local-ai-core/src/mesh/mesh-gateway.js';
-import { TailscaleService } from '../../services/local-ai-core/src/mesh/tailscale-service.js';
-import type { TailscaleStatusResponse, MeshNode } from '../../packages/contracts/src/mesh.js';
+import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
+import { MeshGateway } from '../../apps/daemon/src/mesh/mesh-gateway.js';
+import { TailscaleService } from '../../apps/daemon/src/mesh/tailscale-service.js';
+import type { TailscaleStatusResponse, MeshNode, TailscalePeer } from '../../packages/contracts/src/mesh.js';
 
 test('TailscaleService parses status, detects peers, and binds mesh nodes', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-'));
@@ -62,7 +62,7 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
   assert.equal(status.self?.ips[0], '100.104.42.5');
   assert.equal(status.peers.length, 2);
 
-  const dobby = status.peers.find(p => p.name === 'dobby');
+  const dobby = status.peers.find((p: TailscalePeer) => p.name === 'dobby');
   assert.ok(dobby);
   assert.equal(dobby.online, true);
   assert.equal(dobby.os, 'linux');
@@ -85,7 +85,7 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
 
   // 4. Query status again, dobby should now have meshNodeId populated
   const statusAfterBind = await service.getStatus();
-  const dobbyAfter = statusAfterBind.peers.find(p => p.name === 'dobby');
+  const dobbyAfter = statusAfterBind.peers.find((p: TailscalePeer) => p.name === 'dobby');
   assert.equal(dobbyAfter?.meshNodeId, 'node:ts:dobby');
 
   // 5. Test idempotence and allowShell: false
