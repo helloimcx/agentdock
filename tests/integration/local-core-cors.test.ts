@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setCorsHeaders } from '../../services/local-ai-core/src/runtime/server-helpers.js';
+import { setCorsHeaders } from '../../apps/daemon/src/runtime/server-helpers.js';
 
 class HeaderRecorder {
   headers = new Map<string, string | number | readonly string[]>();

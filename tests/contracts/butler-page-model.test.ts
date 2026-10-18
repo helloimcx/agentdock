@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { butlerChatHref, canCompleteButlerTask, canFollowupButlerTask, canCancelButlerTask, orderButlerTasks } from '../../src/pages/Butler/butler-page-model.js';
+import { butlerChatHref, canCompleteButlerTask, canFollowupButlerTask, canCancelButlerTask, orderButlerTasks } from '../../apps/web/src/pages/Butler/butler-page-model.js';
 import type { ButlerTask } from '@cc/superai-contracts';
 
 function goal(status: string, updatedAt = '2026-10-12T01:00:00.000Z'): ButlerTask {

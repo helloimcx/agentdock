@@ -21,11 +21,11 @@ const TEST_FILES = [
   'dist-electron/tests/electron/*.test.js',
   'dist-electron/tests/contracts/*.test.js',
   'dist-electron/tests/integration/*.test.js',
-  'dist-electron/packages/knowledge-api/test/*.test.js',
-  'dist-electron/src/pages/Threads/thread-chat-permission.test.js',
-  'dist-electron/src/pages/Automation/automation-page-model.test.js',
-  'dist-electron/src/components/Layout/sidebar-nav.test.js',
-  'dist-electron/src/i18n/locales.test.js',
+  'dist-electron/packages/knowledge/test/*.test.js',
+  'dist-electron/apps/web/src/pages/Threads/thread-chat-permission.test.js',
+  'dist-electron/apps/web/src/pages/Automation/automation-page-model.test.js',
+  'dist-electron/apps/web/src/components/Layout/sidebar-nav.test.js',
+  'dist-electron/apps/web/src/i18n/locales.test.js',
 ];
 
 function run(command, args) {
@@ -44,7 +44,7 @@ const vite = 'node_modules/.bin/vite';
 // renderer output exists (renderer-packaging.test.js), so a clean checkout
 // needs the renderer built before the Electron output.
 console.log('\nBuilding renderer output...\n');
-run(vite, ['build']);
+run(vite, ['build', '--config', 'apps/web/vite.config.ts']);
 
 console.log('\nBuilding Electron output with source maps (tsconfig.coverage.json)...\n');
 run('node', ['scripts/build-pi-durable.mjs']);

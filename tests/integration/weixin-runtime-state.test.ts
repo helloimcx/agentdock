@@ -6,7 +6,7 @@ import {
   createWeixinTurnState,
   isTerminalWeixinBridgeMessage,
   renderWeixinTurnText,
-} from '../../services/local-ai-core/src/channel/weixin/runtime-state.js';
+} from '../../apps/daemon/src/channel/weixin/runtime-state.js';
 
 test('weixin turn state keeps thought, tool progress, and final reply ordered', () => {
   const turn = createWeixinTurnState('workspace:thread');

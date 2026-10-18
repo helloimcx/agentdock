@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import type { AutomationCreateInput } from '../../packages/contracts/src/automations.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalAutomationStore } from '../../services/local-ai-core/src/acp/store/automation-store.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalAutomationStore } from '../../apps/daemon/src/acp/store/automation-store.js';
 import {
   resolveDefaultTimezone,
   setDefaultTimezone,
-} from '../../services/local-ai-core/src/scheduler/cron.js';
+} from '../../apps/daemon/src/scheduler/cron.js';
 
 function createInput(overrides: Partial<AutomationCreateInput> = {}): AutomationCreateInput {
   return {

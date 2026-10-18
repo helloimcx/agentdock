@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasMarkdownCodeBlock } from '../../src/components/chat/markdown-code-block.js';
-import { remarkCitationLinks } from '../../src/components/chat/remark-citation-links.js';
+import { hasMarkdownCodeBlock } from '../../apps/web/src/components/chat/markdown-code-block.js';
+import { remarkCitationLinks } from '../../apps/web/src/components/chat/remark-citation-links.js';
 
 test('markdown code block detection covers fenced and indented code blocks', () => {
   assert.equal(hasMarkdownCodeBlock('```ts\nconst value = 1;\n```'), true);

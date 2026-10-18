@@ -1,11 +1,11 @@
 # AgentDock
 
-基于 Local AI Core 的本地桌面 AI 工作台，内置原生 Feishu/Lark 网关与本地 ACP 会话运行时。
+基于 AgentDock Daemon 的本地桌面 AI 工作台，内置原生 Feishu/Lark 网关与本地 ACP 会话运行时。
 
 ## 运行模式
 
-- **桌面模式** — Electron 作为壳进程启动本地 Local AI Core，并加载桌面 UI
-- **Local AI Core 模式** — 通过本地 `127.0.0.1:9831` 提供 runtime、chat、知识库与 Lark 网关能力
+- **桌面模式** — Electron 作为壳进程启动本地 AgentDock Daemon，并加载桌面 UI
+- **Daemon 模式** — 通过本地 `127.0.0.1:9831` 提供 runtime、chat、知识库与 Lark 网关能力
 
 ## 技术栈
 
@@ -13,16 +13,16 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## 系统架构
 
-AgentDock 由 Electron 桌面壳、React/Web 渲染入口、Local AI Core、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 core 启动；React/Web 通过 Core SDK 访问 Local AI Core；Local AI Core 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Local AI Core 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家本身是一个飞书 bot，可向配置的受管 bot 发消息并持续跟踪任务。
+AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`apps/web`)、AgentDock Daemon (`apps/daemon`)、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 daemon 启动；React/Web 通过 SDK (`@agentdock/sdk`) 访问 AgentDock Daemon；AgentDock Daemon 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Daemon 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家本身是一个飞书 bot，可向配置的受管 bot 发消息并持续跟踪任务。
 
 <!-- project-setup:architecture-diagram:start -->
 ```mermaid
 flowchart LR
-  electron[Electron desktop shell] -->|Start| api[Local AI Core API]
+  electron[Electron desktop shell] -->|Start| api[AgentDock Daemon API]
   renderer[React / Web and Core SDK] -->|REST / SSE| api
   channels[Lark / Weixin] --> api
   external[External clients] --> api
-  api --> kernel[Core kernel and workspace router]
+  api --> kernel[Daemon kernel and workspace router]
   api --> butler[Butler orchestration]
   butler -->|Persist task, progress and acceptance| sqlite
   butler -->|Per-app bot mention IDs / callbacks| channels
@@ -69,6 +69,13 @@ flowchart LR
 - [管家任务协调](docs/architecture/butler-orchestration.md)
 
 ## New
+
+### 2026-10-17
+
+- **Monorepo 平级拓扑与 AgentDock Daemon 规范化重构**：
+  - **平级目录架构**：消除根目录散落与依赖倒挂，形成清晰的 `apps/`（`daemon`、`desktop`、`web`）与 `packages/`（`contracts`、`sdk`、`knowledge`、`plugin-sdk`）两级规范化结构。
+  - **核心服务更名**：服务更名为 `agentdock-daemon`（`@agentdock/daemon`），健康探测支持双向兼容识别，保留 `local-ai-core` 别名与历史包名兼容导出。
+  - **零回归质量保障**：1083+ 单元测试、80 个 BDD 场景、C8 覆盖率、ESLint 复杂度（108）、Knip 无用符号（171）及 Archify 架构检查全部通过。
 
 ### 2026-10-16
 
@@ -497,12 +504,12 @@ xattr -cr /Applications/AgentDock.app
 |---|---|
 | `pnpm dev` | 启动开发环境 |
 | `pnpm dev:web` | 仅启动 Web 开发服务器 |
-| `pnpm dev:core` | 构建并启动 Local AI Core |
+| `pnpm dev:daemon` | 构建并启动 AgentDock Daemon（兼容 `pnpm dev:core`） |
 | `pnpm build` | 完整生产构建 |
 | `pnpm build:renderer` | 仅构建 React 前端 |
-| `pnpm build:electron` | 仅构建 Electron 主进程 |
-| `pnpm build:core` | 构建 Local AI Core 产物 |
-| `pnpm start:core` | 运行已构建的 Local AI Core |
+| `pnpm build:electron` | 仅构建 Electron 主进程与后台 |
+| `pnpm build:daemon` | 构建 AgentDock Daemon 产物（兼容 `pnpm build:core`） |
+| `pnpm start:daemon` | 运行已构建的 AgentDock Daemon（兼容 `pnpm start:core`） |
 | `pnpm start:prod` | 运行已构建的 Electron 应用 |
 | `pnpm e2e:smoke` | E2E 冒烟测试 |
 | `pnpm test` | 运行完整测试套件（单测 + 契约 + 集成 + BDD） |
@@ -529,18 +536,17 @@ xattr -cr /Applications/AgentDock.app
 ## 项目结构
 
 ```
-├── electron/        # Electron 主进程壳
-├── apps/            # 未来的桌面/Web 前端壳目录
-├── packages/        # contracts、core-sdk、knowledge-api
-├── services/        # Local AI Core
-├── src/             # React 渲染进程
-│   ├── pages/       # 页面组件
-│   ├── components/  # UI 组件库
-│   ├── api/         # API 客户端
-│   ├── store/       # Zustand 状态管理
-│   └── types/       # 类型定义
-├── shared/          # 跨进程共享类型
-└── scripts/         # 构建/启动脚本
+├── apps/            # 应用外壳与独立服务
+│   ├── daemon/      # AgentDock Daemon 核心后台（原 Local AI Core）
+│   ├── desktop/     # Electron 桌面外壳
+│   └── web/         # React 19 Web/桌面前端渲染进程
+├── packages/        # 共享库与 SDK
+│   ├── contracts/   # 跨进程契约、桌面模型与共享类型（@agentdock/contracts）
+│   ├── sdk/         # Daemon HTTP/WebSocket/SSE 客户端（@agentdock/sdk）
+│   ├── plugin-sdk/  # 插件规范与扩展接口（@agentdock/plugin-sdk）
+│   └── knowledge/   # 知识库引擎与向量抽象（@agentdock/knowledge）
+├── tests/           # 跨层测试（contracts, electron, integration, bdd）
+└── scripts/         # 构建、启动与质量门禁脚本
 ```
 
 ## 运维排查

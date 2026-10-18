@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 
 test('listAssistantTurnMessages returns only assistant rows in seq order without tool payloads', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-turn-history-'));
@@ -49,7 +49,7 @@ test('runPrompt seeds turn state from the assistant-only history read', async ()
     store.appendMessage(thread.id, 'assistant', '🔧 Terminal: ls', 'progress', undefined, 'tool');
 
     const runThreadMap = new Map<string, string>();
-    const { LocalCoreAcpBackend } = await import('../../services/local-ai-core/src/acp/local-core-acp-backend.js');
+    const { LocalCoreAcpBackend } = await import('../../apps/daemon/src/acp/local-core-acp-backend.js');
     const backend = new LocalCoreAcpBackend({
       store,
       runThreadMap,

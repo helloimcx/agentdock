@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentLaunchConfig } from '@cc/plugin-sdk';
-import { RemoteMeshScreenSessionManager } from '../../services/local-ai-core/src/execution/remote-mesh/screen-session-manager.js';
+import { RemoteMeshScreenSessionManager } from '../../apps/daemon/src/execution/remote-mesh/screen-session-manager.js';
 
 const owner = 'run:agentdock::9bdfe3c2-1d4d-46ae-a919-468b36ed06cb:1791100000000';
 const config = { execution: { mode: 'mesh', nodeId: 'node:33a5bb40-14b4-4fb9-8e54-5102cad7936c', node: { platform: 'android' } } } as AgentLaunchConfig;
@@ -124,8 +124,8 @@ test('invalid bridge responses and failed execution statuses cannot keep a run a
   }
 });
 
-import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import { LocalCoreAcpBackend } from '../../services/local-ai-core/src/acp/local-core-acp-backend.js';
+import { LocalCoreAcpSessionCoordinator } from '../../apps/daemon/src/acp/local-core-acp-session-coordinator.js';
+import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
 
 test('ACP cancellation marks screen stopped even before an agent session exists', async () => {
   const stopped: string[] = [];

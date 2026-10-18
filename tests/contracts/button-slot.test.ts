@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Slot } from '@radix-ui/react-slot';
-import { buttonContent } from '../../src/components/ui/button-content.js';
+import { buttonContent } from '../../apps/web/src/components/ui/button-content.js';
 
 test('Button asChild forwards one element to Radix Slot when not loading', () => {
   const anchor = React.createElement('a', { href: '#task' }, 'Open task');

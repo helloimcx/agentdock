@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMeshShellToken, verifyMeshShellToken } from '../../services/local-ai-core/src/mesh/mesh-shell-token.js';
+import { createMeshShellToken, verifyMeshShellToken } from '../../apps/daemon/src/mesh/mesh-shell-token.js';
 
 const tokenOptions = {
   adminToken: 'admin-secret-for-test',

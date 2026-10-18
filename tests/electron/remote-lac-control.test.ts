@@ -5,9 +5,9 @@ import {
   dispatchLacCommand,
   invokeLacControlTool,
   LAC_CONTROL_TOOLS,
-} from '../../services/local-ai-core/src/execution/remote-mesh/lac-control.js';
-import type { StdIo } from '../../services/local-ai-core/src/cli/cli-helpers.js';
-import { executeMeshShell } from '../../services/local-ai-core/src/execution/remote-mesh/agentdock-mesh-shell.js';
+} from '../../apps/daemon/src/execution/remote-mesh/lac-control.js';
+import type { StdIo } from '../../apps/daemon/src/cli/cli-helpers.js';
+import { executeMeshShell } from '../../apps/daemon/src/execution/remote-mesh/agentdock-mesh-shell.js';
 import { createServer } from 'node:http';
 
 const noEnv = { AGENTDOCK_LOCAL_CORE_URL: 'http://127.0.0.1:9831', LOCAL_AI_WORKSPACE_ID: 'workspace:test' };

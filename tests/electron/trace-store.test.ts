@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalCoreTraceStore } from '../../services/local-ai-core/src/acp/store/trace-store.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalCoreTraceStore } from '../../apps/daemon/src/acp/store/trace-store.js';
 
 const NOW = new Date('2026-10-18T04:00:00.000Z');
 const RETENTION_HORIZON = '2026-08-01T00:00:00.000Z';

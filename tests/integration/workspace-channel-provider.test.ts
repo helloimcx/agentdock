@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/store/local-core-acp-store.js';
-import { LocalCoreAcpSessionCoordinator } from '../../services/local-ai-core/src/acp/local-core-acp-session-coordinator.js';
-import { bootstrapLocalCoreRuntime } from '../../services/local-ai-core/src/kernel/bootstrap.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/store/local-core-acp-store.js';
+import { LocalCoreAcpSessionCoordinator } from '../../apps/daemon/src/acp/local-core-acp-session-coordinator.js';
+import { bootstrapLocalCoreRuntime } from '../../apps/daemon/src/kernel/bootstrap.js';
 
 test('SessionCoordinator skips stale acp_session_id when launch config key changes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'acp-config-mismatch-'));
@@ -209,7 +209,7 @@ test('ThreadCommandService handles /provider current, list, use, reset', async (
       updated_at: now,
     });
 
-    const { ThreadCommandService, createProviderCommandOptions } = await import('../../services/local-ai-core/src/thread/thread-command-service.js');
+    const { ThreadCommandService, createProviderCommandOptions } = await import('../../apps/daemon/src/thread/thread-command-service.js');
     const service = new ThreadCommandService({
       getThreadRow: (id) => store.getThreadRow(id),
       updateThreadAgentMode: (id, mode) => store.updateThreadAgentMode(id, mode),

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   decideCondition,
   evaluateCondition,
-} from '../../../services/local-ai-core/src/automation/automation-condition-engine.js';
+} from '../../../apps/daemon/src/automation/automation-condition-engine.js';
 import type { BddWorld } from '../support/world.js';
 
 Given<BddWorld>(/^an "always" condition$/, function () {

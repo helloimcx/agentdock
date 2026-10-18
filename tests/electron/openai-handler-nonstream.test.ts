@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ExternalRunSnapshot } from '@cc/superai-contracts';
-import { registerOpenAiHandler } from '../../services/local-ai-core/src/runtime/handlers/openai-handler.js';
+import { registerOpenAiHandler } from '../../apps/daemon/src/runtime/handlers/openai-handler.js';
 
 const RUN_ID = 'run:agentdock::3f6c2b1a-9d4e-4c77-8a51-2b0f6e9d1234:1790812800000';
 const THREAD_ID = 'thread:external-2f1a::7c1d9e42-5b3a-4f88-b2c6-9d0e1a4f7c55';

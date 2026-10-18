@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import {
   applyMaterializationToFile,
   materializeWorkspaceStandards,
-} from '../../services/local-ai-core/src/standards/standards-materializer.js';
-import { detectWorkspaceTechStack } from '../../services/local-ai-core/src/standards/standards-detector.js';
-import { CURATED_STANDARD_PACKS } from '../../services/local-ai-core/src/standards/curated-standards.js';
+} from '../../apps/daemon/src/standards/standards-materializer.js';
+import { detectWorkspaceTechStack } from '../../apps/daemon/src/standards/standards-detector.js';
+import { CURATED_STANDARD_PACKS } from '../../apps/daemon/src/standards/curated-standards.js';
 
 test('applyMaterializationToFile creates new file with managed block', () => {
   const tmpDir = mkdtempSync(join(tmpdir(), 'standards-test-'));

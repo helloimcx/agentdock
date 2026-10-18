@@ -7,12 +7,14 @@
  * in multiple places. `lint-duplicate.mjs` intentionally stays separate: it
  * shells out to jscpd, which does its own discovery from these same patterns.
  */
-import { readdirSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { readdirSync, statSync, existsSync } from 'node:fs';
+import { extname, join, resolve } from 'node:path';
 
 const ROOT = process.cwd();
 
-export const ENTRY_DIRS = ['src', 'services', 'packages', 'electron', 'shared'];
+export const ENTRY_DIRS = ['apps', 'packages', 'src', 'services', 'electron', 'shared'].filter((dir) =>
+  existsSync(resolve(ROOT, dir))
+);
 
 // Mirrors the ignore set in eslint.config.mjs — tests, build output, configs.
 // Patterns use a subset of glob syntax: `**` spans path segments, `*` matches

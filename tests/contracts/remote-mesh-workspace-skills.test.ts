@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import type { DesktopProjectConfig, RuntimeConfigState } from '@cc/superai-contracts';
 import type { AgentLaunchConfig } from '@cc/plugin-sdk';
 import { DatabaseSync } from 'node:sqlite';
-import { RemoteMeshExecutionBackend } from '../../services/local-ai-core/src/execution/remote-mesh/remote-mesh-backend.js';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
+import { RemoteMeshExecutionBackend } from '../../apps/daemon/src/execution/remote-mesh/remote-mesh-backend.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
 import {
   resolveMeshWorkspaceSkillsPath,
   refreshMeshShadowSkillMounts,
-} from '../../services/local-ai-core/src/runtime/workspace-skills-resolver.js';
-import { registerSkillsHandlers } from '../../services/local-ai-core/src/runtime/handlers/skills-handler.js';
+} from '../../apps/daemon/src/runtime/workspace-skills-resolver.js';
+import { registerSkillsHandlers } from '../../apps/daemon/src/runtime/handlers/skills-handler.js';
 
 const TEST_DIR = join(process.cwd(), 'tmp', 'test-remote-mesh-workspace-skills');
 

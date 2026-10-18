@@ -1,15 +1,15 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
-    "electron/main.ts",
-    "electron/preload.ts",
-    "src/main.tsx",
-    "src/App.tsx",
-    "services/local-ai-core/src/cli/lac.ts",
-    "services/local-ai-core/src/mesh/node-cli.ts",
+    "apps/desktop/src/main.ts",
+    "apps/desktop/src/preload.ts",
+    "apps/web/src/main.tsx",
+    "apps/web/src/App.tsx",
+    "apps/daemon/src/cli/lac.ts",
+    "apps/daemon/src/mesh/node-cli.ts",
     "packages/contracts/src/index.ts",
-    "packages/core-sdk/src/index.ts",
-    "packages/knowledge-api/src/index.ts",
+    "packages/sdk/src/index.ts",
+    "packages/knowledge/src/index.ts",
     "packages/plugin-sdk/src/index.ts",
     "scripts/*.mjs",
     "scripts/*.ts"
@@ -19,6 +19,13 @@
     "@cc/core-sdk",
     "@cc/knowledge-api",
     "@cc/plugin-sdk",
-    "@cc/superai-contracts"
+    "@cc/superai-contracts",
+    "@agentdock/contracts",
+    "@agentdock/sdk",
+    "@agentdock/knowledge",
+    "@agentdock/plugin-sdk",
+    "@agentdock/daemon",
+    "@agentdock/desktop",
+    "@agentdock/web"
   ]
 }

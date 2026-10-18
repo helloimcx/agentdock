@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseYahooDividends } from '../../services/local-ai-core/src/automation/real-stock-quote-fetcher.js';
+import { parseYahooDividends } from '../../apps/daemon/src/automation/real-stock-quote-fetcher.js';
 import {
   evaluateExpression,
   readMetric,
-} from '../../services/local-ai-core/src/automation/condition-evaluator.js';
-import { StockQuoteProvider } from '../../services/local-ai-core/src/automation/mock-stock-provider.js';
+} from '../../apps/daemon/src/automation/condition-evaluator.js';
+import { StockQuoteProvider } from '../../apps/daemon/src/automation/mock-stock-provider.js';
 
 test('parseYahooDividends correctly aggregates trailing dividends and computes yield & ERP', () => {
   const sampleYahooData = {

@@ -11,13 +11,13 @@ import {
   normalizeSandboxLaunchConfig,
   resolveSandboxStateHostPath,
   sandboxProxyLaunchEnv,
-} from '../../services/local-ai-core/src/sandbox/sandbox-config.js';
-import { toLocalCoreProjectConfig } from '../../services/local-ai-core/src/router/workspace-route-config.js';
-import { buildOpenSandboxCreateInput, normalizeEndpoint, resolveOpenSandboxApiKey } from '../../services/local-ai-core/src/sandbox/sandbox-manager.js';
-import { SandboxManager } from '../../services/local-ai-core/src/sandbox/sandbox-manager.js';
-import type { OpenSandboxClient } from '../../services/local-ai-core/src/sandbox/opensandbox-client.js';
-import { migrateDesktopConnectConfig } from '../../services/local-ai-core/src/runtime/config-migration.js';
-import { runDeploymentDiagnostics } from '../../services/local-ai-core/src/runtime/deployment-diagnostics.js';
+} from '../../apps/daemon/src/sandbox/sandbox-config.js';
+import { toLocalCoreProjectConfig } from '../../apps/daemon/src/router/workspace-route-config.js';
+import { buildOpenSandboxCreateInput, normalizeEndpoint, resolveOpenSandboxApiKey } from '../../apps/daemon/src/sandbox/sandbox-manager.js';
+import { SandboxManager } from '../../apps/daemon/src/sandbox/sandbox-manager.js';
+import type { OpenSandboxClient } from '../../apps/daemon/src/sandbox/opensandbox-client.js';
+import { migrateDesktopConnectConfig } from '../../apps/daemon/src/runtime/config-migration.js';
+import { runDeploymentDiagnostics } from '../../apps/daemon/src/runtime/deployment-diagnostics.js';
 
 function configState(path: string): RuntimeConfigState {
   return {

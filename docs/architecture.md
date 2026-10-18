@@ -27,14 +27,14 @@ Key capabilities:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│               Electron Shell (electron/)               │
-│  - Spawns Local AI Core child process                  │
+│            Electron Shell (apps/desktop/)              │
+│  - Spawns AgentDock Daemon child process               │
 │  - Hosts BrowserWindow / Native menus / App lifecycle  │
 └──────────────────────────┬─────────────────────────────┘
                            │ (Spawns & monitors)
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│           React Renderer (src/ - Port 5173)            │
+│         React Renderer (apps/web/ - Port 5173)         │
 │  - UI views: Threads, Workspaces, Automations, Skills  │
 │  - State: Zustand stores (auth, channel, thread)       │
 └──────────────────────────┬─────────────────────────────┘
@@ -42,7 +42,7 @@ Key capabilities:
                            │ http://127.0.0.1:9831/api/local/v1/*
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│      Local AI Core Daemon (services/local-ai-core/)    │
+│         AgentDock Daemon (apps/daemon/)                │
 │  - Port 9831 (HTTP server & WebSocket event bus)       │
 │  - Workspace router & thread management                │
 │  - ACP session coordinator & agent process spawner     │
@@ -63,9 +63,9 @@ Key capabilities:
 
 ### Public Entry Points
 
-1. **Desktop App**: Launched via `electron/main.ts`. Spawns `services/local-ai-core/` using Node.js runtime (`ELECTRON_RUN_AS_NODE=1`), polls `http://127.0.0.1:9831/api/local/v1/health`, then opens the renderer window. Note: `electron/preload.ts` exposes no Electron IPC bridge; all frontend-to-backend communication strictly uses HTTP/WebSocket.
-2. **Web Admin UI**: Served via Vite or production bundle. Interacts with Local AI Core via `/api/local/v1/*`.
-3. **Local AI Core REST & WebSocket API**:
+1. **Desktop App**: Launched via `apps/desktop/src/main.ts`. Spawns `apps/daemon/` using Node.js runtime (`ELECTRON_RUN_AS_NODE=1`), polls `http://127.0.0.1:9831/api/local/v1/health`, then opens the renderer window. Note: `apps/desktop/src/preload.ts` exposes no Electron IPC bridge; all frontend-to-backend communication strictly uses HTTP/WebSocket via `@agentdock/sdk`.
+2. **Web Admin UI**: Served via Vite or production bundle from `apps/web/`. Interacts with AgentDock Daemon via `/api/local/v1/*`.
+3. **AgentDock Daemon REST & WebSocket API**:
    - `GET /api/local/v1/health`: Daemon health probe
    - `/api/local/v1/workspaces/*`: Workspace configurations and route bindings
    - `/api/local/v1/threads/*`: Conversational threads, messages, and permission requests
@@ -77,8 +77,8 @@ Key capabilities:
    - `/api/local/v1/external/*`: External programmatic integration and per-run SSE streaming
    - `/api/local/v1/butler/*`: Lark bot discovery, manager/managed bot profile, and owner-scoped delegation, follow-up, cancellation, and acceptance
 4. **Channel Gateway Webhooks**: Inbound poller and webhooks for enterprise messaging channels (Lark, WeChat Work).
-5. **ACP Inbound Bridge**: `lac acp serve --workspace <id>` (`services/local-ai-core/src/cli/acp-cli-handlers.ts`, `services/local-ai-core/src/acp/server/`). An optional local consumer process spawned by ACP clients (e.g. the Zed editor); speaks the Agent Client Protocol agent-side over stdio and drives workspace agents through the existing Local AI Core HTTP+SSE surface (`/threads`, `/threads/:id/messages`, `/runs/:id/interrupt`, `/events`). ACP sessions map to threads in the bound workspace; the daemon itself gains no new route or trust boundary.
-6. **Remote Workspace LAC Control**: Remote Mesh workspace launches include a host-side stdio MCP server and a restricted `lac` Shell compatibility route. Both reuse the Local AI Core CLI handlers through one allowlisted dispatcher with launch workspace/thread context. Ordinary Shell commands continue to use the Mesh node. The MCP exposes read queries; the standalone CLI route supports the allowed no-file memory/scheduler/monitor/automation operations.
+5. **ACP Inbound Bridge**: `lac acp serve --workspace <id>` (`apps/daemon/src/cli/acp-cli-handlers.ts`, `apps/daemon/src/acp/server/`). An optional local consumer process spawned by ACP clients (e.g. the Zed editor); speaks the Agent Client Protocol agent-side over stdio and drives workspace agents through the existing AgentDock Daemon HTTP+SSE surface (`/threads`, `/threads/:id/messages`, `/runs/:id/interrupt`, `/events`). ACP sessions map to threads in the bound workspace; the daemon itself gains no new route or trust boundary.
+6. **Remote Workspace LAC Control**: Remote Mesh workspace launches include a host-side stdio MCP server and a restricted `lac` Shell compatibility route. Both reuse the AgentDock Daemon CLI handlers through one allowlisted dispatcher with launch workspace/thread context. Ordinary Shell commands continue to use the Mesh node. The MCP exposes read queries; the standalone CLI route supports the allowed no-file memory/scheduler/monitor/automation operations.
 
 ---
 
@@ -86,33 +86,35 @@ Key capabilities:
 
 | Component | Path | Responsibilities | Source Evidence |
 |---|---|---|---|
-| **Electron Shell** | `electron/` | Native app lifecycle, window creation, background core child process lifecycle management. | `electron/main.ts` |
-| **Renderer UI** | `src/` | Single-page application rendering threads, workspaces, automations, and settings using React 19, Zustand stores, and TailwindCSS. | `src/pages/`, `src/store/`, `src/components/` |
-| **Local Core Kernel** | `services/local-ai-core/src/kernel/` | Core lifecycle, error domains, configuration management, SQLite database migrations, and telemetry. | `services/local-ai-core/src/kernel/` |
-| **Workspace Router** | `services/local-ai-core/src/router/` | Resolves target workspace, model provider, and channel bindings for incoming requests. | `services/local-ai-core/src/router/workspace-router.ts` |
-| **Butler Orchestration** | `services/local-ai-core/src/butler/`, `services/local-ai-core/src/acp/store/butler-store.ts` | Manages concrete Lark bot identities, stores each bot's exact group-visible name from both app perspectives, validates those names through their corresponding app credentials, sends typed bot-to-bot group messages through ChannelService, starts target workspace threads on app-scoped verified callbacks, and persists task, operation, reply-deduplication and acceptance state. | `butler/butler-service.ts`, `butler/butler-dispatcher.ts`, `runtime/channel-service.ts`, `acp/store/butler-store.ts` |
-| **ACP and Durable Runtime** | `services/local-ai-core/src/acp/`, `services/local-ai-core/src/agents/pi-durable/` | Core admits thread submissions and routes ordinary agents through ACP. The opt-in Pi Durable path uses one ESM worker/Harness per Core data directory; Core owns approval-gated workspace text writes and the filesystem side effect. | `acp/thread-submission-dispatcher.ts`, `acp/local-core-acp-backend.ts`, `agents/pi-durable/host.ts`, `agents/pi-durable/worker.mts` |
-| **ACP Inbound Bridge** | `services/local-ai-core/src/acp/server/` | Optional stdio consumer that exposes workspace agents to external ACP clients (agent-side protocol), translating ACP sessions/prompts onto existing core routes and `stream.updated` bridge events. | `services/local-ai-core/src/acp/server/acp-stdio-server.ts`, `services/local-ai-core/src/cli/acp-cli-handlers.ts` |
-| **Remote LAC Control** | `services/local-ai-core/src/execution/remote-mesh/` | Routes allowlisted standalone `lac` commands and structured read-only MCP queries to host CLI handlers for remote-workspace agents; preserves device execution for ordinary Shell commands. | `lac-control.ts`, `lac-control-mcp-server.ts`, `agentdock-mesh-shell.ts` |
-| **Channel Gateways** | `services/local-ai-core/src/channel/` | Inbound message polling, signature verification, sender normalization, and outbound card/text delivery for Lark and WeChat; Lark routes explicitly mentioned bot-authored group messages and resolves each mention from the sender application's group-bot roster. | `services/local-ai-core/src/channel/lark/outbound-transport.ts`, `services/local-ai-core/src/channel/lark/local-core-lark-gateway.ts` |
-| **Scheduler** | `services/local-ai-core/src/scheduler/` | Parses cron expressions, triggers scheduled runs, and delivers results to target threads/channels. | `services/local-ai-core/src/scheduler/` |
-| **Sandbox Manager**| `services/local-ai-core/src/sandbox/` | Spawns and manages Docker or OpenSandbox containers for isolated code execution. | `services/local-ai-core/src/sandbox/` |
-| **Shared Contracts**| `shared/`, `packages/superai-contracts/` | Cross-process type definitions, shared enums, and API interfaces. | `shared/desktop.ts`, `packages/superai-contracts/` |
-| **Plugin SDK** | `packages/plugin-sdk/` | Extension contracts and interfaces for Local AI Core plugins. | `packages/plugin-sdk/` |
-| **Standards Layer** | `services/local-ai-core/src/standards/` | Multi-scope rule packs (builtin/user/workspace), AST security scan gate (T01-T04), Ponytail decision ladder, conditional rule rendering, and non-destructive marker materialization into AGENTS.md/CLAUDE.md. | `services/local-ai-core/src/standards/` |
+| **Electron Shell** | `apps/desktop/` | Native app lifecycle, window creation, background daemon child process lifecycle management. | `apps/desktop/src/main.ts` |
+| **Renderer UI** | `apps/web/` | Single-page application rendering threads, workspaces, automations, and settings using React 19, Zustand stores, and TailwindCSS. | `apps/web/src/pages/`, `apps/web/src/store/`, `apps/web/src/components/` |
+| **Daemon Kernel** | `apps/daemon/src/kernel/` | Core lifecycle, error domains, configuration management, SQLite database migrations, and telemetry. | `apps/daemon/src/kernel/` |
+| **Workspace Router** | `apps/daemon/src/router/` | Resolves target workspace, model provider, and channel bindings for incoming requests. | `apps/daemon/src/router/workspace-router.ts` |
+| **Butler Orchestration** | `apps/daemon/src/butler/`, `apps/daemon/src/acp/store/butler-store.ts` | Manages concrete Lark bot identities, stores each bot's exact group-visible name from both app perspectives, validates those names through their corresponding app credentials, sends typed bot-to-bot group messages through ChannelService, starts target workspace threads on app-scoped verified callbacks, and persists task, operation, reply-deduplication and acceptance state. | `butler/butler-service.ts`, `butler/butler-dispatcher.ts`, `runtime/channel-service.ts`, `acp/store/butler-store.ts` |
+| **ACP and Durable Runtime** | `apps/daemon/src/acp/`, `apps/daemon/src/agents/pi-durable/` | Core admits thread submissions and routes ordinary agents through ACP. The opt-in Pi Durable path uses one ESM worker/Harness per Core data directory; Core owns approval-gated workspace text writes and the filesystem side effect. | `acp/thread-submission-dispatcher.ts`, `acp/local-core-acp-backend.ts`, `agents/pi-durable/host.ts`, `agents/pi-durable/worker.mts` |
+| **ACP Inbound Bridge** | `apps/daemon/src/acp/server/` | Optional stdio consumer that exposes workspace agents to external ACP clients (agent-side protocol), translating ACP sessions/prompts onto existing core routes and `stream.updated` bridge events. | `apps/daemon/src/acp/server/acp-stdio-server.ts`, `apps/daemon/src/cli/acp-cli-handlers.ts` |
+| **Remote LAC Control** | `apps/daemon/src/execution/remote-mesh/` | Routes allowlisted standalone `lac` commands and structured read-only MCP queries to host CLI handlers for remote-workspace agents; preserves device execution for ordinary Shell commands. | `lac-control.ts`, `lac-control-mcp-server.ts`, `agentdock-mesh-shell.ts` |
+| **Channel Gateways** | `apps/daemon/src/channel/` | Inbound message polling, signature verification, sender normalization, and outbound card/text delivery for Lark and WeChat; Lark routes explicitly mentioned bot-authored group messages and resolves each mention from the sender application's group-bot roster. | `apps/daemon/src/channel/lark/outbound-transport.ts`, `apps/daemon/src/channel/lark/local-core-lark-gateway.ts` |
+| **Scheduler** | `apps/daemon/src/scheduler/` | Parses cron expressions, triggers scheduled runs, and delivers results to target threads/channels. | `apps/daemon/src/scheduler/` |
+| **Sandbox Manager**| `apps/daemon/src/sandbox/` | Spawns and manages Docker or OpenSandbox containers for isolated code execution. | `apps/daemon/src/sandbox/` |
+| **Shared Contracts**| `packages/contracts/` | Cross-process type definitions, desktop models, shared enums, and API interfaces (`@agentdock/contracts`). | `packages/contracts/src/` |
+| **Plugin SDK** | `packages/plugin-sdk/` | Extension contracts and interfaces for AgentDock Daemon plugins (`@agentdock/plugin-sdk`). | `packages/plugin-sdk/src/` |
+| **Knowledge Engine** | `packages/knowledge/` | Knowledge base SQLite store, indexing, and vector search abstractions (`@agentdock/knowledge`). | `packages/knowledge/src/` |
+| **Client SDK** | `packages/sdk/` | Client SDK for AgentDock Daemon REST, WebSocket, and SSE APIs (`@agentdock/sdk`). | `packages/sdk/src/` |
+| **Standards Layer** | `apps/daemon/src/standards/` | Multi-scope rule packs (builtin/user/workspace), AST security scan gate (T01-T04), Ponytail decision ladder, conditional rule rendering, and non-destructive marker materialization into AGENTS.md/CLAUDE.md. | `apps/daemon/src/standards/` |
 
 ---
 
 ## 4. Dependency Direction & Protocol Contracts
 
 1. **One-Way Inward Dependency**:
-   - `src/` (Renderer) depends on `shared/` contracts and `src/api/` client. It does not import Electron main or Local AI Core internals.
-   - `electron/` depends on `shared/` contracts. It launches Local AI Core as an isolated Node child process.
-   - `services/local-ai-core/` depends on `packages/*` and `shared/`. It does not import renderer code.
-   - Shared contracts (`shared/`, `packages/*`) have zero dependencies on higher layers.
+   - `apps/web/` (Renderer) depends on `packages/contracts/` and `packages/sdk/`. It does not import Electron main or Daemon internals.
+   - `apps/desktop/` depends on `packages/contracts/`. It launches AgentDock Daemon as an isolated Node child process.
+   - `apps/daemon/` depends on `packages/*`. It does not import renderer code or desktop shell code.
+   - Shared libraries (`packages/*`) have zero dependencies on application shells (`apps/*`).
 2. **Communication Protocols**:
-   - UI to Local AI Core: HTTP REST + WebSocket (`ws://127.0.0.1:9831/api/local/v1/events`).
-   - Local AI Core to Agents: ACP (Agent Client Protocol) over stdio or HTTP NDJSON bridge.
+   - UI to AgentDock Daemon: HTTP REST + WebSocket (`ws://127.0.0.1:9831/api/local/v1/events`).
+   - AgentDock Daemon to Agents: ACP (Agent Client Protocol) over stdio or HTTP NDJSON bridge.
    - Remote-workspace LAC access: a dedicated stdio MCP server and the transparent Shell proxy call the host LAC dispatcher; dispatcher requests use the host-configured Local AI Core API URL and launch context. Ordinary remote Shell traffic uses `POST /api/local/v1/mesh/shell/execute` with a signed, expiring node-scoped token.
    - Butler bot to bot: Lark native group text messages with an explicit `<at user_id="ou_…">` mention. Open IDs are app-scoped: Core resolves the exact group-visible bot name under the sending runtime's app credentials before delivery and resolves the expected sender under the receiving runtime's app credentials before accepting a callback. The bot roster lookup is cached by `(appId, chatId)` for 30 seconds and fails closed on missing or ambiguous names.
    - Local AI Core to Pi Durable: a private JSON-lines protocol over worker stdio; the worker exclusively owns the Pi SQLite database. Correlated write requests return through this protocol to Core's per-write approval and filesystem commit path.
@@ -161,4 +163,4 @@ The Android node operates as an All-in-One native APK (`agentdock-a11y`) embeddi
 
 ScreenController owns one non-focusable, non-touchable TYPE_ACCESSIBILITY_OVERLAY with FLAG_KEEP_SCREEN_ON. Canvas status/edge feedback and short target ripples do not generate input or renew leases. Accessibility descendants are excluded; OS screenshots may include the layer. Main-thread dispatch serializes UI effects and ScreenLease owner deadlines. Owner release/expiry preserves remaining owners; screen-off/local user stop/service teardown clear all. Process death removes OS-owned windows. Secure unlock stays user-owned; no global timeout settings, ADB dependency or durable screen state are added. HyperOS touch/focus and display behavior require separate physical-device verification. NodeCatalog indices remain aligned across dump/click/input.
 
-Evidence: `tools/agentdock-a11y/src/main/java/com/agentdock/a11y/`, `services/local-ai-core/src/mesh/mobile-ui/`, ACP backend lifecycle hooks and remote device instructions. See [screen flow](architecture/mobile-screen.workflow.html) and [session change record](architecture/changes/2026-10-04-android-a11y-mesh-client.md).
+Evidence: `tools/agentdock-a11y/src/main/java/com/agentdock/a11y/`, `apps/daemon/src/mesh/mobile-ui/`, ACP backend lifecycle hooks and remote device instructions. See [screen flow](architecture/mobile-screen.workflow.html) and [session change record](architecture/changes/2026-10-04-android-a11y-mesh-client.md).

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LocalCoreLarkGateway } from '../../services/local-ai-core/src/channel/lark/local-core-lark-gateway.js';
+import { LocalCoreLarkGateway } from '../../apps/daemon/src/channel/lark/local-core-lark-gateway.js';
 import {
   buildLarkPostContent,
   renderLarkTextMessage,
-} from '../../services/local-ai-core/src/channel/lark/rendering/messages.js';
+} from '../../apps/daemon/src/channel/lark/rendering/messages.js';
 
 function findLarkPostMdText(content: any) {
   for (const line of content.zh_cn?.content || []) {

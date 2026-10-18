@@ -1,6 +1,6 @@
 import { When, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { renderLarkTextMessage } from '../../../services/local-ai-core/src/channel/lark/rendering/messages.js';
+import { renderLarkTextMessage } from '../../../apps/daemon/src/channel/lark/rendering/messages.js';
 import type { BddWorld } from '../support/world.js';
 
 function tableMarkdown(index: number) {

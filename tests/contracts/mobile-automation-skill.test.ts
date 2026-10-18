@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { existsSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { ManagedSkillCatalog } from '../../services/local-ai-core/src/runtime/managed-skill-catalog.js';
-import { RemoteMeshExecutionBackend } from '../../services/local-ai-core/src/execution/remote-mesh/remote-mesh-backend.js';
+import { ManagedSkillCatalog } from '../../apps/daemon/src/runtime/managed-skill-catalog.js';
+import { RemoteMeshExecutionBackend } from '../../apps/daemon/src/execution/remote-mesh/remote-mesh-backend.js';
 
 const TEST_BASE_DIR = join(process.cwd(), 'tmp', 'test-mobile-automation-skill');
 

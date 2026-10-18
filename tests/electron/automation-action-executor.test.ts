@@ -8,14 +8,14 @@ import type { AutomationDefinition, AutomationEvaluation } from '../../packages/
 import {
   AutomationActionExecutor,
   renderAutomationPrompt,
-} from '../../services/local-ai-core/src/automation/automation-action-executor.js';
-import { DecisionLogService } from '../../services/local-ai-core/src/automation/decision-log-service.js';
+} from '../../apps/daemon/src/automation/automation-action-executor.js';
+import { DecisionLogService } from '../../apps/daemon/src/automation/decision-log-service.js';
 import {
   ACP_PROMPT_TIMEOUT_MS,
   BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS,
-} from '../../services/local-ai-core/src/agents/shared/execution-timeouts.js';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/local-core-acp-store.js';
-import { LocalAutomationStore } from '../../services/local-ai-core/src/acp/store/automation-store.js';
+} from '../../apps/daemon/src/agents/shared/execution-timeouts.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
+import { LocalAutomationStore } from '../../apps/daemon/src/acp/store/automation-store.js';
 
 function definition(platform = 'lark'): AutomationDefinition {
   return {

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalCoreTraceStore } from '../../services/local-ai-core/src/acp/store/trace-store.js';
-import { LocalAutomationStore } from '../../services/local-ai-core/src/acp/store/automation-store.js';
-import { AcpTraceProjector } from '../../services/local-ai-core/src/acp/local-core-acp-trace-projector.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalCoreTraceStore } from '../../apps/daemon/src/acp/store/trace-store.js';
+import { LocalAutomationStore } from '../../apps/daemon/src/acp/store/automation-store.js';
+import { AcpTraceProjector } from '../../apps/daemon/src/acp/local-core-acp-trace-projector.js';
 
 test('Automation run end-to-end trace projection and multi-ID lookup', () => {
   const db = new DatabaseSync(':memory:');

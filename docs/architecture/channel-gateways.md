@@ -6,11 +6,11 @@ Channel gateway 负责把平台消息转换成 Local AI Core 的统一 channel c
 
 | 模块 | 关键文件 | 职责 |
 | --- | --- | --- |
-| Lark gateway | `services/local-ai-core/src/channel/lark/local-core-lark-gateway.ts` | Lark 绑定、扫码注册、事件入口、卡片回传、文件发送。 |
-| Weixin gateway | `services/local-ai-core/src/channel/weixin/local-core-weixin-gateway.ts` | 微信登录状态、长轮询入口、消息去重、分段回传、文件发送。 |
-| Shared content | `services/local-ai-core/src/channel/shared/content.ts` | 将平台 inbound parts 封装成 thread message input。 |
-| Shared file utils | `services/local-ai-core/src/channel/shared/file-utils.ts` | 统一准备 outbound 文件发送。 |
-| Inbound attachment store | `services/local-ai-core/src/channel/shared/inbound-attachment-store.ts` | 接收平台 Source 提供的可读流，统一完成限额、安全命名、临时文件清理和原子落盘。 |
+| Lark gateway | `apps/daemon/src/channel/lark/local-core-lark-gateway.ts` | Lark 绑定、扫码注册、事件入口、卡片回传、文件发送。 |
+| Weixin gateway | `apps/daemon/src/channel/weixin/local-core-weixin-gateway.ts` | 微信登录状态、长轮询入口、消息去重、分段回传、文件发送。 |
+| Shared content | `apps/daemon/src/channel/shared/content.ts` | 将平台 inbound parts 封装成 thread message input。 |
+| Shared file utils | `apps/daemon/src/channel/shared/file-utils.ts` | 统一准备 outbound 文件发送。 |
+| Inbound attachment store | `apps/daemon/src/channel/shared/inbound-attachment-store.ts` | 接收平台 Source 提供的可读流，统一完成限额、安全命名、临时文件清理和原子落盘。 |
 | Channel contracts | `packages/contracts/src/index.ts` | `ChannelInboundMessageContent`、`ChannelOutboundMessageInput`、`ChannelRoute` 等共享契约。 |
 
 ## Inbound 消息流程

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ensureLocalCoreAcpSchema } from '../../services/local-ai-core/src/acp/store/schema.js';
-import { LocalThreadStore } from '../../services/local-ai-core/src/acp/store/thread-store.js';
+import { ensureLocalCoreAcpSchema } from '../../apps/daemon/src/acp/store/schema.js';
+import { LocalThreadStore } from '../../apps/daemon/src/acp/store/thread-store.js';
 
 test('LocalThreadStore.get supports windowed pagination with limit and beforeSeq', () => {
   const db = new DatabaseSync(':memory:');
@@ -47,7 +47,7 @@ test('LocalThreadStore.get supports windowed pagination with limit and beforeSeq
 });
 
 test('thread.get route handler passes query parameters to workspaceRouter', async () => {
-  const { registerThreadHandlers } = await import('../../services/local-ai-core/src/runtime/handlers/thread-handler.js');
+  const { registerThreadHandlers } = await import('../../apps/daemon/src/runtime/handlers/thread-handler.js');
   const map = new Map<string, any>();
   let calledOptions: any;
 

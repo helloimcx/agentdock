@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DesktopConnectConfig } from '@cc/superai-contracts';
-import { LocalCoreAcpStore } from '../../services/local-ai-core/src/acp/store/local-core-acp-store.js';
-import { ExternalService } from '../../services/local-ai-core/src/runtime/external-service.js';
+import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/store/local-core-acp-store.js';
+import { ExternalService } from '../../apps/daemon/src/runtime/external-service.js';
 
 const USER_ID = 'user-alice-2f1a';
 const PROJECT_ID = 'proj-demo-9c4e';

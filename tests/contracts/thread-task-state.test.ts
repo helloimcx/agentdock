@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   chatControllerActionForTaskState,
   taskStateFromControllerStatus,
-} from '../../src/pages/Threads/thread-chat-model.js';
+} from '../../apps/web/src/pages/Threads/thread-chat-model.js';
 
 test('chatControllerActionForTaskState maps each chat task state to a named controller action', () => {
   assert.deepEqual(chatControllerActionForTaskState('idle'), { type: 'settled' });

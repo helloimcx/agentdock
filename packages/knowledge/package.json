@@ -1,0 +1,13 @@
+{
+  "name": "@agentdock/knowledge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@agentdock/contracts": "workspace:*",
+    "@agentdock/plugin-sdk": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

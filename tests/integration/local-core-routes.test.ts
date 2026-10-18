@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
-import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
-import { registerThreadHandlers } from '../../services/local-ai-core/src/runtime/handlers/thread-handler.js';
+import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
+import { registerThreadHandlers } from '../../apps/daemon/src/runtime/handlers/thread-handler.js';
 
 test('local core route parser separates runtime refresh and runtime detail routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/logs'), { name: 'logs.list' });

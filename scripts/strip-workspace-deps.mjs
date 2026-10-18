@@ -1,5 +1,5 @@
 // Run by `npm pack` / `npm publish` via the `prepack` lifecycle hook.
-// Removes workspace-linked @cc/* deps that are bundled into the published
+// Removes workspace-linked @agentdock/* and @cc/* deps that are bundled into the published
 // tarball (dist-electron/packages/) and must not appear as external deps.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

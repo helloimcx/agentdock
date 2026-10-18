@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Readable } from 'node:stream';
-import { parseLocalAiCoreRoute } from '../../services/local-ai-core/src/runtime/server-routes.js';
-import { registerUnifiedAutomationHandlers } from '../../services/local-ai-core/src/runtime/handlers/automations-handler.js';
+import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
+import { registerUnifiedAutomationHandlers } from '../../apps/daemon/src/runtime/handlers/automations-handler.js';
 
 test('unified automation routes are explicit and do not overlap legacy monitor routes', () => {
   assert.deepEqual(parseLocalAiCoreRoute('GET', '/api/local/v1/automations'), { name: 'automations.list' });
