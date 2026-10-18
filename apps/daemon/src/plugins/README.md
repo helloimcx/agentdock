@@ -1,6 +1,6 @@
-# Local AI Core Plugin Layout
+# AgentDock Daemon Plugin Layout
 
-Built-in plugins for `services/local-ai-core` live in this folder.
+Built-in plugins for `apps/daemon` live in this folder.
 
 Conventions:
 

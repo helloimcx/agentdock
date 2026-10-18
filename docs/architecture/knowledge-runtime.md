@@ -14,7 +14,7 @@ Knowledge runtime 原先通过 Local AI Core plugin 接入外部向量数据库�
 
 ```mermaid
 flowchart TD
-  Renderer["Renderer UI (Capability Guard)"] --> Client["packages/core-sdk/knowledge"]
+  Renderer["Renderer UI (Capability Guard)"] --> Client["packages/sdk/knowledge"]
   Client --> Server["Local Core HTTP API (/knowledge/*)"]
   Server --> KnowledgeHandler["knowledge-handler<br/>(Map dispatch)"]
   KnowledgeHandler --> Provider["NoopKnowledgeProvider"]

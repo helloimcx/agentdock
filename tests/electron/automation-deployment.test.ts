@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { automationSandboxDiagnosticChecks } from '../../apps/daemon/src/runtime/deployment-diagnostics.js';
@@ -81,9 +81,12 @@ test('Dockerfiles in docker/agentdock have valid COPY source paths', () => {
       for (const src of parts) {
         if (src.startsWith('--')) continue;
         if (src.includes('*')) {
-          const prefix = src.slice(0, src.indexOf('*'));
-          const dir = join(process.cwd(), prefix ? prefix.slice(0, prefix.lastIndexOf('/') + 1) : '');
+          const dir = join(process.cwd(), src.includes('/') ? src.slice(0, src.lastIndexOf('/')) : '.');
+          const filePattern = src.includes('/') ? src.slice(src.lastIndexOf('/') + 1) : src;
+          const regex = new RegExp(`^${filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`);
           assert.ok(existsSync(dir), `${file}: directory for wildcard ${src} must exist`);
+          const matches = readdirSync(dir).filter((fileName) => regex.test(fileName));
+          assert.ok(matches.length > 0, `${file}: wildcard ${src} must match at least one file, found 0`);
         } else {
           assert.ok(existsSync(join(process.cwd(), src)), `${file}: source path "${src}" must exist`);
         }

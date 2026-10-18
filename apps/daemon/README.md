@@ -1,6 +1,6 @@
-# Local AI Core
+# AgentDock Daemon
 
-`services/local-ai-core` 是桌面端本地核心服务，统一承接：
+`apps/daemon` 是桌面端本地核心服务，统一承接：
 
 - runtime/service 状态管理
 - 线程与消息路由（本地 ACP）
@@ -23,7 +23,7 @@ src/
 
 ## 核心文件
 
-- `src/runtime/server.ts`: Local AI Core HTTP/SSE 服务
+- `src/runtime/server.ts`: AgentDock Daemon HTTP/SSE 服务
 - `src/runtime/standalone.ts`: standalone 启动入口
 - `src/router/workspace-router.ts`: workspace 级路由主入口
 - `src/channel/lark/local-core-lark-gateway.ts`: Feishu/Lark 原生通道网关
@@ -158,6 +158,6 @@ pnpm dev:core
 ## 设计约束
 
 - 内部平台类型统一使用 `lark`、`weixin`、`local` 的 base id；channel 多实例使用 `<base>:<instanceId>` 并通过 `scheduled-job-route.ts` 解析
-- Local AI Core 为本地线程与事件流的统一入口
-- 本仓库默认运行形态为 Local AI Core 单核运行时，不依赖 `cc-connect`
+- AgentDock Daemon 为本地线程与事件流的统一入口
+- 本仓库默认运行形态为 AgentDock Daemon 单核运行时，不依赖 `cc-connect`
 - ACP、scheduler、gateway 三层之间优先通过显式接口协作，不应在单个文件里同时混合 transport、state machine、platform delivery 与持久化状态迁移

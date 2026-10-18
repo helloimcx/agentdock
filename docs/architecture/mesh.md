@@ -22,7 +22,7 @@ flowchart LR
 
 ## Ownership and transport
 
-- Contracts: `packages/contracts/src/mesh.ts`; API client: `packages/core-sdk/src/mesh.ts`.
+- Contracts: `packages/contracts/src/mesh.ts`; API client: `packages/sdk/src/mesh.ts`.
 - Core owns identities, allowed capabilities and execution history in `mesh_nodes` / `mesh_executions`, in the existing `runtime/local-core.db`. Only hashes of pairing and device credentials are retained.
 - `MeshGateway` attaches to the existing Core HTTP server. Nodes initiate WebSocket connections, so devices need no inbound listener or public IP. Internet, LAN and Tailscale are transport choices; no specific overlay is required.
 - `bin/agentdock.mjs` forwards the Mesh WebSocket upgrade through the bundled web server, in addition to existing REST forwarding.

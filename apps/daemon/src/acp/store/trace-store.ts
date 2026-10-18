@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { RunSpan, RunSpanKind, RunSpanStatus, RunTraceSummary, TokenUsage } from '@cc/superai-contracts';
 import { ACTIVE_RUN_STATUSES_SQL, RETENTION_HORIZON_MS, RETENTION_PRUNE_INTERVAL_MS, isRetentionPruneDue } from './utils.js';
 
-export interface LocalRunSpanRow {
+interface LocalRunSpanRow {
   id: string;
   run_id: string;
   parent_span_id: string | null;
