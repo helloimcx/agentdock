@@ -70,12 +70,14 @@ flowchart LR
 
 ## New
 
-### 2026-10-17
+### 2026-10-18
 
-- **Monorepo 平级拓扑与 AgentDock Daemon 规范化重构**：
-  - **平级目录架构**：消除根目录散落与依赖倒挂，形成清晰的 `apps/`（`daemon`、`desktop`、`web`）与 `packages/`（`contracts`、`sdk`、`knowledge`、`plugin-sdk`）两级规范化结构。
-  - **核心服务更名**：服务更名为 `agentdock-daemon`（`@agentdock/daemon`），健康探测支持双向兼容识别，保留 `local-ai-core` 别名与历史包名兼容导出。
-  - **零回归质量保障**：1083+ 单元测试、80 个 BDD 场景、C8 覆盖率、ESLint 复杂度（108）、Knip 无用符号（171）及 Archify 架构检查全部通过。
+- 发布 AgentDock 0.1.95：
+  - **Monorepo 平级拓扑与 AgentDock Daemon 规范化重构 (#224)**：
+    - **平级目录架构**：消除根目录散落与依赖倒挂，形成清晰的 `apps/`（`daemon`、`desktop`、`web`）与 `packages/`（`contracts`、`sdk`、`knowledge`、`plugin-sdk`）两级规范化结构。
+    - **核心服务更名**：服务更名为 `agentdock-daemon`（`@agentdock/daemon`），健康探测支持双向兼容识别，保留 `local-ai-core` 别名与历史包名兼容导出。
+    - **执行追踪优化与诊断保留策略 (#225)**：增加 `run_spans` 自动过期清理与窄回合历史消息读取，避免诊断表无限增长。
+    - **零回归质量保障**：1090+ 单元测试、80 个 BDD 场景、C8 覆盖率、ESLint 复杂度（108）、Knip 无用符号（171）及 Archify 架构检查全部通过。
 
 ### 2026-10-16
 
