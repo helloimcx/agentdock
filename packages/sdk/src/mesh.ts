@@ -13,6 +13,13 @@ import { LOCAL_AI_CORE_BASE } from './client.js';
 
 export { sanitizeTailscaleName, tailscaleNodeId };
 
+export class MeshRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'MeshRequestError';
+  }
+}
+
 /** Create a Mesh API client. Tokens can be provided in memory or resolved dynamically from local storage. */
 export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, '');
@@ -27,7 +34,9 @@ export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, f
       signal: AbortSignal.timeout(15_000),
     });
     const envelope = await response.json() as { ok: boolean; data: T; error?: string };
-    if (!response.ok || !envelope.ok) throw new Error(envelope.error || `Mesh request failed (${response.status}).`);
+    if (!response.ok || !envelope.ok) {
+      throw new MeshRequestError(envelope.error || `Mesh request failed (${response.status}).`, response.status);
+    }
     return envelope.data;
   }
   return {

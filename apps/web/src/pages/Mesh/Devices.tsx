@@ -98,9 +98,65 @@ function PairedNodesCard({ nodes, loading }: { nodes: MeshNode[]; loading: boole
 }
 
 function isPeerBound(peer: TailscalePeer, nodes: MeshNode[]) {
-  if (peer.meshNodeId) return true;
-  const targetId = tailscaleNodeId(peer.name, peer.dnsName);
-  return nodes.some(n => n.id === targetId);
+  if (peer.meshNodeStatus === 'revoked') return false;
+  const targetId = peer.meshNodeId || tailscaleNodeId(peer.name, peer.dnsName);
+  return nodes.some(n => n.id === targetId && n.status !== 'revoked');
+}
+
+function isPeerRevoked(peer: TailscalePeer, nodes: MeshNode[]) {
+  if (peer.meshNodeStatus === 'revoked') return true;
+  const targetId = peer.meshNodeId || tailscaleNodeId(peer.name, peer.dnsName);
+  return nodes.some(n => n.id === targetId && n.status === 'revoked');
+}
+
+type TailscalePeerRowProps = {
+  peer: TailscalePeer;
+  nodes: MeshNode[];
+  isBusy: boolean;
+  onBindPeer: (peer: TailscalePeer) => void;
+};
+
+function TailscalePeerRow({ peer, nodes, isBusy, onBindPeer }: TailscalePeerRowProps) {
+  const { t } = useTranslation();
+  const isRevoked = isPeerRevoked(peer, nodes);
+  const bound = isPeerBound(peer, nodes);
+
+  return (
+    <div className="flex items-center justify-between py-2.5 text-sm">
+      <div className="space-y-0.5">
+        <p className="font-medium">
+          {peer.name}{' '}
+          <span className="text-xs text-muted-foreground">({peer.os})</span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {peer.ips[0] || peer.dnsName || 'No IP'}{' '}
+          <span className={peer.online ? 'text-emerald-400' : 'text-zinc-500'}>
+            · {peer.online ? t('mesh.nodeStatus.online') : t('mesh.nodeStatus.offline')}
+          </span>
+        </p>
+      </div>
+      <div>
+        {isRevoked ? (
+          <span className="rounded bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400">
+            {t('mesh.nodeStatus.revoked')}
+          </span>
+        ) : bound ? (
+          <span className="rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+            {t('mesh.bound', 'Bound')}
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isBusy}
+            onClick={() => onBindPeer(peer)}
+          >
+            {isBusy ? '...' : t('mesh.bindAsMeshNode', 'Bind as Mesh Node')}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TailscalePeersCard({
@@ -157,42 +213,15 @@ function TailscalePeersCard({
           <p className="text-sm text-muted-foreground">{t('mesh.tailscaleNoPeers', 'No other peer devices detected in the current Tailnet.')}</p>
         ) : (
           <div className="divide-y divide-border">
-            {tailscale.peers.map(peer => {
-              const bound = isPeerBound(peer, nodes);
-              const isBusy = bindingId === peer.id;
-              return (
-                <div key={peer.id} className="flex items-center justify-between py-2.5 text-sm">
-                  <div className="space-y-0.5">
-                    <p className="font-medium">
-                      {peer.name}{' '}
-                      <span className="text-xs text-muted-foreground">({peer.os})</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {peer.ips[0] || peer.dnsName || 'No IP'}{' '}
-                      <span className={peer.online ? 'text-emerald-400' : 'text-zinc-500'}>
-                        · {peer.online ? t('mesh.nodeStatus.online') : t('mesh.nodeStatus.offline')}
-                      </span>
-                    </p>
-                  </div>
-                  <div>
-                    {bound ? (
-                      <span className="rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-                        {t('mesh.bound', 'Bound')}
-                      </span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isBusy}
-                        onClick={() => onBindPeer(peer)}
-                      >
-                        {isBusy ? '...' : t('mesh.bindAsMeshNode', 'Bind as Mesh Node')}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {tailscale.peers.map(peer => (
+              <TailscalePeerRow
+                key={peer.id}
+                peer={peer}
+                nodes={nodes}
+                isBusy={bindingId === peer.id}
+                onBindPeer={onBindPeer}
+              />
+            ))}
           </div>
         )}
       </div>

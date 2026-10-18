@@ -288,6 +288,7 @@
     "bindAsMeshNode": "Vincular como nodo Mesh",
     "bound": "Vinculado",
     "authRequired": "Se requiere el token de administrador de Mesh para descubrir dispositivos. Configure el token arriba.",
+    "workspaceAuthHint": "El descubrimiento de dispositivos Tailscale requiere configurar el token de administrador en la página de Device Mesh.",
     "tailscaleNoPeers": "No se detectaron otros dispositivos pares en la Tailnet actual.",
     "revoke": "Revoke access",
     "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",

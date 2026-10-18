@@ -328,6 +328,7 @@
     "bindAsMeshNode": "Bind as Mesh Node",
     "bound": "Bound",
     "authRequired": "Mesh administrator token is required to discover devices. Please configure the administrator token above.",
+    "workspaceAuthHint": "Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.",
     "tailscaleNoPeers": "No other peer devices detected in the current Tailnet.",
     "revoke": "Revoke access",
     "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",

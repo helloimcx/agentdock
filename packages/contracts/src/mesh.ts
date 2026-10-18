@@ -50,6 +50,7 @@ export type TailscalePeer = {
   online: boolean;
   isSelf?: boolean;
   meshNodeId?: string;
+  meshNodeStatus?: 'online' | 'offline' | 'revoked';
 };
 
 export type TailscaleStatusResponse = {

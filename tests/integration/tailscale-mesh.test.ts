@@ -15,6 +15,7 @@ import {
   type MeshNode,
   type TailscalePeer,
 } from '../../packages/contracts/src/mesh.js';
+import { createMeshClient, MeshRequestError } from '../../packages/sdk/src/mesh.js';
 
 test('sanitizeTailscaleName and tailscaleNodeId correctly sanitize names and handle fallbacks', () => {
   assert.equal(sanitizeTailscaleName('dev--box'), 'dev-box');
@@ -104,10 +105,21 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes as off
   assert.equal(bound.platform, 'linux');
   assert.ok(bound.capabilities.includes('shell.exec'));
 
-  // 4. Query status again, dobby should now have meshNodeId populated
+  // 4. Query status again, dobby should now have meshNodeId and meshNodeStatus populated
   const statusAfterBind = await service.getStatus();
   const dobbyAfter = statusAfterBind.peers.find((p: TailscalePeer) => p.name === 'dobby');
   assert.equal(dobbyAfter?.meshNodeId, 'node:ts:dobby');
+  assert.equal(dobbyAfter?.meshNodeStatus, 'offline');
+
+  // Re-binding without os inherits existing known platform in label
+  const dobbyReboundNoOs = service.bindNode({
+    name: 'dobby',
+    dnsName: 'dobby.tailnet.ts.net.',
+    ips: ['100.105.207.63'],
+    allowShell: true,
+  });
+  assert.equal(dobbyReboundNoOs.platform, 'linux');
+  assert.equal(dobbyReboundNoOs.label, 'dobby (linux · 100.105.207.63)');
 
   // 5. Test idempotence and allowShell: false
   const fnosBound = service.bindNode({
@@ -154,6 +166,11 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes as off
   );
   const stillRevoked = store.getNode('node:ts:fnos');
   assert.equal(stillRevoked?.status, 'revoked');
+
+  // Status query reflects meshNodeStatus === 'revoked' for revoked peers
+  const statusAfterRevoke = await service.getStatus(true);
+  const fnosAfterRevoke = statusAfterRevoke.peers.find((p: TailscalePeer) => p.name === 'fnos');
+  assert.equal(fnosAfterRevoke?.meshNodeStatus, 'revoked');
 });
 
 test('TailscaleService implements 5-second TTL cache and in-flight deduplication', async () => {
@@ -294,6 +311,14 @@ test('MeshGateway enforces admin auth on /tailscale/* and dispatch to bound node
     // 1. Anonymous GET /api/local/v1/mesh/tailscale/status must return 401
     const anonStatusRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/status`);
     assert.equal(anonStatusRes.status, 401);
+
+    const anonClient = createMeshClient(undefined, `${origin}/api/local/v1`);
+    await assert.rejects(
+      () => anonClient.getTailscaleStatus(),
+      (err: unknown) => {
+        return err instanceof MeshRequestError && err.status === 401 && /authentication required/i.test(err.message);
+      },
+    );
 
     // 2. Anonymous POST /api/local/v1/mesh/tailscale/bind must return 401
     const anonBindRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/bind`, {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bot, Cloud, FolderKanban, FolderOpen, Plug, Plus, QrCode, Save, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, SectionCard, Select, StatusPill } from '@/components/ui';
@@ -329,6 +330,7 @@ function ProjectDialogForm({
   tailscaleError,
   onNodeBound,
 }: ProjectDialogFormProps) {
+  const { t } = useTranslation();
   const [bindError, setBindError] = useState<string | null>(null);
 
   return (
@@ -367,7 +369,7 @@ function ProjectDialogForm({
         {bindError && <p className="text-xs text-red-400">{bindError}</p>}
         {tailscaleError === 'auth_required' && (
           <p className="text-xs text-muted-foreground">
-            Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.
+            {t('mesh.workspaceAuthHint', 'Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.')}
           </p>
         )}
       </div>

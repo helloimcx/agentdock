@@ -18,8 +18,8 @@
   - SDK Mesh client (`packages/sdk/src/mesh.ts`) and runtime client dynamically resolve admin tokens per request from caller memory or `localStorage` fallback without needing client recreation.
 - Bound node identity & state model:
   - Discovered Tailscale nodes are registered via shared ID helper `tailscaleNodeId(name, dnsName)` yielding `node:ts:<sanitized-name>`.
-  - Deterministic naming allows re-binding with identical sanitized names to idempotently update node records (persisting primary Tailscale IP in `label` and updating capabilities) while preserving `createdAt`. Sanitization symbol collapse (e.g. `gpu--server` vs `gpu-server`) updates the existing record rather than duplicating nodes.
-  - Revocation preservation: re-binding a node whose status is `revoked` is strictly rejected to prevent bypassing administrator revocation.
+  - Deterministic naming allows re-binding with identical sanitized names to idempotently update node records (persisting primary Tailscale IP in `label`, preserving known platform, and updating capabilities) while preserving `createdAt`. Sanitization symbol collapse (e.g. `gpu--server` vs `gpu-server`) updates the existing record rather than duplicating nodes.
+  - Revocation preservation: re-binding a node whose status is `revoked` is strictly rejected to prevent bypassing administrator revocation. Revoked peers display a dedicated Revoked badge in the UI; recovery requires an administrator to remove the revoked record from `mesh_nodes` or re-enroll the node via CLI `agentdock-node pair/connect`.
   - Bound nodes are created with `status: 'offline'` and `token_hash: NULL`. Because Mesh dispatch requires a live connected WebSocket session, bound devices remain offline until an agent connects via `agentdock-node pair/connect`.
   - Single-source sanitization helper `sanitizeTailscaleName` and `tailscaleNodeId` exported from `@cc/superai-contracts` and `@cc/core-sdk/mesh`.
 - Renderer UI:

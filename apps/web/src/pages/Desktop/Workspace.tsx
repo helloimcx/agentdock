@@ -150,7 +150,8 @@ export default function DesktopWorkspace() {
           setTailscaleError(null);
         })
         .catch((err: unknown) => {
-          const is401 = err instanceof Error && /401|unauthorized/i.test(err.message);
+          const is401 = (err as { status?: number })?.status === 401 ||
+            (err instanceof Error && /401|unauthorized|authentication/i.test(err.message));
           setTailscaleError(is401 ? 'auth_required' : 'unavailable');
         });
       const parsed = clone(configState.config || {});

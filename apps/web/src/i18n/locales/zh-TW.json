@@ -288,6 +288,7 @@
     "bindAsMeshNode": "一鍵綁定為 Mesh 節點",
     "bound": "已綁定",
     "authRequired": "偵測 Tailscale 裝置需要 Mesh 管理憑證。請在上方設定管理憑證。",
+    "workspaceAuthHint": "Tailscale 裝置探索需要在裝置網路 (Mesh) 頁面設定管理員憑證。",
     "tailscaleNoPeers": "未在目前 Tailnet 中偵測到其他對端裝置。",
     "revoke": "Revoke access",
     "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",

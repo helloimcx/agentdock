@@ -74,6 +74,7 @@ function parseRemotePeers(peerMap: Record<string, RawTailscalePeer> | undefined,
       online: Boolean(p.Online),
       isSelf: false,
       meshNodeId: matchedMeshNode?.id,
+      meshNodeStatus: matchedMeshNode?.status,
     });
   }
   return peers.sort((a, b) => {
@@ -159,11 +160,12 @@ export class TailscaleService {
     const allowShell = input.allowShell !== false;
     const now = new Date().toISOString();
     const caps = resolveCapabilities(allowShell);
+    const platform = input.os || existing?.platform;
 
     const node: MeshNode = {
       id,
-      label: resolveNodeLabel(rawName, input.os, input.ips),
-      platform: input.os || existing?.platform || 'unknown',
+      label: resolveNodeLabel(rawName, platform, input.ips),
+      platform: platform || 'unknown',
       capabilities: caps,
       allowedCapabilities: caps,
       status: 'offline',

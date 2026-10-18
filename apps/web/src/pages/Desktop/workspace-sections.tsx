@@ -194,6 +194,7 @@ function ExecutionDeviceField({
   bindError,
   onDeviceChange,
 }: ExecutionDeviceFieldProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
       <Select
@@ -207,7 +208,7 @@ function ExecutionDeviceField({
       {bindError && <p className="text-xs text-red-400">{bindError}</p>}
       {tailscaleError === 'auth_required' && (
         <p className="text-xs text-muted-foreground">
-          Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.
+          {t('mesh.workspaceAuthHint', 'Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.')}
         </p>
       )}
     </div>

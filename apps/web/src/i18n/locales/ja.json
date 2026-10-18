@@ -288,6 +288,7 @@
     "bindAsMeshNode": "Mesh ノードとしてバインド",
     "bound": "バインド済み",
     "authRequired": "デバイスを検出するには Mesh 管理トークンが必要です。上記で管理トークンを設定してください。",
+    "workspaceAuthHint": "Tailscale デバイス検出には、Device Mesh ページで管理者トークンを設定する必要があります。",
     "tailscaleNoPeers": "現在の Tailnet で他のピアデバイスが検出されませんでした。",
     "revoke": "Revoke access",
     "revokeConfirm": "Revoke access for {{label}}? Pending requests will be interrupted.",
