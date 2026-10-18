@@ -66,3 +66,14 @@ export type TailscaleBindInput = {
   os?: string;
   allowShell?: boolean;
 };
+
+export function sanitizeTailscaleName(rawName: string, dnsName?: string): string {
+  const cleaned = (rawName || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const fallback = dnsName ? dnsName.split('.')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '') : '';
+  return cleaned || fallback || 'peer';
+}
+
+export function tailscaleNodeId(rawName: string, dnsName?: string): string {
+  return `node:ts:${sanitizeTailscaleName(rawName, dnsName)}`;
+}
+

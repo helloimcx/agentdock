@@ -1,17 +1,22 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import type { MeshNode, TailscaleBindInput, TailscalePeer, TailscaleStatusResponse } from '@cc/superai-contracts';
+import { tailscaleNodeId, type MeshNode, type TailscaleBindInput, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
 import type { MeshStore } from './mesh-store.js';
 
 function resolveTailscaleBin(): string {
-  if (process.env.TAILSCALE_CMD && existsSync(process.env.TAILSCALE_CMD)) {
-    return process.env.TAILSCALE_CMD;
+  if (process.env.TAILSCALE_CMD) {
+    if (existsSync(process.env.TAILSCALE_CMD)) {
+      return process.env.TAILSCALE_CMD;
+    }
+    throw new Error(`Configured TAILSCALE_CMD not found: ${process.env.TAILSCALE_CMD}`);
   }
   const candidates = [
     '/usr/local/bin/tailscale',
     '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
     '/usr/bin/tailscale',
     '/bin/tailscale',
+    'C:\\Program Files\\Tailscale\\tailscale.exe',
+    'C:\\Program Files (x86)\\Tailscale\\tailscale.exe',
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
@@ -22,7 +27,7 @@ function resolveTailscaleBin(): string {
 function defaultTailscaleRunner(): Promise<string> {
   const bin = resolveTailscaleBin();
   return new Promise((resolve, reject) => {
-    execFile(bin, ['status', '--json'], { timeout: 3500, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+    execFile(bin, ['status', '--json'], { timeout: 3000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
       if (err) return reject(err);
       resolve(stdout);
     });
@@ -30,12 +35,37 @@ function defaultTailscaleRunner(): Promise<string> {
 }
 
 export class TailscaleService {
+  private cachedStatus?: { response: TailscaleStatusResponse; expiresAt: number };
+  private inflightStatus?: Promise<TailscaleStatusResponse>;
+
   constructor(
     private readonly store: MeshStore,
     private readonly runner: () => Promise<string> = defaultTailscaleRunner,
+    private readonly cacheTtlMs: number = 5000,
   ) {}
 
-  async getStatus(): Promise<TailscaleStatusResponse> {
+  async getStatus(forceRefresh = false): Promise<TailscaleStatusResponse> {
+    const now = Date.now();
+    if (!forceRefresh && this.cachedStatus && this.cachedStatus.expiresAt > now) {
+      return this.cachedStatus.response;
+    }
+    if (this.inflightStatus) {
+      return this.inflightStatus;
+    }
+    this.inflightStatus = this.fetchStatus()
+      .then(response => {
+        if (response.available) {
+          this.cachedStatus = { response, expiresAt: Date.now() + this.cacheTtlMs };
+        }
+        return response;
+      })
+      .finally(() => {
+        this.inflightStatus = undefined;
+      });
+    return this.inflightStatus;
+  }
+
+  private async fetchStatus(): Promise<TailscaleStatusResponse> {
     try {
       const raw = await this.runner();
       const data = JSON.parse(raw) as {
@@ -78,11 +108,8 @@ export class TailscaleService {
       if (data.Peer) {
         for (const [key, p] of Object.entries(data.Peer)) {
           const name = p.HostName || key;
-          const safeName = name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-          const expectedId = `node:ts:${safeName}`;
-          const matchedMeshNode = meshNodes.find(
-            n => n.id === expectedId || n.id === `node:${safeName}` || n.label.startsWith(name),
-          );
+          const expectedId = tailscaleNodeId(name, p.DNSName);
+          const matchedMeshNode = meshNodes.find(n => n.id === expectedId);
 
           peers.push({
             id: p.PublicKey || p.ID || key,
@@ -116,10 +143,7 @@ export class TailscaleService {
   bindNode(input: TailscaleBindInput): MeshNode {
     const rawName = input.name.trim();
     if (!rawName) throw new Error('Device name is required for binding.');
-    const cleaned = rawName.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-    const fallback = input.dnsName ? input.dnsName.split('.')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '') : '';
-    const safeName = cleaned || fallback || 'peer';
-    const id = `node:ts:${safeName}`;
+    const id = tailscaleNodeId(rawName, input.dnsName);
 
     const existing = this.store.getNode(id);
     const allowShell = input.allowShell !== false;
@@ -135,12 +159,14 @@ export class TailscaleService {
       allowedCapabilities: allowShell
         ? ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec']
         : ['filesystem.list', 'filesystem.read', 'filesystem.write'],
-      status: 'online',
-      lastSeenAt: now,
+      status: 'offline',
+      lastSeenAt: existing?.lastSeenAt ?? null,
       createdAt: existing?.createdAt || now,
     };
 
     this.store.upsertNode(node);
+    this.cachedStatus = undefined;
     return node;
   }
 }
+

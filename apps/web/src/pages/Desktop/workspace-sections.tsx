@@ -12,6 +12,8 @@ import {
   defaultSandboxRuntimeImage,
   getDefaultDesktopAgentModel,
   normalizeDesktopAgentModel,
+  sanitizeTailscaleName,
+  tailscaleNodeId,
   type DesktopDeploymentProfile,
   type DesktopMcpServerOptions,
   type DesktopModelProvider,
@@ -70,33 +72,23 @@ function applyDeviceChange(current: DesktopProjectConfig, deviceId: string): Des
   };
 }
 
-function sanitizeTailscaleName(rawName: string, dnsName?: string): string {
-  const cleaned = rawName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  const fallback = dnsName ? dnsName.split('.')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '') : '';
-  return cleaned || fallback || 'peer';
-}
-
 export async function ensureTailscaleNodeBound(
   deviceId: string,
   peers?: import('@cc/superai-contracts').TailscalePeer[],
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void,
-): Promise<void> {
-  if (!deviceId.startsWith('node:ts:')) return;
-  const safeName = deviceId.slice('node:ts:'.length);
-  const peer = peers?.find((p) => sanitizeTailscaleName(p.name, p.dnsName) === safeName);
-  if (!peer) return;
-  try {
-    const bound = await bindTailscaleNode({
-      name: peer.name,
-      dnsName: peer.dnsName,
-      ips: peer.ips,
-      os: peer.os,
-      allowShell: true,
-    });
-    onNodeBound?.(bound);
-  } catch {
-    // best-effort
-  }
+): Promise<import('@cc/superai-contracts').MeshNode | undefined> {
+  if (!deviceId.startsWith('node:ts:')) return undefined;
+  const peer = peers?.find((p) => tailscaleNodeId(p.name, p.dnsName) === deviceId);
+  if (!peer) throw new Error(`Tailscale peer not found for ${deviceId}`);
+  const bound = await bindTailscaleNode({
+    name: peer.name,
+    dnsName: peer.dnsName,
+    ips: peer.ips,
+    os: peer.os,
+    allowShell: true,
+  });
+  onNodeBound?.(bound);
+  return bound;
 }
 
 export function renderDeviceOptions(
@@ -106,9 +98,8 @@ export function renderDeviceOptions(
   const onlinePeers = (tailscalePeers || [])
     .filter((p) => p.online && !p.isSelf)
     .filter((p) => {
-      const safeName = sanitizeTailscaleName(p.name, p.dnsName);
-      const boundId = `node:ts:${safeName}`;
-      return !(nodes || []).some((n) => n.id === boundId || `node:${n.id}` === boundId);
+      const boundId = tailscaleNodeId(p.name, p.dnsName);
+      return !(nodes || []).some((n) => n.id === boundId);
     });
 
   return [
@@ -122,9 +113,9 @@ export function renderDeviceOptions(
       );
     }),
     ...onlinePeers.map((peer) => {
-      const safeName = sanitizeTailscaleName(peer.name, peer.dnsName);
+      const boundId = tailscaleNodeId(peer.name, peer.dnsName);
       return (
-        <option key={peer.id} value={`node:ts:${safeName}`}>
+        <option key={peer.id} value={boundId}>
           {peer.name} ({peer.os}) · {peer.ips[0] || 'online'}
         </option>
       );
@@ -193,6 +184,7 @@ export function BasicProjectSection({
   onNodeBound,
 }: BasicProjectSectionProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [bindError, setBindError] = useState<string | null>(null);
   const agentType = project.agent?.type || '';
   const agentTypeValue = getSelectValue(agentType, DESKTOP_AGENT_TYPE_OPTIONS);
   const selectedDevice = project.device_id || project.agent?.options?.device_id || 'local';
@@ -223,18 +215,26 @@ export function BasicProjectSection({
           {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           <option value={CUSTOM_SELECT_VALUE}>custom</option>
         </Select>
-        <Select
-          label="Execution device"
-          value={selectedDevice}
-          onChange={async (event) => {
-            const newDevice = event.target.value;
-            await ensureTailscaleNodeBound(newDevice, tailscalePeers, onNodeBound);
-            updateProject((current) => applyDeviceChange(current, newDevice));
-          }}
-        >
-          <option value="local">本机 (Local)</option>
-          {renderDeviceOptions(meshNodes, tailscalePeers)}
-        </Select>
+        <div className="space-y-1">
+          <Select
+            label="Execution device"
+            value={selectedDevice}
+            onChange={async (event) => {
+              const newDevice = event.target.value;
+              setBindError(null);
+              try {
+                await ensureTailscaleNodeBound(newDevice, tailscalePeers, onNodeBound);
+                updateProject((current) => applyDeviceChange(current, newDevice));
+              } catch (err) {
+                setBindError(err instanceof Error ? err.message : 'Failed to bind Tailscale node.');
+              }
+            }}
+          >
+            <option value="local">本机 (Local)</option>
+            {renderDeviceOptions(meshNodes, tailscalePeers)}
+          </Select>
+          {bindError && <p className="text-xs text-red-400">{bindError}</p>}
+        </div>
         <HostWorkspacePathField
           workDir={workDir}
           selectedDevice={selectedDevice}

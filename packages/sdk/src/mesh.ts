@@ -1,12 +1,25 @@
-import type { MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput, TailscaleBindInput, TailscaleStatusResponse } from '@cc/superai-contracts';
+import {
+  sanitizeTailscaleName,
+  tailscaleNodeId,
+  type MeshExecution,
+  type MeshExecutionInput,
+  type MeshNode,
+  type MeshPairing,
+  type MeshPairingInput,
+  type TailscaleBindInput,
+  type TailscaleStatusResponse,
+} from '@cc/superai-contracts';
 import { LOCAL_AI_CORE_BASE } from './client.js';
+
+export { sanitizeTailscaleName, tailscaleNodeId };
 
 /** Keep administrator credentials in caller memory; never place tokens in URLs or storage. */
 export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, '');
+  const resolvedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || undefined : undefined);
   async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (resolvedToken) headers.Authorization = `Bearer ${resolvedToken}`;
     const response = await fetchImpl(`${base}/mesh${path}`, {
       method, headers,
       body: body === undefined ? undefined : JSON.stringify(body), redirect: 'error',

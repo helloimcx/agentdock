@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, PageHeader } from '@/components/ui';
-import type { MeshNode, TailscalePeer, TailscaleStatusResponse } from '@cc/superai-contracts';
+import { tailscaleNodeId, type MeshNode, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
 import { useMesh } from './useMesh';
 
 function PairedNodesCard({ nodes, loading }: { nodes: MeshNode[]; loading: boolean }) {
@@ -27,10 +27,8 @@ function PairedNodesCard({ nodes, loading }: { nodes: MeshNode[]; loading: boole
 
 function isPeerBound(peer: TailscalePeer, nodes: MeshNode[]) {
   if (peer.meshNodeId) return true;
-  const safeName = peer.name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-  return nodes.some(
-    n => n.id === `node:ts:${safeName}` || n.id === `node:${safeName}` || n.label.startsWith(peer.name),
-  );
+  const targetId = tailscaleNodeId(peer.name, peer.dnsName);
+  return nodes.some(n => n.id === targetId);
 }
 
 function TailscalePeersCard({
@@ -50,7 +48,7 @@ function TailscalePeersCard({
     return (
       <Card className="p-4">
         <p className="text-sm text-amber-400">
-          {tailscale.error || t('mesh.tailscaleNotRunning', 'Tailscale 未运行或 CLI 不可用。')}
+          {tailscale.error || t('mesh.tailscaleNotRunning', 'Tailscale is not running or CLI is not available.')}
         </p>
       </Card>
     );
@@ -59,7 +57,7 @@ function TailscalePeersCard({
   return (
     <Card className="space-y-4 p-4">
       <p className="text-xs text-muted-foreground">
-        {t('mesh.tailscaleDescription', '在当前 Tailnet 私有网中自动探测到的设备，可直接一键绑定为 Mesh 执行节点。')}
+        {t('mesh.tailscaleDescription', 'Devices automatically detected on your Tailnet private network. You can bind any online device as a Mesh node with one click.')}
       </p>
 
       <div className="space-y-3">
@@ -69,7 +67,7 @@ function TailscalePeersCard({
               <p className="font-medium">
                 {tailscale.self.name}{' '}
                 <span className="text-xs text-muted-foreground">
-                  ({t('mesh.tailscaleSelf', '本机')}) · {tailscale.self.os}
+                  ({t('mesh.tailscaleSelf', 'Local Node')}) · {tailscale.self.os}
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">{tailscale.self.ips.join(', ')}</p>
@@ -81,7 +79,7 @@ function TailscalePeersCard({
         )}
 
         {tailscale.peers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('mesh.tailscaleNoPeers', '未在当前 Tailnet 中探测到其他对端设备。')}</p>
+          <p className="text-sm text-muted-foreground">{t('mesh.tailscaleNoPeers', 'No other peer devices detected in the current Tailnet.')}</p>
         ) : (
           <div className="divide-y divide-border">
             {tailscale.peers.map(peer => {
@@ -104,7 +102,7 @@ function TailscalePeersCard({
                   <div>
                     {bound ? (
                       <span className="rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-                        {t('mesh.bound', '已绑定')}
+                        {t('mesh.bound', 'Bound')}
                       </span>
                     ) : (
                       <Button
@@ -113,7 +111,7 @@ function TailscalePeersCard({
                         disabled={isBusy}
                         onClick={() => onBindPeer(peer)}
                       >
-                        {isBusy ? '...' : t('mesh.bindAsMeshNode', '一键绑定为 Mesh 节点')}
+                        {isBusy ? '...' : t('mesh.bindAsMeshNode', 'Bind as Mesh Node')}
                       </Button>
                     )}
                   </div>
@@ -160,14 +158,14 @@ export default function Devices() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('mesh.meshNodes', '已配对 Mesh 节点')}
+          {t('mesh.meshNodes', 'Paired Mesh Nodes')}
         </h2>
         <PairedNodesCard nodes={nodes} loading={loading} />
       </div>
 
       <div className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('mesh.tailscaleTitle', 'Tailscale 局域网设备发现')}
+          {t('mesh.tailscaleTitle', 'Tailscale Network Discovery')}
         </h2>
         <TailscalePeersCard
           tailscale={tailscale}

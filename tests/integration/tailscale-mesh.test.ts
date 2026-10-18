@@ -8,9 +8,28 @@ import { join } from 'node:path';
 import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
 import { MeshGateway } from '../../apps/daemon/src/mesh/mesh-gateway.js';
 import { TailscaleService } from '../../apps/daemon/src/mesh/tailscale-service.js';
-import type { TailscaleStatusResponse, MeshNode, TailscalePeer } from '../../packages/contracts/src/mesh.js';
+import {
+  sanitizeTailscaleName,
+  tailscaleNodeId,
+  type TailscaleStatusResponse,
+  type MeshNode,
+  type TailscalePeer,
+} from '../../packages/contracts/src/mesh.js';
 
-test('TailscaleService parses status, detects peers, and binds mesh nodes', async () => {
+test('sanitizeTailscaleName and tailscaleNodeId correctly sanitize names and handle fallbacks', () => {
+  assert.equal(sanitizeTailscaleName('dev--box'), 'dev-box');
+  assert.equal(sanitizeTailscaleName('My Device!'), 'my-device');
+  assert.equal(sanitizeTailscaleName('dobby'), 'dobby');
+  assert.equal(sanitizeTailscaleName('---', 'my-box.tailnet.ts.net'), 'my-box');
+  assert.equal(sanitizeTailscaleName('---'), 'peer');
+  assert.equal(sanitizeTailscaleName(''), 'peer');
+
+  assert.equal(tailscaleNodeId('dev--box'), 'node:ts:dev-box');
+  assert.equal(tailscaleNodeId('dobby', 'dobby.ts.net'), 'node:ts:dobby');
+  assert.equal(tailscaleNodeId('---', 'box.ts.net'), 'node:ts:box');
+});
+
+test('TailscaleService parses status, detects peers, and binds mesh nodes as offline', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-'));
   const db = new DatabaseSync(join(temp, 'mesh.db'));
   const store = new MeshStore(db);
@@ -69,7 +88,7 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
   assert.equal(dobby.ips[0], '100.105.207.63');
   assert.equal(dobby.meshNodeId, undefined);
 
-  // 3. Bind dobby to MeshStore
+  // 3. Bind dobby to MeshStore (should be status: 'offline' until node connects)
   const bound = service.bindNode({
     name: 'dobby',
     os: 'linux',
@@ -79,7 +98,8 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
   });
 
   assert.equal(bound.id, 'node:ts:dobby');
-  assert.equal(bound.status, 'online');
+  assert.equal(bound.status, 'offline');
+  assert.equal(bound.lastSeenAt, null);
   assert.equal(bound.platform, 'linux');
   assert.ok(bound.capabilities.includes('shell.exec'));
 
@@ -95,9 +115,10 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
     allowShell: false,
   });
   assert.equal(fnosBound.id, 'node:ts:fnos');
+  assert.equal(fnosBound.status, 'offline');
   assert.equal(fnosBound.capabilities.includes('shell.exec'), false);
 
-  // Calling again updates lastSeenAt and preserves
+  // Calling again updates capabilities and preserves createdAt
   const fnosBoundAgain = service.bindNode({
     name: 'fnos',
     os: 'linux',
@@ -105,6 +126,7 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
   });
   assert.equal(fnosBoundAgain.id, 'node:ts:fnos');
   assert.equal(fnosBoundAgain.capabilities.includes('shell.exec'), true);
+  assert.equal(fnosBoundAgain.createdAt, fnosBound.createdAt);
 
   // 6. Test defensive sanitization for non-ASCII/symbol hostnames
   const chineseBound = service.bindNode({
@@ -121,7 +143,75 @@ test('TailscaleService parses status, detects peers, and binds mesh nodes', asyn
   assert.equal(symbolBound.id, 'node:ts:peer');
 });
 
-test('MeshGateway handles /tailscale/status and /tailscale/bind endpoints', async () => {
+test('TailscaleService implements 5-second TTL cache and in-flight deduplication', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-cache-'));
+  const db = new DatabaseSync(join(temp, 'mesh.db'));
+  const store = new MeshStore(db);
+
+  let runs = 0;
+  const mockTailscaleJson = JSON.stringify({
+    Self: { HostName: 'laptop', TailscaleIPs: ['100.1.2.3'], OS: 'macOS', Online: true },
+    Peer: {},
+  });
+
+  const service = new TailscaleService(store, async () => {
+    runs++;
+    return mockTailscaleJson;
+  }, 5000);
+
+  // Multiple sequential calls within 5s only invoke runner once
+  const res1 = await service.getStatus();
+  const res2 = await service.getStatus();
+  const res3 = await service.getStatus();
+  assert.equal(runs, 1);
+  assert.equal(res1.available, true);
+  assert.equal(res2.available, true);
+  assert.equal(res3.available, true);
+
+  // forceRefresh invokes runner again
+  const resForced = await service.getStatus(true);
+  assert.equal(runs, 2);
+  assert.equal(resForced.available, true);
+
+  // In-flight deduplication: multiple concurrent calls while runner is resolving
+  let slowRuns = 0;
+  const slowService = new TailscaleService(store, async () => {
+    slowRuns++;
+    await new Promise(r => setTimeout(r, 20));
+    return mockTailscaleJson;
+  });
+
+  const [concurrent1, concurrent2] = await Promise.all([
+    slowService.getStatus(true),
+    slowService.getStatus(true),
+  ]);
+  assert.equal(slowRuns, 1);
+  assert.equal(concurrent1.available, true);
+  assert.equal(concurrent2.available, true);
+});
+
+test('TailscaleService strictly validates non-existent TAILSCALE_CMD', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-cmd-'));
+  const db = new DatabaseSync(join(temp, 'mesh.db'));
+  const store = new MeshStore(db);
+
+  const prevEnv = process.env.TAILSCALE_CMD;
+  process.env.TAILSCALE_CMD = '/path/to/nonexistent/tailscale-binary-xyz';
+  try {
+    const defaultRunnerService = new TailscaleService(store);
+    const result = await defaultRunnerService.getStatus(true);
+    assert.equal(result.available, false);
+    assert.match(result.error || '', /Configured TAILSCALE_CMD not found/);
+  } finally {
+    if (prevEnv !== undefined) {
+      process.env.TAILSCALE_CMD = prevEnv;
+    } else {
+      delete process.env.TAILSCALE_CMD;
+    }
+  }
+});
+
+test('MeshGateway enforces admin auth on /tailscale/* and dispatch to bound node fails with 409', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-gw-'));
   const db = new DatabaseSync(join(temp, 'mesh.db'));
   const store = new MeshStore(db);
@@ -140,7 +230,25 @@ test('MeshGateway handles /tailscale/status and /tailscale/bind endpoints', asyn
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 
   try {
-    // GET /api/local/v1/mesh/tailscale/status
+    // 1. Anonymous GET /api/local/v1/mesh/tailscale/status must return 401
+    const anonStatusRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/status`);
+    assert.equal(anonStatusRes.status, 401);
+
+    // 2. Anonymous POST /api/local/v1/mesh/tailscale/bind must return 401
+    const anonBindRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/bind`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'gpu-server' }),
+    });
+    assert.equal(anonBindRes.status, 401);
+
+    // 3. Invalid token must return 401
+    const badTokenRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/status`, {
+      headers: { Authorization: 'Bearer bad-token' },
+    });
+    assert.equal(badTokenRes.status, 401);
+
+    // 4. Authorized GET /api/local/v1/mesh/tailscale/status returns 200
     const statusRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/status`, {
       headers: { Authorization: 'Bearer test-admin-token' },
     });
@@ -150,7 +258,7 @@ test('MeshGateway handles /tailscale/status and /tailscale/bind endpoints', asyn
     assert.equal(statusBody.data.available, true);
     assert.equal(statusBody.data.peers[0].name, 'gpu-server');
 
-    // POST /api/local/v1/mesh/tailscale/bind
+    // 5. Authorized POST /api/local/v1/mesh/tailscale/bind returns 200 with status 'offline'
     const bindRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/bind`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-admin-token' },
@@ -161,9 +269,20 @@ test('MeshGateway handles /tailscale/status and /tailscale/bind endpoints', asyn
     assert.equal(bindBody.ok, true);
     assert.equal(bindBody.data.id, 'node:ts:gpu-server');
     assert.equal(bindBody.data.platform, 'linux');
+    assert.equal(bindBody.data.status, 'offline');
 
     // Verify it is listed in MeshStore
-    assert.ok(store.getNode('node:ts:gpu-server'));
+    const storedNode = store.getNode('node:ts:gpu-server');
+    assert.ok(storedNode);
+    assert.equal(storedNode.status, 'offline');
+
+    // 6. Attempting to dispatch execution to this bound node throws 409 because no WebSocket session is connected
+    assert.throws(
+      () => gateway.dispatch({ nodeId: 'node:ts:gpu-server', capability: 'shell.exec', args: { command: 'echo hi' } }),
+      (err: unknown) => {
+        return err instanceof Error && (err as { status?: number }).status === 409 && /Device is offline/i.test(err.message);
+      },
+    );
   } finally {
     server.close();
   }

@@ -63,6 +63,11 @@ export class MeshGateway {
         json(res, 200, { nodes: this.store.listNodes() });
         return true;
       }
+      if (path === '/enroll' && req.method === 'POST') {
+        json(res, 200, await this.handleEnroll(req));
+        return true;
+      }
+      this.authorize(req);
       if (path.startsWith('/tailscale/')) {
         const result = await this.handleTailscaleRoute(req, path);
         if (result !== undefined) {
@@ -70,11 +75,6 @@ export class MeshGateway {
           return true;
         }
       }
-      if (path === '/enroll' && req.method === 'POST') {
-        json(res, 200, await this.handleEnroll(req));
-        return true;
-      }
-      this.authorize(req);
       json(res, 200, await this.manage(req, path));
     } catch (error) {
       const status = error instanceof MeshError ? error.status : 400;

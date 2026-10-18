@@ -67,7 +67,7 @@ Disconnect and Core restart mark pending requests `interrupted`: the outcome is 
 
 ## API
 
-Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. `POST /shell/execute` uses the signed launch token described above. Other management routes require `Authorization: Bearer <administrator token>`; enrollment uses the one-time pairing token, and the WebSocket handshake uses the device credential protocol.
+Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. `POST /shell/execute` uses the signed launch token described above. Other management routes (including `/tailscale/status` and `/tailscale/bind`) require `Authorization: Bearer <administrator token>`; enrollment uses the one-time pairing token, and the WebSocket handshake uses the device credential protocol.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -81,6 +81,10 @@ Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata witho
 | GET | `/requests` | Recent history |
 | GET | `/requests/:id` | Request status/result |
 | POST | `/requests/:id/cancel` | Request cancellation |
+| GET | `/tailscale/status` | Discover peers on current Tailscale tailnet (cached 5s; admin token required) |
+| POST | `/tailscale/bind` | Bind a Tailscale peer as a Mesh node (`name`, optional `dnsName`, `ips`, `os`, `allowShell`; admin token required) |
+
+Bound Tailscale nodes are initially registered with `status: 'offline'` and `token_hash: NULL`. Because Mesh execution dispatch requires a live connected WebSocket session, dispatched operations will return conflict (409) until an agent connects with paired credentials.
 
 ## Running two devices
 

@@ -61,7 +61,7 @@ export class MeshStore {
   upsertNode(node: MeshNode) {
     const existing = this.getNode(node.id);
     if (existing) {
-      this.updateNode({ ...existing, ...node });
+      this.updateNode(node);
     } else {
       this.db.prepare('INSERT INTO mesh_nodes VALUES (?, ?, NULL, NULL, NULL)').run(node.id, JSON.stringify(node));
     }

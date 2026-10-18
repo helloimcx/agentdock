@@ -305,6 +305,99 @@ type AddProjectDialogProps = {
   onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
+type ProjectDialogFormProps = {
+  dialog: ProjectDialogDraft;
+  updateDialog: (patch: Partial<ProjectDialogDraft>) => void;
+  onConfirm: () => void;
+  onClose: () => void;
+  onOpenPicker: () => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
+};
+
+function ProjectDialogForm({
+  dialog,
+  updateDialog,
+  onConfirm,
+  onClose,
+  onOpenPicker,
+  meshNodes,
+  tailscalePeers,
+  onNodeBound,
+}: ProjectDialogFormProps) {
+  const [bindError, setBindError] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-4">
+      <Input
+        label="Project name"
+        value={dialog.name}
+        onChange={(event) => updateDialog({ name: event.target.value })}
+        autoFocus
+      />
+      <Select
+        label="Agent type"
+        value={dialog.agentType}
+        onChange={(event) => updateDialog({ agentType: event.target.value })}
+      >
+        {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+      </Select>
+      <div className="space-y-1">
+        <Select
+          label="Execution device"
+          value={dialog.deviceId || 'local'}
+          onChange={async (event) => {
+            const val = event.target.value;
+            setBindError(null);
+            try {
+              await ensureTailscaleNodeBound(val, tailscalePeers, onNodeBound);
+              updateDialog({ deviceId: val });
+            } catch (err) {
+              setBindError(err instanceof Error ? err.message : 'Failed to bind Tailscale node.');
+            }
+          }}
+        >
+          <option value="local">本机 (Local)</option>
+          {renderDeviceOptions(meshNodes, tailscalePeers)}
+        </Select>
+        {bindError && <p className="text-xs text-red-400">{bindError}</p>}
+      </div>
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <Input
+            label="Host workspace path"
+            value={dialog.workDir}
+            onChange={(event) => updateDialog({ workDir: event.target.value })}
+            placeholder={dialog.deviceId && dialog.deviceId !== 'local' ? '例如 . 或 my-project (remote path)' : '/Users/yinyin/code/my-project'}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 px-3 gap-1.5 shrink-0"
+          onClick={onOpenPicker}
+          title="选择目录"
+        >
+          <FolderOpen size={15} />
+          选择目录
+        </Button>
+      </div>
+      <Input
+        label="Default model"
+        value={dialog.model}
+        onChange={(event) => updateDialog({ model: event.target.value })}
+        placeholder={getDefaultDesktopAgentModel(dialog.agentType) || 'Use agent default model'}
+      />
+      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+        <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button className="w-full sm:w-auto" onClick={onConfirm}><Plus size={14} /> 新建项目</Button>
+      </div>
+    </div>
+  );
+}
+
 export function AddProjectDialog({
   dialog,
   updateDialog,
@@ -318,70 +411,18 @@ export function AddProjectDialog({
 
   return (
     <>
-      <Modal
-        open={Boolean(dialog)}
-        onClose={onClose}
-        title="新建项目"
-      >
+      <Modal open={Boolean(dialog)} onClose={onClose} title="新建项目">
         {dialog ? (
-          <div className="space-y-4">
-            <Input
-              label="Project name"
-              value={dialog.name}
-              onChange={(event) => updateDialog({ name: event.target.value })}
-              autoFocus
-            />
-            <Select
-              label="Agent type"
-              value={dialog.agentType}
-              onChange={(event) => updateDialog({ agentType: event.target.value })}
-            >
-              {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-            </Select>
-            <Select
-              label="Execution device"
-              value={dialog.deviceId || 'local'}
-              onChange={async (event) => {
-                const val = event.target.value;
-                await ensureTailscaleNodeBound(val, tailscalePeers, onNodeBound);
-                updateDialog({ deviceId: val });
-              }}
-            >
-              <option value="local">本机 (Local)</option>
-              {renderDeviceOptions(meshNodes, tailscalePeers)}
-            </Select>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Input
-                  label="Host workspace path"
-                  value={dialog.workDir}
-                  onChange={(event) => updateDialog({ workDir: event.target.value })}
-                  placeholder={dialog.deviceId && dialog.deviceId !== 'local' ? '例如 . 或 my-project (remote path)' : '/Users/yinyin/code/my-project'}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 gap-1.5 shrink-0"
-                onClick={() => setPickerOpen(true)}
-                title="选择目录"
-              >
-                <FolderOpen size={15} />
-                选择目录
-              </Button>
-            </div>
-            <Input
-              label="Default model"
-              value={dialog.model}
-              onChange={(event) => updateDialog({ model: event.target.value })}
-              placeholder={getDefaultDesktopAgentModel(dialog.agentType) || 'Use agent default model'}
-            />
-            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-              <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>Cancel</Button>
-              <Button className="w-full sm:w-auto" onClick={onConfirm}><Plus size={14} /> 新建项目</Button>
-            </div>
-          </div>
+          <ProjectDialogForm
+            dialog={dialog}
+            updateDialog={updateDialog}
+            onConfirm={onConfirm}
+            onClose={onClose}
+            onOpenPicker={() => setPickerOpen(true)}
+            meshNodes={meshNodes}
+            tailscalePeers={tailscalePeers}
+            onNodeBound={onNodeBound}
+          />
         ) : null}
       </Modal>
 
