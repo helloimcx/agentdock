@@ -161,6 +161,24 @@ export class LocalThreadStore {
     };
   }
 
+  /** Narrow read for runPrompt turn state: skips user rows and the fat
+   * tool_call_json column, so a whale thread costs bytes of content instead of
+   * a full ThreadDetail hydration per run. Unlike get(), a missing thread
+   * yields [] rather than throwing — runPrompt has already verified the row. */
+  listAssistantTurnMessages(threadId: string): Array<{ kind: LocalMessageRow['kind']; content: string; bridgeKind: ReturnType<typeof normalizeBridgeKind> }> {
+    const rows = this.db.prepare(`
+      SELECT kind, content, bridge_kind
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant'
+      ORDER BY seq ASC
+    `).all(threadId) as Array<Pick<LocalMessageRow, 'kind' | 'content' | 'bridge_kind'>>;
+    return rows.map((row) => ({
+      kind: row.kind,
+      content: row.content,
+      bridgeKind: normalizeBridgeKind(row.bridge_kind),
+    }));
+  }
+
   private selectMessageWindow(threadId: string, limit: number, beforeSeq?: number): LocalMessageRow[] {
     if (beforeSeq !== undefined) {
       return this.db.prepare(`

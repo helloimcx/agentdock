@@ -72,6 +72,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_run_spans_run_started ON run_spans (run_id, started_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_run_spans_started ON run_spans (started_at ASC);
     CREATE TABLE IF NOT EXISTS platform_pairings (
       code TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,

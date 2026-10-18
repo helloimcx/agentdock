@@ -11,6 +11,7 @@ import type {
 } from '@cc/superai-contracts';
 import type { EventBus } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import { RETENTION_PRUNE_INTERVAL_MS, isRetentionPruneDue } from '../acp/store/utils.js';
 import {
   isPlainRecord,
   normalizeAutomationError,
@@ -54,7 +55,7 @@ export {
 const DUE_LOOP_INTERVAL_MS = 30_000;
 // Retention pruning scans the whole evaluations table; hourly is far below the
 // 30-day retention granularity and keeps empty ticks cheap.
-const PRUNE_INTERVAL_MS = 60 * 60_000;
+const PRUNE_INTERVAL_MS = RETENTION_PRUNE_INTERVAL_MS;
 const DEFAULT_MAX_CONCURRENCY = 4;
 const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
@@ -508,7 +509,7 @@ export class AutomationService {
     const workerCount = Math.min(due.length, this.options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
     if (!this.stopping && generation === this.lifecycleGeneration) {
-      if (now.getTime() - this.lastPruneAt >= PRUNE_INTERVAL_MS) {
+      if (isRetentionPruneDue(this.lastPruneAt, now, PRUNE_INTERVAL_MS)) {
         this.lastPruneAt = now.getTime();
         this.options.store.pruneAutomationEvaluations(now);
       }
