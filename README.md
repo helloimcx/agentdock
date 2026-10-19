@@ -13,7 +13,7 @@ React 19 · Electron 35 · Vite · TypeScript · Tailwind CSS · Zustand · i18n
 
 ## 系统架构
 
-AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`apps/web`)、AgentDock Daemon (`apps/daemon`)、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 daemon 启动；React/Web 通过 SDK (`@agentdock/sdk`) 访问 AgentDock Daemon；AgentDock Daemon 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Daemon 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家本身是一个飞书 bot，可向配置的受管 bot 发消息并持续跟踪任务。
+AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`apps/web`)、AgentDock Daemon (`apps/daemon`)、OpenSandbox 云端运行层和外部 Agent API 组成。Electron 只负责桌面生命周期、窗口和本地 daemon 启动；React/Web 通过 SDK (`@agentdock/sdk`) 访问 AgentDock Daemon；AgentDock Daemon 统一管理 workspace、thread、run、ACP 流式事件、channel 网关、定时调度、sandbox 启动与外部系统映射。云端 sandbox 模式通过 OpenSandbox 创建隔离容器，容器内 agent runtime 通过 HTTP NDJSON ACP bridge 与 Daemon 通信。外部系统可通过 `/api/local/v1/external/*` 创建或复用项目、发起 agent run，并通过 per-run SSE 订阅过程。管家是用户对接的 Channel Bot；Core transport 通过受限的 `lac butler` 调用受管 Bot 绑定的工作区 Agent，并持久跟踪外部任务，旧的 Channel Bot 间消息委派仍可用。
 
 <!-- project-setup:architecture-diagram:start -->
 ```mermaid
@@ -24,9 +24,9 @@ flowchart LR
   external[External clients] --> api
   api --> kernel[Daemon kernel and workspace router]
   api --> butler[Butler orchestration]
-  butler -->|Persist task, progress and acceptance| sqlite
-  butler -->|Per-app bot mention IDs / callbacks| channels
-  butler -->|Target bot workspace; existing permissions| acp
+  butler -->|Core: worker submit / read-only check| acp
+  butler -->|Legacy Channel: bot mentions / callbacks| channels
+  butler -->|Task, report, checkpoint, next check and lease| sqlite
   kernel --> sqlite[(SQLite)]
   kernel --> acp[ACP session runtime]
   kernel --> scheduler[Scheduler / Automation]
@@ -84,6 +84,7 @@ flowchart LR
 - **Tailscale 节点自动发现与免配置绑定**：
   - Mesh 节点管理页面和工作区配置对话框支持自动读取并展示当前 Tailnet 私有网中的可用设备（包含主机名、OS、内网 IP 与 Tailnet 在线状态），内置 5 秒 TTL 缓存与请求防抖。
   - 用户无需手动输入 IP，点击即可将 Tailscale 设备一键登记为 Mesh 节点清单记录（使用确定性 ID `node:ts:<sanitized-name>`，重复登记幂等更新现有节点；初始状态为离线清单记录，执行命令与激活调度需在对端通过标准的 `agentdock-node pair/connect` 流程配对建立 WebSocket 会话）。
+- **管家通过 LAC 委派工作区 Agent 并持续跟踪（本分支实现）**：新增 Core 内部委派 transport，沿用受管 Bot 名单绑定目标 workspace，不要求共享群或机器人互相 @；worker 通过 Core 签发的 run 范围凭证提交结构化报告，外部任务 ID 可先以 checkpoint 持久保存。Core 按已登记的只读计划跨重启检查；如果 owner 会话被删除，任务保留并可从新管家会话重新关联。原 Channel transport 保留兼容；明确 HTTP 400 的首次提交会记为失败，管家配置保存时只本地收尾无 runId 和消息 ID 的同类历史记录，不发送机器人消息。
 
 ### 2026-10-16
 

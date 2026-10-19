@@ -16,7 +16,7 @@ import type {
 } from './acp-store-types.js';
 import { normalizeMessageContent } from '../../thread/workspace-thread-mappers.js';
 import { encodeThreadId } from '../../thread/workspace-thread-id.js';
-import { normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.js';
+import { ACTIVE_RUN_STATUSES_SQL, normalizeBridgeKind, normalizeBridgeStatus, parseJson } from './utils.js';
 
 // Order matters: also reused by INSERT INTO messages below — keep its VALUES placeholder count in sync.
 const MESSAGE_COLUMNS = 'id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq';
@@ -307,6 +307,17 @@ export class LocalThreadStore {
       SELECT ${RUN_COLUMNS}
       FROM runs
       WHERE thread_id = ?
+      ORDER BY updated_at DESC, rowid DESC
+      LIMIT 1
+    `).get(threadId) as LocalRunRow | undefined;
+    return row ? { ...row, status: normalizeRunStatus(row.status) } : undefined;
+  }
+
+  getActiveRunForThread(threadId: string) {
+    const row = this.db.prepare(`
+      SELECT ${RUN_COLUMNS}
+      FROM runs
+      WHERE thread_id = ? AND status IN ${ACTIVE_RUN_STATUSES_SQL}
       ORDER BY updated_at DESC, rowid DESC
       LIMIT 1
     `).get(threadId) as LocalRunRow | undefined;

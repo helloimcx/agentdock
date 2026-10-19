@@ -45,7 +45,7 @@ export function clampLimit(limit: unknown, fallback = 50, max = 100): number {
 }
 
 /** Run statuses that can still produce new work (and new spans). */
-export const ACTIVE_RUN_STATUSES = ['running', 'awaiting_input'];
+const ACTIVE_RUN_STATUSES = ['running', 'awaiting_input'];
 
 export function isActiveRunStatus(status: string): boolean {
   return ACTIVE_RUN_STATUSES.includes(status);

@@ -61,14 +61,15 @@ test('butler create keeps the source owner separate from bot assignments and pre
   });
 });
 
-test('butler delegate selects a bot and explicit owner overrides the environment', async () => {
+test('butler delegate adds a bot to an existing goal and explicit owner overrides the environment', async () => {
   await withCore(async (baseUrl, requests) => {
-    const result = await invoke(['butler', 'delegate', '--bot', researchBot, '--title', 'Research', '--message', 'Compare bots',
+    const result = await invoke(['butler', 'delegate', taskId, '--bot', researchBot, '--key', 'research', '--title', 'Research', '--message', 'Compare bots',
       '--owner-thread', owner, '--request-id', 'request:cc7ebfaa-f2bf-4ba5-af92-1916641e33b4'], baseUrl,
     { LOCAL_AI_THREAD_ID: 'thread:other::5ec46d7f-c6da-4e58-a3eb-337f1a3b2a17' });
     assert.equal(result.code, 0, result.stderr);
-    assert.deepEqual(requests[0].body, { ownerThreadId: owner, title: 'Research', requestId: 'request:cc7ebfaa-f2bf-4ba5-af92-1916641e33b4',
-      assignments: [{ key: 'main', botId: researchBot, title: 'Research', prompt: 'Compare bots' }] });
+    assert.equal(requests[0].url, `/api/local/v1/butler/tasks/${encodeURIComponent(taskId)}/delegations`);
+    assert.deepEqual(requests[0].body, { ownerThreadId: owner, requestId: 'request:cc7ebfaa-f2bf-4ba5-af92-1916641e33b4',
+      assignments: [{ key: 'research', botId: researchBot, title: 'Research', prompt: 'Compare bots' }] });
   });
 });
 
@@ -98,10 +99,14 @@ test('butler setup and bot discovery do not require an owner', async () => {
     assert.equal((await invoke(['butler', 'bots', '--json'], baseUrl)).code, 0);
     assert.equal((await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster], baseUrl)).code, 0);
     assert.equal((await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster, '--owner-thread', owner], baseUrl)).code, 0);
+    const trackingPolicy = { defaultCheckIntervalSeconds: 300, checkBudget: 12, deadlineSeconds: 172800 };
+    assert.equal((await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster, '--transport', 'core',
+      '--tracking-policy', JSON.stringify(trackingPolicy)], baseUrl)).code, 0);
     assert.equal(requests[0].url, '/api/local/v1/butler/bots');
     assert.equal(requests[1].method, 'PUT');
-    assert.deepEqual(requests[1].body, { managerBotId: managerBot, managedBots: JSON.parse(roster) });
-    assert.deepEqual(requests[2].body, { managerBotId: managerBot, managedBots: JSON.parse(roster), threadId: owner });
+    assert.deepEqual(requests[1].body, { managerBotId: managerBot, managedBots: JSON.parse(roster), transport: 'channel' });
+    assert.deepEqual(requests[2].body, { managerBotId: managerBot, managedBots: JSON.parse(roster), transport: 'channel', threadId: owner });
+    assert.deepEqual(requests[3].body, { managerBotId: managerBot, managedBots: JSON.parse(roster), transport: 'core', trackingPolicy });
   });
 });
 
@@ -111,7 +116,7 @@ test('butler rejects missing owners, missing stable request IDs and invalid assi
     assert.equal(missingOwner.code, 1);
     assert.match(missingOwner.stderr, /owner-thread|LOCAL_AI_THREAD_ID/);
     const env = { LOCAL_AI_THREAD_ID: owner };
-    const missingRequest = await invoke(['butler', 'delegate', '--bot', researchBot, '--title', 'Research', '--message', 'Compare'], baseUrl, env);
+    const missingRequest = await invoke(['butler', 'delegate', taskId, '--bot', researchBot, '--title', 'Research', '--message', 'Compare'], baseUrl, env);
     assert.equal(missingRequest.code, 1);
     assert.match(missingRequest.stderr, /request-id/);
     for (const assignments of ['null', '{}', '[]', '[{"key":"main"}]', 'invalid']) {
@@ -124,13 +129,63 @@ test('butler rejects missing owners, missing stable request IDs and invalid assi
   });
 });
 
+test('an agent run without a Core-issued Butler capability cannot fall back to management routes', async () => {
+  await withCore(async (baseUrl, requests) => {
+    const result = await invoke(['butler', 'list', '--json'], baseUrl, {
+      LOCAL_AI_THREAD_ID: owner,
+      AGENTDOCK_SANDBOX_RUN_ID: 'run:agentdock::98df2f10-3eeb-45d9-bd43-571bbce6cd52:1792231500000',
+    });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Core-issued Butler capability/i);
+    assert.equal(requests.length, 0);
+  });
+});
+
+test('butler setup inside an agent run uses the local Core profile route and forwards full flags', async () => {
+  await withCore(async (baseUrl, requests) => {
+    const roster = JSON.stringify([{ botId: researchBot }]);
+    const result = await invoke(['butler', 'setup', '--manager-bot', managerBot, '--managed-bots', roster,
+      '--transport', 'core', '--json'], baseUrl, {
+      LOCAL_AI_THREAD_ID: owner,
+      AGENTDOCK_SANDBOX_RUN_ID: 'run:agentdock::98df2f10-3eeb-45d9-bd43-571bbce6cd52:1792231500000',
+      AGENTDOCK_BUTLER_CONTEXT_TOKEN: 'valid-token',
+    });
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(requests[0].method, 'PUT');
+    assert.equal(requests[0].url, '/api/local/v1/butler/profile');
+    assert.deepEqual(requests[0].body, {
+      managerBotId: managerBot,
+      managedBots: JSON.parse(roster),
+      transport: 'core',
+      threadId: owner,
+    });
+  });
+});
+
+test('butler watch omits intervalSeconds when --interval is absent', async () => {
+  await withCore(async (baseUrl, requests) => {
+    const env = { LOCAL_AI_THREAD_ID: owner };
+    const result = await invoke(['butler', 'watch', taskId, '--delegation', delegationId,
+      '--instructions', 'Check progress', '--json'], baseUrl, env);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(requests[0].method, 'POST');
+    assert.equal(requests[0].url, `/api/local/v1/butler/tasks/${encodeURIComponent(taskId)}/watch`);
+    assert.deepEqual(requests[0].body, {
+      ownerThreadId: owner,
+      delegationId,
+      instructions: 'Check progress',
+    });
+  });
+});
+
+
 test('butler usage errors cannot become mutations or invent request identities', async () => {
   await withCore(async (baseUrl, requests) => {
     const env = { LOCAL_AI_THREAD_ID: owner };
     const incomplete = [
       ['info'], ['cancel'], ['complete', taskId],
       ['followup', taskId, '--message', 'Update', '--request-id', 'request:295e4158-346b-4b8b-b26a-2fda96994ae5'],
-      ['delegate', '--bot', researchBot, '--title', 'Research', '--message', 'Work', '--request-id'],
+      ['delegate', taskId, '--bot', researchBot, '--title', 'Research', '--message', 'Work', '--request-id'],
       ['create', '--title', 'Research', '--assignments', `[{"key":"main","botId":"${researchBot}","title":"Read","prompt":"Read","dependsOn":false}]`, '--request-id', 'request:edcc1ebc-4f6a-424f-8c1c-fb2bba1e019d'],
       ['setup', '--manager-bot', managerBot, '--managed-bots', '[]', '--owner-thread'],
     ];

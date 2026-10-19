@@ -2,188 +2,51 @@
   "schema_version": 2,
   "diagram_type": "workflow",
   "meta": {
-    "title": "管家 Channel Bot 委托与跟踪",
+    "title": "管家 LAC 委派与持续跟踪",
     "locale": "zh-CN",
-    "output": "docs/architecture/butler-orchestration.html",
     "quality_profile": "showcase"
   },
   "lanes": [
-    {
-      "id": "user",
-      "label": "用户与管家 Bot"
-    },
-    {
-      "id": "core",
-      "label": "Local AI Core 持久协调"
-    },
-    {
-      "id": "channel",
-      "label": "Lark 消息通道"
-    },
-    {
-      "id": "managed",
-      "label": "受管 Bot 与工作区 Agent"
-    }
+    {"id": "coordination", "label": "管家协调与用户交付"},
+    {"id": "execution", "label": "Core 内部委派与单轮执行"},
+    {"id": "tracking", "label": "跨重启的持续跟踪"}
   ],
-  "mainPath": [
-    "request",
-    "manager-bot",
-    "admit",
-    "dispatch",
-    "message",
-    "target",
-    "execute",
-    "result",
-    "reconcile",
-    "review"
-  ],
+  "mainPath": ["origin", "butler", "ledger", "dispatch", "worker", "report", "review", "notify"],
   "nodes": [
-    {
-      "id": "request",
-      "lane": "user",
-      "col": 0,
-      "type": "external",
-      "label": "用户命令",
-      "sublabel": "管家 Bot 对话",
-      "width": 140
-    },
-    {
-      "id": "manager-bot",
-      "lane": "user",
-      "col": 1,
-      "type": "backend",
-      "label": "管家 Bot",
-      "sublabel": "具体 Lark bot 身份",
-      "width": 140
-    },
-    {
-      "id": "admit",
-      "lane": "core",
-      "col": 2,
-      "type": "database",
-      "label": "持久任务",
-      "sublabel": "bot 身份 / 双向群名 / 路由",
-      "width": 150
-    },
-    {
-      "id": "dispatch",
-      "lane": "core",
-      "col": 3,
-      "type": "backend",
-      "label": "消息分派",
-      "sublabel": "构造已验证的有向委托",
-      "width": 150
-    },
-    {
-      "id": "message",
-      "lane": "channel",
-      "col": 3,
-      "type": "cloud",
-      "label": "Lark 群消息",
-      "sublabel": "显式 @ 目标 bot",
-      "width": 140
-    },
-    {
-      "id": "target",
-      "lane": "managed",
-      "col": 3,
-      "type": "backend",
-      "label": "目标 Bot 网关",
-      "sublabel": "接收 Bot 消息 · 校验 Butler",
-      "width": 150
-    },
-    {
-      "id": "execute",
-      "lane": "managed",
-      "col": 4,
-      "type": "backend",
-      "label": "WorkspaceRouter + ACP",
-      "sublabel": "沿用目标 Agent 权限",
-      "width": 170
-    },
-    {
-      "id": "result",
-      "lane": "channel",
-      "col": 4,
-      "type": "cloud",
-      "label": "Bot 回执消息",
-      "sublabel": "进展 / 结果 / 取消状态",
-      "width": 150
-    },
-    {
-      "id": "reconcile",
-      "lane": "core",
-      "col": 4,
-      "type": "backend",
-      "label": "回调校验与跟踪",
-      "sublabel": "接收应用下校验发送方 / run",
-      "width": 170
-    },
-    {
-      "id": "review",
-      "lane": "user",
-      "col": 4,
-      "type": "frontend",
-      "label": "持续汇报与验收",
-      "sublabel": "结果摘要 / 按标准确认",
-      "width": 170
-    }
+    {"id": "origin", "lane": "coordination", "col": 0, "type": "frontend", "label": "用户交代目标", "sublabel": "通过管家 Channel"},
+    {"id": "butler", "lane": "coordination", "col": 1, "type": "backend", "label": "管家 Agent", "sublabel": "选择 Bot 与完成条件"},
+    {"id": "ledger", "lane": "coordination", "col": 2, "type": "database", "label": "Core Butler 账本", "sublabel": "Task · Operation · checkpoint", "width": 172},
+    {"id": "dispatch", "lane": "execution", "col": 2, "type": "security", "label": "授权与内部派发", "sublabel": "凭证绑定 run"},
+    {"id": "worker", "lane": "execution", "col": 3, "type": "backend", "label": "工作区 Agent", "sublabel": "独立会话执行一轮"},
+    {"id": "report", "lane": "execution", "col": 4, "type": "messagebus", "label": "Worker 回报与检查点", "sublabel": "校验委派与 run", "width": 172},
+    {"id": "review", "lane": "coordination", "col": 4, "type": "backend", "label": "唤醒管家原会话", "sublabel": "核验 / 追问 / 异常"},
+    {"id": "notify", "lane": "coordination", "col": 5, "type": "frontend", "label": "管家回复用户", "sublabel": "结论或需要用户决定"},
+    {"id": "watch", "lane": "tracking", "col": 4, "type": "database", "label": "持久只读检查计划", "sublabel": "外部任务 ID · nextCheckAt · budget", "width": 148},
+    {"id": "check", "lane": "tracking", "col": 2, "type": "backend", "label": "到期检查", "sublabel": "按登记的只读计划"}
   ],
   "edges": [
-    {
-      "id": "user-command",
-      "from": "request",
-      "to": "manager-bot",
-      "label": "命令 / 跟进 / 验收"
-    },
-    {
-      "id": "bot-ingress",
-      "from": "manager-bot",
-      "to": "admit",
-      "label": "带具体管家 bot 身份"
-    },
-    {
-      "id": "persist",
-      "from": "admit",
-      "to": "dispatch",
-      "label": "requestId 幂等与目标快照"
-    },
-    {
-      "id": "send",
-      "from": "dispatch",
-      "to": "message",
-      "label": "发送应用按群名解析 ID 后 @目标",
-      "variant": "emphasis"
-    },
-    {
-      "id": "receive",
-      "from": "message",
-      "to": "target",
-      "route": "straight"
-    },
-    {
-      "id": "run",
-      "from": "target",
-      "to": "execute",
-      "label": "目标 bot thread / run"
-    },
-    {
-      "id": "observe",
-      "from": "execute",
-      "to": "result",
-      "label": "观察 run 与权限后回执"
-    },
-    {
-      "id": "callback",
-      "from": "result",
-      "to": "reconcile",
-      "label": "目标 bot 身份回传"
-    },
-    {
-      "id": "report",
-      "from": "reconcile",
-      "to": "review",
-      "label": "进展汇报 / 结果摘要 / 用户验收"
-    }
+    {"id": "request", "from": "origin", "to": "butler", "label": "用户指令", "role": "main"},
+    {"id": "delegate", "from": "butler", "to": "ledger", "label": "lac butler create / delegate", "role": "main"},
+    {"id": "admit", "from": "ledger", "to": "dispatch", "label": "先登记，再提交", "role": "main"},
+    {"id": "execute", "from": "dispatch", "to": "worker", "label": "WorkspaceRouter", "role": "main"},
+    {"id": "checkpoint", "from": "worker", "to": "ledger", "label": "Side effect ID · phase=checkpoint", "role": "async"},
+    {"id": "result", "from": "worker", "to": "report", "label": "lac butler report · phase=final", "role": "main"},
+    {"id": "wake", "from": "report", "to": "review", "label": "首轮 / 完成 / 异常", "role": "async"},
+    {"id": "deliver", "from": "review", "to": "notify", "label": "核验证据后通知", "role": "main"},
+    {"id": "continue", "from": "review", "to": "ledger", "label": "继续处理 / 调整计划", "role": "return"},
+    {"id": "waiting", "from": "report", "to": "watch", "label": "按已登记计划续查", "role": "branch"},
+    {"id": "due", "from": "watch", "to": "check", "label": "到期原子领取；重启续查", "role": "async"},
+    {"id": "query", "from": "check", "to": "dispatch", "label": "查询已有任务，不重复创建", "role": "return"}
+  ],
+  "semanticChecks": {
+    "allowedRoots": ["origin"],
+    "allowedTerminals": ["notify"],
+    "requiredEdges": [{"from": "watch", "to": "check"}, {"from": "check", "to": "dispatch"}],
+    "requiredPaths": [{"from": "origin", "to": "notify"}, {"from": "watch", "to": "worker"}]
+  },
+  "cards": [
+    {"dot": "emerald", "title": "完成以用户目标为准", "items": ["Agent 一轮结束只终结本次运行。建立下载后仍需等待，实际完成并通过核验才关闭目标。"]},
+    {"dot": "cyan", "title": "等待由 Core 托管", "items": ["外部任务 ID 可在副作用后先写入 checkpoint；检查时间、预算与租约持久保存。无变化时自动续查，重要变化、完成候选和异常唤醒管家。", "owner 会话删除时保留任务并暂停；匹配原始 Lark 用户身份或本地 workspace 的管家会话才能查看和重新关联。通知按 Task 关联，只迁移该目标的待发消息；终态与通知也可恢复。"]},
+    {"dot": "amber", "title": "明确拒绝与不确定投递分开", "items": ["首次 Channel 提交收到 HTTP 400 时记为失败；超时及其他未确认响应继续保持 unknown，不自动重发。配置保存时只在本地收尾精确记录为 HTTP 400 且没有 runId 或平台消息 ID 的历史提交，不向任何 Bot 补发或取消。"]}
   ]
 }
