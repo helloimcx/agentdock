@@ -15,7 +15,6 @@
     "scripts/*.ts"
   ],
   "ignoreDependencies": [
-    "@cc/contracts",
     "@cc/core-sdk",
     "@cc/knowledge-api",
     "@cc/plugin-sdk",

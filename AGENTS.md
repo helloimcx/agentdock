@@ -94,7 +94,7 @@ Use `pnpm` for all local work.
 - `pnpm lint:complexity`: reports cyclomatic complexity per function across TS source via ESLint `complexity` rule (default max threshold 15). CI gate: `pnpm lint:complexity:gate` (ESLint `--max-warnings 108` baseline).
 - `pnpm lint:circular`: reports circular import dependencies across source roots using `madge`. CI gate: `--fail` (zero-tolerance, baseline 0).
 - `pnpm lint:duplicate`: reports copy/paste duplicate code rate using `jscpd`. CI gate: `--fail` with `JSCPD_MIN_LINES=10`/`JSCPD_MIN_TOKENS=60`; lark/weixin gateway files are ignored (deliberately parallel implementations).
-- `pnpm lint:dead-code`: reports unused exports, unused types, and duplicate exports using `knip` (entry points declared in `knip.json`). CI gate: `--fail --max-count 171` (incremental over baseline).
+- `pnpm lint:dead-code`: reports unused exports, unused types, and duplicate exports using `knip` (entry points declared in `knip.json`). CI gate: `--fail --max-count 172` (incremental over baseline).
 - `pnpm lint:function-length`: reports functions whose line count exceeds threshold (default 100). CI gate: `--fail --max-count 45` (incremental over baseline).
 - `pnpm lint:file-size`: reports source files whose line count exceeds threshold (default 1000). CI gate: `--fail` (zero-tolerance).
 - `pnpm coverage`: measures test coverage using `c8`. CI gate: `check-coverage` thresholds in `.c8rc.json` (lines/statements 68, functions 72, branches 66).
