@@ -59,7 +59,6 @@ import type {
 } from '@cc/superai-contracts';
 import { LOCALCORE_ACP_AGENT_TYPE } from '@cc/superai-contracts';
 import { LocalCoreTraceStore } from './trace-store.js';
-import { ACTIVE_RUN_STATUSES_SQL } from './utils.js';
 import { LocalCoreCostStore } from './cost-store.js';
 import { LocalCoreBudgetStore } from './budget-store.js';
 import type { DesktopBridgeEvent, DesktopBridgeEventKind, DesktopBridgeToolCall } from '@cc/superai-contracts';
@@ -259,7 +258,7 @@ export class LocalCoreAcpStore {
   }
 
   getActiveRunForThread(threadId: string) {
-    return this.db.prepare(`SELECT id, thread_id, status, started_at, updated_at FROM runs WHERE thread_id = ? AND status IN ${ACTIVE_RUN_STATUSES_SQL} ORDER BY updated_at DESC, rowid DESC LIMIT 1`).get(threadId) as LocalRunRow | undefined;
+    return this.threads.getActiveRunForThread(threadId);
   }
 
   findSubmissionsByRequestId(requestId: string, operationKind = 'message') {
