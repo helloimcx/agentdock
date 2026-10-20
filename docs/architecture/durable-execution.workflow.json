@@ -36,7 +36,10 @@
   ],
   "semanticChecks": {
     "requiredEdges": [
-      { "from": "harness", "to": "execute" }
+      {
+        "from": "harness",
+        "to": "execute"
+      }
     ]
   },
   "nodes": [
@@ -172,7 +175,7 @@
     {
       "from": "snapshot",
       "to": "clients",
-      "label": "REST baseline / SSE watch",
+      "label": "REST baseline + SSE",
       "role": "async"
     },
     {

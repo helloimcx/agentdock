@@ -5,61 +5,202 @@
     "title": "AgentDock ACP 会话与沙箱通信时序",
     "locale": "zh-CN",
     "output": "docs/architecture/acp-session-flow.html",
-    "viewBox": [950, 560],
     "animation": "trace",
     "quality_profile": "showcase",
     "views": [
       {
         "id": "session-init",
         "label": "会话初始化与沙箱拉起",
-        "focus": ["client", "core_api", "acp_mgr", "sandbox"],
+        "focus": [
+          "client",
+          "core_api",
+          "acp_mgr",
+          "sandbox"
+        ],
         "note": "请求以稳定 requestId 接收；按配置启动 ACP 沙箱会话。Pi Durable 使用共享 Harness 和全局 SQLite，每线程独立 Conversation。"
       },
       {
         "id": "streaming-and-permission",
         "label": "双向流式与权限审批",
-        "focus": ["client", "core_api", "acp_mgr", "agent_runtime"],
+        "focus": [
+          "client",
+          "core_api",
+          "acp_mgr",
+          "agent_runtime"
+        ],
         "note": "推理和权限通过实时事件反馈；客户端先读取 thread snapshot，再接入版本化 watch，断线后重新读取 baseline。"
       },
       {
         "id": "finalize-and-artifact",
         "label": "产物登记与会话收尾",
-        "focus": ["agent_runtime", "acp_mgr", "client"],
+        "focus": [
+          "agent_runtime",
+          "acp_mgr",
+          "client"
+        ],
         "note": "执行结果、工具和权限状态写入持久运行投影后广播；Run、submission 与 delivery 使用独立状态。"
       }
     ]
   },
   "participants": [
-    { "id": "client", "type": "frontend", "label": "Client 终端", "sublabel": "桌面 / 渠道" },
-    { "id": "core_api", "type": "backend", "label": "Core API", "sublabel": "HTTP & SSE" },
-    { "id": "acp_mgr", "type": "backend", "label": "ACP Runtime", "sublabel": "会话管理治理" },
-    { "id": "sandbox", "type": "cloud", "label": "OpenSandbox", "sublabel": "容器隔离服务" },
-    { "id": "agent_runtime", "type": "backend", "label": "Agent 引擎", "sublabel": "Codex / Claude" }
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Client 终端",
+      "sublabel": "桌面 / 渠道"
+    },
+    {
+      "id": "core_api",
+      "type": "backend",
+      "label": "Core API",
+      "sublabel": "HTTP & SSE"
+    },
+    {
+      "id": "acp_mgr",
+      "type": "backend",
+      "label": "ACP Runtime",
+      "sublabel": "会话管理治理"
+    },
+    {
+      "id": "sandbox",
+      "type": "cloud",
+      "label": "OpenSandbox",
+      "sublabel": "容器隔离服务"
+    },
+    {
+      "id": "agent_runtime",
+      "type": "backend",
+      "label": "Agent 引擎",
+      "sublabel": "Codex / Claude"
+    }
   ],
   "segments": [
-    { "from": 145, "to": 274, "label": "会话初始化与沙箱拉起" },
-    { "from": 282, "to": 422, "label": "双向流式推理与权限审批" },
-    { "from": 430, "to": 482, "label": "产物登记与会话收尾" }
+    {
+      "from": 145,
+      "to": 274,
+      "label": "会话初始化与沙箱拉起"
+    },
+    {
+      "from": 282,
+      "to": 422,
+      "label": "双向流式推理与权限审批"
+    },
+    {
+      "from": 430,
+      "to": 482,
+      "label": "产物登记与会话收尾"
+    }
   ],
   "messages": [
-    { "from": "client", "to": "core_api", "y": 168, "label": "POST /threads/:id/messages + requestId", "variant": "emphasis" },
-    { "from": "core_api", "to": "acp_mgr", "y": 198, "label": "事务接收 submission → 稳定 runId", "variant": "emphasis" },
-    { "from": "acp_mgr", "to": "sandbox", "y": 228, "label": "POST /sandboxes (创建隔离容器)", "variant": "default" },
-    { "from": "sandbox", "to": "acp_mgr", "y": 258, "label": "201 Created (NDJSON 就绪)", "variant": "return" },
-    { "from": "core_api", "to": "client", "y": 288, "label": "200 OK + per-run SSE URL", "variant": "return" },
-    { "from": "acp_mgr", "to": "agent_runtime", "y": 318, "label": "按能力路由 ACP 或全局 Durable worker", "variant": "default" },
-    { "from": "agent_runtime", "to": "acp_mgr", "y": 348, "label": "Chunk: 思考与工具调用", "variant": "dashed" },
-    { "from": "acp_mgr", "to": "client", "y": 378, "label": "SSE: 实时进度与审批卡片", "variant": "security" },
-    { "from": "client", "to": "acp_mgr", "y": 408, "label": "POST /permissions/grant", "variant": "security" },
-    { "from": "agent_runtime", "to": "acp_mgr", "y": 438, "label": "RunFinished + 产物元数据", "variant": "return" },
-    { "from": "acp_mgr", "to": "client", "y": 468, "label": "SSE: run_completed (最终响应)", "variant": "return" }
+    {
+      "from": "client",
+      "to": "core_api",
+      "y": 168,
+      "label": "POST /threads/:id/messages + requestId",
+      "variant": "emphasis"
+    },
+    {
+      "from": "core_api",
+      "to": "acp_mgr",
+      "y": 198,
+      "label": "事务接收 submission → 稳定 runId",
+      "variant": "emphasis"
+    },
+    {
+      "from": "acp_mgr",
+      "to": "sandbox",
+      "y": 228,
+      "label": "POST /sandboxes (创建隔离容器)",
+      "variant": "default"
+    },
+    {
+      "from": "sandbox",
+      "to": "acp_mgr",
+      "y": 258,
+      "label": "201 Created (NDJSON 就绪)",
+      "variant": "return"
+    },
+    {
+      "from": "core_api",
+      "to": "client",
+      "y": 288,
+      "label": "200 OK + per-run SSE URL",
+      "variant": "return"
+    },
+    {
+      "from": "acp_mgr",
+      "to": "agent_runtime",
+      "y": 318,
+      "label": "按能力路由 ACP 或全局 Durable worker",
+      "variant": "default"
+    },
+    {
+      "from": "agent_runtime",
+      "to": "acp_mgr",
+      "y": 348,
+      "label": "Chunk: 思考与工具调用",
+      "variant": "dashed"
+    },
+    {
+      "from": "acp_mgr",
+      "to": "client",
+      "y": 378,
+      "label": "SSE: 实时进度与审批卡片",
+      "variant": "security"
+    },
+    {
+      "from": "client",
+      "to": "acp_mgr",
+      "y": 408,
+      "label": "POST /permissions/grant",
+      "variant": "security"
+    },
+    {
+      "from": "agent_runtime",
+      "to": "acp_mgr",
+      "y": 438,
+      "label": "RunFinished + 产物元数据",
+      "variant": "return"
+    },
+    {
+      "from": "acp_mgr",
+      "to": "client",
+      "y": 468,
+      "label": "SSE: run_completed (最终响应)",
+      "variant": "return"
+    }
   ],
   "activations": [
-    { "participant": "core_api", "from": 164, "to": 292, "type": "backend" },
-    { "participant": "acp_mgr", "from": 194, "to": 262, "type": "backend" },
-    { "participant": "sandbox", "from": 224, "to": 262, "type": "cloud" },
-    { "participant": "agent_runtime", "from": 314, "to": 442, "type": "backend" },
-    { "participant": "acp_mgr", "from": 314, "to": 472, "type": "backend" }
+    {
+      "participant": "core_api",
+      "from": 164,
+      "to": 292,
+      "type": "backend"
+    },
+    {
+      "participant": "acp_mgr",
+      "from": 194,
+      "to": 262,
+      "type": "backend"
+    },
+    {
+      "participant": "sandbox",
+      "from": 224,
+      "to": 262,
+      "type": "cloud"
+    },
+    {
+      "participant": "agent_runtime",
+      "from": 314,
+      "to": 442,
+      "type": "backend"
+    },
+    {
+      "participant": "acp_mgr",
+      "from": 314,
+      "to": 472,
+      "type": "backend"
+    }
   ],
   "cards": []
 }

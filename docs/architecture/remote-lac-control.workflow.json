@@ -4,7 +4,8 @@
   "meta": {
     "title": "远程工作区调用 LAC",
     "locale": "zh-CN",
-    "quality_profile": "showcase"
+    "quality_profile": "showcase",
+    "output": "docs/architecture/remote-lac-control.html"
   },
   "lanes": [
     {
