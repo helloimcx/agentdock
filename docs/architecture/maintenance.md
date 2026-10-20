@@ -31,15 +31,15 @@ Git retains prior provider source revisions. When the active provider supports c
 
 Read `docs/architecture/diagram-provider.yaml` before editing provider files. It declares the active provider, fallback, capabilities, stable public outputs, provider-specific source, receipt paths, and README mode.
 
-Every active provider must:
+Every active provider should:
 
 - render only architecture facts supported by the repository and `docs/architecture.md`;
 - preserve stable component identities across revisions when semantics are unchanged;
 - validate its candidate before replacing the last-known-good artifact;
-- support automated validation via `pnpm lint:arch` (`node scripts/lint-architecture.mjs`, running Archify showcase checks);
+- support automated validation via `pnpm lint:arch` (`node scripts/lint-architecture.mjs`, running Archify showcase checks when the CLI is installed; otherwise the command still checks JSON syntax and reports provider checks as skipped);
 - produce either the stable README image declared by the manifest (PNG/SVG, or dual-theme `<picture>` source) or an explicitly configured inline Mermaid fallback;
 - keep standard matrix specs and rendered assets under `docs/architecture/`;
-- report a non-zero command, failed validation, missing tool, stale output, or unresolved source evidence truthfully.
+- report a non-zero command, failed validation, stale output, or unresolved source evidence truthfully. Missing optional provider tooling must be reported as skipped, not as a successful provider validation.
 
 Archify is the preferred and active provider. Use its typed JSON source, validation, trusted delivery, static export, and interactive HTML generation. Archify remains replaceable: do not encode its internal JSON fields in `docs/architecture.md`, semantic change records, root Agent routing, or the stable README contract.
 
@@ -53,11 +53,11 @@ For `Architecture Impact: Required`:
 2. Inspect the changed code and tests. Update `docs/architecture.md` from evidence, not from requested design alone.
 3. Add one change record under `docs/architecture/changes/` describing the semantic delta and evidence.
 4. Update the active provider's source in the L1-L3 Architecture Matrix (`system-architecture.json`, `*.workflow.json`, `*.sequence.json`, `*.lifecycle.json`). Preserve stable component identities and layout where semantics did not change.
-5. Run the provider's required validation via `pnpm lint:arch`.
+5. Run provider validation via `pnpm lint:arch` when the provider CLI is installed. If it is unavailable, record the provider validation as `[N/A]`, preserve existing artifacts, and do not claim that provider-specific checks passed.
 6. Publish the validated current artifacts atomically (including `.html` interactive canvas and dual-theme `.light.png` / `.dark.png` / `.png`). A failed candidate must not replace the last-known-good diagram.
 7. Update `docs/architecture/overview.md` to keep the Architecture Matrix synchronized.
 8. Update exactly one managed README block so it directly shows the latest valid static diagram (using dual-theme `<picture>` block) or inline Mermaid fallback.
-9. Run repository documentation/link checks, `pnpm lint:arch`, and the ordinary complete quality suite (`pnpm verify`). Recheck the final diff for agreement among code, current facts, history, provider source, overview matrix, and README.
+9. Run repository documentation/link checks, `pnpm lint:arch`, and the ordinary complete quality suite (`pnpm verify`). The architecture lint command always checks JSON syntax and skips only provider-specific checks when the CLI is unavailable. Recheck the final diff for agreement among code, current facts, history, provider source, overview matrix, and README.
 
 ## README Contract
 
@@ -84,7 +84,7 @@ Architecture synchronization is complete only when all applicable checks are tru
 - current facts match the implemented code and boundaries;
 - exactly one new semantic change record exists;
 - provider source and stable output describe the same component identities and relationships;
-- required provider validation and `pnpm lint:arch` succeeded (0 errors, 0 warnings);
+- provider validation passed when run; if the provider CLI was unavailable and no provider artifacts changed, its checks are recorded as `[N/A]` and existing artifacts are preserved;
 - the L1-L3 Architecture Matrix and `docs/architecture/overview.md` match the current codebase;
 - the README block is unique and renders the current valid diagram;
 - local links resolve and no stale provider artifact is presented as current.

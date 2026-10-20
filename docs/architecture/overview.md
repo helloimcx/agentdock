@@ -54,7 +54,7 @@ Pi Durable 通过 Local AI Core 的单一 worker 接入；所有 Durable threads
 
 ## 架构资产矩阵 (Architecture-as-Code Matrix)
 
-AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pnpm lint:arch` 在持续集成中严格校验：
+AgentDock 采用 Archify 建立多层活文档架构资产矩阵。`pnpm lint:arch` 始终检查架构 JSON 语法；安装 Archify 时还会运行 Showcase 校验，缺少 CLI 时会明确跳过 provider 校验：
 
 | 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
 |---|---|---|---|---|---|

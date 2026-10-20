@@ -136,7 +136,7 @@ Key capabilities:
 
 ## 6. Architecture Matrix & Specifications
 
-The L1-L3 Architecture Matrix is defined in typed JSON specifications validated via `pnpm lint:arch` with Archify:
+The L1-L3 Architecture Matrix is defined in typed JSON specifications. `pnpm lint:arch` always checks their JSON syntax and runs Archify Showcase validation when the optional CLI is installed:
 
 - **L1 System Architecture**: [system architecture spec](architecture/system-architecture.json)
 - **L2 ACP Session Flow (Sequence)**: [ACP session flow](architecture/acp-session-flow.sequence.json)

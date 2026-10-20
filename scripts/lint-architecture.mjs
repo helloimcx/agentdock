@@ -11,11 +11,6 @@ const archifyCandidates = [
 ].filter(Boolean);
 const ARCHIFY_BIN = archifyCandidates.find((candidate) => fs.existsSync(candidate));
 
-if (!ARCHIFY_BIN) {
-  console.error(`Archify CLI not found. Set ARCHIFY_BIN or install the archify skill.`);
-  process.exit(1);
-}
-
 if (!fs.existsSync(ARCH_DIR)) {
   console.log('No docs/architecture directory found. Skipping architecture lint.');
   process.exit(0);
@@ -31,10 +26,17 @@ if (jsonFiles.length === 0) {
   process.exit(0);
 }
 
+if (!ARCHIFY_BIN) {
+  console.warn(`⚠️ Archify CLI not found; provider validation skipped for ${jsonFiles.length} architecture JSON file(s). Set ARCHIFY_BIN or install the archify skill to enable Showcase checks.`);
+}
+
 let passedCount = 0;
 let failedCount = 0;
+let skippedCount = 0;
 
-console.log(`🔍 Validating ${jsonFiles.length} architecture specifications with Archify (showcase profile)...`);
+if (ARCHIFY_BIN) {
+  console.log(`🔍 Validating ${jsonFiles.length} architecture specifications with Archify (showcase profile)...`);
+}
 
 for (const filePath of jsonFiles) {
   const relPath = path.relative(process.cwd(), filePath);
@@ -52,6 +54,11 @@ for (const filePath of jsonFiles) {
 
   if (!diagramType) {
     console.warn(`⚠️  [${relPath}] Skipping (no diagram_type specified)`);
+    continue;
+  }
+
+  if (!ARCHIFY_BIN) {
+    skippedCount++;
     continue;
   }
 
@@ -82,7 +89,7 @@ for (const filePath of jsonFiles) {
   }
 }
 
-console.log(`\nArchitecture Lint Summary: ${passedCount} passed, ${failedCount} failed.`);
+console.log(`\nArchitecture Lint Summary: ${passedCount} passed, ${failedCount} failed, ${skippedCount} provider checks skipped.`);
 if (failedCount > 0) {
   process.exit(1);
 }
