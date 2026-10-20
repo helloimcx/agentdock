@@ -1,59 +1,184 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "diagram_type": "lifecycle",
   "meta": {
     "title": "AgentDock Task 与 Run 执行状态机",
     "locale": "zh-CN",
     "output": "docs/architecture/agent-run-lifecycle.html",
-    "viewBox": [1200, 660],
     "animation": "trace",
     "quality_profile": "showcase",
     "views": [
       {
         "id": "main-flow",
         "label": "标准执行生命周期",
-        "focus": ["queued", "preparing", "running", "finalizing", "completed"],
+        "focus": [
+          "queued",
+          "preparing",
+          "running",
+          "finalizing",
+          "completed"
+        ],
         "note": "Run 从排队、环境装配、执行到结果持久化收尾；thread runtime snapshot 从持久 projection 构建。"
       },
       {
         "id": "permission-gate",
         "label": "权限阻断与等待确认",
-        "focus": ["running", "waiting_permission", "blocked", "canceled"],
+        "focus": [
+          "running",
+          "waiting_permission",
+          "blocked",
+          "canceled"
+        ],
         "note": "执行敏感操作时持久化授权状态并挂起；ACP 进程退出后旧授权失效，不会作用到新会话。"
       },
       {
         "id": "recovery-and-terminal",
         "label": "异常重试与终态退出",
-        "focus": ["running", "failed", "timed_out", "canceled"],
+        "focus": [
+          "running",
+          "failed",
+          "timed_out",
+          "canceled"
+        ],
         "note": "运行失败、取消与超时分别收敛；submission 和 delivery 是独立状态域，发送不确定时由 outbox 标记 unknown。"
       }
     ]
   },
-  "lanes": [
-    { "id": "main", "label": "执行主链路 (Main Lifecycle)" },
-    { "id": "waiting", "label": "权限阻断与等待 (Pause & Wait)" },
-    { "id": "exceptions", "label": "异常与恢复环 (Recovery Loop)" },
-    { "id": "terminal", "label": "终止终态 (Terminal Exits)" }
-  ],
   "states": [
-    { "id": "queued", "type": "start", "label": "排队中 (Queued)", "lane": "main", "col": 0, "step": "01", "tag": "entry" },
-    { "id": "preparing", "type": "active", "label": "准备中 (Preparing)", "lane": "main", "col": 1, "step": "02", "tag": "init" },
-    { "id": "running", "type": "active", "label": "执行中 (Running)", "lane": "main", "col": 2, "step": "03", "tag": "work" },
-    { "id": "finalizing", "type": "decision", "label": "收尾中 (Finalizing)", "lane": "main", "col": 3, "step": "04", "tag": "verify" },
-    { "id": "completed", "type": "success", "label": "已完成 (Completed)", "lane": "main", "col": 4, "step": "05", "tag": "done" },
-    { "id": "waiting_permission", "type": "waiting", "label": "等待授权 (Waiting)", "lane": "waiting", "col": 0, "tag": "pause" },
-    { "id": "blocked", "type": "waiting", "label": "等待输入 (Blocked)", "lane": "waiting", "col": 1, "tag": "wait" },
-    { "id": "failed", "type": "failure", "label": "执行失败 (Failed)", "lane": "exceptions", "col": 0, "yOffset": 78, "tag": "retryable" },
-    { "id": "canceled", "type": "failure", "label": "已取消 (Canceled)", "lane": "terminal", "col": 0, "tag": "terminal" },
-    { "id": "timed_out", "type": "failure", "label": "超时终止 (Timed Out)", "lane": "terminal", "col": 1, "tag": "terminal" }
+    {
+      "id": "queued",
+      "type": "start",
+      "label": "排队中 (Queued)",
+      "step": "01",
+      "tag": "entry"
+    },
+    {
+      "id": "preparing",
+      "type": "active",
+      "label": "准备中 (Preparing)",
+      "step": "02",
+      "tag": "init"
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "执行中 (Running)",
+      "step": "03",
+      "tag": "work"
+    },
+    {
+      "id": "finalizing",
+      "type": "decision",
+      "label": "收尾中 (Finalizing)",
+      "step": "04",
+      "tag": "verify"
+    },
+    {
+      "id": "completed",
+      "type": "success",
+      "label": "已完成 (Completed)",
+      "step": "05",
+      "tag": "done"
+    },
+    {
+      "id": "waiting_permission",
+      "type": "waiting",
+      "label": "等待授权 (Waiting)",
+      "tag": "pause"
+    },
+    {
+      "id": "blocked",
+      "type": "waiting",
+      "label": "等待输入 (Blocked)",
+      "tag": "wait"
+    },
+    {
+      "id": "failed",
+      "type": "failure",
+      "label": "执行失败 (Failed)",
+      "tag": "retryable"
+    },
+    {
+      "id": "canceled",
+      "type": "failure",
+      "label": "已取消 (Canceled)",
+      "tag": "terminal"
+    },
+    {
+      "id": "timed_out",
+      "type": "failure",
+      "label": "超时终止 (Timed Out)",
+      "tag": "terminal"
+    }
   ],
   "transitions": [
-    { "id": "permission-needed", "from": "running", "to": "waiting_permission", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight" },
-    { "id": "run-blocked", "from": "finalizing", "to": "blocked", "variant": "default", "route": "drop" },
-    { "id": "running-failed", "from": "running", "to": "failed", "variant": "security", "fromSide": "left", "toSide": "left", "via": [[320, 157], [320, 385]] },
-    { "id": "failed-retry", "from": "failed", "to": "running", "variant": "emphasis", "fromSide": "left", "toSide": "top", "via": [[20, 385], [20, 80], [402, 80]] },
-    { "id": "permission-cancel", "from": "waiting_permission", "to": "canceled", "variant": "security", "fromSide": "bottom", "toSide": "top", "via": [[480, 336], [480, 432], [402, 432]] },
-    { "id": "block-timeout", "from": "blocked", "to": "timed_out", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight" }
+    {
+      "id": "queued-preparing",
+      "from": "queued",
+      "to": "preparing",
+      "label": "开始准备"
+    },
+    {
+      "id": "preparing-running",
+      "from": "preparing",
+      "to": "running",
+      "label": "环境就绪"
+    },
+    {
+      "id": "running-finalizing",
+      "from": "running",
+      "to": "finalizing",
+      "label": "执行结束"
+    },
+    {
+      "id": "finalizing-completed",
+      "from": "finalizing",
+      "to": "completed",
+      "label": "收尾成功"
+    },
+    {
+      "id": "permission-needed",
+      "from": "running",
+      "to": "waiting_permission",
+      "variant": "security"
+    },
+    {
+      "id": "run-blocked",
+      "from": "finalizing",
+      "to": "blocked",
+      "variant": "default"
+    },
+    {
+      "id": "running-failed",
+      "from": "running",
+      "to": "failed",
+      "variant": "security"
+    },
+    {
+      "id": "failed-retry",
+      "from": "failed",
+      "to": "running",
+      "variant": "emphasis"
+    },
+    {
+      "id": "permission-cancel",
+      "from": "waiting_permission",
+      "to": "canceled",
+      "variant": "security"
+    },
+    {
+      "id": "block-timeout",
+      "from": "blocked",
+      "to": "timed_out",
+      "variant": "security"
+    }
   ],
-  "cards": []
+  "cards": [],
+  "mainPath": [
+    "queued",
+    "preparing",
+    "running",
+    "finalizing",
+    "completed"
+  ]
 }

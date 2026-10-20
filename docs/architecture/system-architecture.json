@@ -146,7 +146,7 @@
       "label": "SQLite 本地持久化",
       "sublabel": "工作区 · 线程历史 · 产物",
       "pos": [
-        600,
+        560,
         120
       ],
       "size": [
@@ -160,7 +160,7 @@
       "label": "Core 内核与插件",
       "sublabel": "路由调度 · Monitor 触发",
       "pos": [
-        600,
+        560,
         295
       ],
       "size": [
@@ -174,7 +174,7 @@
       "label": "ACP 会话运行时",
       "sublabel": "会话管理 · 权限治理 · 桥接",
       "pos": [
-        870,
+        790,
         200
       ],
       "size": [
@@ -188,7 +188,7 @@
       "label": "定时与自动化调度",
       "sublabel": "Cron 触发 · 自动化任务链",
       "pos": [
-        870,
+        790,
         420
       ],
       "size": [
@@ -202,8 +202,8 @@
       "label": "本地 Agent 运行时",
       "sublabel": "ACP + Durable · writes",
       "pos": [
-        1140,
-        140
+        1000,
+        40
       ],
       "size": [
         160,
@@ -216,7 +216,7 @@
       "label": "OpenSandbox 容器",
       "sublabel": "隔离容器 · 状态挂载 · NDJSON",
       "pos": [
-        1140,
+        1000,
         320
       ],
       "size": [
@@ -230,7 +230,7 @@
       "label": "Mesh 设备网关",
       "sublabel": "配对 · Shell 授权",
       "pos": [
-        600,
+        560,
         570
       ],
       "size": [
@@ -244,7 +244,7 @@
       "label": "远程设备节点",
       "sublabel": "Mac / Linux / Windows / Termux",
       "pos": [
-        1140,
+        1000,
         570
       ],
       "size": [
@@ -258,8 +258,8 @@
       "label": "Pi Durable SQLite",
       "sublabel": "One DB per Core",
       "pos": [
-        1130,
-        450
+        790,
+        120
       ],
       "size": [
         160,
@@ -320,7 +320,6 @@
       "id": "electron-to-core",
       "from": "electron",
       "to": "core_api",
-      "toSide": "top",
       "label": "伴生拉起",
       "variant": "dashed"
     },
@@ -341,12 +340,7 @@
       "id": "external-to-core",
       "from": "external_client",
       "to": "core_api",
-      "toSide": "bottom",
-      "label": "API 调用 · Webhook 触发",
-      "labelAt": [
-        150,
-        480
-      ]
+      "label": "API 调用 · Webhook 触发"
     },
     {
       "id": "core-to-kernel",
@@ -359,8 +353,6 @@
       "id": "kernel-to-sqlite",
       "from": "kernel",
       "to": "sqlite",
-      "fromSide": "top",
-      "toSide": "bottom",
       "label": "状态持久化"
     },
     {
@@ -380,8 +372,6 @@
       "id": "scheduler-to-acp",
       "from": "scheduler",
       "to": "acp_engine",
-      "fromSide": "top",
-      "toSide": "bottom",
       "label": "触发 Run"
     },
     {
@@ -394,11 +384,7 @@
       "id": "local-to-kernel-write-approval",
       "from": "local_agents",
       "to": "kernel",
-      "label": "Core write approval",
-      "labelAt": [
-        975,
-        105
-      ]
+      "label": "Core write approval"
     },
     {
       "id": "acp-to-sandbox",
@@ -411,15 +397,12 @@
       "id": "core-to-mesh",
       "from": "core_api",
       "to": "mesh_gateway",
-      "label": "Read-only nodes · admin / scoped Shell auth",
-      "labelDy": 100
+      "label": "Read-only nodes · admin / scoped Shell auth"
     },
     {
       "id": "mesh-to-kernel",
       "from": "mesh_gateway",
       "to": "kernel",
-      "fromSide": "top",
-      "toSide": "bottom",
       "label": "状态持久化"
     },
     {
@@ -433,33 +416,13 @@
       "id": "pi-durable-to-sqlite",
       "from": "local_agents",
       "to": "pi_durable_sqlite",
-      "label": "single owner",
-      "labelAt": [
-        1340,
-        420
-      ],
-      "via": [
-        [
-          1340,
-          172
-        ],
-        [
-          1340,
-          485
-        ]
-      ]
+      "label": "single owner"
     },
     {
       "id": "core-to-butler",
       "from": "core_api",
       "to": "butler",
-      "label": "Butler REST · LAC",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "labelAt": [
-        430,
-        420
-      ]
+      "label": "Butler REST · LAC"
     }
   ],
   "cards": [
