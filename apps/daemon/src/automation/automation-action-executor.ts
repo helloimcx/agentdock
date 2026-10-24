@@ -4,6 +4,7 @@ import type { DeliveryIntent } from '@cc/superai-contracts';
 import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { RunFinalResult } from '../acp/store/submission-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
 import type { CostService } from '../cost/cost-service.js';
 import { BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
@@ -134,7 +135,7 @@ async function openExecutionBridge(
   });
 }
 
-function buildDeliveryResult(input: AutomationActionExecutionInput, final: { threadId: string; content: string; messageId?: string }, runId: string) {
+function buildDeliveryResult(input: AutomationActionExecutionInput, final: RunFinalResult, runId: string) {
   const { automation } = input;
   const delivery: Pick<AutomationActionExecutionResult, 'deliveryMode' | 'deliveryStatus' | 'deliveryIntent'> = {
     deliveryMode: automation.delivery.platform === 'local' ? 'thread-only' : 'final-message',
@@ -159,17 +160,17 @@ async function settleBridgeSafely(
 
 async function dispatchAndWaitRun(
   options: {
-    workspaceRouter: any;
-    store: any;
+    workspaceRouter: WorkspaceRouter;
+    store: LocalCoreAcpStore;
     threadId: string;
     prompt: string;
     automationRunId?: string;
-    platform: any;
-    route: any;
-    originKind?: string;
+    platform: string;
+    route: DeliveryIntent['route'];
+    originKind?: AutomationDefinition['originKind'];
     timeoutMs: number;
   },
-): Promise<{ runId: string; final: { threadId: string; messageId: string; content: string } }> {
+): Promise<{ runId: string; final: RunFinalResult }> {
   const sendResult = await options.workspaceRouter.sendThreadMessage(options.threadId, options.prompt, {
     ...(options.automationRunId ? { requestId: `automation:${options.automationRunId}` } : {}),
     permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
