@@ -31,7 +31,8 @@ export type ScheduledBridgeSessionHandle = {
   route: ScheduledJobRoute;
   threadId: string;
   sessionKey: string;
-  close(): Promise<void>;
+  settle?(outcome: { status: 'succeeded' | 'failed'; error?: string }): Promise<void>;
+  close(outcome?: { status: 'succeeded' | 'failed'; error?: string }): Promise<void>;
 };
 
 export class ScheduledBridgeSession {
@@ -48,6 +49,26 @@ export class ScheduledBridgeSession {
       ...(input.suppressFinalReport ? { suppressFinalReport: true } : {}),
     });
     await sendScheduledStartNotice(channelRuntime, target, sessionKey, input.noticeIcon, input.noticeTitle);
+    let settled = false;
+    const settle = async (outcome: { status: 'succeeded' | 'failed'; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      if (!channelRuntime.onBridgeEvent) return;
+      const icon = outcome.status === 'succeeded' ? '✅' : '❌';
+      const suffix = outcome.status === 'succeeded'
+        ? '已完成'
+        : `失败${outcome.error ? `: ${outcome.error}` : ''}`;
+      const title = input.noticeTitle || automationNoticeTitle(target);
+      try {
+        await channelRuntime.onBridgeEvent({
+          type: 'status',
+          sessionKey,
+          bridgeKind: 'status',
+          previewHandle: `scheduled-status:${target.id}`,
+          content: `${icon} ${title} (${suffix})`,
+        });
+      } catch {}
+    };
     return {
       mode: 'bridge-stream',
       workspaceId: target.workspaceId,
@@ -55,7 +76,11 @@ export class ScheduledBridgeSession {
       route: target.route,
       threadId: input.threadId,
       sessionKey,
-      close: async () => {
+      settle,
+      close: async (outcome?: { status: 'succeeded' | 'failed'; error?: string }) => {
+        if (outcome) {
+          await settle(outcome);
+        }
         await unregister?.();
       },
     };
@@ -85,6 +110,7 @@ async function sendScheduledStartNotice(channelRuntime: ChannelRuntime, target: 
       type: 'status',
       sessionKey,
       bridgeKind: 'status',
+      previewHandle: `scheduled-status:${target.id}`,
       content: `${noticeIcon || '⏰'} ${noticeTitle || automationNoticeTitle(target)}`,
     });
   } catch {

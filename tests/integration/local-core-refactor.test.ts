@@ -934,6 +934,7 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
     type: 'status',
     sessionKey: 'session:thread-scheduled',
     bridgeKind: 'status',
+    previewHandle: 'scheduled-status:job-1',
     content: '⏰ two-minute ping',
   });
   policy.afterExecute?.(target, job as any);

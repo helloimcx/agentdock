@@ -821,7 +821,14 @@ export class AutomationService {
       if (result.deliveryIntent) {
         const delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
         // Execution is committed; a delivery fault must never rerun or fail the Agent.
-        try { await this.options.actionExecutor.deliveryService?.deliver(delivery.id); }
+        try {
+          const outcome = await this.options.actionExecutor.deliveryService?.deliver(delivery.id);
+          if (outcome?.status === 'failed') {
+            this.eventProjector.reportDiagnostic('delivery-failure', `Delivery failed for automation ${automation.id}: ${outcome.error}`);
+            const updatedDef = this.options.store.getAutomation(automation.id);
+            if (updatedDef) this.eventProjector.emitDefinition(updatedDef);
+          }
+        }
         catch (error) { this.options.log?.(normalizeAutomationError(error, 'Delivery checkpoint failed: ')); }
         run = this.options.store.getAutomationRun(run.id) || run;
       } else completed();

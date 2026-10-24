@@ -5,6 +5,7 @@ import {
   buildLarkPostContent,
   renderLarkTextMessage,
 } from '../../apps/daemon/src/channel/lark/rendering/messages.js';
+import { splitMarkdownForLark } from '../../apps/daemon/src/channel/lark/rendering/markdown.js';
 
 function findLarkPostMdText(content: any) {
   for (const line of content.zh_cn?.content || []) {
@@ -133,3 +134,33 @@ test('lark gateway sends rendered text message payloads without owning render st
   assert.equal(content.schema, '2.0');
   assert.match(logs.join('\n'), /msgType=interactive reason=markdown_table tableCount=1/);
 });
+
+test('splitMarkdownForLark returns single chunk when within byte limit', () => {
+  const text = '### 简要报告\n\n内容正常。';
+  const chunks = splitMarkdownForLark(text, 1024);
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], text);
+});
+
+test('splitMarkdownForLark splits across paragraphs and preserves code block fence pairing', () => {
+  const codeBlock = '```typescript\nconst a = 1;\nconst b = 2;\n```';
+  const longText = [
+    '## 模块一',
+    '这里是详细描述。',
+    '',
+    codeBlock,
+    '',
+    '## 模块二',
+    '这里是后续分析。',
+  ].join('\n');
+
+  // Set a small maxBytes to force split around the code block
+  const chunks = splitMarkdownForLark(longText, 60);
+  assert.ok(chunks.length > 1);
+  for (const chunk of chunks) {
+    const fences = (chunk.match(/```/g) || []).length;
+    // Fences must be balanced (even number of ```)
+    assert.equal(fences % 2, 0, `Chunk code fences must be balanced: ${chunk}`);
+  }
+});
+

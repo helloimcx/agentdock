@@ -50,7 +50,7 @@ export interface AutomationDefinition {
   workspaceId: string;
   title: string;
   enabled: boolean;
-  health: 'healthy' | 'blocked';
+  health: 'healthy' | 'blocked' | 'degraded';
   blockedReason?: string;
   activation: AutomationActivation;
   condition: AutomationCondition;
@@ -146,6 +146,7 @@ export interface AutomationRun {
   acpRunId?: string;
   executionMode: 'same-thread' | 'side-thread';
   deliveryStatus?: 'pending' | 'delivering' | 'delivered' | 'failed' | 'unknown' | 'cancelled';
+  deliveryError?: string;
   bridgeActivity?: Record<string, unknown>;
   error?: string;
   createdAt: string;
@@ -422,8 +423,8 @@ export function normalizeAutomationDefinition(value: unknown): AutomationDefinit
   if (policies.concurrency !== 'skip-if-running') {
     throw new Error('Automation concurrency policy must be skip-if-running.');
   }
-  if (input.health !== 'healthy' && input.health !== 'blocked') {
-    throw new Error('Automation health must be healthy or blocked.');
+  if (input.health !== 'healthy' && input.health !== 'blocked' && input.health !== 'degraded') {
+    throw new Error('Automation health must be healthy, blocked, or degraded.');
   }
   if (typeof input.enabled !== 'boolean') throw new Error('Automation enabled must be a boolean.');
 

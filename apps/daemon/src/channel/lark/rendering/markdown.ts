@@ -101,3 +101,123 @@ function renderMarkdownTableRow(headers: string[], cells: string[], rowIndex: nu
 
   return parts.length > 0 ? `${prefix} ${parts.join('；')}` : `${prefix} ${cells.join('；')}`;
 }
+
+interface CodeFenceState {
+  inCodeBlock: boolean;
+  codeBlockLang: string;
+}
+
+function updateCodeFenceState(line: string, state: CodeFenceState): void {
+  const match = /^```(\w*)/.exec(line.trim());
+  if (!match) return;
+  if (!state.inCodeBlock) {
+    state.inCodeBlock = true;
+    state.codeBlockLang = match[1] || '';
+  } else {
+    state.inCodeBlock = false;
+    state.codeBlockLang = '';
+  }
+}
+
+function updateCodeFenceForText(text: string, state: CodeFenceState): void {
+  for (const line of text.split('\n')) {
+    updateCodeFenceState(line, state);
+  }
+}
+
+function flushChunk(chunks: string[], currentChunk: string, state: CodeFenceState): string {
+  if (!currentChunk) return '';
+  if (state.inCodeBlock) {
+    chunks.push(`${currentChunk}\n\`\`\``);
+    return `\`\`\`${state.codeBlockLang}\n`;
+  }
+  chunks.push(currentChunk);
+  return '';
+}
+
+function splitLongLineByBytes(line: string, maxBytes: number): string[] {
+  const slices: string[] = [];
+  let remaining = line;
+  while (Buffer.byteLength(remaining, 'utf8') > maxBytes) {
+    let sliceLen = Math.floor(maxBytes / 2);
+    while (sliceLen < remaining.length && Buffer.byteLength(remaining.slice(0, sliceLen + 1), 'utf8') <= maxBytes) {
+      sliceLen += 1;
+    }
+    slices.push(remaining.slice(0, sliceLen));
+    remaining = remaining.slice(sliceLen);
+  }
+  if (remaining) {
+    slices.push(remaining);
+  }
+  return slices;
+}
+
+function appendLineToChunks(
+  line: string,
+  state: CodeFenceState,
+  chunks: string[],
+  currentChunk: string,
+  maxBytes: number,
+): string {
+  const lineCandidate = currentChunk ? `${currentChunk}\n${line}` : line;
+  if (Buffer.byteLength(lineCandidate, 'utf8') <= maxBytes) {
+    updateCodeFenceState(line, state);
+    return lineCandidate;
+  }
+  let chunk = flushChunk(chunks, currentChunk, state);
+  if (Buffer.byteLength(line, 'utf8') <= maxBytes) {
+    chunk = chunk ? `${chunk}${line}` : line;
+  } else {
+    const slices = splitLongLineByBytes(line, maxBytes);
+    for (let i = 0; i < slices.length - 1; i += 1) {
+      chunks.push(slices[i]!);
+    }
+    chunk = slices[slices.length - 1] || '';
+  }
+  updateCodeFenceState(line, state);
+  return chunk;
+}
+
+function appendParagraphToChunks(
+  para: string,
+  state: CodeFenceState,
+  chunks: string[],
+  currentChunk: string,
+  maxBytes: number,
+): string {
+  const candidate = currentChunk ? `${currentChunk}\n\n${para}` : para;
+  if (Buffer.byteLength(candidate, 'utf8') <= maxBytes) {
+    updateCodeFenceForText(para, state);
+    return candidate;
+  }
+  let chunk = flushChunk(chunks, currentChunk, state);
+  const paraCandidate = chunk ? `${chunk}${para}` : para;
+  if (Buffer.byteLength(paraCandidate, 'utf8') <= maxBytes) {
+    updateCodeFenceForText(para, state);
+    return paraCandidate;
+  }
+  for (const line of para.split('\n')) {
+    chunk = appendLineToChunks(line, state, chunks, chunk, maxBytes);
+  }
+  return chunk;
+}
+
+export function splitMarkdownForLark(markdown: string, maxBytes = 20 * 1024): string[] {
+  const normalized = String(markdown || '').trim();
+  if (!normalized) return [];
+  if (Buffer.byteLength(normalized, 'utf8') <= maxBytes) return [normalized];
+
+  const paragraphs = normalized.split(/\n\n+/);
+  const chunks: string[] = [];
+  let currentChunk = '';
+  const state: CodeFenceState = { inCodeBlock: false, codeBlockLang: '' };
+
+  for (const para of paragraphs) {
+    currentChunk = appendParagraphToChunks(para, state, chunks, currentChunk, maxBytes);
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+  return chunks;
+}

@@ -146,6 +146,47 @@ function buildDeliveryResult(input: AutomationActionExecutionInput, final: { thr
   return delivery;
 }
 
+async function settleBridgeSafely(
+  bridge: Awaited<ReturnType<typeof openExecutionBridge>>,
+  outcome: { status: 'succeeded' } | { status: 'failed'; error?: string },
+): Promise<void> {
+  if (bridge?.settle) {
+    await bridge.settle(outcome);
+  }
+}
+
+async function dispatchAndWaitRun(
+  options: {
+    workspaceRouter: any;
+    store: any;
+    threadId: string;
+    prompt: string;
+    automationRunId?: string;
+    platform: any;
+    route: any;
+    originKind?: string;
+    timeoutMs: number;
+  },
+): Promise<{ runId: string; final: { threadId: string; messageId: string; content: string } }> {
+  const sendResult = await options.workspaceRouter.sendThreadMessage(options.threadId, options.prompt, {
+    ...(options.automationRunId ? { requestId: `automation:${options.automationRunId}` } : {}),
+    permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
+    runtimeEnv: buildPlatformRuntimeEnv(options.platform, options.route),
+  });
+  await waitForRunCompletion({
+    store: options.store,
+    runId: sendResult.runId,
+    timeoutMs: options.timeoutMs,
+    label: options.originKind === 'automation-monitor' ? 'Monitor' : 'Automation',
+    interruptRun: (runId) => options.workspaceRouter.interruptRun(runId),
+  });
+  const final = options.store.getRunFinalResult(sendResult.runId);
+  if (!final || final.threadId !== options.threadId) {
+    throw new Error('Final result for the target execution is unavailable.');
+  }
+  return { runId: sendResult.runId, final };
+}
+
 export class AutomationActionExecutor {
   readonly deliveryService: DeliveryOutboxService;
   private readonly decisionService: DecisionLogService;
@@ -153,21 +194,27 @@ export class AutomationActionExecutor {
   constructor(private readonly options: AutomationActionExecutorOptions) {
     this.deliveryService = new DeliveryOutboxService(options.store.deliveries, options.getChannelRuntime, (record) => {
       const thread = options.store.getThreadRow(record.threadId);
-      if (!thread || thread.workspace_id !== record.workspaceId) return false;
+      if (!thread || thread.workspace_id !== record.workspaceId) {
+        return { valid: false, reason: `Execution thread was removed or workspace mismatch (${record.threadId})` };
+      }
       if (record.ownerKind === 'automation') {
         const run = options.store.getAutomationRun(record.ownerRunId);
-        if (!run || !options.store.getAutomation(run.automationId)) return false;
+        if (!run) return { valid: false, reason: `Delivery owner run was removed (${record.ownerRunId})` };
+        if (!options.store.getAutomation(run.automationId)) return { valid: false, reason: `Delivery owner automation was removed (${run.automationId})` };
       } else {
         const run = options.store.getScheduledJobRun(record.ownerRunId);
-        if (!run || !options.store.getScheduledJob(run.jobId)) return false;
+        if (!run) return { valid: false, reason: `Delivery owner job run was removed (${record.ownerRunId})` };
+        if (!options.store.getScheduledJob(run.jobId)) return { valid: false, reason: `Delivery owner job was removed (${run.jobId})` };
       }
-      if (record.platform === 'local') return true;
+      if (record.platform === 'local') return { valid: true };
+      if (!record.route?.channelId) {
+        return { valid: false, reason: 'Channel route is invalid: missing destination channelId' };
+      }
       const runtime = options.getChannelRuntime(record.platform);
-      const instanceId = record.route.instanceId || extractChannelInstanceId(record.platform, runtime?.platform || record.platform);
-      const platformKey = channelPlatformKey(record.platform, instanceId || 'default');
-      const binding = options.store.getPlatformThreadBinding(record.workspaceId, record.route.channelId,
-        record.route.participantId || '', platformKey);
-      return binding?.thread_id === record.threadId;
+      if (!runtime) {
+        return { valid: false, reason: `Channel platform runtime "${record.platform}" is unavailable` };
+      }
+      return { valid: true };
     });
     this.decisionService = options.decisionLogService ?? new DecisionLogService(options.store);
   }
@@ -220,27 +267,24 @@ export class AutomationActionExecutor {
       this.options.getChannelRuntime,
     );
     try {
-      const sendResult = await workspaceRouter.sendThreadMessage(threadId, prompt, {
-        ...(input.automationRunId ? { requestId: `automation:${input.automationRunId}` } : {}),
-        permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
-        runtimeEnv: buildPlatformRuntimeEnv(automation.delivery.platform, automation.delivery.route),
-      });
-      trackScheduledRun(this.options, input, automation, bridge, threadId, sendResult.runId);
-      await waitForRunCompletion({
+      const { runId, final } = await dispatchAndWaitRun({
+        workspaceRouter,
         store: this.options.store,
-        runId: sendResult.runId,
+        threadId,
+        prompt,
+        automationRunId: input.automationRunId,
+        platform: automation.delivery.platform,
+        route: automation.delivery.route,
+        originKind: automation.originKind,
         timeoutMs,
-        label: automation.originKind === 'automation-monitor' ? 'Monitor' : 'Automation',
-        interruptRun: (runId) => workspaceRouter.interruptRun(runId),
       });
-      const final = this.options.store.getRunFinalResult(sendResult.runId);
-      if (!final || final.threadId !== threadId) throw new Error('Final result for the target execution is unavailable.');
+      trackScheduledRun(this.options, input, automation, bridge, threadId, runId);
       const replyText = final.content;
 
       const { decision, retrospectiveOutcome } = await processPostRunDecision({
         automation,
         replyText,
-        runId: sendResult.runId,
+        runId,
         threadId,
         dataSnapshot: input.promptVariables,
         decisionService: this.decisionService,
@@ -249,15 +293,20 @@ export class AutomationActionExecutor {
         getAutomationService: this.options.getAutomationService,
       });
 
+      await settleBridgeSafely(bridge, { status: 'succeeded' });
       return {
         threadId,
-        acpRunId: sendResult.runId,
+        acpRunId: runId,
         replyText,
-        ...buildDeliveryResult(input, final, sendResult.runId),
+        ...buildDeliveryResult(input, final, runId),
         lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
         ...(decision ? { decision } : {}),
         ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
       };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await settleBridgeSafely(bridge, { status: 'failed', error: errorMsg });
+      throw error;
     } finally {
       await bridge?.close();
     }

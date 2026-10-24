@@ -135,7 +135,8 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
     return { key: 'noop', text: '', buttonRows: [], isFinal: false };
   }
   if (event.type === 'status') {
-    return renderProgressMessage(progressKey('status', event), `⏳ ${content}`);
+    const text = /^[\u2705\u274c\u26a0\u23f3\u2714\u2716]/.test(content) ? content : `⏳ ${content}`;
+    return renderProgressMessage(progressKey('status', event), text);
   }
   if (event.type === 'reply') {
     if (bridgeKind === 'thought' || bridgeKind === 'plan') {

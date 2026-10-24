@@ -66,6 +66,7 @@ import {
   attachLarkWsDiagnostics,
   maskLarkAppId,
 } from './gateway-utils.js';
+import { splitMarkdownForLark } from './rendering/markdown.js';
 
 const LARK_FINAL_PATCH_INTERVAL_MS = 900;
 const LARK_PROGRESS_PATCH_INTERVAL_MS = 3000;
@@ -262,7 +263,10 @@ export class LocalCoreLarkGateway extends BaseChannelGateway<LarkRuntimeState, L
       if (part.type === 'text') {
         const text = String(part.text || '').trim();
         if (text) {
-          messageIds.push((await this.sendTextAsMessage(state, channelId, text)).messageId);
+          const chunks = splitMarkdownForLark(text);
+          for (const chunk of chunks) {
+            messageIds.push((await this.sendTextAsMessage(state, channelId, chunk)).messageId);
+          }
         }
         continue;
       }

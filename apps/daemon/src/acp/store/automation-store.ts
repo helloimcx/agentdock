@@ -814,6 +814,7 @@ function pickRunMutableFields(input: Record<string, unknown>): Record<string, un
     'threadId',
     'acpRunId',
     'deliveryStatus',
+    'deliveryError',
     'bridgeActivity',
     'error',
     'startedAt',
