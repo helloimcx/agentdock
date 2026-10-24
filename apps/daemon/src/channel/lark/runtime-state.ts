@@ -40,6 +40,16 @@ export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: str
   return summarizeToolContentForLark(content);
 }
 
+function preserveScheduledProgressMessageIds(messageIds?: Record<string, string>): Record<string, string> {
+  const preserved: Record<string, string> = {};
+  for (const [key, msgId] of Object.entries(messageIds || {})) {
+    if (key.startsWith('scheduled-status:')) {
+      preserved[key] = msgId;
+    }
+  }
+  return preserved;
+}
+
 export function isPendingToolProgressForLark(event: DesktopBridgeEvent) {
   return event.toolCall?.status.trim().toLowerCase() === 'pending';
 }
@@ -51,7 +61,7 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
     turn.messageId = undefined;
     turn.finalMessageId = undefined;
     turn.replyMessageId = undefined;
-    turn.progressMessageIds = {};
+    turn.progressMessageIds = preserveScheduledProgressMessageIds(turn.progressMessageIds);
     turn.processing = true;
     turn.permissionMessageId = undefined;
     turn.previewText = '';

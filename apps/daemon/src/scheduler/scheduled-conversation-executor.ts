@@ -21,6 +21,7 @@ export class ScheduledConversationExecutor {
   async execute(job: ScheduledJob, prompt: string, policy: ScheduledExecutionPolicy, timeoutMs = BACKGROUND_AGENT_EXECUTION_TIMEOUT_MS) {
     const target = await policy.resolveTarget(job);
     await policy.beforeExecute?.(target, job);
+    let outcome: { status: 'succeeded' | 'failed'; error?: string } = { status: 'succeeded' };
     try {
       const workspaceRouter = this.options.getWorkspaceRouter();
       const sendResult = await workspaceRouter.sendThreadMessage(target.threadId, prompt, {
@@ -48,8 +49,14 @@ export class ScheduledConversationExecutor {
         runId: sendResult.runId,
         replyText,
       };
+    } catch (error) {
+      outcome = {
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      };
+      throw error;
     } finally {
-      await policy.afterExecute?.(target, job);
+      await policy.afterExecute?.(target, job, outcome);
     }
   }
 }

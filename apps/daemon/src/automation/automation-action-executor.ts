@@ -43,6 +43,8 @@ export interface AutomationActionExecutionResult {
   deliveryStatus?: 'succeeded' | 'failed' | 'pending';
   deliveryError?: string;
   lastBridgeEventAt?: string;
+  settleBridge?: (outcome: { status: 'succeeded' | 'failed'; error?: string }) => Promise<void>;
+  closeBridge?: () => Promise<void>;
   decision?: AutomationDecisionRecord;
   retrospectiveOutcome?: {
     accuracy: 'correct' | 'incorrect' | 'neutral';
@@ -266,6 +268,7 @@ export class AutomationActionExecutor {
       workspaceRouter,
       this.options.getChannelRuntime,
     );
+    let runSuccess = false;
     try {
       const { runId, final } = await dispatchAndWaitRun({
         workspaceRouter,
@@ -293,13 +296,15 @@ export class AutomationActionExecutor {
         getAutomationService: this.options.getAutomationService,
       });
 
-      await settleBridgeSafely(bridge, { status: 'succeeded' });
+      runSuccess = true;
       return {
         threadId,
         acpRunId: runId,
         replyText,
         ...buildDeliveryResult(input, final, runId),
         lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
+        settleBridge: bridge?.settle ? (outcome) => bridge.settle!(outcome) : undefined,
+        closeBridge: bridge?.close ? () => bridge.close() : undefined,
         ...(decision ? { decision } : {}),
         ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
       };
@@ -308,7 +313,9 @@ export class AutomationActionExecutor {
       await settleBridgeSafely(bridge, { status: 'failed', error: errorMsg });
       throw error;
     } finally {
-      await bridge?.close();
+      if (!runSuccess) {
+        await bridge?.close();
+      }
     }
   }
 

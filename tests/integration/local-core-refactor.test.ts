@@ -737,6 +737,49 @@ test('scheduled conversation executor uses execution policy hooks around a threa
   assert.equal(result.replyText, 'done');
 });
 
+test('ScheduledConversationExecutor passes success/failure outcome to afterExecute', async () => {
+  const job = {
+    id: 'job-1',
+    workspaceId: 'workspace-a',
+    platform: 'lark',
+    route: { type: 'channel.chat' as const, channelId: 'chat-1' },
+    promptTemplate: 'ping',
+  } as any;
+  let recordedOutcome: any;
+  const executor = new ScheduledConversationExecutor({
+    store: { getRun: () => ({ status: 'completed' }) } as any,
+    getWorkspaceRouter: () => ({
+      sendThreadMessage: async () => ({ runId: 'run-1' }),
+      getThread: async (threadId: string) => ({
+        id: threadId,
+        messages: [{ role: 'assistant', kind: 'final', content: 'ok' }],
+      }),
+    }) as any,
+  });
+
+  await executor.execute(job, 'ping', {
+    resolveTarget: async () => ({ kind: 'thread', threadId: 'thread-1', workspaceId: 'workspace-a', platform: 'lark', route: job.route }),
+    afterExecute: (_target, _job, outcome) => { recordedOutcome = outcome; },
+  });
+  assert.deepEqual(recordedOutcome, { status: 'succeeded' });
+
+  // And on failure
+  let failedOutcome: any;
+  const failingExecutor = new ScheduledConversationExecutor({
+    store: { getRun: () => ({ status: 'completed' }) } as any,
+    getWorkspaceRouter: () => ({
+      sendThreadMessage: async () => { throw new Error('Agent failed'); },
+    }) as any,
+  });
+
+  await assert.rejects(failingExecutor.execute(job, 'ping', {
+    resolveTarget: async () => ({ kind: 'thread', threadId: 'thread-1', workspaceId: 'workspace-a', platform: 'lark', route: job.route }),
+    afterExecute: (_target, _job, outcome) => { failedOutcome = outcome; },
+  }), /Agent failed/);
+  assert.equal(failedOutcome?.status, 'failed');
+  assert.match(failedOutcome?.error, /Agent failed/);
+});
+
 test('local scheduler adapter runs a workspace thread without channel delivery', async () => {
   const calls: string[] = [];
   const job = {
@@ -937,7 +980,7 @@ test('lark side-thread execution policy reuses a dedicated scheduled thread', as
     previewHandle: 'scheduled-status:job-1',
     content: '⏰ two-minute ping',
   });
-  policy.afterExecute?.(target, job as any);
+  await policy.afterExecute?.(target, job as any);
   assert.equal(unregisteredBridge, true);
 });
 

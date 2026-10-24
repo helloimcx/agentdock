@@ -6,6 +6,11 @@ import {
   renderLarkTextMessage,
 } from '../../apps/daemon/src/channel/lark/rendering/messages.js';
 import { splitMarkdownForLark } from '../../apps/daemon/src/channel/lark/rendering/markdown.js';
+import {
+  createLarkTurnState,
+  consumeLarkBridgeEvent,
+  setLarkRenderedMessageId,
+} from '../../apps/daemon/src/channel/lark/runtime-state.js';
 
 function findLarkPostMdText(content: any) {
   for (const line of content.zh_cn?.content || []) {
@@ -163,4 +168,38 @@ test('splitMarkdownForLark splits across paragraphs and preserves code block fen
     assert.equal(fences % 2, 0, `Chunk code fences must be balanced: ${chunk}`);
   }
 });
+
+test('consumeLarkBridgeEvent preserves scheduled-status progressMessageIds across typing_start', () => {
+  const turn = createLarkTurnState('session-scheduled-1');
+  // Simulate initial scheduled notice
+  setLarkRenderedMessageId(turn, {
+    key: 'scheduled-status:auto-1',
+    text: '⏳ 每日早报 (正在运行...)',
+    buttonRows: [],
+    isFinal: false,
+  }, 'msg-status-card-123');
+
+  // Also simulate normal progress card
+  setLarkRenderedMessageId(turn, {
+    key: 'call_abc',
+    text: 'calling tool',
+    buttonRows: [],
+    isFinal: false,
+  }, 'msg-tool-card-456');
+
+  assert.equal(turn.progressMessageIds['scheduled-status:auto-1'], 'msg-status-card-123');
+  assert.equal(turn.progressMessageIds['call_abc'], 'msg-tool-card-456');
+
+  // ACP starts turn
+  consumeLarkBridgeEvent(turn, {
+    type: 'typing_start',
+    sessionKey: 'session-scheduled-1',
+  }, { mirrorPermissionStateInMainCard: true });
+
+  // scheduled-status is preserved!
+  assert.equal(turn.progressMessageIds['scheduled-status:auto-1'], 'msg-status-card-123');
+  // normal tool calls are cleared
+  assert.equal(turn.progressMessageIds['call_abc'], undefined);
+});
+
 
