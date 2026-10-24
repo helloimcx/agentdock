@@ -428,6 +428,82 @@ test('AutomationService settles bridge success only after outbox delivered, and 
       error: 'Channel delivery service unavailable',
     });
     assert.equal(missingBridgeClosed, true);
+
+    // Case 5: Delivery service throws an exception -> settles bridge as failed, degrades health, closes bridge
+    core.updateAutomationState(automation.id, { health: 'healthy', blockedReason: null });
+    let throwingServiceOutcome: any;
+    let throwingBridgeClosed = false;
+    let reportedDiagnostic: any;
+    const throwingDeliveryService = new AutomationService({
+      store: core,
+      eventBus: {
+        on() {}, off() {}, emit(event: any) {
+          if (event.type === 'localcore.error') reportedDiagnostic = event.payload;
+        },
+      } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-5',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-5',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { throwingServiceOutcome = outcome; },
+          closeBridge: async () => { throwingBridgeClosed = true; },
+        }),
+        deliveryService: {
+          deliver: async () => { throw new Error('Transport crash during delivery'); },
+        } as any,
+      },
+    });
+
+    await (throwingDeliveryService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(throwingServiceOutcome, {
+      status: 'failed',
+      error: 'Transport crash during delivery',
+    });
+    assert.equal(throwingBridgeClosed, true);
+    assert.equal(core.getAutomation(automation.id)?.health, 'degraded');
+    assert.match(reportedDiagnostic?.error || '', /Transport crash during delivery/);
+
+    // Case 6: Outbox enqueue throws -> settles bridge as failed and closes bridge
+    let enqueueThrowOutcome: any;
+    let enqueueThrowBridgeClosed = false;
+    const originalEnqueue = core.deliveries.enqueue.bind(core.deliveries);
+    core.deliveries.enqueue = (() => { throw new Error('Enqueue storage failure'); }) as any;
+    try {
+      const enqueueFailingService = new AutomationService({
+        store: core,
+        eventBus: { on() {}, off() {}, emit() {} } as any,
+        actionExecutor: {
+          execute: async () => ({
+            threadId: thread.id,
+            acpRunId: 'acp-run-6',
+            deliveryIntent: {
+              ...input,
+              ownerRunId: 'run-temp-6',
+              threadId: thread.id,
+            },
+            settleBridge: async (outcome) => { enqueueThrowOutcome = outcome; },
+            closeBridge: async () => { enqueueThrowBridgeClosed = true; },
+          }),
+        },
+      });
+
+      await (enqueueFailingService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+      assert.deepEqual(enqueueThrowOutcome, {
+        status: 'failed',
+        error: 'Enqueue storage failure',
+      });
+      assert.equal(enqueueThrowBridgeClosed, true);
+      const latestRun = core.getLatestAutomationRun(automation.id);
+      assert.equal(latestRun?.status, 'failed');
+      assert.equal(latestRun?.deliveryStatus, 'failed');
+    } finally {
+      core.deliveries.enqueue = originalEnqueue;
+    }
   } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 

@@ -47,6 +47,12 @@ import {
   NATIVE_AUTOMATION_OWNERSHIP,
 } from './automation-schedule-utils.js';
 
+import {
+  type ActionExecutor,
+  dispatchDeliveryAndSettle,
+  safelyCloseResultBridge,
+} from './automation-delivery-dispatch.js';
+
 export {
   type AutomationOwnershipPolicy,
   NATIVE_AUTOMATION_OWNERSHIP,
@@ -61,39 +67,6 @@ const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
 
 type TimerHandle = unknown;
-type ActionExecutor = Pick<AutomationActionExecutor, 'execute'> & Partial<Pick<AutomationActionExecutor, 'deliveryService' | 'recoverCompletedExecutions'>>;
-
-function formatDeliveryFailureReason(outcome?: { status: string; error?: string }): string {
-  if (!outcome) return 'Channel delivery service unavailable';
-  if (outcome.error) return outcome.error;
-  if (outcome.status === 'unknown') return 'Channel returned no confirmed platform acknowledgement';
-  return `Delivery unconfirmed (status: ${outcome.status})`;
-}
-
-async function dispatchDeliveryAndSettle(
-  deliveryService: ActionExecutor['deliveryService'],
-  deliveryId: string,
-  result: AutomationActionExecutionResult,
-  onFailed: (error?: string) => void,
-  log?: (message: string) => void,
-): Promise<void> {
-  try {
-    const outcome = deliveryService ? await deliveryService.deliver(deliveryId) : undefined;
-    if (outcome?.status === 'delivered') {
-      if (result.settleBridge) await result.settleBridge({ status: 'succeeded' });
-      return;
-    }
-    const errorMsg = formatDeliveryFailureReason(outcome);
-    if (result.settleBridge) await result.settleBridge({ status: 'failed', error: errorMsg });
-    onFailed(errorMsg);
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    if (result.settleBridge) await result.settleBridge({ status: 'failed', error: errorMsg });
-    log?.(normalizeAutomationError(error, 'Delivery checkpoint failed: '));
-  } finally {
-    if (result.closeBridge) await result.closeBridge();
-  }
-}
 
 const PUBLIC_ID_RESOLUTION: Record<
   'automation-monitor' | 'scheduled-job',
@@ -845,19 +818,34 @@ export class AutomationService {
       evaluationId: evaluation.id,
       ...payload,
     };
+    let result: AutomationActionExecutionResult | undefined;
     try {
-      const result = await this.options.actionExecutor.execute({ automation, automationRunId: run.id, evaluation, promptVariables });
+      result = await this.options.actionExecutor.execute({ automation, automationRunId: run.id, evaluation, promptVariables });
       const completed = () => {
-        run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result, this.now().toISOString()));
+        run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result!, this.now().toISOString()));
       };
       if (result.deliveryIntent) {
-        const delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
+        let delivery: ReturnType<typeof this.options.store.deliveries.enqueue>;
+        try {
+          delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
+        } catch (enqueueError) {
+          const errorMsg = enqueueError instanceof Error ? enqueueError.message : String(enqueueError);
+          await safelyCloseResultBridge(result, { status: 'failed', error: errorMsg });
+          throw enqueueError;
+        }
         // Execution is committed; a delivery fault must never rerun or fail the Agent.
         await dispatchDeliveryAndSettle(
           this.options.actionExecutor.deliveryService,
           delivery.id,
           result,
           (error) => {
+            const current = this.options.store.getAutomation(automation.id);
+            if (current && current.health === 'healthy') {
+              this.options.store.updateAutomationState(automation.id, {
+                health: 'degraded',
+                blockedReason: `Delivery failed: ${error}`,
+              });
+            }
             this.eventProjector.reportDiagnostic('delivery-failure', `Delivery failed for automation ${automation.id}: ${error}`);
             const updatedDef = this.options.store.getAutomation(automation.id);
             if (updatedDef) this.eventProjector.emitDefinition(updatedDef);
@@ -872,6 +860,7 @@ export class AutomationService {
       }
     } catch (error) {
       const message = normalizeAutomationError(error);
+      await safelyCloseResultBridge(result, { status: 'failed', error: message });
       run = this.options.store.updateAutomationRun(run.id, {
         status: 'failed',
         finishedAt: this.now().toISOString(),
