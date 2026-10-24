@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 
 export type SubmissionStatus = 'pending' | 'dispatching' | 'running' | 'completed' | 'failed' | 'interrupted' | 'unknown';
+export interface RunFinalResult { threadId: string; content: string; messageId?: string }
 export interface ThreadSubmission {
   id: string;
   threadId: string;
@@ -120,7 +121,7 @@ export class LocalSubmissionStore {
     this.db.prepare('INSERT INTO run_final_results VALUES (?, ?, ?, ?, ?) ON CONFLICT(run_id) DO UPDATE SET content = excluded.content, message_id = excluded.message_id, updated_at = excluded.updated_at').run(runId, threadId, content, messageId ?? null, new Date().toISOString());
   }
   getFinal(runId: string) {
-    return this.db.prepare('SELECT thread_id AS threadId, content, message_id AS messageId FROM run_final_results WHERE run_id = ?').get(runId) as { threadId: string; content: string; messageId?: string } | undefined;
+    return this.db.prepare('SELECT thread_id AS threadId, content, message_id AS messageId FROM run_final_results WHERE run_id = ?').get(runId) as RunFinalResult | undefined;
   }
   deleteThread(threadId: string) {
     this.db.prepare('DELETE FROM thread_submissions WHERE thread_id = ?').run(threadId);
