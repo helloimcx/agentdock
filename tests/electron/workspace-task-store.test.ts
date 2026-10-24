@@ -432,6 +432,7 @@ test('Lark scheduled same-thread execution resolves the latest channel thread an
       type: 'status',
       sessionKey: `session:${latestThread.id}`,
       bridgeKind: 'status',
+      previewHandle: `scheduled-status:${job.id}`,
       content: '⏰ bound lark task',
     });
     assert.equal(unregisteredBridge, true);

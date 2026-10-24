@@ -471,7 +471,10 @@ export abstract class BaseChannelGateway<
       const turn = this.createScheduledTurnState(input.sessionKey);
       if (turn) this.outboundTurns.set(input.sessionKey, turn);
     }
+    let unregistered = false;
     return () => {
+      if (unregistered) return;
+      unregistered = true;
       if (input.suppressFinalReport) {
         const remaining = (this.outboxOwnedSessionCounts.get(input.sessionKey) || 1) - 1;
         if (remaining) this.outboxOwnedSessionCounts.set(input.sessionKey, remaining);
@@ -485,7 +488,7 @@ export abstract class BaseChannelGateway<
       } else {
         this.threadRouting.delete(input.sessionKey);
       }
-  };
+    };
   }
 
   markScheduledThreadRunOwned(sessionKey: string, runId: string) {

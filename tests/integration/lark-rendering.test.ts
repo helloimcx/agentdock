@@ -5,6 +5,12 @@ import {
   buildLarkPostContent,
   renderLarkTextMessage,
 } from '../../apps/daemon/src/channel/lark/rendering/messages.js';
+import { splitMarkdownForLark } from '../../apps/daemon/src/channel/lark/rendering/markdown.js';
+import {
+  createLarkTurnState,
+  consumeLarkBridgeEvent,
+  setLarkRenderedMessageId,
+} from '../../apps/daemon/src/channel/lark/runtime-state.js';
 
 function findLarkPostMdText(content: any) {
   for (const line of content.zh_cn?.content || []) {
@@ -133,3 +139,117 @@ test('lark gateway sends rendered text message payloads without owning render st
   assert.equal(content.schema, '2.0');
   assert.match(logs.join('\n'), /msgType=interactive reason=markdown_table tableCount=1/);
 });
+
+test('splitMarkdownForLark returns single chunk when within byte limit', () => {
+  const text = '### 简要报告\n\n内容正常。';
+  const chunks = splitMarkdownForLark(text, 1024);
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], text);
+});
+
+test('splitMarkdownForLark splits across paragraphs and preserves code block fence pairing', () => {
+  const codeBlock = '```typescript\nconst a = 1;\nconst b = 2;\n```';
+  const longText = [
+    '## 模块一',
+    '这里是详细描述。',
+    '',
+    codeBlock,
+    '',
+    '## 模块二',
+    '这里是后续分析。',
+  ].join('\n');
+
+  // Set a small maxBytes to force split around the code block
+  const chunks = splitMarkdownForLark(longText, 60);
+  assert.ok(chunks.length > 1);
+  for (const chunk of chunks) {
+    const fences = (chunk.match(/```/g) || []).length;
+    // Fences must be balanced (even number of ```)
+    assert.equal(fences % 2, 0, `Chunk code fences must be balanced: ${chunk}`);
+  }
+});
+
+test('consumeLarkBridgeEvent preserves scheduled-status progressMessageIds across typing_start', () => {
+  const turn = createLarkTurnState('session-scheduled-1');
+  // Simulate initial scheduled notice with status: prefix (as rendered by renderLarkBridgeEventMessage)
+  setLarkRenderedMessageId(turn, {
+    key: 'status:scheduled-status:auto-1',
+    text: '⏳ 每日早报 (正在运行...)',
+    buttonRows: [],
+    isFinal: false,
+  }, 'msg-status-card-123');
+
+  // Also simulate legacy scheduled-status without prefix
+  setLarkRenderedMessageId(turn, {
+    key: 'scheduled-status:auto-2',
+    text: '⏳ 周报 (正在运行...)',
+    buttonRows: [],
+    isFinal: false,
+  }, 'msg-status-card-789');
+
+  // Also simulate normal progress card
+  setLarkRenderedMessageId(turn, {
+    key: 'call_abc',
+    text: 'calling tool',
+    buttonRows: [],
+    isFinal: false,
+  }, 'msg-tool-card-456');
+
+  assert.equal(turn.progressMessageIds['status:scheduled-status:auto-1'], 'msg-status-card-123');
+  assert.equal(turn.progressMessageIds['scheduled-status:auto-2'], 'msg-status-card-789');
+  assert.equal(turn.progressMessageIds['call_abc'], 'msg-tool-card-456');
+
+  // ACP starts turn
+  consumeLarkBridgeEvent(turn, {
+    type: 'typing_start',
+    sessionKey: 'session-scheduled-1',
+  }, { mirrorPermissionStateInMainCard: true });
+
+  // scheduled-status is preserved for both prefixed and unprefixed keys!
+  assert.equal(turn.progressMessageIds['status:scheduled-status:auto-1'], 'msg-status-card-123');
+  assert.equal(turn.progressMessageIds['scheduled-status:auto-2'], 'msg-status-card-789');
+  // normal tool calls are cleared
+  assert.equal(turn.progressMessageIds['call_abc'], undefined);
+});
+
+test('splitMarkdownForLark splits huge CJK line within byte limit', () => {
+  const cjkLongLine = '今天是个好天气，AgentDock定时任务正在处理各项分析任务并生成详细的数据分析摘要。'.repeat(10);
+  const maxBytes = 80;
+  const chunks = splitMarkdownForLark(cjkLongLine, maxBytes);
+  assert.ok(chunks.length > 3);
+  for (const chunk of chunks) {
+    const bytes = Buffer.byteLength(chunk, 'utf8');
+    assert.ok(bytes <= maxBytes, `Chunk byte length ${bytes} exceeds maxBytes ${maxBytes}`);
+  }
+  assert.equal(chunks.join(''), cjkLongLine);
+});
+
+test('splitMarkdownForLark balances code fences when a long line inside code block exceeds maxBytes', () => {
+  const longCodeLine = 'const variableNameWithVeryLongContent = "' + 'A'.repeat(200) + '";';
+  const markdown = ['```typescript', longCodeLine, '```'].join('\n');
+  const maxBytes = 60;
+  const chunks = splitMarkdownForLark(markdown, maxBytes);
+  assert.ok(chunks.length > 2);
+  for (const chunk of chunks) {
+    const bytes = Buffer.byteLength(chunk, 'utf8');
+    assert.ok(bytes <= maxBytes, `Chunk byte length ${bytes} exceeds maxBytes ${maxBytes}`);
+    const fences = (chunk.match(/```/g) || []).length;
+    assert.equal(fences % 2, 0, `Chunk code fences must be balanced: ${chunk}`);
+  }
+});
+
+test('splitMarkdownForLark balances code fences when a huge CJK line inside code block exceeds maxBytes', () => {
+  const cjkCodeLine = '# 中文注释：' + '定时任务每日汇总指标数据'.repeat(15);
+  const markdown = ['```python', cjkCodeLine, '```'].join('\n');
+  const maxBytes = 50;
+  const chunks = splitMarkdownForLark(markdown, maxBytes);
+  assert.ok(chunks.length > 2);
+  for (const chunk of chunks) {
+    const bytes = Buffer.byteLength(chunk, 'utf8');
+    assert.ok(bytes <= maxBytes, `Chunk byte length ${bytes} exceeds maxBytes ${maxBytes}`);
+    const fences = (chunk.match(/```/g) || []).length;
+    assert.equal(fences % 2, 0, `Chunk code fences must be balanced: ${chunk}`);
+  }
+});
+
+

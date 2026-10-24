@@ -32,7 +32,7 @@ import { evaluateExpression } from './condition-evaluator.js';
 import { nextActivationAt } from './automation-trigger-engine.js';
 import { toPublicAutomationMonitorId } from './monitor-id.js';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
-import type { AutomationActionExecutor } from './automation-action-executor.js';
+import type { AutomationActionExecutor, AutomationActionExecutionResult } from './automation-action-executor.js';
 import type { LegacyAutomationCreateInput } from './legacy-automation-mappers.js';
 import {
   AutomationEventProjector,
@@ -46,6 +46,12 @@ import {
   type AutomationOwnershipPolicy,
   NATIVE_AUTOMATION_OWNERSHIP,
 } from './automation-schedule-utils.js';
+
+import {
+  type ActionExecutor,
+  dispatchDeliveryAndSettle,
+  safelyCloseResultBridge,
+} from './automation-delivery-dispatch.js';
 
 export {
   type AutomationOwnershipPolicy,
@@ -61,7 +67,6 @@ const FAILURE_ALERT_COUNTS = new Set([1, 3, 7, 15, 31]);
 const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI Core restart.';
 
 type TimerHandle = unknown;
-type ActionExecutor = Pick<AutomationActionExecutor, 'execute'> & Partial<Pick<AutomationActionExecutor, 'deliveryService' | 'recoverCompletedExecutions'>>;
 
 const PUBLIC_ID_RESOLUTION: Record<
   'automation-monitor' | 'scheduled-job',
@@ -813,20 +818,42 @@ export class AutomationService {
       evaluationId: evaluation.id,
       ...payload,
     };
+    let result: AutomationActionExecutionResult | undefined;
     try {
-      const result = await this.options.actionExecutor.execute({ automation, automationRunId: run.id, evaluation, promptVariables });
+      result = await this.options.actionExecutor.execute({ automation, automationRunId: run.id, evaluation, promptVariables });
       const completed = () => {
-        run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result, this.now().toISOString()));
+        run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result!, this.now().toISOString()));
       };
       if (result.deliveryIntent) {
         const delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
         // Execution is committed; a delivery fault must never rerun or fail the Agent.
-        try { await this.options.actionExecutor.deliveryService?.deliver(delivery.id); }
-        catch (error) { this.options.log?.(normalizeAutomationError(error, 'Delivery checkpoint failed: ')); }
+        await dispatchDeliveryAndSettle(
+          this.options.actionExecutor.deliveryService,
+          delivery.id,
+          result,
+          (error) => {
+            const current = this.options.store.getAutomation(automation.id);
+            if (current && current.health === 'healthy') {
+              this.options.store.updateAutomationState(automation.id, {
+                health: 'degraded',
+                blockedReason: `Delivery failed: ${error}`,
+              });
+            }
+            this.eventProjector.reportDiagnostic('delivery-failure', `Delivery failed for automation ${automation.id}: ${error}`);
+            const updatedDef = this.options.store.getAutomation(automation.id);
+            if (updatedDef) this.eventProjector.emitDefinition(updatedDef);
+          },
+          this.options.log,
+        );
         run = this.options.store.getAutomationRun(run.id) || run;
-      } else completed();
+      } else {
+        await result.settleBridge?.({ status: 'succeeded' });
+        await result.closeBridge?.();
+        completed();
+      }
     } catch (error) {
       const message = normalizeAutomationError(error);
+      await safelyCloseResultBridge(result, { status: 'failed', error: message });
       run = this.options.store.updateAutomationRun(run.id, {
         status: 'failed',
         finishedAt: this.now().toISOString(),

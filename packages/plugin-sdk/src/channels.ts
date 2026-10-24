@@ -32,6 +32,11 @@ export interface ChannelRuntime {
     sessionKey: string;
     suppressFinalReport?: boolean;
   }): (() => void) | Promise<() => void>;
+  finalizeScheduledThreadBridge?(input: {
+    sessionKey: string;
+    status: 'succeeded' | 'failed';
+    error?: string;
+  }): Promise<void> | void;
   markScheduledThreadRunOwned?(sessionKey: string, runId: string): void;
   sendOutboundMessage?(workspaceId: string, input: import('@cc/superai-contracts').ChannelOutboundMessageInput): Promise<import('@cc/superai-contracts').ChannelOutboundMessageResult> | import('@cc/superai-contracts').ChannelOutboundMessageResult;
   sendBotMessage?(workspaceId: string, input: import('@cc/superai-contracts').ChannelBotMessageInput): Promise<import('@cc/superai-contracts').ChannelBotMessageResult> | import('@cc/superai-contracts').ChannelBotMessageResult;

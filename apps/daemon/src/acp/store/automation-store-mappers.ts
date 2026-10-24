@@ -202,7 +202,7 @@ export function validateRun(value: unknown): AutomationRun {
     executionMode,
     createdAt: assertIsoTimestamp(input.createdAt, 'Automation run createdAt'),
   };
-  for (const key of ['threadId', 'acpRunId', 'error'] as const) {
+  for (const key of ['threadId', 'acpRunId', 'error', 'deliveryError'] as const) {
     if (input[key] !== undefined) run[key] = assertString(input[key], `Automation run ${key}`);
   }
   for (const key of ['startedAt', 'finishedAt'] as const) {

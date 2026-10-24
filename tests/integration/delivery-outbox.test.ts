@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DeliveryOutboxStore } from '../../apps/daemon/src/acp/store/delivery-outbox-store.js';
+import { AutomationService } from '../../apps/daemon/src/automation/automation-service.js';
 
 const input = {
   ownerRunId: 'automation-run:11111111-1111-4111-8111-111111111111',
@@ -204,3 +205,306 @@ test('startup saves a completed execution and report atomically; pending recover
     assert.equal(sends, 1);
   } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('side-thread automation with independent thread delivers successfully even when platform binding points to a different thread', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'delivery-side-thread-'));
+  const core = new LocalCoreAcpStore(directory);
+  try {
+    const mainChatThread = core.createThread(input.workspaceId, 'Main Interactive Chat');
+    const sideExecutionThread = core.createThread(input.workspaceId, '[Automation:lark] Daily Briefing');
+    const automation = core.createAutomation({
+      workspaceId: input.workspaceId, title: 'Daily Briefing', enabled: true,
+      activation: { kind: 'cron', expression: '0 6 * * *', timezone: 'Asia/Shanghai' }, condition: { kind: 'always' },
+      action: { kind: 'agent-prompt', promptTemplate: 'generate report', executionMode: 'side-thread' },
+      delivery: { platform: 'lark', route: input.route }, policies: { concurrency: 'skip-if-running', cooldownMs: 0 }
+    });
+    const evaluation = core.createAutomationEvaluation(automation.id, { activationKind: 'cron', startedAt: '2026-10-24T06:00:00.000Z' });
+    core.finishAutomationEvaluation(evaluation.id, { finishedAt: '2026-10-24T06:00:01.000Z', conditionOutcome: 'matched', triggerDecision: 'triggered' });
+    const run = core.createAutomationRun(automation.id, evaluation.id, { status: 'running', acpRunId: input.acpRunId, threadId: sideExecutionThread.id });
+    const now = new Date().toISOString();
+    core.upsertPlatformThreadBinding({
+      workspace_id: input.workspaceId, platform: 'lark', chat_id: input.route.channelId,
+      platform_user_id: '', thread_id: mainChatThread.id, last_platform_message_id: null,
+      created_at: now, updated_at: now
+    });
+    core.deliveries.rememberDestination(run.id, { workspaceId: input.workspaceId, platform: 'lark', route: input.route, threadId: sideExecutionThread.id });
+    (core as any).findSubmissionsByRequestId = () => [];
+    (core as any).getRunFinalResult = (runId: string) => runId === input.acpRunId ? { threadId: sideExecutionThread.id, content: input.content, messageId: input.sourceMessageId } : undefined;
+    let sends = 0;
+    const executor = new AutomationActionExecutor({
+      store: core,
+      getWorkspaceRouter: () => ({}) as any,
+      getChannelRuntime: () => ({
+        platform: 'lark', getStatus: () => ({ connected: true }),
+        sendOutboundMessage: async () => { sends++; return { deliveryAcknowledgement: 'confirmed', messageIds: ['om_briefing_ack'] }; }
+      } as any)
+    });
+    executor.recoverCompletedExecutions();
+    assert.equal(core.getAutomationRun(run.id)?.status, 'succeeded');
+    assert.equal(core.deliveries.list().length, 1);
+    const delivery = core.deliveries.list()[0];
+    await executor.deliveryService.deliver(delivery.id);
+    assert.equal(core.getAutomationRun(run.id)?.deliveryStatus, 'delivered');
+    assert.equal(sends, 1);
+  } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('delivery preflight failure records precise category and degrades automation health to degraded', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'delivery-degraded-'));
+  const core = new LocalCoreAcpStore(directory);
+  try {
+    const thread = core.createThread(input.workspaceId, 'Missing route task');
+    const automation = core.createAutomation({
+      workspaceId: input.workspaceId, title: 'Unavailable Platform Task', enabled: true,
+      activation: { kind: 'cron', expression: '0 6 * * *', timezone: 'Asia/Shanghai' }, condition: { kind: 'always' },
+      action: { kind: 'agent-prompt', promptTemplate: 'ping', executionMode: 'side-thread' },
+      delivery: { platform: 'unregistered-platform', route: input.route },
+      policies: { concurrency: 'skip-if-running', cooldownMs: 0 }
+    });
+    const evaluation = core.createAutomationEvaluation(automation.id, { activationKind: 'cron', startedAt: '2026-10-24T06:00:00.000Z' });
+    core.finishAutomationEvaluation(evaluation.id, { finishedAt: '2026-10-24T06:00:01.000Z', conditionOutcome: 'matched', triggerDecision: 'triggered' });
+    const run = core.createAutomationRun(automation.id, evaluation.id, { status: 'running', acpRunId: input.acpRunId, threadId: thread.id });
+    core.deliveries.rememberDestination(run.id, { workspaceId: input.workspaceId, platform: 'unregistered-platform', route: input.route, threadId: thread.id });
+    (core as any).findSubmissionsByRequestId = () => [];
+    (core as any).getRunFinalResult = (runId: string) => runId === input.acpRunId ? { threadId: thread.id, content: 'Report', messageId: 'msg-1' } : undefined;
+    const executor = new AutomationActionExecutor({
+      store: core,
+      getWorkspaceRouter: () => ({}) as any,
+      getChannelRuntime: () => undefined // Runtime unavailable!
+    });
+    executor.recoverCompletedExecutions();
+    assert.equal(core.deliveries.list().length, 1);
+    const delivery = core.deliveries.list()[0];
+    const outcome = await executor.deliveryService.deliver(delivery.id);
+    assert.equal(outcome?.status, 'failed');
+    assert.match(outcome?.error || '', /Channel platform runtime.*is unavailable/);
+    const updatedRun = core.getAutomationRun(run.id);
+    assert.equal(updatedRun?.deliveryStatus, 'failed');
+    assert.match(updatedRun?.deliveryError || '', /is unavailable/);
+    assert.match(updatedRun?.error || '', /is unavailable/);
+    const updatedAutomation = core.getAutomation(automation.id);
+    assert.equal(updatedAutomation?.health, 'degraded');
+    assert.match(updatedAutomation?.blockedReason || '', /Delivery failed.*is unavailable/);
+
+    // Set a nextCheckAt in the past
+    core.updateAutomationState(automation.id, { nextCheckAt: '2026-10-24T05:00:00.000Z' });
+
+    // Degraded automations MUST still be returned by listDueAutomationIds for self-healing
+    const dueIds = core.listDueAutomationIds(new Date('2026-10-24T06:00:00.000Z'));
+    assert.ok(dueIds.has(automation.id), 'Degraded automation must be included in listDueAutomationIds');
+
+    // Blocked automations MUST NOT be returned
+    core.updateAutomationState(automation.id, { health: 'blocked', blockedReason: 'Manually blocked' });
+    const blockedDueIds = core.listDueAutomationIds(new Date('2026-10-24T06:00:00.000Z'));
+    assert.ok(!blockedDueIds.has(automation.id), 'Blocked automation must not be included in listDueAutomationIds');
+  } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('AutomationService settles bridge success only after outbox delivered, and settles failure when outbox fails', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'delivery-bridge-settle-'));
+  const core = new LocalCoreAcpStore(directory);
+  try {
+    const thread = core.createThread(input.workspaceId, 'Settle thread');
+    const automation = core.createAutomation({
+      workspaceId: input.workspaceId, title: 'Settle Task', enabled: true,
+      activation: { kind: 'cron', expression: '0 6 * * *', timezone: 'Asia/Shanghai' }, condition: { kind: 'always' },
+      action: { kind: 'agent-prompt', promptTemplate: 'ping', executionMode: 'side-thread' },
+      delivery: { platform: 'lark', route: input.route },
+      policies: { concurrency: 'skip-if-running', cooldownMs: 0 }
+    });
+
+    let settledOutcome: any;
+    let bridgeClosed = false;
+
+    // Case 1: Outbox delivery fails -> bridge settled with failed
+    const failingService = new AutomationService({
+      store: core,
+      eventBus: { on() {}, off() {}, emit() {} } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-1',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { settledOutcome = outcome; },
+          closeBridge: async () => { bridgeClosed = true; },
+        }),
+        deliveryService: {
+          deliver: async () => ({ status: 'failed', attempt: 1, error: 'Destination unreachable' } as any),
+        } as any,
+      },
+    });
+
+    await (failingService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(settledOutcome, { status: 'failed', error: 'Destination unreachable' });
+    assert.equal(bridgeClosed, true);
+
+    // Case 2: Outbox delivery succeeds -> bridge settled with succeeded
+    let successSettledOutcome: any;
+    let successBridgeClosed = false;
+    const successfulService = new AutomationService({
+      store: core,
+      eventBus: { on() {}, off() {}, emit() {} } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-2',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-2',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { successSettledOutcome = outcome; },
+          closeBridge: async () => { successBridgeClosed = true; },
+        }),
+        deliveryService: {
+          deliver: async () => ({ status: 'delivered', attempt: 1, messageIds: ['msg-1'] } as any),
+        } as any,
+      },
+    });
+
+    await (successfulService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(successSettledOutcome, { status: 'succeeded' });
+    assert.equal(successBridgeClosed, true);
+
+    // Case 3: Outbox delivery unconfirmed (status: 'unknown') -> bridge settled with failed
+    let unknownSettledOutcome: any;
+    let unknownBridgeClosed = false;
+    const unknownService = new AutomationService({
+      store: core,
+      eventBus: { on() {}, off() {}, emit() {} } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-3',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-3',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { unknownSettledOutcome = outcome; },
+          closeBridge: async () => { unknownBridgeClosed = true; },
+        }),
+        deliveryService: {
+          deliver: async () => ({ status: 'unknown', attempt: 1 } as any),
+        } as any,
+      },
+    });
+
+    await (unknownService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(unknownSettledOutcome, {
+      status: 'failed',
+      error: 'Channel returned no confirmed platform acknowledgement',
+    });
+    assert.equal(unknownBridgeClosed, true);
+
+    // Case 4: Delivery service missing -> bridge settled with failed
+    let missingServiceOutcome: any;
+    let missingBridgeClosed = false;
+    const missingDeliveryService = new AutomationService({
+      store: core,
+      eventBus: { on() {}, off() {}, emit() {} } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-4',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-4',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { missingServiceOutcome = outcome; },
+          closeBridge: async () => { missingBridgeClosed = true; },
+        }),
+      },
+    });
+
+    await (missingDeliveryService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(missingServiceOutcome, {
+      status: 'failed',
+      error: 'Channel delivery service unavailable',
+    });
+    assert.equal(missingBridgeClosed, true);
+
+    // Case 5: Delivery service throws an exception -> settles bridge as failed, degrades health, closes bridge
+    core.updateAutomationState(automation.id, { health: 'healthy', blockedReason: null });
+    let throwingServiceOutcome: any;
+    let throwingBridgeClosed = false;
+    let reportedDiagnostic: any;
+    const throwingDeliveryService = new AutomationService({
+      store: core,
+      eventBus: {
+        on() {}, off() {}, emit(event: any) {
+          if (event.type === 'localcore.error') reportedDiagnostic = event.payload;
+        },
+      } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-5',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-5',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { throwingServiceOutcome = outcome; },
+          closeBridge: async () => { throwingBridgeClosed = true; },
+        }),
+        deliveryService: {
+          deliver: async () => { throw new Error('Transport crash during delivery'); },
+        } as any,
+      },
+    });
+
+    await (throwingDeliveryService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(throwingServiceOutcome, {
+      status: 'failed',
+      error: 'Transport crash during delivery',
+    });
+    assert.equal(throwingBridgeClosed, true);
+    assert.equal(core.getAutomation(automation.id)?.health, 'degraded');
+    assert.match(reportedDiagnostic?.error || '', /Transport crash during delivery/);
+
+    // Case 6: Outbox enqueue throws -> settles bridge as failed and closes bridge exactly once
+    let enqueueThrowOutcome: any;
+    let enqueueThrowCloseCount = 0;
+    const originalEnqueue = core.deliveries.enqueue.bind(core.deliveries);
+    core.deliveries.enqueue = (() => { throw new Error('Enqueue storage failure'); }) as any;
+    try {
+      const enqueueFailingService = new AutomationService({
+        store: core,
+        eventBus: { on() {}, off() {}, emit() {} } as any,
+        actionExecutor: {
+          execute: async () => ({
+            threadId: thread.id,
+            acpRunId: 'acp-run-6',
+            deliveryIntent: {
+              ...input,
+              ownerRunId: 'run-temp-6',
+              threadId: thread.id,
+            },
+            settleBridge: async (outcome) => { enqueueThrowOutcome = outcome; },
+            closeBridge: async () => { enqueueThrowCloseCount += 1; },
+          }),
+        },
+      });
+
+      await (enqueueFailingService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+      assert.deepEqual(enqueueThrowOutcome, {
+        status: 'failed',
+        error: 'Enqueue storage failure',
+      });
+      assert.equal(enqueueThrowCloseCount, 1, 'closeBridge must be called exactly once');
+      const latestRun = core.getLatestAutomationRun(automation.id);
+      assert.equal(latestRun?.status, 'failed');
+      assert.equal(latestRun?.deliveryStatus, 'failed');
+    } finally {
+      core.deliveries.enqueue = originalEnqueue;
+    }
+  } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+

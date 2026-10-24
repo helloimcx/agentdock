@@ -54,6 +54,7 @@ import type {
   DesktopModelProvider,
   DesktopModelProviderInput,
   DesktopConnectConfig,
+  DeliveryRecord,
   ExternalProject,
   ExternalThread,
 } from '@cc/superai-contracts';
@@ -165,22 +166,67 @@ export class LocalCoreAcpStore {
     ensureLocalCoreAcpSchema(this.db);
     this.channelCommands = new ChannelCommandStore(this.db);
     this.deliveries = new DeliveryOutboxStore(this.db, (record) => {
-      if (record.ownerKind === 'automation') {
-        const exists = this.db.prepare('SELECT id FROM automation_runs WHERE id = ?').get(record.ownerRunId);
-        if (exists) this.automations.updateRun(record.ownerRunId, {
-          deliveryStatus: record.status === 'sending' ? 'delivering' : record.status,
-        });
-      } else if (this.scheduler.getRun(record.ownerRunId)) {
-        this.scheduler.updateRun(record.ownerRunId, {
-          deliveryStatus: record.status === 'delivered' ? 'succeeded' : record.status,
-          deliveryError: record.error || '', platformMessageIds: record.messageIds,
-        });
-      }
+      this.handleDeliveryOutboxUpdate(record);
     });
     this.submissions = new LocalSubmissionStore(this.db);
     this.butler = new ButlerStore(this.db);
     this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
     this.threadRuntime = new LocalThreadRuntimeStore(this.db);
+  }
+
+  private handleDeliveryOutboxUpdate(record: DeliveryRecord): void {
+    if (record.ownerKind === 'automation') {
+      this.handleAutomationDeliveryUpdate(record);
+    } else if (this.scheduler.getRun(record.ownerRunId)) {
+      this.handleSchedulerDeliveryUpdate(record);
+    }
+  }
+
+  private handleAutomationDeliveryUpdate(record: DeliveryRecord): void {
+    const runRow = this.db.prepare('SELECT id, automation_id FROM automation_runs WHERE id = ?').get(record.ownerRunId) as { id: string; automation_id: string } | undefined;
+    if (!runRow) return;
+
+    const isFailed = record.status === 'failed';
+    const isDelivered = record.status === 'delivered';
+    this.automations.updateRun(record.ownerRunId, {
+      deliveryStatus: record.status === 'sending' ? 'delivering' : record.status,
+      ...(record.error ? { deliveryError: record.error } : {}),
+      ...(isFailed && record.error ? { error: record.error } : {}),
+    });
+
+    if (isFailed && record.error) {
+      this.handleAutomationDeliveryFailure(runRow.automation_id, record.error);
+    } else if (isDelivered) {
+      this.handleAutomationDeliverySuccess(runRow.automation_id);
+    }
+  }
+
+  private handleAutomationDeliveryFailure(automationId: string, error: string): void {
+    const automation = this.automations.get(automationId);
+    if (automation && automation.health !== 'blocked') {
+      this.automations.updateState(automationId, {
+        health: 'degraded',
+        blockedReason: `Delivery failed: ${error}`,
+      });
+    }
+  }
+
+  private handleAutomationDeliverySuccess(automationId: string): void {
+    const automation = this.automations.get(automationId);
+    if (automation && automation.health === 'degraded') {
+      this.automations.updateState(automationId, {
+        health: 'healthy',
+        blockedReason: null,
+      });
+    }
+  }
+
+  private handleSchedulerDeliveryUpdate(record: DeliveryRecord): void {
+    this.scheduler.updateRun(record.ownerRunId, {
+      deliveryStatus: record.status === 'delivered' ? 'succeeded' : record.status,
+      deliveryError: record.error || '',
+      platformMessageIds: record.messageIds,
+    });
   }
 
 

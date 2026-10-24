@@ -40,6 +40,16 @@ export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: str
   return summarizeToolContentForLark(content);
 }
 
+function preserveScheduledProgressMessageIds(messageIds?: Record<string, string>): Record<string, string> {
+  const preserved: Record<string, string> = {};
+  for (const [key, msgId] of Object.entries(messageIds || {})) {
+    if (key.includes('scheduled-status:')) {
+      preserved[key] = msgId;
+    }
+  }
+  return preserved;
+}
+
 export function isPendingToolProgressForLark(event: DesktopBridgeEvent) {
   return event.toolCall?.status.trim().toLowerCase() === 'pending';
 }
@@ -51,7 +61,7 @@ export function consumeLarkBridgeEvent(turn: LarkTurnState, event: DesktopBridge
     turn.messageId = undefined;
     turn.finalMessageId = undefined;
     turn.replyMessageId = undefined;
-    turn.progressMessageIds = {};
+    turn.progressMessageIds = preserveScheduledProgressMessageIds(turn.progressMessageIds);
     turn.processing = true;
     turn.permissionMessageId = undefined;
     turn.previewText = '';
@@ -135,7 +145,8 @@ export function renderLarkBridgeEventMessage(turn: LarkTurnState, event: Desktop
     return { key: 'noop', text: '', buttonRows: [], isFinal: false };
   }
   if (event.type === 'status') {
-    return renderProgressMessage(progressKey('status', event), `⏳ ${content}`);
+    const text = /^[\u2705\u274c\u26a0\u23f3\u2714\u2716]/.test(content) ? content : `⏳ ${content}`;
+    return renderProgressMessage(progressKey('status', event), text);
   }
   if (event.type === 'reply') {
     if (bridgeKind === 'thought' || bridgeKind === 'plan') {

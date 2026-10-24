@@ -202,7 +202,7 @@ function isAutomationMonitorRun(value: unknown) {
 
 function isAutomationDefinition(value: unknown) {
   return isRecord(value) && hasString(value, 'id') && hasString(value, 'workspaceId') && hasString(value, 'title') &&
-    hasBoolean(value, 'enabled') && isEnumString(value, 'health', ['healthy', 'blocked']) &&
+    hasBoolean(value, 'enabled') && isEnumString(value, 'health', ['healthy', 'blocked', 'degraded']) &&
     isAutomationActivation(value.activation) && isAutomationCondition(value.condition) && isAutomationAction(value.action) &&
     isAutomationDelivery(value.delivery) && isAutomationPolicies(value.policies) &&
     isNonNegativeInteger(value.consecutiveEvaluationFailures) &&

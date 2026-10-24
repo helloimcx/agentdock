@@ -661,7 +661,7 @@ export class LocalAutomationStore {
   listDueAutomationIds(now: Date): Set<string> {
     const rows = this.db.prepare(
       `SELECT id FROM automations
-       WHERE enabled = 1 AND health = 'healthy' AND next_check_at IS NOT NULL AND next_check_at <= ?`,
+       WHERE enabled = 1 AND health != 'blocked' AND next_check_at IS NOT NULL AND next_check_at <= ?`,
     ).all(now.toISOString()) as { id: string }[];
     return new Set(rows.map((row) => row.id));
   }
@@ -814,6 +814,7 @@ function pickRunMutableFields(input: Record<string, unknown>): Record<string, un
     'threadId',
     'acpRunId',
     'deliveryStatus',
+    'deliveryError',
     'bridgeActivity',
     'error',
     'startedAt',
