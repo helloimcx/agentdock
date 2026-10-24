@@ -324,7 +324,7 @@ export class LocalCoreWeixinGateway extends BaseChannelGateway<WeixinRuntimeStat
       if (part.type === 'text') {
         const text = String(part.text || '').trim();
         if (text) {
-          acknowledgements.push(await this.sendTextMessage(state, channelId, text, contextToken));
+          acknowledgements.push(await this.sendTextMessage(state, channelId, text));
         }
         continue;
       }

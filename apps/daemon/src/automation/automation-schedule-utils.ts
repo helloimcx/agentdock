@@ -71,7 +71,7 @@ export function shouldPollAutomation(
   ownershipPolicy?: AutomationOwnershipPolicy,
 ): boolean {
   return automation.enabled
-    && automation.health === 'healthy'
+    && automation.health !== 'blocked'
     && automation.activation.kind !== 'provider-event'
     && (ownershipPolicy || NATIVE_AUTOMATION_OWNERSHIP).executes(automation);
 }

@@ -2387,3 +2387,35 @@ test('scheduled outbox owner suppresses only its own final run while preserving 
   await gateway.onBridgeEvent({ type: 'reply', sessionKey, content: 'Ordinary chat answer', bridgeKind: 'assistant' });
   assert.equal(messages.length, 3);
 });
+
+test('registerScheduledThreadBridge close is idempotent and preserves shared session count across concurrent runs', () => {
+  const gateway = new LocalCoreLarkGateway({
+    store: { getPlatformThreadBinding: () => ({ thread_id: 'thread:agentdock::11111111-1111-4111-8111-111111111111' }),
+      updatePlatformThreadMessageId: () => undefined } as any,
+    readConfig: async () => null, getWorkspaceRouter: () => ({} as any),
+    eventBus: { emit: () => {}, on: () => () => {} } as any,
+  });
+  const internal = gateway as any;
+  const sessionKey = 'session:thread:agentdock::11111111-1111-4111-8111-111111111111';
+  // Simulate two concurrent automations on the same thread
+  const close1 = gateway.registerScheduledThreadBridge({
+    workspaceId: 'agentdock', platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'oc_report' },
+    threadId: 'thread:agentdock::11111111-1111-4111-8111-111111111111', sessionKey, suppressFinalReport: true,
+  });
+  const close2 = gateway.registerScheduledThreadBridge({
+    workspaceId: 'agentdock', platform: 'lark',
+    route: { type: 'channel.chat', channelId: 'oc_report' },
+    threadId: 'thread:agentdock::11111111-1111-4111-8111-111111111111', sessionKey, suppressFinalReport: true,
+  });
+
+  assert.equal(internal.outboxOwnedSessionCounts.get(sessionKey), 2);
+  // close1 called multiple times (e.g. from error fallback and finally)
+  close1();
+  close1();
+  close1();
+  // Count must be exactly 1, preserving suppression for run 2
+  assert.equal(internal.outboxOwnedSessionCounts.get(sessionKey), 1);
+  close2();
+  assert.equal(internal.outboxOwnedSessionCounts.get(sessionKey), undefined);
+});

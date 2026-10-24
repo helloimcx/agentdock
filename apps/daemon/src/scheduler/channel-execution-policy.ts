@@ -51,8 +51,12 @@ abstract class BaseChannelBridgeExecutionPolicy implements ScheduledExecutionPol
     });
   }
 
-  async afterExecute() {
-    await this.bridgeSession?.close();
+  async afterExecute(
+    _target?: ScheduledExecutionTarget,
+    _job?: ScheduledJob,
+    outcome?: { status: 'succeeded' | 'failed'; error?: string },
+  ) {
+    await this.bridgeSession?.close(outcome || { status: 'succeeded' });
     this.bridgeSession = undefined;
   }
 }
