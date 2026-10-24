@@ -159,17 +159,17 @@ async function settleBridgeSafely(
 
 async function dispatchAndWaitRun(
   options: {
-    workspaceRouter: any;
-    store: any;
+    workspaceRouter: WorkspaceRouter;
+    store: LocalCoreAcpStore;
     threadId: string;
     prompt: string;
     automationRunId?: string;
-    platform: any;
-    route: any;
+    platform: string;
+    route: DeliveryIntent['route'];
     originKind?: string;
     timeoutMs: number;
   },
-): Promise<{ runId: string; final: { threadId: string; messageId: string; content: string } }> {
+): Promise<{ runId: string; final: { threadId: string; messageId?: string; content: string } }> {
   const sendResult = await options.workspaceRouter.sendThreadMessage(options.threadId, options.prompt, {
     ...(options.automationRunId ? { requestId: `automation:${options.automationRunId}` } : {}),
     permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
