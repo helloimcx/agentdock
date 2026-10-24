@@ -369,6 +369,65 @@ test('AutomationService settles bridge success only after outbox delivered, and 
     await (successfulService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
     assert.deepEqual(successSettledOutcome, { status: 'succeeded' });
     assert.equal(successBridgeClosed, true);
+
+    // Case 3: Outbox delivery unconfirmed (status: 'unknown') -> bridge settled with failed
+    let unknownSettledOutcome: any;
+    let unknownBridgeClosed = false;
+    const unknownService = new AutomationService({
+      store: core,
+      eventBus: { on() {}, off() {}, emit() {} } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-3',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-3',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { unknownSettledOutcome = outcome; },
+          closeBridge: async () => { unknownBridgeClosed = true; },
+        }),
+        deliveryService: {
+          deliver: async () => ({ status: 'unknown', attempt: 1 } as any),
+        } as any,
+      },
+    });
+
+    await (unknownService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(unknownSettledOutcome, {
+      status: 'failed',
+      error: 'Channel returned no confirmed platform acknowledgement',
+    });
+    assert.equal(unknownBridgeClosed, true);
+
+    // Case 4: Delivery service missing -> bridge settled with failed
+    let missingServiceOutcome: any;
+    let missingBridgeClosed = false;
+    const missingDeliveryService = new AutomationService({
+      store: core,
+      eventBus: { on() {}, off() {}, emit() {} } as any,
+      actionExecutor: {
+        execute: async () => ({
+          threadId: thread.id,
+          acpRunId: 'acp-run-4',
+          deliveryIntent: {
+            ...input,
+            ownerRunId: 'run-temp-4',
+            threadId: thread.id,
+          },
+          settleBridge: async (outcome) => { missingServiceOutcome = outcome; },
+          closeBridge: async () => { missingBridgeClosed = true; },
+        }),
+      },
+    });
+
+    await (missingDeliveryService as any).evaluateAndMaybeRun(automation, { occurredAt: '2026-10-24T06:00:00.000Z', payload: {}, nextState: {} });
+    assert.deepEqual(missingServiceOutcome, {
+      status: 'failed',
+      error: 'Channel delivery service unavailable',
+    });
+    assert.equal(missingBridgeClosed, true);
   } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 

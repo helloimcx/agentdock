@@ -63,6 +63,13 @@ const RESTART_INTERRUPTION_REASON = 'Automation action interrupted by Local AI C
 type TimerHandle = unknown;
 type ActionExecutor = Pick<AutomationActionExecutor, 'execute'> & Partial<Pick<AutomationActionExecutor, 'deliveryService' | 'recoverCompletedExecutions'>>;
 
+function formatDeliveryFailureReason(outcome?: { status: string; error?: string }): string {
+  if (!outcome) return 'Channel delivery service unavailable';
+  if (outcome.error) return outcome.error;
+  if (outcome.status === 'unknown') return 'Channel returned no confirmed platform acknowledgement';
+  return `Delivery unconfirmed (status: ${outcome.status})`;
+}
+
 async function dispatchDeliveryAndSettle(
   deliveryService: ActionExecutor['deliveryService'],
   deliveryId: string,
@@ -71,19 +78,20 @@ async function dispatchDeliveryAndSettle(
   log?: (message: string) => void,
 ): Promise<void> {
   try {
-    const outcome = await deliveryService?.deliver(deliveryId);
-    if (outcome?.status === 'failed') {
-      await result.settleBridge?.({ status: 'failed', error: outcome.error });
-      onFailed(outcome.error);
-    } else {
-      await result.settleBridge?.({ status: 'succeeded' });
+    const outcome = deliveryService ? await deliveryService.deliver(deliveryId) : undefined;
+    if (outcome?.status === 'delivered') {
+      if (result.settleBridge) await result.settleBridge({ status: 'succeeded' });
+      return;
     }
+    const errorMsg = formatDeliveryFailureReason(outcome);
+    if (result.settleBridge) await result.settleBridge({ status: 'failed', error: errorMsg });
+    onFailed(errorMsg);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    await result.settleBridge?.({ status: 'failed', error: errorMsg });
+    if (result.settleBridge) await result.settleBridge({ status: 'failed', error: errorMsg });
     log?.(normalizeAutomationError(error, 'Delivery checkpoint failed: '));
   } finally {
-    await result.closeBridge?.();
+    if (result.closeBridge) await result.closeBridge();
   }
 }
 

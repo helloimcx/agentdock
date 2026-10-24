@@ -135,21 +135,55 @@ function flushChunk(chunks: string[], currentChunk: string, state: CodeFenceStat
   return '';
 }
 
-function splitLongLineByBytes(line: string, maxBytes: number): string[] {
-  const slices: string[] = [];
-  let remaining = line;
-  while (Buffer.byteLength(remaining, 'utf8') > maxBytes) {
-    let sliceLen = Math.floor(maxBytes / 2);
-    while (sliceLen < remaining.length && Buffer.byteLength(remaining.slice(0, sliceLen + 1), 'utf8') <= maxBytes) {
-      sliceLen += 1;
+function findCharCutIndex(str: string, maxBytes: number): number {
+  let low = 1;
+  let high = Math.min(str.length, maxBytes);
+  let best = 0;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (Buffer.byteLength(str.slice(0, mid), 'utf8') <= maxBytes) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
     }
-    slices.push(remaining.slice(0, sliceLen));
-    remaining = remaining.slice(sliceLen);
   }
-  if (remaining) {
-    slices.push(remaining);
+  if (best > 0 && best < str.length) {
+    const code = str.charCodeAt(best - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      best -= 1;
+    }
   }
-  return slices;
+  return best;
+}
+
+function splitLongLineByBytes(
+  line: string,
+  state: CodeFenceState,
+  chunks: string[],
+  currentChunk: string,
+  maxBytes: number,
+): string {
+  let remaining = line;
+  let chunk = currentChunk;
+  while (remaining.length > 0) {
+    const closingOverhead = state.inCodeBlock ? 4 : 0;
+    const currentBytes = Buffer.byteLength(chunk, 'utf8');
+    let budget = maxBytes - currentBytes - closingOverhead;
+    if (budget <= 3 && chunk) {
+      chunk = flushChunk(chunks, chunk, state);
+      budget = maxBytes - Buffer.byteLength(chunk, 'utf8') - closingOverhead;
+    }
+    const cutIdx = findCharCutIndex(remaining, budget);
+    const safeCut = cutIdx > 0 ? cutIdx : 1;
+    const slice = remaining.slice(0, safeCut);
+    remaining = remaining.slice(safeCut);
+    chunk = chunk ? `${chunk}${slice}` : slice;
+    if (remaining.length > 0) {
+      chunk = flushChunk(chunks, chunk, state);
+    }
+  }
+  return chunk;
 }
 
 function appendLineToChunks(
@@ -159,21 +193,19 @@ function appendLineToChunks(
   currentChunk: string,
   maxBytes: number,
 ): string {
+  const closingOverhead = state.inCodeBlock ? 4 : 0;
   const lineCandidate = currentChunk ? `${currentChunk}\n${line}` : line;
-  if (Buffer.byteLength(lineCandidate, 'utf8') <= maxBytes) {
+  if (Buffer.byteLength(lineCandidate, 'utf8') + closingOverhead <= maxBytes) {
     updateCodeFenceState(line, state);
     return lineCandidate;
   }
   let chunk = flushChunk(chunks, currentChunk, state);
-  if (Buffer.byteLength(line, 'utf8') <= maxBytes) {
-    chunk = chunk ? `${chunk}${line}` : line;
-  } else {
-    const slices = splitLongLineByBytes(line, maxBytes);
-    for (let i = 0; i < slices.length - 1; i += 1) {
-      chunks.push(slices[i]!);
-    }
-    chunk = slices[slices.length - 1] || '';
+  const singleCandidate = chunk ? `${chunk}${line}` : line;
+  if (Buffer.byteLength(singleCandidate, 'utf8') + closingOverhead <= maxBytes) {
+    updateCodeFenceState(line, state);
+    return singleCandidate;
   }
+  chunk = splitLongLineByBytes(line, state, chunks, chunk, maxBytes);
   updateCodeFenceState(line, state);
   return chunk;
 }
@@ -185,14 +217,15 @@ function appendParagraphToChunks(
   currentChunk: string,
   maxBytes: number,
 ): string {
+  const closingOverhead = state.inCodeBlock ? 4 : 0;
   const candidate = currentChunk ? `${currentChunk}\n\n${para}` : para;
-  if (Buffer.byteLength(candidate, 'utf8') <= maxBytes) {
+  if (Buffer.byteLength(candidate, 'utf8') + closingOverhead <= maxBytes) {
     updateCodeFenceForText(para, state);
     return candidate;
   }
   let chunk = flushChunk(chunks, currentChunk, state);
   const paraCandidate = chunk ? `${chunk}${para}` : para;
-  if (Buffer.byteLength(paraCandidate, 'utf8') <= maxBytes) {
+  if (Buffer.byteLength(paraCandidate, 'utf8') + closingOverhead <= maxBytes) {
     updateCodeFenceForText(para, state);
     return paraCandidate;
   }
@@ -217,7 +250,11 @@ export function splitMarkdownForLark(markdown: string, maxBytes = 20 * 1024): st
   }
 
   if (currentChunk) {
-    chunks.push(currentChunk);
+    if (state.inCodeBlock) {
+      chunks.push(`${currentChunk}\n\`\`\``);
+    } else {
+      chunks.push(currentChunk);
+    }
   }
   return chunks;
 }

@@ -43,7 +43,7 @@ export function summarizeToolCallForLark(event: DesktopBridgeEvent, content: str
 function preserveScheduledProgressMessageIds(messageIds?: Record<string, string>): Record<string, string> {
   const preserved: Record<string, string> = {};
   for (const [key, msgId] of Object.entries(messageIds || {})) {
-    if (key.startsWith('scheduled-status:')) {
+    if (key.includes('scheduled-status:')) {
       preserved[key] = msgId;
     }
   }
