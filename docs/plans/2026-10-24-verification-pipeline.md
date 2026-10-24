@@ -1,6 +1,6 @@
 # 验证流程优化实施计划
 
-状态：实现与独立复审完成；`pnpm verify` 被现有死代码基线阻断。日期：2026-10-24（Asia/Shanghai）。
+状态：实现、独立复审与验证完成；PR #233 的 Knip 入口回归已修复。日期：2026-10-24（Asia/Shanghai）。
 配套规范：[Spec](../specs/2026-10-24-verification-pipeline.md)。
 基线：`abfd14a243b284817d773574f7381004af91ffb2`；分支：`codex/2026-10-24-verification-pipeline`。
 
@@ -44,7 +44,7 @@ flowchart TD
 3. **构建与完整验证去重。** 复用现有构建步骤并区分普通/带 source map 构建；覆盖率路径也先清理旧输出。保持独立 test/coverage 的语义，新增完整测试加覆盖率入口，verify 只调用一条完整测试路径。
 4. **CI 补齐架构门禁。** 固定官方 Archify commit 并通过 ARCHIFY_BIN 使用；缺失工具、无效规范与校验失败均非零退出。CI Test 执行一次覆盖率与 BDD，Coverage 为显式结果汇总；保留原检查名称和 PR/main 触发器。
 5. **规则与文档同步。** 修改 AGENTS 的提交前全量硬要求，明确适用范围与高风险例外；README 更新命令、验证规则、Archify 本地配置和 New 简要说明。同步测试脚本注释与 coverage 文档，避免旧说明。
-6. **审查与真实 QA。** 读取 vibe-coding 的 documentation-sync、review、qa 参考文件；按最终 diff 检查文档影响，完成架构门禁后，召唤未参与实现的只读 Review subagent，对全部变更执行 Spec Verifier + Cleaner。修复有效问题并重测；完整验证因现有死代码基线失败，已分别运行架构、BDD 与 CI 测试入口并记录结果。
+6. **审查与真实 QA。** 读取 vibe-coding 的 documentation-sync、review、qa 参考文件；按最终 diff 检查文档影响，完成架构门禁后，召唤未参与实现的只读 Review subagent，对全部变更执行 Spec Verifier + Cleaner。修复有效问题并重测；固定版本 Archify 与完整 `pnpm verify` 均通过。
 
 ## Files / Configuration
 
@@ -73,28 +73,30 @@ flowchart TD
 
 ## Approval / Delivery Boundary
 
-方案已获用户确认。实现、独立 Review 和 QA 已在此 worktree 完成；除非用户后续要求，提交、推送和 PR 不在本次交付范围。
+原始方案已获用户确认。原交付时提交、推送和 PR 不在范围；当前用户已要求修复 PR #233，本轮会在验证与 Review 完成后推送修复。
 
 ## Validation Record
 
 ### PASS
 
-- `pnpm test:tooling`：24/24。覆盖构建与编排次数、空测试集合、renderer 登记完整性、各支持目录的测试源/编译产物双向完整性、Node 启动失败、信号取消、c8 阈值失败及 CI 结果传播。
+- `pnpm test:tooling`：25/25。覆盖构建与编排次数、空测试集合、renderer 登记完整性、Knip 各 workspace 测试入口、各支持目录的测试源/编译产物双向完整性、Node 启动失败、信号取消、c8 阈值失败及 CI 结果传播。
 - `pnpm typecheck`：通过。
 - `pnpm lint:arch`：固定 Archify revision 校验 9 份架构图，0 失败；8 份 `.visual-check.json` 回执因没有 `diagram_type` 按现有脚本规则跳过。
 - 架构负向验证：使用固定 Archify revision `25cf37080fc8b1dbe758a4efc3935b55f3327083`，设置 `ARCHIFY_BIN` 后运行 `pnpm lint:arch`；临时无效 workflow JSON 报告 `Validation failed`，汇总为 9 通过、1 失败、退出码 1。临时文件已清理。
 - `pnpm test:bdd`：80 个场景、286 个步骤全部通过。
-- `pnpm test:ci` 的 renderer 和 Electron/daemon 构建通过；c8 总覆盖率为 statements/lines 75.62%、branches 73.72%、functions 82.23%，达到 `.c8rc.json` 阈值。
-- `pnpm verify` 中 circular、duplicate 通过；`lint:file-size`、`lint:function-length --fail --max-count 45`、`lint:complexity:gate` 已单独通过。`git diff --check` 通过。
+- `pnpm test:ci` 的 renderer 和 Electron/daemon 构建通过；Node 测试、覆盖率和 BDD 均通过，覆盖率超过 `.c8rc.json` 阈值。
+- `ARCHIFY_BIN=.tools/archify/archify/bin/archify.mjs pnpm verify`：通过类型检查、全部静态门禁、固定版本 Archify（9 通过、0 失败）、完整 CI 测试与 BDD（80 场景、286 步骤）。
+- `pnpm lint:dead-code --fail --max-count 172`：171 项，门槛内；`tests/electron/lint-dead-code.test.ts` 的 200 项基线断言在完整测试中通过。
+- `git diff --check` 通过。
 
-### BLOCKED BY EXISTING BASELINE
+### PR #233 Knip 回归修复
 
-- `pnpm verify` 在 `lint:gates` 的死代码门禁停止：Knip 当前报告 231 项，配置上限为 172，超出 59 项；脚本报告本次 git 改动文件无新增死符号。此处没有放宽门禁。
-- `pnpm test:ci`：1117 个编译测试中 1116 通过、1 失败。失败来自未改动的 `tests/electron/lint-dead-code.test.ts`：它要求死代码数量不超过 200，而当前数量为 231。Node 测试因此非零退出，CI 编排按设计没有继续运行 BDD；BDD 已通过独立命令。
-- 因此完整 `pnpm verify` 尚未达到全绿。修复仓库现有 Knip 阈值/基线后，应重跑 `pnpm verify` 和 `pnpm test:ci`。
+- 失败原因：测试文件改由运行时动态发现后，Knip 未获得对应 workspace 的静态测试入口，PR 报告 231 项（门槛 172），同时 `lint-dead-code.test.ts` 的 200 项基线断言失败。
+- 修复：把 root、renderer 与 knowledge 测试入口登记到 `knip.json` 对应 workspace，并新增 `tests/scripts/knip-config.test.mjs` 防止入口回退。保留 172 和 200 两个原门槛。
+- 修复后 Knip 报告 171 项，完整 `pnpm verify` 通过。
 
 ### Acceptance Status
 
 - AC1–AC6：通过；AC4 覆盖 renderer 源码登记与所有受支持测试根目录的源文件/编译产物双向校验，并覆盖启动失败、信号取消和真实 c8 覆盖率阈值失败。
-- AC7：受上述仓库基线失败阻断；架构与 BDD 已独立验证，CI 测试入口已运行并记录单项基线失败。
-- AC8：通过；未参与实现的独立 reviewer 复查了当前 diff，确认 AC4 补充覆盖并且没有遗留的功能缺陷。
+- AC7：通过；使用 CI 固定 Archify 命令完成 `pnpm verify`。
+- AC8：通过；原 PR diff 已独立复审；Knip 修复增量的 3 个文件再次独立复审，3/3 已覆盖且无未解决 finding。
