@@ -23,6 +23,7 @@ Thumbs.db
 .codex/config.toml
 .codex-shims/
 .worktrees/
+.tools/
 
 # Local AI Core runtime config/state.
 .local-ai-core/runtime/

@@ -70,6 +70,10 @@ flowchart LR
 
 ## New
 
+### 2026-10-24
+
+- **验证流程提速**：普通低风险改动可按影响范围执行相关测试；高风险变更和 PR CI 保留完整验证。`pnpm verify` 复用一次构建与测试，覆盖率和完整测试共用测试清单；`pnpm test:compiled` 可在当前源码已构建后快速重跑 Node 测试。
+
 ### 2026-10-18
 
 - 发布 AgentDock 0.1.95：
@@ -518,11 +522,17 @@ xattr -cr /Applications/AgentDock.app
 | `pnpm start:daemon` | 运行已构建的 AgentDock Daemon（兼容 `pnpm start:core`） |
 | `pnpm start:prod` | 运行已构建的 Electron 应用 |
 | `pnpm e2e:smoke` | E2E 冒烟测试 |
-| `pnpm test` | 运行完整测试套件（单测 + 契约 + 集成 + BDD） |
+| `pnpm test` | 类型检查、构建一次，并运行 Node 测试及 BDD |
+| `pnpm test:ci` | 构建一次，运行完整 Node 测试与覆盖率，再运行 BDD |
+| `pnpm test:compiled` | 不重建，运行已编译 Node 测试；须确认产物对应当前源码 |
+| `pnpm test:tooling` | 验证测试发现、构建流程和命令编排 |
 | `pnpm test:bdd` | 运行 Gherkin 行为测试（`tests/bdd/`） |
 | `pnpm lint:complexity` | 圈复杂度报告（信息性，不阻断 CI） |
 | `pnpm lint:circular` | 循环依赖报告（强连通分量，信息性，不阻断 CI） |
 | `pnpm lint:duplicate` | 重复代码率报告（copy/paste，信息性，不阻断 CI） |
+| `pnpm verify` | 完整类型、静态、架构、覆盖率及 BDD 检查，每个阶段只运行一次 |
+
+日常低风险改动按影响范围运行测试和适用检查；公共协议、持久化/迁移、安全/权限、并发、依赖、构建/测试/CI 基础设施、核心架构或影响不明确时运行 `pnpm verify`。PR CI 执行完整检查。CI workflow 的定义不代表远端分支保护一定已将检查设为合并必需项。`pnpm lint:arch` 本地需设置 `ARCHIFY_BIN` 指向 Archify CLI；CI 使用固定版本。
 
 ## 环境变量
 
