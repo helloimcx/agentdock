@@ -88,6 +88,9 @@ flowchart LR
 
 ### 2026-10-17
 
+- **Tailscale 节点自动发现与免配置绑定**：
+  - Mesh 节点管理页面和工作区配置对话框支持自动读取并展示当前 Tailnet 私有网中的可用设备（包含主机名、OS、内网 IP 与 Tailnet 在线状态），内置 5 秒 TTL 缓存与请求防抖。
+  - 用户无需手动输入 IP，点击即可将 Tailscale 设备一键登记为 Mesh 节点清单记录（使用确定性 ID `node:ts:<sanitized-name>`，重复登记幂等更新现有节点；初始状态为离线清单记录，执行命令与激活调度需在对端通过标准的 `agentdock-node pair/connect` 流程配对建立 WebSocket 会话）。
 - **管家通过 LAC 委派工作区 Agent 并持续跟踪（本分支实现）**：新增 Core 内部委派 transport，沿用受管 Bot 名单绑定目标 workspace，不要求共享群或机器人互相 @；worker 通过 Core 签发的 run 范围凭证提交结构化报告，外部任务 ID 可先以 checkpoint 持久保存。Core 按已登记的只读计划跨重启检查；如果 owner 会话被删除，任务保留并可从新管家会话重新关联。原 Channel transport 保留兼容；明确 HTTP 400 的首次提交会记为失败，管家配置保存时只本地收尾无 runId 和消息 ID 的同类历史记录，不发送机器人消息。
 
 ### 2026-10-16

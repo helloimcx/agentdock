@@ -98,7 +98,7 @@ Use `pnpm` for all local work.
 - `pnpm lint:function-length`: reports functions whose line count exceeds threshold (default 100). CI gate: `--fail --max-count 45` (incremental over baseline).
 - `pnpm lint:file-size`: reports source files whose line count exceeds threshold (default 1000). CI gate: `--fail` (zero-tolerance).
 - `pnpm coverage`: measures test coverage using `c8`. CI gate: `check-coverage` thresholds in `.c8rc.json` (lines/statements 68, functions 72, branches 66).
-- `pnpm lint:arch`: validates all architecture and workflow specifications in `docs/architecture/` via Archify showcase checks.
+- `pnpm lint:arch`: validates architecture JSON syntax and, when Archify is installed, runs showcase checks for specifications in `docs/architecture/`. Missing Archify skips provider checks with a warning and does not fail `pnpm verify` by itself.
 - All gates aggregate in `pnpm lint:gates`; CI runs it plus `typecheck`/`test`/`coverage` in `.github/workflows/ci.yml`.
 
 ---
@@ -137,7 +137,9 @@ an architectural component.
 
 When `Required`, read and follow `docs/architecture/maintenance.md` before
 implementation. Completion requires the current architecture facts, one
-change record, provider artifacts and validation, and the README diagram to agree.
+change record, provider artifacts and validation (or an explicit `[N/A]` when
+provider tooling is unavailable and artifacts are preserved), and the README
+diagram to agree.
 <!-- project-setup:architecture-maintenance:end -->
 
 ### Architecture Specifications & Diagrams
@@ -149,7 +151,7 @@ Architecture and flow diagrams live under `docs/architecture/` as typed Archify 
 - **L2 Skill Router Workflow**: `skill-router.workflow.json`
 - **L3 Agent Run Lifecycle**: `agent-run.lifecycle.json`
 
-Update corresponding diagram specs alongside architectural or core workflow changes, validate via `pnpm lint:arch`, deliver showcase HTML/PNG artifacts, and keep `README.md` and `docs/architecture/overview.md` linked.
+Update corresponding diagram specs alongside architectural or core workflow changes, run `pnpm lint:arch` (Archify showcase checks run when the CLI is installed), deliver validated HTML/PNG artifacts when provider tooling is available, and keep `README.md` and `docs/architecture/overview.md` linked.
 
 ### Multi-Entity Identifiers
 

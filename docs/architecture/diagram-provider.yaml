@@ -4,7 +4,7 @@ provider:
   active: archify
   fallback: mermaid
 capabilities:
-  validate: required
+  validate: preferred
   render_readme: required
   compare: preferred
 outputs:

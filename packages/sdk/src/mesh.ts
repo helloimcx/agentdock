@@ -1,19 +1,42 @@
-import type { MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput } from '@cc/superai-contracts';
+import {
+  sanitizeTailscaleName,
+  tailscaleNodeId,
+  type MeshExecution,
+  type MeshExecutionInput,
+  type MeshNode,
+  type MeshPairing,
+  type MeshPairingInput,
+  type TailscaleBindInput,
+  type TailscaleStatusResponse,
+} from '@cc/superai-contracts';
 import { LOCAL_AI_CORE_BASE } from './client.js';
 
-/** Keep administrator credentials in caller memory; never place tokens in URLs or storage. */
+export { sanitizeTailscaleName, tailscaleNodeId };
+
+export class MeshRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'MeshRequestError';
+  }
+}
+
+/** Create a Mesh API client. Tokens can be provided in memory or resolved dynamically from local storage. */
 export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, fetchImpl: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, '');
+  const resolveToken = () => token || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || undefined : undefined);
   async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    const activeToken = resolveToken();
+    if (activeToken) headers.Authorization = `Bearer ${activeToken}`;
     const response = await fetchImpl(`${base}/mesh${path}`, {
       method, headers,
       body: body === undefined ? undefined : JSON.stringify(body), redirect: 'error',
       signal: AbortSignal.timeout(15_000),
     });
     const envelope = await response.json() as { ok: boolean; data: T; error?: string };
-    if (!response.ok || !envelope.ok) throw new Error(envelope.error || `Mesh request failed (${response.status}).`);
+    if (!response.ok || !envelope.ok) {
+      throw new MeshRequestError(envelope.error || `Mesh request failed (${response.status}).`, response.status);
+    }
     return envelope.data;
   }
   return {
@@ -24,5 +47,7 @@ export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, f
     listRequests: () => request<{ requests: MeshExecution[] }>('/requests'),
     getRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}`),
     cancelRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}/cancel`, 'POST'),
+    getTailscaleStatus: () => request<TailscaleStatusResponse>('/tailscale/status'),
+    bindTailscaleNode: (input: TailscaleBindInput) => request<MeshNode>('/tailscale/bind', 'POST', input),
   };
 }

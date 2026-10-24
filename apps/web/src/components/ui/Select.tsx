@@ -20,7 +20,7 @@ function optionText(children: ReactNode): string {
   }).join('');
 }
 
-function getSelectOptions(children: ReactNode) {
+function getSelectOptions(children: ReactNode): Array<{ value: string; label: string; disabled?: boolean }> {
   return Children.toArray(children).flatMap((child) => {
     if (!isValidElement(child)) return [];
     const element = child as ReactElement<{
@@ -28,13 +28,18 @@ function getSelectOptions(children: ReactNode) {
       disabled?: boolean;
       children?: ReactNode;
     }>;
-    if (element.type !== 'option') return [];
-    const rawValue = element.props.value ?? optionText(element.props.children);
-    return [{
-      value: String(rawValue),
-      label: optionText(element.props.children),
-      disabled: element.props.disabled,
-    }];
+    if (element.type === 'option') {
+      const rawValue = element.props.value ?? optionText(element.props.children);
+      return [{
+        value: String(rawValue),
+        label: optionText(element.props.children),
+        disabled: element.props.disabled,
+      }];
+    }
+    if (element.type === 'optgroup' || typeof element.type === 'symbol') {
+      return getSelectOptions(element.props.children);
+    }
+    return [];
   });
 }
 

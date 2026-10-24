@@ -7,6 +7,7 @@ import { json, readJsonBody } from '../runtime/server-helpers.js';
 import { MeshStore } from './mesh-store.js';
 import { MeshError, capability, executionInput, record, text } from './mesh-validation.js';
 import { verifyMeshShellToken } from './mesh-shell-token.js';
+import { TailscaleService } from './tailscale-service.js';
 
 const PREFIX = '/api/local/v1/mesh';
 type Session = { socket: WebSocket; node: MeshNode; lastSeen: number };
@@ -19,8 +20,15 @@ export class MeshGateway {
   private readonly pending = new Map<string, Pending>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly upgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  private readonly tailscale: TailscaleService;
 
-  constructor(private readonly store: MeshStore, private readonly server: Server, private readonly adminToken?: string) {
+  constructor(
+    private readonly store: MeshStore,
+    private readonly server: Server,
+    private readonly adminToken?: string,
+    tailscale?: TailscaleService,
+  ) {
+    this.tailscale = tailscale || new TailscaleService(store);
     store.recover();
     this.upgrade = (req, socket, head) => {
       let pathname = '';
@@ -56,18 +64,49 @@ export class MeshGateway {
         return true;
       }
       if (path === '/enroll' && req.method === 'POST') {
-        const body = record(await readJsonBody(req, 4096));
-        try { json(res, 200, this.store.enroll(text(body.pairingToken, 128))); }
-        catch { throw new MeshError('Pairing token is invalid or expired.', 401); }
+        json(res, 200, await this.handleEnroll(req));
         return true;
       }
       this.authorize(req);
+      if (path.startsWith('/tailscale/')) {
+        const result = await this.handleTailscaleRoute(req, path);
+        if (result !== undefined) {
+          json(res, 200, result);
+          return true;
+        }
+      }
       json(res, 200, await this.manage(req, path));
     } catch (error) {
       const status = error instanceof MeshError ? error.status : 400;
       json(res, status, undefined, false, error instanceof Error ? error.message : 'Mesh request failed.');
     }
     return true;
+  }
+
+  private async handleTailscaleRoute(req: IncomingMessage, path: string): Promise<unknown | undefined> {
+    if (path === '/tailscale/status' && req.method === 'GET') {
+      return await this.tailscale.getStatus();
+    }
+    if (path === '/tailscale/bind' && req.method === 'POST') {
+      const body = record(await readJsonBody(req, 4096));
+      return this.tailscale.bindNode({
+        name: text(body.name, 100),
+        dnsName: body.dnsName ? text(body.dnsName, 255) : undefined,
+        ips: Array.isArray(body.ips) ? body.ips.map(ip => text(ip, 100)) : undefined,
+        os: body.os ? text(body.os, 50) : undefined,
+        allowShell: body.allowShell !== undefined ? Boolean(body.allowShell) : undefined,
+      });
+    }
+    return undefined;
+  }
+
+  private async handleEnroll(req: IncomingMessage): Promise<unknown> {
+    const body = record(await readJsonBody(req, 4096));
+    try {
+      return this.store.enroll(text(body.pairingToken, 128));
+    } catch {
+      throw new MeshError('Pairing token is invalid or expired.', 401);
+    }
   }
 
   private async executeShellRequest(req: IncomingMessage) {

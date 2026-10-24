@@ -58,6 +58,15 @@ export class MeshStore {
     this.db.prepare('UPDATE mesh_nodes SET data = ? WHERE id = ?').run(JSON.stringify(node), node.id);
   }
 
+  upsertNode(node: MeshNode) {
+    const existing = this.getNode(node.id);
+    if (existing) {
+      this.updateNode(node);
+    } else {
+      this.db.prepare('INSERT INTO mesh_nodes VALUES (?, ?, NULL, NULL, NULL)').run(node.id, JSON.stringify(node));
+    }
+  }
+
   revoke(id: string) {
     const node = this.getNode(id);
     if (!node) throw new Error('Unknown device.');

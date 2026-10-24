@@ -11,6 +11,7 @@ import {
   readCoreRuntimeConfig as readRuntimeConfig,
   saveCoreRuntimeConfig as saveRuntimeConfig,
   listMeshNodes,
+  getTailscaleStatus,
 } from '@cc/core-sdk/runtime';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
@@ -26,6 +27,7 @@ import type {
   DesktopPlatformConfig,
   DesktopProjectConfig,
   MeshNode,
+  TailscalePeer,
 } from '@cc/superai-contracts';
 import {
   clone,
@@ -50,6 +52,63 @@ import { AddProjectDialog, PlatformDialog, ProjectDetails, ProjectListPanel, Pro
 import { BasicProjectSection, PlatformsSection, ProvidersSection, SandboxSection } from './workspace-sections';
 import { useLarkQr } from './workspace-hooks';
 
+function resolveSelectedSandboxContext(
+  configDraft: DesktopConnectConfig | null,
+  selectedProject: DesktopProjectConfig | null,
+) {
+  const selectedSandbox = toSandboxForm(selectedProject?.agent?.options?.sandbox);
+  const selectedProfile = getDesktopDeploymentProfile(String(configDraft?.deployment_profile || '').trim());
+  const selectedSandboxProvider = (configDraft?.sandbox_providers || []).find((provider) => provider.id === selectedSandbox.provider_id)
+    || defaultSandboxProviderForProfile(selectedProfile.id);
+  const selectedSandboxRuntimeImage = (configDraft?.sandbox_runtime_images || []).find((image) => image.id === selectedSandbox.runtime_image_id)
+    || defaultSandboxRuntimeImage(selectedProject?.agent?.type || 'pi');
+  return { selectedSandbox, selectedProfile, selectedSandboxProvider, selectedSandboxRuntimeImage };
+}
+
+function createNewProjectConfig(
+  dialog: ProjectDialogDraft,
+): DesktopProjectConfig {
+  const name = dialog.name.trim();
+  const agentType = dialog.agentType.trim();
+  const workDir = dialog.workDir.trim();
+  const model = dialog.model.trim();
+  return normalizeProject({
+    name,
+    device_id: dialog.deviceId || 'local',
+    agent: {
+      type: agentType,
+      options: {
+        model: model || getDefaultDesktopAgentModel(agentType),
+        work_dir: workDir,
+        device_id: dialog.deviceId || 'local',
+      },
+      providers: [],
+    },
+    platforms: [],
+    admin_from: '',
+    disabled_commands: [],
+  });
+}
+
+function applyDeploymentProfileUpdate(
+  current: DesktopConnectConfig,
+  profileId: string,
+): DesktopConnectConfig {
+  const profile = getDesktopDeploymentProfile(profileId);
+  const next = clone(current);
+  next.deployment_profile = profile.id;
+  const defaultProvider = defaultSandboxProviderForProfile(profile.id);
+  const providers = Array.isArray(next.sandbox_providers) ? [...next.sandbox_providers] : [];
+  const existingIndex = providers.findIndex((provider) => provider.id === defaultProvider.id);
+  if (existingIndex >= 0) {
+    providers[existingIndex] = { ...providers[existingIndex], server_url: defaultProvider.server_url };
+  } else {
+    providers.push(defaultProvider);
+  }
+  next.sandbox_providers = providers;
+  return next;
+}
+
 export default function DesktopWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProject = searchParams.get('project') || '';
@@ -66,7 +125,16 @@ export default function DesktopWorkspace() {
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
   const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
+  const [tailscalePeers, setTailscalePeers] = useState<TailscalePeer[]>([]);
+  const [tailscaleError, setTailscaleError] = useState<string | null>(null);
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
+
+  const handleNodeBound = useCallback((node: MeshNode) => {
+    setMeshNodes((prev) => {
+      const exists = prev.some((n) => n.id === node.id);
+      return exists ? prev.map((n) => (n.id === node.id ? node : n)) : [...prev, node];
+    });
+  }, []);
 
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
@@ -76,6 +144,16 @@ export default function DesktopWorkspace() {
         listModelProviders(),
       ]);
       void listMeshNodes().then((res) => setMeshNodes(res?.nodes || [])).catch(() => {});
+      void getTailscaleStatus()
+        .then((res) => {
+          setTailscalePeers(res?.peers || []);
+          setTailscaleError(null);
+        })
+        .catch((err: unknown) => {
+          const is401 = (err as { status?: number })?.status === 401 ||
+            (err instanceof Error && /401|unauthorized|authentication/i.test(err.message));
+          setTailscaleError(is401 ? 'auth_required' : 'unavailable');
+        });
       const parsed = clone(configState.config || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
@@ -98,12 +176,8 @@ export default function DesktopWorkspace() {
 
   const projects = configDraft?.projects || [];
   const selectedProject = projects[selectedIndex] || null;
-  const selectedSandbox = toSandboxForm(selectedProject?.agent?.options?.sandbox);
-  const selectedProfile = getDesktopDeploymentProfile(String(configDraft?.deployment_profile || '').trim());
-  const selectedSandboxProvider = (configDraft?.sandbox_providers || []).find((provider) => provider.id === selectedSandbox.provider_id)
-    || defaultSandboxProviderForProfile(selectedProfile.id);
-  const selectedSandboxRuntimeImage = (configDraft?.sandbox_runtime_images || []).find((image) => image.id === selectedSandbox.runtime_image_id)
-    || defaultSandboxRuntimeImage(selectedProject?.agent?.type || 'pi');
+  const { selectedSandbox, selectedProfile, selectedSandboxProvider, selectedSandboxRuntimeImage } =
+    resolveSelectedSandboxContext(configDraft, selectedProject);
   const configDirty = JSON.stringify(configDraft || {}) !== JSON.stringify(persistedConfig || {});
 
   useEffect(() => {
@@ -144,22 +218,7 @@ export default function DesktopWorkspace() {
   }, [updateSelectedProject]);
 
   const updateDeploymentProfile = useCallback((profileId: string) => {
-    const profile = getDesktopDeploymentProfile(profileId);
-    setConfigDraft((current) => {
-      if (!current) return current;
-      const next = clone(current);
-      next.deployment_profile = profile.id;
-      const defaultProvider = defaultSandboxProviderForProfile(profile.id);
-      const providers = Array.isArray(next.sandbox_providers) ? [...next.sandbox_providers] : [];
-      const existingIndex = providers.findIndex((provider) => provider.id === defaultProvider.id);
-      if (existingIndex >= 0) {
-        providers[existingIndex] = { ...providers[existingIndex], server_url: defaultProvider.server_url };
-      } else {
-        providers.push(defaultProvider);
-      }
-      next.sandbox_providers = providers;
-      return next;
-    });
+    setConfigDraft((current) => current ? applyDeploymentProfileUpdate(current, profileId) : current);
   }, []);
 
   const handleAddProject = () => {
@@ -184,22 +243,7 @@ export default function DesktopWorkspace() {
       setNotice({ tone: 'warning', message: `Project "${name}" already exists.` });
       return;
     }
-    const nextProject = normalizeProject({
-      name,
-      device_id: projectDialog.deviceId || 'local',
-      agent: {
-        type: agentType,
-        options: {
-          model: model || getDefaultDesktopAgentModel(agentType),
-          work_dir: workDir,
-          device_id: projectDialog.deviceId || 'local',
-        },
-        providers: [],
-      },
-      platforms: [],
-      admin_from: '',
-      disabled_commands: [],
-    });
+    const nextProject = createNewProjectConfig(projectDialog);
     const nextIndex = projects.length;
     setConfigDraft((current) => {
       const next = clone(current || {});
@@ -405,6 +449,9 @@ export default function DesktopWorkspace() {
           openPlatformDialog={openPlatformDialog}
           onSaveConfig={() => void handleSaveConfig()}
           meshNodes={meshNodes}
+          tailscalePeers={tailscalePeers}
+          tailscaleError={tailscaleError}
+          onNodeBound={handleNodeBound}
         />
       </div>
 
@@ -414,6 +461,9 @@ export default function DesktopWorkspace() {
         onConfirm={handleConfirmAddProject}
         onClose={() => setProjectDialog(null)}
         meshNodes={meshNodes}
+        tailscalePeers={tailscalePeers}
+        tailscaleError={tailscaleError}
+        onNodeBound={handleNodeBound}
       />
 
       <PlatformDialog

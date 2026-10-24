@@ -27,7 +27,7 @@ flowchart LR
 - `MeshGateway` attaches to the existing Core HTTP server. Nodes initiate WebSocket connections, so devices need no inbound listener or public IP. Internet, LAN and Tailscale are transport choices; no specific overlay is required.
 - `bin/agentdock.mjs` forwards the Mesh WebSocket upgrade through the bundled web server, in addition to existing REST forwarding.
 - The node owns its approved root, local credentials and command opt-in. Credentials are created exclusively with mode 0600; existing files are not overwritten. Use an operating-system ACL on Windows to restrict the credential and pairing files to the node user (POSIX mode bits do not establish a Windows ACL).
-- The renderer owns temporary UI state. The Mesh page reads node overview data without the Mesh admin token and refreshes every three seconds. It does not expose administrative controls.
+- The renderer owns temporary UI state. The Mesh page reads node overview data without the Mesh admin token and refreshes every three seconds. When supplied with a Mesh administrator token, it additionally provides Tailscale device discovery and zero-config binding.
 
 ## Trust boundaries
 
@@ -67,7 +67,7 @@ Disconnect and Core restart mark pending requests `interrupted`: the outcome is 
 
 ## API
 
-Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. `POST /shell/execute` uses the signed launch token described above. Other management routes require `Authorization: Bearer <administrator token>`; enrollment uses the one-time pairing token, and the WebSocket handshake uses the device credential protocol.
+Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata without a Mesh administrator token while Mesh is enabled. `POST /shell/execute` uses the signed launch token described above. Other management routes (including `/tailscale/status` and `/tailscale/bind`) require `Authorization: Bearer <administrator token>`; enrollment uses the one-time pairing token, and the WebSocket handshake uses the device credential protocol.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -81,10 +81,14 @@ Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata witho
 | GET | `/requests` | Recent history |
 | GET | `/requests/:id` | Request status/result |
 | POST | `/requests/:id/cancel` | Request cancellation |
+| GET | `/tailscale/status` | Discover peers on current Tailscale tailnet (cached 5s; admin token required) |
+| POST | `/tailscale/bind` | Bind a Tailscale peer as a Mesh node (`name`, optional `dnsName`, `ips`, `os`, `allowShell`; admin token required) |
+
+Bound Tailscale nodes are registered via the deterministic ID helper `tailscaleNodeId(name, dnsName)` yielding `node:ts:<sanitized-name>`. Identical sanitized names idempotently update existing node records (updating capabilities and label with primary IP, preserving known platform) while preserving creation timestamps. Note that sanitization collapses symbol variations (e.g. `gpu--server` and `gpu-server` both map to `node:ts:gpu-server`); in such collision scenarios, binding the second device will update the existing record rather than registering a separate node. Re-binding a revoked device is rejected by the service to prevent bypassing revocation; the peer row displays a Revoked status badge, and recovering the device requires an administrator to clear the node record from storage (`DELETE FROM mesh_nodes WHERE id = ?`) or re-enroll the device using standard `agentdock-node pair/connect`. Bound nodes are initially registered as offline inventory records with `status: 'offline'` and `token_hash: NULL`. Because Mesh execution dispatch requires a live connected WebSocket session, dispatched operations will return conflict (409) until an agent connects with paired credentials via standard `agentdock-node pair/connect` enrollment.
 
 ## Running two devices
 
-Build with `pnpm build`. Set `AGENTDOCK_MESH_ADMIN_TOKEN` securely before `pnpm start:core` or `agentdock serve`. The Device Mesh navigation entry opens the read-only node overview. Use the CLI with the same administration credential to pair and manage devices.
+Build with `pnpm build`. Set `AGENTDOCK_MESH_ADMIN_TOKEN` securely before `pnpm start:core` or `agentdock serve`. The Device Mesh navigation entry displays the node overview and, with an administrator token, allows discovering and binding local Tailnet devices. Use the CLI with the same administration credential to pair and manage devices.
 
 Alternatively, use CLI commands from the repository root (an npm installation exposes `agentdock-node` directly):
 

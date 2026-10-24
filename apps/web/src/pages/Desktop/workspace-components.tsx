@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bot, Cloud, FolderKanban, FolderOpen, Plug, Plus, QrCode, Save, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, SectionCard, Select, StatusPill } from '@/components/ui';
@@ -14,7 +15,17 @@ import {
   type DesktopSandboxProviderConfig,
   type DesktopSandboxRuntimeImage,
 } from '@cc/superai-contracts';
-import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection, StandardsSection } from './workspace-sections';
+import {
+  BasicProjectSection,
+  McpServersSection,
+  PlatformsSection,
+  ProvidersSection,
+  SandboxSection,
+  StandardsSection,
+  ensureTailscaleNodeBound,
+  renderDeviceOptions,
+  resolveDeviceLabel,
+} from './workspace-sections';
 import { WorkspaceMemorySection } from './WorkspaceMemorySection';
 import {
   CUSTOM_SELECT_VALUE,
@@ -291,77 +302,139 @@ type AddProjectDialogProps = {
   onConfirm: () => void;
   onClose: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
-export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, meshNodes }: AddProjectDialogProps) {
+type ProjectDialogFormProps = {
+  dialog: ProjectDialogDraft;
+  updateDialog: (patch: Partial<ProjectDialogDraft>) => void;
+  onConfirm: () => void;
+  onClose: () => void;
+  onOpenPicker: () => void;
+  meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
+};
+
+function ProjectDialogForm({
+  dialog,
+  updateDialog,
+  onConfirm,
+  onClose,
+  onOpenPicker,
+  meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  onNodeBound,
+}: ProjectDialogFormProps) {
+  const { t } = useTranslation();
+  const [bindError, setBindError] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-4">
+      <Input
+        label="Project name"
+        value={dialog.name}
+        onChange={(event) => updateDialog({ name: event.target.value })}
+        autoFocus
+      />
+      <Select
+        label="Agent type"
+        value={dialog.agentType}
+        onChange={(event) => updateDialog({ agentType: event.target.value })}
+      >
+        {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+      </Select>
+      <div className="space-y-1">
+        <Select
+          label="Execution device"
+          value={dialog.deviceId || 'local'}
+          onChange={async (event) => {
+            const val = event.target.value;
+            setBindError(null);
+            try {
+              await ensureTailscaleNodeBound(val, tailscalePeers, onNodeBound);
+              updateDialog({ deviceId: val });
+            } catch (err) {
+              setBindError(err instanceof Error ? err.message : 'Failed to bind Tailscale node.');
+            }
+          }}
+        >
+          <option value="local">本机 (Local)</option>
+          {renderDeviceOptions(meshNodes, tailscalePeers)}
+        </Select>
+        {bindError && <p className="text-xs text-red-400">{bindError}</p>}
+        {tailscaleError === 'auth_required' && (
+          <p className="text-xs text-muted-foreground">
+            {t('mesh.workspaceAuthHint', 'Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.')}
+          </p>
+        )}
+      </div>
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <Input
+            label="Host workspace path"
+            value={dialog.workDir}
+            onChange={(event) => updateDialog({ workDir: event.target.value })}
+            placeholder={dialog.deviceId && dialog.deviceId !== 'local' ? '例如 . 或 my-project (remote path)' : '/Users/yinyin/code/my-project'}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 px-3 gap-1.5 shrink-0"
+          onClick={onOpenPicker}
+          title="选择目录"
+        >
+          <FolderOpen size={15} />
+          选择目录
+        </Button>
+      </div>
+      <Input
+        label="Default model"
+        value={dialog.model}
+        onChange={(event) => updateDialog({ model: event.target.value })}
+        placeholder={getDefaultDesktopAgentModel(dialog.agentType) || 'Use agent default model'}
+      />
+      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+        <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button className="w-full sm:w-auto" onClick={onConfirm}><Plus size={14} /> 新建项目</Button>
+      </div>
+    </div>
+  );
+}
+
+export function AddProjectDialog({
+  dialog,
+  updateDialog,
+  onConfirm,
+  onClose,
+  meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  onNodeBound,
+}: AddProjectDialogProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <>
-      <Modal
-        open={Boolean(dialog)}
-        onClose={onClose}
-        title="新建项目"
-      >
+      <Modal open={Boolean(dialog)} onClose={onClose} title="新建项目">
         {dialog ? (
-          <div className="space-y-4">
-            <Input
-              label="Project name"
-              value={dialog.name}
-              onChange={(event) => updateDialog({ name: event.target.value })}
-              autoFocus
-            />
-            <Select
-              label="Agent type"
-              value={dialog.agentType}
-              onChange={(event) => updateDialog({ agentType: event.target.value })}
-            >
-              {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-            </Select>
-            <Select
-              label="Execution device"
-              value={dialog.deviceId || 'local'}
-              onChange={(event) => updateDialog({ deviceId: event.target.value })}
-            >
-              <option value="local">本机 (Local)</option>
-              {(meshNodes || []).map((node) => (
-                <option key={node.id} value={node.id.startsWith('node:') ? node.id : `node:${node.id}`}>
-                  {node.label || node.id} ({node.platform}) - {node.status}
-                </option>
-              ))}
-            </Select>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Input
-                  label="Host workspace path"
-                  value={dialog.workDir}
-                  onChange={(event) => updateDialog({ workDir: event.target.value })}
-                  placeholder={dialog.deviceId && dialog.deviceId !== 'local' ? '例如 . 或 my-project (remote path)' : '/Users/yinyin/code/my-project'}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 gap-1.5 shrink-0"
-                onClick={() => setPickerOpen(true)}
-                title="选择目录"
-              >
-                <FolderOpen size={15} />
-                选择目录
-              </Button>
-            </div>
-            <Input
-              label="Default model"
-              value={dialog.model}
-              onChange={(event) => updateDialog({ model: event.target.value })}
-              placeholder={getDefaultDesktopAgentModel(dialog.agentType) || 'Use agent default model'}
-            />
-            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-              <Button className="w-full sm:w-auto" variant="secondary" onClick={onClose}>Cancel</Button>
-              <Button className="w-full sm:w-auto" onClick={onConfirm}><Plus size={14} /> 新建项目</Button>
-            </div>
-          </div>
+          <ProjectDialogForm
+            dialog={dialog}
+            updateDialog={updateDialog}
+            onConfirm={onConfirm}
+            onClose={onClose}
+            onOpenPicker={() => setPickerOpen(true)}
+            meshNodes={meshNodes}
+            tailscalePeers={tailscalePeers}
+            tailscaleError={tailscaleError}
+            onNodeBound={onNodeBound}
+          />
         ) : null}
       </Modal>
 
@@ -372,11 +445,7 @@ export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, mes
           onSelect={(selectedPath) => updateDialog({ workDir: selectedPath })}
           initialPath={dialog.workDir}
           deviceId={dialog.deviceId || 'local'}
-          deviceLabel={
-            dialog.deviceId && dialog.deviceId !== 'local'
-              ? meshNodes?.find((n) => n.id === dialog.deviceId || `node:${n.id}` === dialog.deviceId)?.label || dialog.deviceId
-              : '本机 (Local)'
-          }
+          deviceLabel={resolveDeviceLabel(dialog.deviceId || 'local', meshNodes, tailscalePeers)}
         />
       )}
     </>
@@ -400,6 +469,9 @@ type ProjectDetailsProps = {
   openPlatformDialog: (index: number | null) => void;
   onSaveConfig: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 const PROJECT_TABS: Array<[ProjectTab, string]> = [
@@ -425,6 +497,9 @@ type ProjectTabContentProps = {
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 function ProjectTabContent({
@@ -440,9 +515,21 @@ function ProjectTabContent({
   updateDeploymentProfile,
   openPlatformDialog,
   meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  onNodeBound,
 }: ProjectTabContentProps) {
   if (projectTab === 'basic') {
-    return <BasicProjectSection project={project} updateProject={updateProject} meshNodes={meshNodes} />;
+    return (
+      <BasicProjectSection
+        project={project}
+        updateProject={updateProject}
+        meshNodes={meshNodes}
+        tailscalePeers={tailscalePeers}
+        tailscaleError={tailscaleError}
+        onNodeBound={onNodeBound}
+      />
+    );
   }
   if (projectTab === 'providers') {
     return <ProvidersSection project={project} modelProviders={modelProviders} updateProject={updateProject} />;
@@ -489,6 +576,9 @@ export function ProjectDetails({
   openPlatformDialog,
   onSaveConfig,
   meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  onNodeBound,
 }: ProjectDetailsProps) {
   return (
     <SectionCard
@@ -536,6 +626,9 @@ export function ProjectDetails({
             updateDeploymentProfile={updateDeploymentProfile}
             openPlatformDialog={openPlatformDialog}
             meshNodes={meshNodes}
+            tailscalePeers={tailscalePeers}
+            tailscaleError={tailscaleError}
+            onNodeBound={onNodeBound}
           />
 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
