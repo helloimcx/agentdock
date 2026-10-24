@@ -468,9 +468,9 @@ test('AutomationService settles bridge success only after outbox delivered, and 
     assert.equal(core.getAutomation(automation.id)?.health, 'degraded');
     assert.match(reportedDiagnostic?.error || '', /Transport crash during delivery/);
 
-    // Case 6: Outbox enqueue throws -> settles bridge as failed and closes bridge
+    // Case 6: Outbox enqueue throws -> settles bridge as failed and closes bridge exactly once
     let enqueueThrowOutcome: any;
-    let enqueueThrowBridgeClosed = false;
+    let enqueueThrowCloseCount = 0;
     const originalEnqueue = core.deliveries.enqueue.bind(core.deliveries);
     core.deliveries.enqueue = (() => { throw new Error('Enqueue storage failure'); }) as any;
     try {
@@ -487,7 +487,7 @@ test('AutomationService settles bridge success only after outbox delivered, and 
               threadId: thread.id,
             },
             settleBridge: async (outcome) => { enqueueThrowOutcome = outcome; },
-            closeBridge: async () => { enqueueThrowBridgeClosed = true; },
+            closeBridge: async () => { enqueueThrowCloseCount += 1; },
           }),
         },
       });
@@ -497,7 +497,7 @@ test('AutomationService settles bridge success only after outbox delivered, and 
         status: 'failed',
         error: 'Enqueue storage failure',
       });
-      assert.equal(enqueueThrowBridgeClosed, true);
+      assert.equal(enqueueThrowCloseCount, 1, 'closeBridge must be called exactly once');
       const latestRun = core.getLatestAutomationRun(automation.id);
       assert.equal(latestRun?.status, 'failed');
       assert.equal(latestRun?.deliveryStatus, 'failed');

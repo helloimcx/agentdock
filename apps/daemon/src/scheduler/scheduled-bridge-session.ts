@@ -50,6 +50,7 @@ export class ScheduledBridgeSession {
     });
     await sendScheduledStartNotice(channelRuntime, target, sessionKey, input.noticeIcon, input.noticeTitle);
     let settled = false;
+    let closed = false;
     const settle = async (outcome: { status: 'succeeded' | 'failed'; error?: string }) => {
       if (settled) return;
       settled = true;
@@ -78,6 +79,8 @@ export class ScheduledBridgeSession {
       sessionKey,
       settle,
       close: async (outcome?: { status: 'succeeded' | 'failed'; error?: string }) => {
+        if (closed) return;
+        closed = true;
         if (outcome) {
           await settle(outcome);
         }

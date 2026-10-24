@@ -825,14 +825,7 @@ export class AutomationService {
         run = this.options.store.updateAutomationRun(run.id, formatSuccessfulRunUpdate(result!, this.now().toISOString()));
       };
       if (result.deliveryIntent) {
-        let delivery: ReturnType<typeof this.options.store.deliveries.enqueue>;
-        try {
-          delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
-        } catch (enqueueError) {
-          const errorMsg = enqueueError instanceof Error ? enqueueError.message : String(enqueueError);
-          await safelyCloseResultBridge(result, { status: 'failed', error: errorMsg });
-          throw enqueueError;
-        }
+        const delivery = this.options.store.deliveries.enqueue(result.deliveryIntent, completed);
         // Execution is committed; a delivery fault must never rerun or fail the Agent.
         await dispatchDeliveryAndSettle(
           this.options.actionExecutor.deliveryService,

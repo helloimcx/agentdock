@@ -16,13 +16,17 @@ export async function safelyCloseResultBridge(
 ): Promise<void> {
   if (!result) return;
   if (outcome && result.settleBridge) {
+    const settle = result.settleBridge;
+    result.settleBridge = undefined;
     try {
-      await result.settleBridge(outcome);
+      await settle(outcome);
     } catch {}
   }
   if (result.closeBridge) {
+    const close = result.closeBridge;
+    result.closeBridge = undefined;
     try {
-      await result.closeBridge();
+      await close();
     } catch {}
   }
 }
