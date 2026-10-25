@@ -158,7 +158,7 @@ test('fixed deployment script atomically installs hash-checked private runtime a
   const source = 'console.log("runtime")';
   const sha256 = createHash('sha256').update(source).digest('hex');
   const input = JSON.stringify({ sha256, content: Buffer.from(source).toString('base64') });
-  const run = (command: string, body = '') => spawnSync('/bin/zsh', ['-c', command], { input: body, env: { ...process.env, HOME: home }, encoding: 'utf8' });
+  const run = (command: string, body = '') => spawnSync('/bin/sh', ['-c', command], { input: body, env: { ...process.env, HOME: home }, encoding: 'utf8' });
   try {
     const probe = run(NODE_PROBE);
     assert.equal(probe.status, 0, probe.stderr);
