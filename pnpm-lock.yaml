@@ -111,6 +111,9 @@ importers:
         specifier: ^5.0.5
         version: 5.0.12(@types/react@19.2.14)(react@19.2.5)
     devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       '@cucumber/cucumber':
         specifier: ^13.2.0
         version: 13.2.0

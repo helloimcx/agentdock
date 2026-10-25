@@ -12,6 +12,8 @@ export type MeshNode = {
   status: 'online' | 'offline' | 'revoked';
   lastSeenAt: string | null;
   createdAt: string;
+  onboardingStatus?: import('./mesh-onboarding.js').TailscaleConnectionStatus;
+  onboardingDesiredState?: 'active' | 'stopped';
 };
 export type MeshPairingInput = { label: string; allowShell?: boolean };
 export type MeshPairing = { nodeId: string; pairingToken: string; expiresAt: string };
@@ -40,3 +42,37 @@ export type MeshServerMessage =
   | { version: 1; type: 'heartbeat' }
   | { version: 1; type: 'execute'; request: MeshExecution }
   | { version: 1; type: 'cancel'; requestId: string };
+
+export type TailscalePeer = {
+  id: string;
+  name: string;
+  dnsName: string;
+  ips: string[];
+  os: string;
+  online: boolean;
+  isSelf?: boolean;
+  meshNodeId?: string;
+  meshNodeStatus?: 'online' | 'offline' | 'revoked';
+  stableIdentity?: boolean;
+  connectionId?: string;
+  connectionStatus?: import('./mesh-onboarding.js').TailscaleConnectionStatus;
+};
+
+export type TailscaleStatusResponse = {
+  available: boolean;
+  error?: string;
+  self?: TailscalePeer;
+  peers: TailscalePeer[];
+};
+
+export type TailscaleBindInput = { name: string; dnsName?: string; ips?: string[]; os?: string; allowShell?: boolean };
+
+export function sanitizeTailscaleName(rawName: string, dnsName?: string): string {
+  const cleaned = (rawName || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const fallback = dnsName ? dnsName.split('.')[0].toLowerCase().replace(/[^a-z0-9_-]/g, '') : '';
+  return cleaned || fallback || 'peer';
+}
+
+export function tailscaleNodeId(rawName: string, dnsName?: string): string {
+  return `node:ts:${sanitizeTailscaleName(rawName, dnsName)}`;
+}

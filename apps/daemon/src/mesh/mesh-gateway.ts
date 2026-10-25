@@ -7,6 +7,11 @@ import { json, readJsonBody } from '../runtime/server-helpers.js';
 import { MeshStore } from './mesh-store.js';
 import { MeshError, capability, executionInput, record, text } from './mesh-validation.js';
 import { verifyMeshShellToken } from './mesh-shell-token.js';
+import { TailscaleService } from './tailscale-service.js';
+import { createMeshEnrollmentBridge } from './mesh-enrollment-bridge.js';
+import { TailscaleOnboardingManager } from './tailscale-onboarding.js';
+import { handleOnboardingRequest } from './tailscale-onboarding-api.js';
+import { OnboardingError, type MeshBootstrapTransport } from './tailscale-transport.js';
 
 const PREFIX = '/api/local/v1/mesh';
 type Session = { socket: WebSocket; node: MeshNode; lastSeen: number };
@@ -19,8 +24,24 @@ export class MeshGateway {
   private readonly pending = new Map<string, Pending>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly upgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  private readonly tailscale: TailscaleService;
+  readonly onboarding?: TailscaleOnboardingManager;
 
-  constructor(private readonly store: MeshStore, private readonly server: Server, private readonly adminToken?: string) {
+  constructor(
+    private readonly store: MeshStore,
+    private readonly server: Server,
+    private readonly adminToken?: string,
+    tailscale?: TailscaleService,
+    transport?: MeshBootstrapTransport,
+  ) {
+    this.tailscale = tailscale || new TailscaleService(store);
+    if (adminToken) {
+      const lazyTransport: MeshBootstrapTransport = { prepare: async target => {
+        const { SshBootstrapTransport } = await import('./ssh-bootstrap.js');
+        return new SshBootstrapTransport().prepare(target);
+      } };
+      this.onboarding = new TailscaleOnboardingManager(store, this, this.tailscale, transport || lazyTransport);
+    }
     store.recover();
     this.upgrade = (req, socket, head) => {
       let pathname = '';
@@ -62,12 +83,28 @@ export class MeshGateway {
         return true;
       }
       this.authorize(req);
+      if (path.startsWith('/tailscale/')) {
+        const result = await this.handleTailscaleRoute(req, path);
+        if (result !== undefined) {
+          json(res, req.method === 'POST' && (path === '/tailscale/connections' || path.endsWith('/reauthorize')) ? 202 : 200, result);
+          return true;
+        }
+      }
       json(res, 200, await this.manage(req, path));
     } catch (error) {
-      const status = error instanceof MeshError ? error.status : 400;
+      const status = error instanceof MeshError ? error.status : error instanceof OnboardingError && error.code === 'NOT_FOUND' ? 404 : error instanceof OnboardingError && ['IN_PROGRESS', 'REVOKED', 'NEEDS_REPAIR', 'REAUTH_REQUIRED', 'ALREADY_READY'].includes(error.code) ? 409 : 400;
       json(res, status, undefined, false, error instanceof Error ? error.message : 'Mesh request failed.');
     }
     return true;
+  }
+
+  private async handleTailscaleRoute(req: IncomingMessage, path: string): Promise<unknown | undefined> {
+    if (path === '/tailscale/status' && req.method === 'GET') return await this.tailscale.getStatus();
+    if (path === '/tailscale/bind' && req.method === 'POST') {
+      throw new MeshError('Inventory-only binding is retired. Use secure SSH device onboarding.', 410);
+    }
+    if (this.onboarding) return handleOnboardingRequest(req, path, this.store, this.onboarding);
+    return undefined;
   }
 
   private async executeShellRequest(req: IncomingMessage) {
@@ -99,12 +136,34 @@ export class MeshGateway {
 
   private handleNodeAction(req: IncomingMessage, id: string, action?: string) {
     if (action === 'revoke' && req.method === 'POST') {
+      this.onboarding?.revoke(id);
       this.store.revoke(id);
       this.sessions.get(id)?.socket.close(4003, 'Device revoked');
       this.disconnect(id);
       return { revoked: true };
     }
     throw new MeshError('Unknown mesh endpoint.', 404);
+  }
+
+  createEnrollmentBridge(expectedNodeId: string) {
+    return createMeshEnrollmentBridge({
+      enroll: token => this.store.enroll(token, Date.now(), expectedNodeId),
+      upgrade: (req, socket, head) => {
+        const node = this.store.getNode(expectedNodeId);
+        if (!this.adminToken || !node || node.status === 'revoked' || this.wss.clients.size >= 128) {
+          socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+          return;
+        }
+        this.wss.handleUpgrade(req, socket, head, ws => this.accept(ws, expectedNodeId));
+      },
+    });
+  }
+
+  isNodeConnected(id: string) { return this.sessions.get(id)?.socket.readyState === WebSocket.OPEN; }
+
+  stopNodeSession(id: string) {
+    this.sessions.get(id)?.socket.terminate();
+    this.disconnect(id);
   }
 
   private async manage(req: IncomingMessage, path: string): Promise<unknown> {
@@ -180,7 +239,7 @@ export class MeshGateway {
     });
   }
 
-  private accept(socket: WebSocket) {
+  private accept(socket: WebSocket, expectedNodeId?: string) {
     let session: Session | undefined;
     let fallbackTimer: NodeJS.Timeout | undefined;
     const deadline = setTimeout(() => {
@@ -194,7 +253,7 @@ export class MeshGateway {
         if (binary) throw new MeshError('Text protocol required.');
         const message = this.parse(raw);
         if (!session) {
-          session = this.hello(socket, message);
+          session = this.hello(socket, message, expectedNodeId);
           clearTimeout(deadline);
           if (fallbackTimer) clearTimeout(fallbackTimer);
         } else if (this.sessions.get(session.node.id) === session) {
@@ -215,10 +274,10 @@ export class MeshGateway {
     return message;
   }
 
-  private hello(socket: WebSocket, message: Record<string, unknown>): Session {
+  private hello(socket: WebSocket, message: Record<string, unknown>, expectedNodeId?: string): Session {
     if (message.type !== 'hello') throw new MeshError('Expected hello.');
     const node = this.store.authenticate(text(message.token, 128));
-    if (!node || node.status === 'revoked') throw new MeshError('Invalid device credential.');
+    if (!node || node.status === 'revoked' || (expectedNodeId && node.id !== expectedNodeId)) throw new MeshError('Invalid device credential for this enrollment bridge.');
     if (!Array.isArray(message.capabilities) || message.capabilities.length > 4) throw new MeshError('Invalid capabilities.');
     const requested = message.capabilities.map(capability);
     const previous = this.sessions.get(node.id);
@@ -301,7 +360,8 @@ export class MeshGateway {
     }
   }
 
-  close() {
+  async close() {
+    await this.onboarding?.close();
     clearInterval(this.heartbeat);
     this.server.removeListener('upgrade', this.upgrade);
     for (const [id, session] of this.sessions) {
