@@ -52,7 +52,7 @@
           "mesh_gateway",
           "device_nodes"
         ],
-        "note": "结构化 MCP 与独立 lac 命令走主机 allowlist；普通 Shell 命令仍发往绑定设备"
+        "note": "结构化 MCP 与独立 lac 命令走主机 allowlist；普通 Shell 命令仍发往绑定设备，回执能力恢复已保存结果但不重放"
       },
       {
         "id": "butler-orchestration",
@@ -202,7 +202,7 @@
       "label": "本地 Agent 运行时",
       "sublabel": "ACP + Durable · writes",
       "pos": [
-        1000,
+        980,
         40
       ],
       "size": [
@@ -216,7 +216,7 @@
       "label": "OpenSandbox 容器",
       "sublabel": "隔离容器 · 状态挂载 · NDJSON",
       "pos": [
-        1000,
+        980,
         320
       ],
       "size": [
@@ -244,8 +244,22 @@
       "label": "远程设备节点",
       "sublabel": "Mac / Linux / Windows / Termux",
       "pos": [
-        1000,
+        980,
         570
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "mesh_receipt_journal",
+      "type": "database",
+      "label": "设备本地 Mesh 回执库",
+      "sublabel": "Private SQLite · bounded receipts",
+      "pos": [
+        980,
+        690
       ],
       "size": [
         180,
@@ -311,6 +325,15 @@
       "label": "云端沙箱隔离区 (Cloud Sandbox)",
       "wraps": [
         "opensandbox"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "security-group",
+      "label": "远程用户设备 (NodeAgent)",
+      "wraps": [
+        "device_nodes",
+        "mesh_receipt_journal"
       ],
       "pad": 16
     }
@@ -409,7 +432,21 @@
       "id": "devices-to-mesh",
       "from": "device_nodes",
       "to": "mesh_gateway",
-      "label": "出站 WebSocket · 调度 / 结果",
+      "label": "出站 WebSocket · result / saved receipt",
+      "variant": "emphasis"
+    },
+    {
+      "id": "mesh-to-devices",
+      "from": "mesh_gateway",
+      "to": "device_nodes",
+      "label": "execute / cancel / receipt query",
+      "variant": "emphasis"
+    },
+    {
+      "id": "device-to-receipt-journal",
+      "from": "device_nodes",
+      "to": "mesh_receipt_journal",
+      "label": "intent before effect · receipt before ack",
       "variant": "emphasis"
     },
     {

@@ -2,14 +2,14 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import type { MeshExecution, MeshExecutionInput, MeshNode, MeshServerMessage } from '@cc/superai-contracts';
+import type { MeshExecution, MeshExecutionInput, MeshNode, MeshNodeFeature, MeshServerMessage } from '@cc/superai-contracts';
 import { json, readJsonBody } from '../runtime/server-helpers.js';
 import { MeshStore } from './mesh-store.js';
-import { MeshError, capability, executionInput, record, text } from './mesh-validation.js';
+import { MeshError, capability, executionInput, record, recoveryObservation, text } from './mesh-validation.js';
 import { verifyMeshShellToken } from './mesh-shell-token.js';
 
 const PREFIX = '/api/local/v1/mesh';
-type Session = { socket: WebSocket; node: MeshNode; lastSeen: number };
+type Session = { socket: WebSocket; node: MeshNode; lastSeen: number; features: Set<MeshNodeFeature> };
 type Pending = { nodeId: string; timer: NodeJS.Timeout; resolve?: (result: MeshExecution) => void; reject?: (err: Error) => void };
 
 /** Outbound node connections; administrative endpoints require a separate token. */
@@ -111,6 +111,15 @@ export class MeshGateway {
     const staticRes = await this.manageStaticRoute(req, path);
     if (staticRes !== undefined) return staticRes;
     const match = /^\/(nodes|requests)\/([^/]+)(?:\/(revoke|cancel))?$/.exec(path);
+    const operationMatch = /^\/nodes\/([^/]+)\/operations\/([^/]+)$/.exec(path);
+    if (operationMatch) {
+      if (req.method !== 'GET') throw new MeshError('Unknown mesh endpoint.', 404);
+      const nodeId = decodeURIComponent(operationMatch[1]);
+      const operationId = decodeURIComponent(operationMatch[2]);
+      const operation = this.store.getOperation(operationId, nodeId);
+      if (!operation) throw new MeshError('Unknown mesh operation.', 404);
+      return operation;
+    }
     if (!match) throw new MeshError('Unknown mesh endpoint.', 404);
     const id = decodeURIComponent(match[2]);
     if (match[1] === 'nodes') return this.handleNodeAction(req, id, match[3]);
@@ -137,11 +146,16 @@ export class MeshGateway {
   }
 
   dispatch(input: MeshExecutionInput) {
+    if (input.operationId) {
+      const existing = this.store.getOperation(input.operationId);
+      if (existing) return this.store.createExecutionOnce(input).execution;
+    }
     const session = this.sessions.get(input.nodeId);
     if (!session || session.socket.readyState !== WebSocket.OPEN) throw new MeshError('Device is offline.', 409);
     if (!session.node.capabilities.includes(input.capability)) throw new MeshError('Device capability is not authorized or available.', 403);
     if (this.pending.size >= 256) throw new MeshError('Mesh request capacity reached.', 429);
-    const request = this.store.createExecution(input);
+    const { execution: request, created } = this.store.createExecutionOnce(input, session.features.has('execution-receipts-v1'));
+    if (!created) return request;
     const timer = setTimeout(() => {
       this.sendCancel(request.id, input.nodeId);
       this.finish(request.id, 'timed_out', undefined, 'Remote execution timed out; outcome may be unknown.');
@@ -154,6 +168,10 @@ export class MeshGateway {
 
   executeAndWait(input: MeshExecutionInput, signal?: AbortSignal): Promise<MeshExecution> {
     if (signal?.aborted) return Promise.reject(new MeshError('Execution aborted.', 400));
+    if (input.operationId) {
+      const existing = this.store.getOperation(input.operationId);
+      if (existing) return Promise.resolve(this.store.createExecutionOnce(input).execution);
+    }
     const request = this.dispatch(input);
     const pending = this.pending.get(request.id);
     if (!pending) return Promise.reject(new MeshError('Failed to track pending execution.', 500));
@@ -221,6 +239,9 @@ export class MeshGateway {
     if (!node || node.status === 'revoked') throw new MeshError('Invalid device credential.');
     if (!Array.isArray(message.capabilities) || message.capabilities.length > 4) throw new MeshError('Invalid capabilities.');
     const requested = message.capabilities.map(capability);
+    if (message.features !== undefined && (!Array.isArray(message.features) || message.features.length > 8
+      || message.features.some(feature => feature !== 'execution-receipts-v1'))) throw new MeshError('Invalid node features.');
+    const features = new Set((message.features as MeshNodeFeature[] | undefined) || []);
     const previous = this.sessions.get(node.id);
     if (previous) {
       this.disconnect(node.id);
@@ -231,22 +252,50 @@ export class MeshGateway {
       capabilities: [...new Set(requested.filter(item => node.allowedCapabilities.includes(item)))],
       lastSeenAt: new Date().toISOString(),
     };
-    const session = { socket, node: connected, lastSeen: Date.now() };
+    const session = { socket, node: connected, lastSeen: Date.now(), features };
     this.store.updateNode(connected);
     this.sessions.set(node.id, session);
     this.send(socket, { version: 1, type: 'welcome', nodeId: node.id });
+    if (features.has('execution-receipts-v1')) {
+      for (const execution of this.store.recoveryCandidates(node.id)) {
+        const operationId = execution.operationId!;
+        const digest = this.store.getOperationDigest(operationId, node.id);
+        if (digest) this.send(socket, { version: 1, type: 'receipt-query', requestId: execution.id, operationId, digest });
+      }
+    }
     return session;
   }
 
   private receive(session: Session, message: Record<string, unknown>) {
     session.lastSeen = Date.now();
-    if (message.type === 'heartbeat') {
-      session.node.lastSeenAt = new Date().toISOString();
-      this.store.updateNode(session.node);
-      this.send(session.socket, { version: 1, type: 'heartbeat' });
-      return;
+    switch (message.type) {
+      case 'heartbeat': return this.receiveHeartbeat(session);
+      case 'receipt-result': return this.receiveReceiptResult(session, message);
+      case 'result': return this.receiveExecutionResult(session, message);
+      default: throw new MeshError('Expected heartbeat, result, or receipt result.');
     }
-    if (message.type !== 'result' || typeof message.ok !== 'boolean') throw new MeshError('Expected heartbeat or result.');
+  }
+
+  private receiveHeartbeat(session: Session) {
+    session.node.lastSeenAt = new Date().toISOString();
+    this.store.updateNode(session.node);
+    this.send(session.socket, { version: 1, type: 'heartbeat' });
+  }
+
+  private receiveReceiptResult(session: Session, message: Record<string, unknown>) {
+    if (!session.features.has('execution-receipts-v1')) throw new MeshError('Node did not advertise receipt support.');
+    const id = text(message.requestId, 100);
+    const operationId = text(message.operationId, 200);
+    const request = this.store.getExecution(id);
+    if (!request || request.nodeId !== session.node.id || request.operationId !== operationId
+      || request.receiptSupportedAtDispatch !== true || !['interrupted', 'timed_out', 'cancelled'].includes(request.status)) return;
+    const digest = this.store.getOperationDigest(operationId, session.node.id);
+    if (!digest || message.digest !== digest) return;
+    this.store.recordRecovery(id, session.node.id, recoveryObservation(message.recovery));
+  }
+
+  private receiveExecutionResult(session: Session, message: Record<string, unknown>) {
+    if (typeof message.ok !== 'boolean') throw new MeshError('Expected heartbeat, result, or receipt result.');
     const id = text(message.requestId, 100);
     const pending = this.pending.get(id);
     if (!pending || pending.nodeId !== session.node.id) return;

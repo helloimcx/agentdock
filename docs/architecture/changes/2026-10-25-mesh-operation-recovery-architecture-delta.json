@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "compare",
+  "type": "architecture",
+  "comparatorVersion": 1,
+  "canonicalVersion": 1,
+  "completeness": "complete",
+  "proofLevel": "authored",
+  "base": {
+    "title": "AgentDock 系统架构图",
+    "rawSha256": "c7befed0028d8bec2ab338ac2186618a01f1208f6090d35b7af3a21b6794eee6",
+    "semanticSha256": "8654dc6e7bd4bacefb459d76dacfc08cc2cb4dc6be9a3a525a82ca277cd3d238",
+    "bytes": 10216
+  },
+  "head": {
+    "title": "AgentDock 系统架构图",
+    "rawSha256": "dfeaf7b37fc9a14d34457e97cf997e6aa52384544fc60673ba9a3d1f9eef5002",
+    "semanticSha256": "8795132040e8d02a33f1b2dc4b2ff1ac82ed0a9e9df1fdd1c687b3d056a77fe9",
+    "bytes": 11123
+  },
+  "summary": {
+    "components": {
+      "added": 1,
+      "changed": 0,
+      "evidenceChanged": 0,
+      "removed": 0,
+      "moved": 3
+    },
+    "connections": {
+      "added": 2,
+      "changed": 1,
+      "removed": 0,
+      "rerouted": 0
+    },
+    "boundaries": {
+      "added": 1,
+      "changed": 0,
+      "removed": 0,
+      "geometryChanged": 0
+    },
+    "presentationChanged": false,
+    "provenanceChanged": false
+  },
+  "changes": {
+    "components": [
+      {
+        "id": "device_nodes",
+        "baseLabel": "远程设备节点",
+        "headLabel": "远程设备节点",
+        "status": "moved",
+        "classifications": [
+          "geometry"
+        ],
+        "changedFields": [
+          "/pos"
+        ]
+      },
+      {
+        "id": "local_agents",
+        "baseLabel": "本地 Agent 运行时",
+        "headLabel": "本地 Agent 运行时",
+        "status": "moved",
+        "classifications": [
+          "geometry"
+        ],
+        "changedFields": [
+          "/pos"
+        ]
+      },
+      {
+        "id": "mesh_receipt_journal",
+        "headLabel": "设备本地 Mesh 回执库",
+        "status": "added",
+        "classifications": [
+          "semantic"
+        ],
+        "changedFields": []
+      },
+      {
+        "id": "opensandbox",
+        "baseLabel": "OpenSandbox 容器",
+        "headLabel": "OpenSandbox 容器",
+        "status": "moved",
+        "classifications": [
+          "geometry"
+        ],
+        "changedFields": [
+          "/pos"
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "device-to-receipt-journal",
+        "head": {
+          "from": "device_nodes",
+          "to": "mesh_receipt_journal",
+          "label": "intent before effect · receipt before ack"
+        },
+        "status": "added",
+        "classifications": [
+          "topology"
+        ],
+        "changedFields": []
+      },
+      {
+        "id": "devices-to-mesh",
+        "base": {
+          "from": "device_nodes",
+          "to": "mesh_gateway",
+          "label": "出站 WebSocket · 调度 / 结果"
+        },
+        "head": {
+          "from": "device_nodes",
+          "to": "mesh_gateway",
+          "label": "出站 WebSocket · result / saved receipt"
+        },
+        "status": "changed",
+        "classifications": [
+          "semantic"
+        ],
+        "changedFields": [
+          "/label"
+        ]
+      },
+      {
+        "id": "mesh-to-devices",
+        "head": {
+          "from": "mesh_gateway",
+          "to": "device_nodes",
+          "label": "execute / cancel / receipt query"
+        },
+        "status": "added",
+        "classifications": [
+          "topology"
+        ],
+        "changedFields": []
+      }
+    ],
+    "boundaries": [
+      {
+        "key": "security-group:远程用户设备 (NodeAgent)",
+        "kind": "security-group",
+        "label": "远程用户设备 (NodeAgent)",
+        "status": "added",
+        "classifications": [
+          "scope"
+        ],
+        "changedFields": []
+      }
+    ]
+  },
+  "identity": {
+    "components": "components[].id",
+    "connections": "connections[].id (required)",
+    "boundaries": "boundaries[].kind + boundaries[].label (derived)"
+  },
+  "view": {
+    "visualPreset": "classic"
+  },
+  "limitations": [
+    "Authored Architecture IR only; no runtime impact, causality, risk, or mergeability is inferred.",
+    "Boundary identity is conservatively derived from kind + label."
+  ],
+  "artifact": {
+    "sha256": "c3f9b195c83ed4b9ab910e17ce61ceaea0d65bddb265dcf60388b41128ea30dd",
+    "bytes": 2386377
+  },
+  "validation": {
+    "checksPassed": 28,
+    "checkCount": 28,
+    "baseComposition": "pass",
+    "headComposition": "pass"
+  }
+}

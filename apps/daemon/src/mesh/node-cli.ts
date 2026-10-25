@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createMeshClient } from '@cc/core-sdk/mesh';
 import { NodeAgent, enrollNode, meshUrl } from './node-agent.js';
 import { createPrivateJson, readPrivateJson, writePrivateJson } from './node-credentials.js';
@@ -40,6 +40,7 @@ Usage:
   agentdock-node execute --server <https://host> --node <id> --capability <name> --args <JSON> [--timeout <ms>]
   agentdock-node requests --server <https://host>
   agentdock-node status --server <https://host> --request <id>
+  agentdock-node operation --server <https://host> --node <id> --id <operation-id>
   agentdock-node cancel --server <https://host> --request <id>
   agentdock-node revoke --server <https://host> --node <id>
 
@@ -70,6 +71,7 @@ async function connect(flags: Record<string, string>) {
   }
   const agent = new NodeAgent({
     server, credentials, root, allowInsecure, allowShell: flags['allow-shell'] === 'true',
+    receiptStorePath: join(dirname(state), '.agentdock-mesh-receipts', `${credentials.nodeId.replace(/[^A-Za-z0-9._-]/g, '_')}.sqlite`),
     platform: process.env.TERMUX_VERSION ? 'android' : process.platform,
     onStatus: status => {
       console.log(`[mesh] ${credentials.nodeId}: ${status}`);
@@ -87,11 +89,12 @@ async function manage(command: string, flags: Record<string, string>) {
   if (command === 'list') return client.listNodes();
   if (command === 'requests') return client.listRequests();
   if (command === 'status') return client.getRequest(text(flags.request, 100));
+  if (command === 'operation') return client.getOperation(text(flags.node, 100), text(flags.id, 200));
   if (command === 'cancel') return client.cancelRequest(text(flags.request, 100));
   if (command === 'revoke') return client.revokeNode(text(flags.node, 100));
   if (command === 'execute') return client.execute(executionInput({
     nodeId: flags.node, capability: flags.capability, args: JSON.parse(flags.args || '{}'),
-    timeoutMs: flags.timeout ? Number(flags.timeout) : undefined,
+    timeoutMs: flags.timeout ? Number(flags.timeout) : undefined, operationId: flags.operation,
   }));
   if (command !== 'pair') throw new Error('Unknown mesh command.');
   const output = text(flags.output);
