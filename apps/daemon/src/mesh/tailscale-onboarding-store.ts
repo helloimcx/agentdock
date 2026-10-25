@@ -47,21 +47,50 @@ export class TailscaleOnboardingStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const previous = this.forPeer(input.peerId);
-      if (previous?.status === 'revoked' && !reauthorize) throw new OnboardingError('REVOKED', 'This device was revoked. Confirm reauthorization before connecting again.');
-      if (previous?.status === 'needs_repair' && !reauthorize) throw new OnboardingError('NEEDS_REPAIR', 'Device credentials require explicit reauthorization.');
-      const replay = previous && this.db.prepare('SELECT id FROM mesh_tailscale_operations WHERE connection_id = ? AND request_key = ?').get(previous.id, input.idempotencyKey) as { id: string } | undefined;
-      let result: TailscaleConnectionResult;
-      if (replay) result = this.getResult(replay.id);
-      else if (previous && !reauthorize && running.has(this.getResult(previous.operationId).operation.stage)) {
-        if (!sameProfile(previous, input)) throw new OnboardingError('IN_PROGRESS', 'An operation with different settings is in progress. Cancel it first.');
-        result = this.getResult(previous.operationId);
-      } else if (previous && !reauthorize && !sameProfile(previous, input)) {
-        throw new OnboardingError('REAUTH_REQUIRED', 'Changing the SSH account, approved directory or command permission requires explicit reauthorization.');
-      } else if (previous?.status === 'ready' && sameProfile(previous, input) && !reauthorize) result = this.getResult(previous.operationId);
-      else result = this.insertOperation(input, previous);
+      const result = this.beginOrReplay(previous, input, reauthorize);
       this.db.exec('COMMIT');
       return result;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+
+  private beginOrReplay(previous: TailscaleConnection | undefined, input: TailscaleConnectionInput, reauthorize: boolean): TailscaleConnectionResult {
+    this.assertReauthorization(previous, reauthorize);
+    const replay = this.findReplay(previous, input);
+    if (replay) return this.getResult(replay.id);
+    const previousResult = previous ? this.getResult(previous.operationId) : undefined;
+    const active = this.reuseInProgress(previous, previousResult, input, reauthorize);
+    if (active) return active;
+    this.requireExplicitProfileChange(previous, input, reauthorize);
+    if (previous?.status === 'ready' && sameProfile(previous, input) && !reauthorize) return previousResult!;
+    return this.insertOperation(input, previous);
+  }
+
+  private assertReauthorization(previous: TailscaleConnection | undefined, reauthorize: boolean) {
+    if (previous?.status === 'revoked' && !reauthorize) throw new OnboardingError('REVOKED', 'This device was revoked. Confirm reauthorization before connecting again.');
+    if (previous?.status === 'needs_repair' && !reauthorize) throw new OnboardingError('NEEDS_REPAIR', 'Device credentials require explicit reauthorization.');
+  }
+
+  private findReplay(previous: TailscaleConnection | undefined, input: TailscaleConnectionInput) {
+    if (!previous) return undefined;
+    return this.db.prepare('SELECT id FROM mesh_tailscale_operations WHERE connection_id = ? AND request_key = ?')
+      .get(previous.id, input.idempotencyKey) as { id: string } | undefined;
+  }
+
+  private reuseInProgress(
+    previous: TailscaleConnection | undefined,
+    result: TailscaleConnectionResult | undefined,
+    input: TailscaleConnectionInput,
+    reauthorize: boolean,
+  ) {
+    if (!previous || reauthorize || !result || !running.has(result.operation.stage)) return undefined;
+    if (!sameProfile(previous, input)) throw new OnboardingError('IN_PROGRESS', 'An operation with different settings is in progress. Cancel it first.');
+    return result;
+  }
+
+  private requireExplicitProfileChange(previous: TailscaleConnection | undefined, input: TailscaleConnectionInput, reauthorize: boolean) {
+    if (previous && !reauthorize && !sameProfile(previous, input)) {
+      throw new OnboardingError('REAUTH_REQUIRED', 'Changing the SSH account, approved directory or command permission requires explicit reauthorization.');
+    }
   }
 
   private insertOperation(input: TailscaleConnectionInput, previous?: TailscaleConnection): TailscaleConnectionResult {

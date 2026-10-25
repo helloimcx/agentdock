@@ -28,9 +28,26 @@
     "@agentdock/web"
   ],
   "workspaces": {
+    ".": {
+      "entry": [
+        "apps/desktop/src/main.ts",
+        "apps/desktop/src/preload.ts",
+        "apps/web/src/main.tsx",
+        "apps/web/src/App.tsx",
+        "apps/daemon/src/cli/lac.ts",
+        "apps/daemon/src/mesh/node-cli.ts",
+        "packages/contracts/src/index.ts",
+        "packages/sdk/src/index.ts",
+        "packages/knowledge/src/index.ts",
+        "packages/plugin-sdk/src/index.ts",
+        "scripts/*.mjs",
+        "scripts/*.ts"
+      ]
+    },
     "apps/daemon": {
       "entry": [
-        "src/index.ts",
+        "src/cli/lac.ts",
+        "src/mesh/node-cli.ts",
         "src/mesh/bootstrap-runtime.ts"
       ]
     }

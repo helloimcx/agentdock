@@ -67,34 +67,41 @@ export class MeshGateway {
     if (url.pathname !== PREFIX && !url.pathname.startsWith(`${PREFIX}/`)) return false;
     try {
       if (!this.adminToken) throw new MeshError('Mesh is disabled. Configure AGENTDOCK_MESH_ADMIN_TOKEN.', 503);
-      const path = url.pathname.slice(PREFIX.length);
-      if (path === '/shell/execute' && req.method === 'POST') {
-        json(res, 200, await this.executeShellRequest(req));
-        return true;
-      }
-      if (path === '/nodes' && req.method === 'GET') {
-        json(res, 200, { nodes: this.store.listNodes() });
-        return true;
-      }
-      if (path === '/enroll' && req.method === 'POST') {
-        const body = record(await readJsonBody(req, 4096));
-        try { json(res, 200, this.store.enroll(text(body.pairingToken, 128))); }
-        catch { throw new MeshError('Pairing token is invalid or expired.', 401); }
-        return true;
-      }
-      this.authorize(req);
-      if (path.startsWith('/tailscale/')) {
-        const result = await this.handleTailscaleRoute(req, path);
-        if (result !== undefined) {
-          json(res, req.method === 'POST' && (path === '/tailscale/connections' || path.endsWith('/reauthorize')) ? 202 : 200, result);
-          return true;
-        }
-      }
-      json(res, 200, await this.manage(req, path));
+      return await this.handleAuthorizedRequest(req, res, url.pathname.slice(PREFIX.length));
     } catch (error) {
       const status = error instanceof MeshError ? error.status : error instanceof OnboardingError && error.code === 'NOT_FOUND' ? 404 : error instanceof OnboardingError && ['IN_PROGRESS', 'REVOKED', 'NEEDS_REPAIR', 'REAUTH_REQUIRED', 'ALREADY_READY'].includes(error.code) ? 409 : 400;
       json(res, status, undefined, false, error instanceof Error ? error.message : 'Mesh request failed.');
     }
+    return true;
+  }
+
+  private async handleAuthorizedRequest(req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
+    if (path === '/shell/execute' && req.method === 'POST') {
+      json(res, 200, await this.executeShellRequest(req));
+      return true;
+    }
+    if (path === '/nodes' && req.method === 'GET') {
+      json(res, 200, { nodes: this.store.listNodes() });
+      return true;
+    }
+    if (path === '/enroll' && req.method === 'POST') {
+      const body = record(await readJsonBody(req, 4096));
+      try { json(res, 200, this.store.enroll(text(body.pairingToken, 128))); }
+      catch { throw new MeshError('Pairing token is invalid or expired.', 401); }
+      return true;
+    }
+    this.authorize(req);
+    if (await this.handleTailscaleRequest(req, res, path)) return true;
+    json(res, 200, await this.manage(req, path));
+    return true;
+  }
+
+  private async handleTailscaleRequest(req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
+    if (!path.startsWith('/tailscale/')) return false;
+    const result = await this.handleTailscaleRoute(req, path);
+    if (result === undefined) return false;
+    const accepted = req.method === 'POST' && (path === '/tailscale/connections' || path.endsWith('/reauthorize'));
+    json(res, accepted ? 202 : 200, result);
     return true;
   }
 
@@ -360,8 +367,8 @@ export class MeshGateway {
     }
   }
 
-  async close() {
-    await this.onboarding?.close();
+  close() {
+    const onboardingShutdown = this.onboarding?.close();
     clearInterval(this.heartbeat);
     this.server.removeListener('upgrade', this.upgrade);
     for (const [id, session] of this.sessions) {
@@ -370,5 +377,6 @@ export class MeshGateway {
     }
     for (const socket of this.wss.clients) socket.terminate();
     this.wss.close();
+    return onboardingShutdown || Promise.resolve();
   }
 }

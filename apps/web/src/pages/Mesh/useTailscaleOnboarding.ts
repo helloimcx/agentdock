@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createMeshClient } from '@cc/core-sdk/mesh';
 import { getMeshAdminToken } from '@cc/core-sdk/runtime';
 import type { TailscaleConnection, TailscaleConnectionInput, TailscaleConnectionResult } from '@cc/superai-contracts/mesh-onboarding';
@@ -6,6 +6,36 @@ import type { MeshNode } from '@cc/superai-contracts';
 import { operationFinished, readyExecutionNode } from './onboarding-model';
 
 type Profile = Pick<TailscaleConnectionInput, 'sshUser' | 'approvedRoot' | 'allowShell'>;
+
+function useReadyTargetRefresh(
+  client: () => ReturnType<typeof createMeshClient>,
+  result: TailscaleConnectionResult | undefined,
+  nodes: MeshNode[],
+  setNodes: Dispatch<SetStateAction<MeshNode[]>>,
+  setPollError: Dispatch<SetStateAction<string>>,
+) {
+  const targetPending = Boolean(result?.operation.stage === 'ready' && result.connection.allowShell && !readyExecutionNode(result, nodes));
+  useEffect(() => {
+    if (!targetPending) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const response = await client().listNodes();
+        if (disposed) return;
+        setNodes(response.nodes);
+        setPollError('');
+      } catch (cause) {
+        if (!disposed) setPollError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        if (!disposed) timer = setTimeout(() => { void refresh(); }, 1500);
+      }
+    };
+    timer = setTimeout(() => { void refresh(); }, 1500);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [client, targetPending, setNodes, setPollError]);
+  return targetPending;
+}
 
 export function useTailscaleOnboarding(peerId: string, connection?: TailscaleConnection) {
   const client = useCallback(() => createMeshClient(getMeshAdminToken()), []);
@@ -61,26 +91,7 @@ export function useTailscaleOnboarding(peerId: string, connection?: TailscaleCon
     return () => { disposed = true; clearTimeout(timer); };
   }, [client, operationId, finished, accept]);
 
-  const targetPending = Boolean(result?.operation.stage === 'ready' && result.connection.allowShell && !readyExecutionNode(result, nodes));
-  useEffect(() => {
-    if (!targetPending) return;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const refresh = async () => {
-      try {
-        const response = await client().listNodes();
-        if (disposed) return;
-        setNodes(response.nodes);
-        setPollError('');
-      } catch (cause) {
-        if (!disposed) setPollError(cause instanceof Error ? cause.message : String(cause));
-      } finally {
-        if (!disposed) timer = setTimeout(() => { void refresh(); }, 1500);
-      }
-    };
-    timer = setTimeout(() => { void refresh(); }, 1500);
-    return () => { disposed = true; clearTimeout(timer); };
-  }, [client, targetPending]);
+  const targetPending = useReadyTargetRefresh(client, result, nodes, setNodes, setPollError);
 
   const start = async (profile: Profile, reauthorize: boolean) => {
     if (busy.current) return;
