@@ -1,7 +1,7 @@
 # 2026-10-25 — Secure one-click Tailscale onboarding
 
 - Architecture Impact: Required.
-- Base revision: `origin/main` `486473e257014207215b50dccbede06eac9f18ec`, with PR #222 head `c5f457dc081bb1fa2b9b68c61820fc57c9c15d00` retained as source-branch ancestry.
+- Implementation base: `origin/main` `486473e257014207215b50dccbede06eac9f18ec`; latest main `34db1201b43185fe15cbc4ed64fe51c3a2037ca2` was integrated before updating PR #222. Original PR head `c5f457dc081bb1fa2b9b68c61820fc57c9c15d00` remains in branch ancestry.
 - Prior semantic record: [Tailscale discovery and inventory binding](2026-10-17-tailscale-node-discovery.md).
 - Active provider: Archify.
 
@@ -27,8 +27,8 @@
 ## Validation
 
 - [PASS] `pnpm typecheck`; renderer, Electron/runtime, and Node 22 bootstrap bundle builds.
-- [PASS] Complete Node suite: 1,160 passed, 1 skipped; BDD: 80 scenarios and 286 steps passed; `pnpm coverage`: 75.6% statements/lines, 74.02% branches, 82.38% functions.
-- [PASS] `pnpm run lint:gates`: all configured structural gates passed (dead symbols 172, function length 45, ESLint complexity 108).
+- [PASS] On implementation base `486473e`, complete Node suite: 1,160 passed, 1 skipped; BDD: 80 scenarios and 286 steps passed; `pnpm coverage`: 75.6% statements/lines, 74.02% branches, 82.38% functions.
+- [PASS] On implementation base `486473e`, `pnpm run lint:gates`: all configured structural gates passed (dead symbols 172, function length 45, ESLint complexity 108).
 - [PASS] `pnpm lint:arch`: 12 architecture specifications passed, including all three source-backed Tailscale sequences.
 - [PASS] All three Archify sequences passed validate, deliver, strict provenance, and Chrome browser checks. Light/dark captures at 1440×900 and 2048×1320 were inspected.
 - [N/A] Provider compare: there was no previous Tailscale onboarding sequence source to compare.

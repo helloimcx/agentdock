@@ -79,10 +79,13 @@ Use `pnpm` for all local work.
 | `pnpm build:electron` | Compiles Electron, apps, and packages into `dist-electron/` |
 | `pnpm start:prod` | Launches packaged app from current `dist-electron/` build |
 | `pnpm typecheck` | Runs TypeScript typechecks (`tsconfig.json` and `tests/bdd/tsconfig.json`) |
-| `pnpm test` | Runs typecheck, builds renderer + Electron, runs Node.js test runner, then executes BDD suite |
+| `pnpm test` | Runs test tooling checks, typecheck, renderer and Electron builds, all compiled Node tests, then BDD |
+| `pnpm test:ci` | Runs test tooling checks, one coverage-enabled Electron build, all Node tests under c8, then BDD |
+| `pnpm test:tooling` | Runs test discovery, build, and verification orchestration regression tests |
+| `pnpm test:compiled` | Runs compiled Node tests without rebuilding; requires current `dist-electron/` output |
 | `pnpm test:bdd` | Runs Cucumber BDD feature tests (`tests/bdd/features/`) via `tsx` loader |
-| `pnpm coverage` | Measures test coverage using `c8` against `.c8rc.json` thresholds |
-| `pnpm verify` / `pnpm qa` | Runs all static gates, architecture lint, tests, and coverage checks |
+| `pnpm coverage` | Cleanly builds renderer and coverage-instrumented Electron output, then runs the compiled Node suite once under c8 against `.c8rc.json` thresholds |
+| `pnpm verify` / `pnpm qa` | Runs typecheck, static gates, architecture lint, one coverage-enabled test run, and BDD |
 | `pnpm e2e:smoke` | Runs the bundled smoke test against a fresh production build |
 | `pnpm dist:mac` | Builds and packages macOS DMG and ZIP (`arm64`) |
 | `pnpm dist:win` | Builds and packages Windows NSIS installer and ZIP (`x64`) |
@@ -98,8 +101,8 @@ Use `pnpm` for all local work.
 - `pnpm lint:function-length`: reports functions whose line count exceeds threshold (default 100). CI gate: `--fail --max-count 45` (incremental over baseline).
 - `pnpm lint:file-size`: reports source files whose line count exceeds threshold (default 1000). CI gate: `--fail` (zero-tolerance).
 - `pnpm coverage`: measures test coverage using `c8`. CI gate: `check-coverage` thresholds in `.c8rc.json` (lines/statements 68, functions 72, branches 66).
-- `pnpm lint:arch`: validates all architecture and workflow specifications in `docs/architecture/` via Archify showcase checks.
-- All gates aggregate in `pnpm lint:gates`; CI runs it plus `typecheck`/`test`/`coverage` in `.github/workflows/ci.yml`.
+- `pnpm lint:arch`: validates all architecture and workflow specifications in `docs/architecture/` via Archify showcase checks. Set `ARCHIFY_BIN` to an Archify CLI path locally; CI checks out a fixed upstream revision.
+- All code lint gates aggregate in `pnpm lint:gates`; CI also runs `typecheck`, `lint:arch`, and one `test:ci` pass in `.github/workflows/ci.yml`.
 
 ---
 
@@ -168,7 +171,8 @@ When designing or connecting multi-entity models (such as `AutomationRun` wrappi
 
 ## Testing Guidelines
 
-- The primary verification suite is `pnpm test`, which runs `typecheck`, builds renderer and Electron outputs, executes the Node.js test runner across compiled tests (`dist-electron/tests/electron/*.test.js`, `dist-electron/tests/contracts/*.test.js`, `dist-electron/tests/integration/*.test.js`, `dist-electron/packages/knowledge/test/*.test.js`, `dist-electron/apps/web/src/pages/Threads/thread-chat-permission.test.js`), and runs Cucumber BDD tests (`pnpm test:bdd`).
+- The full local suite is `pnpm test`: it checks test tooling, typechecks, builds renderer and Electron outputs once, runs compiled Node tests once, and executes Cucumber BDD. `pnpm test:ci` runs the test tooling checks, one source-mapped build, the Node suite once under c8, and BDD; `pnpm verify` uses this path after static gates so it does not build or test again.
+- `pnpm test:compiled` runs discovered compiled Node tests without building. Use it only after building the current source; stale `dist-electron/` output does not verify current edits. `pnpm coverage` remains independently runnable from a clean checkout and builds its own output.
 - BDD feature specifications live under `tests/bdd/features/` with step definitions in `tests/bdd/step-definitions/`. They execute against TypeScript source using the `tsx` loader. Reach for a `.feature` when a behavior reads naturally as Given/When/Then scenarios.
 - Use `pnpm e2e:smoke` for packaged app smoke coverage.
 - Keep single-module renderer tests near the feature they cover, put cross-layer tests under `tests/electron/`, `tests/contracts/`, or `tests/integration/`, and keep package-private tests under `packages/<name>/test/`.
@@ -194,7 +198,7 @@ When designing or connecting multi-entity models (such as `AutomationRun` wrappi
 
 ## Commit & Pull Request Guidelines
 
-Before committing or pushing code, run the same gates CI runs: `pnpm verify` (or `pnpm typecheck`, `pnpm lint:gates`, `pnpm lint:arch`, `pnpm test`, and `pnpm coverage`), to ensure zero TS errors, zero circular dependencies, no new duplicate code blocks, no new dead symbols or long functions, no new ESLint warnings, and 100% test pass rate. Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates.
+For routine, low-risk changes, run the affected tests and applicable static checks before committing; a full `pnpm verify` is not required for every edit. Run `pnpm verify` before committing or pushing high-risk or broad changes involving public contracts, persistence or migrations, security/permissions, concurrency/transactions, dependencies, build/test/CI infrastructure, core architecture, or unclear impact. Pull requests and main still receive the full CI suite. CI configuration alone does not prove that remote branch protection requires its checks. Report what ran and what did not. Use short, imperative commit subjects such as `Add bridge runtime retry` or `Fix smoke test startup timing`. Keep pull requests focused, describe user-visible changes, list validation commands you ran, and include screenshots for UI updates.
 
 ---
 

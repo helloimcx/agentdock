@@ -1,12 +1,12 @@
 # Tailscale 设备发现与一键接入实施计划
 
-Status: 已批准（2026-10-24）；实现与本地自动验证已完成，真实目标主机验证为 [BLOCKED]。权威需求见同名 Spec。
+Status: 已批准（2026-10-24）；实现与本地验证已完成；最新 main 集成后的 GitHub CI 待运行；真实目标主机验证为 [BLOCKED]。权威需求见同名 Spec。
 
 ## 基线与架构影响
 
 - PR #222 head：`c5f457dc081bb1fa2b9b68c61820fc57c9c15d00`。
 - 集成 worktree：`/private/tmp/agentdock-tailscale-ready`，分支 `codex/2026-10-25-tailscale-onboarding-ready`。
-- 集成基于 `origin/main` `486473e257014207215b50dccbede06eac9f18ec`；功能提交为 `c3cdf8a89bf72d822a281c64b1768c49e2993b1f`，生命周期与质量门修复为 `399279c42b03c455073ac12872229dffdef9d04e`。原 PR #222 的 head `c5f457dc081bb1fa2b9b68c61820fc57c9c15d00` 将保留在最终分支祖先中，以便快进更新。
+- 功能实现基于 `origin/main` `486473e257014207215b50dccbede06eac9f18ec`；更新 PR 前又合入最新 main `34db1201b43185fe15cbc4ed64fe51c3a2037ca2`。功能提交为 `c3cdf8a89bf72d822a281c64b1768c49e2993b1f`，生命周期修复为 `399279c42b03c455073ac12872229dffdef9d04e`，原 PR #222 head `c5f457dc081bb1fa2b9b68c61820fc57c9c15d00` 保留在最终分支祖先中。
 - Architecture Impact: **Required**。增加受授权的远端进程启动、SSH 部署/监督、窄接入桥、稳定 peer 映射和持久连接状态，涉及进程、网络、信任与数据边界。
 - Mesh v1 节点认证/执行消息复用；增加管理编排与部署协议，不将 tailnet 设备直接视为已认证 Mesh 节点。
 
@@ -116,7 +116,7 @@ sequenceDiagram
 - 实现：稳定 Tailscale peer ID 关联、SQLite 持久接入状态、Node 22 bootstrap bundle、SSH 监督与严格主机密钥校验、expected-node 限定的 loopback enrollment bridge、管理员 API/SDK、Mesh/Workspace 共用接入流程，以及 ready+active 校验后才允许保存执行目标。旧 inventory-only `/tailscale/bind` 返回 `410`，避免将未认证节点显示为已接入。
 - 权限：`allowShell` 默认为 false，UI 显式确认；服务端只在 Mesh enrollment、认证 WebSocket、已授权目录检查和获准时的无副作用命令验证全部完成后进入 `ready`。远端 Shell 仍以设备账户的操作系统权限运行，批准目录不构成沙箱。
 - [PASS] `pnpm typecheck`、renderer build、Electron/runtime bundle build；专项 Mesh onboarding、SSH transport、runtime/store 和 UI contract tests。
-- [PASS] 全仓 Node 测试：1,160 passed、1 skipped；BDD：80 scenarios、286 steps 全部通过；`pnpm coverage`：statements/lines 75.6%、branches 74.02%、functions 82.38%。
-- [PASS] `pnpm run lint:gates` 全部通过：dead symbols 172、function length 45、ESLint complexity 108；`pnpm lint:arch` 12 个架构规范通过。Archify 的发现、Enrollment、Ready 三张图均通过交付、严格来源和 Chrome 浏览器检查。
+- [PASS] 在 `486473e` 实现基线上，全仓 Node 测试：1,160 passed、1 skipped；BDD：80 scenarios、286 steps 全部通过；`pnpm coverage`：statements/lines 75.6%、branches 74.02%、functions 82.38%。
+- [PASS] 在 `486473e` 实现基线上，`pnpm run lint:gates` 全部通过：dead symbols 172、function length 45、ESLint complexity 108。当前三张 Archify 图通过 `pnpm lint:arch`、交付、严格来源和 Chrome 浏览器检查。
 - [BLOCKED] 真实双机接入没有宣称通过：隔离 sshd 集成测试默认跳过；目标 MacBook Pro 当前未在线，且该控制端尚未建立对应 SSH 主机密钥信任。执行仍要求目标在线、端口 22/loopback remote forwarding 可用，并从控制端可信的 `known_hosts` 主机身份通过严格校验。
 - [N/A] 用 `ssh-keyscan` 自动接受主机密钥、`StrictHostKeyChecking=accept-new`、密码认证或绕过目标离线检查；这些路径违反已批准信任边界。
