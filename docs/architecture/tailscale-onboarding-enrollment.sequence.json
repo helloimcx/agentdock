@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Tailscale 安全接入 · Bridge、部署与身份认证",
+    "locale": "zh-CN",
+    "output": "docs/architecture/tailscale-onboarding-enrollment.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/helloimcx/agentdock.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "399279c42b03c455073ac12872229dffdef9d04e"
+    },
+    "viewBox": [
+      1080,
+      560
+    ]
+  },
+  "participants": [
+    {
+      "id": "api",
+      "type": "security",
+      "label": "Mesh API",
+      "sublabel": "admin-auth",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/mesh-gateway.ts",
+          "line": 66,
+          "end_line": 116
+        },
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding-api.ts",
+          "line": 20,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "manager",
+      "type": "backend",
+      "label": "Onboard",
+      "sublabel": "状态机",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding.ts",
+          "line": 62,
+          "end_line": 91
+        },
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding.ts",
+          "line": 126,
+          "end_line": 153
+        }
+      ]
+    },
+    {
+      "id": "ssh",
+      "type": "external",
+      "label": "SSH target",
+      "sublabel": "macOS/Linux",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/ssh-bootstrap.ts",
+          "line": 58,
+          "end_line": 109
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "Node 22",
+      "sublabel": "Mesh agent",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/bootstrap-runtime.ts",
+          "line": 122,
+          "end_line": 150
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "security",
+      "label": "Enroll Bridge",
+      "sublabel": "127.0.0.1",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/mesh-enrollment-bridge.ts",
+          "line": 15,
+          "end_line": 50
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "Core state",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding-store.ts",
+          "line": 14,
+          "end_line": 28
+        },
+        {
+          "path": "apps/daemon/src/mesh/mesh-store.ts",
+          "line": 37,
+          "end_line": 43
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 145,
+      "to": 204,
+      "label": "预期节点 Bridge"
+    },
+    {
+      "from": 212,
+      "to": 306,
+      "label": "部署与一次性 Enrollment"
+    },
+    {
+      "from": 314,
+      "to": 400,
+      "label": "认证会话"
+    }
+  ],
+  "messages": [
+    {
+      "id": "create-bridge",
+      "from": "manager",
+      "to": "bridge",
+      "y": 160,
+      "label": "绑定 127.0.0.1 · expectedNodeId",
+      "variant": "security"
+    },
+    {
+      "id": "bridge-port",
+      "from": "bridge",
+      "to": "manager",
+      "y": 188,
+      "label": "临时本地端口",
+      "variant": "return"
+    },
+    {
+      "id": "deploy-and-forward",
+      "from": "manager",
+      "to": "ssh",
+      "y": 216,
+      "label": "SHA-256 bundle · loopback reverse forward",
+      "variant": "emphasis"
+    },
+    {
+      "id": "launch-bootstrap",
+      "from": "ssh",
+      "to": "runtime",
+      "y": 244,
+      "label": "启动 bundle；pairing token 经 SSH stdin",
+      "variant": "security"
+    },
+    {
+      "id": "enroll",
+      "from": "runtime",
+      "to": "bridge",
+      "y": 272,
+      "label": "经反向转发 POST /enroll",
+      "variant": "default"
+    },
+    {
+      "id": "consume-pairing",
+      "from": "bridge",
+      "to": "store",
+      "y": 300,
+      "label": "核验身份并消费配对",
+      "variant": "security"
+    },
+    {
+      "id": "connect",
+      "from": "runtime",
+      "to": "bridge",
+      "y": 328,
+      "label": "经反向转发建立 WebSocket /connect",
+      "variant": "default"
+    },
+    {
+      "id": "scope-session",
+      "from": "bridge",
+      "to": "api",
+      "y": 356,
+      "label": "仅接受预期节点认证升级",
+      "variant": "security"
+    },
+    {
+      "id": "authenticate",
+      "from": "api",
+      "to": "store",
+      "y": 384,
+      "label": "验证设备凭据并登记在线会话",
+      "variant": "default"
+    }
+  ]
+}

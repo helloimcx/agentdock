@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Tailscale 安全接入 · 能力验证与工作区目标",
+    "locale": "zh-CN",
+    "output": "docs/architecture/tailscale-onboarding-readiness.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/helloimcx/agentdock.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "399279c42b03c455073ac12872229dffdef9d04e"
+    },
+    "viewBox": [
+      1080,
+      560
+    ]
+  },
+  "participants": [
+    {
+      "id": "admin",
+      "type": "external",
+      "label": "管理员",
+      "sublabel": "选择目标并确认权限",
+      "sources": [
+        {
+          "path": "apps/web/src/pages/Mesh/Devices.tsx",
+          "line": 151,
+          "end_line": 162
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Workspace",
+      "sublabel": "React",
+      "sources": [
+        {
+          "path": "apps/web/src/pages/Mesh/ExecutionDeviceSelector.tsx",
+          "line": 20,
+          "end_line": 53
+        },
+        {
+          "path": "apps/web/src/pages/Desktop/Workspace.tsx",
+          "line": 302,
+          "end_line": 313
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "Mesh API",
+      "sublabel": "admin-auth",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/mesh-gateway.ts",
+          "line": 66,
+          "end_line": 116
+        },
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding-api.ts",
+          "line": 20,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "manager",
+      "type": "backend",
+      "label": "Onboard",
+      "sublabel": "状态机",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding.ts",
+          "line": 62,
+          "end_line": 91
+        },
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding.ts",
+          "line": 126,
+          "end_line": 153
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "Node 22",
+      "sublabel": "Mesh agent",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/bootstrap-runtime.ts",
+          "line": 122,
+          "end_line": 150
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "Core state",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding-store.ts",
+          "line": 14,
+          "end_line": 28
+        },
+        {
+          "path": "apps/daemon/src/mesh/mesh-store.ts",
+          "line": 37,
+          "end_line": 43
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 145,
+      "to": 174,
+      "label": "预期节点会话"
+    },
+    {
+      "from": 182,
+      "to": 286,
+      "label": "目录与命令能力验证"
+    },
+    {
+      "from": 294,
+      "to": 400,
+      "label": "ready 状态与工作区目标"
+    }
+  ],
+  "messages": [
+    {
+      "id": "wait-session",
+      "from": "api",
+      "to": "manager",
+      "y": 160,
+      "label": "报告预期 nodeId 已连接",
+      "variant": "return"
+    },
+    {
+      "id": "verify-files",
+      "from": "manager",
+      "to": "api",
+      "y": 188,
+      "label": "filesystem.list · 批准目录",
+      "variant": "emphasis"
+    },
+    {
+      "id": "files-result",
+      "from": "api",
+      "to": "runtime",
+      "y": 216,
+      "label": "认证派发并返回目录结果",
+      "variant": "default"
+    },
+    {
+      "id": "verify-shell",
+      "from": "manager",
+      "to": "api",
+      "y": 244,
+      "label": "仅 allowShell=true 时检查 /usr/bin/uname",
+      "variant": "security"
+    },
+    {
+      "id": "shell-result",
+      "from": "api",
+      "to": "runtime",
+      "y": 272,
+      "label": "shell.exec · exitCode 必须为 0",
+      "variant": "default"
+    },
+    {
+      "id": "mark-ready",
+      "from": "manager",
+      "to": "store",
+      "y": 300,
+      "label": "验证通过后持久化 ready + active",
+      "variant": "emphasis"
+    },
+    {
+      "id": "refresh-result",
+      "from": "ui",
+      "to": "api",
+      "y": 328,
+      "label": "重新读取 operation 与 /nodes",
+      "variant": "default"
+    },
+    {
+      "id": "ready-node",
+      "from": "api",
+      "to": "ui",
+      "y": 356,
+      "label": "返回 canonical nodeId 与服务端 ready 状态",
+      "variant": "return"
+    },
+    {
+      "id": "save-workspace-target",
+      "from": "ui",
+      "to": "admin",
+      "y": 384,
+      "label": "仅提供已验证设备作为工作区目标",
+      "variant": "emphasis"
+    }
+  ]
+}

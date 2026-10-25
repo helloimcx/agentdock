@@ -27,7 +27,7 @@ flowchart LR
 - `MeshGateway` attaches to the existing Core HTTP server. Nodes initiate WebSocket connections, so devices need no inbound listener or public IP. Internet, LAN and Tailscale are transport choices; no specific overlay is required.
 - `bin/agentdock.mjs` forwards the Mesh WebSocket upgrade through the bundled web server, in addition to existing REST forwarding.
 - The node owns its approved root, local credentials and command opt-in. Credentials are created exclusively with mode 0600; existing files are not overwritten. Use an operating-system ACL on Windows to restrict the credential and pairing files to the node user (POSIX mode bits do not establish a Windows ACL).
-- The renderer owns temporary UI state. The Mesh page reads node overview data without the Mesh admin token and refreshes every three seconds. It does not expose administrative controls.
+- The renderer owns temporary UI state. The Mesh page reads node overview data without the Mesh admin token and refreshes every three seconds. With a Mesh administrator token, it can discover Tailscale devices and start the supervised secure onboarding flow described below.
 
 ## Trust boundaries
 
@@ -81,10 +81,27 @@ Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata witho
 | GET | `/requests` | Recent history |
 | GET | `/requests/:id` | Request status/result |
 | POST | `/requests/:id/cancel` | Request cancellation |
+| GET | `/tailscale/status` | Discover peers on current Tailscale tailnet (cached 5s; admin token required) |
+| POST | `/tailscale/bind` | Retired inventory-only path; returns `410`, admin token required |
+| GET / POST | `/tailscale/connections` | List managed connections / start onboarding with peer ID, SSH user, approved root, explicit `allowShell`, and idempotency key |
+| GET | `/tailscale/operations/:id` | Read onboarding progress and result |
+| POST | `/tailscale/operations/:id/cancel` | Cancel onboarding and stop owned transport resources |
+| POST | `/tailscale/connections/:id/disconnect` | Stop the supervised SSH session while retaining the Mesh identity |
+| POST | `/tailscale/connections/:id/reauthorize` | Explicitly replace credentials or update a connection's approved policy |
+
+Managed connections map the stable `Peer.ID` to a canonical `node:<uuid>`; hostname, display name and rotating public key are not used as identity. A tailnet peer is not a Mesh execution target until it has completed the pairing and authenticated WebSocket flow. Legacy `node:ts:<name>` inventory entries remain legacy records and are not treated as authenticated execution nodes. The retired `/tailscale/bind` route cannot create or revive a node.
+
+## Managed Tailscale onboarding
+
+The browser collects the remote SSH account, approved directory and explicit command permission, but never SSH passwords or keys. On the controller, the target must already be reachable over Tailscale, use macOS or Linux, provide Node.js 22+, allow standard OpenSSH login and permit remote forwarding bound to loopback. The controller uses strict host-key checking; users must establish trust for the target through their normal SSH host verification process before onboarding.
+
+`TailscaleOnboardingManager` resolves the stable peer ID again, prepares a verified runtime bundle with the SSH transport, then allocates the canonical Mesh node and a temporary bridge bound to `127.0.0.1`. SSH remote forwarding reaches only that bridge, which accepts the exact one-time enrollment request and authenticated `/connect` upgrade for the expected node. The pairing token travels over SSH stdin and is not stored in connection state. The rest of the Core management API is not proxied to the target.
+
+The manager waits for the expected Mesh identity to become online, verifies access to the approved directory and, only when `allowShell` is true, checks command execution before setting the connection to `ready`. The UI waits for an authoritative ready+active node and shell capability before it writes a new workspace target. Cancel, disconnect and revoke have separate semantics; reauthorization is explicit and does not bypass a failed host-key or peer check. The code-backed flow is split into [peer discovery and SSH preflight](tailscale-onboarding-discovery.sequence.json), [bridge deployment and authentication](tailscale-onboarding-enrollment.sequence.json), and [capability verification and workspace selection](tailscale-onboarding-readiness.sequence.json), with details in the [semantic change record](changes/2026-10-25-tailscale-one-click-onboarding.md).
 
 ## Running two devices
 
-Build with `pnpm build`. Set `AGENTDOCK_MESH_ADMIN_TOKEN` securely before `pnpm start:core` or `agentdock serve`. The Device Mesh navigation entry opens the read-only node overview. Use the CLI with the same administration credential to pair and manage devices.
+Build with `pnpm build`. Set `AGENTDOCK_MESH_ADMIN_TOKEN` securely before `pnpm start:core` or `agentdock serve`. The Device Mesh navigation entry displays the node overview and, with an administrator token, allows discovery and secure one-click onboarding of macOS/Linux tailnet devices. Use the standard CLI pairing flow for other supported node platforms.
 
 Alternatively, use CLI commands from the repository root (an npm installation exposes `agentdock-node` directly):
 

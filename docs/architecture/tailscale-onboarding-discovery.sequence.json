@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Tailscale 安全接入 · 发现、权限与 SSH 预检",
+    "locale": "zh-CN",
+    "output": "docs/architecture/tailscale-onboarding-discovery.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/helloimcx/agentdock.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "399279c42b03c455073ac12872229dffdef9d04e"
+    },
+    "viewBox": [
+      1080,
+      560
+    ]
+  },
+  "participants": [
+    {
+      "id": "admin",
+      "type": "external",
+      "label": "管理员",
+      "sublabel": "选择目标并确认权限",
+      "sources": [
+        {
+          "path": "apps/web/src/pages/Mesh/Devices.tsx",
+          "line": 151,
+          "end_line": 162
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Workspace",
+      "sublabel": "React",
+      "sources": [
+        {
+          "path": "apps/web/src/pages/Mesh/ExecutionDeviceSelector.tsx",
+          "line": 20,
+          "end_line": 53
+        },
+        {
+          "path": "apps/web/src/pages/Desktop/Workspace.tsx",
+          "line": 302,
+          "end_line": 313
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "Mesh API",
+      "sublabel": "admin-auth",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/mesh-gateway.ts",
+          "line": 66,
+          "end_line": 116
+        },
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding-api.ts",
+          "line": 20,
+          "end_line": 35
+        }
+      ]
+    },
+    {
+      "id": "manager",
+      "type": "backend",
+      "label": "Onboard",
+      "sublabel": "状态机",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding.ts",
+          "line": 62,
+          "end_line": 91
+        },
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding.ts",
+          "line": 126,
+          "end_line": 153
+        }
+      ]
+    },
+    {
+      "id": "tailscale",
+      "type": "external",
+      "label": "Tailscale",
+      "sublabel": "Peer.ID",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-service.ts",
+          "line": 95,
+          "end_line": 129
+        }
+      ]
+    },
+    {
+      "id": "ssh",
+      "type": "external",
+      "label": "SSH target",
+      "sublabel": "macOS/Linux",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/ssh-bootstrap.ts",
+          "line": 58,
+          "end_line": 109
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "Core state",
+      "sources": [
+        {
+          "path": "apps/daemon/src/mesh/tailscale-onboarding-store.ts",
+          "line": 14,
+          "end_line": 28
+        },
+        {
+          "path": "apps/daemon/src/mesh/mesh-store.ts",
+          "line": 37,
+          "end_line": 43
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 145,
+      "to": 252,
+      "label": "授权与任务持久化"
+    },
+    {
+      "from": 260,
+      "to": 400,
+      "label": "Peer 与 SSH 安全预检"
+    }
+  ],
+  "messages": [
+    {
+      "id": "confirm-profile",
+      "from": "admin",
+      "to": "ui",
+      "y": 160,
+      "label": "确认设备、SSH 账户、目录与命令权限",
+      "variant": "emphasis"
+    },
+    {
+      "id": "start-onboarding",
+      "from": "ui",
+      "to": "api",
+      "y": 188,
+      "label": "POST /tailscale/connections · 管理员凭据",
+      "variant": "security"
+    },
+    {
+      "id": "accepted-operation",
+      "from": "api",
+      "to": "manager",
+      "y": 216,
+      "label": "校验输入 · 返回 202 + operationId",
+      "variant": "emphasis"
+    },
+    {
+      "id": "persist-operation",
+      "from": "manager",
+      "to": "store",
+      "y": 244,
+      "label": "持久化 peerId、授权配置与幂等任务",
+      "variant": "default"
+    },
+    {
+      "id": "resolve-peer",
+      "from": "manager",
+      "to": "tailscale",
+      "y": 272,
+      "label": "重新解析 stable Peer.ID",
+      "variant": "default"
+    },
+    {
+      "id": "peer-details",
+      "from": "tailscale",
+      "to": "manager",
+      "y": 300,
+      "label": "在线 macOS/Linux + 当前 Tailscale 地址",
+      "variant": "return"
+    },
+    {
+      "id": "ssh-preflight",
+      "from": "manager",
+      "to": "ssh",
+      "y": 328,
+      "label": "StrictHostKeyChecking=yes · Node 22 · 转发预检",
+      "variant": "security"
+    },
+    {
+      "id": "inspection",
+      "from": "ssh",
+      "to": "manager",
+      "y": 356,
+      "label": "规范化目录 + 凭据归属",
+      "variant": "return"
+    },
+    {
+      "id": "pairing",
+      "from": "manager",
+      "to": "store",
+      "y": 384,
+      "label": "预检通过后分配 canonical nodeId 与 pairing",
+      "variant": "security"
+    }
+  ]
+}
