@@ -31,6 +31,6 @@
 - [PASS] After integrating latest main `34db120`, `pnpm run lint:gates`: all configured structural gates passed (dead symbols 172, function length 45, ESLint complexity 108); GitHub Typecheck also passed.
 - [PASS] `pnpm lint:arch`: 12 architecture specifications passed, including all three source-backed Tailscale sequences.
 - [PASS] All three Archify sequences passed validate, deliver, strict provenance, and Chrome browser checks. Light/dark captures at 1440×900 and 2048×1320 were inspected.
+- [PASS] Final GitHub CI on `31e8103`: Typecheck, lint gates, and architecture validation passed; Node suite 1,159 passed / 2 skipped, BDD 80 scenarios / 286 steps passed, coverage 75.48% statements/lines, 73.96% branches, 82.9% functions.
 - [N/A] Provider compare: there was no previous Tailscale onboarding sequence source to compare.
 - [BLOCKED] Real two-device installation remains unverified. The isolated OpenSSH integration is opt-in and skipped in the default suite; the intended MacBook Pro was offline in the last environment check and its SSH host key has not been trusted by the controller. No unknown key was accepted and no remote installation was attempted.
-- Latest-main GitHub lint/typecheck/Archify checks pass. One test fixture initially failed on Ubuntu because it invoked `/bin/zsh`; the fixture now uses `/bin/sh`, which matches the POSIX deployment script. A final CI rerun is pending.
