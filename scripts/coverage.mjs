@@ -52,6 +52,7 @@ run('node', ['scripts/write-electron-package.mjs']);
 run(tsc, ['-p', 'tsconfig.coverage.json']);
 run(tscAlias, ['-p', 'tsconfig.coverage.json']);
 run('node', ['scripts/copy-managed-skills.mjs']);
+run('node', ['scripts/build-mesh-runtime.mjs']);
 
 console.log('\nRunning test suite under c8...\n');
 run(c8, ['node', '--test', ...TEST_FILES]);

@@ -1,3 +1,4 @@
+import { createMeshClient } from './mesh.js';
 import type {
   AgentTask,
   AgentTaskArtifact,
@@ -36,7 +37,6 @@ import type {
   MeshExecution,
   MeshNode,
   TailscaleBindInput,
-  TailscaleStatusResponse,
 } from '@cc/superai-contracts';
 import { coreClient } from './client.js';
 import { buildQuery, coreRequest } from './request.js';
@@ -271,21 +271,12 @@ export function listMeshNodes(adminToken?: string) {
 }
 
 export function getTailscaleStatus(adminToken?: string) {
-  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return coreRequest<TailscaleStatusResponse>('GET', '/mesh/tailscale/status', undefined, headers);
+  return createMeshClient(adminToken).getTailscaleStatus();
 }
 
+/** @deprecated Use createTailscaleConnection for authenticated onboarding. */
 export function bindTailscaleNode(input: TailscaleBindInput, adminToken?: string) {
-  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return coreRequest<MeshNode>('POST', '/mesh/tailscale/bind', input, headers);
+  return createMeshClient(adminToken).bindTailscaleNode(input);
 }
 
 export interface DirectoryListingResult {

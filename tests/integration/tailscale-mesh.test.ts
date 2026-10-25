@@ -12,7 +12,6 @@ import {
   sanitizeTailscaleName,
   tailscaleNodeId,
   type TailscaleStatusResponse,
-  type MeshNode,
   type TailscalePeer,
 } from '../../packages/contracts/src/mesh.js';
 import { createMeshClient, MeshRequestError } from '../../packages/sdk/src/mesh.js';
@@ -30,147 +29,43 @@ test('sanitizeTailscaleName and tailscaleNodeId correctly sanitize names and han
   assert.equal(tailscaleNodeId('---', 'box.ts.net'), 'node:ts:box');
 });
 
-test('TailscaleService parses status, detects peers, and binds mesh nodes as offline', async () => {
-  const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-'));
-  const db = new DatabaseSync(join(temp, 'mesh.db'));
-  const store = new MeshStore(db);
-
-  // 1. When tailscale runner throws or is unavailable
-  const unavailableService = new TailscaleService(store, async () => {
-    throw new Error('tailscale: command not found');
-  });
-  const unavailResult = await unavailableService.getStatus();
-  assert.equal(unavailResult.available, false);
-  assert.equal(unavailResult.peers.length, 0);
-  assert.match(unavailResult.error || '', /command not found/);
-
-  // 2. When tailscale returns valid JSON with Self and Peers
-  const mockTailscaleJson = JSON.stringify({
-    Self: {
-      ID: 'node-self',
-      HostName: 'my-macbook',
-      DNSName: 'my-macbook.tailnet.ts.net.',
-      OS: 'macOS',
-      TailscaleIPs: ['100.104.42.5'],
-      Online: true,
-    },
-    Peer: {
-      'node-1': {
-        ID: 'node-1',
-        HostName: 'dobby',
-        DNSName: 'dobby.tailnet.ts.net.',
-        OS: 'linux',
-        TailscaleIPs: ['100.105.207.63'],
-        Online: true,
-      },
-      'node-2': {
-        ID: 'node-2',
-        HostName: 'fnos',
-        DNSName: 'fnos.tailnet.ts.net.',
-        OS: 'linux',
-        TailscaleIPs: ['100.119.170.67'],
-        Online: false,
-      },
-    },
-  });
-
-  const service = new TailscaleService(store, async () => mockTailscaleJson);
-  const status = await service.getStatus();
-
-  assert.equal(status.available, true);
-  assert.equal(status.self?.name, 'my-macbook');
-  assert.equal(status.self?.ips[0], '100.104.42.5');
-  assert.equal(status.peers.length, 2);
-
-  const dobby = status.peers.find((p: TailscalePeer) => p.name === 'dobby');
-  assert.ok(dobby);
-  assert.equal(dobby.online, true);
-  assert.equal(dobby.os, 'linux');
-  assert.equal(dobby.ips[0], '100.105.207.63');
-  assert.equal(dobby.meshNodeId, undefined);
-
-  // 3. Bind dobby to MeshStore (should be status: 'offline' until node connects)
-  const bound = service.bindNode({
-    name: 'dobby',
-    os: 'linux',
-    dnsName: 'dobby.tailnet.ts.net.',
-    ips: ['100.105.207.63'],
-    allowShell: true,
-  });
-
-  assert.equal(bound.id, 'node:ts:dobby');
-  assert.equal(bound.label, 'dobby (linux · 100.105.207.63)');
-  assert.equal(bound.status, 'offline');
-  assert.equal(bound.lastSeenAt, null);
-  assert.equal(bound.platform, 'linux');
-  assert.ok(bound.capabilities.includes('shell.exec'));
-
-  // 4. Query status again, dobby should now have meshNodeId and meshNodeStatus populated
-  const statusAfterBind = await service.getStatus();
-  const dobbyAfter = statusAfterBind.peers.find((p: TailscalePeer) => p.name === 'dobby');
-  assert.equal(dobbyAfter?.meshNodeId, 'node:ts:dobby');
-  assert.equal(dobbyAfter?.meshNodeStatus, 'offline');
-
-  // Re-binding without os inherits existing known platform in label
-  const dobbyReboundNoOs = service.bindNode({
-    name: 'dobby',
-    dnsName: 'dobby.tailnet.ts.net.',
-    ips: ['100.105.207.63'],
-    allowShell: true,
-  });
-  assert.equal(dobbyReboundNoOs.platform, 'linux');
-  assert.equal(dobbyReboundNoOs.label, 'dobby (linux · 100.105.207.63)');
-
-  // 5. Test idempotence and allowShell: false
-  const fnosBound = service.bindNode({
-    name: 'fnos',
-    os: 'linux',
-    allowShell: false,
-  });
-  assert.equal(fnosBound.id, 'node:ts:fnos');
-  assert.equal(fnosBound.label, 'fnos (linux)');
-  assert.equal(fnosBound.status, 'offline');
-  assert.equal(fnosBound.capabilities.includes('shell.exec'), false);
-
-  // Calling again updates capabilities and preserves createdAt
-  const fnosBoundAgain = service.bindNode({
-    name: 'fnos',
-    os: 'linux',
-    allowShell: true,
-  });
-  assert.equal(fnosBoundAgain.id, 'node:ts:fnos');
-  assert.equal(fnosBoundAgain.capabilities.includes('shell.exec'), true);
-  assert.equal(fnosBoundAgain.createdAt, fnosBound.createdAt);
-
-  // 6. Test defensive sanitization for non-ASCII/symbol hostnames
-  const chineseBound = service.bindNode({
-    name: '我的服务器',
-    dnsName: 'my-server.ts.net',
-    os: 'linux',
-  });
-  assert.equal(chineseBound.id, 'node:ts:my-server');
-
-  const symbolBound = service.bindNode({
-    name: '---',
-    os: 'linux',
-  });
-  assert.equal(symbolBound.id, 'node:ts:peer');
-
-  // 7. Revoking a node marks it revoked; re-binding a revoked node must throw and preserve revoked state
-  store.revoke('node:ts:fnos');
-  const revokedNode = store.getNode('node:ts:fnos');
-  assert.equal(revokedNode?.status, 'revoked');
-  assert.throws(
-    () => service.bindNode({ name: 'fnos', os: 'linux' }),
-    /is revoked/,
-  );
-  const stillRevoked = store.getNode('node:ts:fnos');
-  assert.equal(stillRevoked?.status, 'revoked');
-
-  // Status query reflects meshNodeStatus === 'revoked' for revoked peers
-  const statusAfterRevoke = await service.getStatus(true);
-  const fnosAfterRevoke = statusAfterRevoke.peers.find((p: TailscalePeer) => p.name === 'fnos');
-  assert.equal(fnosAfterRevoke?.meshNodeStatus, 'revoked');
+test('discovery maps stable peer identities to real enrolled nodes without synthetic binding', async () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new MeshStore(db);
+    const unavailable = await new TailscaleService(store, async () => { throw new Error('command not found'); }).getStatus();
+    assert.equal(unavailable.available, false);
+    assert.match(unavailable.error || '', /command not found/);
+    let runs = 0;
+    let publicKey = 'nodekey:first';
+    let name = 'dev--box';
+    const service = new TailscaleService(store, async () => {
+      runs++;
+      return JSON.stringify({ Self: { ID: 'nSelf', HostName: 'controller', Online: true }, Peer: {
+        one: { ID: 'nStableFirst', PublicKey: publicKey, HostName: name, Online: true, OS: 'macOS', TailscaleIPs: ['100.64.0.2'] },
+        two: { ID: 'nStableSecond', HostName: 'dev-box', Online: false, OS: 'linux' },
+        three: { PublicKey: 'nodekey:unstable', HostName: 'old-device', Online: true, OS: 'linux' },
+      } });
+    });
+    const first = await service.getStatus();
+    assert.equal(first.self?.id, 'nSelf');
+    assert.equal(first.peers.find(p => p.id === 'nStableFirst')?.stableIdentity, true);
+    assert.equal(first.peers.find(p => p.name === 'old-device')?.stableIdentity, false);
+    assert.throws(() => service.bindNode({ name: 'dev-box' }), /retired/);
+    assert.equal(store.listNodes().length, 0);
+    const node = store.createPairing({ label: 'Real device', allowShell: false });
+    const result = store.onboarding.begin({ peerId: 'nStableFirst', sshUser: 'momo', approvedRoot: '~/AgentDock', allowShell: false, idempotencyKey: 'discovery-test' });
+    store.onboarding.updateConnection(result.connection.id, { nodeId: node.nodeId });
+    const projected = await service.getStatus();
+    assert.equal(runs, 1, 'node status is projected live without re-running the Tailscale CLI');
+    assert.equal(projected.peers.find(p => p.id === 'nStableFirst')?.meshNodeId, node.nodeId);
+    assert.equal(projected.peers.find(p => p.id === 'nStableSecond')?.meshNodeId, undefined);
+    publicKey = 'nodekey:rotated'; name = 'renamed-mac';
+    store.revoke(node.nodeId);
+    const rotated = await service.getStatus(true);
+    assert.equal(rotated.peers.find(p => p.id === 'nStableFirst')?.meshNodeId, node.nodeId);
+    assert.equal(rotated.peers.find(p => p.id === 'nStableFirst')?.meshNodeStatus, 'revoked');
+  } finally { db.close(); }
 });
 
 test('TailscaleService implements 5-second TTL cache and in-flight deduplication', async () => {
@@ -220,52 +115,22 @@ test('TailscaleService implements 5-second TTL cache and in-flight deduplication
   assert.equal(concurrent2.available, true);
 });
 
-test('TailscaleService invalidates cache on bindNode and discards in-flight stale cache', async () => {
-  const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-race-'));
-  const db = new DatabaseSync(join(temp, 'mesh.db'));
-  const store = new MeshStore(db);
-
-  let runnerCallCount = 0;
-  let finishFirstRunner: () => void = () => {};
-  const mockTailscaleJson = JSON.stringify({
-    Self: { HostName: 'laptop', TailscaleIPs: ['100.1.2.3'], OS: 'macOS', Online: true },
-    Peer: {
-      'node-1': { HostName: 'worker', OS: 'linux', TailscaleIPs: ['100.1.2.4'], Online: true },
-    },
-  });
-
-  const runner = async () => {
-    runnerCallCount++;
-    if (runnerCallCount === 1) {
-      await new Promise<void>(resolve => {
-        finishFirstRunner = resolve;
-      });
-    }
-    return mockTailscaleJson;
-  };
-
-  const service = new TailscaleService(store, runner, 5000);
-
-  // 1. Start getStatus() while worker is NOT bound in store
-  const inflightPromise = service.getStatus();
-
-  // 2. While in-flight, bind the worker node
-  service.bindNode({
-    name: 'worker',
-    os: 'linux',
-    ips: ['100.1.2.4'],
-  });
-
-  // 3. Complete the in-flight runner
-  finishFirstRunner();
-  const inflightResult = await inflightPromise;
-  assert.equal(inflightResult.available, true);
-
-  // 4. Stale inflight result must NOT be cached because cacheVersion changed during execution.
-  // Next getStatus() call must execute runner again and reflect the bound node.
-  const freshStatus = await service.getStatus();
-  assert.equal(runnerCallCount, 2);
-  assert.equal(freshStatus.peers[0].meshNodeId, 'node:ts:worker');
+test('in-flight discovery projects the latest persisted connection when it resolves', async () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new MeshStore(db);
+    let finish: () => void = () => {};
+    const service = new TailscaleService(store, async () => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      return JSON.stringify({ Peer: { key: { ID: 'nWorker', HostName: 'worker', Online: true } } });
+    });
+    const pending = service.getStatus();
+    const node = store.createPairing({ label: 'worker' });
+    const result = store.onboarding.begin({ peerId: 'nWorker', sshUser: 'momo', approvedRoot: '~/AgentDock', allowShell: false, idempotencyKey: 'inflight' });
+    store.onboarding.updateConnection(result.connection.id, { nodeId: node.nodeId });
+    finish();
+    assert.equal((await pending).peers[0].meshNodeId, node.nodeId);
+  } finally { db.close(); }
 });
 
 test('TailscaleService strictly validates non-existent TAILSCALE_CMD', async () => {
@@ -289,7 +154,7 @@ test('TailscaleService strictly validates non-existent TAILSCALE_CMD', async () 
   }
 });
 
-test('MeshGateway enforces admin auth on /tailscale/* and dispatch to bound node fails with 409', async () => {
+test('MeshGateway protects onboarding and retires the synthetic bind endpoint', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'agentdock-tailscale-gw-'));
   const db = new DatabaseSync(join(temp, 'mesh.db'));
   const store = new MeshStore(db);
@@ -344,32 +209,19 @@ test('MeshGateway enforces admin auth on /tailscale/* and dispatch to bound node
     assert.equal(statusBody.data.available, true);
     assert.equal(statusBody.data.peers[0].name, 'gpu-server');
 
-    // 5. Authorized POST /api/local/v1/mesh/tailscale/bind returns 200 with status 'offline'
     const bindRes = await fetch(`${origin}/api/local/v1/mesh/tailscale/bind`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-admin-token' },
-      body: JSON.stringify({ name: 'gpu-server', os: 'linux', ips: ['100.100.100.2'] }),
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-admin-token' },
+      body: JSON.stringify({ name: 'gpu-server' }),
     });
-    assert.equal(bindRes.status, 200);
-    const bindBody = await bindRes.json() as { ok: boolean; data: MeshNode };
-    assert.equal(bindBody.ok, true);
-    assert.equal(bindBody.data.id, 'node:ts:gpu-server');
-    assert.equal(bindBody.data.platform, 'linux');
-    assert.equal(bindBody.data.status, 'offline');
-
-    // Verify it is listed in MeshStore
-    const storedNode = store.getNode('node:ts:gpu-server');
-    assert.ok(storedNode);
-    assert.equal(storedNode.status, 'offline');
-
-    // 6. Attempting to dispatch execution to this bound node throws 409 because no WebSocket session is connected
-    assert.throws(
-      () => gateway.dispatch({ nodeId: 'node:ts:gpu-server', capability: 'shell.exec', args: { command: 'echo hi' } }),
-      (err: unknown) => {
-        return err instanceof Error && (err as { status?: number }).status === 409 && /Device is offline/i.test(err.message);
-      },
-    );
+    assert.equal(bindRes.status, 410);
+    assert.equal(store.listNodes().length, 0);
+    const anonymousOnboard = await fetch(`${origin}/api/local/v1/mesh/tailscale/connections`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ peerId: 'peer-1' }),
+    });
+    assert.equal(anonymousOnboard.status, 401);
   } finally {
-    server.close();
+    await gateway.close();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    db.close();
   }
 });

@@ -1,4 +1,5 @@
 /** Mesh v1 separates device tool execution from ACP agent sessions. */
+export type { TailscaleConnectionInput, TailscaleConnectionStatus, TailscaleOperationStage, TailscaleConnection, TailscaleOperation, TailscaleConnectionResult, MeshBootstrapInput, MeshBootstrapInspection } from './mesh-onboarding.js';
 export const MESH_CAPABILITIES = ['filesystem.list', 'filesystem.read', 'filesystem.write', 'shell.exec'] as const;
 export type MeshCapability = typeof MESH_CAPABILITIES[number];
 export type MeshWriteArgs = { path: string; content: string; encoding?: 'utf8' | 'base64' };
@@ -12,6 +13,9 @@ export type MeshNode = {
   status: 'online' | 'offline' | 'revoked';
   lastSeenAt: string | null;
   createdAt: string;
+  /** Present only for nodes owned by the SSH onboarding coordinator. */
+  onboardingStatus?: import('./mesh-onboarding.js').TailscaleConnectionStatus;
+  onboardingDesiredState?: 'active' | 'stopped';
 };
 export type MeshPairingInput = { label: string; allowShell?: boolean };
 export type MeshPairing = { nodeId: string; pairingToken: string; expiresAt: string };
@@ -51,6 +55,9 @@ export type TailscalePeer = {
   isSelf?: boolean;
   meshNodeId?: string;
   meshNodeStatus?: 'online' | 'offline' | 'revoked';
+  stableIdentity?: boolean;
+  connectionId?: string;
+  connectionStatus?: import('./mesh-onboarding.js').TailscaleConnectionStatus;
 };
 
 export type TailscaleStatusResponse = {

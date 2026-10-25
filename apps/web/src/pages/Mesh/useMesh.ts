@@ -1,58 +1,47 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createMeshClient } from '@cc/core-sdk/mesh';
-import type { MeshNode, TailscaleBindInput, TailscaleStatusResponse } from '@cc/superai-contracts';
+import type { MeshNode, TailscaleStatusResponse } from '@cc/superai-contracts';
+import type { TailscaleConnection } from '@cc/superai-contracts/mesh-onboarding';
 
 export function useMesh() {
   const client = useMemo(() => createMeshClient(), []);
   const [nodes, setNodes] = useState<MeshNode[]>([]);
+  const [connections, setConnections] = useState<TailscaleConnection[]>([]);
   const [tailscale, setTailscale] = useState<TailscaleStatusResponse>({ available: false, peers: [] });
   const [refreshError, setRefreshError] = useState('');
   const [actionError, setActionError] = useState('');
   const [loading, setLoading] = useState(true);
-
   const refresh = useCallback(async () => {
     try {
-      const [devices, ts] = await Promise.all([
+      const [devices, ts, saved] = await Promise.all([
         client.listNodes(),
-        client.getTailscaleStatus().catch((err: unknown) => ({
-          available: false,
-          error: err instanceof Error ? err.message : String(err),
-          peers: [],
-        })),
+        client.getTailscaleStatus().catch((cause: unknown) => ({ available: false, error: cause instanceof Error ? cause.message : String(cause), peers: [] })),
+        client.listTailscaleConnections().catch(() => ({ connections: [] })),
       ]);
       setNodes(devices.nodes);
       setTailscale(ts);
+      setConnections(saved.connections);
       setRefreshError('');
-    } catch (cause) {
-      setRefreshError(cause instanceof Error ? cause.message : 'Unable to reach devices.');
-    } finally {
-      setLoading(false);
-    }
+    } catch (cause) { setRefreshError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLoading(false); }
   }, [client]);
 
-  const bindTailscale = useCallback(async (input: TailscaleBindInput) => {
+  const act = useCallback(async (connection: TailscaleConnection, action: 'disconnect' | 'revoke') => {
+    setActionError('');
     try {
-      setActionError('');
-      const node = await client.bindTailscaleNode(input);
+      if (action === 'disconnect') await client.disconnectTailscaleConnection(connection.id);
+      else if (connection.nodeId) await client.revokeNode(connection.nodeId);
       await refresh();
-      return node;
     } catch (cause) {
-      const msg = cause instanceof Error ? cause.message : 'Failed to bind Tailscale node.';
-      setActionError(msg);
+      setActionError(cause instanceof Error ? cause.message : String(cause));
       throw cause;
     }
   }, [client, refresh]);
 
   useEffect(() => {
-    setNodes([]);
-    setRefreshError('');
-    setActionError('');
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 3000);
     return () => window.clearInterval(timer);
   }, [refresh]);
-
-  const error = actionError || refreshError;
-
-  return { nodes, tailscale, bindTailscale, error, loading, refresh };
+  return { nodes, connections, tailscale, error: actionError || refreshError, loading, refresh, act };
 }

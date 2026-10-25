@@ -4,6 +4,7 @@ import { Bot, Cloud, FolderKanban, FolderOpen, Plug, Plus, QrCode, Save, Trash2 
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, EmptyState, Input, Modal, SectionCard, Select, StatusPill } from '@/components/ui';
 import { DirectoryPickerModal } from './DirectoryPickerModal';
+import { ExecutionDeviceSelector } from '../Mesh/ExecutionDeviceSelector';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
   DESKTOP_PLATFORM_TYPE_OPTIONS,
@@ -22,8 +23,6 @@ import {
   ProvidersSection,
   SandboxSection,
   StandardsSection,
-  ensureTailscaleNodeBound,
-  renderDeviceOptions,
   resolveDeviceLabel,
 } from './workspace-sections';
 import { WorkspaceMemorySection } from './WorkspaceMemorySection';
@@ -331,7 +330,6 @@ function ProjectDialogForm({
   onNodeBound,
 }: ProjectDialogFormProps) {
   const { t } = useTranslation();
-  const [bindError, setBindError] = useState<string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -348,31 +346,14 @@ function ProjectDialogForm({
       >
         {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
       </Select>
-      <div className="space-y-1">
-        <Select
-          label="Execution device"
-          value={dialog.deviceId || 'local'}
-          onChange={async (event) => {
-            const val = event.target.value;
-            setBindError(null);
-            try {
-              await ensureTailscaleNodeBound(val, tailscalePeers, onNodeBound);
-              updateDialog({ deviceId: val });
-            } catch (err) {
-              setBindError(err instanceof Error ? err.message : 'Failed to bind Tailscale node.');
-            }
-          }}
-        >
-          <option value="local">本机 (Local)</option>
-          {renderDeviceOptions(meshNodes, tailscalePeers)}
-        </Select>
-        {bindError && <p className="text-xs text-red-400">{bindError}</p>}
-        {tailscaleError === 'auth_required' && (
-          <p className="text-xs text-muted-foreground">
-            {t('mesh.workspaceAuthHint', 'Tailscale device discovery requires configuring the Mesh admin token on the Device Mesh page.')}
-          </p>
-        )}
-      </div>
+      <ExecutionDeviceSelector
+        selectedDevice={dialog.deviceId || 'local'}
+        meshNodes={meshNodes}
+        tailscalePeers={tailscalePeers}
+        tailscaleError={tailscaleError}
+        onNodeBound={onNodeBound}
+        onDeviceChange={deviceId => updateDialog({ deviceId })}
+      />
       <div className="flex items-end gap-2">
         <div className="flex-1">
           <Input

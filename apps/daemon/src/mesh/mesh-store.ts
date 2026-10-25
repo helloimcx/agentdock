@@ -1,12 +1,14 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { MeshEnrollment, MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput } from '@cc/superai-contracts';
+import { TailscaleOnboardingStore } from './tailscale-onboarding-store.js';
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
 type NodeRow = { id: string; data: string; token_hash: string | null; pairing_hash: string | null; expires_at: string | null };
 
 /** Durable identity and execution history; credentials are stored only as hashes. */
 export class MeshStore {
+  readonly onboarding: TailscaleOnboardingStore;
   constructor(private readonly db: DatabaseSync) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS mesh_nodes (
@@ -16,6 +18,7 @@ export class MeshStore {
       CREATE TABLE IF NOT EXISTS mesh_executions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS mesh_executions_node ON mesh_executions(node_id);
     `);
+    this.onboarding = new TailscaleOnboardingStore(db);
   }
 
   createPairing(input: MeshPairingInput, now = Date.now()): MeshPairing {
@@ -32,12 +35,47 @@ export class MeshStore {
     return { nodeId: id, pairingToken, expiresAt };
   }
 
-  enroll(pairingToken: string, now = Date.now()): MeshEnrollment {
+  enroll(pairingToken: string, now = Date.now(), expectedNodeId?: string): MeshEnrollment {
     const row = this.db.prepare('SELECT * FROM mesh_nodes WHERE pairing_hash = ?').get(digest(pairingToken)) as NodeRow | undefined;
     if (!row || !row.expires_at || row.expires_at <= new Date(now).toISOString()) throw new Error('Pairing token is invalid or expired.');
+    if (expectedNodeId && row.id !== expectedNodeId) throw new Error('Pairing token is not valid for this connection.');
     const token = randomBytes(32).toString('base64url');
     this.db.prepare('UPDATE mesh_nodes SET token_hash = ?, pairing_hash = NULL, expires_at = NULL WHERE id = ?').run(digest(token), row.id);
     return { nodeId: row.id, token };
+  }
+
+  enrollmentState(id: string): 'pending' | 'enrolled' | 'missing' {
+    const row = this.db.prepare('SELECT * FROM mesh_nodes WHERE id = ?').get(id) as NodeRow | undefined;
+    return row?.token_hash ? 'enrolled' : row?.pairing_hash ? 'pending' : 'missing';
+  }
+
+  /** Caller must stop the old session and explicitly authorize replacing any enrolled credential. */
+  renewPairing(id: string, input: MeshPairingInput): MeshPairing {
+    const node = this.getNode(id);
+    if (!node) throw new Error('Unknown device.');
+    const pairingToken = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    const allowedCapabilities: MeshNode['allowedCapabilities'] = ['filesystem.list', 'filesystem.read', 'filesystem.write'];
+    if (input.allowShell) allowedCapabilities.push('shell.exec');
+    const value = { ...node, label: input.label, status: 'offline', capabilities: [], allowedCapabilities };
+    this.db.prepare('UPDATE mesh_nodes SET data = ?, token_hash = NULL, pairing_hash = ?, expires_at = ? WHERE id = ?')
+      .run(JSON.stringify(value), digest(pairingToken), expiresAt, id);
+    return { nodeId: id, pairingToken, expiresAt };
+  }
+
+  setNodePolicy(id: string, allowShell: boolean) {
+    const node = this.getNode(id);
+    if (!node || node.status === 'revoked') throw new Error('Unknown or revoked device.');
+    const allowedCapabilities: MeshNode['allowedCapabilities'] = ['filesystem.list', 'filesystem.read', 'filesystem.write'];
+    if (allowShell) allowedCapabilities.push('shell.exec');
+    this.updateNode({ ...node, capabilities: [], allowedCapabilities, status: 'offline' });
+  }
+
+  invalidateEnrollment(id: string) {
+    const node = this.getNode(id);
+    if (!node || node.status === 'revoked') return;
+    this.db.prepare('UPDATE mesh_nodes SET token_hash = NULL, pairing_hash = NULL, expires_at = NULL WHERE id = ?').run(id);
+    this.updateNode({ ...node, status: 'offline', capabilities: [] });
   }
 
   authenticate(token: string): MeshNode | undefined {
@@ -46,7 +84,12 @@ export class MeshStore {
   }
 
   listNodes(): MeshNode[] {
-    return (this.db.prepare('SELECT data FROM mesh_nodes ORDER BY id').all() as { data: string }[]).map(row => JSON.parse(row.data));
+    const connections = this.onboarding.listConnections();
+    return (this.db.prepare('SELECT data FROM mesh_nodes ORDER BY id').all() as { data: string }[]).map(row => {
+      const node: MeshNode = JSON.parse(row.data);
+      const connection = connections.find(item => item.nodeId === node.id);
+      return connection ? { ...node, onboardingStatus: connection.status, onboardingDesiredState: connection.desiredState } : node;
+    });
   }
 
   getNode(id: string): MeshNode | undefined {

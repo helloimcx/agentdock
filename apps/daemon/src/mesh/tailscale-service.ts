@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { tailscaleNodeId, type MeshCapability, type MeshNode, type TailscaleBindInput, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
+import { type TailscaleBindInput, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
 import type { MeshStore } from './mesh-store.js';
 
 function resolveTailscaleBin(): string {
@@ -47,7 +47,8 @@ type RawTailscalePeer = {
 function parseSelfPeer(raw?: RawTailscalePeer): TailscalePeer | undefined {
   if (!raw) return undefined;
   return {
-    id: raw.PublicKey || raw.ID || 'self',
+    id: raw.ID || raw.PublicKey || 'self',
+    stableIdentity: Boolean(raw.ID),
     name: raw.HostName || 'self',
     dnsName: raw.DNSName || '',
     ips: raw.TailscaleIPs || [],
@@ -57,41 +58,27 @@ function parseSelfPeer(raw?: RawTailscalePeer): TailscalePeer | undefined {
   };
 }
 
-function parseRemotePeers(peerMap: Record<string, RawTailscalePeer> | undefined, meshNodes: MeshNode[]): TailscalePeer[] {
+function parseRemotePeers(peerMap: Record<string, RawTailscalePeer> | undefined): TailscalePeer[] {
   if (!peerMap) return [];
   const peers: TailscalePeer[] = [];
   for (const [key, p] of Object.entries(peerMap)) {
     const name = p.HostName || key;
-    const expectedId = tailscaleNodeId(name, p.DNSName);
-    const matchedMeshNode = meshNodes.find(n => n.id === expectedId);
 
     peers.push({
-      id: p.PublicKey || p.ID || key,
+      id: p.ID || p.PublicKey || key,
+      stableIdentity: Boolean(p.ID),
       name,
       dnsName: p.DNSName || '',
       ips: p.TailscaleIPs || [],
       os: p.OS || 'unknown',
       online: Boolean(p.Online),
       isSelf: false,
-      meshNodeId: matchedMeshNode?.id,
-      meshNodeStatus: matchedMeshNode?.status,
     });
   }
   return peers.sort((a, b) => {
     if (a.online !== b.online) return a.online ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
-}
-
-function resolveNodeLabel(rawName: string, os?: string, ips?: string[]): string {
-  const primaryIp = Array.isArray(ips) && ips.length > 0 ? ips[0] : undefined;
-  const ipSuffix = primaryIp ? ` · ${primaryIp}` : '';
-  return `${rawName} (${os || 'tailscale'}${ipSuffix})`;
-}
-
-function resolveCapabilities(allowShell: boolean): MeshCapability[] {
-  const base: MeshCapability[] = ['filesystem.list', 'filesystem.read', 'filesystem.write'];
-  return allowShell ? [...base, 'shell.exec'] : base;
 }
 
 export class TailscaleService {
@@ -108,10 +95,10 @@ export class TailscaleService {
   async getStatus(forceRefresh = false): Promise<TailscaleStatusResponse> {
     const now = Date.now();
     if (!forceRefresh && this.cachedStatus && this.cachedStatus.expiresAt > now) {
-      return this.cachedStatus.response;
+      return this.project(this.cachedStatus.response);
     }
     if (this.inflightStatus) {
-      return this.inflightStatus;
+      return this.inflightStatus.then(response => this.project(response));
     }
     const currentVersion = this.cacheVersion;
     this.inflightStatus = this.fetchStatus()
@@ -124,7 +111,7 @@ export class TailscaleService {
       .finally(() => {
         this.inflightStatus = undefined;
       });
-    return this.inflightStatus;
+    return this.inflightStatus.then(response => this.project(response));
   }
 
   private async fetchStatus(): Promise<TailscaleStatusResponse> {
@@ -134,9 +121,8 @@ export class TailscaleService {
         Self?: RawTailscalePeer;
         Peer?: Record<string, RawTailscalePeer>;
       };
-      const meshNodes = this.store.listNodes();
       const self = parseSelfPeer(data.Self);
-      const peers = parseRemotePeers(data.Peer, meshNodes);
+      const peers = parseRemotePeers(data.Peer);
 
       return { available: true, self, peers };
     } catch (cause) {
@@ -148,35 +134,17 @@ export class TailscaleService {
     }
   }
 
-  bindNode(input: TailscaleBindInput): MeshNode {
-    const rawName = input.name.trim();
-    if (!rawName) throw new Error('Device name is required for binding.');
-    const id = tailscaleNodeId(rawName, input.dnsName);
+  private project(response: TailscaleStatusResponse): TailscaleStatusResponse {
+    return { ...response, peers: response.peers.map(peer => {
+      const connection = peer.stableIdentity ? this.store.onboarding.forPeer(peer.id) : undefined;
+      const node = connection?.nodeId ? this.store.getNode(connection.nodeId) : undefined;
+      return { ...peer, meshNodeId: node?.id, meshNodeStatus: node?.status, connectionId: connection?.id,
+        connectionStatus: connection?.status === 'ready' && node?.status !== 'online' ? 'offline' : connection?.status };
+    }) };
+  }
 
-    const existing = this.store.getNode(id);
-    if (existing?.status === 'revoked') {
-      throw new Error(`Device ${id} is revoked. Revoked devices cannot be rebound via Tailscale discovery.`);
-    }
-    const allowShell = input.allowShell !== false;
-    const now = new Date().toISOString();
-    const caps = resolveCapabilities(allowShell);
-    const platform = input.os || existing?.platform;
-
-    const node: MeshNode = {
-      id,
-      label: resolveNodeLabel(rawName, platform, input.ips),
-      platform: platform || 'unknown',
-      capabilities: caps,
-      allowedCapabilities: caps,
-      status: 'offline',
-      lastSeenAt: existing?.lastSeenAt ?? null,
-      createdAt: existing?.createdAt || now,
-    };
-
-    this.store.upsertNode(node);
-    this.cacheVersion++;
-    this.cachedStatus = undefined;
-    return node;
+  /** Kept as a clear migration error for callers of the pre-enrollment inventory API. */
+  bindNode(_input: TailscaleBindInput): never {
+    throw new Error('Inventory-only binding is retired. Use secure SSH device onboarding.');
   }
 }
-

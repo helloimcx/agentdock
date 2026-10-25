@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Input, PageHeader } from '@/components/ui';
-import { tailscaleNodeId, type MeshNode, type TailscalePeer, type TailscaleStatusResponse } from '@cc/superai-contracts';
+import { Button, Card, Input, Modal, PageHeader } from '@/components/ui';
+import type { MeshNode, TailscalePeer } from '@cc/superai-contracts';
+import type { TailscaleConnection } from '@cc/superai-contracts/mesh-onboarding';
+import { OnboardingDialog } from './OnboardingDialog';
 import { useMesh } from './useMesh';
 
 function AdminTokenCard({ onTokenChange }: { onTokenChange: () => void }) {
@@ -78,210 +80,98 @@ function AdminTokenCard({ onTokenChange }: { onTokenChange: () => void }) {
 
 function PairedNodesCard({ nodes, loading }: { nodes: MeshNode[]; loading: boolean }) {
   const { t } = useTranslation();
-  return (
-    <Card className="space-y-3 p-4">
-      {loading && <p className="text-muted-foreground">{t('common.loading')}</p>}
-      {!loading && nodes.length === 0 && (
-        <p className="text-muted-foreground">{t('mesh.noDevices')}</p>
-      )}
-      {nodes.map(node => (
-        <div key={node.id} className="space-y-1 border-b border-border pb-3 last:border-0 last:pb-0">
-          <p className="font-medium">
-            {node.label} · <span className={node.status === 'online' ? 'text-emerald-400' : 'text-muted-foreground'}>{t(`mesh.nodeStatus.${node.status}`)}</span>
-          </p>
-          <p className="text-xs text-muted-foreground">{node.platform} · {node.id}</p>
-          <p className="text-sm text-muted-foreground">{node.capabilities.join(', ')}</p>
-        </div>
-      ))}
-    </Card>
-  );
+  return <Card className="space-y-3 p-4">
+    {loading && <p className="text-muted-foreground">{t('common.loading')}</p>}
+    {!loading && !nodes.length && <p className="text-muted-foreground">{t('mesh.noDevices')}</p>}
+    {nodes.map(node => <div key={node.id} className="space-y-1 border-b border-border pb-3 last:border-0 last:pb-0">
+      <p className="font-medium">{node.label} · {t(`mesh.nodeStatus.${node.status}`)}</p>
+      <p className="text-xs text-muted-foreground">{node.platform} · {node.id}</p>
+      <p className="text-sm text-muted-foreground">{node.id.startsWith('node:ts:') ? t('mesh.onboarding.legacy') : t(node.capabilities.includes('shell.exec') ? 'mesh.onboarding.shellCapabilities' : 'mesh.onboarding.fileCapabilities')}</p>
+    </div>)}
+  </Card>;
 }
 
-function isPeerBound(peer: TailscalePeer, nodes: MeshNode[]) {
-  if (peer.meshNodeStatus === 'revoked') return false;
-  const targetId = peer.meshNodeId || tailscaleNodeId(peer.name, peer.dnsName);
-  return nodes.some(n => n.id === targetId && n.status !== 'revoked');
-}
-
-function isPeerRevoked(peer: TailscalePeer, nodes: MeshNode[]) {
-  if (peer.meshNodeStatus === 'revoked') return true;
-  const targetId = peer.meshNodeId || tailscaleNodeId(peer.name, peer.dnsName);
-  return nodes.some(n => n.id === targetId && n.status === 'revoked');
-}
-
-type TailscalePeerRowProps = {
-  peer: TailscalePeer;
-  nodes: MeshNode[];
-  isBusy: boolean;
-  onBindPeer: (peer: TailscalePeer) => void;
-};
-
-function TailscalePeerRow({ peer, nodes, isBusy, onBindPeer }: TailscalePeerRowProps) {
+function ConnectionActions({ connection, onAction }: { connection: TailscaleConnection; onAction: (kind: 'disconnect' | 'revoke') => void }) {
   const { t } = useTranslation();
-  const isRevoked = isPeerRevoked(peer, nodes);
-  const bound = isPeerBound(peer, nodes);
+  if (connection.status === 'revoked') return null;
+  return <>
+    {connection.desiredState === 'active' && <Button size="sm" variant="secondary" onClick={() => onAction('disconnect')}>{t('mesh.onboarding.disconnect')}</Button>}
+    {connection.nodeId && <Button size="sm" variant="danger" onClick={() => onAction('revoke')}>{t('mesh.onboarding.revoke')}</Button>}
+  </>;
+}
 
-  return (
-    <div className="flex items-center justify-between py-2.5 text-sm">
-      <div className="space-y-0.5">
-        <p className="font-medium">
-          {peer.name}{' '}
-          <span className="text-xs text-muted-foreground">({peer.os})</span>
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {peer.ips[0] || peer.dnsName || 'No IP'}{' '}
-          <span className={peer.online ? 'text-emerald-400' : 'text-zinc-500'}>
-            · {peer.online ? t('mesh.nodeStatus.online') : t('mesh.nodeStatus.offline')}
-          </span>
-        </p>
-      </div>
-      <div>
-        {isRevoked ? (
-          <span className="rounded bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400">
-            {t('mesh.nodeStatus.revoked')}
-          </span>
-        ) : bound ? (
-          <span className="rounded bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-            {t('mesh.bound', 'Bound')}
-          </span>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={isBusy}
-            onClick={() => onBindPeer(peer)}
-          >
-            {isBusy ? '...' : t('mesh.bindAsMeshNode', 'Bind as Mesh Node')}
-          </Button>
-        )}
-      </div>
+function MissingPeerRow({ connection, onAction }: { connection: TailscaleConnection; onAction: (kind: 'disconnect' | 'revoke') => void }) {
+  const { t } = useTranslation();
+  return <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+    <div><p>{connection.peerId} · {t(`mesh.onboarding.connectionStatus.${connection.status}`)}</p><p className="text-xs text-muted-foreground">{t('mesh.onboarding.missingPeer')}</p></div>
+    <div className="flex gap-2"><ConnectionActions connection={connection} onAction={onAction} /></div>
+  </div>;
+}
+
+function PeerRow({ peer, connection, onOpen, onAction }: { peer: TailscalePeer; connection?: TailscaleConnection; onOpen: () => void; onAction: (kind: 'disconnect' | 'revoke') => void }) {
+  const { t } = useTranslation();
+  const supported = /^(macos|darwin|linux)$/i.test(peer.os);
+  return <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+    <div className="space-y-1">
+      <p className="font-medium">{peer.name} <span className="text-xs text-muted-foreground">({peer.os})</span></p>
+      <p className="text-xs text-muted-foreground">{peer.ips[0] || peer.dnsName} · {t(peer.online ? 'mesh.nodeStatus.online' : 'mesh.nodeStatus.offline')}</p>
+      <p className="text-xs text-muted-foreground">{connection ? t(`mesh.onboarding.connectionStatus.${connection.status}`) : t('mesh.onboarding.notConnected')}</p>
+      {connection && <p className="text-xs text-muted-foreground">{t(connection.allowShell ? 'mesh.onboarding.shellCapabilities' : 'mesh.onboarding.fileCapabilities')}</p>}
+      {peer.stableIdentity !== true && <p className="text-xs text-amber-500">{t('mesh.onboarding.noStableId')}</p>}
+      {!supported && <p className="text-xs text-muted-foreground">{t('mesh.onboarding.unsupported')}</p>}
     </div>
-  );
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" disabled={!peer.online || peer.stableIdentity !== true || !supported} onClick={onOpen}>{t(connection ? 'mesh.onboarding.settings' : 'mesh.onboarding.start')}</Button>
+      {connection && <ConnectionActions connection={connection} onAction={onAction} />}
+    </div>
+  </div>;
 }
 
-function TailscalePeersCard({
-  tailscale,
-  nodes,
-  bindingId,
-  onBindPeer,
-}: {
-  tailscale: TailscaleStatusResponse;
-  nodes: MeshNode[];
-  bindingId: string | null;
-  onBindPeer: (peer: TailscalePeer) => void;
-}) {
+function DiscoveryError({ authRequired, error }: { authRequired: boolean; error?: string }) {
   const { t } = useTranslation();
-
-  if (!tailscale.available) {
-    const isAuthError = tailscale.error && /401|unauthorized|authentication/i.test(tailscale.error);
-    return (
-      <Card className="p-4">
-        <p className="text-sm text-amber-400">
-          {isAuthError
-            ? t('mesh.authRequired', 'Mesh administrator token is required to discover devices. Please configure the administrator token above.')
-            : (tailscale.error || t('mesh.tailscaleNotRunning', 'Tailscale is not running or CLI is not available.'))}
-        </p>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="space-y-4 p-4">
-      <p className="text-xs text-muted-foreground">
-        {t('mesh.tailscaleDescription', 'Devices automatically detected on your Tailnet private network. You can bind any online device as a Mesh node with one click.')}
-      </p>
-
-      <div className="space-y-3">
-        {tailscale.self && (
-          <div className="flex items-center justify-between rounded-md bg-muted/40 p-2.5 text-sm">
-            <div className="space-y-0.5">
-              <p className="font-medium">
-                {tailscale.self.name}{' '}
-                <span className="text-xs text-muted-foreground">
-                  ({t('mesh.tailscaleSelf', 'Local Node')}) · {tailscale.self.os}
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">{tailscale.self.ips.join(', ')}</p>
-            </div>
-            <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
-              {t('mesh.nodeStatus.online')}
-            </span>
-          </div>
-        )}
-
-        {tailscale.peers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('mesh.tailscaleNoPeers', 'No other peer devices detected in the current Tailnet.')}</p>
-        ) : (
-          <div className="divide-y divide-border">
-            {tailscale.peers.map(peer => (
-              <TailscalePeerRow
-                key={peer.id}
-                peer={peer}
-                nodes={nodes}
-                isBusy={bindingId === peer.id}
-                onBindPeer={onBindPeer}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </Card>
-  );
+  return <>{authRequired ? t('mesh.authRequired') : error || t('mesh.tailscaleNotRunning')}</>;
 }
 
 export default function Devices() {
   const { t } = useTranslation();
-  const { nodes, tailscale, bindTailscale, error, loading, refresh } = useMesh();
-  const [bindingId, setBindingId] = useState<string | null>(null);
-
-  const handleBindPeer = async (peer: TailscalePeer) => {
-    setBindingId(peer.id);
-    try {
-      await bindTailscale({
-        name: peer.name,
-        dnsName: peer.dnsName,
-        ips: peer.ips,
-        os: peer.os,
-        allowShell: true,
-      });
-    } catch {
-      // Error is caught and surfaced via error in useMesh
-    } finally {
-      setBindingId(null);
-    }
+  const { nodes, connections, tailscale, error, loading, refresh, act } = useMesh();
+  const [selected, setSelected] = useState<TailscalePeer | null>(null);
+  const [action, setAction] = useState<{ connection: TailscaleConnection; kind: 'disconnect' | 'revoke' } | null>(null);
+  const [pending, setPending] = useState(false);
+  const confirmAction = async () => {
+    if (!action) return;
+    setPending(true);
+    try { await act(action.connection, action.kind); setAction(null); }
+    catch { /* useMesh retains action errors across polling. */ }
+    finally { setPending(false); }
   };
-
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <PageHeader title={t('mesh.title')} description={t('mesh.description')} />
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={() => { void refresh(); }}>
-          {t('mesh.refresh')}
-        </Button>
-      </div>
-
-      <AdminTokenCard onTokenChange={() => { void refresh(); }} />
-
+  const discoveryError = tailscale.available ? '' : tailscale.error;
+  const authError = /401|unauthorized|authentication/i.test(discoveryError || '');
+  return <div className="space-y-6 animate-fade-in">
+    <PageHeader title={t('mesh.title')} description={t('mesh.description')} />
+    <Button variant="secondary" onClick={() => { void refresh(); }}>{t('mesh.refresh')}</Button>
+    <AdminTokenCard onTokenChange={() => { void refresh(); }} />
+    {error && <p role="alert" className="text-red-400">{error}</p>}
+    <section className="space-y-2"><h2 className="text-sm font-semibold">{t('mesh.meshNodes')}</h2><PairedNodesCard nodes={nodes} loading={loading} /></section>
+    <section className="space-y-2"><h2 className="text-sm font-semibold">{t('mesh.tailscaleTitle')}</h2>
+      <Card className="space-y-3 p-4">
+        <p className="text-xs text-muted-foreground">{t('mesh.onboarding.description')}</p>
+        {!tailscale.available ? <p className="text-sm text-amber-500"><DiscoveryError authRequired={authError} error={discoveryError} /></p> : <>
+          {tailscale.self && <p className="rounded bg-muted p-3 text-sm">{tailscale.self.name} · {t('mesh.tailscaleSelf')} · {tailscale.self.ips.join(', ')}</p>}
+          {!tailscale.peers.length && <p className="text-muted-foreground">{t('mesh.tailscaleNoPeers')}</p>}
+          <div className="divide-y divide-border">{tailscale.peers.map(peer => {
+            const connection = connections.find(item => item.peerId === peer.id);
+            return <PeerRow key={peer.id} peer={peer} connection={connection} onOpen={() => setSelected(peer)} onAction={kind => { if (connection) setAction({ connection, kind }); }} />;
+          })}</div>
+        </>}
+      </Card>
+    </section>
+    {connections.filter(item => !tailscale.peers.some(peer => peer.id === item.peerId)).map(connection => <MissingPeerRow key={connection.id} connection={connection} onAction={kind => setAction({ connection, kind })} />)}
+    {selected && <OnboardingDialog key={selected.id} peer={selected} connection={connections.find(item => item.peerId === selected.id)} onClose={() => { setSelected(null); void refresh(); }} />}
+    <Modal open={Boolean(action)} onClose={() => { if (!pending) setAction(null); }} title={t(action?.kind === 'revoke' ? 'mesh.onboarding.revoke' : 'mesh.onboarding.disconnect')}>
+      <p className="text-sm">{t(action?.kind === 'revoke' ? 'mesh.onboarding.revokeWarning' : 'mesh.onboarding.disconnectWarning')}</p>
       {error && <p role="alert" className="text-red-400">{error}</p>}
-
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('mesh.meshNodes', 'Paired Mesh Nodes')}
-        </h2>
-        <PairedNodesCard nodes={nodes} loading={loading} />
-      </div>
-
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('mesh.tailscaleTitle', 'Tailscale Network Discovery')}
-        </h2>
-        <TailscalePeersCard
-          tailscale={tailscale}
-          nodes={nodes}
-          bindingId={bindingId}
-          onBindPeer={(peer) => { void handleBindPeer(peer); }}
-        />
-      </div>
-    </div>
-  );
+      <div className="flex justify-end gap-2"><Button variant="secondary" disabled={pending} onClick={() => setAction(null)}>{t('common.cancel')}</Button><Button variant={action?.kind === 'revoke' ? 'danger' : 'primary'} loading={pending} onClick={() => { void confirmAction(); }}>{t('common.confirm')}</Button></div>
+    </Modal>
+  </div>;
 }

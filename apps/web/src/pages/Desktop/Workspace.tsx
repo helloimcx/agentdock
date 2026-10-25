@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { executionTargetAllowed, firstInvalidExecutionTarget } from '../Mesh/onboarding-model';
 import { Plus, Save } from 'lucide-react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select } from '@/components/ui';
 import {
@@ -110,6 +112,7 @@ function applyDeploymentProfileUpdate(
 }
 
 export default function DesktopWorkspace() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProject = searchParams.get('project') || '';
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
@@ -129,7 +132,15 @@ export default function DesktopWorkspace() {
   const [tailscaleError, setTailscaleError] = useState<string | null>(null);
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
 
+  const refreshMeshNodes = useCallback(async () => {
+    const response = await listMeshNodes();
+    const freshNodes = response?.nodes || [];
+    setMeshNodes(freshNodes);
+    return freshNodes;
+  }, []);
+
   const handleNodeBound = useCallback((node: MeshNode) => {
+    setTailscalePeers(prev => prev.map(peer => peer.meshNodeId === node.id ? { ...peer, connectionStatus: 'ready', meshNodeStatus: node.status } : peer));
     setMeshNodes((prev) => {
       const exists = prev.some((n) => n.id === node.id);
       return exists ? prev.map((n) => (n.id === node.id ? node : n)) : [...prev, node];
@@ -243,6 +254,10 @@ export default function DesktopWorkspace() {
       setNotice({ tone: 'warning', message: `Project "${name}" already exists.` });
       return;
     }
+    if (!executionTargetAllowed(projectDialog.deviceId || 'local', meshNodes, 'local', tailscalePeers)) {
+      setNotice({ tone: 'warning', message: t('mesh.onboarding.invalidTarget') });
+      return;
+    }
     const nextProject = createNewProjectConfig(projectDialog);
     const nextIndex = projects.length;
     setConfigDraft((current) => {
@@ -321,6 +336,8 @@ export default function DesktopWorkspace() {
       platforms[platformDialog.index] = nextPlatform;
     }
     nextProjects[selectedIndex] = normalizeProject({ ...project, platforms });
+    const freshNodes = await refreshMeshNodes();
+    if (firstInvalidExecutionTarget(nextConfig, persistedConfig, freshNodes, tailscalePeers)) throw new Error(t('mesh.onboarding.invalidTarget'));
     const saved = await saveRuntimeConfig(nextConfig);
     const savedConfig = clone(saved.config || nextConfig);
     setPersistedConfig(savedConfig);
@@ -382,6 +399,8 @@ export default function DesktopWorkspace() {
     if (!configDraft) return;
     setPending('config');
     try {
+      const freshNodes = await refreshMeshNodes();
+      if (firstInvalidExecutionTarget(configDraft, persistedConfig, freshNodes, tailscalePeers)) throw new Error(t('mesh.onboarding.invalidTarget'));
       const saved = await saveRuntimeConfig(configDraft);
       setPersistedConfig(clone(saved.config || configDraft));
       setConfigDraft(clone(saved.config || configDraft));

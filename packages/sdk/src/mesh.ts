@@ -9,6 +9,7 @@ import {
   type TailscaleBindInput,
   type TailscaleStatusResponse,
 } from '@cc/superai-contracts';
+import type { TailscaleConnection, TailscaleConnectionInput, TailscaleConnectionResult } from '@cc/superai-contracts/mesh-onboarding';
 import { LOCAL_AI_CORE_BASE } from './client.js';
 
 export { sanitizeTailscaleName, tailscaleNodeId };
@@ -48,6 +49,12 @@ export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, f
     getRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}`),
     cancelRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}/cancel`, 'POST'),
     getTailscaleStatus: () => request<TailscaleStatusResponse>('/tailscale/status'),
+    createTailscaleConnection: (input: TailscaleConnectionInput) => request<TailscaleConnectionResult>('/tailscale/connections', 'POST', input),
+    listTailscaleConnections: () => request<{ connections: TailscaleConnection[] }>('/tailscale/connections'),
+    getTailscaleOperation: (id: string) => request<TailscaleConnectionResult>(`/tailscale/operations/${encodeURIComponent(id)}`),
+    cancelTailscaleOperation: (id: string) => request<TailscaleConnectionResult>(`/tailscale/operations/${encodeURIComponent(id)}/cancel`, 'POST'),
+    disconnectTailscaleConnection: (id: string) => request<TailscaleConnectionResult>(`/tailscale/connections/${encodeURIComponent(id)}/disconnect`, 'POST'),
+    reauthorizeTailscaleConnection: (id: string, input: Omit<TailscaleConnectionInput, 'peerId'>) => request<TailscaleConnectionResult>(`/tailscale/connections/${encodeURIComponent(id)}/reauthorize`, 'POST', input),
     bindTailscaleNode: (input: TailscaleBindInput) => request<MeshNode>('/tailscale/bind', 'POST', input),
   };
 }

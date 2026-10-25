@@ -26,5 +26,13 @@
     "@agentdock/daemon",
     "@agentdock/desktop",
     "@agentdock/web"
-  ]
+  ],
+  "workspaces": {
+    "apps/daemon": {
+      "entry": [
+        "src/index.ts",
+        "src/mesh/bootstrap-runtime.ts"
+      ]
+    }
+  }
 }
