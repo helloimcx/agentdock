@@ -28,8 +28,9 @@
 
 - [PASS] `pnpm typecheck`; renderer, Electron/runtime, and Node 22 bootstrap bundle builds.
 - [PASS] On implementation base `486473e`, complete Node suite: 1,160 passed, 1 skipped; BDD: 80 scenarios and 286 steps passed; `pnpm coverage`: 75.6% statements/lines, 74.02% branches, 82.38% functions.
-- [PASS] On implementation base `486473e`, `pnpm run lint:gates`: all configured structural gates passed (dead symbols 172, function length 45, ESLint complexity 108).
+- [PASS] After integrating latest main `34db120`, `pnpm run lint:gates`: all configured structural gates passed (dead symbols 172, function length 45, ESLint complexity 108); GitHub Typecheck also passed.
 - [PASS] `pnpm lint:arch`: 12 architecture specifications passed, including all three source-backed Tailscale sequences.
 - [PASS] All three Archify sequences passed validate, deliver, strict provenance, and Chrome browser checks. Light/dark captures at 1440×900 and 2048×1320 were inspected.
 - [N/A] Provider compare: there was no previous Tailscale onboarding sequence source to compare.
 - [BLOCKED] Real two-device installation remains unverified. The isolated OpenSSH integration is opt-in and skipped in the default suite; the intended MacBook Pro was offline in the last environment check and its SSH host key has not been trusted by the controller. No unknown key was accepted and no remote installation was attempted.
+- Latest full GitHub CI rerun is pending after resolving the combined Knip workspace configuration; the first latest-main run exposed the duplicate workspace key.

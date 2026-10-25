@@ -2,46 +2,9 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["tests/**/*.test.ts", "tests/**/*.test.mjs", "scripts/*.mjs"]
-    },
-    "apps/desktop": {
-      "entry": ["src/main.ts", "src/preload.ts"]
-    },
-    "apps/web": {
-      "entry": ["src/main.tsx", "src/App.tsx", "src/**/*.test.ts"]
-    },
-    "apps/daemon": {
-      "entry": ["src/cli/lac.ts", "src/mesh/node-cli.ts"]
-    },
-    "packages/contracts": {
-      "entry": ["src/index.ts"]
-    },
-    "packages/sdk": {
-      "entry": ["src/index.ts"]
-    },
-    "packages/knowledge": {
-      "entry": ["src/index.ts", "test/**/*.test.ts"]
-    },
-    "packages/plugin-sdk": {
-      "entry": ["src/index.ts"]
-    }
-  },
-  "ignoreDependencies": [
-    "@cc/core-sdk",
-    "@cc/knowledge-api",
-    "@cc/plugin-sdk",
-    "@cc/superai-contracts",
-    "@agentdock/contracts",
-    "@agentdock/sdk",
-    "@agentdock/knowledge",
-    "@agentdock/plugin-sdk",
-    "@agentdock/daemon",
-    "@agentdock/desktop",
-    "@agentdock/web"
-  ],
-  "workspaces": {
-    ".": {
       "entry": [
+        "tests/**/*.test.ts",
+        "tests/**/*.test.mjs",
         "apps/desktop/src/main.ts",
         "apps/desktop/src/preload.ts",
         "apps/web/src/main.tsx",
@@ -56,12 +19,59 @@
         "scripts/*.ts"
       ]
     },
+    "apps/desktop": {
+      "entry": [
+        "src/main.ts",
+        "src/preload.ts"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "src/main.tsx",
+        "src/App.tsx",
+        "src/**/*.test.ts"
+      ]
+    },
     "apps/daemon": {
       "entry": [
         "src/cli/lac.ts",
         "src/mesh/node-cli.ts",
         "src/mesh/bootstrap-runtime.ts"
       ]
+    },
+    "packages/contracts": {
+      "entry": [
+        "src/index.ts"
+      ]
+    },
+    "packages/sdk": {
+      "entry": [
+        "src/index.ts"
+      ]
+    },
+    "packages/knowledge": {
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
+    },
+    "packages/plugin-sdk": {
+      "entry": [
+        "src/index.ts"
+      ]
     }
-  }
+  },
+  "ignoreDependencies": [
+    "@cc/core-sdk",
+    "@cc/knowledge-api",
+    "@cc/plugin-sdk",
+    "@cc/superai-contracts",
+    "@agentdock/contracts",
+    "@agentdock/sdk",
+    "@agentdock/knowledge",
+    "@agentdock/plugin-sdk",
+    "@agentdock/daemon",
+    "@agentdock/desktop",
+    "@agentdock/web"
+  ]
 }

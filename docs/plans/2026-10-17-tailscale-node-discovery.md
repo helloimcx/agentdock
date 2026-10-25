@@ -1,6 +1,6 @@
 # Tailscale 设备发现与一键接入实施计划
 
-Status: 已批准（2026-10-24）；实现与本地验证已完成；最新 main 集成后的 GitHub CI 待运行；真实目标主机验证为 [BLOCKED]。权威需求见同名 Spec。
+Status: 已批准（2026-10-24）；实现与本地验证已完成；最新 main 集成后的 Knip 配置已修复，GitHub CI 待重跑；真实目标主机验证为 [BLOCKED]。权威需求见同名 Spec。
 
 ## 基线与架构影响
 
@@ -117,6 +117,7 @@ sequenceDiagram
 - 权限：`allowShell` 默认为 false，UI 显式确认；服务端只在 Mesh enrollment、认证 WebSocket、已授权目录检查和获准时的无副作用命令验证全部完成后进入 `ready`。远端 Shell 仍以设备账户的操作系统权限运行，批准目录不构成沙箱。
 - [PASS] `pnpm typecheck`、renderer build、Electron/runtime bundle build；专项 Mesh onboarding、SSH transport、runtime/store 和 UI contract tests。
 - [PASS] 在 `486473e` 实现基线上，全仓 Node 测试：1,160 passed、1 skipped；BDD：80 scenarios、286 steps 全部通过；`pnpm coverage`：statements/lines 75.6%、branches 74.02%、functions 82.38%。
-- [PASS] 在 `486473e` 实现基线上，`pnpm run lint:gates` 全部通过：dead symbols 172、function length 45、ESLint complexity 108。当前三张 Archify 图通过 `pnpm lint:arch`、交付、严格来源和 Chrome 浏览器检查。
+- [PASS] 合入最新 main `34db120` 后，`pnpm run lint:gates` 全部通过：dead symbols 172、function length 45、ESLint complexity 108；`pnpm typecheck` 在对应 GitHub CI 的 Typecheck 步骤通过。当前三张 Archify 图通过 `pnpm lint:arch`、交付、严格来源和 Chrome 浏览器检查。
+- GitHub 最新 CI 首轮发现合并后的 Knip workspace 清单重复，导致 tooling test 失败与死符号基线升高；已合并为单一 workspace 清单，本地门禁恢复通过，修复提交后的 GitHub CI 待重跑。
 - [BLOCKED] 真实双机接入没有宣称通过：隔离 sshd 集成测试默认跳过；目标 MacBook Pro 当前未在线，且该控制端尚未建立对应 SSH 主机密钥信任。执行仍要求目标在线、端口 22/loopback remote forwarding 可用，并从控制端可信的 `known_hosts` 主机身份通过严格校验。
 - [N/A] 用 `ssh-keyscan` 自动接受主机密钥、`StrictHostKeyChecking=accept-new`、密码认证或绕过目标离线检查；这些路径违反已批准信任边界。
