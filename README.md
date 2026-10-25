@@ -76,6 +76,7 @@ flowchart LR
   - **投递与会话解耦 (Phase 1)**：Outbox 预检机制彻底移除对 `platform_thread_bindings` 交互会话绑定的硬约束，解决 `side-thread` 模式下定时任务执行线程与主会话线程不一致导致出件箱预检误判被丢弃的历史缺陷。
   - **状态可观测闭环与自愈 (Phase 2)**：出件箱投递失败精准沉淀到 `AutomationRun.deliveryError`，自动将 Automation 健康状态降级为 `degraded` 并在 UI 实时告警；`degraded` 状态保留 Cron 调度轮询以保障环境就绪后自愈，成功投递后自动恢复为 `healthy`。
   - **渠道流式终态收敛与长文本保护 (Phase 3)**：引入固定的 `previewHandle`，在定时任务执行结束时原地将卡片从启动状态 `⏳` 收敛为终态 `✅` / `❌`；飞书网关接入智能 Markdown 分段器（支持代码围栏自动补闭合与重开），彻底避免卡片截断或长文超限丢弃。
+- **验证流程提速**：普通低风险改动可按影响范围执行相关测试；高风险变更和 PR CI 保留完整验证。`pnpm verify` 复用一次构建与测试，覆盖率和完整测试共用测试清单；`pnpm test:compiled` 可在当前源码已构建后快速重跑 Node 测试。
 
 ### 2026-10-18
 
@@ -525,11 +526,17 @@ xattr -cr /Applications/AgentDock.app
 | `pnpm start:daemon` | 运行已构建的 AgentDock Daemon（兼容 `pnpm start:core`） |
 | `pnpm start:prod` | 运行已构建的 Electron 应用 |
 | `pnpm e2e:smoke` | E2E 冒烟测试 |
-| `pnpm test` | 运行完整测试套件（单测 + 契约 + 集成 + BDD） |
+| `pnpm test` | 类型检查、构建一次，并运行 Node 测试及 BDD |
+| `pnpm test:ci` | 构建一次，运行完整 Node 测试与覆盖率，再运行 BDD |
+| `pnpm test:compiled` | 不重建，运行已编译 Node 测试；须确认产物对应当前源码 |
+| `pnpm test:tooling` | 验证测试发现、构建流程和命令编排 |
 | `pnpm test:bdd` | 运行 Gherkin 行为测试（`tests/bdd/`） |
 | `pnpm lint:complexity` | 圈复杂度报告（信息性，不阻断 CI） |
 | `pnpm lint:circular` | 循环依赖报告（强连通分量，信息性，不阻断 CI） |
 | `pnpm lint:duplicate` | 重复代码率报告（copy/paste，信息性，不阻断 CI） |
+| `pnpm verify` | 完整类型、静态、架构、覆盖率及 BDD 检查，每个阶段只运行一次 |
+
+日常低风险改动按影响范围运行测试和适用检查；公共协议、持久化/迁移、安全/权限、并发、依赖、构建/测试/CI 基础设施、核心架构或影响不明确时运行 `pnpm verify`。PR CI 执行完整检查。CI workflow 的定义不代表远端分支保护一定已将检查设为合并必需项。`pnpm lint:arch` 本地需设置 `ARCHIFY_BIN` 指向 Archify CLI；CI 使用固定版本。
 
 ## 环境变量
 

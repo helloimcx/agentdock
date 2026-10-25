@@ -34,6 +34,19 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Fetch pinned Archify validator
+        run: |
+          mkdir -p .tools/archify
+          git -C .tools/archify init
+          git -C .tools/archify remote add origin https://github.com/tt-a1i/archify.git
+          git -C .tools/archify fetch --depth=1 origin 25cf37080fc8b1dbe758a4efc3935b55f3327083
+          git -C .tools/archify checkout --detach FETCH_HEAD
+          test "$(git -C .tools/archify rev-parse HEAD)" = 25cf37080fc8b1dbe758a4efc3935b55f3327083
+
+      - name: Install Archify validator dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: ./.tools/archify/archify
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -44,6 +57,11 @@ jobs:
         run: pnpm lint:gates
         env:
           GITHUB_BEFORE_SHA: ${{ github.event.before }}
+
+      - name: Architecture specifications
+        run: pnpm lint:arch
+        env:
+          ARCHIFY_BIN: ${{ github.workspace }}/.tools/archify/archify/bin/archify.mjs
 
   test:
     name: Test
@@ -66,29 +84,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests (unit + contracts + integration + BDD)
-        run: pnpm test
+      - name: Run tests and coverage (unit + contracts + integration + BDD)
+        run: pnpm test:ci
 
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    needs: test
+    if: always()
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
-        with:
-          version: 10.33.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run coverage (check-coverage thresholds in .c8rc.json)
-        run: pnpm coverage
+      - name: Require the test and coverage run to pass
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::Test and coverage failed or were cancelled (Test result: $TEST_RESULT)."
+            exit 1
+          fi
+          echo "Test and coverage passed."

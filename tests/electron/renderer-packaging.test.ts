@@ -27,15 +27,20 @@ test('release validation scripts keep local and candidate gates intact', () => {
     scripts?: Record<string, string>;
   };
   const testScript = packageJson.scripts?.test || '';
+  const testCiScript = packageJson.scripts?.['test:ci'] || '';
   const smokeScript = packageJson.scripts?.['e2e:smoke'] || '';
+  const testSuite = readFileSync(join(rootDir, 'scripts', 'test-suite.mjs'), 'utf8');
+  const testFiles = readFileSync(join(rootDir, 'scripts', 'test-files.mjs'), 'utf8');
 
-  assert.match(testScript, /\bpnpm build:renderer\b/, 'pnpm test must build renderer assets');
-  assert.match(testScript, /\bpnpm build:electron\b/, 'pnpm test must compile Electron and Local AI Core tests');
-  assert.match(testScript, /\bnode --test\b/, 'pnpm test must run the Node test suite');
-  assert.match(testScript, /dist-electron\/tests\/electron\/\*\.test\.js/, 'pnpm test must include Electron tests');
-  assert.match(testScript, /dist-electron\/tests\/contracts\/\*\.test\.js/, 'pnpm test must include contract tests');
-  assert.match(testScript, /dist-electron\/tests\/integration\/\*\.test\.js/, 'pnpm test must include integration tests');
-  assert.match(testScript, /dist-electron\/packages\/(?:knowledge|knowledge-api)\/test\/\*\.test\.js/, 'pnpm test must include package tests');
+  assert.match(testScript, /scripts\/test-suite\.mjs test/, 'pnpm test must use the shared suite runner');
+  assert.match(testCiScript, /scripts\/test-suite\.mjs ci/, 'CI must use the shared suite runner');
+  assert.match(testSuite, /run\(\['build:renderer'\]\)/, 'full suites must build renderer assets');
+  assert.match(testSuite, /buildElectron\(\{ coverage: mode !== 'test' \}\)/, 'full suites must compile backend tests');
+  assert.match(testSuite, /\['exec', 'node', '--test', \.\.\.files\]/, 'local tests must run the shared Node test set');
+  assert.match(testSuite, /\['exec', 'c8', 'node', '--test', \.\.\.files\]/, 'CI tests must run the same set under coverage');
+  for (const directory of ['tests/electron', 'tests/contracts', 'tests/integration', 'packages/knowledge/test']) {
+    assert.ok(testFiles.includes(`dist-electron/${directory}`), `${directory} must be covered by shared discovery`);
+  }
 
   const buildIndex = smokeScript.indexOf('pnpm build');
   const smokeIndex = smokeScript.indexOf('node scripts/e2e-smoke.mjs');
