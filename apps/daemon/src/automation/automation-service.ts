@@ -508,7 +508,14 @@ export class AutomationService {
         const automation = due[index];
         index += 1;
         if (!automation) return;
-        await this.checkAutomation(automation);
+        // One automation's store fault (e.g. its rows were cascade-deleted
+        // mid-execution) must not reject the shared due loop and degrade
+        // every other automation until restart.
+        try {
+          await this.checkAutomation(automation);
+        } catch (error) {
+          this.options.log?.(normalizeAutomationError(error, `automation check failed ${automation.id}: `));
+        }
       }
     };
     const workerCount = Math.min(due.length, this.options.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
@@ -874,7 +881,8 @@ export class AutomationService {
     };
     try {
       return this.options.store.updateAutomationRun(run.id, failure);
-    } catch {
+    } catch (error) {
+      this.options.log?.(normalizeAutomationError(error, `automation run ${run.id} status update lost: `));
       return { ...run, ...failure };
     }
   }

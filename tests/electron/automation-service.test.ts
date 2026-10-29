@@ -1131,3 +1131,28 @@ test('deleting an automation mid-execution fails that action without failing the
     context.close();
   }
 });
+
+test('one automation failing its check does not stop other due automations in the same tick', async () => {
+  const context = fixture();
+  try {
+    const broken = context.store.createAutomation(input({ title: 'Broken automation' }));
+    const healthy = context.store.createAutomation(input({ title: 'Healthy automation' }));
+    context.store.updateAutomationState(broken.id, { nextCheckAt: NOW.toISOString() });
+    context.store.updateAutomationState(healthy.id, { nextCheckAt: NOW.toISOString() });
+    const originalCheck = (context.service as unknown as {
+      checkAutomation(automation: AutomationDefinition): Promise<AutomationEvaluation>;
+    }).checkAutomation.bind(context.service);
+    (context.service as unknown as Record<string, unknown>).checkAutomation = (automation: AutomationDefinition) =>
+      automation.id === broken.id ? Promise.reject(new Error('simulated store fault')) : originalCheck(automation);
+
+    await context.service.tick();
+
+    assert.equal(context.service.listRuns(healthy.id).length, 1);
+    assert.equal(context.service.listRuns(healthy.id)[0]?.status, 'succeeded');
+    context.store.updateAutomationState(healthy.id, { nextCheckAt: NOW.toISOString() });
+    await context.service.tick();
+    assert.equal(context.service.listRuns(healthy.id).length, 2);
+  } finally {
+    context.close();
+  }
+});
