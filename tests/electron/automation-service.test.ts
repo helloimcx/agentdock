@@ -1093,3 +1093,41 @@ test('fail-closed definition and provider health changes roll back atomically on
     assert.equal(context.service.get(automation.id)?.health, 'healthy');
   } finally { context.close(); }
 });
+
+test('deleting an automation mid-execution fails that action without failing the whole tick', async () => {
+  let victimId = '';
+  const context = fixture({
+    actionExecutor: {
+      async execute(value) {
+        context.actions.push(value);
+        // Mirrors production (2026-10-27): removing the owning automation cascades
+        // its run row away while the agent execution is still in flight.
+        if (value.automation.id === victimId) {
+          context.store.deleteAutomation(value.automation.id);
+          throw new Error('Agent run interrupted because the owning automation was removed');
+        }
+        return { threadId: 'thread-1', acpRunId: 'acp-run-1', deliveryStatus: 'succeeded' as const };
+      },
+    },
+  });
+  try {
+    const victim = context.store.createAutomation(input({ title: 'Victim automation' }));
+    const survivor = context.store.createAutomation(input({ title: 'Survivor automation' }));
+    victimId = victim.id;
+    context.store.updateAutomationState(victim.id, { nextCheckAt: NOW.toISOString() });
+    context.store.updateAutomationState(survivor.id, { nextCheckAt: NOW.toISOString() });
+
+    await context.service.tick();
+
+    assert.equal(context.service.get(victim.id), undefined);
+    assert.equal(context.service.listRuns(victim.id).length, 0);
+    assert.equal(context.service.listRuns(survivor.id).length, 1);
+    assert.equal(context.service.listRuns(survivor.id)[0]?.status, 'succeeded');
+    assert.equal(context.actions.length, 2);
+    context.store.updateAutomationState(survivor.id, { nextCheckAt: NOW.toISOString() });
+    await context.service.tick();
+    assert.equal(context.service.listRuns(survivor.id).length, 2);
+  } finally {
+    context.close();
+  }
+});

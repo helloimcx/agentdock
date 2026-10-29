@@ -854,16 +854,29 @@ export class AutomationService {
     } catch (error) {
       const message = normalizeAutomationError(error);
       await safelyCloseResultBridge(result, { status: 'failed', error: message });
-      run = this.options.store.updateAutomationRun(run.id, {
-        status: 'failed',
-        finishedAt: this.now().toISOString(),
-        deliveryStatus: 'failed',
-        error: message,
-      });
+      run = this.completeRunAfterFailure(run, message);
       this.options.log?.(normalizeAutomationError(run.error, `automation action failed ${automation.id}: `));
     }
     this.eventProjector.emitRun(run);
     return run;
+  }
+
+  // The owning automation can be removed while its agent run is still executing;
+  // the FK cascade then deletes the run row. Losing this bookkeeping update must
+  // not reject the tick, which would degrade every automation until restart
+  // (2026-10-27: one cascade-deleted run kept all monitor polls dead for days).
+  private completeRunAfterFailure(run: AutomationRun, message: string): AutomationRun {
+    const failure = {
+      status: 'failed' as const,
+      finishedAt: this.now().toISOString(),
+      deliveryStatus: 'failed' as const,
+      error: message,
+    };
+    try {
+      return this.options.store.updateAutomationRun(run.id, failure);
+    } catch {
+      return { ...run, ...failure };
+    }
   }
 
   private createEvaluation(automation: AutomationDefinition, now: Date): AutomationEvaluation {
