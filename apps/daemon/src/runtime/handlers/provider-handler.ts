@@ -91,11 +91,19 @@ export function registerProviderHandlers(
       const repointed = projects.map((project) => (
         projectProviderId(project) === providerId ? withProviderId(project, replacementProviderId) : project
       ));
-      // Persist the repoint before deleting: if the save fails, the old provider
-      // row survives and no workspace is left with a dangling reference.
+      // The repoint persists first (a failed save leaves the old provider row and
+      // the untouched config in place); a failed delete is compensated by
+      // restoring the captured config so workspaces keep referencing the old
+      // provider, keeping both failure directions observationally atomic.
       await controller.saveRuntimeConfig({ ...configState.config, projects: repointed });
+      try {
+        json(res, 200, store.deleteModelProvider(providerId));
+      } catch (error) {
+        await controller.saveRuntimeConfig(configState.config);
+        throw error;
+      }
+      return;
     }
     json(res, 200, store.deleteModelProvider(providerId));
   });
 }
-

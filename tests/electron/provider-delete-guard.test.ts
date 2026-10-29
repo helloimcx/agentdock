@@ -168,6 +168,31 @@ test('deletes the provider after repointing dependents to the replacement', asyn
   }
 });
 
+test('restores the config when the delete fails after the repoint was saved', async () => {
+  const harness = createHarness();
+  try {
+    const originalDelete = harness.store.deleteModelProvider.bind(harness.store);
+    harness.store.deleteModelProvider = () => {
+      throw new Error('simulated sqlite failure during provider delete');
+    };
+    const { error } = await harness.callDelete(TARGET_PROVIDER, {
+      replacement_provider_id: REPLACEMENT_PROVIDER,
+    });
+    harness.store.deleteModelProvider = originalDelete;
+    assert.match(String(error), /simulated sqlite failure/, 'the delete failure must surface to the caller');
+    assert.ok(harness.store.getModelProvider(TARGET_PROVIDER), 'old provider row must survive a failed delete');
+    assert.deepEqual(
+      dependentProviderIds(harness.store).filter((id) => id === TARGET_PROVIDER),
+      [TARGET_PROVIDER, TARGET_PROVIDER],
+      'both dependents must be repointed back to the original provider by the rollback',
+    );
+    assert.ok(harness.store.getModelProvider(REPLACEMENT_PROVIDER));
+    assert.equal(harness.calls.saveRuntimeConfig, 2, 'rollback must persist through a second controller save');
+  } finally {
+    harness.close();
+  }
+});
+
 test('rejects a replacement provider that does not exist', async () => {
   const harness = createHarness();
   try {
