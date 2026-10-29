@@ -2,28 +2,63 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["tests/**/*.test.ts", "tests/**/*.test.mjs", "scripts/*.mjs"]
+      "entry": [
+        "tests/**/*.test.ts",
+        "tests/**/*.test.mjs",
+        "apps/desktop/src/main.ts",
+        "apps/desktop/src/preload.ts",
+        "apps/web/src/main.tsx",
+        "apps/web/src/App.tsx",
+        "apps/daemon/src/cli/lac.ts",
+        "apps/daemon/src/mesh/node-cli.ts",
+        "packages/contracts/src/index.ts",
+        "packages/sdk/src/index.ts",
+        "packages/knowledge/src/index.ts",
+        "packages/plugin-sdk/src/index.ts",
+        "scripts/*.mjs",
+        "scripts/*.ts"
+      ]
     },
     "apps/desktop": {
-      "entry": ["src/main.ts", "src/preload.ts"]
+      "entry": [
+        "src/main.ts",
+        "src/preload.ts"
+      ]
     },
     "apps/web": {
-      "entry": ["src/main.tsx", "src/App.tsx", "src/**/*.test.ts"]
+      "entry": [
+        "src/main.tsx",
+        "src/App.tsx",
+        "src/**/*.test.ts"
+      ]
     },
     "apps/daemon": {
-      "entry": ["src/cli/lac.ts", "src/mesh/node-cli.ts"]
+      "entry": [
+        "src/cli/lac.ts",
+        "src/mesh/node-cli.ts",
+        "src/mesh/bootstrap-runtime.ts"
+      ]
     },
     "packages/contracts": {
-      "entry": ["src/index.ts"]
+      "entry": [
+        "src/index.ts"
+      ]
     },
     "packages/sdk": {
-      "entry": ["src/index.ts"]
+      "entry": [
+        "src/index.ts"
+      ]
     },
     "packages/knowledge": {
-      "entry": ["src/index.ts", "test/**/*.test.ts"]
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.ts"
+      ]
     },
     "packages/plugin-sdk": {
-      "entry": ["src/index.ts"]
+      "entry": [
+        "src/index.ts"
+      ]
     }
   },
   "ignoreDependencies": [

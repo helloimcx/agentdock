@@ -20,6 +20,7 @@ test('cleans output and performs the selected Electron build stages once', () =>
       ['exec', 'tsc', '-p', 'tsconfig.coverage.json'],
       ['exec', 'tsc-alias', '-p', 'tsconfig.coverage.json'],
       ['exec', 'node', 'scripts/copy-managed-skills.mjs'],
+      ['exec', 'node', 'scripts/build-mesh-runtime.mjs'],
     ]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

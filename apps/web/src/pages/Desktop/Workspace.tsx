@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { executionTargetAllowed, firstInvalidExecutionTarget } from '../Mesh/onboarding-model';
 import { Plus, Save } from 'lucide-react';
 import { Button, EmptyState, Input, Modal, PageHeader, SectionCard, Select } from '@/components/ui';
 import {
@@ -11,6 +13,7 @@ import {
   readCoreRuntimeConfig as readRuntimeConfig,
   saveCoreRuntimeConfig as saveRuntimeConfig,
   listMeshNodes,
+  getTailscaleStatus,
 } from '@cc/core-sdk/runtime';
 import {
   DESKTOP_AGENT_TYPE_OPTIONS,
@@ -26,6 +29,7 @@ import type {
   DesktopPlatformConfig,
   DesktopProjectConfig,
   MeshNode,
+  TailscalePeer,
 } from '@cc/superai-contracts';
 import {
   clone,
@@ -51,6 +55,7 @@ import { BasicProjectSection, PlatformsSection, ProvidersSection, SandboxSection
 import { useLarkQr } from './workspace-hooks';
 
 export default function DesktopWorkspace() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedProject = searchParams.get('project') || '';
   const [configDraft, setConfigDraft] = useState<DesktopConnectConfig | null>(null);
@@ -66,7 +71,21 @@ export default function DesktopWorkspace() {
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
   const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
+  const [tailscalePeers, setTailscalePeers] = useState<TailscalePeer[]>([]);
+  const [tailscaleError, setTailscaleError] = useState<string | null>(null);
   const configDraftRef = useRef<DesktopConnectConfig | null>(null);
+
+  const refreshMeshNodes = useCallback(async () => {
+    const response = await listMeshNodes();
+    const freshNodes = response?.nodes || [];
+    setMeshNodes(freshNodes);
+    return freshNodes;
+  }, []);
+
+  const handleNodeBound = useCallback((node: MeshNode) => {
+    setTailscalePeers(prev => prev.map(peer => peer.meshNodeId === node.id ? { ...peer, connectionStatus: 'ready', meshNodeStatus: node.status } : peer));
+    setMeshNodes(prev => prev.some(item => item.id === node.id) ? prev.map(item => item.id === node.id ? node : item) : [...prev, node]);
+  }, []);
 
   const loadAll = useCallback(async (projectName = '') => {
     setLoading(true);
@@ -76,6 +95,12 @@ export default function DesktopWorkspace() {
         listModelProviders(),
       ]);
       void listMeshNodes().then((res) => setMeshNodes(res?.nodes || [])).catch(() => {});
+      void getTailscaleStatus()
+        .then((res) => { setTailscalePeers(res?.peers || []); setTailscaleError(null); })
+        .catch((err: unknown) => {
+          const is401 = (err as { status?: number })?.status === 401 || (err instanceof Error && /401|unauthorized|authentication/i.test(err.message));
+          setTailscaleError(is401 ? 'auth_required' : 'unavailable');
+        });
       const parsed = clone(configState.config || {});
       parsed.projects = ensureProjects(parsed).map((project) => normalizeProject(project));
       setConfigDraft(parsed);
@@ -184,6 +209,10 @@ export default function DesktopWorkspace() {
       setNotice({ tone: 'warning', message: `Project "${name}" already exists.` });
       return;
     }
+    if (!executionTargetAllowed(projectDialog.deviceId || 'local', meshNodes, 'local', tailscalePeers)) {
+      setNotice({ tone: 'warning', message: t('mesh.onboarding.invalidTarget') });
+      return;
+    }
     const nextProject = normalizeProject({
       name,
       device_id: projectDialog.deviceId || 'local',
@@ -277,6 +306,8 @@ export default function DesktopWorkspace() {
       platforms[platformDialog.index] = nextPlatform;
     }
     nextProjects[selectedIndex] = normalizeProject({ ...project, platforms });
+    const freshNodes = await refreshMeshNodes();
+    if (firstInvalidExecutionTarget(nextConfig, persistedConfig, freshNodes, tailscalePeers)) throw new Error(t('mesh.onboarding.invalidTarget'));
     const saved = await saveRuntimeConfig(nextConfig);
     const savedConfig = clone(saved.config || nextConfig);
     setPersistedConfig(savedConfig);
@@ -338,6 +369,8 @@ export default function DesktopWorkspace() {
     if (!configDraft) return;
     setPending('config');
     try {
+      const freshNodes = await refreshMeshNodes();
+      if (firstInvalidExecutionTarget(configDraft, persistedConfig, freshNodes, tailscalePeers)) throw new Error(t('mesh.onboarding.invalidTarget'));
       const saved = await saveRuntimeConfig(configDraft);
       setPersistedConfig(clone(saved.config || configDraft));
       setConfigDraft(clone(saved.config || configDraft));
@@ -405,6 +438,9 @@ export default function DesktopWorkspace() {
           openPlatformDialog={openPlatformDialog}
           onSaveConfig={() => void handleSaveConfig()}
           meshNodes={meshNodes}
+          tailscalePeers={tailscalePeers}
+          tailscaleError={tailscaleError}
+          onNodeBound={handleNodeBound}
         />
       </div>
 
@@ -414,6 +450,9 @@ export default function DesktopWorkspace() {
         onConfirm={handleConfirmAddProject}
         onClose={() => setProjectDialog(null)}
         meshNodes={meshNodes}
+        tailscalePeers={tailscalePeers}
+        tailscaleError={tailscaleError}
+        onNodeBound={handleNodeBound}
       />
 
       <PlatformDialog
