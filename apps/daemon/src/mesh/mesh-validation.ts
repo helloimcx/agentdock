@@ -5,6 +5,14 @@ export class MeshError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
 }
 
+/** Terminal-result retention window, shared by the core history sweep and the node receipt journal
+ *  so the operationId dedup window expires together with the receipts that could resolve it. */
+export const MESH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const TERMINAL_RECOVERY_STATES: readonly MeshRecoveryState[] = ['completed', 'failed', 'expired', 'unsupported'];
+
+export const TERMINAL_RECOVERY_STATES_SQL = TERMINAL_RECOVERY_STATES.map(state => `'${state}'`).join(', ');
+
 export function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new MeshError('Expected an object.');
   return value as Record<string, unknown>;

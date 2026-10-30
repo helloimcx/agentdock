@@ -133,8 +133,11 @@ test('Mesh history pruning removes resolved records older than retention and kee
     store.recordRecovery(oldResolvedRecovery.id, nodeId, { state: 'completed', observedAt: eightDaysAgo, result: { exitCode: 0 } });
     const oldUnsupported = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333306' }, false).execution;
     store.finish(oldUnsupported.id, 'cancelled', undefined, 'Execution was cancelled; outcome may be unknown.');
+    const oldUnknownOutcome = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333307' }, true).execution;
+    store.finish(oldUnknownOutcome.id, 'interrupted', undefined, 'Device disconnected; outcome unknown.');
+    store.recordRecovery(oldUnknownOutcome.id, nodeId, { state: 'unknown', observedAt: eightDaysAgo, error: 'No durable receipt is available.' });
 
-    for (const id of [oldCompleted.id, staleRunning.id, oldRecoverable.id, oldResolvedRecovery.id, oldUnsupported.id]) {
+    for (const id of [oldCompleted.id, staleRunning.id, oldRecoverable.id, oldResolvedRecovery.id, oldUnsupported.id, oldUnknownOutcome.id]) {
       backdateExecutionCreatedAt(db, id, eightDaysAgo);
     }
 
@@ -148,9 +151,10 @@ test('Mesh history pruning removes resolved records older than retention and kee
     assert.equal(store.getExecution(staleRunning.id)?.status, 'running');
     assert.equal(store.getOperation(staleRunning.operationId!, nodeId)?.id, staleRunning.id);
     assert.equal(store.getExecution(oldRecoverable.id)?.status, 'timed_out');
-    assert.deepEqual(store.recoveryCandidates(nodeId).map(item => item.operationId), [oldRecoverable.operationId]);
+    assert.deepEqual(store.recoveryCandidates(nodeId).map(item => item.operationId), [oldRecoverable.operationId, oldUnknownOutcome.operationId]);
     assert.equal(store.getExecution(oldResolvedRecovery.id), undefined);
     assert.equal(store.getExecution(oldUnsupported.id), undefined);
+    assert.equal(store.getExecution(oldUnknownOutcome.id)?.recovery?.state, 'unknown');
   } finally { db.close(); }
 });
 
@@ -163,8 +167,12 @@ test('Mesh recover() prunes resolved history and keeps restart orphans interrupt
     store.updateNode({ ...node, status: 'online' });
     const oldCompleted = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:44444444-4444-4444-8444-444444444401' }, true).execution;
     store.finish(oldCompleted.id, 'completed', { exitCode: 0 });
-    const orphanRunning = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:44444444-4444-4444-8444-444444444402' }, true).execution;
-    backdateExecutionCreatedAt(db, oldCompleted.id, new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString());
+    // Receipt-unsupported so the orphan cannot survive an interrupt-first ordering:
+    // only prune-before-interrupt preserves it (as 'running') through the sweep.
+    const orphanRunning = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:44444444-4444-4444-8444-444444444402' }, false).execution;
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    backdateExecutionCreatedAt(db, oldCompleted.id, eightDaysAgo);
+    backdateExecutionCreatedAt(db, orphanRunning.id, eightDaysAgo);
 
     new MeshStore(db).recover();
 

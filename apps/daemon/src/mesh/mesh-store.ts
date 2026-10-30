@@ -1,12 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { MeshEnrollment, MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput, MeshRecoveryObservation } from '@cc/superai-contracts';
-import { MeshError, meshExecutionDigest } from './mesh-validation.js';
+import { MeshError, MESH_RETENTION_MS, meshExecutionDigest, TERMINAL_RECOVERY_STATES_SQL } from './mesh-validation.js';
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
-// Aligns with the node-side receipt journal (mesh-receipt-store) so the core
-// operation-index dedup window expires together with the receipts it mirrors.
-const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 type NodeRow = { id: string; data: string; token_hash: string | null; pairing_hash: string | null; expires_at: string | null };
 
 /** Durable identity and execution history; credentials are stored only as hashes. */
@@ -127,7 +124,7 @@ export class MeshStore {
       JOIN mesh_executions e ON e.id=o.execution_id
       WHERE o.node_id=? AND json_extract(e.data,'$.receiptSupportedAtDispatch')=1
         AND json_extract(e.data,'$.status') IN ('interrupted','timed_out','cancelled')
-        AND COALESCE(json_extract(e.data,'$.recovery.state'),'') NOT IN ('completed','failed','expired','unsupported')`)
+        AND COALESCE(json_extract(e.data,'$.recovery.state'),'') NOT IN (${TERMINAL_RECOVERY_STATES_SQL})`)
       .get(nodeId) as { count: number }).count);
     if (count === 0) {
       this.db.prepare(`INSERT INTO mesh_recovery_cursors(node_id,next_offset) VALUES(?,0)
@@ -140,7 +137,7 @@ export class MeshStore {
       JOIN mesh_executions e ON e.id=o.execution_id
       WHERE o.node_id=? AND json_extract(e.data,'$.receiptSupportedAtDispatch')=1
         AND json_extract(e.data,'$.status') IN ('interrupted','timed_out','cancelled')
-        AND COALESCE(json_extract(e.data,'$.recovery.state'),'') NOT IN ('completed','failed','expired','unsupported')
+        AND COALESCE(json_extract(e.data,'$.recovery.state'),'') NOT IN (${TERMINAL_RECOVERY_STATES_SQL})
       ORDER BY e.rowid ASC LIMIT 100 OFFSET ?`).all(nodeId, offset) as { data: string }[];
     const nextOffset = offset + rows.length >= count ? 0 : offset + rows.length;
     this.db.prepare(`INSERT INTO mesh_recovery_cursors(node_id,next_offset) VALUES(?,?)
@@ -179,14 +176,16 @@ export class MeshStore {
   /** Deletes resolved executions and their operation-index rows older than the retention window.
    *  In-flight requests and still-recoverable receipt candidates are never pruned. */
   pruneHistory(now = Date.now()): number {
-    const cutoff = new Date(now - HISTORY_RETENTION_MS).toISOString();
+    const cutoff = new Date(now - MESH_RETENTION_MS).toISOString();
     const result = this.db.prepare(`DELETE FROM mesh_executions WHERE json_extract(data,'$.status')<>'running'
       AND json_extract(data,'$.createdAt')<=? AND (
         json_extract(data,'$.status') IN ('completed','failed')
         OR json_extract(data,'$.receiptSupportedAtDispatch') IS NOT 1
-        OR COALESCE(json_extract(data,'$.recovery.state'),'') IN ('completed','failed','expired','unsupported')
+        OR COALESCE(json_extract(data,'$.recovery.state'),'') IN (${TERMINAL_RECOVERY_STATES_SQL})
       )`).run(cutoff);
-    this.db.prepare('DELETE FROM mesh_operations WHERE execution_id NOT IN (SELECT id FROM mesh_executions)').run();
+    if (result.changes > 0) {
+      this.db.prepare('DELETE FROM mesh_operations WHERE execution_id NOT IN (SELECT id FROM mesh_executions)').run();
+    }
     return Number(result.changes);
   }
 

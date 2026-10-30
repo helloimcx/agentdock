@@ -3,13 +3,12 @@ import { chmodSync, closeSync, lstatSync, mkdirSync, openSync, realpathSync } fr
 import { DatabaseSync } from 'node:sqlite';
 import { basename, dirname, resolve } from 'node:path';
 import type { MeshRecoveryObservation, MeshRecoveryState } from '@cc/superai-contracts';
-import { MeshError } from './mesh-validation.js';
+import { MeshError, MESH_RETENTION_MS } from './mesh-validation.js';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 200;
 const DEFAULT_MAX_RESULT_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 16 * 1024 * 1024;
-const DEFAULT_RETENTION_MS = 7 * DAY_MS;
+const DEFAULT_RETENTION_MS = MESH_RETENTION_MS;
 
 export type MeshReceiptStoreOptions = {
   maxEntries?: number;

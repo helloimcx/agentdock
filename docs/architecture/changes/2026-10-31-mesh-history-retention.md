@@ -13,6 +13,8 @@ Core-side Mesh history was previously unbounded: every dispatch appended one `me
 
 Deleting an operation-index row ends that `operationId`'s dedup window. The seven-day retention matches the node receipt journal's result-retention window: within that window a replayed `operationId` is answered from the node's saved receipt without re-execution, and past it both sides treat the operation as expired, consistent with the documented "Saved result expired; operation was not replayed" behavior. History APIs (`GET /requests`, `GET /nodes/:id/operations/:operationId`) return the retained window only.
 
+The sweep also deletes orphaned `mesh_operations` rows whose execution row is gone, guarded to run only when at least one execution was pruned; `createExecutionOnce` inserts execution and index rows transactionally, so pruning is their only source. Known residual: interrupted receipt candidates whose node never reports a recovery observation are retained beyond the window as audit facts (documented "stays unknown" semantics).
+
 ## Ownership and compatibility
 
 - Core continues to own identity, request history, the operation index and query cursors; retention adds a deletion rule to existing tables, not a new owner or store.
