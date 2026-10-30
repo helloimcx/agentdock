@@ -71,6 +71,10 @@ flowchart LR
 
 ## New
 
+### 2026-10-31
+
+- **Mesh 核心侧历史保留策略**：Core 启动时清理超过 7 天的已决 Mesh 执行记录及其 operation 索引（与节点侧回执日志保留窗口对齐）；执行中与仍可恢复回执的请求永不清理。历史 API 只返回保留窗口内的记录。详见 [Mesh 文档](docs/architecture/mesh.md)。
+
 ### 2026-10-25
 
 - **Mesh 远程操作回执恢复**：调用方可提供稳定 `operationId`，Core 按节点和参数摘要去重；支持新回执协议的节点会在执行前保存意图、回执后再确认。断线重连后 Core 查询同一节点的已保存结果，不重放 Shell、文件写入等副作用。原始 `interrupted`、`timed_out`、`cancelled` 状态保留；效果发生后、回执写入前崩溃仍显示为未知。新增 SDK `getOperation` 与 CLI `operation` 查询；旧节点继续使用原协议行为。详见 [Mesh 回执恢复设计与边界](docs/architecture/mesh.md)。
