@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Mesh 远程操作回执恢复",
+    "locale": "zh-CN",
+    "output": "docs/architecture/changes/2026-10-25-mesh-operation-recovery.html",
+    "viewBox": [1080, 620],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "caller", "type": "external", "label": "调用方", "sublabel": "稳定操作ID" },
+    { "id": "core", "type": "backend", "label": "Core", "sublabel": "Mesh Gateway" },
+    { "id": "coreStore", "type": "database", "label": "Core 库", "sublabel": "请求索引" },
+    { "id": "node", "type": "backend", "label": "设备节点", "sublabel": "NodeAgent" },
+    { "id": "receiptStore", "type": "database", "label": "回执库", "sublabel": "本地有界记录" },
+    { "id": "effect", "type": "external", "label": "操作目标", "sublabel": "文件或命令" }
+  ],
+  "segments": [
+    { "from": 145, "to": 310, "label": "首次派发" },
+    { "from": 320, "to": 480, "label": "重连查询" }
+  ],
+  "messages": [
+    { "from": "caller", "to": "core", "y": 160, "label": "提交 operationId 与参数", "variant": "emphasis" },
+    { "from": "core", "to": "coreStore", "y": 188, "label": "保存参数摘要；相同 ID 去重", "variant": "emphasis" },
+    { "from": "core", "to": "node", "y": 216, "label": "execute(requestId, operationId)", "variant": "default" },
+    { "from": "node", "to": "receiptStore", "y": 244, "label": "先保存 running 意图", "variant": "emphasis" },
+    { "from": "node", "to": "effect", "y": 272, "label": "执行一次；效果后、回执前崩溃则未知", "variant": "default" },
+    { "from": "node", "to": "receiptStore", "y": 300, "label": "先保存结果回执，再应答", "variant": "emphasis" },
+    { "from": "node", "to": "core", "y": 328, "label": "返回原结果", "variant": "return" },
+    { "from": "core", "to": "coreStore", "y": 356, "label": "持久化终态", "variant": "emphasis" },
+    { "from": "core", "to": "node", "y": 384, "label": "仅对支持回执的节点查同一 operationId", "variant": "security" },
+    { "from": "node", "to": "receiptStore", "y": 412, "label": "读取持久回执", "variant": "default" },
+    { "from": "node", "to": "core", "y": 440, "label": "返回 completed / failed / running / unknown / expired", "variant": "return" },
+    { "from": "core", "to": "caller", "y": 468, "label": "收敛结果；unknown 绝不重放", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "core", "from": 154, "to": 476, "type": "backend" },
+    { "participant": "coreStore", "from": 182, "to": 364, "type": "database" },
+    { "participant": "node", "from": 210, "to": 448, "type": "backend" },
+    { "participant": "receiptStore", "from": 238, "to": 420, "type": "database" },
+    { "participant": "effect", "from": 266, "to": 306, "type": "external" }
+  ],
+  "cards": [
+    { "dot": "orange", "title": "恢复边界", "items": ["回执已落盘可恢复；回执前崩溃保持 unknown", "Shell、timeout 与 cancel 不自动重放"] }
+  ]
+}

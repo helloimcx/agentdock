@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import type { MeshEnrollment, MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput } from '@cc/superai-contracts';
+import type { MeshEnrollment, MeshExecution, MeshExecutionInput, MeshNode, MeshPairing, MeshPairingInput, MeshRecoveryObservation } from '@cc/superai-contracts';
+import { MeshError, meshExecutionDigest } from './mesh-validation.js';
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
 type NodeRow = { id: string; data: string; token_hash: string | null; pairing_hash: string | null; expires_at: string | null };
@@ -15,6 +16,12 @@ export class MeshStore {
       );
       CREATE TABLE IF NOT EXISTS mesh_executions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS mesh_executions_node ON mesh_executions(node_id);
+      CREATE TABLE IF NOT EXISTS mesh_operations (
+        operation_id TEXT PRIMARY KEY, node_id TEXT NOT NULL, execution_id TEXT NOT NULL UNIQUE,
+        input_digest TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS mesh_operations_node ON mesh_operations(node_id);
+      CREATE TABLE IF NOT EXISTS mesh_recovery_cursors (node_id TEXT PRIMARY KEY, next_offset INTEGER NOT NULL);
     `);
   }
 
@@ -66,9 +73,84 @@ export class MeshStore {
   }
 
   createExecution(input: MeshExecutionInput): MeshExecution {
-    const execution: MeshExecution = { ...input, id: `mesh-request:${randomUUID()}`, status: 'running', createdAt: new Date().toISOString() };
-    this.db.prepare('INSERT INTO mesh_executions VALUES (?, ?, ?)').run(execution.id, input.nodeId, JSON.stringify(execution));
-    return execution;
+    return this.createExecutionOnce(input).execution;
+  }
+
+  createExecutionOnce(input: MeshExecutionInput, receiptSupportedAtDispatch = false): { execution: MeshExecution; created: boolean } {
+    const operationId = input.operationId || `mesh-operation:${randomUUID()}`;
+    const normalized = { ...input, operationId };
+    const inputDigest = meshExecutionDigest(normalized);
+    const existing = this.db.prepare('SELECT node_id,execution_id,input_digest FROM mesh_operations WHERE operation_id=?')
+      .get(operationId) as { node_id: string; execution_id: string; input_digest: string } | undefined;
+    if (existing) {
+      if (existing.node_id !== input.nodeId || existing.input_digest !== inputDigest) {
+        throw new MeshError('operationId conflicts with a different node or request.', 409);
+      }
+      const execution = this.getExecution(existing.execution_id);
+      if (!execution) throw new MeshError('Mesh operation record is inconsistent.', 500);
+      return { execution, created: false };
+    }
+
+    const execution: MeshExecution = {
+      ...normalized, id: `mesh-request:${randomUUID()}`, status: 'running', createdAt: new Date().toISOString(),
+      receiptSupportedAtDispatch,
+    };
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('INSERT INTO mesh_executions VALUES (?, ?, ?)').run(execution.id, input.nodeId, JSON.stringify(execution));
+      this.db.prepare('INSERT INTO mesh_operations VALUES (?, ?, ?, ?)').run(operationId, input.nodeId, execution.id, inputDigest);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { execution, created: true };
+  }
+
+  getOperation(operationId: string, nodeId?: string): MeshExecution | undefined {
+    const row = nodeId
+      ? this.db.prepare('SELECT execution_id FROM mesh_operations WHERE operation_id=? AND node_id=?').get(operationId, nodeId) as { execution_id: string } | undefined
+      : this.db.prepare('SELECT execution_id FROM mesh_operations WHERE operation_id=?').get(operationId) as { execution_id: string } | undefined;
+    return row ? this.getExecution(row.execution_id) : undefined;
+  }
+
+  getOperationDigest(operationId: string, nodeId: string): string | undefined {
+    const row = this.db.prepare('SELECT input_digest FROM mesh_operations WHERE operation_id=? AND node_id=?').get(operationId, nodeId) as { input_digest: string } | undefined;
+    return row?.input_digest;
+  }
+
+  recoveryCandidates(nodeId: string): MeshExecution[] {
+    const count = Number((this.db.prepare(`SELECT COUNT(*) AS count FROM mesh_operations o
+      JOIN mesh_executions e ON e.id=o.execution_id
+      WHERE o.node_id=? AND json_extract(e.data,'$.receiptSupportedAtDispatch')=1
+        AND json_extract(e.data,'$.status') IN ('interrupted','timed_out','cancelled')
+        AND COALESCE(json_extract(e.data,'$.recovery.state'),'') NOT IN ('completed','failed','expired','unsupported')`)
+      .get(nodeId) as { count: number }).count);
+    if (count === 0) {
+      this.db.prepare(`INSERT INTO mesh_recovery_cursors(node_id,next_offset) VALUES(?,0)
+        ON CONFLICT(node_id) DO UPDATE SET next_offset=0`).run(nodeId);
+      return [];
+    }
+    const stored = this.db.prepare('SELECT next_offset FROM mesh_recovery_cursors WHERE node_id=?').get(nodeId) as { next_offset: number } | undefined;
+    const offset = (stored?.next_offset || 0) % count;
+    const rows = this.db.prepare(`SELECT e.data FROM mesh_operations o
+      JOIN mesh_executions e ON e.id=o.execution_id
+      WHERE o.node_id=? AND json_extract(e.data,'$.receiptSupportedAtDispatch')=1
+        AND json_extract(e.data,'$.status') IN ('interrupted','timed_out','cancelled')
+        AND COALESCE(json_extract(e.data,'$.recovery.state'),'') NOT IN ('completed','failed','expired','unsupported')
+      ORDER BY e.rowid ASC LIMIT 100 OFFSET ?`).all(nodeId, offset) as { data: string }[];
+    const nextOffset = offset + rows.length >= count ? 0 : offset + rows.length;
+    this.db.prepare(`INSERT INTO mesh_recovery_cursors(node_id,next_offset) VALUES(?,?)
+      ON CONFLICT(node_id) DO UPDATE SET next_offset=excluded.next_offset`).run(nodeId, nextOffset);
+    return rows.map(row => JSON.parse(row.data) as MeshExecution);
+  }
+
+  recordRecovery(id: string, nodeId: string, recovery: MeshRecoveryObservation): boolean {
+    const execution = this.getExecution(id);
+    if (!execution || execution.nodeId !== nodeId || execution.receiptSupportedAtDispatch !== true
+      || !['interrupted', 'timed_out', 'cancelled'].includes(execution.status)) return false;
+    this.db.prepare('UPDATE mesh_executions SET data=? WHERE id=?').run(JSON.stringify({ ...execution, recovery }), id);
+    return true;
   }
 
   getExecution(id: string): MeshExecution | undefined {

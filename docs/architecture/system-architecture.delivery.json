@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "bac1b333-590c-42ef-a76d-61a6b23999b5",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/momo/.codex/worktrees/mesh-operation-recovery/agentdock/docs/architecture/system-architecture.json",
+  "output": "/Users/momo/.codex/worktrees/mesh-operation-recovery/agentdock/docs/architecture/system-architecture.html",
+  "specification": {
+    "sha256": "dfeaf7b37fc9a14d34457e97cf997e6aa52384544fc60673ba9a3d1f9eef5002",
+    "bytes": 11123
+  },
+  "artifact": {
+    "sha256": "3e9934e0d58e1d3363886179fe40deebfa8eded2196206d1d3e965c38d03e053",
+    "bytes": 850875
+  }
+}

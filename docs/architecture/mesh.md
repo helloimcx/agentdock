@@ -12,10 +12,12 @@ flowchart LR
   sdk --> api
   api --> gateway[Mesh Gateway / Dispatcher]
   ui -->|Read-only GET /nodes without Mesh token| gateway
-  gateway --> db[(Core SQLite: identities and requests)]
+  gateway --> db[(Core SQLite: identities, requests and operation index)]
   node[agentdock-node on Mac / Linux / Windows / Termux] -->|Outbound WebSocket: hello and heartbeat| gateway
-  gateway -->|Execute / cancel| node
-  node -->|Result| gateway
+  gateway -->|Execute / cancel / receipt query| node
+  node -->|Result / saved receipt| gateway
+  node --> journal[(Private bounded receipt SQLite)]
+  journal -->|intent before effect · receipt before ack| node
   node --> files[Approved directory: read and list]
   node --> shell[Optional command execution as device user]
 ```
@@ -23,10 +25,10 @@ flowchart LR
 ## Ownership and transport
 
 - Contracts: `packages/contracts/src/mesh.ts`; API client: `packages/sdk/src/mesh.ts`.
-- Core owns identities, allowed capabilities and execution history in `mesh_nodes` / `mesh_executions`, in the existing `runtime/local-core.db`. Only hashes of pairing and device credentials are retained.
+- Core owns identities, allowed capabilities, execution history, the stable operation-ID index and per-node receipt-query cursors in `mesh_nodes`, `mesh_executions`, `mesh_operations` and `mesh_recovery_cursors`, in the existing `runtime/local-core.db`. Only hashes of pairing and device credentials are retained; operation arguments are represented in the index by a canonical digest.
 - `MeshGateway` attaches to the existing Core HTTP server. Nodes initiate WebSocket connections, so devices need no inbound listener or public IP. Internet, LAN and Tailscale are transport choices; no specific overlay is required.
 - `bin/agentdock.mjs` forwards the Mesh WebSocket upgrade through the bundled web server, in addition to existing REST forwarding.
-- The node owns its approved root, local credentials and command opt-in. Credentials are created exclusively with mode 0600; existing files are not overwritten. Use an operating-system ACL on Windows to restrict the credential and pairing files to the node user (POSIX mode bits do not establish a Windows ACL).
+- The node owns its approved root, local credentials, command opt-in and optional receipt journal. The CLI stores receipts in a private `.agentdock-mesh-receipts/` directory beside the configured state file; POSIX directories use mode 0700 and databases use mode 0600. The journal is bounded to 200 entries, seven days of result retention, 2 MiB per result and 16 MiB total result/reservation bytes. Credentials are created exclusively with mode 0600; existing files are not overwritten. Use an operating-system ACL on Windows to restrict credential and receipt files to the node user (POSIX mode bits do not establish a Windows ACL).
 - The renderer owns temporary UI state. The Mesh page reads node overview data without the Mesh admin token and refreshes every three seconds. It does not expose administrative controls.
 
 ## Trust boundaries
@@ -61,9 +63,11 @@ The administrator selects a node and advertised capability. Core validates capab
 
 Each request uses `mesh-request:<uuid>`; each paired identity uses `node:<uuid>`. Node heartbeat acknowledgements update presence; both sides detect stale connections. Reconnect uses bounded exponential backoff. Replacing a connection interrupts its outstanding work and fences old callbacks and results.
 
+Callers may include a stable `operationId` for the logical action. Core binds it to one node and one digest covering capability, arguments and timeout; identical repeats return the original request, while a different target or payload conflicts. `MeshExecution.id` remains the per-history/request identity. Updated nodes negotiate `execution-receipts-v1`; older nodes may omit the feature and never receive receipt queries. Receipt queries are sent only after the same node authenticates again, in rotating batches of at most 100 operations per node; a persisted cursor prevents unresolved receipts in later pages from being starved by earlier `running` observations. A saved `completed` or `failed` receipt is attached to the original request as `recovery`, preserving the dispatch's original terminal status. Intent rows left `running` after node restart become `unknown` and are not executed again. If storage capacity cannot be reserved, a receipt-backed operation is rejected before invoking the capability.
+
 Terminal states are `completed`, `failed`, `cancelled`, `timed_out` and `interrupted`. Late results cannot overwrite terminal history. Cancellation and timeout send an abort to the node; the node kills a spawned command process group on Unix (the immediate process on Windows). Already completed effects cannot be undone, and detached descendants outside that group can outlive cancellation. `cancelled` means cancellation was requested, not proof that no effects occurred.
 
-Disconnect and Core restart mark pending requests `interrupted`: the outcome is unknown and requests are never automatically replayed. Users must inspect device state before retrying side effects. Offline devices return a conflict instead of silently redirecting requests to another device. Durable waiting queues, artifact streaming, remote ACP runtimes and Android-specific APIs are future capabilities.
+Disconnect and Core restart mark pending requests `interrupted`; receipt-capable nodes can later provide a saved observation, but requests are never automatically replayed. A crash between the side effect and terminal receipt, an expired receipt, or a missing receipt stays `unknown` or `expired`. Users must inspect device state before choosing a new operation ID for uncertain work. Offline devices return a conflict instead of silently redirecting requests to another device. Durable waiting queues, artifact streaming, remote ACP runtimes and Android-specific APIs are future capabilities.
 
 ## API
 
@@ -76,11 +80,12 @@ Prefix: `/api/local/v1/mesh`. `GET /nodes` returns read-only node metadata witho
 | POST | `/enroll` | Consume `pairingToken`, return device credential |
 | WebSocket | `/connect` | Device-authenticated protocol v1 |
 | POST | `/nodes/:id/revoke` | Revoke a device |
-| POST | `/requests` | Dispatch `nodeId`, `capability`, `args`, optional `timeoutMs` |
+| POST | `/requests` | Dispatch `nodeId`, `capability`, `args`, optional `timeoutMs` and stable `operationId` |
 | POST | `/shell/execute` | Execute `shell.exec` for the node bound to a signed, expiring launch token |
 | GET | `/requests` | Recent history |
 | GET | `/requests/:id` | Request status/result |
 | POST | `/requests/:id/cancel` | Request cancellation |
+| GET | `/nodes/:nodeId/operations/:operationId` | Authenticated operation and recovery lookup |
 
 ## Running two devices
 
@@ -110,15 +115,18 @@ The default state path is `~/.agentdock/mesh-node.json`. The node needs the buil
 ```bash
 node bin/agentdock-node.mjs list --server https://agent.example.com
 node bin/agentdock-node.mjs execute --server https://agent.example.com \
-  --node 'node:<uuid>' --capability filesystem.read --args '{"path":"notes.txt"}'
+  --node 'node:<uuid>' --capability filesystem.read --operation 'mesh-operation:<uuid>' \
+  --args '{"path":"notes.txt"}'
 node bin/agentdock-node.mjs status --server https://agent.example.com \
   --request 'mesh-request:<uuid>'
+node bin/agentdock-node.mjs operation --server https://agent.example.com \
+  --node 'node:<uuid>' --id 'mesh-operation:<uuid>'
 ```
 
-For command execution, add `--allow-shell` to both `pair` and `connect`, then dispatch `shell.exec` with `{"program":"git","arguments":["status","--short"]}`. The CLI outputs a request identity immediately; use `status`, `requests` or the UI to inspect the terminal outcome. SDK callers can use `mesh.createMeshClient(token, coreBaseUrl)` for the same operations. When configured as a Remote Workspace, Agent runtimes are automatically and transparently equipped with the Transparent Shell Proxy (`agentdock-mesh-shell`) and ACP filesystem bridges.
+For command execution, add `--allow-shell` to both `pair` and `connect`, then dispatch `shell.exec` with `{"program":"git","arguments":["status","--short"]}`. The CLI outputs a request identity immediately; use `status`, `operation`, `requests` or the UI to inspect the terminal outcome. SDK callers can use `mesh.createMeshClient(token, coreBaseUrl)` and `getOperation(nodeId, operationId)` for the same lookup. When configured as a Remote Workspace, Agent runtimes are automatically and transparently equipped with the Transparent Shell Proxy (`agentdock-mesh-shell`) and ACP filesystem bridges.
 
 ## Validation evidence
 
-`tests/integration/mesh.test.ts` exercises two independent nodes with separate roots over real HTTP/WebSocket connections, device authentication, enrollment reuse rejection, capability policy, file confinement, dispatch, results, timeout, cancellation, disconnect/reconnect and revocation. `tests/electron/mesh-store.test.ts` checks hash-only persistence, pairing expiry and restart recovery. `tests/electron/mesh-node-policy.test.ts` checks local shell opt-in, output/read/write bounds, cancellation and private credential-file handling. `tests/integration/mesh-auth.test.ts` checks role separation, disabled-by-default behavior, cross-device forged results, connection replacement and late-result fencing. `tests/integration/remote-workspace-mesh.test.ts` and `tests/integration/transparent-remote-mesh-shell.test.ts` exercise end-to-end transparent tool dispatching, ACP filesystem RPC bridging, and Transparent Shell Proxy execution. Live validation additionally exercised two CLI processes through the bundled WebSocket proxy, reconnect with saved credentials, and Chromium page operations including a byte-verified file download.
+`tests/integration/mesh.test.ts` exercises two independent nodes over real HTTP/WebSocket connections, capability policy, file confinement, timeout, cancellation, disconnect/reconnect, lost acknowledgement recovery and authenticated operation lookup. `tests/electron/mesh-store.test.ts` checks Core operation deduplication and recovery observations; `tests/electron/mesh-receipt-store.test.ts` checks private receipt persistence, restart-to-unknown behavior, expiry and capacity reservation. `tests/electron/mesh-node-policy.test.ts` checks local shell opt-in, output/read/write bounds, cancellation and private credential-file handling. `tests/integration/mesh-auth.test.ts` checks role separation, disabled-by-default behavior, cross-device forged results, connection replacement and late-result fencing. `tests/integration/remote-workspace-mesh.test.ts` and `tests/integration/transparent-remote-mesh-shell.test.ts` exercise end-to-end transparent tool dispatching, ACP filesystem RPC bridging, and Transparent Shell Proxy execution.
 
 The L1 Archify specification has passed all 9 showcase checks via `pnpm lint:arch`. The interactive showcase HTML (`system-architecture.html`) has been delivered alongside the Mermaid reference view.
