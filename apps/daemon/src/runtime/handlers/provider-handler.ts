@@ -52,7 +52,10 @@ function withProviderId(project: DesktopProjectConfig, providerId: string): Desk
 export function registerProviderHandlers(
   map: Map<string, RouteHandler>,
   store: LocalCoreAcpStore,
-  controller: { saveRuntimeConfig: (config: DesktopConnectConfig) => Promise<unknown> },
+  controller: {
+    applyRuntimeConfig: (config: DesktopConnectConfig) => Promise<unknown>;
+    runExclusiveRuntimeConfigWrite: <T>(task: () => Promise<T> | T) => Promise<T>;
+  },
 ) {
   map.set('providers.list', async (_route, _req, res) => {
     json(res, 200, { providers: store.listModelProviders() });
@@ -81,29 +84,39 @@ export function registerProviderHandlers(
     if (replacementProviderId && !store.getModelProvider(replacementProviderId)) {
       throw new Error(`Replacement provider not found: ${replacementProviderId}`);
     }
-    const configState = store.readRuntimeConfig();
-    const projects = Array.isArray(configState.config?.projects) ? configState.config.projects : [];
-    const dependents = projects.filter((project) => projectProviderId(project) === providerId);
-    if (dependents.length) {
-      if (!replacementProviderId) {
-        throw new ProviderInUseError(providerId, dependents.map((project) => workspaceLabel(project)));
+    // The dependent check, the repoint save, and the provider-row deletion all
+    // run inside the controller's runtime-config mutation lock, so a concurrent
+    // config write cannot introduce a reference to this provider between the
+    // check and the delete.
+    await controller.runExclusiveRuntimeConfigWrite(async () => {
+      const configState = store.readRuntimeConfig();
+      const projects = Array.isArray(configState.config?.projects) ? configState.config.projects : [];
+      const dependents = projects.filter((project) => projectProviderId(project) === providerId);
+      if (dependents.length) {
+        if (!replacementProviderId) {
+          throw new ProviderInUseError(providerId, dependents.map((project) => workspaceLabel(project)));
+        }
+        const repointed = projects.map((project) => (
+          projectProviderId(project) === providerId ? withProviderId(project, replacementProviderId) : project
+        ));
+        // The repoint persists first (a failed save leaves the old provider row and
+        // the untouched config in place); a failed delete is compensated by
+        // restoring the captured config so workspaces keep referencing the old
+        // provider, keeping both failure directions observationally atomic.
+        // json() stays outside the try/catch: a failed response write must not
+        // roll back a deletion that already succeeded.
+        await controller.applyRuntimeConfig({ ...configState.config, projects: repointed });
+        let result: unknown;
+        try {
+          result = store.deleteModelProvider(providerId);
+        } catch (error) {
+          await controller.applyRuntimeConfig(configState.config);
+          throw error;
+        }
+        json(res, 200, result);
+        return;
       }
-      const repointed = projects.map((project) => (
-        projectProviderId(project) === providerId ? withProviderId(project, replacementProviderId) : project
-      ));
-      // The repoint persists first (a failed save leaves the old provider row and
-      // the untouched config in place); a failed delete is compensated by
-      // restoring the captured config so workspaces keep referencing the old
-      // provider, keeping both failure directions observationally atomic.
-      await controller.saveRuntimeConfig({ ...configState.config, projects: repointed });
-      try {
-        json(res, 200, store.deleteModelProvider(providerId));
-      } catch (error) {
-        await controller.saveRuntimeConfig(configState.config);
-        throw error;
-      }
-      return;
-    }
-    json(res, 200, store.deleteModelProvider(providerId));
+      json(res, 200, store.deleteModelProvider(providerId));
+    });
   });
 }

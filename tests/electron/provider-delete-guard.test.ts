@@ -64,14 +64,51 @@ function createHarness() {
   } as DesktopConnectConfig);
 
   const calls = { saveRuntimeConfig: 0 };
+  const events: string[] = [];
+  let chain: Promise<unknown> = Promise.resolve();
+  let saveGate: { promise: Promise<void>; open: () => void } | null = null;
+  const applyRuntimeConfig = async (config: DesktopConnectConfig) => {
+    calls.saveRuntimeConfig += 1;
+    if (saveGate) {
+      events.push('save-blocked');
+      await saveGate.promise;
+    }
+    events.push('save-applied');
+    return store.saveRuntimeConfig(config);
+  };
   const controller = {
-    saveRuntimeConfig: async (config: DesktopConnectConfig) => {
-      calls.saveRuntimeConfig += 1;
-      return store.saveRuntimeConfig(config);
+    applyRuntimeConfig,
+    saveRuntimeConfig: (config: DesktopConnectConfig) => {
+      events.push('concurrent-save-queued');
+      const run = chain.then(() => applyRuntimeConfig(config));
+      chain = run.then(() => undefined, () => undefined);
+      return run;
+    },
+    runExclusiveRuntimeConfigWrite: <T,>(task: () => Promise<T> | T): Promise<T> => {
+      const run = chain.then(task);
+      chain = run.then(() => undefined, () => undefined);
+      return run;
     },
   };
   const handlers = new Map<string, RouteHandler>();
   registerProviderHandlers(handlers, store, controller);
+
+  function createSaveGate() {
+    let open!: () => void;
+    const promise = new Promise<void>((resolve) => { open = resolve; });
+    saveGate = { promise, open: () => {
+      saveGate = null;
+      open();
+    } };
+    return saveGate;
+  }
+
+  async function waitForEvent(name: string) {
+    for (let i = 0; i < 2000 && !events.includes(name); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    assert.ok(events.includes(name), `expected event "${name}", saw ${JSON.stringify(events)}`);
+  }
 
   async function callDelete(providerId: string, body?: unknown) {
     const req = {
@@ -103,6 +140,10 @@ function createHarness() {
   return {
     store,
     calls,
+    events,
+    controller,
+    createSaveGate,
+    waitForEvent,
     callDelete,
     close() {
       store.close();
@@ -188,6 +229,41 @@ test('restores the config when the delete fails after the repoint was saved', as
     );
     assert.ok(harness.store.getModelProvider(REPLACEMENT_PROVIDER));
     assert.equal(harness.calls.saveRuntimeConfig, 2, 'rollback must persist through a second controller save');
+  } finally {
+    harness.close();
+  }
+});
+
+test('serializes a concurrent config write against the delete critical section', async () => {
+  const harness = createHarness();
+  try {
+    const originalDelete = harness.store.deleteModelProvider.bind(harness.store);
+    harness.store.deleteModelProvider = (providerId: string) => {
+      harness.events.push('provider-deleted');
+      return originalDelete(providerId);
+    };
+    const gate = harness.createSaveGate();
+    // A concurrent writer that captured the same pre-delete config (still
+    // referencing TARGET_PROVIDER) must not be able to land its save between
+    // the repoint save and the provider-row deletion.
+    const staleConfig = harness.store.readRuntimeConfig().config;
+    const deletePromise = harness.callDelete(TARGET_PROVIDER, {
+      replacement_provider_id: REPLACEMENT_PROVIDER,
+    });
+    await harness.waitForEvent('save-blocked');
+    const concurrent = harness.controller.saveRuntimeConfig(staleConfig as DesktopConnectConfig);
+    gate.open();
+    await deletePromise;
+    await concurrent;
+    assert.deepEqual(harness.events, [
+      'save-blocked',
+      'concurrent-save-queued',
+      'save-applied',
+      'provider-deleted',
+      'save-applied',
+    ], 'the concurrent save must only run after the whole delete critical section finished');
+    assert.ok(!harness.store.getModelProvider(TARGET_PROVIDER), 'provider row must be deleted');
+    assert.equal(harness.calls.saveRuntimeConfig, 2, 'repoint save plus the serialized concurrent save');
   } finally {
     harness.close();
   }

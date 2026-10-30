@@ -92,6 +92,7 @@ AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pn
 - lives in `apps/daemon/`
 - exposes `/api/local/v1/*`
 - owns thread routing, SQLite persistence, ACP streaming, scheduler execution, channel ingress/delivery, sandbox launch, coding standards materialization, and external API mappings
+- serializes runtime-config mutations through one controller-owned lock: `provider.delete` runs its dependent check, workspace repoint, and provider-row deletion as a single critical section, so a concurrent config write cannot reintroduce a reference between check and delete (see [provider guard change record](changes/2026-10-30-provider-delete-reference-guard.md))
 - provides multi-scope rule pack loading, security scan gates (T01-T04), Ponytail 5-level decision ladder rendering, and non-destructive materialization into target instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`)
 
 AgentDock Daemon exposes external run APIs under `/api/local/v1/external/*`:

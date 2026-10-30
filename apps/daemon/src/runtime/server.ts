@@ -85,6 +85,8 @@ export interface LocalAiCoreServerBindings {
     getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
     readRuntimeConfig(): Promise<RuntimeConfigState>;
     saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState>;
+    applyRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState>;
+    runExclusiveRuntimeConfigWrite<T>(task: () => Promise<T> | T): Promise<T>;
     saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
     getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
     runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;
