@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
 
+function backdateExecutionCreatedAt(db: DatabaseSync, id: string, createdAt: string) {
+  const row = db.prepare('SELECT data FROM mesh_executions WHERE id=?').get(id) as { data: string };
+  db.prepare('UPDATE mesh_executions SET data=? WHERE id=?').run(JSON.stringify({ ...JSON.parse(row.data), createdAt }), id);
+}
+
 test('Mesh pairing is single-use, expires, persists hashes and supports revocation', () => {
   const db = new DatabaseSync(':memory:');
   try {
@@ -107,4 +112,66 @@ test('Mesh reconnect receipt queries rotate through more than one bounded page a
   } finally {
     db.close();
   }
+});
+
+test('Mesh history pruning removes resolved records older than retention and keeps recoverable ones', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new MeshStore(db);
+    const { nodeId } = store.createPairing({ label: 'Home Mac', allowShell: true });
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    const oldCompleted = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333301' }, true).execution;
+    store.finish(oldCompleted.id, 'completed', { exitCode: 0 });
+    const recentCompleted = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333302' }, true).execution;
+    store.finish(recentCompleted.id, 'completed', { exitCode: 0 });
+    const staleRunning = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333303' }, true).execution;
+    const oldRecoverable = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333304' }, true).execution;
+    store.finish(oldRecoverable.id, 'timed_out', undefined, 'Remote execution timed out; outcome may be unknown.');
+    const oldResolvedRecovery = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333305' }, true).execution;
+    store.finish(oldResolvedRecovery.id, 'interrupted', undefined, 'Device disconnected; outcome unknown.');
+    store.recordRecovery(oldResolvedRecovery.id, nodeId, { state: 'completed', observedAt: eightDaysAgo, result: { exitCode: 0 } });
+    const oldUnsupported = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:33333333-3333-4333-8333-333333333306' }, false).execution;
+    store.finish(oldUnsupported.id, 'cancelled', undefined, 'Execution was cancelled; outcome may be unknown.');
+
+    for (const id of [oldCompleted.id, staleRunning.id, oldRecoverable.id, oldResolvedRecovery.id, oldUnsupported.id]) {
+      backdateExecutionCreatedAt(db, id, eightDaysAgo);
+    }
+
+    const pruned = store.pruneHistory();
+
+    assert.equal(pruned, 3);
+    assert.equal(store.getExecution(oldCompleted.id), undefined);
+    assert.equal(store.getOperation(oldCompleted.operationId!, nodeId), undefined);
+    assert.equal(store.getExecution(recentCompleted.id)?.id, recentCompleted.id);
+    assert.equal(store.getOperation(recentCompleted.operationId!, nodeId)?.id, recentCompleted.id);
+    assert.equal(store.getExecution(staleRunning.id)?.status, 'running');
+    assert.equal(store.getOperation(staleRunning.operationId!, nodeId)?.id, staleRunning.id);
+    assert.equal(store.getExecution(oldRecoverable.id)?.status, 'timed_out');
+    assert.deepEqual(store.recoveryCandidates(nodeId).map(item => item.operationId), [oldRecoverable.operationId]);
+    assert.equal(store.getExecution(oldResolvedRecovery.id), undefined);
+    assert.equal(store.getExecution(oldUnsupported.id), undefined);
+  } finally { db.close(); }
+});
+
+test('Mesh recover() prunes resolved history and keeps restart orphans interruptible', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new MeshStore(db);
+    const { nodeId } = store.createPairing({ label: 'VPS', allowShell: true });
+    const node = store.getNode(nodeId)!;
+    store.updateNode({ ...node, status: 'online' });
+    const oldCompleted = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:44444444-4444-4444-8444-444444444401' }, true).execution;
+    store.finish(oldCompleted.id, 'completed', { exitCode: 0 });
+    const orphanRunning = store.createExecutionOnce({ nodeId, capability: 'shell.exec', args: { program: 'true' }, operationId: 'mesh-operation:44444444-4444-4444-8444-444444444402' }, true).execution;
+    backdateExecutionCreatedAt(db, oldCompleted.id, new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString());
+
+    new MeshStore(db).recover();
+
+    assert.equal(store.getExecution(oldCompleted.id), undefined);
+    assert.equal(store.getOperation(oldCompleted.operationId!, nodeId), undefined);
+    assert.equal(store.getExecution(orphanRunning.id)?.status, 'interrupted');
+    assert.equal(store.getOperation(orphanRunning.operationId!, nodeId)?.id, orphanRunning.id);
+    assert.equal(store.getNode(nodeId)?.status, 'offline');
+  } finally { db.close(); }
 });

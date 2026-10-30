@@ -59,7 +59,7 @@ The first-phase LAC allowlist covers memory, scheduler, monitor and automation o
 
 ## Requests and failure semantics
 
-The administrator selects a node and advertised capability. Core validates capability authorization, online presence, bounded arguments and a 100–120000 ms deadline before dispatch. There are at most 256 pending requests in Core, 128 node connections and eight concurrent executions per node. Recent history APIs return up to 100 records; durable records are retained in SQLite.
+The administrator selects a node and advertised capability. Core validates capability authorization, online presence, bounded arguments and a 100–120000 ms deadline before dispatch. There are at most 256 pending requests in Core, 128 node connections and eight concurrent executions per node. Recent history APIs return up to 100 records; durable records are retained in SQLite. At startup Core prunes resolved history older than seven days: terminal records, records whose receipt observation reached a terminal state, and records that can never receive a receipt are deleted together with their operation-index rows, mirroring the node receipt journal window. In-flight requests and still-recoverable receipt candidates are never pruned.
 
 Each request uses `mesh-request:<uuid>`; each paired identity uses `node:<uuid>`. Node heartbeat acknowledgements update presence; both sides detect stale connections. Reconnect uses bounded exponential backoff. Replacing a connection interrupts its outstanding work and fences old callbacks and results.
 

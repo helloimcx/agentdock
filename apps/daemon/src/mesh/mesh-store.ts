@@ -4,6 +4,9 @@ import type { MeshEnrollment, MeshExecution, MeshExecutionInput, MeshNode, MeshP
 import { MeshError, meshExecutionDigest } from './mesh-validation.js';
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
+// Aligns with the node-side receipt journal (mesh-receipt-store) so the core
+// operation-index dedup window expires together with the receipts it mirrors.
+const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 type NodeRow = { id: string; data: string; token_hash: string | null; pairing_hash: string | null; expires_at: string | null };
 
 /** Durable identity and execution history; credentials are stored only as hashes. */
@@ -173,7 +176,22 @@ export class MeshStore {
     }), id);
   }
 
+  /** Deletes resolved executions and their operation-index rows older than the retention window.
+   *  In-flight requests and still-recoverable receipt candidates are never pruned. */
+  pruneHistory(now = Date.now()): number {
+    const cutoff = new Date(now - HISTORY_RETENTION_MS).toISOString();
+    const result = this.db.prepare(`DELETE FROM mesh_executions WHERE json_extract(data,'$.status')<>'running'
+      AND json_extract(data,'$.createdAt')<=? AND (
+        json_extract(data,'$.status') IN ('completed','failed')
+        OR json_extract(data,'$.receiptSupportedAtDispatch') IS NOT 1
+        OR COALESCE(json_extract(data,'$.recovery.state'),'') IN ('completed','failed','expired','unsupported')
+      )`).run(cutoff);
+    this.db.prepare('DELETE FROM mesh_operations WHERE execution_id NOT IN (SELECT id FROM mesh_executions)').run();
+    return Number(result.changes);
+  }
+
   recover() {
+    this.pruneHistory();
     for (const node of this.listNodes()) {
       if (node.status === 'online') this.updateNode({ ...node, status: 'offline' });
     }
