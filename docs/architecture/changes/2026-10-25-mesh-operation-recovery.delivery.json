@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d5a0a992-ecde-4915-b4a9-c06920bd004e",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/momo/.codex/worktrees/mesh-operation-recovery/agentdock/docs/architecture/changes/2026-10-25-mesh-operation-recovery.sequence.json",
+  "output": "/Users/momo/.codex/worktrees/mesh-operation-recovery/agentdock/docs/architecture/changes/2026-10-25-mesh-operation-recovery.html",
+  "specification": {
+    "sha256": "4c525a771ac22c5fd0e044b8352415120e3e6056d6b080b558923e9214037272",
+    "bytes": 3092
+  },
+  "artifact": {
+    "sha256": "7df9bc6b3ef2eeb8e2890e32ee1388bb59cb691b808ca355fa04b0f89739df48",
+    "bytes": 816446
+  }
+}

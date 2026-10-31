@@ -43,14 +43,15 @@ flowchart LR
   lac -->|Allowlisted CLI handlers · host workspace/thread context| api
   api -->|Read-only nodes · admin / scoped Shell auth| mesh[Mesh Gateway / Dispatcher]
   mesh --> kernel
-  nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: heartbeat / result| mesh
-  mesh -->|Execute / cancel| nodes
+  nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: result / saved receipt| mesh
+  mesh -->|Execute / cancel / receipt query| nodes
+  nodes --> receipt[(Private bounded receipt SQLite)]
   nodes -.->|Run-owned screen lease| screen[Visible status and target feedback]
 ```
 
-当前架构提供交互式 [HTML 全景图](docs/architecture/system-architecture.html)、[管家 Bot 委托流程](docs/architecture/butler-orchestration.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明管家任务和 Agent run 的归属，以及 Core SQLite 与 Pi Durable 全局 SQLite 的边界。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
+当前架构提供交互式 [HTML 全景图](docs/architecture/system-architecture.html)、[管家 Bot 委托流程](docs/architecture/butler-orchestration.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明管家任务和 Agent run 的归属、Core SQLite 与 Pi Durable 全局 SQLite 的边界，以及 Mesh 设备本地回执库。Mesh 的 [回执恢复时序](docs/architecture/changes/2026-10-25-mesh-operation-recovery.html)记录了按稳定 `operationId` 查询已保存结果的流程。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
-[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
+[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
 <!-- project-setup:architecture-diagram:end -->
@@ -70,9 +71,17 @@ flowchart LR
 
 ## New
 
+### 2026-10-31
+
+- **Mesh 核心侧历史保留策略**：Core 启动时清理超过 7 天的已决 Mesh 执行记录及其 operation 索引（与节点侧回执日志保留窗口对齐）；执行中与仍可恢复回执的请求永不清理。历史 API 只返回保留窗口内的记录。详见 [Mesh 文档](docs/architecture/mesh.md)。
+
 ### 2026-10-27
 
-- **服务商删除引用保护**：删除仍被工作区引用的模型服务商时，Daemon 现在返回 409 冲突并列出全部依赖工作区，不再静默留下悬空的 `provider_id`（该问题曾导致 `GET /workspaces` 整体报错）。调用方可在删除请求中携带 `replacement_provider_id`，Daemon 会先原子地把所有依赖工作区重新指向替代服务商再删除旧服务商。
+- **服务商删除引用保护**：删除仍被工作区引用的模型服务商时，Daemon 返回 409 冲突并列出依赖工作区；提供替代服务商时先重指向工作区再删除旧服务商。并发配置写入会串行处理，删除失败时恢复原配置，避免遗留悬空的 `provider_id`。
+
+### 2026-10-25
+
+- **Mesh 远程操作回执恢复**：调用方可提供稳定 `operationId`，Core 按节点和参数摘要去重；支持新回执协议的节点会在执行前保存意图、回执后再确认。断线重连后 Core 查询同一节点的已保存结果，不重放 Shell、文件写入等副作用。原始 `interrupted`、`timed_out`、`cancelled` 状态保留；效果发生后、回执写入前崩溃仍显示为未知。新增 SDK `getOperation` 与 CLI `operation` 查询；旧节点继续使用原协议行为。详见 [Mesh 回执恢复设计与边界](docs/architecture/mesh.md)。
 
 ### 2026-10-24
 

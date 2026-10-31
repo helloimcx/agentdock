@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -10,7 +10,7 @@ import { MeshStore } from '../../apps/daemon/src/mesh/mesh-store.js';
 import { MeshGateway } from '../../apps/daemon/src/mesh/mesh-gateway.js';
 import { NodeAgent, enrollNode, meshUrl } from '../../apps/daemon/src/mesh/node-agent.js';
 import type { MeshExecution, MeshPairing } from '../../packages/contracts/src/mesh.js';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 
 async function until(check: () => boolean, timeout = 4000) {
   const end = Date.now() + timeout;
@@ -91,10 +91,93 @@ test('Mesh connects two devices, confines files, gates shell, cancels and never 
     const invalid = new WebSocket(origin.replace('http:', 'ws:') + '/api/local/v1/mesh/connect');
     await new Promise<void>(resolve => invalid.addEventListener('open', () => resolve(), { once: true }));
     invalid.send(JSON.stringify({ version: 1, type: 'hello', token: 'bad', platform: 'linux', capabilities: [] }));
-    const close = await new Promise<CloseEvent>(resolve => invalid.addEventListener('close', resolve, { once: true }));
-    assert.equal(close.code, 4002);
+    const closeCode = await new Promise<number>(resolve => invalid.addEventListener('close', event => resolve(event.code), { once: true }));
+    assert.equal(closeCode, 4002);
   } finally {
     agents.forEach(agent => agent.stop()); gateway.close();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    db.close(); await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('Mesh recovers a saved result after the device executed an operation but its WebSocket acknowledgement was lost', async () => {
+  const temp = await mkdtemp(join(tmpdir(), 'agentdock-mesh-recovery-'));
+  const root = join(temp, 'node-root');
+  await mkdir(root);
+  const counter = join(root, 'effects.txt');
+  let db = new DatabaseSync(join(temp, 'mesh.db'));
+  let store = new MeshStore(db);
+  const server = createServer((req, res) => { void gateway.handle(req, res, new URL(req.url!, 'http://localhost')); });
+  let gateway = new MeshGateway(store, server, 'test-admin');
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const pairing = store.createPairing({ label: 'recovery-node', allowShell: true });
+  const credentials = store.enroll(pairing.pairingToken);
+  const agent = new NodeAgent({
+    server: origin, credentials, root, allowShell: true, reconnectMs: 20,
+    receiptStorePath: join(temp, 'receipts', 'node.sqlite'),
+  });
+  const agentInternals = agent as unknown as { send: (socket: WebSocket, message: Record<string, unknown>) => void };
+  const send = agentInternals.send.bind(agent);
+  let lostAcknowledgement = false;
+  agentInternals.send = (socket, message) => {
+    if (message.type === 'result' && message.ok === true) {
+      lostAcknowledgement = true;
+      return;
+    }
+    send(socket, message);
+  };
+  agent.start();
+  const operationId = 'mesh-operation:77777777-7777-4777-8777-777777777777';
+  try {
+    await until(() => store.getNode(credentials.nodeId)?.status === 'online');
+    const source = `require('node:fs').appendFileSync(${JSON.stringify(counter)}, 'x'); process.stdout.write('effect saved')`;
+    const payload = {
+      nodeId: credentials.nodeId, capability: 'shell.exec', operationId,
+      args: { program: process.execPath, arguments: ['-e', source] }, timeoutMs: 2000,
+    };
+    const response = await fetch(`${origin}/api/local/v1/mesh/requests`, {
+      method: 'POST', headers: { Authorization: 'Bearer test-admin', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(response.status, 200);
+    const { data } = await response.json() as { data: MeshExecution };
+    await until(() => lostAcknowledgement && store.getExecution(data.id)?.status === 'running');
+    assert.equal(await readFile(counter, 'utf8'), 'x');
+
+    gateway.close();
+    db.close();
+    db = new DatabaseSync(join(temp, 'mesh.db'));
+    store = new MeshStore(db);
+    gateway = new MeshGateway(store, server, 'test-admin');
+    await until(() => store.getNode(credentials.nodeId)?.status === 'online'
+      && store.getOperation(operationId, credentials.nodeId)?.recovery?.state === 'completed');
+
+    const recovered = store.getOperation(operationId, credentials.nodeId)!;
+    assert.equal(recovered.id, data.id);
+    assert.equal(recovered.status, 'interrupted');
+    assert.equal(recovered.recovery?.state, 'completed');
+    assert.deepEqual(recovered.recovery?.result, { stdout: 'effect saved', stderr: '', exitCode: 0, signal: null });
+    assert.equal(await readFile(counter, 'utf8'), 'x');
+    const duplicate = await fetch(`${origin}/api/local/v1/mesh/requests`, {
+      method: 'POST', headers: { Authorization: 'Bearer test-admin', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    assert.equal(duplicate.status, 200);
+    assert.equal(((await duplicate.json()) as { data: MeshExecution }).data.id, data.id);
+    const conflict = await fetch(`${origin}/api/local/v1/mesh/requests`, {
+      method: 'POST', headers: { Authorization: 'Bearer test-admin', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, args: { program: process.execPath, arguments: ['-e', 'process.stdout.write("different")'] } }),
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal(await readFile(counter, 'utf8'), 'x');
+    const lookup = await fetch(`${origin}/api/local/v1/mesh/nodes/${encodeURIComponent(credentials.nodeId)}/operations/${encodeURIComponent(operationId)}`, {
+      headers: { Authorization: 'Bearer test-admin' },
+    });
+    assert.equal(lookup.status, 200);
+    assert.equal(((await lookup.json()) as { data: MeshExecution }).data.recovery?.state, 'completed');
+  } finally {
+    agent.stop(); gateway.close();
     await new Promise<void>(resolve => server.close(() => resolve()));
     db.close(); await rm(temp, { recursive: true, force: true });
   }

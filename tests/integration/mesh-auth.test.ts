@@ -104,7 +104,9 @@ test('anonymous callers can list Mesh nodes but cannot use administrative routes
 
 test('Mesh SDK omits authorization for read-only clients and preserves administrator bearer tokens', async () => {
   const requests: RequestInit[] = [];
-  const fetchImpl: typeof fetch = async (_input, init) => {
+  const urls: string[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    urls.push(String(input));
     requests.push(init || {});
     return new Response(JSON.stringify({ ok: true, data: { nodes: [] } }), { status: 200 });
   };
@@ -112,6 +114,11 @@ test('Mesh SDK omits authorization for read-only clients and preserves administr
   await createMeshClient(undefined, 'http://localhost/api/local/v1', fetchImpl).listNodes();
   assert.equal(new Headers(requests[0].headers).get('Authorization'), null);
 
-  await createMeshClient('test-only-admin', 'http://localhost/api/local/v1', fetchImpl).listNodes();
+  const client = createMeshClient('test-only-admin', 'http://localhost/api/local/v1', fetchImpl);
+  await client.listNodes();
   assert.equal(new Headers(requests[1].headers).get('Authorization'), 'Bearer test-only-admin');
+
+  await client.getOperation('node:11111111-1111-4111-8111-111111111111', 'mesh-operation:22222222-2222-4222-8222-222222222222');
+  assert.match(urls[2], /\/mesh\/nodes\/node%3A11111111-1111-4111-8111-111111111111\/operations\/mesh-operation%3A22222222-2222-4222-8222-222222222222$/);
+  assert.equal(new Headers(requests[2].headers).get('Authorization'), 'Bearer test-only-admin');
 });
