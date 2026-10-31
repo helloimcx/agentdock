@@ -55,7 +55,7 @@ import { registerTraceHandlers } from './handlers/trace-handler.js';
 import { registerCostHandlers } from './handlers/cost-handler.js';
 import { ManagedSkillCatalog } from './managed-skill-catalog.js';
 import { registerCapabilitiesHandlers } from './handlers/capabilities-handler.js';
-import { registerProviderHandlers } from './handlers/provider-handler.js';
+import { registerProviderHandlers, ProviderInUseError } from './handlers/provider-handler.js';
 import { registerChannelHandlers } from './handlers/channel-handler.js';
 import { registerExternalHandlers } from './handlers/external-handler.js';
 import { CostService } from '../cost/cost-service.js';
@@ -85,6 +85,8 @@ export interface LocalAiCoreServerBindings {
     getLogEntries(level?: string, limit?: number): AgentDockLogEntry[];
     readRuntimeConfig(): Promise<RuntimeConfigState>;
     saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState>;
+    applyRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState>;
+    runExclusiveRuntimeConfigWrite<T>(task: () => Promise<T> | T): Promise<T>;
     saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings>;
     getPluginDiagnostics(): Promise<LocalCorePluginDiagnostics>;
     runDiagnosticsDoctor(): Promise<LocalCoreDoctorResult>;
@@ -221,7 +223,7 @@ export class LocalAiCoreServer {
     const costService = b.costService || new CostService({ store: b.store, eventBus: costEventBus as any });
     registerCostHandlers(this.handlers, costService);
     registerCapabilitiesHandlers(this.handlers, b.kernel);
-    registerProviderHandlers(this.handlers, b.store);
+    registerProviderHandlers(this.handlers, b.store, b.controller);
     registerChannelHandlers(this.handlers, b.channelService);
     registerExternalHandlers(this.handlers, b.externalService, (runId, res) => this.attachExternalRunSseClient(runId, res));
     registerStandardsHandlers(this.handlers, b.standardsService || new StandardsService(), b.workspaceRouter);
@@ -354,7 +356,8 @@ export class LocalAiCoreServer {
       jsonError(res, 404, new Error(`Unknown route: ${path}`));
     } catch (error) {
       const status = error instanceof ButlerError ? error.status
-        : error instanceof SubmissionConflictError ? 409 : error instanceof RequestValidationError ? 400 : 500;
+        : error instanceof SubmissionConflictError || error instanceof ProviderInUseError ? 409
+        : error instanceof RequestValidationError ? 400 : 500;
       jsonError(res, status, error);
     }
   }

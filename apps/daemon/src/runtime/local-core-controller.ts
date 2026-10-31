@@ -50,6 +50,7 @@ export class LocalCoreController extends EventEmitter {
   private readonly runtime: LocalCoreRuntimeBootstrap;
   private readonly busUnsubscribers: Array<() => void> = [];
   private readonly pendingLogs: string[] = [];
+  private runtimeConfigWriteChain: Promise<unknown> = Promise.resolve();
   private handlingLog = false;
 
   constructor(
@@ -72,6 +73,9 @@ export class LocalCoreController extends EventEmitter {
     });
     this.knowledgeProvider = this.runtime.knowledgeProvider;
     this.workspaceRouter = this.runtime.workspaceRouter;
+    // The runtime bootstrap builds the router before the controller exists, so
+    // the shared runtime-config mutation lock is injected post-construction.
+    this.workspaceRouter.setRuntimeConfigSaver?.((config) => this.saveRuntimeConfig(config));
     const runtimeChannels = this.runtime.channelRuntimes || [this.runtime.channelRuntime, this.runtime.weixinChannelRuntime];
     const channelRuntimes = new Map(runtimeChannels.filter(Boolean).map((ch) => [ch.platform, ch]));
     this.channelService = new ChannelService(channelRuntimes);
@@ -270,6 +274,10 @@ export class LocalCoreController extends EventEmitter {
   }
 
   async saveRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState> {
+    return this.runExclusiveRuntimeConfigWrite(() => this.applyRuntimeConfig(config));
+  }
+
+  async applyRuntimeConfig(config: DesktopConnectConfig): Promise<RuntimeConfigState> {
     const normalized = normalizeWorkspaceIds(this.store, Array.isArray(config.projects) ? config.projects : []);
     const next = this.store.saveRuntimeConfig({ ...config, projects: normalized });
     // The store may apply config normalization (e.g. sandbox defaults) on save;
@@ -279,6 +287,17 @@ export class LocalCoreController extends EventEmitter {
     await this.channelService.refreshBindings();
     await this.emitRuntime();
     return next;
+  }
+
+  // Serializes runtime-config mutations so multi-step flows that read the
+  // config, persist a derived version, and then act on other stores (e.g.
+  // provider deletion) cannot interleave with concurrent config writers.
+  // Tasks must not re-enter via saveRuntimeConfig; they persist through
+  // applyRuntimeConfig instead.
+  runExclusiveRuntimeConfigWrite<T>(task: () => Promise<T> | T): Promise<T> {
+    const run = this.runtimeConfigWriteChain.then(task);
+    this.runtimeConfigWriteChain = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   async saveSettings(input: DesktopSettingsInput): Promise<DesktopSettings> {

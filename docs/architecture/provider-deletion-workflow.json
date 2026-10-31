@@ -1,0 +1,369 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Provider Deletion Reference Guard",
+    "locale": "en",
+    "output": "docs/architecture/provider-deletion-workflow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/helloimcx/agentdock.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "c05eaf5054cc21b0a8d0a15ae65417dbc7f9dbc2"
+    }
+  },
+  "lanes": [
+    {
+      "id": "caller",
+      "label": "API Caller"
+    },
+    {
+      "id": "daemon",
+      "label": "AgentDock Daemon"
+    },
+    {
+      "id": "writers",
+      "label": "Runtime Config Writers"
+    },
+    {
+      "id": "storage",
+      "label": "Runtime Config Store"
+    },
+    {
+      "id": "provider_rows",
+      "label": "Provider Store"
+    },
+    {
+      "id": "exceptions",
+      "label": "Validation and Failure",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "request",
+      "label": "Request",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "guard",
+      "label": "Serialize and check references",
+      "fromCol": 2,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "mutation",
+      "label": "Repoint and delete",
+      "fromCol": 3,
+      "toCol": 3
+    }
+  ],
+  "groups": [
+    {
+      "id": "locked_section",
+      "label": "Shared runtime-config mutation queue",
+      "lane": "daemon",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "delete_request",
+      "lane": "caller",
+      "col": 0,
+      "type": "frontend",
+      "label": "DELETE /providers/:id",
+      "sublabel": "Optional replacement provider ID",
+      "sources": [
+        {
+          "path": "packages/sdk/src/runtime.ts",
+          "line": 156,
+          "end_line": 161,
+          "label": "SDK request"
+        }
+      ]
+    },
+    {
+      "id": "validate_request",
+      "lane": "daemon",
+      "col": 1,
+      "type": "security",
+      "label": "Validate replacement",
+      "sublabel": "Max 4096 bytes; reject self or unknown ID",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 75,
+          "end_line": 85,
+          "label": "Request validation"
+        }
+      ]
+    },
+    {
+      "id": "enter_queue",
+      "lane": "daemon",
+      "col": 2,
+      "type": "backend",
+      "label": "Enter shared mutation queue",
+      "sublabel": "Hold through reference check and delete",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 87,
+          "end_line": 92,
+          "label": "Guard critical section"
+        }
+      ]
+    },
+    {
+      "id": "config_writers",
+      "lane": "writers",
+      "col": 1,
+      "type": "backend",
+      "label": "Other config writes",
+      "sublabel": "Save, external setup, workspace standards",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/local-core-controller.ts",
+          "line": 276,
+          "end_line": 300,
+          "label": "Controller queue"
+        },
+        {
+          "path": "apps/daemon/src/router/workspace-router.ts",
+          "line": 86,
+          "end_line": 90,
+          "label": "Router injection"
+        },
+        {
+          "path": "apps/daemon/src/router/workspace-router.ts",
+          "line": 832,
+          "end_line": 837,
+          "label": "Workspace save path"
+        }
+      ]
+    },
+    {
+      "id": "read_config",
+      "lane": "storage",
+      "col": 2,
+      "type": "backend",
+      "label": "Read current config",
+      "sublabel": "Current config snapshot while queued",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 91,
+          "end_line": 94,
+          "label": "Reference scan"
+        }
+      ]
+    },
+    {
+      "id": "scan_refs",
+      "lane": "daemon",
+      "col": 3,
+      "type": "security",
+      "label": "Find workspace references",
+      "sublabel": "Workspace provider_id references",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 92,
+          "end_line": 100,
+          "label": "Dependent workspaces"
+        }
+      ]
+    },
+    {
+      "id": "save_repoint",
+      "lane": "storage",
+      "col": 3,
+      "type": "backend",
+      "label": "Save replacement config",
+      "sublabel": "Normalize; sync registry; refresh and emit",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/local-core-controller.ts",
+          "line": 280,
+          "end_line": 289,
+          "label": "Config pipeline"
+        }
+      ]
+    },
+    {
+      "id": "delete_provider",
+      "lane": "provider_rows",
+      "col": 3,
+      "type": "database",
+      "label": "Delete provider row",
+      "sublabel": "SQLite model_providers table",
+      "sources": [
+        {
+          "path": "apps/daemon/src/acp/store/model-provider-store.ts",
+          "line": 70,
+          "end_line": 73,
+          "label": "Provider row delete"
+        }
+      ]
+    },
+    {
+      "id": "success",
+      "lane": "caller",
+      "col": 3,
+      "type": "frontend",
+      "label": "200 deleted",
+      "sublabel": "Response is written after deletion",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 108,
+          "end_line": 120,
+          "label": "Success response"
+        }
+      ]
+    },
+    {
+      "id": "conflict",
+      "lane": "caller",
+      "col": 2,
+      "type": "security",
+      "label": "409 ProviderInUseError",
+      "sublabel": "Lists dependent workspace labels",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 15,
+          "end_line": 25,
+          "label": "Conflict contract"
+        }
+      ]
+    },
+    {
+      "id": "restore_config",
+      "lane": "exceptions",
+      "col": 2,
+      "type": "backend",
+      "label": "Restore prior config",
+      "sublabel": "On provider-row delete failure",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/handlers/provider-handler.ts",
+          "line": 108,
+          "end_line": 115,
+          "label": "Compensation"
+        }
+      ]
+    },
+    {
+      "id": "error_response",
+      "lane": "exceptions",
+      "col": 3,
+      "type": "security",
+      "label": "Return request error",
+      "sublabel": "Provider row survives failed delete",
+      "sources": [
+        {
+          "path": "apps/daemon/src/runtime/server.ts",
+          "line": 357,
+          "end_line": 361,
+          "label": "HTTP error mapping"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "delete_request",
+      "to": "validate_request",
+      "label": "request"
+    },
+    {
+      "from": "validate_request",
+      "to": "enter_queue",
+      "label": "valid replacement",
+      "variant": "emphasis"
+    },
+    {
+      "from": "config_writers",
+      "to": "enter_queue",
+      "label": "same queue"
+    },
+    {
+      "from": "enter_queue",
+      "to": "read_config",
+      "label": "exclusive turn",
+      "variant": "emphasis"
+    },
+    {
+      "from": "read_config",
+      "to": "scan_refs"
+    },
+    {
+      "from": "scan_refs",
+      "to": "delete_provider",
+      "label": "no dependents",
+      "role": "branch"
+    },
+    {
+      "from": "scan_refs",
+      "to": "conflict",
+      "label": "dependents; no replacement",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "from": "scan_refs",
+      "to": "save_repoint",
+      "label": "dependents + replacement",
+      "variant": "emphasis"
+    },
+    {
+      "from": "save_repoint",
+      "to": "delete_provider",
+      "label": "save pipeline completes"
+    },
+    {
+      "from": "delete_provider",
+      "to": "success",
+      "label": "delete succeeds",
+      "variant": "emphasis"
+    },
+    {
+      "from": "delete_provider",
+      "to": "restore_config",
+      "label": "delete throws",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "from": "restore_config",
+      "to": "error_response",
+      "label": "rethrow",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Concurrency Boundary",
+      "items": [
+        "Provider deletion holds the controller promise-chain queue while it reads references, persists a replacement, and deletes the provider row.",
+        "Runtime-config writers use the same queue, so none can add the old provider reference during that critical section."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Failure Semantics",
+      "items": [
+        "A config-save failure prevents provider deletion; a delete failure restores the captured config before the error is returned.",
+        "A process crash between successful repoint and delete may leave the old provider row unused, while references still point to a valid replacement."
+      ]
+    }
+  ]
+}
