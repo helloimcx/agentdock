@@ -71,6 +71,10 @@ flowchart LR
 
 ## New
 
+### 2026-11-01
+
+- **Daemon 堆内存阈值观测**：AgentDock Daemon 启动后按 30 秒采样 `heapUsed`/RSS，达到 V8 堆上限 75%/90% 时各记录一条 `[heap-watch]` 日志（回落时记录恢复并重新布防），在内存增长演变为 OOM 崩溃前留下增长曲线证据。
+
 ### 2026-10-31
 
 - **Mesh 核心侧历史保留策略**：Core 启动时清理超过 7 天的已决 Mesh 执行记录及其 operation 索引（与节点侧回执日志保留窗口对齐）；执行中与仍可恢复回执的请求永不清理。历史 API 只返回保留窗口内的记录。详见 [Mesh 文档](docs/architecture/mesh.md)。
