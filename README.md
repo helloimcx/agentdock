@@ -54,6 +54,7 @@ flowchart LR
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
+Provider 删除保护：[交互式工作流](docs/architecture/provider-deletion-workflow.html) · [浅色图](docs/architecture/provider-deletion-workflow.light.png) · [深色图](docs/architecture/provider-deletion-workflow.dark.png)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：

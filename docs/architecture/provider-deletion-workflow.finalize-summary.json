@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-266-continue/docs/architecture/provider-deletion-workflow.json",
+    "sha256": "da970f44b3c580bebb2ac4ccc003ce8e5ce0f51049e688c396ac242240f7fa53",
+    "bytes": 9070
+  },
+  "artifact": {
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-266-continue/docs/architecture/provider-deletion-workflow.html",
+    "sha256": "6aab60ac3ec8e2cac6be9ae35082b99503fea712644d0e492e78aeff970ade7a",
+    "bytes": 837425
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/tmp/agentdock-provider-delete-finalize-1/provider-deletion-workflow.finalize.json",
+    "summaryReceipt": "/tmp/agentdock-provider-delete-finalize-1/provider-deletion-workflow.finalize-summary.json",
+    "browserCheckReceipt": "/tmp/agentdock-provider-delete-finalize-1/provider-deletion-workflow.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-31T03:01:11.240Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1731,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

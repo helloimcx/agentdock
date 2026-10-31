@@ -49,8 +49,6 @@ import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
 
-export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
-
 import {
   ArtifactContentError,
   MAX_ARTIFACT_CONTENT_BYTES,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DesktopConnectConfig } from '@cc/superai-contracts';
 import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 import { parseLocalAiCoreRoute } from '../../apps/daemon/src/runtime/server-routes.js';
 import { bootstrapLocalCoreRuntime } from '../../apps/daemon/src/kernel/bootstrap.js';
@@ -183,4 +184,32 @@ provider_id = "deepseek"
   } finally {
     rmSync(userDataPath, { recursive: true, force: true });
   }
+});
+
+test('controller queues config saves behind a provider-delete critical section', async () => {
+  const controller = Object.create(LocalCoreController.prototype) as LocalCoreController;
+  (controller as unknown as { runtimeConfigWriteChain: Promise<unknown> }).runtimeConfigWriteChain = Promise.resolve();
+  let releaseDelete!: () => void;
+  const deleteGate = new Promise<void>((resolve) => { releaseDelete = resolve; });
+  const order: string[] = [];
+  (controller as unknown as {
+    applyRuntimeConfig: (config: DesktopConnectConfig) => Promise<unknown>;
+  }).applyRuntimeConfig = async () => {
+    order.push('save-start');
+    order.push('save-end');
+    return {};
+  };
+
+  const deleteOperation = controller.runExclusiveRuntimeConfigWrite(async () => {
+    order.push('delete-start');
+    await deleteGate;
+    order.push('delete-end');
+  });
+  const configSave = controller.saveRuntimeConfig({ projects: [] });
+
+  await Promise.resolve();
+  assert.deepEqual(order, ['delete-start']);
+  releaseDelete();
+  await Promise.all([deleteOperation, configSave]);
+  assert.deepEqual(order, ['delete-start', 'delete-end', 'save-start', 'save-end']);
 });
