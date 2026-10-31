@@ -25,10 +25,11 @@ test('heap watcher logs warn and error once each while heap climbs toward the li
     { heapUsed: heapUsedOfLimit(0.92), rss: rssOf(0.9), external: 30_000_000 },
     { heapUsed: heapUsedOfLimit(0.93), rss: rssOf(0.95), external: 30_000_000 },
   ];
+  const lastSample = samples[samples.length - 1];
   const watcher = createHeapWatcher({
     log: (message) => lines.push(message),
     limitBytes: 1_000_000_000,
-    sample: () => samples.shift() ?? samples[0],
+    sample: () => samples.shift() ?? lastSample,
   });
   watcher.check();
   watcher.check();
@@ -67,10 +68,11 @@ test('heap watcher re-arms after recovery so a later crossing logs again', () =>
     { heapUsed: heapUsedOfLimit(0.30), rss: rssOf(0.3), external: 0 },
     { heapUsed: heapUsedOfLimit(0.82), rss: rssOf(0.6), external: 0 },
   ];
+  const lastSample = samples[samples.length - 1];
   const watcher = createHeapWatcher({
     log: (message) => lines.push(message),
     limitBytes: 1_000_000_000,
-    sample: () => samples.shift() ?? samples[0],
+    sample: () => samples.shift() ?? lastSample,
   });
   watcher.check();
   watcher.check();
