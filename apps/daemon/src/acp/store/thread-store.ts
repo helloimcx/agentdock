@@ -181,9 +181,11 @@ export class LocalThreadStore {
 
   /** Narrow read for external-run SSE replay: only this run's assistant rows,
    * skipping user rows and the fat tool_call_json column, so polling stays
-   * O(run messages) instead of re-hydrating the whole thread every tick.
-   * Timestamps are ISO-8601 UTC; rows with unparseable stamps never replayed
-   * before either (Date.parse gate), so a string comparison loses nothing. */
+   * proportional to run-window messages instead of re-hydrating the whole
+   * thread every tick (the partial index idx_messages_thread_assistant_ts
+   * serves the range seek). The `timestamp >= ?` string comparison is sound
+   * because every writer stores `new Date().toISOString()`; the JS Date.parse
+   * finiteness gate in the replay consumer backstops non-normalized stamps. */
   listAssistantRunMessagesSince(threadId: string, sinceIso: string): Array<{
     id: string;
     kind: LocalMessageRow['kind'];

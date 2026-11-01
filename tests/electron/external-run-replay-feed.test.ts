@@ -76,3 +76,25 @@ test('listAssistantRunMessagesSince returns only assistant rows at or after the 
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
+
+test('assistant timestamp query is served by the partial index instead of a thread-row scan', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-run-replay-idx-'));
+  const dbPath = join(userDataPath, 'runtime', 'local-core.db');
+  let store: LocalCoreAcpStore | null = null;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      const index = db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_messages_thread_assistant_ts'`).get();
+      assert.ok(index, 'partial assistant-timestamp index must exist');
+      const plan = db.prepare(`EXPLAIN QUERY PLAN SELECT id FROM messages WHERE thread_id='thread:workspace-agentdock::9bc1d56a-074d-4ac2-9062-35c9f0a33221' AND role='assistant' AND timestamp >= '2026-11-02T01:00:00.000Z'`).all();
+      const detail = plan.map((row) => String((row as { detail: string }).detail)).join(' | ');
+      assert.match(detail, /idx_messages_thread_assistant_ts/, `expected index range seek, got: ${detail}`);
+    } finally {
+      db.close();
+    }
+  } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});

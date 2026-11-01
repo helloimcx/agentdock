@@ -37,7 +37,7 @@ import type { DecisionLogService } from '../automation/decision-log-service.js';
 import type { RuntimeDetectionService } from './runtime-detection-service.js';
 import type { LocalCoreErrorReporter } from '../kernel/local-core-errors.js';
 import type { ChannelService } from './channel-service.js';
-import type { ExternalService } from './external-service.js';
+import { replayFeedFromSnapshot, type ExternalRunReplayFeed, type ExternalService } from './external-service.js';
 import { registerRuntimeHandlers } from './handlers/runtime-handler.js';
 import { registerRuntimesHandlers } from './handlers/runtimes-handler.js';
 import { registerThreadRuntimeHandlers } from './handlers/thread-runtime-handler.js';
@@ -73,22 +73,6 @@ import {
 } from './handlers/openai-handler.js';
 import { RequestValidationError } from './request-validation.js';
 import { MeshGateway } from '../mesh/mesh-gateway.js';
-
-/** Minimal replay input shared by the connect-time snapshot path and the
- *  1Hz getRunReplayFeed poll; role is only present on the snapshot path. */
-interface ExternalRunReplaySource {
-  readonly startedAtMs: number;
-  readonly bridgeSessionKey?: string;
-  readonly messages: ReadonlyArray<{
-    readonly id: string;
-    readonly role?: 'user' | 'assistant' | 'system';
-    readonly kind?: 'final' | 'progress' | 'system';
-    readonly content: string;
-    readonly bridgeKind?: DesktopBridgeEvent['bridgeKind'];
-    readonly bridgeStatus?: DesktopBridgeEvent['bridgeStatus'];
-    readonly timestamp: string;
-  }>;
-}
 
 export interface LocalAiCoreServerBindings {
   readonly controller: EventEmitter & {
@@ -404,17 +388,21 @@ export class LocalAiCoreServer {
     clients.add(res);
     this.externalRunSseClients.set(runId, clients);
     const replayedMessageIds = new Set<string>();
+    let replaySinceIso: string | undefined;
     const heartbeat = setInterval(() => {
       res.write(': heartbeat\n\n');
     }, 15000);
     this.heartbeatTimers.set(res, heartbeat);
     const replayTimer = setInterval(() => {
-      // Per-tick replay reads only this run's assistant rows (O(run messages));
+      // Per-tick replay reads only this run's assistant rows from the
+      // replaySinceIso high-water mark (O(new messages) steady state);
       // re-hydrating the full ThreadDetail snapshot every second cost O(all
       // thread messages) on whale threads — the same trade the OpenAI polling
       // path already made.
-      void this.bindings.externalService.getRunReplayFeed(runId)
-        .then((feed) => this.replayExternalRunMessages(res, runId, feed, replayedMessageIds))
+      void this.bindings.externalService.getRunReplayFeed(runId, replaySinceIso)
+        .then((feed) => {
+          replaySinceIso = this.replayExternalRunMessages(res, runId, feed, replayedMessageIds) ?? replaySinceIso;
+        })
         .catch(() => undefined);
     }, 1000);
     this.externalReplayTimers.set(res, replayTimer);
@@ -433,11 +421,7 @@ export class LocalAiCoreServer {
       type: 'external.run.snapshot',
       snapshot,
     }));
-    this.replayExternalRunMessages(res, runId, {
-      startedAtMs: Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || ''),
-      bridgeSessionKey: snapshot.thread?.bridgeSessionKey,
-      messages: snapshot.thread?.messages || [],
-    }, replayedMessageIds);
+    replaySinceIso = this.replayExternalRunMessages(res, runId, replayFeedFromSnapshot(snapshot), replayedMessageIds) ?? replaySinceIso;
   }
 
   private broadcast(event: LocalCoreEvent) {
@@ -472,15 +456,19 @@ export class LocalAiCoreServer {
     }
   }
 
+  /** Replays assistant messages at/after the run cutoff once per client;
+   *  returns the new high-water timestamp ISO for the next feed poll, or
+   *  undefined when nothing replayable was seen. */
   private replayExternalRunMessages(
     res: ServerResponse,
     runId: string,
-    source: ExternalRunReplaySource,
+    source: ExternalRunReplayFeed,
     replayedMessageIds: Set<string>,
-  ) {
+  ): string | undefined {
     if (!Number.isFinite(source.startedAtMs)) {
-      return;
+      return undefined;
     }
+    let highWaterMs: number | undefined;
     for (const message of source.messages) {
       if (message.role && message.role !== 'assistant') {
         continue;
@@ -488,6 +476,9 @@ export class LocalAiCoreServer {
       const messageAt = Date.parse(message.timestamp || '');
       if (!Number.isFinite(messageAt) || messageAt < source.startedAtMs) {
         continue;
+      }
+      if (!highWaterMs || messageAt > highWaterMs) {
+        highWaterMs = messageAt;
       }
       if (replayedMessageIds.has(message.id)) {
         continue;
@@ -506,6 +497,7 @@ export class LocalAiCoreServer {
         },
       }));
     }
+    return highWaterMs === undefined ? undefined : new Date(highWaterMs).toISOString();
   }
 
   private findThreadIdFromSessionKey(sessionKey: string) {
