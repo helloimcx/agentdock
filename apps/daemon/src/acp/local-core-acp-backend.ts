@@ -285,6 +285,10 @@ export class LocalCoreAcpBackend {
     };
   }
 
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
+    return this.options.store.listAssistantRunMessagesSince(threadId, sinceIso);
+  }
+
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
     this.options.store.renameThread(threadId, title);
     return this.getThread(threadId);

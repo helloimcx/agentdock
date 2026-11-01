@@ -179,6 +179,35 @@ export class LocalThreadStore {
     }));
   }
 
+  /** Narrow read for external-run SSE replay: only this run's assistant rows,
+   * skipping user rows and the fat tool_call_json column, so polling stays
+   * O(run messages) instead of re-hydrating the whole thread every tick.
+   * Timestamps are ISO-8601 UTC; rows with unparseable stamps never replayed
+   * before either (Date.parse gate), so a string comparison loses nothing. */
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string): Array<{
+    id: string;
+    kind: LocalMessageRow['kind'];
+    content: string;
+    bridgeKind: ReturnType<typeof normalizeBridgeKind>;
+    bridgeStatus: ReturnType<typeof normalizeBridgeStatus>;
+    timestamp: string;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT id, kind, content, bridge_kind, bridge_status, timestamp
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant' AND timestamp >= ?
+      ORDER BY seq ASC
+    `).all(threadId, sinceIso) as Array<Pick<LocalMessageRow, 'id' | 'kind' | 'content' | 'bridge_kind' | 'bridge_status' | 'timestamp'>>;
+    return rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      content: row.content,
+      bridgeKind: normalizeBridgeKind(row.bridge_kind),
+      bridgeStatus: normalizeBridgeStatus(row.bridge_status),
+      timestamp: row.timestamp,
+    }));
+  }
+
   private selectMessageWindow(threadId: string, limit: number, beforeSeq?: number): LocalMessageRow[] {
     if (beforeSeq !== undefined) {
       return this.db.prepare(`

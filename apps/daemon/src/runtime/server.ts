@@ -23,7 +23,6 @@ import type {
   AutomationScriptVersion,
   ScheduledJob,
   ScheduledJobRun,
-  ExternalRunSnapshot,
   RuntimeConfigState,
 } from '@cc/superai-contracts';
 import type { AgentDockLogEntry } from '../kernel/rotating-logger.js';
@@ -74,6 +73,22 @@ import {
 } from './handlers/openai-handler.js';
 import { RequestValidationError } from './request-validation.js';
 import { MeshGateway } from '../mesh/mesh-gateway.js';
+
+/** Minimal replay input shared by the connect-time snapshot path and the
+ *  1Hz getRunReplayFeed poll; role is only present on the snapshot path. */
+interface ExternalRunReplaySource {
+  readonly startedAtMs: number;
+  readonly bridgeSessionKey?: string;
+  readonly messages: ReadonlyArray<{
+    readonly id: string;
+    readonly role?: 'user' | 'assistant' | 'system';
+    readonly kind?: 'final' | 'progress' | 'system';
+    readonly content: string;
+    readonly bridgeKind?: DesktopBridgeEvent['bridgeKind'];
+    readonly bridgeStatus?: DesktopBridgeEvent['bridgeStatus'];
+    readonly timestamp: string;
+  }>;
+}
 
 export interface LocalAiCoreServerBindings {
   readonly controller: EventEmitter & {
@@ -394,8 +409,12 @@ export class LocalAiCoreServer {
     }, 15000);
     this.heartbeatTimers.set(res, heartbeat);
     const replayTimer = setInterval(() => {
-      void this.bindings.externalService.getRunSnapshot(runId)
-        .then((snapshot) => this.replayExternalRunMessages(res, runId, snapshot, replayedMessageIds))
+      // Per-tick replay reads only this run's assistant rows (O(run messages));
+      // re-hydrating the full ThreadDetail snapshot every second cost O(all
+      // thread messages) on whale threads — the same trade the OpenAI polling
+      // path already made.
+      void this.bindings.externalService.getRunReplayFeed(runId)
+        .then((feed) => this.replayExternalRunMessages(res, runId, feed, replayedMessageIds))
         .catch(() => undefined);
     }, 1000);
     this.externalReplayTimers.set(res, replayTimer);
@@ -414,7 +433,11 @@ export class LocalAiCoreServer {
       type: 'external.run.snapshot',
       snapshot,
     }));
-    this.replayExternalRunMessages(res, runId, snapshot, replayedMessageIds);
+    this.replayExternalRunMessages(res, runId, {
+      startedAtMs: Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || ''),
+      bridgeSessionKey: snapshot.thread?.bridgeSessionKey,
+      messages: snapshot.thread?.messages || [],
+    }, replayedMessageIds);
   }
 
   private broadcast(event: LocalCoreEvent) {
@@ -452,20 +475,18 @@ export class LocalAiCoreServer {
   private replayExternalRunMessages(
     res: ServerResponse,
     runId: string,
-    snapshot: ExternalRunSnapshot,
+    source: ExternalRunReplaySource,
     replayedMessageIds: Set<string>,
   ) {
-    const thread = snapshot.thread;
-    const startedAt = Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || '');
-    if (!thread || !Number.isFinite(startedAt)) {
+    if (!Number.isFinite(source.startedAtMs)) {
       return;
     }
-    for (const message of thread.messages || []) {
-      if (message.role !== 'assistant') {
+    for (const message of source.messages) {
+      if (message.role && message.role !== 'assistant') {
         continue;
       }
       const messageAt = Date.parse(message.timestamp || '');
-      if (!Number.isFinite(messageAt) || messageAt < startedAt) {
+      if (!Number.isFinite(messageAt) || messageAt < source.startedAtMs) {
         continue;
       }
       if (replayedMessageIds.has(message.id)) {
@@ -477,7 +498,7 @@ export class LocalAiCoreServer {
         runId,
         stream: {
           type: message.kind === 'final' ? 'reply' : 'update_message',
-          sessionKey: thread.bridgeSessionKey,
+          sessionKey: source.bridgeSessionKey,
           replyCtx: runId,
           content: message.content,
           bridgeKind: message.bridgeKind,

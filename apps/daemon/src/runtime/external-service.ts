@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentTask,
+  DesktopBridgeEvent,
   DesktopConnectConfig,
   DesktopProjectConfig,
   ExternalProject,
@@ -15,6 +16,21 @@ import type {
 } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+
+export interface ExternalRunReplayFeedMessage {
+  readonly id: string;
+  readonly kind?: 'final' | 'progress' | 'system';
+  readonly content: string;
+  readonly bridgeKind?: DesktopBridgeEvent['bridgeKind'];
+  readonly bridgeStatus?: DesktopBridgeEvent['bridgeStatus'];
+  readonly timestamp: string;
+}
+
+export interface ExternalRunReplayFeed {
+  readonly startedAtMs: number;
+  readonly bridgeSessionKey?: string;
+  readonly messages: readonly ExternalRunReplayFeedMessage[];
+}
 
 export interface ExternalServiceDeps {
   readRuntimeConfig: () => Promise<RuntimeConfigState>;
@@ -130,6 +146,23 @@ export class ExternalService {
       task,
       thread,
     };
+  }
+
+  /** Polling feed for external-run SSE replay: O(run messages) per tick instead
+   *  of a full ThreadDetail hydration (the OpenAI polling path made the same
+   *  trade). startedAtMs keeps the snapshot cutoff semantics — NaN when the run
+   *  has no parseable start, and callers skip replay in that case. */
+  async getRunReplayFeed(runId: string): Promise<ExternalRunReplayFeed> {
+    const task = this.store.getAgentTaskByRunId(runId);
+    const run = this.store.getRun(runId);
+    const threadId = task?.threadId || run?.thread_id || '';
+    const startedAtMs = Date.parse(task?.startedAt || task?.createdAt || '');
+    if (!threadId || !Number.isFinite(startedAtMs)) {
+      return { startedAtMs: Number.NaN, bridgeSessionKey: undefined, messages: [] };
+    }
+    const bridgeSessionKey = this.workspaceRouter.getThreadSessionKey(threadId) || undefined;
+    const messages = await this.workspaceRouter.listAssistantRunMessagesSince(threadId, new Date(startedAtMs).toISOString());
+    return { startedAtMs, bridgeSessionKey, messages };
   }
 
   async getRunStatus(runId: string): Promise<AgentTask | undefined> {
