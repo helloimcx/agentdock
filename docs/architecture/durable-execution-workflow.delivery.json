@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "4895f596-a717-482d-ae26-674807e253ac",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "docs/architecture/durable-execution.workflow.json",
+  "output": "docs/architecture/durable-execution-workflow.html",
+  "specification": {
+    "sha256": "9f1011547c5778a9a0edc977da6ca31b815ceee73c7c55d2d1204ce325a67e78",
+    "bytes": 4900
+  },
+  "artifact": {
+    "sha256": "e22d48da3eece96f17ad8560d858b581f976b94dab45383fd6a834bec5a39c76",
+    "bytes": 829806
+  }
+}

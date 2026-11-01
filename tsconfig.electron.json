@@ -50,6 +50,7 @@
     "packages/**/*.ts",
     "tests/**/*.ts",
     "apps/web/src/pages/Threads/thread-chat-message-blocks.ts",
+    "apps/web/src/pages/Threads/thread-chat-snapshot.test.ts",
     "apps/web/src/pages/Threads/thread-chat-permission.ts",
     "apps/web/src/pages/Threads/thread-chat-permission.test.ts",
     "apps/web/src/pages/Automation/automation-page-model.ts",

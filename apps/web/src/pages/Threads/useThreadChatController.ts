@@ -60,6 +60,7 @@ export function useThreadChatController() {
   const branding = getRuntimeBranding();
   const {
     applyLocalCoreThreadDetail,
+    resetLocalCoreThreadDetail,
     armReplyTimeout,
     clearActionStatuses,
     clearReplyTimeout,
@@ -163,6 +164,7 @@ export function useThreadChatController() {
     setThreadGroups,
     setTyping,
     applyLocalCoreThreadDetail,
+    resetLocalCoreThreadDetail,
     clearReplyTimeout,
     updateTaskState,
     holdBlankComposerRef,

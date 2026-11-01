@@ -4,7 +4,7 @@ import type { ThreadExecutionSnapshot } from '@cc/superai-contracts';
 export function watchThreadSnapshot(options: {
   subscribe: (notify: () => void) => () => void;
   read: () => Promise<ThreadExecutionSnapshot>;
-  send: (snapshot: ThreadExecutionSnapshot) => boolean;
+  send: (snapshot: ThreadExecutionSnapshot) => boolean | Promise<boolean>;
   onError: (error: unknown) => void;
 }): () => void {
   let closed = false;
@@ -23,7 +23,7 @@ export function watchThreadSnapshot(options: {
         if (closed) break;
         if (!last || snapshot.runtimeEpoch !== last.epoch || snapshot.revision > last.revision) {
           last = { epoch: snapshot.runtimeEpoch, revision: snapshot.revision };
-          if (!options.send(snapshot)) close();
+          if (!await options.send(snapshot)) close();
         }
       }
     } catch (error) {

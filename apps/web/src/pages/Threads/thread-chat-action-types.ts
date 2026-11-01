@@ -1,6 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ThreadDetail } from '@cc/superai-contracts';
-import type { ChatMessage, ChatTaskState, ThreadActionTarget, ThreadGroup } from './thread-chat-model';
+import type { ChatMessage, ChatTaskState, ThreadActionTarget, ThreadDetailApplyOptions, ThreadGroup } from './thread-chat-model';
 import type { PendingPermissionRequest } from './thread-chat-permission';
 
 export type ThreadChatSearchParamsSetter = (
@@ -8,7 +8,7 @@ export type ThreadChatSearchParamsSetter = (
   navigateOptions?: { replace?: boolean },
 ) => void;
 
-export type ThreadChatRefreshSessionsForProject = (
+type ThreadChatRefreshSessionsForProject = (
   project: string,
 ) => Promise<Array<{ id: string; bridgeSessionKey?: string }>>;
 
@@ -16,14 +16,14 @@ export type ThreadChatRefreshThreadsForWorkspace = (
   workspaceId: string,
 ) => Promise<Array<{ id: string; bridgeSessionKey?: string }>>;
 
-export type ThreadChatPendingTurn = {
+type ThreadChatPendingTurn = {
   sessionKey: string;
   userOrder: number;
   runId?: string;
   supersededRunId?: string;
 };
 
-export type ThreadChatPendingTurnRef = MutableRefObject<ThreadChatPendingTurn | null>;
+type ThreadChatPendingTurnRef = MutableRefObject<ThreadChatPendingTurn | null>;
 
 export type ThreadChatConversationRefs = {
   holdBlankComposerRef: MutableRefObject<boolean>;
@@ -63,7 +63,7 @@ export type ThreadChatModalSetters = {
 export type ThreadChatSharedActionContext = {
   selectedProject: string;
   updateTaskState: (next: ChatTaskState, reason?: string) => void;
-  applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;
+  applyLocalCoreThreadDetail: (detail: ThreadDetail, options?: ThreadDetailApplyOptions) => void;
   clearReplyTimeout: () => void;
   refreshSessionsForProject: ThreadChatRefreshSessionsForProject;
 } & ThreadChatCoreSetters &
@@ -72,7 +72,8 @@ export type ThreadChatSharedActionContext = {
 export type ThreadChatSharedHookContext = {
   selectedWorkspaceId: string;
   updateTaskState: (next: ChatTaskState, reason?: string) => void;
-  applyLocalCoreThreadDetail: (detail: ThreadDetail) => void;
+  applyLocalCoreThreadDetail: (detail: ThreadDetail, options?: ThreadDetailApplyOptions) => void;
+  resetLocalCoreThreadDetail: (threadId: string) => void;
   clearReplyTimeout: () => void;
   refreshThreadsForWorkspace: ThreadChatRefreshThreadsForWorkspace;
 } & ThreadChatCoreSetters &
