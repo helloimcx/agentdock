@@ -23,6 +23,8 @@ import type {
   WorkspaceSecuritySettingsUpdateInput,
   DesktopProjectConfig,
   DesktopStandardsOptions,
+  DesktopConnectConfig,
+  RuntimeConfigState,
   ThreadDetail,
   ThreadGetOptions,
   ThreadSummary,
@@ -46,8 +48,6 @@ import { composeButlerMessage } from '../thread/butler-message-policy.js';
 import { ManagedSkillCatalog } from '../runtime/managed-skill-catalog.js';
 import { createChannelThreadMessageInput } from '../channel/shared/content.js';
 import { WorkspaceBridgeEventStream } from './workspace-bridge-event-stream.js';
-
-export { decodeThreadId, encodeThreadId } from '../thread/workspace-thread-id.js';
 
 import {
   ArtifactContentError,
@@ -79,6 +79,13 @@ export class WorkspaceRouter {
   } | null = null;
   private meshGateway: any = null;
   private isButlerThread: (threadId: string) => boolean = () => false;
+  private runtimeConfigSaver: ((config: DesktopConnectConfig) => Promise<RuntimeConfigState>) | null = null;
+
+  // Injected by the controller so router-side config writes flow through the
+  // same serialized mutation lock as every other runtime-config writer.
+  setRuntimeConfigSaver(saver: (config: DesktopConnectConfig) => Promise<RuntimeConfigState>) {
+    this.runtimeConfigSaver = saver;
+  }
 
   constructor(private readonly options: WorkspaceRouterOptions) {
     this.store = options.store;
@@ -829,7 +836,9 @@ export class WorkspaceRouter {
         projects = currentProjects;
       }
     }
-    this.store.saveRuntimeConfig({
+    const saveRuntimeConfig = this.runtimeConfigSaver
+      || (async (config: DesktopConnectConfig) => this.store.saveRuntimeConfig(config));
+    await saveRuntimeConfig({
       ...configState.config,
       projects,
     });

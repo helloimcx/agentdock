@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b26a21b5-d323-4a5d-b565-214eb99c67d7",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-266-continue/docs/architecture/provider-deletion-workflow.json",
+  "output": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-266-continue/docs/architecture/provider-deletion-workflow.html",
+  "specification": {
+    "sha256": "da970f44b3c580bebb2ac4ccc003ce8e5ce0f51049e688c396ac242240f7fa53",
+    "bytes": 9070
+  },
+  "artifact": {
+    "sha256": "6aab60ac3ec8e2cac6be9ae35082b99503fea712644d0e492e78aeff970ade7a",
+    "bytes": 837425
+  }
+}

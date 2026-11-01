@@ -54,6 +54,7 @@ flowchart LR
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
+Provider 删除保护：[交互式工作流](docs/architecture/provider-deletion-workflow.html) · [浅色图](docs/architecture/provider-deletion-workflow.light.png) · [深色图](docs/architecture/provider-deletion-workflow.dark.png)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
@@ -82,6 +83,10 @@ flowchart LR
 ### 2026-10-31
 
 - **Mesh 核心侧历史保留策略**：Core 启动时清理超过 7 天的已决 Mesh 执行记录及其 operation 索引（与节点侧回执日志保留窗口对齐）；执行中与仍可恢复回执的请求永不清理。历史 API 只返回保留窗口内的记录。详见 [Mesh 文档](docs/architecture/mesh.md)。
+
+### 2026-10-27
+
+- **服务商删除引用保护**：删除仍被工作区引用的模型服务商时，Daemon 返回 409 冲突并列出依赖工作区；提供替代服务商时先重指向工作区再删除旧服务商。并发配置写入会串行处理，删除失败时恢复原配置，避免遗留悬空的 `provider_id`。
 
 ### 2026-10-25
 
