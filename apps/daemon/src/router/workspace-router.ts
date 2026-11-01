@@ -334,6 +334,15 @@ export class WorkspaceRouter {
     return this.withKnowledge(await this.localCoreAcp.getThread(threadId, options));
   }
 
+  /** Slim assistant-only read for run replay polling — deliberately skips
+   *  the withKnowledge ThreadDetail enrichment; the SSE replay only consumes
+   *  message rows, so polling a whale thread must stay O(run messages). */
+  async listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
+    const { workspaceId } = decodeThreadId(threadId);
+    await this.getWorkspaceRoute(workspaceId);
+    return this.localCoreAcp.listAssistantRunMessagesSince(threadId, sinceIso);
+  }
+
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
     const { workspaceId } = decodeThreadId(threadId);
     await this.getWorkspaceRoute(workspaceId);

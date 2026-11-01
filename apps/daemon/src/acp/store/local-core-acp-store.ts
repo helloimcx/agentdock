@@ -258,6 +258,10 @@ export class LocalCoreAcpStore {
     return this.threads.listAssistantTurnMessages(threadId);
   }
 
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
+    return this.threads.listAssistantRunMessagesSince(threadId, sinceIso);
+  }
+
   renameThread(threadId: string, title: string) {
     this.threads.rename(threadId, title);
   }
