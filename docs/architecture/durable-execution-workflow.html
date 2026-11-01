@@ -5250,10 +5250,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <!-- Swimlanes -->
         <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1181" height="104" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="74" class="t-muted" font-size="10" font-weight="600">01 / 运行快照与多端恢复</text>
+        <text x="54" y="74" class="t-muted" font-size="10" font-weight="600">01 / 聊天历史分页、运行快照与慢消费者恢复</text>
 
         <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="176" width="1181" height="104" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="198" class="t-muted" font-size="10" font-weight="600">02 / 提交与最终报告投递</text>
+        <text x="54" y="198" class="t-muted" font-size="10" font-weight="600">02 / 提交、执行与最终报告投递</text>
 
         <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="300" width="1181" height="104" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="322" class="t-muted" font-size="10" font-weight="600">03 / 可选 Pi Durable SQLite</text>
@@ -5269,45 +5269,82 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 
         <!-- Edge paths -->
-        <path data-edge-from="admit" data-edge-to="execute" data-edge-key="0" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="380,243;489.20000000000005,243" d="M 380 243 L 489.20000000000005 243" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="admit" data-edge-to="snapshot" data-edge-label="提交后可见" data-edge-key="1" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="305,217;305,145" d="M 305 217 L 305 145" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="execute" data-edge-to="harness" data-edge-label="显式启用" data-edge-key="2" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="564.2,269;564.2,341" d="M 564.2 269 L 564.2 341" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="execute" data-edge-to="outbox" data-edge-key="3" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="639.2,243;698.5,243" d="M 639.2 243 L 698.5 243" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="harness" data-edge-to="execute" data-edge-label="写入审批 RPC" data-edge-key="4" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="588.2,341;588.2,325;678,325;678,285;588.2,285;588.2,269" d="M 588.2 341 L 588.2 333 Q 588.2 325 596.2 325 L 670 325 Q 678 325 678 317 L 678 293 Q 678 285 670 285 L 596.2 285 Q 588.2 285 588.2 277 L 588.2 269" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="harness" data-edge-to="pi_store" data-edge-label="检查点" data-edge-key="5" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="639.2,367;686,367" d="M 639.2 367 L 686 367" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="harness" data-edge-to="restart" data-edge-label="进程重启" data-edge-key="6" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="564.2,393;564.2,465" d="M 564.2 393 L 564.2 465" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="input" data-edge-to="admit" data-edge-key="7" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="198,243;230,243" d="M 198 243 L 230 243" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="outbox" data-edge-to="send" data-edge-key="8" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="848.5,243;880.5,243" d="M 848.5 243 L 880.5 243" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="send" data-edge-to="ack" data-edge-key="9" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1030.5,243;1062.5,243" d="M 1030.5 243 L 1062.5 243" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="send" data-edge-to="unknown" data-edge-label="确认丢失" data-edge-key="10" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="955.5,269;955.5,465" d="M 955.5 269 L 955.5 465" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="snapshot" data-edge-to="clients" data-edge-label="REST baseline + SSE" data-edge-key="11" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="380,119;489.20000000000005,119" d="M 380 119 L 489.20000000000005 119" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="admit" data-edge-to="execute" data-edge-key="0" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="414,243;446,243" d="M 414 243 L 446 243" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="admit" data-edge-to="snapshot" data-edge-label="提交后可见" data-edge-key="1" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="339,217;339,166;521,166;521,145" d="M 339 217 L 339 174 Q 339 166 347 166 L 513 166 Q 521 166 521 158 L 521 145" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="backpressure" data-edge-to="clients" data-edge-label="drain 后发送" data-edge-key="2" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="805.3,119;880.9,119" d="M 805.3 119 L 880.9 119" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="chat" data-edge-to="snapshot" data-edge-label="SSE limit=50" data-edge-key="3" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="48,119;32,119;32,60;521,60;521,93" d="M 48 119 L 40 119 Q 32 119 32 111 L 32 68 Q 32 60 40 60 L 513 60 Q 521 60 521 68 L 521 93" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="chat" data-edge-to="thread_api" data-edge-label="limit+游标" data-edge-key="4" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="198,119;264,119" d="M 198 119 L 264 119" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="execute" data-edge-to="harness" data-edge-label="显式启用" data-edge-key="5" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="521,269;521,341" d="M 521 269 L 521 341" class="a-default" data-animate="edge" style="--step:11" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="execute" data-edge-to="outbox" data-edge-key="6" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="596,243;655.3,243" d="M 596 243 L 655.3 243" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="harness" data-edge-to="execute" data-edge-label="写入审批 RPC" data-edge-key="7" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="497,341;497,325;422,325;422,285;497,285;497,269" d="M 497 341 L 497 333 Q 497 325 489 325 L 430 325 Q 422 325 422 317 L 422 293 Q 422 285 430 285 L 489 285 Q 497 285 497 277 L 497 269" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="harness" data-edge-to="pi_store" data-edge-label="检查点" data-edge-key="8" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="596,367;642.8,367" d="M 596 367 L 642.8 367" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="harness" data-edge-to="restart" data-edge-label="进程重启" data-edge-key="9" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="521,393;521,465" d="M 521 393 L 521 465" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="input" data-edge-to="admit" data-edge-key="10" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="198,243;264,243" d="M 198 243 L 264 243" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="outbox" data-edge-to="send" data-edge-key="11" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="805.3,243;880.9,243" d="M 805.3 243 L 880.9 243" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="send" data-edge-to="ack" data-edge-key="12" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="1030.9,243;1062.9,243" d="M 1030.9 243 L 1062.9 243" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="send" data-edge-to="unknown" data-edge-label="确认丢失" data-edge-key="13" data-composition-routing="workflow-v2-auto" data-edge-role="error" data-composition-points="955.9,269;955.9,465" d="M 955.9 269 L 955.9 465" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="snapshot" data-edge-to="backpressure" data-edge-label="快照修订" data-edge-key="14" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="596,119;655.3,119" d="M 596 119 L 655.3 119" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="thread_api" data-edge-to="clients" data-edge-label="seq 有序合并" data-edge-key="15" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="339,145;339,172;955.9,172;955.9,145" d="M 339 145 L 339 164 Q 339 172 347 172 L 947.9 172 Q 955.9 172 955.9 164 L 955.9 145" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 
         <!-- Nodes -->
-        <g id="node-snapshot" data-node-id="snapshot" data-node-label="持久运行快照" tabindex="0" role="button" aria-label="聚焦持久运行快照，运行快照与多端恢复" aria-pressed="false" data-node-kind="backend" data-node-context="运行快照与多端恢复">
-          <title>持久运行快照 · 运行快照与多端恢复</title>
-          <rect x="230" y="93" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="230" y="93" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(236 99) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" x="305" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">持久运行快照</text>
-        </g>
-
-        <g id="node-clients" data-node-id="clients" data-node-label="多端重连" tabindex="0" role="button" aria-label="聚焦多端重连，运行快照与多端恢复" aria-pressed="false" data-node-kind="frontend" data-node-context="运行快照与多端恢复">
-          <title>多端重连 · 运行快照与多端恢复</title>
-          <rect x="489.20000000000005" y="93" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="489.20000000000005" y="93" width="150" height="52" rx="8" class="c-frontend" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(495.20000000000005 99) scale(0.6875)">
+        <g id="node-chat" data-node-id="chat" data-node-label="聊天会话" tabindex="0" role="button" aria-label="聚焦聊天会话，聊天历史分页、运行快照与慢消费者恢复" aria-pressed="false" data-node-kind="frontend" data-node-context="聊天历史分页、运行快照与慢消费者恢复">
+          <title>聊天会话 · 聊天历史分页、运行快照与慢消费者恢复</title>
+          <rect x="48" y="93" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="48" y="93" width="150" height="52" rx="8" class="c-frontend" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(54 99) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" x="564.2" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">多端重连</text>
+          <text data-node-label="" x="123" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">聊天会话</text>
         </g>
 
-        <g id="node-input" data-node-id="input" data-node-label="提交入口" tabindex="0" role="button" aria-label="聚焦提交入口，提交与最终报告投递" aria-pressed="false" data-node-kind="frontend" data-node-context="提交与最终报告投递">
-          <title>提交入口 · 提交与最终报告投递</title>
+        <g id="node-thread_api" data-node-id="thread_api" data-node-label="REST 历史分页" tabindex="0" role="button" aria-label="聚焦REST 历史分页，聊天历史分页、运行快照与慢消费者恢复" aria-pressed="false" data-node-kind="backend" data-node-context="聊天历史分页、运行快照与慢消费者恢复">
+          <title>REST 历史分页 · 聊天历史分页、运行快照与慢消费者恢复</title>
+          <rect x="264" y="93" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="264" y="93" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(270 99) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="339" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">REST 历史分页</text>
+        </g>
+
+        <g id="node-snapshot" data-node-id="snapshot" data-node-label="窗口运行快照" tabindex="0" role="button" aria-label="聚焦窗口运行快照，聊天历史分页、运行快照与慢消费者恢复" aria-pressed="false" data-node-kind="backend" data-node-context="聊天历史分页、运行快照与慢消费者恢复">
+          <title>窗口运行快照 · 聊天历史分页、运行快照与慢消费者恢复</title>
+          <rect x="446" y="93" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="446" y="93" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:8" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(452 99) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="521" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">窗口运行快照</text>
+        </g>
+
+        <g id="node-backpressure" data-node-id="backpressure" data-node-label="SSE 背压处理" tabindex="0" role="button" aria-label="聚焦SSE 背压处理，聊天历史分页、运行快照与慢消费者恢复" aria-pressed="false" data-node-kind="backend" data-node-context="聊天历史分页、运行快照与慢消费者恢复">
+          <title>SSE 背压处理 · 聊天历史分页、运行快照与慢消费者恢复</title>
+          <rect x="655.3" y="93" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="655.3" y="93" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(661.3 99) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="730.3" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SSE 背压处理</text>
+        </g>
+
+        <g id="node-clients" data-node-id="clients" data-node-label="有序合并历史" tabindex="0" role="button" aria-label="聚焦有序合并历史，聊天历史分页、运行快照与慢消费者恢复" aria-pressed="false" data-node-kind="frontend" data-node-context="聊天历史分页、运行快照与慢消费者恢复">
+          <title>有序合并历史 · 聊天历史分页、运行快照与慢消费者恢复</title>
+          <rect x="880.9" y="93" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="880.9" y="93" width="150" height="52" rx="8" class="c-frontend" data-animate="node" style="--step:10" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(886.9 99) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" x="955.9" y="114" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">有序合并历史</text>
+        </g>
+
+        <g id="node-input" data-node-id="input" data-node-label="提交入口" tabindex="0" role="button" aria-label="聚焦提交入口，提交、执行与最终报告投递" aria-pressed="false" data-node-kind="frontend" data-node-context="提交、执行与最终报告投递">
+          <title>提交入口 · 提交、执行与最终报告投递</title>
           <rect x="48" y="217" width="150" height="52" rx="8" class="c-mask"/>
           <rect x="48" y="217" width="150" height="52" rx="8" class="c-frontend" data-animate="node" style="--step:0" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(54 223) scale(0.6875)">
@@ -5319,135 +5356,151 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-node-label="" x="123" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">提交入口</text>
         </g>
 
-        <g id="node-admit" data-node-id="admit" data-node-label="事务接收" tabindex="0" role="button" aria-label="聚焦事务接收，提交与最终报告投递" aria-pressed="false" data-node-kind="database" data-node-context="提交与最终报告投递">
-          <title>事务接收 · 提交与最终报告投递</title>
-          <rect x="230" y="217" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="230" y="217" width="150" height="52" rx="8" class="c-database" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(236 223) scale(0.6875)">
+        <g id="node-admit" data-node-id="admit" data-node-label="事务接收" tabindex="0" role="button" aria-label="聚焦事务接收，提交、执行与最终报告投递" aria-pressed="false" data-node-kind="database" data-node-context="提交、执行与最终报告投递">
+          <title>事务接收 · 提交、执行与最终报告投递</title>
+          <rect x="264" y="217" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="264" y="217" width="150" height="52" rx="8" class="c-database" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(270 223) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="305" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">事务接收</text>
+          <text data-node-label="" x="339" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">事务接收</text>
         </g>
 
-        <g id="node-execute" data-node-id="execute" data-node-label="运行路由" tabindex="0" role="button" aria-label="聚焦运行路由，提交与最终报告投递" aria-pressed="false" data-node-kind="backend" data-node-context="提交与最终报告投递">
-          <title>运行路由 · 提交与最终报告投递</title>
-          <rect x="489.20000000000005" y="217" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="489.20000000000005" y="217" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(495.20000000000005 223) scale(0.6875)">
+        <g id="node-execute" data-node-id="execute" data-node-label="运行路由" tabindex="0" role="button" aria-label="聚焦运行路由，提交、执行与最终报告投递" aria-pressed="false" data-node-kind="backend" data-node-context="提交、执行与最终报告投递">
+          <title>运行路由 · 提交、执行与最终报告投递</title>
+          <rect x="446" y="217" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="446" y="217" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(452 223) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="564.2" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">运行路由</text>
+          <text data-node-label="" x="521" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">运行路由</text>
         </g>
 
-        <g id="node-outbox" data-node-id="outbox" data-node-label="持久投递单" tabindex="0" role="button" aria-label="聚焦持久投递单，提交与最终报告投递" aria-pressed="false" data-node-kind="database" data-node-context="提交与最终报告投递">
-          <title>持久投递单 · 提交与最终报告投递</title>
-          <rect x="698.5" y="217" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="698.5" y="217" width="150" height="52" rx="8" class="c-database" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(704.5 223) scale(0.6875)">
+        <g id="node-outbox" data-node-id="outbox" data-node-label="持久投递单" tabindex="0" role="button" aria-label="聚焦持久投递单，提交、执行与最终报告投递" aria-pressed="false" data-node-kind="database" data-node-context="提交、执行与最终报告投递">
+          <title>持久投递单 · 提交、执行与最终报告投递</title>
+          <rect x="655.3" y="217" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="655.3" y="217" width="150" height="52" rx="8" class="c-database" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(661.3 223) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="773.5" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">持久投递单</text>
+          <text data-node-label="" x="730.3" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">持久投递单</text>
         </g>
 
-        <g id="node-send" data-node-id="send" data-node-label="渠道发送" tabindex="0" role="button" aria-label="聚焦渠道发送，提交与最终报告投递" aria-pressed="false" data-node-kind="external" data-node-context="提交与最终报告投递">
-          <title>渠道发送 · 提交与最终报告投递</title>
-          <rect x="880.5" y="217" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="880.5" y="217" width="150" height="52" rx="8" class="c-external" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(886.5 223) scale(0.6875)">
+        <g id="node-send" data-node-id="send" data-node-label="渠道发送" tabindex="0" role="button" aria-label="聚焦渠道发送，提交、执行与最终报告投递" aria-pressed="false" data-node-kind="external" data-node-context="提交、执行与最终报告投递">
+          <title>渠道发送 · 提交、执行与最终报告投递</title>
+          <rect x="880.9" y="217" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="880.9" y="217" width="150" height="52" rx="8" class="c-external" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(886.9 223) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" x="955.5" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">渠道发送</text>
+          <text data-node-label="" x="955.9" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">渠道发送</text>
         </g>
 
-        <g id="node-ack" data-node-id="ack" data-node-label="保存确认" tabindex="0" role="button" aria-label="聚焦保存确认，提交与最终报告投递" aria-pressed="false" data-node-kind="database" data-node-context="提交与最终报告投递">
-          <title>保存确认 · 提交与最终报告投递</title>
-          <rect x="1062.5" y="217" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="1062.5" y="217" width="150" height="52" rx="8" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1068.5 223) scale(0.6875)">
+        <g id="node-ack" data-node-id="ack" data-node-label="保存确认" tabindex="0" role="button" aria-label="聚焦保存确认，提交、执行与最终报告投递" aria-pressed="false" data-node-kind="database" data-node-context="提交、执行与最终报告投递">
+          <title>保存确认 · 提交、执行与最终报告投递</title>
+          <rect x="1062.9" y="217" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="1062.9" y="217" width="150" height="52" rx="8" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1068.9 223) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="1137.5" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">保存确认</text>
+          <text data-node-label="" x="1137.9" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">保存确认</text>
         </g>
 
         <g id="node-harness" data-node-id="harness" data-node-label="全局 Durable 进程" tabindex="0" role="button" aria-label="聚焦全局 Durable 进程，可选 Pi Durable SQLite" aria-pressed="false" data-node-kind="backend" data-node-context="可选 Pi Durable SQLite">
           <title>全局 Durable 进程 · 可选 Pi Durable SQLite</title>
-          <rect x="489.20000000000005" y="341" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="489.20000000000005" y="341" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(495.20000000000005 347) scale(0.6875)">
+          <rect x="446" y="341" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="446" y="341" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(452 347) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="564.3000000000001" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">全局 Durable 进程</text>
+          <text data-node-label="" x="521.1" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">全局 Durable 进程</text>
         </g>
 
         <g id="node-pi_store" data-node-id="pi_store" data-node-label="全局 SQLite" tabindex="0" role="button" aria-label="聚焦全局 SQLite，可选 Pi Durable SQLite" aria-pressed="false" data-node-kind="database" data-node-context="可选 Pi Durable SQLite">
           <title>全局 SQLite · 可选 Pi Durable SQLite</title>
-          <rect x="686" y="341" width="175" height="52" rx="8" class="c-mask"/>
-          <rect x="686" y="341" width="175" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(692 347) scale(0.6875)">
+          <rect x="642.8" y="341" width="175" height="52" rx="8" class="c-mask"/>
+          <rect x="642.8" y="341" width="175" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(648.8 347) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="773.5" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">全局 SQLite</text>
+          <text data-node-label="" x="730.3" y="362" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">全局 SQLite</text>
         </g>
 
         <g id="node-restart" data-node-id="restart" data-node-label="启动对账" tabindex="0" role="button" aria-label="聚焦启动对账，重启与不确定结果" aria-pressed="false" data-node-kind="backend" data-node-context="重启与不确定结果">
           <title>启动对账 · 重启与不确定结果</title>
-          <rect x="489.20000000000005" y="465" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="489.20000000000005" y="465" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(495.20000000000005 471) scale(0.6875)">
+          <rect x="446" y="465" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="446" y="465" width="150" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(452 471) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="564.2" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">启动对账</text>
+          <text data-node-label="" x="521" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">启动对账</text>
         </g>
 
         <g id="node-unknown" data-node-id="unknown" data-node-label="投递结果未知" tabindex="0" role="button" aria-label="聚焦投递结果未知，重启与不确定结果" aria-pressed="false" data-node-kind="security" data-node-context="重启与不确定结果">
           <title>投递结果未知 · 重启与不确定结果</title>
-          <rect x="880.5" y="465" width="150" height="52" rx="8" class="c-mask"/>
-          <rect x="880.5" y="465" width="150" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(886.5 471) scale(0.6875)">
+          <rect x="880.9" y="465" width="150" height="52" rx="8" class="c-mask"/>
+          <rect x="880.9" y="465" width="150" height="52" rx="8" class="c-security" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(886.9 471) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" x="955.5" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">投递结果未知</text>
+          <text data-node-label="" x="955.9" y="486" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">投递结果未知</text>
         </g>
 
         <!-- Edge labels -->
 
         <g data-detail="context" data-edge-from="admit" data-edge-to="snapshot" data-edge-label="提交后可见" data-edge-key="1">
-          <rect x="276" y="171" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="305" y="181" class="t-muted" font-size="8" text-anchor="middle">提交后可见</text>
+          <rect x="401" y="146" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="430" y="156" class="t-muted" font-size="8" text-anchor="middle">提交后可见</text>
         </g>
-        <g data-detail="context" data-edge-from="execute" data-edge-to="harness" data-edge-label="显式启用" data-edge-key="2">
-          <rect x="540" y="295" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="564.2" y="305" class="t-muted" font-size="8" text-anchor="middle">显式启用</text>
+        <g data-detail="context" data-edge-from="backpressure" data-edge-to="clients" data-edge-label="drain 后发送" data-edge-key="2">
+          <rect x="809.3" y="99" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="843.0999999999999" y="109" class="t-muted" font-size="8" text-anchor="middle">drain 后发送</text>
+        </g>
+        <g data-detail="context" data-edge-from="chat" data-edge-to="snapshot" data-edge-label="SSE limit=50" data-edge-key="3">
+          <rect x="242.7" y="40" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="276.5" y="50" class="t-muted" font-size="8" text-anchor="middle">SSE limit=50</text>
+        </g>
+        <g data-detail="context" data-edge-from="chat" data-edge-to="thread_api" data-edge-label="limit+游标" data-edge-key="4">
+          <rect x="202" y="99" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="231" y="109" class="t-muted" font-size="8" text-anchor="middle">limit+游标</text>
+        </g>
+        <g data-detail="context" data-edge-from="execute" data-edge-to="harness" data-edge-label="显式启用" data-edge-key="5">
+          <rect x="496.8" y="295" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="521" y="305" class="t-muted" font-size="8" text-anchor="middle">显式启用</text>
         </g>
 
-        <g data-detail="context" data-edge-from="harness" data-edge-to="execute" data-edge-label="写入审批 RPC" data-edge-key="4">
-          <rect x="599.3000000000001" y="305" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="633.1" y="315" class="t-muted" font-size="8" text-anchor="middle">写入审批 RPC</text>
+        <g data-detail="context" data-edge-from="harness" data-edge-to="execute" data-edge-label="写入审批 RPC" data-edge-key="7">
+          <rect x="425.7" y="305" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="459.5" y="315" class="t-muted" font-size="8" text-anchor="middle">写入审批 RPC</text>
         </g>
-        <g data-detail="context" data-edge-from="harness" data-edge-to="pi_store" data-edge-label="检查点" data-edge-key="5">
-          <rect x="643.2" y="347" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="662.6" y="357" class="t-muted" font-size="8" text-anchor="middle">检查点</text>
+        <g data-detail="context" data-edge-from="harness" data-edge-to="pi_store" data-edge-label="检查点" data-edge-key="8">
+          <rect x="600" y="347" width="38.8" height="14" rx="3" class="c-mask"/>
+          <text x="619.4" y="357" class="t-muted" font-size="8" text-anchor="middle">检查点</text>
         </g>
-        <g data-detail="context" data-edge-from="harness" data-edge-to="restart" data-edge-label="进程重启" data-edge-key="6">
-          <rect x="540" y="419" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="564.2" y="429" class="t-muted" font-size="8" text-anchor="middle">进程重启</text>
+        <g data-detail="context" data-edge-from="harness" data-edge-to="restart" data-edge-label="进程重启" data-edge-key="9">
+          <rect x="496.8" y="419" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="521" y="429" class="t-muted" font-size="8" text-anchor="middle">进程重启</text>
         </g>
 
 
 
-        <g data-detail="context" data-edge-from="send" data-edge-to="unknown" data-edge-label="确认丢失" data-edge-key="10">
-          <rect x="931.3" y="357" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="955.5" y="367" class="t-muted" font-size="8" text-anchor="middle">确认丢失</text>
+        <g data-detail="context" data-edge-from="send" data-edge-to="unknown" data-edge-label="确认丢失" data-edge-key="13">
+          <rect x="931.6999999999999" y="357" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="955.9" y="367" class="t-muted" font-size="8" text-anchor="middle">确认丢失</text>
         </g>
-        <g data-detail="context" data-edge-from="snapshot" data-edge-to="clients" data-edge-label="REST baseline + SSE" data-edge-key="11">
-          <rect x="384" y="99" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="434.6" y="109" class="t-muted" font-size="8" text-anchor="middle">REST baseline + SSE</text>
+        <g data-detail="context" data-edge-from="snapshot" data-edge-to="backpressure" data-edge-label="快照修订" data-edge-key="14">
+          <rect x="601.4499999999999" y="99" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="625.65" y="109" class="t-muted" font-size="8" text-anchor="middle">快照修订</text>
+        </g>
+        <g data-detail="context" data-edge-from="thread_api" data-edge-to="clients" data-edge-label="seq 有序合并" data-edge-key="15">
+          <rect x="613.6500000000001" y="152" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="647.45" y="162" class="t-muted" font-size="8" text-anchor="middle">seq 有序合并</text>
         </g>
 
         <!-- Legend -->

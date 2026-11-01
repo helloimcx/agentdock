@@ -374,15 +374,19 @@ function isThreadCoreEvent(value: Record<string, unknown>): boolean {
         hasString(value, 'reason');
     case 'message.created':
       return hasString(value, 'threadId') && isThreadMessage(value.message) &&
-        (value.stream === undefined || isDesktopBridgeEvent(value.stream));
+        isOptionalDesktopBridgeEvent(value.stream);
     case 'message.updated':
       return hasString(value, 'threadId') && isThreadMessagePatch(value.message) &&
-        (value.stream === undefined || isDesktopBridgeEvent(value.stream));
+        isOptionalDesktopBridgeEvent(value.stream);
     case 'run.updated':
-      return isRunSummary(value.run) && (value.stream === undefined || isDesktopBridgeEvent(value.stream));
+      return isRunSummary(value.run) && isOptionalDesktopBridgeEvent(value.stream);
     default:
       return false;
   }
+}
+
+function isOptionalDesktopBridgeEvent(value: unknown): boolean {
+  return value === undefined || isDesktopBridgeEvent(value);
 }
 
 function isAutomationCoreEvent(value: Record<string, unknown>): boolean {
@@ -634,9 +638,9 @@ export function createCoreClient(options: CoreClientOptions) {
   return {
     baseUrl,
     request,
-    watchThreadRuntime(threadId: string, listener: (snapshot: ThreadExecutionSnapshot) => void) {
+    watchThreadRuntime(threadId: string, listener: (snapshot: ThreadExecutionSnapshot) => void, options?: { limit?: number }) {
       const stop = createThreadRuntimeWatch({
-        url: `${baseUrl}/threads/${encodeURIComponent(threadId)}/runtime-watch`, threadId,
+        url: `${baseUrl}/threads/${encodeURIComponent(threadId)}/runtime-watch${options?.limit ? `?limit=${encodeURIComponent(options.limit)}` : ''}`, threadId,
         createSource: eventSourceFactory, scheduleReconnect, cancelReconnect, listener,
       });
       unsubscribeHandlers.add(stop);
