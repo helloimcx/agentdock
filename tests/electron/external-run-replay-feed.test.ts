@@ -89,7 +89,7 @@ test('assistant timestamp query is served by the partial index instead of a thre
       assert.ok(index, 'partial assistant-timestamp index must exist');
       const plan = db.prepare(`EXPLAIN QUERY PLAN SELECT id FROM messages WHERE thread_id='thread:workspace-agentdock::9bc1d56a-074d-4ac2-9062-35c9f0a33221' AND role='assistant' AND timestamp >= '2026-11-02T01:00:00.000Z'`).all();
       const detail = plan.map((row) => String((row as { detail: string }).detail)).join(' | ');
-      assert.match(detail, /idx_messages_thread_assistant_ts/, `expected index range seek, got: ${detail}`);
+      assert.match(detail, /SEARCH.*idx_messages_thread_assistant_ts/, `expected index range seek, got: ${detail}`);
     } finally {
       db.close();
     }

@@ -401,7 +401,10 @@ export class LocalAiCoreServer {
       // path already made.
       void this.bindings.externalService.getRunReplayFeed(runId, replaySinceIso)
         .then((feed) => {
-          replaySinceIso = this.replayExternalRunMessages(res, runId, feed, replayedMessageIds) ?? replaySinceIso;
+          const next = this.replayExternalRunMessages(res, runId, feed, replayedMessageIds);
+          if (next && (!replaySinceIso || next > replaySinceIso)) {
+            replaySinceIso = next;
+          }
         })
         .catch(() => undefined);
     }, 1000);
@@ -421,7 +424,10 @@ export class LocalAiCoreServer {
       type: 'external.run.snapshot',
       snapshot,
     }));
-    replaySinceIso = this.replayExternalRunMessages(res, runId, replayFeedFromSnapshot(snapshot), replayedMessageIds) ?? replaySinceIso;
+    const initialHighWater = this.replayExternalRunMessages(res, runId, replayFeedFromSnapshot(snapshot), replayedMessageIds);
+    if (initialHighWater && (!replaySinceIso || initialHighWater > replaySinceIso)) {
+      replaySinceIso = initialHighWater;
+    }
   }
 
   private broadcast(event: LocalCoreEvent) {
