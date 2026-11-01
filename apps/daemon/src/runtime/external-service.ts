@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentTask,
+  DesktopBridgeEvent,
   DesktopConnectConfig,
   DesktopProjectConfig,
   ExternalProject,
@@ -15,6 +16,32 @@ import type {
 } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
+
+export interface ExternalRunReplayFeedMessage {
+  readonly id: string;
+  readonly role?: 'user' | 'assistant' | 'system';
+  readonly kind?: 'final' | 'progress' | 'system';
+  readonly content: string;
+  readonly bridgeKind?: DesktopBridgeEvent['bridgeKind'];
+  readonly bridgeStatus?: DesktopBridgeEvent['bridgeStatus'];
+  readonly timestamp: string;
+}
+
+export interface ExternalRunReplayFeed {
+  readonly startedAtMs: number;
+  readonly bridgeSessionKey?: string;
+  readonly messages: readonly ExternalRunReplayFeedMessage[];
+}
+
+/** Shared shape for the connect-time snapshot replay and the per-tick feed
+ *  poll, so both paths apply identical cutoff/role semantics. */
+export function replayFeedFromSnapshot(snapshot: ExternalRunSnapshot): ExternalRunReplayFeed {
+  return {
+    startedAtMs: Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || ''),
+    bridgeSessionKey: snapshot.thread?.bridgeSessionKey,
+    messages: snapshot.thread?.messages || [],
+  };
+}
 
 export interface ExternalServiceDeps {
   readRuntimeConfig: () => Promise<RuntimeConfigState>;
@@ -118,10 +145,14 @@ export class ExternalService {
       events_url: `/api/local/v1/external/runs/${encodeURIComponent(runId)}/events` };
   }
 
-  async getRunSnapshot(runId: string): Promise<ExternalRunSnapshot> {
+  private resolveRunThread(runId: string): { task?: AgentTask; threadId: string } {
     const task = this.store.getAgentTaskByRunId(runId);
     const run = this.store.getRun(runId);
-    const threadId = task?.threadId || run?.thread_id || '';
+    return { task, threadId: task?.threadId || run?.thread_id || '' };
+  }
+
+  async getRunSnapshot(runId: string): Promise<ExternalRunSnapshot> {
+    const { task, threadId } = this.resolveRunThread(runId);
     const thread = threadId
       ? await this.workspaceRouter.getThread(threadId).catch(() => undefined)
       : undefined;
@@ -130,6 +161,24 @@ export class ExternalService {
       task,
       thread,
     };
+  }
+
+  /** Polling feed for external-run SSE replay: O(run messages) per tick instead
+   *  of a full ThreadDetail hydration (the OpenAI polling path made the same
+   *  trade). startedAtMs keeps the snapshot cutoff semantics — NaN when the run
+   *  has no parseable start, and callers skip replay in that case. `sinceIso`
+   *  optionally advances the window to a caller-tracked high-water mark so
+   *  steady-state ticks only read new messages; message ids already dedupe. */
+  async getRunReplayFeed(runId: string, sinceIso?: string): Promise<ExternalRunReplayFeed> {
+    const { task, threadId } = this.resolveRunThread(runId);
+    const startedAtMs = Date.parse(task?.startedAt || task?.createdAt || '');
+    if (!threadId || !Number.isFinite(startedAtMs)) {
+      return { startedAtMs: Number.NaN, bridgeSessionKey: undefined, messages: [] };
+    }
+    const cutoffIso = sinceIso ?? new Date(startedAtMs).toISOString();
+    const bridgeSessionKey = this.workspaceRouter.getThreadSessionKey(threadId) || undefined;
+    const messages = await this.workspaceRouter.listAssistantRunMessagesSince(threadId, cutoffIso);
+    return { startedAtMs, bridgeSessionKey, messages };
   }
 
   async getRunStatus(runId: string): Promise<AgentTask | undefined> {
