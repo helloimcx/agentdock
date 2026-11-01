@@ -353,6 +353,7 @@ export class LocalCoreAcpBackend {
       });
       return { messageId: appended.id, taskId: task.taskId };
     });
+    if (!isCommand) options.onRunAdmitted?.(admitted.submission.runId);
     let responseStatus = admitted.submission.status;
     if (admitted.submission.status === 'pending') this.submissionDispatcher.remember(admitted.submission.id, config, options);
     if (!admitted.deduplicated) {

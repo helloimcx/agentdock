@@ -73,3 +73,37 @@ test('real HTTP admission and SSE baseline recover across Core restart without r
     backend.close(); store.close(); rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('admission hook registers each run before an active dispatcher executes it', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'admission-order-'));
+  const store = new LocalCoreAcpStore(dir);
+  const thread = store.createThread('agentdock', 'Admission order', 'pi');
+  const config = { workspaceId: 'agentdock', agentType: 'pi', command: 'controlled-runtime', args: [], env: {}, workDir: dir, model: '' };
+  const backend = new LocalCoreAcpBackend({ store, runThreadMap: new Map(), emitBridge: () => {},
+    eventBus: { emit: () => {}, on: () => () => {} }, scheduler: { createJob: async () => { throw new Error('unused'); }, listJobsForThread: async () => [], deleteJob: async () => {} } });
+  const admitted = new Set<string>();
+  const executed: string[] = [];
+  let releaseFirst!: () => void;
+  const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  let firstStarted!: () => void;
+  const started = new Promise<void>((resolve) => { firstStarted = resolve; });
+  let secondDone!: () => void;
+  const done = new Promise<void>((resolve) => { secondDone = resolve; });
+  (backend as any).runPrompt = async (threadId: string, runId: string) => {
+    assert.ok(admitted.has(runId), 'run must be registered before execution');
+    executed.push(runId);
+    if (executed.length === 1) { firstStarted(); await firstBlocked; }
+    store.appendRunFinalMessage(runId, threadId, 'done');
+    store.updateRun(runId, threadId, 'completed');
+    if (executed.length === 2) secondDone();
+  };
+  try {
+    const onRunAdmitted = (id: string) => { admitted.add(id); };
+    const first = await backend.sendThreadMessage(thread.id, 'first', config, { onRunAdmitted });
+    await started;
+    const second = await backend.sendThreadMessage(thread.id, 'second', config, { onRunAdmitted });
+    releaseFirst();
+    await done;
+    assert.deepEqual(executed, [first.runId, second.runId]);
+  } finally { releaseFirst(); backend.close(); store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
