@@ -2,7 +2,7 @@ import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
 import type { LocalCoreAcpStore } from '../../acp/local-core-acp-store.js';
 import type { DesktopConnectConfig, DesktopModelProviderInput, DesktopProjectConfig } from '@cc/superai-contracts';
-import { validateBody } from '../request-validation.js';
+import { RequestValidationError, validateBody } from '../request-validation.js';
 
 const providerSchema = {
   id: 'string', name: { kind: 'string', required: true }, api_key: 'string', base_url: 'string', model: 'string',
@@ -75,14 +75,15 @@ export function registerProviderHandlers(
   map.set('provider.delete', async (route, req, res) => {
     const providerId = (route as { providerId: string }).providerId;
     const body = await readJsonBody(req, DELETE_BODY_MAX_BYTES);
-    const replacementProviderId = typeof body.replacement_provider_id === 'string'
-      ? body.replacement_provider_id.trim()
-      : '';
+    const { replacement_provider_id: rawReplacementProviderId } = validateBody<{
+      replacement_provider_id?: string;
+    }>(body, { replacement_provider_id: 'string' });
+    const replacementProviderId = rawReplacementProviderId?.trim() || '';
     if (replacementProviderId && replacementProviderId === providerId) {
-      throw new Error(`Replacement provider must differ from the provider being deleted: ${providerId}`);
+      throw new RequestValidationError(`Replacement provider must differ from the provider being deleted: ${providerId}`);
     }
     if (replacementProviderId && !store.getModelProvider(replacementProviderId)) {
-      throw new Error(`Replacement provider not found: ${replacementProviderId}`);
+      throw new RequestValidationError(`Replacement provider not found: ${replacementProviderId}`);
     }
     // The dependent check, the repoint save, and the provider-row deletion all
     // run inside the controller's runtime-config mutation lock, so a concurrent

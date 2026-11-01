@@ -10,6 +10,7 @@ import {
   ProviderInUseError,
   registerProviderHandlers,
 } from '../../apps/daemon/src/runtime/handlers/provider-handler.js';
+import { RequestValidationError } from '../../apps/daemon/src/runtime/request-validation.js';
 import type { RouteHandler } from '../../apps/daemon/src/runtime/server-helpers.js';
 
 const TARGET_PROVIDER = 'provider-deepseek-main';
@@ -275,7 +276,7 @@ test('rejects a replacement provider that does not exist', async () => {
     const { error } = await harness.callDelete(TARGET_PROVIDER, {
       replacement_provider_id: 'provider-missing-ghost',
     });
-    assert.ok(error instanceof Error && !(error instanceof ProviderInUseError), `expected not-found rejection, saw ${String(error)}`);
+    assert.ok(error instanceof RequestValidationError, `expected client validation error, saw ${String(error)}`);
     assert.match((error as Error).message, /provider-missing-ghost/);
     assert.ok(harness.store.getModelProvider(TARGET_PROVIDER), 'target provider must survive a failed replacement');
     assert.equal(harness.calls.saveRuntimeConfig, 0, 'failed replacement must not rewrite the runtime config');
@@ -290,9 +291,24 @@ test('rejects a replacement equal to the provider being deleted', async () => {
     const { error } = await harness.callDelete(TARGET_PROVIDER, {
       replacement_provider_id: TARGET_PROVIDER,
     });
-    assert.ok(error instanceof Error, `expected rejection, saw ${String(error)}`);
+    assert.ok(error instanceof RequestValidationError, `expected client validation error, saw ${String(error)}`);
     assert.ok(harness.store.getModelProvider(TARGET_PROVIDER), 'self-replacement must not delete the provider');
     assert.equal(harness.calls.saveRuntimeConfig, 0);
+  } finally {
+    harness.close();
+  }
+});
+
+test('rejects a non-string replacement provider id as invalid input', async () => {
+  const harness = createHarness();
+  try {
+    const { error } = await harness.callDelete(TARGET_PROVIDER, {
+      replacement_provider_id: 42,
+    });
+    assert.ok(error instanceof RequestValidationError, `expected client validation error, saw ${String(error)}`);
+    assert.match(error.message, /replacement_provider_id must be a string/i);
+    assert.ok(harness.store.getModelProvider(TARGET_PROVIDER), 'invalid input must not delete the target provider');
+    assert.equal(harness.calls.saveRuntimeConfig, 0, 'invalid input must not rewrite runtime config');
   } finally {
     harness.close();
   }
