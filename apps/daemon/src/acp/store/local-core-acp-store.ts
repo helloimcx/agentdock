@@ -230,8 +230,8 @@ export class LocalCoreAcpStore {
   }
 
 
-  getThreadExecutionSnapshot(threadId: string, knowledgeBaseIds: string[] = []) {
-    return readThreadExecutionSnapshot(this.db, this.threadRuntime, threadId, () => this.getThread(threadId, knowledgeBaseIds));
+  getThreadExecutionSnapshot(threadId: string, knowledgeBaseIds: string[] = [], options?: ThreadGetOptions) {
+    return readThreadExecutionSnapshot(this.db, this.threadRuntime, threadId, () => this.getThread(threadId, knowledgeBaseIds, options));
   }
 
   close() {

@@ -25,6 +25,7 @@ export interface ChatMessage {
   kind?: 'final' | 'progress' | 'system';
   bridgeKind?: DesktopBridgeEventKind;
   bridgeStatus?: DesktopBridgeStatus;
+  seq?: number;
   order: number;
   turnKey?: string;
   actions?: DesktopBridgeButtonOption[][];
@@ -94,15 +95,15 @@ export interface ThreadGroup {
   sessions: ChatThreadSummary[];
 }
 
-export type SessionGroup = ThreadGroup;
-
 export interface ThreadActionTarget {
   id: string;
   name: string;
   project: string;
 }
 
-export type SessionActionTarget = ThreadActionTarget;
+export type ThreadDetailApplyOptions = {
+  preserveLoadedHistory?: boolean;
+};
 
 export interface ChatThreadSummary {
   id: string;
@@ -220,7 +221,7 @@ export function finalizeTurnMessageKinds(messages: ChatMessage[], turnKey?: stri
   });
 }
 
-export function extractVisibleMessageContent(content?: string) {
+function extractVisibleMessageContent(content?: string) {
   if (!content) {
     return '';
   }
@@ -232,6 +233,14 @@ export function extractVisibleMessageContent(content?: string) {
 }
 
 export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMessage[] {
+  let lastPersistedIndex = -1;
+  let lastPersistedSeq: number | undefined;
+  history.forEach((message, index) => {
+    if (typeof message.seq === 'number') {
+      lastPersistedIndex = index;
+      lastPersistedSeq = message.seq;
+    }
+  });
   return history.map((message, index) => ({
     id: message.id || `${index}-${message.timestamp || message.role}`,
     role: message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant',
@@ -245,7 +254,12 @@ export function toMessagesFromThread(history: ThreadDetail['messages']): ChatMes
         : message.kind === 'system'
           ? 'progress'
           : 'final',
-    order: typeof message.seq === 'number' ? message.seq : index,
+    seq: message.seq,
+    order: typeof message.seq === 'number'
+      ? message.seq
+      : lastPersistedSeq !== undefined && index > lastPersistedIndex
+        ? lastPersistedSeq + index - lastPersistedIndex
+        : index,
     timestamp: message.timestamp,
   }));
 }
@@ -355,8 +369,6 @@ export function upsertThreadGroup(groups: ThreadGroup[], project: string, sessio
   next.push({ project, sessions });
   return next.sort((a, b) => a.project.localeCompare(b.project));
 }
-
-export const upsertSessionGroup = upsertThreadGroup;
 
 export function upsertThreadInGroup(groups: ThreadGroup[], project: string, thread: ChatThreadSummary) {
   const current = groups.find((group) => group.project === project)?.sessions || [];

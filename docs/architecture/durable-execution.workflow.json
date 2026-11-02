@@ -10,11 +10,11 @@
   "lanes": [
     {
       "id": "view",
-      "label": "运行快照与多端恢复"
+      "label": "聊天历史分页、运行快照与慢消费者恢复"
     },
     {
       "id": "core",
-      "label": "提交与最终报告投递"
+      "label": "提交、执行与最终报告投递"
     },
     {
       "id": "durable",
@@ -94,17 +94,41 @@
     {
       "id": "snapshot",
       "lane": "view",
+      "col": 2,
+      "type": "backend",
+      "label": "窗口运行快照",
+      "width": 150
+    },
+    {
+      "id": "chat",
+      "lane": "view",
+      "col": 0,
+      "type": "frontend",
+      "label": "聊天会话",
+      "width": 150
+    },
+    {
+      "id": "thread_api",
+      "lane": "view",
       "col": 1,
       "type": "backend",
-      "label": "持久运行快照",
+      "label": "REST 历史分页",
       "width": 150
     },
     {
       "id": "clients",
       "lane": "view",
-      "col": 2,
+      "col": 4,
       "type": "frontend",
-      "label": "多端重连",
+      "label": "有序合并历史",
+      "width": 150
+    },
+    {
+      "id": "backpressure",
+      "lane": "view",
+      "col": 3,
+      "type": "backend",
+      "label": "SSE 背压处理",
       "width": 150
     },
     {
@@ -173,9 +197,33 @@
       "role": "branch"
     },
     {
-      "from": "snapshot",
+      "from": "chat",
+      "to": "thread_api",
+      "label": "limit+游标",
+      "role": "async"
+    },
+    {
+      "from": "thread_api",
       "to": "clients",
-      "label": "REST baseline + SSE",
+      "label": "seq 有序合并",
+      "role": "async"
+    },
+    {
+      "from": "chat",
+      "to": "snapshot",
+      "label": "SSE limit=50",
+      "role": "async"
+    },
+    {
+      "from": "snapshot",
+      "to": "backpressure",
+      "label": "快照修订",
+      "role": "async"
+    },
+    {
+      "from": "backpressure",
+      "to": "clients",
+      "label": "drain 后发送",
       "role": "async"
     },
     {

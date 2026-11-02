@@ -19,7 +19,8 @@ AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`app
 ```mermaid
 flowchart LR
   electron[Electron desktop shell] -->|Start| api[AgentDock Daemon API]
-  renderer[React / Web and Core SDK] -->|REST / SSE| api
+  renderer[React / Web and Core SDK] -->|REST history pages · bounded SSE snapshots| api
+  api -->|SSE drain-aware revision updates| renderer
   channels[Lark / Weixin] --> api
   external[External clients] --> api
   api --> kernel[Daemon kernel and workspace router]
@@ -51,7 +52,7 @@ flowchart LR
 
 当前架构提供交互式 [HTML 全景图](docs/architecture/system-architecture.html)、[管家 Bot 委托流程](docs/architecture/butler-orchestration.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明管家任务和 Agent run 的归属、Core SQLite 与 Pi Durable 全局 SQLite 的边界，以及 Mesh 设备本地回执库。Mesh 的 [回执恢复时序](docs/architecture/changes/2026-10-25-mesh-operation-recovery.html)记录了按稳定 `operationId` 查询已保存结果的流程。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
-[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
+[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [聊天会话切换变更](docs/architecture/changes/2026-10-31-chat-detail-flicker.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
 <!-- project-setup:architecture-diagram:end -->
