@@ -72,6 +72,10 @@ flowchart LR
 
 ## New
 
+### 2026-11-03
+
+- **Daemon 子进程堆上限**：`agentdock daemon/serve` 与桌面端拉起 Daemon 子进程时，默认通过 `NODE_OPTIONS` 注入 `--max-old-space-size=1024`（MB），防止内存增长升级为内核全局 OOM 误杀其他进程；可用 `AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB` 调整，设为 `0` 关闭。部署后与 heap-watch（75%/90% 告警）配合，在该上限尺度上留下增长曲线。
+
 ### 2026-11-02
 
 - **外部运行 SSE 回放瘦身**：外部运行事件流的每秒回放轮询从"整线程水合"（每次读取全部消息，万级消息线程单次 ~25MB）改为按运行窗口的窄读取（仅本次运行的 assistant 消息），轮询成本从 O(全线程消息) 降为 O(运行消息)；连接时的首个全量 snapshot 事件保持不变。

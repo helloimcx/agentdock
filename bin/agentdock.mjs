@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createBrotliCompress, createGzip } from 'node:zlib';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -95,11 +95,22 @@ function coreEnv() {
   };
 }
 
-function startCoreProcess({ stdio = 'inherit' } = {}) {
+function coreHeapModulePath() {
+  return path.join(path.dirname(path.dirname(coreEntry)), 'kernel', 'daemon-heap.js');
+}
+
+async function startCoreProcess({ stdio = 'inherit' } = {}) {
   ensureBuildOutput({ requireRenderer: false, requireCore: true });
+  let withDaemonHeapOptions = null;
+  try {
+    const heapModule = await import(pathToFileURL(coreHeapModulePath()).href);
+    withDaemonHeapOptions = heapModule.withDaemonHeapOptions || heapModule.default?.withDaemonHeapOptions;
+  } catch {
+    // Legacy daemon builds predate the kernel heap module; run uncapped.
+  }
   return spawn(process.execPath, [coreEntry], {
     cwd: process.cwd(),
-    env: coreEnv(),
+    env: withDaemonHeapOptions ? withDaemonHeapOptions(coreEnv()) : coreEnv(),
     stdio,
   });
 }
@@ -333,7 +344,7 @@ function startWebServer({ host, port, coreOrigin }) {
 }
 
 async function runCore() {
-  const child = startCoreProcess();
+  const child = await startCoreProcess();
   child.on('exit', (code, signal) => {
     process.exitCode = code ?? (signal ? 1 : 0);
   });
@@ -352,7 +363,7 @@ async function runServe(flags) {
   const coreOrigin = readFlag(flags, 'core-origin', defaultCoreOrigin);
   let coreProcess = null;
   if (!(await isCoreHealthy(coreOrigin))) {
-    coreProcess = startCoreProcess();
+    coreProcess = await startCoreProcess();
     await waitForCore(coreOrigin);
   }
   const server = startWebServer({ host, port, coreOrigin });

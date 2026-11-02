@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
+import { withDaemonHeapOptions } from '../../daemon/src/kernel/daemon-heap.js';
 
 let mainWindow: BrowserWindow | null = null;
 let daemonProcess: ChildProcess | null = null;
@@ -102,11 +103,11 @@ async function ensureDaemonProcess() {
       }
       const child = spawn(process.execPath, [entry], {
         cwd: app.getAppPath(),
-        env: {
+        env: withDaemonHeapOptions({
           ...process.env,
           ELECTRON_RUN_AS_NODE: '1',
           AI_WORKSTATION_USER_DATA_DIR: app.getPath('userData'),
-        },
+        }),
         stdio: 'inherit',
       });
       daemonProcess = child;
