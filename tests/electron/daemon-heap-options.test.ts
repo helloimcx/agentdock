@@ -19,7 +19,7 @@ test('daemon heap options disable the ceiling when the override is 0', () => {
 });
 
 test('daemon heap options fall back to the default for invalid overrides', () => {
-  for (const raw of ['abc', '-5', '512.5', '   ']) {
+  for (const raw of ['abc', '-5', '512.5', '   ', '0x10', '010', '1e3', '+512', '999999999999999999999']) {
     assert.deepEqual(resolveDaemonHeapOptions({ AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB: raw }), {
       maxOldSpaceMb: 1024,
     });

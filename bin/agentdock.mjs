@@ -105,8 +105,12 @@ async function startCoreProcess({ stdio = 'inherit' } = {}) {
   try {
     const heapModule = await import(pathToFileURL(coreHeapModulePath()).href);
     withDaemonHeapOptions = heapModule.withDaemonHeapOptions || heapModule.default?.withDaemonHeapOptions;
-  } catch {
-    // Legacy daemon builds predate the kernel heap module; run uncapped.
+  } catch (error) {
+    console.warn(`[agentdock] heap module unavailable; daemon running uncapped: ${error instanceof Error ? error.message : error}`);
+  }
+  if (typeof withDaemonHeapOptions !== 'function') {
+    console.warn('[agentdock] heap module unavailable; daemon running uncapped');
+    withDaemonHeapOptions = null;
   }
   return spawn(process.execPath, [coreEntry], {
     cwd: process.cwd(),

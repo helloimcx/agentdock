@@ -74,7 +74,7 @@ flowchart LR
 
 ### 2026-11-03
 
-- **Daemon 子进程堆上限**：`agentdock daemon/serve` 与桌面端拉起 Daemon 子进程时，默认通过 `NODE_OPTIONS` 注入 `--max-old-space-size=1024`（MB），防止内存增长升级为内核全局 OOM 误杀其他进程；可用 `AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB` 调整，设为 `0` 关闭。部署后与 heap-watch（75%/90% 告警）配合，在该上限尺度上留下增长曲线。
+- **Daemon 子进程堆上限**：`agentdock daemon/serve` 与桌面端拉起 Daemon 子进程时，默认通过 `NODE_OPTIONS` 注入 `--max-old-space-size=1024`（MB），防止内存增长升级为内核全局 OOM 误杀其他进程；该环境变量会随 `process.env` 传递给 Daemon 派生的 ACP agent 子进程（同样受 1024MB 上限约束，单次大上下文运行极端情况下会以堆 OOM 受控失败而非拖垮整机）。可用 `AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB` 调整，设为 `0` 关闭；`pnpm dev:daemon` 为同进程启动方式，不适用此上限。部署后与 heap-watch（75%/90% 告警）配合，在该上限尺度上留下增长曲线。
 
 ### 2026-11-02
 

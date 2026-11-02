@@ -8,11 +8,11 @@ export function resolveDaemonHeapOptions(
   env: Record<string, string | undefined> = process.env,
 ): DaemonHeapOptions {
   const raw = env.AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB?.trim();
-  const parsed = raw ? Number(raw) : Number.NaN;
+  const parsed = raw && /^(?:0|[1-9]\d*)$/.test(raw) ? Number(raw) : Number.NaN;
   const maxOldSpaceMb =
     parsed === 0
       ? null
-      : Number.isInteger(parsed) && parsed > 0
+      : Number.isInteger(parsed) && parsed > 0 && parsed <= Number.MAX_SAFE_INTEGER
         ? parsed
         : DEFAULT_MAX_OLD_SPACE_MB;
   return { maxOldSpaceMb };
