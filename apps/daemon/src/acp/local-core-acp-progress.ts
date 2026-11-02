@@ -333,21 +333,34 @@ export function extractToolCallInput(update: Record<string, unknown>) {
   return undefined;
 }
 
+// Retained per turn only for transcript-prefix stripping; full outputs and
+// inputs of streaming tools accumulated unbounded and OOM'd long-lived daemons.
+const MAX_TOOL_OBSERVATIONS_PER_TURN = 300;
+const MAX_TOOL_OBSERVATION_OUTPUT_CHARS = 8192;
+const MAX_TOOL_OBSERVATION_INPUT_CHARS = 8192;
+
 export function recordToolObservation(currentTurn: RunningTurn, observation: RunningToolObservation) {
+  const serializedInput = serializeObservationValue(observation.input);
   const normalized = {
     ...observation,
+    input: serializedInput.length > MAX_TOOL_OBSERVATION_INPUT_CHARS
+      ? serializedInput.slice(0, MAX_TOOL_OBSERVATION_INPUT_CHARS)
+      : observation.input,
     name: observation.name?.trim() || undefined,
     title: observation.title?.trim() || undefined,
     status: observation.status?.trim() || undefined,
-    outputText: observation.outputText?.trim() || undefined,
+    outputText: observation.outputText?.trim().slice(0, MAX_TOOL_OBSERVATION_OUTPUT_CHARS) || undefined,
   };
   if (!normalized.name && !normalized.title && normalized.input === undefined && !normalized.outputText) {
     return;
   }
-  currentTurn.toolObservations = [
+  const next = [
     ...(currentTurn.toolObservations || []),
     normalized,
   ];
+  currentTurn.toolObservations = next.length > MAX_TOOL_OBSERVATIONS_PER_TURN
+    ? next.slice(next.length - MAX_TOOL_OBSERVATIONS_PER_TURN)
+    : next;
 }
 
 export function stripObservedToolTranscriptsFromAssistantText(text: string, observations: RunningToolObservation[] | undefined) {

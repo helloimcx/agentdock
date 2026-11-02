@@ -47,6 +47,7 @@ export function ensureLocalCoreAcpSchema(db: DatabaseSync) {
       FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_messages_thread_seq ON messages (thread_id, seq ASC);
+    CREATE INDEX IF NOT EXISTS idx_messages_thread_assistant_ts ON messages (thread_id, timestamp) WHERE role = 'assistant';
     CREATE TABLE IF NOT EXISTS runs (
       id TEXT PRIMARY KEY,
       thread_id TEXT NOT NULL,

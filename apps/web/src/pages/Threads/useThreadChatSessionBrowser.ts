@@ -3,6 +3,7 @@ import type { ThreadDetail } from '@cc/superai-contracts';
 import { subscribeEvents } from '@cc/core-sdk/runtime';
 import { watchThreadRuntime, getThread, listThreads, listWorkspaces } from '@cc/core-sdk/threads';
 import type { ThreadGroup } from './thread-chat-model';
+import { shouldLoadRequestedThread, toRecentThreadSnapshot, THREAD_MESSAGE_PAGE_SIZE } from './thread-chat-snapshot';
 import {
   chatThreadMatchesSearch,
   sortChatThreadsByLiveAndUpdated,
@@ -77,7 +78,7 @@ type UseThreadChatSessionBrowserInput = {
   threadSearch: string;
   setSelectedKnowledgeBaseIds: (ids: string[]) => void;
 } & Pick<ThreadChatSharedHookContext, 'updateTaskState'> &
-  Pick<ThreadChatSharedHookContext, 'applyLocalCoreThreadDetail' | 'clearReplyTimeout'> &
+  Pick<ThreadChatSharedHookContext, 'applyLocalCoreThreadDetail' | 'resetLocalCoreThreadDetail' | 'clearReplyTimeout'> &
   Pick<ThreadChatSharedHookContext, 'setBridgeError' | 'setMessages' | 'setPendingPermissionRequest' | 'setTyping'> &
   Pick<ThreadChatConversationRefs, 'holdBlankComposerRef' | 'nextMessageOrderRef' | 'pendingTurnRef' | 'progressSequenceByTurnRef'> &
   Pick<ThreadChatSendingRefs, 'lastSessionByProjectRef'> &
@@ -111,6 +112,7 @@ export function useThreadChatSessionBrowser({
   setThreadGroups,
   setTyping,
   applyLocalCoreThreadDetail,
+  resetLocalCoreThreadDetail,
   clearReplyTimeout,
   updateTaskState,
   holdBlankComposerRef,
@@ -145,7 +147,7 @@ export function useThreadChatSessionBrowser({
     const nextThreads = sortChatThreadsByLiveAndUpdated(
       (await listThreads(workspaceId)).threads.map((thread) => toCoreChatThreadSummary(thread)),
     );
-    const activeThread = nextThreads.find((thread) => thread.id === activeThreadId);
+    const activeThread = nextThreads.find((thread) => thread.id === selectedThreadRef.current);
     if (activeThread?.agentType) {
       setActiveSessionAgentType(activeThread.agentType);
     }
@@ -154,16 +156,20 @@ export function useThreadChatSessionBrowser({
     }
     setThreadGroups((current) => upsertThreadGroup(current, workspaceId, nextThreads));
     return nextThreads;
-  }, [activeThreadId, serviceRunning, setActiveAgentMode, setActiveSessionAgentType, setThreadGroups]);
+  }, [serviceRunning, setActiveAgentMode, setActiveSessionAgentType, setThreadGroups]);
 
   const activeThreadRequestIdRef = useRef(0);
+  const pendingRouteThreadIdRef = useRef<string | null>(null);
+  const latestWatchSnapshotByThreadRef = useRef(new Map<string, { runtimeEpoch: string; revision: number; generation: number }>());
 
   const loadActiveThread = useCallback(async (workspaceId: string, threadId: string) => {
     if (!threadId || !serviceRunning) {
       return;
     }
+    const previousThreadId = selectedThreadRef.current;
     selectedThreadRef.current = threadId;
     const requestId = ++activeThreadRequestIdRef.current;
+    const snapshotGenerationAtStart = latestWatchSnapshotByThreadRef.current.get(threadId)?.generation || 0;
     holdBlankComposerRef.current = false;
     updateTaskState('idle');
     setPendingPermissionRequest(null);
@@ -171,15 +177,19 @@ export function useThreadChatSessionBrowser({
     setActiveSessionId(threadId);
     const cached = getCachedThreadDetail(threadId);
     if (cached) {
-      applyLocalCoreThreadDetail(cached);
+      applyLocalCoreThreadDetail(cached, { preserveLoadedHistory: previousThreadId === threadId });
+    } else if (previousThreadId !== threadId) {
+      resetLocalCoreThreadDetail(threadId);
     }
     try {
-      const detail = await getThread(threadId, { limit: 50 });
+      const detail = await getThread(threadId, { limit: THREAD_MESSAGE_PAGE_SIZE });
       if (activeThreadRequestIdRef.current !== requestId) {
         return;
       }
-      setCachedThreadDetail(threadId, detail);
-      applyLocalCoreThreadDetail(detail);
+      if ((latestWatchSnapshotByThreadRef.current.get(threadId)?.generation || 0) !== snapshotGenerationAtStart) return;
+      const recentDetail = toRecentThreadSnapshot(detail, THREAD_MESSAGE_PAGE_SIZE);
+      setCachedThreadDetail(threadId, recentDetail);
+      applyLocalCoreThreadDetail(recentDetail, { preserveLoadedHistory: previousThreadId === threadId });
     } catch (error) {
       if (activeThreadRequestIdRef.current !== requestId) {
         return;
@@ -191,6 +201,7 @@ export function useThreadChatSessionBrowser({
   }, [
     applyLocalCoreThreadDetail,
     holdBlankComposerRef,
+    resetLocalCoreThreadDetail,
     serviceRunning,
     setBridgeError,
     setPendingPermissionRequest,
@@ -203,11 +214,18 @@ export function useThreadChatSessionBrowser({
     if (!activeThreadId || !serviceRunning) return;
     return watchThreadRuntime(activeThreadId, (snapshot) => {
       if (selectedThreadRef.current !== snapshot.threadId) return;
-      applyLocalCoreThreadDetail(snapshot.thread);
+      const previous = latestWatchSnapshotByThreadRef.current.get(snapshot.threadId);
+      if (previous?.runtimeEpoch === snapshot.runtimeEpoch && snapshot.revision <= previous.revision) return;
+      latestWatchSnapshotByThreadRef.current.set(snapshot.threadId, {
+        runtimeEpoch: snapshot.runtimeEpoch,
+        revision: snapshot.revision,
+        generation: (previous?.generation || 0) + 1,
+      });
+      applyLocalCoreThreadDetail(toRecentThreadSnapshot(snapshot.thread, THREAD_MESSAGE_PAGE_SIZE), { preserveLoadedHistory: true });
       setTyping(snapshot.thread.live && !snapshot.thread.pendingPermissionRequest);
       updateTaskState(snapshot.thread.pendingPermissionRequest ? 'awaiting_permission' : snapshot.thread.live ? 'running' : 'idle');
       clearReplyTimeout();
-    });
+    }, { limit: THREAD_MESSAGE_PAGE_SIZE });
   }, [activeThreadId, serviceRunning, applyLocalCoreThreadDetail, setTyping, updateTaskState, clearReplyTimeout]);
 
   const refreshWorkspacesAndThreads = useCallback(async () => {
@@ -256,13 +274,17 @@ export function useThreadChatSessionBrowser({
       if (event.type !== 'thread.session.activated') {
         return;
       }
-      if (event.threadId === activeThreadId) {
+      if (event.threadId === selectedThreadRef.current) {
         return;
       }
+      const requestId = activeThreadRequestIdRef.current;
       void refreshThreadsForWorkspace(event.workspaceId)
-        .then(() => loadActiveThread(event.workspaceId, event.threadId));
+        .then(() => {
+          if (activeThreadRequestIdRef.current !== requestId) return;
+          void loadActiveThread(event.workspaceId, event.threadId);
+        });
     });
-  }, [activeThreadId, loadActiveThread, refreshThreadsForWorkspace, serviceRunning]);
+  }, [loadActiveThread, refreshThreadsForWorkspace, serviceRunning]);
 
   useEffect(() => {
     if (!serviceRunning) {
@@ -306,10 +328,16 @@ export function useThreadChatSessionBrowser({
     if (!serviceRunning || !requestedThreadId) {
       return;
     }
-    if (requestedThreadId === activeThreadId || lastRequestedThreadIdRef.current === requestedThreadId) {
+    if (requestedThreadId === activeThreadId) {
+      if (pendingRouteThreadIdRef.current === requestedThreadId) pendingRouteThreadIdRef.current = null;
+      lastRequestedThreadIdRef.current = requestedThreadId;
+      return;
+    }
+    if (!shouldLoadRequestedThread(activeThreadId, requestedThreadId, lastRequestedThreadIdRef.current)) {
       return;
     }
     lastRequestedThreadIdRef.current = requestedThreadId;
+    pendingRouteThreadIdRef.current = requestedThreadId;
     void loadActiveThread(requestedWorkspaceId, requestedThreadId);
   }, [activeThreadId, loadActiveThread, requestedThreadId, requestedWorkspaceId, serviceRunning]);
 
@@ -384,6 +412,10 @@ export function useThreadChatSessionBrowser({
     if (!selectedWorkspaceId && !activeThreadId) {
       return;
     }
+    if (pendingRouteThreadIdRef.current && pendingRouteThreadIdRef.current === requestedThreadId
+      && pendingRouteThreadIdRef.current !== activeThreadId) {
+      return;
+    }
     const next = new URLSearchParams(searchParams);
     if (selectedWorkspaceId) {
       next.set('project', selectedWorkspaceId);
@@ -392,6 +424,8 @@ export function useThreadChatSessionBrowser({
     }
     if (activeThreadId) {
       next.set('session', activeThreadId);
+      if (pendingRouteThreadIdRef.current === activeThreadId) pendingRouteThreadIdRef.current = null;
+      lastRequestedThreadIdRef.current = activeThreadId;
     } else {
       next.delete('session');
     }

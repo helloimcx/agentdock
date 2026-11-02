@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "docs/architecture/durable-execution.workflow.json",
+    "sha256": "9f1011547c5778a9a0edc977da6ca31b815ceee73c7c55d2d1204ce325a67e78",
+    "bytes": 4900
+  },
+  "artifact": {
+    "path": "docs/architecture/durable-execution-workflow.html",
+    "sha256": "e22d48da3eece96f17ad8560d858b581f976b94dab45383fd6a834bec5a39c76",
+    "bytes": 829806
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "docs/architecture/durable-execution-workflow.review-2026-11-01/durable-execution-workflow.finalize.json",
+    "summaryReceipt": "docs/architecture/durable-execution-workflow.review-2026-11-01/durable-execution-workflow.finalize-summary.json",
+    "browserCheckReceipt": "docs/architecture/durable-execution-workflow.review-2026-11-01/durable-execution-workflow.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-31T17:15:57.356Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4784,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

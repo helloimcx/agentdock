@@ -1889,3 +1889,49 @@ test('ACP skips empty generic running updates even after a tool name', () => {
   assert.deepEqual(emitted, []);
   assert.equal(session.currentTurn.pendingToolCallTitle, undefined);
 });
+
+test('recordToolObservation caps observations per turn and drops the oldest', () => {
+  const currentTurn = { runId: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000000', toolObservations: [] } as any;
+  for (let index = 0; index < 310; index += 1) {
+    recordToolObservation(currentTurn, {
+      name: `terminal-${index}`,
+      title: `terminal-${index}`,
+      status: 'completed',
+      outputText: `output for tool ${index}`,
+    });
+  }
+  assert.equal(currentTurn.toolObservations.length, 300);
+  assert.equal(currentTurn.toolObservations[0].name, 'terminal-10');
+  assert.equal(currentTurn.toolObservations[299].name, 'terminal-309');
+});
+
+test('recordToolObservation truncates oversized tool output kept for transcript stripping', () => {
+  const currentTurn = { runId: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000001', toolObservations: [] } as any;
+  recordToolObservation(currentTurn, {
+    name: 'webReader',
+    title: 'webReader',
+    status: 'completed',
+    outputText: 'x'.repeat(20000),
+  });
+  assert.equal(currentTurn.toolObservations.length, 1);
+  assert.equal(currentTurn.toolObservations[0].outputText.length, 8192);
+});
+
+test('recordToolObservation truncates oversized tool input kept for evidence matching', () => {
+  const currentTurn = { runId: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000002', toolObservations: [] } as any;
+  recordToolObservation(currentTurn, {
+    name: 'Write',
+    title: 'Write',
+    status: 'completed',
+    input: { file_path: '/home/ubuntu/notes/big.md', content: 'y'.repeat(20000) },
+  });
+  assert.equal(typeof currentTurn.toolObservations[0].input, 'string');
+  assert.equal((currentTurn.toolObservations[0].input as string).length, 8192);
+});
+
+test('recordToolObservation keeps small tool inputs verbatim', () => {
+  const currentTurn = { runId: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000003', toolObservations: [] } as any;
+  const input = { file_path: '/home/ubuntu/notes/small.md', content: 'tiny' };
+  recordToolObservation(currentTurn, { name: 'Write', title: 'Write', status: 'completed', input });
+  assert.equal(currentTurn.toolObservations[0].input, input);
+});

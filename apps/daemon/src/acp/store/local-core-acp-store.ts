@@ -230,8 +230,8 @@ export class LocalCoreAcpStore {
   }
 
 
-  getThreadExecutionSnapshot(threadId: string, knowledgeBaseIds: string[] = []) {
-    return readThreadExecutionSnapshot(this.db, this.threadRuntime, threadId, () => this.getThread(threadId, knowledgeBaseIds));
+  getThreadExecutionSnapshot(threadId: string, knowledgeBaseIds: string[] = [], options?: ThreadGetOptions) {
+    return readThreadExecutionSnapshot(this.db, this.threadRuntime, threadId, () => this.getThread(threadId, knowledgeBaseIds, options));
   }
 
   close() {
@@ -256,6 +256,10 @@ export class LocalCoreAcpStore {
 
   listAssistantTurnMessages(threadId: string) {
     return this.threads.listAssistantTurnMessages(threadId);
+  }
+
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
+    return this.threads.listAssistantRunMessagesSince(threadId, sinceIso);
   }
 
   renameThread(threadId: string, title: string) {

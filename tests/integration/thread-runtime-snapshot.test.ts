@@ -107,3 +107,162 @@ test('streaming assistant commits a coalesced partial and final persistence remo
     assert.equal(snapshot.thread.messages[0].kind, 'final');
   } finally { coordinator.close(); core.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('watch waits for a slow consumer and coalesces revisions until it drains', async () => {
+  const { watchThreadSnapshot } = await import('../../apps/daemon/src/runtime/thread-snapshot-watch.js');
+  let notify = () => {};
+  let revision = 1;
+  let drain!: (writable: boolean) => void;
+  const frames: number[] = [];
+  const close = watchThreadSnapshot({
+    subscribe: (listener) => { notify = listener; return () => {}; },
+    read: async () => ({ schemaVersion: 1, threadId: 'thread:agentdock::b5e89726-c114-4a07-8dfc-c35e058754a7', runtimeEpoch: 'epoch:one', revision } as any),
+    send: (snapshot) => {
+      frames.push(snapshot.revision);
+      return frames.length === 1 ? new Promise<boolean>((resolve) => { drain = resolve; }) : Promise.resolve(true);
+    },
+    onError: (error) => { throw error; },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  revision = 2; notify(); revision = 3; notify();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(frames, [1]);
+  drain(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(frames, [1, 3]);
+  close();
+});
+
+test('runtime snapshots optionally use a recent message window without changing the default snapshot', async () => {
+  const { LocalCoreAcpStore } = await import('../../apps/daemon/src/acp/local-core-acp-store.js');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'snapshot-window-'));
+  const core = new LocalCoreAcpStore(dir);
+  try {
+    const thread = core.createThread('agentdock', 'Long thread', 'claudecode');
+    for (let i = 0; i < 75; i++) core.appendMessage(thread.id, 'user', `Message ${i}`, 'final');
+    const full = core.getThreadExecutionSnapshot(thread.id);
+    const recent = core.getThreadExecutionSnapshot(thread.id, [], { limit: 50 });
+    assert.equal(full.thread.messages.length, 75);
+    assert.equal(recent.thread.messages.length, 50);
+    assert.equal(recent.thread.messages[0].content, 'Message 25');
+    assert.equal(recent.thread.hasMore, true);
+  } finally { core.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('runtime watch requests an optional bounded baseline and preserves the legacy default', async () => {
+  const { registerThreadRuntimeHandlers } = await import('../../apps/daemon/src/runtime/handlers/thread-runtime-handler.js');
+  const { EventEmitter } = await import('node:events');
+  const calls: Array<{ source: string; options: unknown }> = [];
+  const threadId = 'thread:agentdock::b5e89726-c114-4a07-8dfc-c35e058754a7';
+  const store = {
+    threadRuntime: { revision: () => 1 },
+    getThreadExecutionSnapshot: (_id: string, _ids: string[], options: unknown) => {
+      calls.push({ source: 'snapshot', options });
+      return { threadId, runtimeEpoch: 'epoch:one', revision: 1 };
+    },
+  };
+  const router = { getThread: async (_id: string, options: unknown) => {
+    calls.push({ source: 'router', options });
+    return { selectedKnowledgeBaseIds: [] };
+  } };
+  const handlers = new Map();
+  const watches = new Set<() => void>();
+  registerThreadRuntimeHandlers(handlers, store as any, router as any, new EventEmitter(), watches);
+  for (const [query, expected] of [
+    ['?limit=50', { limit: 50 }],
+    ['?limit=500', { limit: 200 }],
+    ['', undefined],
+  ] as const) {
+    const response = Object.assign(new EventEmitter(), {
+      writableNeedDrain: false, destroyed: false, writeHead: () => {}, write: () => true, end: () => {},
+    });
+    await handlers.get('thread.runtime.watch')({ threadId }, {}, response, new URL(`http://localhost/${query}`));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls.splice(0), [{ source: 'router', options: expected }, { source: 'snapshot', options: expected }]);
+    response.emit('close');
+  }
+});
+
+test('runtime watch waits for SSE drain, coalesces pending snapshots, and cleans up after disconnect', async () => {
+  const { registerThreadRuntimeHandlers } = await import('../../apps/daemon/src/runtime/handlers/thread-runtime-handler.js');
+  const { EventEmitter } = await import('node:events');
+  const threadId = 'thread:agentdock::b5e89726-c114-4a07-8dfc-c35e058754a7';
+  let revision = 1;
+  const controller = new EventEmitter();
+  const store = {
+    threadRuntime: { revision: () => revision },
+    getThreadExecutionSnapshot: () => ({ schemaVersion: 1, threadId, runtimeEpoch: 'epoch:one', revision }),
+  };
+  const router = { getThread: async () => ({ selectedKnowledgeBaseIds: [] }) };
+  const handlers = new Map();
+  const watches = new Set<() => void>();
+  registerThreadRuntimeHandlers(handlers, store as any, router as any, controller, watches);
+
+  let writableNeedDrain = false;
+  let writeCount = 0;
+  const response = Object.assign(new EventEmitter(), {
+    destroyed: false,
+    writeHead: () => {},
+    write: () => {
+      writeCount += 1;
+      if (writeCount === 1) {
+        writableNeedDrain = true;
+        return false;
+      }
+      return true;
+    },
+    end: () => {},
+  });
+  Object.defineProperty(response, 'writableNeedDrain', { get: () => writableNeedDrain });
+  await handlers.get('thread.runtime.watch')({ threadId }, {}, response, new URL('http://localhost/?limit=50'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(writeCount, 1);
+  assert.equal(response.listenerCount('drain'), 1);
+
+  revision = 2;
+  controller.emit('bridge');
+  revision = 3;
+  controller.emit('agent-run');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(writeCount, 1);
+
+  writableNeedDrain = false;
+  response.emit('drain');
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(writeCount, 2);
+  assert.equal(watches.size, 1);
+
+  response.destroyed = true;
+  response.emit('close');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(response.listenerCount('drain'), 0);
+  assert.equal(watches.size, 0);
+  controller.emit('bridge');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(writeCount, 2);
+
+  let blockedNeedDrain = false;
+  let blockedWriteCount = 0;
+  const blockedResponse = Object.assign(new EventEmitter(), {
+    destroyed: false,
+    writeHead: () => {},
+    write: () => { blockedWriteCount += 1; blockedNeedDrain = true; return false; },
+    end: () => {},
+  });
+  Object.defineProperty(blockedResponse, 'writableNeedDrain', { get: () => blockedNeedDrain });
+  await handlers.get('thread.runtime.watch')({ threadId }, {}, blockedResponse, new URL('http://localhost/'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(blockedResponse.listenerCount('drain'), 1);
+  blockedResponse.destroyed = true;
+  blockedResponse.emit('close');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(blockedResponse.listenerCount('drain'), 0);
+  assert.equal(watches.size, 0);
+  controller.emit('bridge');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(blockedWriteCount, 1);
+});

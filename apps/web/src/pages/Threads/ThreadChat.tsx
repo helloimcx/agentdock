@@ -214,7 +214,7 @@ export default function ThreadChat() {
                         <ThreadChatMessage
                           message={message}
                           pendingBridgeActionId={pendingBridgeActionId}
-                          onAction={(targetMessage, action) => void handleBridgeAction(targetMessage, action)}
+                          onAction={handleBridgeAction}
                         />
                       </div>
                     );

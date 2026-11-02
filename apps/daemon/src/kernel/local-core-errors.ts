@@ -204,6 +204,10 @@ export function errorInfoToHttpBody(info: LocalCoreErrorInfo) {
   };
 }
 
+// Keys are per distinct thread+error; without a cap they accumulated for the
+// process lifetime (each retains errorInfo + context) and OOM'd long-lived daemons.
+const MAX_ERROR_SUMMARIES = 400;
+
 export class LocalCoreErrorReporter {
   private readonly summaries = new Map<string, LocalCoreErrorSummary>();
   private readonly lastLoggedAt = new Map<string, number>();
@@ -229,6 +233,7 @@ export class LocalCoreErrorReporter {
       ? { ...existing, count: existing.count + 1, lastSeenAt: now.toISOString(), errorInfo: info, context }
       : { key, count: 1, firstSeenAt: now.toISOString(), lastSeenAt: now.toISOString(), errorInfo: info, context };
     this.summaries.set(key, summary);
+    this.evictBeyondCap();
 
     const lastLoggedAt = this.lastLoggedAt.get(key) || 0;
     if (!lastLoggedAt || now.getTime() - lastLoggedAt >= this.windowMs) {
@@ -241,6 +246,20 @@ export class LocalCoreErrorReporter {
   list() {
     return [...this.summaries.values()]
       .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  private evictBeyondCap() {
+    if (this.summaries.size <= MAX_ERROR_SUMMARIES) {
+      return;
+    }
+    const evictCount = this.summaries.size - MAX_ERROR_SUMMARIES;
+    const oldest = [...this.summaries.values()]
+      .sort((a, b) => a.lastSeenAt.localeCompare(b.lastSeenAt))
+      .slice(0, evictCount);
+    for (const entry of oldest) {
+      this.summaries.delete(entry.key);
+      this.lastLoggedAt.delete(entry.key);
+    }
   }
 }
 

@@ -25,6 +25,7 @@ import { LocalCoreCapabilityRegistry } from './capability-registry.js';
 
 import { LocalCoreDiagnostics } from './diagnostics.js';
 import { LocalCoreEventBus } from './event-bus.js';
+import { createHeapWatcher } from './heap-watch.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import {
@@ -356,6 +357,8 @@ export function bootstrapLocalCoreRuntime(options: {
     },
   });
 
+  const heapWatcher = createHeapWatcher({ log: options.log ?? (() => {}) });
+
   return {
     kernel,
     state,
@@ -379,8 +382,10 @@ export function bootstrapLocalCoreRuntime(options: {
       await automations.start();
       await scheduler.start();
       await automationMonitors.start();
+      heapWatcher.start();
     },
     async stop() {
+      heapWatcher.stop();
       await automationMonitors.stop();
       await automations.stop();
       await scheduler.stop();

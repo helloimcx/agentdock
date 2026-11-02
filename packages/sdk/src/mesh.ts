@@ -43,6 +43,7 @@ export function createMeshClient(token?: string, baseUrl = LOCAL_AI_CORE_BASE, f
     execute: (input: MeshExecutionInput) => request<MeshExecution>('/requests', 'POST', input),
     listRequests: () => request<{ requests: MeshExecution[] }>('/requests'),
     getRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}`),
+    getOperation: (nodeId: string, operationId: string) => request<MeshExecution>(`/nodes/${encodeURIComponent(nodeId)}/operations/${encodeURIComponent(operationId)}`),
     cancelRequest: (id: string) => request<MeshExecution>(`/requests/${encodeURIComponent(id)}/cancel`, 'POST'),
     getTailscaleStatus: () => request<TailscaleStatusResponse>('/tailscale/status'),
     createTailscaleConnection: (input: TailscaleConnectionInput) => request<TailscaleConnectionResult>('/tailscale/connections', 'POST', input),
