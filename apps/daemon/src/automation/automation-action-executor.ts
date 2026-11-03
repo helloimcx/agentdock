@@ -158,6 +158,30 @@ async function settleBridgeSafely(
   }
 }
 
+function buildExecutionResult(options: {
+  input: AutomationActionExecutionInput;
+  threadId: string;
+  runId: string;
+  final: RunFinalResult;
+  replyText: string;
+  bridge: Awaited<ReturnType<typeof openExecutionBridge>>;
+  decision: AutomationDecisionRecord | undefined;
+  retrospectiveOutcome: AutomationActionExecutionResult['retrospectiveOutcome'];
+}): AutomationActionExecutionResult {
+  const { input, threadId, runId, final, replyText, bridge, decision, retrospectiveOutcome } = options;
+  return {
+    threadId,
+    acpRunId: runId,
+    replyText,
+    ...buildDeliveryResult(input, final, runId),
+    lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
+    settleBridge: bridge?.settle ? (outcome) => bridge.settle!(outcome) : undefined,
+    closeBridge: bridge?.close ? () => bridge.close() : undefined,
+    ...(decision ? { decision } : {}),
+    ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
+  };
+}
+
 async function dispatchAndWaitRun(
   options: {
     workspaceRouter: WorkspaceRouter;
@@ -303,17 +327,7 @@ export class AutomationActionExecutor {
       });
 
       runSuccess = true;
-      return {
-        threadId,
-        acpRunId: runId,
-        replyText,
-        ...buildDeliveryResult(input, final, runId),
-        lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
-        settleBridge: bridge?.settle ? (outcome) => bridge.settle!(outcome) : undefined,
-        closeBridge: bridge?.close ? () => bridge.close() : undefined,
-        ...(decision ? { decision } : {}),
-        ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
-      };
+      return buildExecutionResult({ input, threadId, runId, final, replyText, bridge, decision, retrospectiveOutcome });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       await settleBridgeSafely(bridge, { status: 'failed', error: errorMsg });

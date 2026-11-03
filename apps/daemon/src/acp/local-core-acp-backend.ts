@@ -357,16 +357,9 @@ export class LocalCoreAcpBackend {
         threadId, workspaceId: row.workspace_id, role: 'user', content, kind: 'final', source: 'user',
       } });
     }
-    if (isCommand && admitted.submission.status === 'pending' && this.options.store.submissions.claim(admitted.submission.id, true)) {
-      try {
-        await this.executeSubmission(admitted.submission, config, options);
-        this.options.store.submissions.finish(admitted.submission.id, 'completed', { runId: '' });
-        responseStatus = 'completed';
-      } catch (error) {
-        this.options.store.submissions.finish(admitted.submission.id, 'unknown', undefined, String(error));
-        responseStatus = 'unknown';
-        throw error;
-      } finally { this.submissionDispatcher.forget(admitted.submission.id); }
+    if (isCommand) {
+      const completed = await this.completeCommandSubmission(admitted.submission, config, options);
+      if (completed) responseStatus = completed;
     }
     setImmediate(() => { void this.submissionDispatcher.drain(threadId).catch((error) => this.options.log?.(`submission dispatch failed: ${String(error)}`)); });
     return { runId: isCommand ? '' : admitted.submission.runId, submissionId: admitted.submission.id,
@@ -376,6 +369,21 @@ export class LocalCoreAcpBackend {
   async resumePendingSubmissions(resolveConfig: (threadId: string, options?: SendThreadMessageOptions) => Promise<LocalCoreProjectConfig>) {
     await this.durable.prepareForResume(resolveConfig);
     return this.submissionDispatcher.resume(resolveConfig);
+  }
+
+  private async completeCommandSubmission(
+    submission: import('./store/submission-store.js').ThreadSubmission,
+    config: LocalCoreProjectConfig, options: SendThreadMessageOptions,
+  ): Promise<'completed' | undefined> {
+    if (!(submission.status === 'pending' && this.options.store.submissions.claim(submission.id, true))) return undefined;
+    try {
+      await this.executeSubmission(submission, config, options);
+      this.options.store.submissions.finish(submission.id, 'completed', { runId: '' });
+      return 'completed';
+    } catch (error) {
+      this.options.store.submissions.finish(submission.id, 'unknown', undefined, String(error));
+      throw error;
+    } finally { this.submissionDispatcher.forget(submission.id); }
   }
 
   private async executeSubmission(
