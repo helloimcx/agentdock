@@ -24,6 +24,7 @@ provider_files:
     - docs/architecture/durable-execution.workflow.json
     - docs/architecture/remote-lac-control.workflow.json
     - docs/architecture/butler-orchestration.workflow.json
+    - docs/architecture/provider-deletion-workflow.json
   receipt: null
 readme:
   mode: inline-mermaid

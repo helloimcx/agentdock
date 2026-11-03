@@ -55,7 +55,7 @@ for (const filePath of jsonFiles) {
     continue;
   }
 
-  const result = spawnSync('node', [ARCHIFY_BIN, 'validate', diagramType, filePath, '--quality', 'showcase', '--json'], {
+  const result = spawnSync('node', [ARCHIFY_BIN, 'validate', diagramType, filePath, '--quality', 'showcase', '--repo-root', process.cwd(), '--json'], {
     encoding: 'utf8',
   });
 

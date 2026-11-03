@@ -153,8 +153,11 @@ export function updateModelProvider(providerId: string, input: DesktopModelProvi
   return coreRequest<DesktopModelProvider>('PUT', `/providers/${encodeURIComponent(providerId)}`, input);
 }
 
-export function deleteModelProvider(providerId: string) {
-  return coreRequest<{ deleted: boolean }>('DELETE', `/providers/${encodeURIComponent(providerId)}`);
+export function deleteModelProvider(providerId: string, options?: { replacementProviderId?: string }) {
+  const body = options?.replacementProviderId
+    ? { replacement_provider_id: options.replacementProviderId }
+    : undefined;
+  return coreRequest<{ deleted: boolean }>('DELETE', `/providers/${encodeURIComponent(providerId)}`, body);
 }
 
 export function listAgentTasks(query: AgentTaskListQuery = {}) {
