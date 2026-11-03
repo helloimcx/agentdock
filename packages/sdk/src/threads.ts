@@ -89,6 +89,6 @@ export function getThreadRuntimeSnapshot(threadId: string) {
   return coreRequest<ThreadExecutionSnapshot>('GET', `/threads/${encodeURIComponent(threadId)}/runtime-snapshot`);
 }
 
-export function watchThreadRuntime(threadId: string, listener: (snapshot: ThreadExecutionSnapshot) => void) {
-  return coreClient.watchThreadRuntime(threadId, listener);
+export function watchThreadRuntime(threadId: string, listener: (snapshot: ThreadExecutionSnapshot) => void, options?: { limit?: number }) {
+  return coreClient.watchThreadRuntime(threadId, listener, options);
 }
