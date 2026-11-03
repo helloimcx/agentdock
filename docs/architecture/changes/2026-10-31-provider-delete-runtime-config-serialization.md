@@ -2,7 +2,7 @@
 
 - Architecture Impact: Required.
 - Base revision: `abafe155ae14fc9200ad6cfbb1765ca07326c3f7` (`origin/main` at repair start).
-- Implementation: PR #266, fix commit `4576a84d3a730af2747e7854354c7b928ccb69b3`; synchronized branch at merge commit `c05eaf5054cc21b0a8d0a15ae65417dbc7f9dbc2`.
+- Implementation: PR #266, fix commit `4576a84d3a730af2747e7854354c7b928ccb69b3`; synchronized branch at merge commit `c05eaf5054cc21b0a8d0a15ae65417dbc7f9dbc2`; artifact/completion commit `870f3e6e` and repair commit `8265a241`; follow-up sync merge `567bb9d` (see addendum).
 - Prior semantic record: [Provider deletion reference guard with compensating repoint](2026-10-30-provider-delete-reference-guard.md).
 - Active provider: Archify 3.2.0.
 
@@ -19,7 +19,7 @@
 - Lock and serialized provider-delete path: `apps/daemon/src/runtime/local-core-controller.ts` (`saveRuntimeConfig`, `applyRuntimeConfig`, `runExclusiveRuntimeConfigWrite`) and `apps/daemon/src/runtime/handlers/provider-handler.ts` (`provider.delete`).
 - Production WorkspaceRouter save injection: `apps/daemon/src/runtime/local-core-controller.ts` and `apps/daemon/src/router/workspace-router.ts` (`setRuntimeConfigSaver`, `saveWorkspaceStandards`).
 - Runtime config storage and provider row deletion: `apps/daemon/src/acp/store/runtime-config-store.ts` and `apps/daemon/src/acp/store/model-provider-store.ts`.
-- Error mapping: `apps/daemon/src/runtime/server.ts` maps `ProviderInUseError` to HTTP 409.
+- Error mapping: `apps/daemon/src/runtime/server.ts` maps `ProviderInUseError` to HTTP 409 and `RequestValidationError` to HTTP 400.
 - Regression coverage: `tests/electron/provider-delete-guard.test.ts` covers provider-delete interleaving; `tests/electron/runtime-config-store.test.ts` directly exercises the real controller lock by queueing `saveRuntimeConfig` behind a held provider-delete critical section.
 
 ## Provider artifacts
@@ -38,3 +38,9 @@
 - `[PASS]` `pnpm test:ci`: build, compiled tests, coverage, and BDD completed successfully; 80 BDD scenarios / 286 steps passed.
 - `[FAIL]` `pnpm verify`: `lint:complexity:gate` stopped the command at 109 warnings against the configured 108 limit. This matches the current `main` baseline identified by the latest PR review; the change adds no complexity warnings. Since verify stopped before architecture lint and `test:ci`, those stages were run separately and passed as listed above.
 - `[PASS]` `git diff --check`.
+
+## Addendum 2026-11-04 — repair round and branch sync
+
+- Repair commit `8265a241` ("Return client errors for invalid provider replacements") changed `provider.delete` replacement validation: a non-string `replacement_provider_id`, a self-replacement, and an unknown replacement provider all raise `RequestValidationError` (mapped to HTTP 400) before the runtime-config critical section, so invalid input can no longer surface as HTTP 500 or partially mutate state. Semantic delta: validation errors for this endpoint moved from 500 to 400; the omitted-field request shape is unchanged.
+- Mutex chain rejection-path coverage added in `tests/electron/runtime-config-store.test.ts`: a queued `saveRuntimeConfig` must still run after the critical section ahead of it rejects, pinning the error-swallowing chain link in `runExclusiveRuntimeConfigWrite`.
+- Branch synchronized with `origin/main` @ `f80ada79` in merge commit `567bb9d`; main's complexity baseline returned to 108/108 with #274, clearing the standing `[FAIL]` gate above without code changes.

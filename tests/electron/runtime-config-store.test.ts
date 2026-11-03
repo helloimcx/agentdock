@@ -213,3 +213,27 @@ test('controller queues config saves behind a provider-delete critical section',
   await Promise.all([deleteOperation, configSave]);
   assert.deepEqual(order, ['delete-start', 'delete-end', 'save-start', 'save-end']);
 });
+
+test('controller runs a queued save after a rejecting critical section', async () => {
+  const controller = Object.create(LocalCoreController.prototype) as LocalCoreController;
+  (controller as unknown as { runtimeConfigWriteChain: Promise<unknown> }).runtimeConfigWriteChain = Promise.resolve();
+  const order: string[] = [];
+  (controller as unknown as {
+    applyRuntimeConfig: (config: DesktopConnectConfig) => Promise<unknown>;
+  }).applyRuntimeConfig = async () => {
+    order.push('save-start');
+    order.push('save-end');
+    return {};
+  };
+
+  const failingSection = controller.runExclusiveRuntimeConfigWrite(async () => {
+    order.push('critical-start');
+    throw new Error('critical section failed');
+  });
+  const configSave = controller.saveRuntimeConfig({ projects: [] });
+
+  await assert.rejects(failingSection, /critical section failed/);
+  await configSave;
+  assert.deepEqual(order, ['critical-start', 'save-start', 'save-end'],
+    'a rejecting critical section must not poison the write chain for queued saves');
+});
