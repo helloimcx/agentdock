@@ -19,7 +19,8 @@ AgentDock 由 Electron 桌面壳 (`apps/desktop`)、React/Web 渲染入口 (`app
 ```mermaid
 flowchart LR
   electron[Electron desktop shell] -->|Start| api[AgentDock Daemon API]
-  renderer[React / Web and Core SDK] -->|REST / SSE| api
+  renderer[React / Web and Core SDK] -->|REST history pages · bounded SSE snapshots| api
+  api -->|SSE drain-aware revision updates| renderer
   channels[Lark / Weixin] --> api
   external[External clients] --> api
   api --> kernel[Daemon kernel and workspace router]
@@ -51,7 +52,7 @@ flowchart LR
 
 当前架构提供交互式 [HTML 全景图](docs/architecture/system-architecture.html)、[管家 Bot 委托流程](docs/architecture/butler-orchestration.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明管家任务和 Agent run 的归属、Core SQLite 与 Pi Durable 全局 SQLite 的边界，以及 Mesh 设备本地回执库。Mesh 的 [回执恢复时序](docs/architecture/changes/2026-10-25-mesh-operation-recovery.html)记录了按稳定 `operationId` 查询已保存结果的流程。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
-[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
+[架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [聊天会话切换变更](docs/architecture/changes/2026-10-31-chat-detail-flicker.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
 <!-- project-setup:architecture-diagram:end -->
@@ -70,6 +71,14 @@ flowchart LR
 - [管家任务协调](docs/architecture/butler-orchestration.md)
 
 ## New
+
+### 2026-11-03
+
+- **Daemon 子进程堆上限**：`agentdock daemon/serve` 与桌面端拉起 Daemon 子进程时，默认通过 `NODE_OPTIONS` 注入 `--max-old-space-size=1024`（MB），防止内存增长升级为内核全局 OOM 误杀其他进程；该环境变量会随 `process.env` 传递给 Daemon 派生的 ACP agent 子进程（同样受 1024MB 上限约束，单次大上下文运行极端情况下会以堆 OOM 受控失败而非拖垮整机）。可用 `AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB` 调整，设为 `0` 关闭；`pnpm dev:daemon` 为同进程启动方式，不适用此上限。部署后与 heap-watch（75%/90% 告警）配合，在该上限尺度上留下增长曲线。
+
+### 2026-11-02
+
+- **外部运行 SSE 回放瘦身**：外部运行事件流的每秒回放轮询从"整线程水合"（每次读取全部消息，万级消息线程单次 ~25MB）改为按运行窗口的窄读取（仅本次运行的 assistant 消息），轮询成本从 O(全线程消息) 降为 O(运行消息)；连接时的首个全量 snapshot 事件保持不变。
 
 ### 2026-11-01
 
