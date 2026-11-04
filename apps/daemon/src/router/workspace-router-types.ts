@@ -175,6 +175,7 @@ export type WorkspaceThreadBackend = {
 };
 
 export type WorkspaceThreadMessageOptions = {
+  onRunAdmitted?: (runId: string) => void;
   expectedRunId?: string;
   expectedApprovalId?: string;
   requestId?: string;

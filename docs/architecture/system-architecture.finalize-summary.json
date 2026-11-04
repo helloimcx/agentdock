@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.json",
+    "sha256": "b46bb12154132e2270de2f3f4926e0b72d394170e97f53cea1b188cc5723580c",
+    "bytes": 11144
+  },
+  "artifact": {
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.html",
+    "sha256": "ce2950350d876ef157ac4c9287d532b1730536eb165d2b2004a6aa207a3d073a",
+    "bytes": 851003
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.finalize.json",
+    "summaryReceipt": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-04T19:08:08.964Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1715,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "kernel-to-acp",
+            "from": "kernel",
+            "to": "acp_engine",
+            "label": "驱动会话",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "right": {
+            "id": "local-to-kernel-write-approval",
+            "from": "local_agents",
+            "to": "kernel",
+            "label": "Core write approval",
+            "collectionIndex": 10,
+            "artifactIndex": 11
+          },
+          "point": [
+            787,
+            232.0000000000001
+          ],
+          "sharedNode": "kernel"
+        },
+        {
+          "left": {
+            "id": "acp-to-local",
+            "from": "acp_engine",
+            "to": "local_agents",
+            "label": "ACP stdio · MCP tools",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "right": {
+            "id": "pi-durable-to-sqlite",
+            "from": "local_agents",
+            "to": "pi_durable_sqlite",
+            "label": "single owner",
+            "collectionIndex": 17,
+            "artifactIndex": 18
+          },
+          "point": [
+            1046,
+            155
+          ],
+          "sharedNode": "local_agents"
+        }
+      ],
+      "detours": [],
+      "truncated": false
+    },
+    "hints": [
+      "core_api has 4 relationships facing its left side, which fits 3 ports: make that side at least 74px, or move some of those neighbours so they face another side of core_api.",
+      "kernel → acp_engine and local_agents → kernel cross next to kernel: move node acp_engine or local_agents so the two reach kernel from different sides (for example one level with it, one directly above or below it).",
+      "acp_engine → local_agents and local_agents → pi_durable_sqlite cross next to local_agents: move node acp_engine or pi_durable_sqlite so the two reach local_agents from different sides (for example one level with it, one directly above or below it)."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

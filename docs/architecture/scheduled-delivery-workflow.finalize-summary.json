@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.json",
+    "sha256": "45a55a7303b3550c9fc6c4e1f225fc5b7d2e427e7449c9f74c86a53985471767",
+    "bytes": 6972
+  },
+  "artifact": {
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.html",
+    "sha256": "e41f30c7d06dbe994a84864af8c6a0ef71e984a88f92381ee3c2bffe01c3bef0",
+    "bytes": 830164
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.finalize.json",
+    "summaryReceipt": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.finalize-summary.json",
+    "browserCheckReceipt": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-04T19:08:08.964Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5312,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

@@ -158,6 +158,30 @@ async function settleBridgeSafely(
   }
 }
 
+function buildExecutionResult(options: {
+  input: AutomationActionExecutionInput;
+  threadId: string;
+  runId: string;
+  final: RunFinalResult;
+  replyText: string;
+  bridge: Awaited<ReturnType<typeof openExecutionBridge>>;
+  decision: AutomationDecisionRecord | undefined;
+  retrospectiveOutcome: AutomationActionExecutionResult['retrospectiveOutcome'];
+}): AutomationActionExecutionResult {
+  const { input, threadId, runId, final, replyText, bridge, decision, retrospectiveOutcome } = options;
+  return {
+    threadId,
+    acpRunId: runId,
+    replyText,
+    ...buildDeliveryResult(input, final, runId),
+    lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
+    settleBridge: bridge?.settle ? (outcome) => bridge.settle!(outcome) : undefined,
+    closeBridge: bridge?.close ? () => bridge.close() : undefined,
+    ...(decision ? { decision } : {}),
+    ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
+  };
+}
+
 async function dispatchAndWaitRun(
   options: {
     workspaceRouter: WorkspaceRouter;
@@ -169,12 +193,14 @@ async function dispatchAndWaitRun(
     route: DeliveryIntent['route'];
     originKind?: AutomationDefinition['originKind'];
     timeoutMs: number;
+    onRunAdmitted: (runId: string) => void;
   },
 ): Promise<{ runId: string; final: RunFinalResult }> {
   const sendResult = await options.workspaceRouter.sendThreadMessage(options.threadId, options.prompt, {
     ...(options.automationRunId ? { requestId: `automation:${options.automationRunId}` } : {}),
     permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
     runtimeEnv: buildPlatformRuntimeEnv(options.platform, options.route),
+    onRunAdmitted: options.onRunAdmitted,
   });
   await waitForRunCompletion({
     store: options.store,
@@ -281,8 +307,11 @@ export class AutomationActionExecutor {
         route: automation.delivery.route,
         originKind: automation.originKind,
         timeoutMs,
+        onRunAdmitted: (runId) => {
+          if (bridge?.sessionKey) this.options.getChannelRuntime(automation.delivery.platform)?.markScheduledThreadRunOwned?.(bridge.sessionKey, runId);
+        },
       });
-      trackScheduledRun(this.options, input, automation, bridge, threadId, runId);
+      if (input.automationRunId) this.options.store.updateAutomationRun(input.automationRunId, { threadId, acpRunId: runId });
       const replyText = final.content;
 
       const { decision, retrospectiveOutcome } = await processPostRunDecision({
@@ -298,17 +327,7 @@ export class AutomationActionExecutor {
       });
 
       runSuccess = true;
-      return {
-        threadId,
-        acpRunId: runId,
-        replyText,
-        ...buildDeliveryResult(input, final, runId),
-        lastBridgeEventAt: bridge ? new Date().toISOString() : undefined,
-        settleBridge: bridge?.settle ? (outcome) => bridge.settle!(outcome) : undefined,
-        closeBridge: bridge?.close ? () => bridge.close() : undefined,
-        ...(decision ? { decision } : {}),
-        ...(retrospectiveOutcome ? { retrospectiveOutcome } : {}),
-      };
+      return buildExecutionResult({ input, threadId, runId, final, replyText, bridge, decision, retrospectiveOutcome });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       await settleBridgeSafely(bridge, { status: 'failed', error: errorMsg });
@@ -359,12 +378,6 @@ function rememberDeliveryDestination(store: AutomationActionExecutorOptions['sto
   store.deliveries.rememberDestination(input.automationRunId, {
     workspaceId: automation.workspaceId, platform: automation.delivery.platform, route: automation.delivery.route, threadId,
   });
-}
-
-function trackScheduledRun(options: AutomationActionExecutorOptions, input: AutomationActionExecutionInput,
-  automation: AutomationDefinition, bridge: Awaited<ReturnType<typeof openExecutionBridge>>, threadId: string, runId: string) {
-  if (bridge?.sessionKey) options.getChannelRuntime(automation.delivery.platform)?.markScheduledThreadRunOwned?.(bridge.sessionKey, runId);
-  if (input.automationRunId) options.store.updateAutomationRun(input.automationRunId, { threadId, acpRunId: runId });
 }
 
 async function processPostRunDecision(options: {
