@@ -144,7 +144,7 @@
       "id": "sqlite",
       "type": "database",
       "label": "SQLite 本地持久化",
-      "sublabel": "工作区 · 线程历史 · 产物",
+      "sublabel": "线程 · 调度 · outbox",
       "pos": [
         560,
         120
@@ -395,7 +395,7 @@
       "id": "scheduler-to-acp",
       "from": "scheduler",
       "to": "acp_engine",
-      "label": "触发 Run"
+      "label": "接纳 Run · 先登记 outbox 所有权"
     },
     {
       "id": "acp-to-local",

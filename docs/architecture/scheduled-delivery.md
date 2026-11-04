@@ -90,7 +90,7 @@ This lets CLI tools and ACP-side helpers know the scheduled run is executing for
 Delivery modes are explicit:
 
 - `thread-only`: the run executes in a Local AI Core thread and does not send channel messages. This is used by local scheduled jobs.
-- `bridge-stream`: the run opens a scheduled bridge session before ACP execution. ACP progress, tool status, permission cards, and the final reply are delivered through the existing channel gateway bridge. This is used by Lark and Weixin scheduled jobs.
+- `bridge-stream`: the run opens a scheduled bridge session before ACP execution. Progress, tool status, and permission cards use the existing channel gateway bridge. For an outbox-owned scheduled run, final-reply bridge events are suppressed; the final report is sent only by the delivery outbox. This is used by Lark and Weixin scheduled jobs.
 - `final-message`: reserved for future targets that only support a final one-shot delivery.
 
 Lark and Weixin scheduler adapters are thin wrappers around the shared channel execution policy. They should:
@@ -101,6 +101,8 @@ Lark and Weixin scheduler adapters are thin wrappers around the shared channel e
 - report `deliveryMode: 'bridge-stream'` and delivery status metadata through the scheduler run result.
 
 The local scheduler adapter runs the conversation and records the result, but does not perform channel delivery.
+
+For channel automations, the ACP backend calls `onRunAdmitted` synchronously after durable submission admission and before scheduling the thread dispatcher. The automation executor uses that callback to register the inner ACP run id as outbox-owned on the scheduled bridge. The channel gateway then suppresses live final-reply events for that run while continuing to forward progress events. After ACP completion, the executor persists the final content and destination to the delivery outbox, which performs the single final send and records platform receipt state. This ordering closes the interval in which both the live bridge and outbox could send the same final answer.
 
 `same-thread` and `side-thread` only choose the ACP execution thread. They do not change the persisted delivery route. Side-thread jobs reuse a platform-specific title such as `[Scheduled:Lark] ...` or `[Scheduled:Weixin] ...`, while still recognizing legacy `[Scheduled] ...` titles so existing jobs do not create duplicate threads.
 

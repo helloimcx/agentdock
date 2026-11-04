@@ -31,8 +31,10 @@ flowchart LR
   kernel --> sqlite[(SQLite)]
   kernel --> acp[ACP session runtime]
   kernel --> scheduler[Scheduler / Automation]
-  scheduler --> acp
+  scheduler -->|Admit run · register outbox ownership before dispatch| acp
   acp --> agents[Local Pi / Codex / Claude / Hermes]
+  acp -->|Persist final report after completion| outbox[(Delivery outbox · fixed destination)]
+  outbox -->|Single final send · confirmed receipt| channels
   kernel -->|Typed submissions| durable[Pi Durable worker - optional]
   durable --> pidb[(One pi-durable.sqlite per Core data directory)]
   durable -->|Per-write approval request| kernel

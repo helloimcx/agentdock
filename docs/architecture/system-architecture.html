@@ -5287,12 +5287,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <path data-edge-from="kernel" data-edge-to="acp_engine" data-edge-label="驱动会话" data-edge-key="6" data-edge-id="kernel-to-acp" data-composition-points="655.05,295;655.05,232;790,232" data-composition-crossover="halo" data-composition-independent="true" d="M 655.05 295 L 655.05 240 Q 655.05 232 663.05 232 L 790 232" class="a-emphasis" data-animate="edge" style="--step:6" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
-          <path data-graph-role="automatic-crossover-underlay" d="M 720 349 L 798 349 Q 806 349 806 357 L 806 420" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="kernel" data-edge-to="scheduler" data-edge-label="注册任务" data-edge-key="7" data-edge-id="kernel-to-scheduler" data-composition-points="720,349;806,349;806,420" data-composition-crossover="halo" data-composition-independent="true" d="M 720 349 L 798 349 Q 806 349 806 357 L 806 420" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 720 344 L 747 344 Q 755 344 755 352 L 755 444 Q 755 452 763 452 L 790 452" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="kernel" data-edge-to="scheduler" data-edge-label="注册任务" data-edge-key="7" data-edge-id="kernel-to-scheduler" data-composition-points="720,344;755,344;755,452;790,452" data-composition-crossover="halo" data-composition-independent="true" d="M 720 344 L 747 344 Q 755 344 755 352 L 755 444 Q 755 452 763 452 L 790 452" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:8">
           <path data-graph-role="automatic-crossover-underlay" d="M 870 420 L 870 264" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="scheduler" data-edge-to="acp_engine" data-edge-label="触发 Run" data-edge-key="8" data-edge-id="scheduler-to-acp" data-composition-points="870,420;870,264" data-composition-crossover="halo" data-composition-independent="true" d="M 870 420 L 870 264" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-edge-from="scheduler" data-edge-to="acp_engine" data-edge-label="接纳 Run · 先登记 outbox 所有权" data-edge-key="8" data-edge-id="scheduler-to-acp" data-composition-points="870,420;870,264" data-composition-crossover="halo" data-composition-independent="true" d="M 870 420 L 870 264" class="a-default" data-animate="edge" style="--step:8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:9">
           <path data-graph-role="automatic-crossover-underlay" d="M 950 225 L 1038 225 Q 1046 225 1046 217 L 1046 104" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -5397,8 +5397,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="410" y="344" class="t-muted" font-size="9" text-anchor="middle">/api/local/v1 · 统一网关</text>
         </g>
 
-        <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite 本地持久化" tabindex="0" role="button" aria-label="聚焦SQLite 本地持久化，工作区 · 线程历史 · 产物, AgentDock Daemon (本地服务进程 127.0.0.1:9831)" aria-pressed="false" data-node-kind="database" data-node-sublabel="工作区 · 线程历史 · 产物" data-node-context="AgentDock Daemon (本地服务进程 127.0.0.1:9831)">
-          <title>SQLite 本地持久化 · 工作区 · 线程历史 · 产物 · AgentDock Daemon (本地服务进程 127.0.0.1:9831)</title>
+        <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite 本地持久化" tabindex="0" role="button" aria-label="聚焦SQLite 本地持久化，线程 · 调度 · outbox, AgentDock Daemon (本地服务进程 127.0.0.1:9831)" aria-pressed="false" data-node-kind="database" data-node-sublabel="线程 · 调度 · outbox" data-node-context="AgentDock Daemon (本地服务进程 127.0.0.1:9831)">
+          <title>SQLite 本地持久化 · 线程 · 调度 · outbox · AgentDock Daemon (本地服务进程 127.0.0.1:9831)</title>
           <rect x="560" y="120" width="160" height="60" rx="8" class="c-mask"/>
           <rect x="560" y="120" width="160" height="60" rx="8" class="c-database" data-animate="node" style="--step:6" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(566 126) scale(0.6875)">
@@ -5406,7 +5406,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="640" y="148" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite 本地持久化</text>
-        <text data-detail="context" x="640" y="164" class="t-muted" font-size="9" text-anchor="middle">工作区 · 线程历史 · 产物</text>
+        <text data-detail="context" x="640" y="164" class="t-muted" font-size="9" text-anchor="middle">线程 · 调度 · outbox</text>
         </g>
 
         <g id="node-kernel" data-node-id="kernel" data-node-label="Core 内核与插件" tabindex="0" role="button" aria-label="聚焦Core 内核与插件，路由调度 · Monitor 触发, AgentDock Daemon (本地服务进程 127.0.0.1:9831)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="路由调度 · Monitor 触发" data-node-context="AgentDock Daemon (本地服务进程 127.0.0.1:9831)">
@@ -5552,12 +5552,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="722.525" y="222" class="t-edge-emphasis" font-size="8" text-anchor="middle">驱动会话</text>
         </g>
         <g data-detail="context" data-edge-from="kernel" data-edge-to="scheduler" data-edge-label="注册任务" data-edge-key="7" data-edge-id="kernel-to-scheduler">
-          <rect x="781.8" y="364.5" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="806" y="374.5" class="t-edge-default" font-size="8" text-anchor="middle">注册任务</text>
+          <rect x="730.8" y="378" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="755" y="388" class="t-edge-default" font-size="8" text-anchor="middle">注册任务</text>
         </g>
-        <g data-detail="context" data-edge-from="scheduler" data-edge-to="acp_engine" data-edge-label="触发 Run" data-edge-key="8" data-edge-id="scheduler-to-acp">
-          <rect x="845.8" y="400" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="870" y="410" class="t-edge-default" font-size="8" text-anchor="middle">触发 Run</text>
+        <g data-detail="context" data-edge-from="scheduler" data-edge-to="acp_engine" data-edge-label="接纳 Run · 先登记 outbox 所有权" data-edge-key="8" data-edge-id="scheduler-to-acp">
+          <rect x="790.6" y="400" width="158.79999999999998" height="14" rx="3" class="c-mask"/>
+          <text x="870" y="410" class="t-edge-default" font-size="8" text-anchor="middle">接纳 Run · 先登记 outbox 所有权</text>
         </g>
         <g data-detail="context" data-edge-from="acp_engine" data-edge-to="local_agents" data-edge-label="ACP stdio · MCP tools" data-edge-key="9" data-edge-id="acp-to-local">
           <rect x="1052" y="187.75" width="110.8" height="14" rx="3" class="c-mask"/>

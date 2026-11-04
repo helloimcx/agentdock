@@ -141,8 +141,8 @@
       "lane": "acp",
       "col": 4,
       "type": "backend",
-      "label": "ACP 会话执行",
-      "sublabel": "驱动模型推理与工具",
+      "label": "ACP 接纳与会话执行",
+      "sublabel": "先登记 runId，再执行",
       "width": 140
     },
     {
@@ -228,7 +228,7 @@
       "id": "acp-to-stream",
       "from": "acp_run",
       "to": "channel_stream",
-      "label": "流式事件",
+      "label": "进度继续桥接；屏蔽最终回复",
       "variant": "emphasis"
     },
     {
@@ -242,6 +242,7 @@
       "id": "acp-to-final",
       "from": "acp_run",
       "to": "final_reply",
+      "label": "完成后写入 outbox",
       "variant": "default"
     },
     {
@@ -262,15 +263,8 @@
       "id": "send-to-receipt",
       "from": "channel_target",
       "to": "lifecycle_finish",
-      "label": "平台 acknowledgement",
+      "label": "平台回执",
       "role": "main"
-    },
-    {
-      "id": "send-unknown",
-      "from": "channel_target",
-      "to": "final_reply",
-      "label": "回执不确定：停止自动重发",
-      "role": "error"
     }
   ],
   "cards": [
