@@ -16,6 +16,7 @@ import {
 } from '@cc/superai-contracts';
 import { BasicProjectSection, McpServersSection, PlatformsSection, ProvidersSection, SandboxSection, StandardsSection } from './workspace-sections';
 import { WorkspaceMemorySection } from './WorkspaceMemorySection';
+import { ExecutionDeviceSelector } from '../Mesh/ExecutionDeviceSelector';
 import {
   CUSTOM_SELECT_VALUE,
   PLATFORM_TYPE_OPTIONS,
@@ -291,9 +292,12 @@ type AddProjectDialogProps = {
   onConfirm: () => void;
   onClose: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
-export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, meshNodes }: AddProjectDialogProps) {
+export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, meshNodes, tailscalePeers, tailscaleError, onNodeBound }: AddProjectDialogProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
@@ -318,18 +322,14 @@ export function AddProjectDialog({ dialog, updateDialog, onConfirm, onClose, mes
             >
               {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
             </Select>
-            <Select
-              label="Execution device"
-              value={dialog.deviceId || 'local'}
-              onChange={(event) => updateDialog({ deviceId: event.target.value })}
-            >
-              <option value="local">本机 (Local)</option>
-              {(meshNodes || []).map((node) => (
-                <option key={node.id} value={node.id.startsWith('node:') ? node.id : `node:${node.id}`}>
-                  {node.label || node.id} ({node.platform}) - {node.status}
-                </option>
-              ))}
-            </Select>
+            <ExecutionDeviceSelector
+              selectedDevice={dialog.deviceId || 'local'}
+              meshNodes={meshNodes}
+              tailscalePeers={tailscalePeers}
+              tailscaleError={tailscaleError}
+              onNodeBound={onNodeBound}
+              onDeviceChange={deviceId => updateDialog({ deviceId })}
+            />
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <Input
@@ -400,6 +400,9 @@ type ProjectDetailsProps = {
   openPlatformDialog: (index: number | null) => void;
   onSaveConfig: () => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 const PROJECT_TABS: Array<[ProjectTab, string]> = [
@@ -425,6 +428,9 @@ type ProjectTabContentProps = {
   updateDeploymentProfile: (profileId: string) => void;
   openPlatformDialog: (index: number | null) => void;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 function ProjectTabContent({
@@ -440,9 +446,12 @@ function ProjectTabContent({
   updateDeploymentProfile,
   openPlatformDialog,
   meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  onNodeBound,
 }: ProjectTabContentProps) {
   if (projectTab === 'basic') {
-    return <BasicProjectSection project={project} updateProject={updateProject} meshNodes={meshNodes} />;
+    return <BasicProjectSection project={project} updateProject={updateProject} meshNodes={meshNodes} tailscalePeers={tailscalePeers} tailscaleError={tailscaleError} onNodeBound={onNodeBound} />;
   }
   if (projectTab === 'providers') {
     return <ProvidersSection project={project} modelProviders={modelProviders} updateProject={updateProject} />;
@@ -489,6 +498,9 @@ export function ProjectDetails({
   openPlatformDialog,
   onSaveConfig,
   meshNodes,
+  tailscalePeers,
+  tailscaleError,
+  onNodeBound,
 }: ProjectDetailsProps) {
   return (
     <SectionCard
@@ -536,6 +548,9 @@ export function ProjectDetails({
             updateDeploymentProfile={updateDeploymentProfile}
             openPlatformDialog={openPlatformDialog}
             meshNodes={meshNodes}
+            tailscalePeers={tailscalePeers}
+            tailscaleError={tailscaleError}
+            onNodeBound={onNodeBound}
           />
 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-5 dark:border-white/[0.08]">
