@@ -54,18 +54,21 @@ export function registerThreadRuntimeHandlers(
             controller.on(event, dispatch);
           }
         }
-        watchers.add(notify);
+        // The guarded check, not the raw notify, goes in the fan-out set: a
+        // global event for an untouched thread must cost one revision read,
+        // not a full snapshot hydration.
         let revision = store.threadRuntime.revision(threadId);
         const check = () => {
           const next = store.threadRuntime.revision(threadId);
           if (next !== revision) { revision = next; notify(); }
         };
+        watchers.add(check);
         // Poll also observes committed changes that have no legacy bridge event.
         const timer = setInterval(check, 250);
         const heartbeat = setInterval(() => { if (!res.writableNeedDrain && !closed) res.write(': heartbeat\n\n'); }, 15000);
         return () => {
           clearInterval(timer); clearInterval(heartbeat);
-          watchers.delete(notify);
+          watchers.delete(check);
           unwireDispatchers();
         };
       },
