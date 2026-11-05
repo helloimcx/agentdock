@@ -77,6 +77,10 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 
 ## New
 
+### 2026-11-05
+
+- **线程运行时监听预算固定**：`thread.runtime.watch` SSE 的多个并发订阅共享每个事件一个派发器监听（bridge/agent-run/automation-run 各 1 个），不再随客户端数量线性增长；此前 8 个并发线程视图即触发 `MaxListenersExceededWarning`（生产日志 10/16 起反复出现，恒为 11/10）。同时补上客户端在建立监视期间已断开时的提前退出，不再为死连接注册轮询定时器与监听。
+
 ### 2026-11-03
 
 - **Daemon 子进程堆上限**：`agentdock daemon/serve` 与桌面端拉起 Daemon 子进程时，默认通过 `NODE_OPTIONS` 注入 `--max-old-space-size=1024`（MB），防止内存增长升级为内核全局 OOM 误杀其他进程；该环境变量会随 `process.env` 传递给 Daemon 派生的 ACP agent 子进程（同样受 1024MB 上限约束，单次大上下文运行极端情况下会以堆 OOM 受控失败而非拖垮整机）。可用 `AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB` 调整，设为 `0` 关闭；`pnpm dev:daemon` 为同进程启动方式，不适用此上限。部署后与 heap-watch（75%/90% 告警）配合，在该上限尺度上留下增长曲线。
