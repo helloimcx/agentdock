@@ -262,7 +262,7 @@ export class LocalCoreAcpStore {
     return this.threads.listAssistantProgressMessages(threadId);
   }
 
-  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso?: string) {
+  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso: string) {
     return this.threads.hasAssistantToolCallMessage(threadId, needle, beforeIso);
   }
 

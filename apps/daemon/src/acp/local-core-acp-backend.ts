@@ -132,7 +132,7 @@ export class LocalCoreAcpBackend {
       upsertMessage: (threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
         this.options.store.upsertMessage(threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus);
       },
-      hasPriorToolMessage: (threadId, needle) => this.options.store.hasAssistantToolCallMessage(threadId, needle),
+      hasPriorToolMessage: (threadId, needle, beforeIso) => this.options.store.hasAssistantToolCallMessage(threadId, needle, beforeIso),
       updateRunStatus: (runId, threadId, status) => {
         this.options.store.updateRun(runId, threadId, status);
         const task = this.options.store.getAgentTaskByRunId(runId);

@@ -32,13 +32,13 @@ test('narrow assistant reads split finals, progress, and tool-input probes', () 
       { kind: 'tool', content: '🔧 Terminal: pnpm test' },
       { kind: undefined, content: 'checking output' },
     ]);
-    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test'), true);
-    assert.equal(store.hasAssistantToolCallMessage(thread.id, '🔧 Terminal: pnpm test'), true);
-    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Daily check complete'), false);
-    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'pnpm lint'), false);
-    assert.equal(store.hasAssistantToolCallMessage(other.id, 'Terminal: pnpm test'), false);
+    const futureIso = new Date(Date.now() + 60_000).toISOString();
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test', futureIso), true);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, '🔧 Terminal: pnpm test', futureIso), true);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Daily check complete', futureIso), false);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'pnpm lint', futureIso), false);
+    assert.equal(store.hasAssistantToolCallMessage(other.id, 'Terminal: pnpm test', futureIso), false);
     assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test', '2000-01-01T00:00:00.000Z'), false);
-    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test', new Date(Date.now() + 60_000).toISOString()), true);
   } finally {
     store?.close();
     rmSync(userDataPath, { recursive: true, force: true });
@@ -94,10 +94,32 @@ test('runPrompt seeds finals for every agent and progress only when behavior sup
       };
       sessions.set(thread.id, session);
     }
+    const toolObservationCounts: number[] = [];
     (backend as any).sessionCoordinator.ensureSession = async (threadId: string) => sessions.get(threadId);
     (backend as any).sessionCoordinator.releaseThreadSession = () => {};
     (backend as any).transport.request = async (session: any) => {
       turnsByThread.set(session.threadId, session.currentTurn);
+      if (session.threadId === claudeThread.id) {
+        const coordinator = (backend as any).turnCoordinator;
+        const fireToolCall = (id: string, command: string) => {
+          coordinator.handleAgentNotification(session, {
+            method: 'session/update',
+            params: {
+              update: {
+                sessionUpdate: 'tool_call',
+                id,
+                title: 'Terminal',
+                rawInput: { command },
+              },
+            },
+          });
+          toolObservationCounts.push(session.currentTurn.toolObservations.length);
+        };
+        fireToolCall('tool-replay-1', 'ls');
+        fireToolCall('tool-live-1', 'pnpm lint');
+        store.appendMessage(claudeThread.id, 'assistant', '🔧 Terminal: pnpm lint', 'progress', undefined, 'tool');
+        fireToolCall('tool-live-2', 'pnpm lint');
+      }
       return { stopReason: 'endTurn' };
     };
 
@@ -117,6 +139,10 @@ test('runPrompt seeds finals for every agent and progress only when behavior sup
     const claudeTurn = turnsByThread.get(claudeThread.id);
     assert.deepEqual(claudeTurn?.priorAssistantFinalMessages, ['Prior reply one']);
     assert.equal(claudeTurn?.priorAssistantProgressMessages, undefined);
+    // Replay of seeded history suppresses; a same-turn repeat of a live call
+    // must not — the probe is bounded by the turn start, via the real backend
+    // wiring (the mid-turn row the fake persists counts only if unbounded).
+    assert.deepEqual(toolObservationCounts, [0, 1, 2]);
 
     const hermesTurn = turnsByThread.get(hermesThread.id);
     assert.deepEqual(hermesTurn?.priorAssistantFinalMessages, ['Prior reply one']);

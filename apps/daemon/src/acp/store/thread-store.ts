@@ -192,26 +192,21 @@ export class LocalThreadStore {
   }
 
   /** Existence probe for tool replay dedup: an indexed instr() LIMIT 1 replaces
-   * the old "load every progress row then substring-scan in JS" path, keeping
-   * per-tool-call cost proportional to the hit check instead of thread size.
-   * instr() has no wildcards, so content needs no LIKE-style escaping. When
-   * beforeIso is given, only rows written strictly before that instant count —
-   * callers pass the running turn's start so rows the turn itself persists
-   * never suppress a genuine repeat of the same tool call. */
-  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso?: string): boolean {
-    const row = beforeIso === undefined
-      ? this.db.prepare(`
-          SELECT 1
-          FROM messages
-          WHERE thread_id = ? AND role = 'assistant' AND bridge_kind = 'tool' AND instr(content, ?) > 0
-          LIMIT 1
-        `).get(threadId, needle)
-      : this.db.prepare(`
-          SELECT 1
-          FROM messages
-          WHERE thread_id = ? AND role = 'assistant' AND bridge_kind = 'tool' AND instr(content, ?) > 0 AND timestamp < ?
-          LIMIT 1
-        `).get(threadId, needle, beforeIso);
+   * the old "load every progress row then substring-scan in JS" path. beforeIso
+   * bounds the probe to rows written strictly before the running turn started
+   * (ISO string compare; every writer stores new Date().toISOString()), so rows
+   * the turn itself persists never suppress a genuine repeat of the same tool
+   * call. Newest-first ordering lets the common case — a replay of recent
+   * history — terminate early; a full miss still scans the thread's tool rows.
+   * instr() has no wildcards, so content needs no LIKE-style escaping. */
+  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant' AND bridge_kind = 'tool' AND instr(content, ?) > 0 AND timestamp < ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `).get(threadId, needle, beforeIso);
     return row !== undefined;
   }
 
