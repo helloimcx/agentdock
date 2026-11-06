@@ -55,6 +55,8 @@
     "apps/web/src/pages/Threads/thread-chat-permission.test.ts",
     "apps/web/src/pages/Automation/automation-page-model.ts",
     "apps/web/src/pages/Automation/automation-page-model.test.ts",
+    "apps/web/src/pages/Butler/butler-page-model.ts",
+    "apps/web/src/pages/Butler/butler-page-model.test.ts",
     "apps/web/src/components/chat/chat-controller-state.ts",
     "apps/web/src/components/Layout/sidebar-nav-model.ts",
     "apps/web/src/i18n/locales.test.ts",
