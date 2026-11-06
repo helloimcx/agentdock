@@ -46,6 +46,12 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   emitBridge: (event: DesktopBridgeEvent) => void;
   appendMessage: (threadId: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
   upsertMessage?: (threadId: string, id: string, role: 'assistant', content: string, kind: 'progress', toolCall?: DesktopBridgeToolCall, bridgeKind?: DesktopBridgeEvent['bridgeKind'], bridgeStatus?: DesktopBridgeEvent['bridgeStatus']) => void;
+  /** Store-backed replay dedup probe. When present, prior-tool matching hits an
+   * indexed SQL existence check instead of scanning an in-memory progress
+   * history, so turns that never load that history (claudecode on a whale
+   * thread) still deduplicate replayed tool calls. beforeIso bounds the probe
+   * to rows written before the running turn started. */
+  hasPriorToolMessage?: (threadId: string, needle: string, beforeIso: string) => boolean;
   updateRunStatus: (runId: string, threadId: string, status: 'awaiting_input') => void;
   createApprovalRequest?: (input: PermissionApprovalInput) => string | undefined;
   getThreadAgentMode?: (threadId: string) => string;
@@ -446,7 +452,7 @@ export class LocalCoreAcpTurnCoordinator {
     this.closePendingAssistantSegment(session);
     this.closePendingThoughtSegment(session);
     const toolCall = registerPendingToolCall({ currentTurn, runId: currentRunId, update });
-    if (this.isKnownPriorToolInput(currentTurn, toolCall.title, toolCall.input)) {
+    if (this.isKnownPriorToolInput(session, currentTurn, toolCall.title, toolCall.input)) {
       toolCall.suppressReplay = true;
     } else {
       recordToolObservation(currentTurn, {
@@ -637,6 +643,7 @@ export class LocalCoreAcpTurnCoordinator {
   }
 
   private isKnownPriorToolInput(
+    session: AcpSessionState,
     currentTurn: NonNullable<AcpSessionState['currentTurn']>,
     title: string,
     input: unknown,
@@ -646,6 +653,9 @@ export class LocalCoreAcpTurnCoordinator {
       return false;
     }
     const needle = `${title}: ${compactInput}`.trim();
+    if (this.options.hasPriorToolMessage && currentTurn.startedAtIso) {
+      return this.options.hasPriorToolMessage(session.threadId, needle, currentTurn.startedAtIso);
+    }
     return (currentTurn.priorAssistantProgressMessages || []).some((message) =>
       message.kind === 'tool' && message.content.includes(needle));
   }

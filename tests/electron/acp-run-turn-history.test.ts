@@ -6,12 +6,13 @@ import { join } from 'node:path';
 
 import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 
-test('listAssistantTurnMessages returns only assistant rows in seq order without tool payloads', () => {
+test('narrow assistant reads split finals, progress, and tool-input probes', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-turn-history-'));
   let store: LocalCoreAcpStore | null = null;
   try {
     store = new LocalCoreAcpStore(userDataPath);
     const thread = store.createThread('workspace-test', 'Turn history thread');
+    const other = store.createThread('workspace-test', 'Other thread');
 
     store.appendMessage(thread.id, 'user', 'Run the daily check', 'final');
     store.appendMessage(thread.id, 'assistant', 'Daily check complete', 'final');
@@ -23,30 +24,44 @@ test('listAssistantTurnMessages returns only assistant rows in seq order without
       { id: 'call_1', name: 'Terminal', status: 'completed', input: {}, output: 'x'.repeat(4096) },
       'tool',
     );
+    store.appendMessage(thread.id, 'assistant', 'checking output', 'progress');
     store.appendMessage(thread.id, 'assistant', 'Follow-up summary', 'final');
 
-    const rows = store.listAssistantTurnMessages(thread.id);
-
-    assert.deepEqual(rows.map((row) => ({ kind: row.kind, content: row.content, bridgeKind: row.bridgeKind })), [
-      { kind: 'final', content: 'Daily check complete', bridgeKind: undefined },
-      { kind: 'progress', content: '🔧 Terminal: pnpm test', bridgeKind: 'tool' },
-      { kind: 'final', content: 'Follow-up summary', bridgeKind: undefined },
+    assert.deepEqual(store.listAssistantFinalMessages(thread.id), ['Daily check complete', 'Follow-up summary']);
+    assert.deepEqual(store.listAssistantProgressMessages(thread.id), [
+      { kind: 'tool', content: '🔧 Terminal: pnpm test' },
+      { kind: undefined, content: 'checking output' },
     ]);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test'), true);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, '🔧 Terminal: pnpm test'), true);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Daily check complete'), false);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'pnpm lint'), false);
+    assert.equal(store.hasAssistantToolCallMessage(other.id, 'Terminal: pnpm test'), false);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test', '2000-01-01T00:00:00.000Z'), false);
+    assert.equal(store.hasAssistantToolCallMessage(thread.id, 'Terminal: pnpm test', new Date(Date.now() + 60_000).toISOString()), true);
   } finally {
     store?.close();
     rmSync(userDataPath, { recursive: true, force: true });
   }
 });
 
-test('runPrompt seeds turn state from the assistant-only history read', async () => {
+test('runPrompt seeds finals for every agent and progress only when behavior suppresses progress', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-turn-history-run-'));
   let store: LocalCoreAcpStore | null = null;
   try {
     store = new LocalCoreAcpStore(userDataPath);
-    const thread = store.createThread('workspace-test', 'Turn history run thread');
-    store.appendMessage(thread.id, 'user', 'Hello', 'final');
-    store.appendMessage(thread.id, 'assistant', 'Prior reply one', 'final');
-    store.appendMessage(thread.id, 'assistant', '🔧 Terminal: ls', 'progress', undefined, 'tool');
+    const claudeThread = store.createThread('workspace-test', 'Turn history run thread');
+    for (const message of [
+      ['user', 'Hello', 'final'],
+      ['assistant', 'Prior reply one', 'final'],
+      ['assistant', '🔧 Terminal: ls', 'progress'],
+    ] as const) {
+      store.appendMessage(claudeThread.id, message[0], message[1], message[2], undefined, message[2] === 'progress' ? 'tool' : undefined);
+    }
+    const hermesThread = store.createThread('workspace-test', 'Hermes run thread', 'hermes');
+    store.appendMessage(hermesThread.id, 'user', 'Hello', 'final');
+    store.appendMessage(hermesThread.id, 'assistant', 'Prior reply one', 'final');
+    store.appendMessage(hermesThread.id, 'assistant', '🔧 Terminal: ls', 'progress', undefined, 'tool');
 
     const runThreadMap = new Map<string, string>();
     const { LocalCoreAcpBackend } = await import('../../apps/daemon/src/acp/local-core-acp-backend.js');
@@ -62,42 +77,51 @@ test('runPrompt seeds turn state from the assistant-only history read', async ()
       },
     } as any);
 
-    const session: any = {
-      threadId: thread.id,
-      bridgeSessionKey: `session:${thread.id}`,
-      closed: false,
-      sessionId: 'session:agentdock::local::c83e028b-b72e-4b77-8da7-111122223333',
-      supportsLoad: false,
-      currentRunId: null,
-      currentTurn: null,
-      pendingPermissionByRun: new Map(),
-      schedulerJobCreatedByRun: new Map(),
-      promptPromise: null,
-    };
-    let turnDuringRequest: any;
-    (backend as any).sessionCoordinator.ensureSession = async () => session;
+    const turnsByThread = new Map<string, any>();
+    const sessions = new Map<string, any>();
+    for (const thread of [claudeThread, hermesThread]) {
+      const session: any = {
+        threadId: thread.id,
+        bridgeSessionKey: `session:${thread.id}`,
+        closed: false,
+        sessionId: 'session:agentdock::local::c83e028b-b72e-4b77-8da7-111122223333',
+        supportsLoad: false,
+        currentRunId: null,
+        currentTurn: null,
+        pendingPermissionByRun: new Map(),
+        schedulerJobCreatedByRun: new Map(),
+        promptPromise: null,
+      };
+      sessions.set(thread.id, session);
+    }
+    (backend as any).sessionCoordinator.ensureSession = async (threadId: string) => sessions.get(threadId);
     (backend as any).sessionCoordinator.releaseThreadSession = () => {};
-    (backend as any).transport.request = async () => {
-      turnDuringRequest = session.currentTurn;
+    (backend as any).transport.request = async (session: any) => {
+      turnsByThread.set(session.threadId, session.currentTurn);
       return { stopReason: 'endTurn' };
     };
 
-    const localConfig = {
-      workspaceId: 'workspace-test',
-      agentType: 'claudecode',
-      command: 'claude',
-      args: [],
-      env: {},
-      workDir: '/tmp/workspace-test',
-      model: '',
-    };
-
-    await backend.sendThreadMessage(thread.id, 'Second question', localConfig);
+    for (const [thread, agentType] of [[claudeThread, 'claudecode'], [hermesThread, 'hermes']] as const) {
+      await backend.sendThreadMessage(thread.id, 'Second question', {
+        workspaceId: 'workspace-test',
+        agentType,
+        command: agentType === 'hermes' ? 'hermes' : 'claude',
+        args: [],
+        env: {},
+        workDir: '/tmp/workspace-test',
+        model: '',
+      } as any);
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    assert.deepEqual(turnDuringRequest?.priorAssistantFinalMessages, ['Prior reply one']);
+    const claudeTurn = turnsByThread.get(claudeThread.id);
+    assert.deepEqual(claudeTurn?.priorAssistantFinalMessages, ['Prior reply one']);
+    assert.equal(claudeTurn?.priorAssistantProgressMessages, undefined);
+
+    const hermesTurn = turnsByThread.get(hermesThread.id);
+    assert.deepEqual(hermesTurn?.priorAssistantFinalMessages, ['Prior reply one']);
     assert.deepEqual(
-      turnDuringRequest?.priorAssistantProgressMessages,
+      hermesTurn?.priorAssistantProgressMessages,
       [{ kind: 'tool', content: '🔧 Terminal: ls' }],
     );
   } finally {

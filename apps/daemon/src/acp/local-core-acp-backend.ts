@@ -132,6 +132,7 @@ export class LocalCoreAcpBackend {
       upsertMessage: (threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus) => {
         this.options.store.upsertMessage(threadId, id, role, content, kind, toolCall, bridgeKind, bridgeStatus);
       },
+      hasPriorToolMessage: (threadId, needle) => this.options.store.hasAssistantToolCallMessage(threadId, needle),
       updateRunStatus: (runId, threadId, status) => {
         this.options.store.updateRun(runId, threadId, status);
         const task = this.options.store.getAgentTaskByRunId(runId);
@@ -518,19 +519,18 @@ export class LocalCoreAcpBackend {
         this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
         return;
       }
-      const priorThreadMessages = this.options.store.listAssistantTurnMessages(threadId);
-      const priorAssistantFinalMessages = priorThreadMessages
-        .filter((entry) => entry.kind === 'final')
-        .map((entry) => entry.content);
-      const priorAssistantProgressMessages = priorThreadMessages
-        .filter((entry) => entry.kind === 'progress')
-        .map((entry) => ({
-          kind: entry.bridgeKind,
-          content: entry.content,
-        }));
+      const priorAssistantFinalMessages = this.options.store.listAssistantFinalMessages(threadId);
+      // Progress history is only consumed by behaviors with replay suppression
+      // (hermes); skipping the load keeps whale-thread turns off the megabytes
+      // of progress rows claudecode will never read.
+      const behavior = resolveAgentAcpBehavior(row.agent_type);
+      const priorAssistantProgressMessages = behavior.shouldSuppressProgress
+        ? this.options.store.listAssistantProgressMessages(threadId)
+        : undefined;
       session.currentRunId = runId;
       session.currentTurn = {
         runId,
+        startedAtIso: new Date(runStartedAt).toISOString(),
         replyCtx: runId,
         previewHandle: randomUUID(),
         thoughtPreviewHandle: randomUUID(),
@@ -578,7 +578,6 @@ export class LocalCoreAcpBackend {
       this.turnCoordinator.closePendingThoughtSegment(session);
       this.turnCoordinator.flushPendingToolCall(session);
       if (currentTurn.assistantText) {
-        const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
         const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
           rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
           priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
