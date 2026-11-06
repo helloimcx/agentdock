@@ -117,7 +117,7 @@ test('runPrompt seeds finals for every agent and progress only when behavior sup
         };
         fireToolCall('tool-replay-1', 'ls');
         fireToolCall('tool-live-1', 'pnpm lint');
-        store.appendMessage(claudeThread.id, 'assistant', '🔧 Terminal: pnpm lint', 'progress', undefined, 'tool');
+        store!.appendMessage(claudeThread.id, 'assistant', '🔧 Terminal: pnpm lint', 'progress', undefined, 'tool');
         fireToolCall('tool-live-2', 'pnpm lint');
       }
       return { stopReason: 'endTurn' };
