@@ -77,6 +77,10 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 
 ## New
 
+### 2026-11-07
+
+- **鲸鱼线程轮次读取瘦身**：每次提问前的轮次状态准备不再加载该线程全部 assistant 消息（ whale 线程约 22MB progress 行），finals 始终窄读，progress 仅在行为声明需要回放抑制时（hermes）才加载；工具回放去重从"全量载入后 JS 子串扫描"改为索引化 SQL 存在性探测（`instr` + LIMIT 1），并以轮次开始时间为界，避免本轮刚落库的工具行误伤本轮真实重复调用。
+
 ### 2026-11-05
 
 - **线程运行时监听预算固定**：`thread.runtime.watch` SSE 的多个并发订阅共享每个事件一个派发器监听（bridge/agent-run/automation-run 各 1 个），不再随客户端数量线性增长；此前 8 个并发线程视图即触发 `MaxListenersExceededWarning`（生产日志 10/16 起反复出现，恒为 11/10）。同时补上客户端在建立监视期间已断开时的提前退出，不再为死连接注册轮询定时器与监听。

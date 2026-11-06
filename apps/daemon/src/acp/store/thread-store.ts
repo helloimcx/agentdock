@@ -161,22 +161,53 @@ export class LocalThreadStore {
     };
   }
 
-  /** Narrow read for runPrompt turn state: skips user rows and the fat
-   * tool_call_json column, so a whale thread costs bytes of content instead of
-   * a full ThreadDetail hydration per run. Unlike get(), a missing thread
-   * yields [] rather than throwing — runPrompt has already verified the row. */
-  listAssistantTurnMessages(threadId: string): Array<{ kind: LocalMessageRow['kind']; content: string; bridgeKind: ReturnType<typeof normalizeBridgeKind> }> {
+  /** Narrow read for runPrompt turn state: only 'final' assistant rows
+   * (finals are small; hermes replay-prefix stripping needs them). Unlike
+   * get(), a missing thread yields [] rather than throwing — runPrompt has
+   * already verified the row. */
+  listAssistantFinalMessages(threadId: string): string[] {
     const rows = this.db.prepare(`
-      SELECT kind, content, bridge_kind
+      SELECT content
       FROM messages
-      WHERE thread_id = ? AND role = 'assistant'
+      WHERE thread_id = ? AND role = 'assistant' AND kind = 'final'
       ORDER BY seq ASC
-    `).all(threadId) as Array<Pick<LocalMessageRow, 'kind' | 'content' | 'bridge_kind'>>;
+    `).all(threadId) as Array<Pick<LocalMessageRow, 'content'>>;
+    return rows.map((row) => row.content);
+  }
+
+  /** Progress rows for runPrompt turn state. Loaded ONLY when the agent's ACP
+   * behavior consumes them (replay suppression), so claudecode turns on a
+   * whale thread never hydrate megabytes of progress text. */
+  listAssistantProgressMessages(threadId: string): Array<{ kind: ReturnType<typeof normalizeBridgeKind>; content: string }> {
+    const rows = this.db.prepare(`
+      SELECT content, bridge_kind
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant' AND kind = 'progress'
+      ORDER BY seq ASC
+    `).all(threadId) as Array<Pick<LocalMessageRow, 'content' | 'bridge_kind'>>;
     return rows.map((row) => ({
-      kind: row.kind,
+      kind: normalizeBridgeKind(row.bridge_kind),
       content: row.content,
-      bridgeKind: normalizeBridgeKind(row.bridge_kind),
     }));
+  }
+
+  /** Existence probe for tool replay dedup: an indexed instr() LIMIT 1 replaces
+   * the old "load every progress row then substring-scan in JS" path. beforeIso
+   * bounds the probe to rows written strictly before the running turn started
+   * (ISO string compare; every writer stores new Date().toISOString()), so rows
+   * the turn itself persists never suppress a genuine repeat of the same tool
+   * call. Newest-first ordering lets the common case — a replay of recent
+   * history — terminate early; a full miss still scans the thread's tool rows.
+   * instr() has no wildcards, so content needs no LIKE-style escaping. */
+  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant' AND bridge_kind = 'tool' AND instr(content, ?) > 0 AND timestamp < ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `).get(threadId, needle, beforeIso);
+    return row !== undefined;
   }
 
   /** Narrow read for external-run SSE replay: only this run's assistant rows,
