@@ -568,7 +568,7 @@ export class LocalCoreAcpBackend {
   /** Fresh turn state for one prompt: finals always load (small); progress
    * loads only for behaviors with replay suppression (hermes) — claudecode
    * turns never hydrate megabytes of progress rows they will not read. */
-  private buildRunningTurn(threadId: string, runId: string, row: { agent_type: string }, runStartedAt: number): AcpSessionState['currentTurn'] {
+  private buildRunningTurn(threadId: string, runId: string, row: { agent_type: string }, runStartedAt: number): NonNullable<AcpSessionState['currentTurn']> {
     const priorAssistantFinalMessages = this.options.store.listAssistantFinalMessages(threadId);
     const behavior = resolveAgentAcpBehavior(row.agent_type);
     const priorAssistantProgressMessages = behavior.shouldSuppressProgress
@@ -660,7 +660,9 @@ export class LocalCoreAcpBackend {
   }
 
   /** Shared persistence for a final assistant reply (agent answer or slash
-   * reply): run-final row, thread.message.accepted event, reply bridge. */
+   * reply): run-final row, thread.message.accepted event, reply bridge. The
+   * failure tail does NOT reuse this pair — there the reply bridge must stay
+   * ordered after run.failed/localcore.error. */
   private persistFinalReply(flow: AcpRunFlow, replyContent: string) {
     this.options.store.appendRunFinalMessage(flow.runId, flow.threadId, replyContent);
     this.options.eventBus.emit({
