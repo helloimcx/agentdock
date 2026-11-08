@@ -70,6 +70,9 @@ export type AutomationActionExecutorOptions = {
   getAutomationService?: () => AutomationCreatorService;
 };
 
+type RecoveryDestination = NonNullable<ReturnType<LocalCoreAcpStore['deliveries']['destination']>>;
+type RecoveryDelivery = ReturnType<LocalCoreAcpStore['deliveries']['forRun']>;
+
 function extractChannelId(route: unknown): string | undefined {
   if (typeof route === 'object' && route && 'channelId' in route) {
     const raw = (route as Record<string, unknown>).channelId;
@@ -234,40 +237,51 @@ export class AutomationActionExecutor {
   /** Restore saved execution links and final answers before interrupted-run cleanup; never re-prompt an Agent. */
   recoverCompletedExecutions(): void {
     for (const automation of this.options.store.listAutomations()) {
-      for (const run of this.options.store.listAutomationRuns(automation.id)) {
-        if (!['queued', 'running'].includes(run.status)) continue;
-        const destination = this.options.store.deliveries.destination(run.id);
-        if (!destination) continue; // Historical runs have no recoverable final-delivery intent.
-        if (destination.workspaceId !== automation.workspaceId) continue;
-        const thread = this.options.store.getThreadRow(destination.threadId);
-        if (!thread || thread.workspace_id !== automation.workspaceId) continue;
-        const delivery = this.options.store.deliveries.forRun(run.id, 'automation');
-        if (delivery && (delivery.workspaceId !== automation.workspaceId || delivery.threadId !== destination.threadId)) continue;
-        const submissions = this.options.store.submissions.byOwner({ kind: 'automation', id: run.id })
-          .filter((submission) => submission.threadId === destination.threadId && submission.operationKind === 'message');
-        if (submissions.length > 1) continue;
-        if (submissions[0] && submissions[0].requestId !== `automation:${run.id}`) continue;
-        const persistedRunIds = [run.acpRunId, submissions[0]?.runId, delivery?.acpRunId].filter((id): id is string => Boolean(id));
-        if (new Set(persistedRunIds).size > 1) continue;
-        const acpRunId = persistedRunIds[0];
-        if (!acpRunId) continue;
-        if (!run.acpRunId) {
-          const restored = this.options.store.updateAutomationRun(run.id, { threadId: destination.threadId, acpRunId });
-          this.options.getAutomationService?.().emitRun?.(restored);
-        }
-        if (delivery) continue;
-        const final = this.options.store.getRunFinalResult(acpRunId);
-        if (!final || final.threadId !== destination.threadId) continue;
-        this.options.store.deliveries.enqueue({
-          ownerKind: 'automation', ownerRunId: run.id, workspaceId: destination.workspaceId,
-          platform: destination.platform, route: destination.route,
-          threadId: final.threadId, acpRunId, sourceMessageId: final.messageId, content: final.content,
-        }, () => this.options.store.updateAutomationRun(run.id, {
-          status: 'succeeded', threadId: final.threadId, acpRunId,
-          finishedAt: new Date().toISOString(), deliveryStatus: 'pending',
-        }));
-      }
+      for (const run of this.options.store.listAutomationRuns(automation.id)) this.recoverAutomationExecution(automation, run);
     }
+  }
+
+  private recoverAutomationExecution(automation: AutomationDefinition, run: AutomationRun): void {
+    const target = this.resolveRecoveryTarget(automation, run);
+    if (!target) return;
+    const acpRunId = this.resolveOwnerBoundRunId(run, target.destination, target.delivery);
+    if (!acpRunId) return;
+    if (!run.acpRunId) {
+      const restored = this.options.store.updateAutomationRun(run.id, { threadId: target.destination.threadId, acpRunId });
+      this.options.getAutomationService?.().emitRun?.(restored);
+    }
+    if (target.delivery) return;
+    const final = this.options.store.getRunFinalResult(acpRunId);
+    if (!final || final.threadId !== target.destination.threadId) return;
+    this.options.store.deliveries.enqueue({
+      ownerKind: 'automation', ownerRunId: run.id, workspaceId: target.destination.workspaceId,
+      platform: target.destination.platform, route: target.destination.route,
+      threadId: final.threadId, acpRunId, sourceMessageId: final.messageId, content: final.content,
+    }, () => this.options.store.updateAutomationRun(run.id, {
+      status: 'succeeded', threadId: final.threadId, acpRunId,
+      finishedAt: new Date().toISOString(), deliveryStatus: 'pending',
+    }));
+  }
+
+  private resolveRecoveryTarget(automation: AutomationDefinition, run: AutomationRun): { destination: RecoveryDestination; delivery: RecoveryDelivery } | undefined {
+    if (!['queued', 'running'].includes(run.status)) return undefined;
+    const destination = this.options.store.deliveries.destination(run.id);
+    if (!destination || destination.workspaceId !== automation.workspaceId) return undefined;
+    const thread = this.options.store.getThreadRow(destination.threadId);
+    if (!thread || thread.workspace_id !== automation.workspaceId) return undefined;
+    const delivery = this.options.store.deliveries.forRun(run.id, 'automation');
+    if (delivery && (delivery.workspaceId !== automation.workspaceId || delivery.threadId !== destination.threadId)) return undefined;
+    return { destination, delivery };
+  }
+
+  private resolveOwnerBoundRunId(run: AutomationRun, destination: RecoveryDestination, delivery: RecoveryDelivery): string | undefined {
+    const submissions = this.options.store.submissions.byOwner({ kind: 'automation', id: run.id })
+      .filter((submission) => submission.threadId === destination.threadId && submission.operationKind === 'message');
+    if (submissions.length > 1) return undefined;
+    if (submissions[0] && submissions[0].requestId !== `automation:${run.id}`) return undefined;
+    const persistedRunIds = [run.acpRunId, submissions[0]?.runId, delivery?.acpRunId].filter((id): id is string => Boolean(id));
+    if (new Set(persistedRunIds).size > 1) return undefined;
+    return persistedRunIds[0];
   }
 
   async execute(

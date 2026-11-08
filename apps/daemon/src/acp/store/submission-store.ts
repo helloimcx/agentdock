@@ -20,6 +20,9 @@ export interface ThreadSubmission {
   result?: unknown;
 }
 interface SubmissionRow { id: string; thread_id: string; request_id: string; operation_kind: string; runtime_type: string; run_id: string; message_id: string | null; task_id: string | null; owner_kind: string | null; owner_id: string | null; status: SubmissionStatus; payload_json: string; digest: string; error: string | null; result_json: string | null }
+interface SubmissionAdmissionInput { threadId: string; requestId?: string; operationKind?: string; runtimeType?: string; payload: unknown; identity?: unknown; owner?: ThreadSubmissionOwner }
+interface SubmissionAdmissionContext { requestId: string; operationKind: string; runtimeType: string; digest: string }
+type SubmissionAdmissionEffects = (submission: ThreadSubmission) => { messageId?: string; taskId?: string; runId?: string };
 export class SubmissionConflictError extends Error {
   readonly statusCode = 409;
   constructor(message = 'This requestId already identifies a different thread submission.') { super(message); }
@@ -36,6 +39,86 @@ function mapRow(row: SubmissionRow): ThreadSubmission {
   return { id: row.id, threadId: row.thread_id, requestId: row.request_id, operationKind: row.operation_kind, runtimeType: row.runtime_type, runId: row.run_id, messageId: row.message_id ?? undefined, taskId: row.task_id ?? undefined,
     ...(row.owner_kind === 'automation' && row.owner_id ? { owner: { kind: 'automation' as const, id: row.owner_id } } : {}),
     status: row.status, payload: JSON.parse(row.payload_json), error: row.error ?? undefined, result: row.result_json ? JSON.parse(row.result_json) : undefined };
+}
+
+function validateSubmissionOwner(owner?: ThreadSubmissionOwner): void {
+  if (!owner) return;
+  if (owner.kind !== 'automation') throw new Error('Submission owner is invalid.');
+  if (!owner.id.trim() || owner.id.length > 200) throw new Error('Submission owner is invalid.');
+}
+
+function resolveAdmissionContext(input: SubmissionAdmissionInput): SubmissionAdmissionContext {
+  if (input.requestId !== undefined && (!input.requestId.trim() || input.requestId.length > 512)) {
+    throw new Error('requestId must contain 1 to 512 characters.');
+  }
+  validateSubmissionOwner(input.owner);
+  return {
+    requestId: input.requestId ?? `request:${randomUUID()}`,
+    operationKind: input.operationKind ?? 'message',
+    runtimeType: input.runtimeType ?? 'acp',
+    digest: createHash('sha256').update(canonicalSubmissionJson(input.identity ?? input.payload)).digest('hex'),
+  };
+}
+
+function findPreviousSubmission(db: DatabaseSync, input: SubmissionAdmissionInput, context: SubmissionAdmissionContext): SubmissionRow | undefined {
+  return db.prepare('SELECT * FROM thread_submissions WHERE thread_id = ? AND operation_kind = ? AND request_id = ?')
+    .get(input.threadId, context.operationKind, context.requestId) as SubmissionRow | undefined;
+}
+
+function assertSameSubmission(previous: SubmissionRow, context: SubmissionAdmissionContext, owner?: ThreadSubmissionOwner): void {
+  if (previous.digest !== context.digest) throw new SubmissionConflictError();
+  if (previous.owner_kind !== (owner?.kind ?? null) || previous.owner_id !== (owner?.id ?? null)) throw new SubmissionConflictError();
+}
+
+function assertOwnerAvailable(db: DatabaseSync, owner?: ThreadSubmissionOwner): void {
+  if (!owner) return;
+  const previous = db.prepare('SELECT id FROM thread_submissions WHERE owner_kind = ? AND owner_id = ?').get(owner.kind, owner.id);
+  if (previous) throw new SubmissionConflictError('This source already owns a different thread submission.');
+}
+
+function createPendingSubmission(input: SubmissionAdmissionInput, context: SubmissionAdmissionContext): ThreadSubmission {
+  return {
+    id: `submission:${randomUUID()}`,
+    threadId: input.threadId,
+    requestId: context.requestId,
+    operationKind: context.operationKind,
+    runtimeType: context.runtimeType,
+    runId: `run:${input.threadId}:${randomUUID()}:${Date.now()}`,
+    ...(input.owner ? { owner: input.owner } : {}),
+    status: 'pending',
+    payload: input.payload,
+  };
+}
+
+function persistNewSubmission(
+  db: DatabaseSync,
+  input: SubmissionAdmissionInput,
+  context: SubmissionAdmissionContext,
+  effects: SubmissionAdmissionEffects,
+): { submission: ThreadSubmission; deduplicated: false } {
+  const submission = createPendingSubmission(input, context);
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO thread_submissions (id, thread_id, request_id, operation_kind, runtime_type, run_id, owner_kind, owner_id, digest, payload_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(submission.id, input.threadId, context.requestId, context.operationKind, context.runtimeType, submission.runId, input.owner?.kind ?? null, input.owner?.id ?? null,
+      context.digest, JSON.stringify(input.payload), submission.status, now, now);
+  const writes = effects(submission);
+  db.prepare('UPDATE thread_submissions SET message_id = ?, task_id = ? WHERE id = ?').run(writes.messageId ?? null, writes.taskId ?? null, submission.id);
+  return { submission: { ...submission, messageId: writes.messageId, taskId: writes.taskId }, deduplicated: false };
+}
+
+function admitWithinTransaction(
+  db: DatabaseSync,
+  input: SubmissionAdmissionInput,
+  context: SubmissionAdmissionContext,
+  effects: SubmissionAdmissionEffects,
+): { submission: ThreadSubmission; deduplicated: boolean } {
+  const previous = findPreviousSubmission(db, input, context);
+  if (previous) {
+    assertSameSubmission(previous, context, input.owner);
+    return { submission: mapRow(previous), deduplicated: true };
+  }
+  assertOwnerAvailable(db, input.owner);
+  return persistNewSubmission(db, input, context, effects);
 }
 
 export class LocalSubmissionStore {
@@ -55,33 +138,13 @@ export class LocalSubmissionStore {
       ON thread_submissions(owner_kind, owner_id) WHERE owner_kind IS NOT NULL AND owner_id IS NOT NULL`);
   }
 
-  admit(input: { threadId: string; requestId?: string; operationKind?: string; runtimeType?: string; payload: unknown; identity?: unknown; owner?: ThreadSubmissionOwner }, effects: (submission: ThreadSubmission) => { messageId?: string; taskId?: string; runId?: string }) {
-    if (input.requestId !== undefined && (!input.requestId.trim() || input.requestId.length > 512)) throw new Error('requestId must contain 1 to 512 characters.');
-    if (input.owner && (input.owner.kind !== 'automation' || !input.owner.id.trim() || input.owner.id.length > 200)) throw new Error('Submission owner is invalid.');
-    const requestId = input.requestId ?? `request:${randomUUID()}`;
-    const operationKind = input.operationKind ?? 'message';
-    const runtimeType = input.runtimeType ?? 'acp';
-    const digest = createHash('sha256').update(canonicalSubmissionJson(input.identity ?? input.payload)).digest('hex');
+  admit(input: SubmissionAdmissionInput, effects: SubmissionAdmissionEffects) {
+    const context = resolveAdmissionContext(input);
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const previous = this.db.prepare('SELECT * FROM thread_submissions WHERE thread_id = ? AND operation_kind = ? AND request_id = ?').get(input.threadId, operationKind, requestId) as SubmissionRow | undefined;
-      if (previous) {
-        if (previous.digest !== digest || previous.owner_kind !== (input.owner?.kind ?? null) || previous.owner_id !== (input.owner?.id ?? null)) throw new SubmissionConflictError();
-        this.db.exec('COMMIT');
-        return { submission: mapRow(previous), deduplicated: true };
-      }
-      if (input.owner && this.db.prepare('SELECT id FROM thread_submissions WHERE owner_kind = ? AND owner_id = ?').get(input.owner.kind, input.owner.id)) {
-        throw new SubmissionConflictError('This source already owns a different thread submission.');
-      }
-      const now = new Date().toISOString();
-      const submission: ThreadSubmission = { id: `submission:${randomUUID()}`, threadId: input.threadId, requestId, operationKind, runtimeType, runId: `run:${input.threadId}:${randomUUID()}:${Date.now()}`,
-        ...(input.owner ? { owner: input.owner } : {}), status: 'pending', payload: input.payload };
-      this.db.prepare('INSERT INTO thread_submissions (id, thread_id, request_id, operation_kind, runtime_type, run_id, owner_kind, owner_id, digest, payload_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(submission.id, input.threadId, requestId, operationKind, runtimeType, submission.runId, input.owner?.kind ?? null, input.owner?.id ?? null, digest, JSON.stringify(input.payload), submission.status, now, now);
-      const writes = effects(submission);
-      this.db.prepare('UPDATE thread_submissions SET message_id = ?, task_id = ? WHERE id = ?').run(writes.messageId ?? null, writes.taskId ?? null, submission.id);
+      const result = admitWithinTransaction(this.db, input, context, effects);
       this.db.exec('COMMIT');
-      return { submission: { ...submission, messageId: writes.messageId, taskId: writes.taskId }, deduplicated: false };
+      return result;
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
