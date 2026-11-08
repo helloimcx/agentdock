@@ -43,6 +43,10 @@ flowchart LR
   agents -->|Standalone lac / structured MCP over stdio| lac[LAC Host Dispatcher]
   lac -->|Allowlisted CLI handlers · host workspace/thread context| api
   api -->|Read-only nodes · admin / scoped Shell auth| mesh[Mesh Gateway / Dispatcher]
+  mesh -->|Stable Peer.ID + current tailnet address| onboarding[Tailscale Onboarding Manager]
+  onboarding -->|Strict host key · Node 22 bundle| ssh[Supervised OpenSSH]
+  ssh -->|Loopback-only reverse forward| bridge[Expected-node Enrollment Bridge]
+  bridge -->|One-time pairing · authenticated WebSocket| mesh
   mesh --> kernel
   nodes[Mac / Linux / Windows / Android A11y nodes] -->|Outbound WebSocket: result / saved receipt| mesh
   mesh -->|Execute / cancel / receipt query| nodes
@@ -55,6 +59,7 @@ flowchart LR
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [聊天会话切换变更](docs/architecture/changes/2026-10-31-chat-detail-flicker.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
+Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onboarding-discovery.html) · [部署与身份认证](docs/architecture/tailscale-onboarding-enrollment.html) · [能力验证与工作区目标](docs/architecture/tailscale-onboarding-readiness.html)
 自动化运行关联：[交互式工作流](docs/architecture/scheduled-delivery-workflow.html)
 <!-- project-setup:architecture-diagram:end -->
 
@@ -77,6 +82,14 @@ flowchart LR
 
 - Automation 详情会按每次运行关联 ACP 执行轨迹和独立投递状态；执行成功但消息投递失败时会分别显示。
 
+### 2026-11-07
+
+- **鲸鱼线程轮次读取瘦身**：每次提问前的轮次状态准备不再加载该线程全部 assistant 消息（ whale 线程约 22MB progress 行），finals 始终窄读，progress 仅在行为声明需要回放抑制时（hermes）才加载；工具回放去重从"全量载入后 JS 子串扫描"改为索引化 SQL 存在性探测（`instr` + LIMIT 1），并以轮次开始时间为界，避免本轮刚落库的工具行误伤本轮真实重复调用。
+
+### 2026-11-05
+
+- **线程运行时监听预算固定**：`thread.runtime.watch` SSE 的多个并发订阅共享每个事件一个派发器监听（bridge/agent-run/automation-run 各 1 个），不再随客户端数量线性增长；此前 8 个并发线程视图即触发 `MaxListenersExceededWarning`（生产日志 10/16 起反复出现，恒为 11/10）。同时补上客户端在建立监视期间已断开时的提前退出，不再为死连接注册轮询定时器与监听。
+
 ### 2026-11-03
 
 - **Daemon 子进程堆上限**：`agentdock daemon/serve` 与桌面端拉起 Daemon 子进程时，默认通过 `NODE_OPTIONS` 注入 `--max-old-space-size=1024`（MB），防止内存增长升级为内核全局 OOM 误杀其他进程；该环境变量会随 `process.env` 传递给 Daemon 派生的 ACP agent 子进程（同样受 1024MB 上限约束，单次大上下文运行极端情况下会以堆 OOM 受控失败而非拖垮整机）。可用 `AI_WORKSTATION_DAEMON_MAX_OLD_SPACE_MB` 调整，设为 `0` 关闭；`pnpm dev:daemon` 为同进程启动方式，不适用此上限。部署后与 heap-watch（75%/90% 告警）配合，在该上限尺度上留下增长曲线。
@@ -96,6 +109,10 @@ flowchart LR
 ### 2026-10-25
 
 - **Mesh 远程操作回执恢复**：调用方可提供稳定 `operationId`，Core 按节点和参数摘要去重；支持新回执协议的节点会在执行前保存意图、回执后再确认。断线重连后 Core 查询同一节点的已保存结果，不重放 Shell、文件写入等副作用。原始 `interrupted`、`timed_out`、`cancelled` 状态保留；效果发生后、回执写入前崩溃仍显示为未知。新增 SDK `getOperation` 与 CLI `operation` 查询；旧节点继续使用原协议行为。详见 [Mesh 回执恢复设计与边界](docs/architecture/mesh.md)。
+
+- **Tailscale 安全一键接入**：
+  - Mesh 发现使用稳定 Tailscale 设备 ID；macOS/Linux 设备可经预先授权且已核验主机密钥的 SSH 自动部署 Node 22 Agent、完成 Mesh 配对并验证连接。
+  - 首次接入需确认远端 SSH 账户、批准共享目录和是否开放命令执行；命令权限默认关闭。SSH 凭据不会从浏览器收集，未知主机密钥不会自动接受。只有已认证且验证就绪的真实 Mesh 节点才可保存为工作区执行设备。
 
 ### 2026-10-24
 

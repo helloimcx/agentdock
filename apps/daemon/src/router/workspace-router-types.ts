@@ -56,6 +56,10 @@ export type RunningPermissionRequest = {
 
 export type RunningTurn = {
   runId: string;
+  /** Turn-start instant (ISO). Bounds store-backed prior-tool probes to rows
+   * written before this turn, so rows the turn itself persists never suppress
+   * a genuine repeat of the same tool call. */
+  startedAtIso?: string;
   replyCtx: string;
   previewHandle: string;
   thoughtPreviewHandle: string;

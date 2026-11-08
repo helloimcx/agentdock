@@ -254,8 +254,16 @@ export class LocalCoreAcpStore {
     return this.threads.get(threadId, selectedKnowledgeBaseIds, options);
   }
 
-  listAssistantTurnMessages(threadId: string) {
-    return this.threads.listAssistantTurnMessages(threadId);
+  listAssistantFinalMessages(threadId: string) {
+    return this.threads.listAssistantFinalMessages(threadId);
+  }
+
+  listAssistantProgressMessages(threadId: string) {
+    return this.threads.listAssistantProgressMessages(threadId);
+  }
+
+  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso: string) {
+    return this.threads.hasAssistantToolCallMessage(threadId, needle, beforeIso);
   }
 
   listAssistantRunMessagesSince(threadId: string, sinceIso: string) {

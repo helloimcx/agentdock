@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync, StatementSync } from 'node:sqlite';
 
 /** Revisions are changed by the same SQLite transaction as their source facts. */
 export class LocalThreadRuntimeStore {
   readonly epoch = randomUUID();
+  private readonly selectRevision: StatementSync;
 
   constructor(private readonly db: DatabaseSync) {
     db.exec(`CREATE TABLE IF NOT EXISTS thread_runtime_revisions (
@@ -11,6 +12,9 @@ export class LocalThreadRuntimeStore {
     )`);
     db.exec(`CREATE TABLE IF NOT EXISTS thread_runtime_partials (thread_id TEXT PRIMARY KEY, run_id TEXT NOT NULL,
       message_id TEXT NOT NULL, content TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+    // revision() sits on the watch fan-out hot path; preparing once avoids
+    // recompiling the statement per call.
+    this.selectRevision = db.prepare('SELECT revision FROM thread_runtime_revisions WHERE thread_id = ?');
     for (const table of ['threads', 'messages', 'runs', 'thread_submissions', 'approval_requests', 'cost_events', 'delivery_outbox', 'thread_runtime_partials']) {
       this.installSource(table, table === 'threads' ? 'id' : 'thread_id');
     }
@@ -52,7 +56,7 @@ export class LocalThreadRuntimeStore {
   }
 
   revision(threadId: string): number {
-    const row = this.db.prepare('SELECT revision FROM thread_runtime_revisions WHERE thread_id = ?').get(threadId) as { revision: number } | undefined;
+    const row = this.selectRevision.get(threadId) as { revision: number } | undefined;
     return row?.revision ?? 0;
   }
 
