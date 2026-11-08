@@ -60,6 +60,15 @@ type LocalCoreAcpBackendOptions = {
   log?: (message: string) => void;
 };
 
+/** Routing facts shared by every phase of one runPrompt execution. */
+type AcpRunFlow = {
+  runId: string;
+  threadId: string;
+  workspaceId: string;
+  bridgeSessionKey: string;
+  config: LocalCoreProjectConfig;
+};
+
 export class LocalCoreAcpBackend {
   private readonly screenSessions: RemoteMeshScreenSessionManager;
   private readonly transport: LocalCoreAcpTransport;
@@ -496,6 +505,7 @@ export class LocalCoreAcpBackend {
     }
     let session: AcpSessionState | null = null;
     const runStartedAt = Date.now();
+    const flow: AcpRunFlow = { runId, threadId, workspaceId: row.workspace_id, bridgeSessionKey, config };
     try {
       this.options.runThreadMap.set(runId, threadId);
       this.emitBridgeEvent({
@@ -515,50 +525,14 @@ export class LocalCoreAcpBackend {
         runId,
       });
       this.options.log?.(`[acp.run:${runId}] session ready in ${Date.now() - runStartedAt}ms`);
-      if (this.options.store.getRun(runId)?.status === 'interrupted') {
+      if (this.isRunInterrupted(runId)) {
         this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
         return;
       }
-      const priorAssistantFinalMessages = this.options.store.listAssistantFinalMessages(threadId);
-      // Progress history is only consumed by behaviors with replay suppression
-      // (hermes); skipping the load keeps whale-thread turns off the megabytes
-      // of progress rows claudecode will never read.
-      const behavior = resolveAgentAcpBehavior(row.agent_type);
-      const priorAssistantProgressMessages = behavior.shouldSuppressProgress
-        ? this.options.store.listAssistantProgressMessages(threadId)
-        : undefined;
       session.currentRunId = runId;
-      session.currentTurn = {
-        runId,
-        startedAtIso: new Date(runStartedAt).toISOString(),
-        replyCtx: runId,
-        previewHandle: randomUUID(),
-        thoughtPreviewHandle: randomUUID(),
-        thoughtMessageId: `${runId}-thought-1`,
-        agentType: row.agent_type,
-        assistantText: '',
-        rawAssistantText: '',
-        assistantSequence: 1,
-        assistantMessageId: `${runId}-assistant-1`,
-        priorAssistantFinalMessages,
-        priorAssistantProgressMessages,
-        thoughtText: '',
-        thoughtSequence: 1,
-        typingStarted: true,
-        previewStarted: false,
-        thoughtPreviewStarted: false,
-        pendingToolCallTitle: undefined,
-        pendingToolCallId: undefined,
-        pendingToolCallDetail: undefined,
-        activeToolCallKey: undefined,
-        pendingToolCalls: {},
-        pendingToolCallOrder: [],
-        toolCallSequence: 0,
-        toolObservations: [],
-        permission: null,
-      };
+      session.currentTurn = this.buildRunningTurn(threadId, runId, row, runStartedAt);
       const screenReady = await this.screenSessions.begin(runId, config);
-      if (!screenReady || this.options.store.getRun(runId)?.status === 'interrupted') {
+      if (!screenReady || this.isRunInterrupted(runId)) {
         this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
         return;
       }
@@ -575,193 +549,251 @@ export class LocalCoreAcpBackend {
       if (!currentTurn || currentTurn.runId !== runId) {
         return;
       }
-      this.turnCoordinator.closePendingThoughtSegment(session);
-      this.turnCoordinator.flushPendingToolCall(session);
-      if (currentTurn.assistantText) {
-        const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
-          rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
-          priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
-        });
-        const assistantText = stripObservedToolTranscriptsFromAssistantText(
-          normalizedFinalAssistantText,
-          currentTurn.toolObservations,
-        );
-        const processed = await this.responseProcessor.processAssistantResponse(threadId, assistantText);
-        if (processed.displayContent) {
-          this.turnCoordinator.discardAssistantPartial(session);
-          this.options.store.appendRunFinalMessage(runId, threadId, processed.displayContent);
-          this.options.eventBus.emit({
-            type: 'thread.message.accepted',
-            payload: {
-              threadId,
-              workspaceId: row.workspace_id,
-              role: 'assistant',
-              content: processed.displayContent,
-              kind: 'final',
-              source: 'agent',
-            },
-          });
-          this.emitBridgeEvent({
-            type: 'reply',
-            sessionKey: bridgeSessionKey,
-            replyCtx: runId,
-            content: processed.displayContent,
-          });
-        }
-        for (const systemResponse of processed.systemResponses) {
-          this.options.store.appendMessage(threadId, 'system', systemResponse, 'system');
-          this.options.eventBus.emit({
-            type: 'thread.message.accepted',
-            payload: {
-              threadId,
-              workspaceId: row.workspace_id,
-              role: 'system',
-              content: systemResponse,
-              kind: 'system',
-              source: 'system',
-            },
-          });
-        }
-      } else if (String(content || '').trim().startsWith('/')) {
-        const slashReply = this.responseProcessor.deriveSlashCommandReply(content, result as Record<string, unknown>);
-        if (slashReply) {
-          this.options.store.appendRunFinalMessage(runId, threadId, slashReply);
-          this.options.eventBus.emit({
-            type: 'thread.message.accepted',
-            payload: {
-              threadId,
-              workspaceId: row.workspace_id,
-              role: 'assistant',
-              content: slashReply,
-              kind: 'final',
-              source: 'agent',
-            },
-          });
-          this.emitBridgeEvent({
-            type: 'reply',
-            sessionKey: bridgeSessionKey,
-            replyCtx: runId,
-            content: slashReply,
-          });
-        }
-      } else if (result?.stopReason === 'cancelled') {
-        this.emitBridgeEvent({
-          type: 'reply',
-          sessionKey: bridgeSessionKey,
-          replyCtx: runId,
-          content: 'Request cancelled.',
-        });
-      }
-      const nextStatus = result?.stopReason === 'cancelled' ? 'interrupted' : 'completed';
-      this.options.store.updateRun(runId, threadId, nextStatus);
-      this.turnCoordinator.endRun(runId, nextStatus === 'interrupted' ? 'failed' : 'completed');
-      const task = this.options.store.getAgentTaskByRunId(runId);
-      if (task) {
-        const workspaceDir = row.workspace_id ? this.options.store.getWorkspaceRegistryEntry(row.workspace_id)?.path : undefined;
-        this.registerDiscoveredArtifacts(task.taskId, workspaceDir || config.workDir, runId);
-        this.options.store.updateAgentTask(task.taskId, {
-          status: nextStatus === 'interrupted' ? 'cancelled' : 'completed',
-          summary: result?.stopReason === 'cancelled' ? 'Request cancelled.' : 'Task completed.',
-        });
-      }
-      this.options.eventBus.emit({
-        type: 'run.completed',
-        payload: {
-          runId,
-          threadId,
-          workspaceId: row.workspace_id,
-          stopReason: result?.stopReason,
-        },
-      });
-      this.emitBridgeEvent({
-        type: 'typing_stop',
-        sessionKey: bridgeSessionKey,
-        replyCtx: runId,
-      });
+      await this.processPromptResult(flow, session, currentTurn, content, result);
     } catch (error) {
-      if (this.options.store.getRun(runId)?.status === 'interrupted') {
+      if (this.isRunInterrupted(runId)) {
         this.finishInterruptedRun(runId, threadId, row.workspace_id, bridgeSessionKey);
         return;
       }
-      const errorInfo = toLocalCoreErrorInfo(error, 'internal_error', {
-        threadId,
-        workspaceId: row.workspace_id,
-        runtimeId: config.agentType,
+      this.handleRunFailure(flow, error);
+    } finally {
+      await this.releaseRunSession(session, runId, threadId, config);
+    }
+  }
+
+  private isRunInterrupted(runId: string) {
+    return this.options.store.getRun(runId)?.status === 'interrupted';
+  }
+
+  /** Fresh turn state for one prompt: finals always load (small); progress
+   * loads only for behaviors with replay suppression (hermes) — claudecode
+   * turns never hydrate megabytes of progress rows they will not read. */
+  private buildRunningTurn(threadId: string, runId: string, row: { agent_type: string }, runStartedAt: number): NonNullable<AcpSessionState['currentTurn']> {
+    const priorAssistantFinalMessages = this.options.store.listAssistantFinalMessages(threadId);
+    const behavior = resolveAgentAcpBehavior(row.agent_type);
+    const priorAssistantProgressMessages = behavior.shouldSuppressProgress
+      ? this.options.store.listAssistantProgressMessages(threadId)
+      : undefined;
+    return {
+      runId,
+      startedAtIso: new Date(runStartedAt).toISOString(),
+      replyCtx: runId,
+      previewHandle: randomUUID(),
+      thoughtPreviewHandle: randomUUID(),
+      thoughtMessageId: `${runId}-thought-1`,
+      agentType: row.agent_type,
+      assistantText: '',
+      rawAssistantText: '',
+      assistantSequence: 1,
+      assistantMessageId: `${runId}-assistant-1`,
+      priorAssistantFinalMessages,
+      priorAssistantProgressMessages,
+      thoughtText: '',
+      thoughtSequence: 1,
+      typingStarted: true,
+      previewStarted: false,
+      thoughtPreviewStarted: false,
+      pendingToolCallTitle: undefined,
+      pendingToolCallId: undefined,
+      pendingToolCallDetail: undefined,
+      activeToolCallKey: undefined,
+      pendingToolCalls: {},
+      pendingToolCallOrder: [],
+      toolCallSequence: 0,
+      toolObservations: [],
+      permission: null,
+    };
+  }
+
+  private async processPromptResult(
+    flow: AcpRunFlow,
+    session: AcpSessionState,
+    currentTurn: NonNullable<AcpSessionState['currentTurn']>,
+    content: string,
+    result: { stopReason?: string },
+  ) {
+    this.turnCoordinator.closePendingThoughtSegment(session);
+    this.turnCoordinator.flushPendingToolCall(session);
+    const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+    if (currentTurn.assistantText) {
+      const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
+        rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
+        priorAssistantMessages: currentTurn.priorAssistantFinalMessages || [],
       });
-      const errorContent = formatUserError(errorInfo);
-      this.options.store.updateRun(runId, threadId, 'failed');
-      this.turnCoordinator.endRun(runId, 'failed');
-      const task = this.options.store.getAgentTaskByRunId(runId);
-      if (task) {
-        const workspaceDir = row.workspace_id ? this.options.store.getWorkspaceRegistryEntry(row.workspace_id)?.path : undefined;
-        this.registerDiscoveredArtifacts(task.taskId, workspaceDir || config.workDir, runId);
-        this.options.store.updateAgentTask(task.taskId, {
-          status: 'failed',
-          error: errorInfo.message,
+      const assistantText = stripObservedToolTranscriptsFromAssistantText(
+        normalizedFinalAssistantText,
+        currentTurn.toolObservations,
+      );
+      const processed = await this.responseProcessor.processAssistantResponse(flow.threadId, assistantText);
+      if (processed.displayContent) {
+        this.turnCoordinator.discardAssistantPartial(session);
+        this.persistFinalReply(flow, processed.displayContent);
+      }
+      for (const systemResponse of processed.systemResponses) {
+        this.options.store.appendMessage(flow.threadId, 'system', systemResponse, 'system');
+        this.options.eventBus.emit({
+          type: 'thread.message.accepted',
+          payload: {
+            threadId: flow.threadId,
+            workspaceId: flow.workspaceId,
+            role: 'system',
+            content: systemResponse,
+            kind: 'system',
+            source: 'system',
+          },
         });
       }
-      this.options.store.appendMessage(threadId, 'assistant', errorContent, 'final');
-      this.options.eventBus.emit({
-        type: 'thread.message.accepted',
-        payload: {
-          threadId,
-          workspaceId: row.workspace_id,
-          role: 'assistant',
-          content: errorContent,
-          kind: 'final',
-          source: 'agent',
-        },
-      });
-      this.options.eventBus.emit({
-        type: 'run.failed',
-        payload: {
-          runId,
-          threadId,
-          workspaceId: row.workspace_id,
-          error: errorInfo.message,
-          errorInfo,
-        },
-      });
-      this.options.eventBus.emit({
-        type: 'localcore.error',
-        payload: {
-          scope: 'acp.run',
-          errorInfo,
-          context: {
-            threadId,
-            workspaceId: row.workspace_id,
-            runtimeId: config.agentType,
-            runId,
-          },
-        },
-      });
+    } else if (String(content || '').trim().startsWith('/')) {
+      const slashReply = this.responseProcessor.deriveSlashCommandReply(content, result as Record<string, unknown>);
+      if (slashReply) {
+        this.persistFinalReply(flow, slashReply);
+      }
+    } else if (result?.stopReason === 'cancelled') {
       this.emitBridgeEvent({
         type: 'reply',
-        sessionKey: bridgeSessionKey,
-        replyCtx: runId,
-        content: errorContent,
+        sessionKey: flow.bridgeSessionKey,
+        replyCtx: flow.runId,
+        content: 'Request cancelled.',
       });
-      this.emitBridgeEvent({
-        type: 'typing_stop',
-        sessionKey: bridgeSessionKey,
-        replyCtx: runId,
-      });
-    } finally {
-      if (session) this.turnCoordinator.flushAssistantPartial(session);
-      await this.screenSessions.stop(runId);
-      if (session?.currentRunId === runId) {
-        session.currentRunId = null;
-      }
-      if (session?.currentTurn?.runId === runId) {
-        session.currentTurn = null;
-      }
-      if (session) {
-        session.promptPromise = null;
-        session.schedulerJobCreatedByRun.delete(runId);
-      }
-      this.sessionCoordinator.releaseThreadSession(threadId, config);
-      this.options.runThreadMap.delete(runId);
     }
+    this.finalizeRunOutcome(flow, result);
+  }
+
+  /** Shared persistence for a final assistant reply (agent answer or slash
+   * reply): run-final row, thread.message.accepted event, reply bridge. The
+   * failure tail does NOT reuse this pair — there the reply bridge must stay
+   * ordered after run.failed/localcore.error. */
+  private persistFinalReply(flow: AcpRunFlow, replyContent: string) {
+    this.options.store.appendRunFinalMessage(flow.runId, flow.threadId, replyContent);
+    this.options.eventBus.emit({
+      type: 'thread.message.accepted',
+      payload: {
+        threadId: flow.threadId,
+        workspaceId: flow.workspaceId,
+        role: 'assistant',
+        content: replyContent,
+        kind: 'final',
+        source: 'agent',
+      },
+    });
+    this.emitBridgeEvent({
+      type: 'reply',
+      sessionKey: flow.bridgeSessionKey,
+      replyCtx: flow.runId,
+      content: replyContent,
+    });
+  }
+
+  private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }) {
+    const cancelled = result?.stopReason === 'cancelled';
+    const nextStatus = cancelled ? 'interrupted' : 'completed';
+    this.options.store.updateRun(flow.runId, flow.threadId, nextStatus);
+    this.turnCoordinator.endRun(flow.runId, cancelled ? 'failed' : 'completed');
+    this.registerTaskOutcomeForRun(flow, {
+      status: cancelled ? 'cancelled' : 'completed',
+      summary: cancelled ? 'Request cancelled.' : 'Task completed.',
+    });
+    this.options.eventBus.emit({
+      type: 'run.completed',
+      payload: {
+        runId: flow.runId,
+        threadId: flow.threadId,
+        workspaceId: flow.workspaceId,
+        stopReason: result?.stopReason,
+      },
+    });
+    this.emitBridgeEvent({
+      type: 'typing_stop',
+      sessionKey: flow.bridgeSessionKey,
+      replyCtx: flow.runId,
+    });
+  }
+
+  /** Shared tail for a run that produced an agent task: register discovered
+   * artifacts and record the task outcome (success, cancellation, failure). */
+  private registerTaskOutcomeForRun(flow: AcpRunFlow, update: Parameters<LocalCoreAcpStore['updateAgentTask']>[1]) {
+    const task = this.options.store.getAgentTaskByRunId(flow.runId);
+    if (!task) {
+      return;
+    }
+    const workspaceDir = flow.workspaceId ? this.options.store.getWorkspaceRegistryEntry(flow.workspaceId)?.path : undefined;
+    this.registerDiscoveredArtifacts(task.taskId, workspaceDir || flow.config.workDir, flow.runId);
+    this.options.store.updateAgentTask(task.taskId, update);
+  }
+
+  private handleRunFailure(flow: AcpRunFlow, error: unknown) {
+    const errorInfo = toLocalCoreErrorInfo(error, 'internal_error', {
+      threadId: flow.threadId,
+      workspaceId: flow.workspaceId,
+      runtimeId: flow.config.agentType,
+    });
+    const errorContent = formatUserError(errorInfo);
+    this.options.store.updateRun(flow.runId, flow.threadId, 'failed');
+    this.turnCoordinator.endRun(flow.runId, 'failed');
+    this.registerTaskOutcomeForRun(flow, { status: 'failed', error: errorInfo.message });
+    this.options.store.appendMessage(flow.threadId, 'assistant', errorContent, 'final');
+    this.options.eventBus.emit({
+      type: 'thread.message.accepted',
+      payload: {
+        threadId: flow.threadId,
+        workspaceId: flow.workspaceId,
+        role: 'assistant',
+        content: errorContent,
+        kind: 'final',
+        source: 'agent',
+      },
+    });
+    this.options.eventBus.emit({
+      type: 'run.failed',
+      payload: {
+        runId: flow.runId,
+        threadId: flow.threadId,
+        workspaceId: flow.workspaceId,
+        error: errorInfo.message,
+        errorInfo,
+      },
+    });
+    this.options.eventBus.emit({
+      type: 'localcore.error',
+      payload: {
+        scope: 'acp.run',
+        errorInfo,
+        context: {
+          threadId: flow.threadId,
+          workspaceId: flow.workspaceId,
+          runtimeId: flow.config.agentType,
+          runId: flow.runId,
+        },
+      },
+    });
+    this.emitBridgeEvent({
+      type: 'reply',
+      sessionKey: flow.bridgeSessionKey,
+      replyCtx: flow.runId,
+      content: errorContent,
+    });
+    this.emitBridgeEvent({
+      type: 'typing_stop',
+      sessionKey: flow.bridgeSessionKey,
+      replyCtx: flow.runId,
+    });
+  }
+
+  private async releaseRunSession(session: AcpSessionState | null, runId: string, threadId: string, config: LocalCoreProjectConfig) {
+    if (session) this.turnCoordinator.flushAssistantPartial(session);
+    await this.screenSessions.stop(runId);
+    if (session?.currentRunId === runId) {
+      session.currentRunId = null;
+    }
+    if (session?.currentTurn?.runId === runId) {
+      session.currentTurn = null;
+    }
+    if (session) {
+      session.promptPromise = null;
+      session.schedulerJobCreatedByRun.delete(runId);
+    }
+    this.sessionCoordinator.releaseThreadSession(threadId, config);
+    this.options.runThreadMap.delete(runId);
   }
 
   private finishInterruptedRun(
