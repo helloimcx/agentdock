@@ -287,7 +287,23 @@
     "enable": "启用",
     "detail": "详情",
     "scriptApprovals": "脚本审批",
-    "reviewApproval": "审批"
+    "reviewApproval": "审批",
+    "recentRuns": "最近运行",
+    "agentExecution": "Agent 执行",
+    "deliveryOutcome": "投递",
+    "viewExecutionTrace": "查看执行轨迹",
+    "traceUnavailable": "执行轨迹暂不可用",
+    "deliveryNotStarted": "执行未完成，未发送",
+    "deliveryUnrecorded": "暂无投递记录",
+    "localDelivery": "结果保留在本地会话",
+    "olderDeliveryRecords": "更早的投递记录",
+    "runStatus": {
+      "queued": "排队中",
+      "running": "执行中",
+      "succeeded": "已完成",
+      "failed": "失败",
+      "skipped": "已跳过"
+    }
   },
   "theme": {
     "light": "浅色",
@@ -351,7 +367,16 @@
     "duplicateRisk": "我理解重试可能重复发送报告。",
     "confirm": "确认已投递",
     "retry": "重试投递",
-    "cancel": "取消投递"
+    "cancel": "取消投递",
+    "status": {
+      "pending": "等待投递",
+      "sending": "投递中",
+      "delivering": "投递中",
+      "delivered": "已送达",
+      "failed": "失败",
+      "unknown": "状态未知",
+      "cancelled": "已取消"
+    }
   },
   "butler": {
     "title": "管家",

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { LocalCoreProjectConfig } from '../router/workspace-router-types.js';
 import type { LocalCoreAcpStore } from './local-core-acp-store.js';
+import type { ThreadSubmissionOwner } from './store/submission-store.js';
 import type { ChannelRoute } from '@cc/superai-contracts';
 export type SendThreadMessageOptions = {
   requestId?: string;
@@ -10,6 +11,7 @@ export type SendThreadMessageOptions = {
   agentTypeOverride?: string;
   channelRoute?: ChannelRoute;
   operationKind?: 'message' | 'action';
+  submissionOwner?: ThreadSubmissionOwner;
   submissionIdentity?: unknown;
   permissionMode?: string;
   runtimeEnv?: Record<string, string>;

@@ -247,7 +247,23 @@
     "enable": "啟用",
     "detail": "詳細資料",
     "scriptApprovals": "指令碼核准",
-    "reviewApproval": "核准"
+    "reviewApproval": "核准",
+    "recentRuns": "最近執行",
+    "agentExecution": "Agent 執行",
+    "deliveryOutcome": "傳送",
+    "viewExecutionTrace": "查看執行軌跡",
+    "traceUnavailable": "執行軌跡暫不可用",
+    "deliveryNotStarted": "執行未完成，未傳送",
+    "deliveryUnrecorded": "沒有傳送記錄",
+    "localDelivery": "結果保留在本機對話",
+    "olderDeliveryRecords": "較早的傳送記錄",
+    "runStatus": {
+      "queued": "排隊中",
+      "running": "執行中",
+      "succeeded": "已完成",
+      "failed": "失敗",
+      "skipped": "已略過"
+    }
   },
   "theme": {
     "light": "淺色",
@@ -311,7 +327,16 @@
     "duplicateRisk": "我理解重試可能重複傳送報告。",
     "confirm": "確認已投遞",
     "retry": "重試投遞",
-    "cancel": "取消投遞"
+    "cancel": "取消投遞",
+    "status": {
+      "pending": "等待傳送",
+      "sending": "傳送中",
+      "delivering": "傳送中",
+      "delivered": "已送達",
+      "failed": "失敗",
+      "unknown": "狀態不明",
+      "cancelled": "已取消"
+    }
   },
   "butler": {
     "title": "管家",

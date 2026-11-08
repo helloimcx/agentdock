@@ -313,6 +313,7 @@ export class LocalCoreAcpBackend {
     const isCommand = isLocalSubmissionCommand(content);
     const admitted = this.options.store.submissions.admit({
       threadId, requestId: options.requestId, operationKind: options.operationKind ?? 'message', runtimeType: row.agent_type,
+      owner: options.submissionOwner,
       identity: options.submissionIdentity ?? { input, permissionMode: options.permissionMode, runtimeEnv: options.runtimeEnv },
       payload: { input: message, permissionMode: options.permissionMode, isCommand,
         resumeOptions: { providerIdOverride: options.providerIdOverride, agentTypeOverride: options.agentTypeOverride, channelRoute: options.channelRoute },

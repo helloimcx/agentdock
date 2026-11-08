@@ -247,7 +247,23 @@
     "enable": "Activar",
     "detail": "Detalles",
     "scriptApprovals": "Aprobaciones de scripts",
-    "reviewApproval": "Revisar"
+    "reviewApproval": "Revisar",
+    "recentRuns": "Ejecuciones recientes",
+    "agentExecution": "Ejecución del agente",
+    "deliveryOutcome": "Entrega",
+    "viewExecutionTrace": "Ver trazado de ejecución",
+    "traceUnavailable": "El trazado de ejecución no está disponible",
+    "deliveryNotStarted": "No se envió porque la ejecución no terminó",
+    "deliveryUnrecorded": "Sin registro de entrega",
+    "localDelivery": "Disponible en el hilo local",
+    "olderDeliveryRecords": "Entregas anteriores",
+    "runStatus": {
+      "queued": "En cola",
+      "running": "En ejecución",
+      "succeeded": "Completada",
+      "failed": "Fallida",
+      "skipped": "Omitida"
+    }
   },
   "theme": {
     "light": "Claro",
@@ -311,7 +327,16 @@
     "duplicateRisk": "Entiendo que reintentar puede duplicar el informe.",
     "confirm": "Confirmar entrega",
     "retry": "Reintentar entrega",
-    "cancel": "Cancelar entrega"
+    "cancel": "Cancelar entrega",
+    "status": {
+      "pending": "Pendiente",
+      "sending": "Enviando",
+      "delivering": "Enviando",
+      "delivered": "Entregada",
+      "failed": "Fallida",
+      "unknown": "Desconocido",
+      "cancelled": "Cancelada"
+    }
   },
   "butler": {
     "title": "Mayordomo",
