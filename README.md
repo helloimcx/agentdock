@@ -1,5 +1,7 @@
 # AgentDock
 
+**English:** [README](README.en.md) · [Architecture](docs/architecture/public-overview.md) · [Agent Session recovery](docs/guides/agent-session-recovery.md) · [Cloud Sandbox demo](docs/demos/cloud-sandbox.md)
+
 基于 AgentDock Daemon 的本地桌面 AI 工作台，内置原生 Feishu/Lark 网关与本地 ACP 会话运行时。
 
 ## 运行模式
