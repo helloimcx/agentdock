@@ -1,7 +1,6 @@
 import { normalizePermissionOptionAction } from './workspace-acp-permissions.js';
+import type { RunningToolCall } from './local-core-acp-progress.js';
 import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
-
-type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
 
 export type PermissionApprovalInput = {
   threadId: string;
