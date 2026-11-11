@@ -4,22 +4,21 @@ import { normalizeDesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  clearRunningToolCallState,
   closeAssistantMessageSegment,
   closeThoughtSegment,
   deletePendingToolCall,
-  extractToolCallInput,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
   getToolCallsInOrder,
-  isEmptyRunningToolUpdate,
   isTerminalToolStatus,
   recordToolObservation,
   registerPendingToolCall,
   resolveFallbackToolCall,
-  resolveToolCallForUpdate,
-  resolveToolUpdateDisplayTitle,
+  resolveToolUpdateView,
   syncLegacyPendingToolCall,
+  type ResolvedToolUpdate,
 } from './local-core-acp-progress.js';
 import {
   applyPendingPermissionRequest,
@@ -136,9 +135,7 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       const messageId = currentTurn.pendingToolCallId;
-      currentTurn.pendingToolCallTitle = undefined;
-      currentTurn.pendingToolCallId = undefined;
-      currentTurn.pendingToolCallDetail = undefined;
+      clearRunningToolCallState(currentTurn, undefined);
       this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId, createToolCallPayload({
         id: currentTurn.activeToolCallKey,
         name: title,
@@ -474,86 +471,71 @@ export class LocalCoreAcpTurnCoordinator {
     if (isSchedulerAddCommand(title) && /Created scheduler job\b/.test(content)) {
       session.schedulerJobCreatedByRun.set(currentRunId, true);
     }
-    const toolCall = resolveToolCallForUpdate(currentTurn, update);
-    const updateInput = extractToolCallInput(update);
-    if (toolCall && updateInput !== undefined) {
-      toolCall.input = updateInput;
-    }
-    const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
-    const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
-    const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
-    if (isEmptyRunningToolUpdate({ title, status, content })) {
-      if (toolCall) {
-        deletePendingToolCall(currentTurn, toolCall.key);
-      } else {
-        currentTurn.pendingToolCallTitle = undefined;
-        currentTurn.pendingToolCallId = undefined;
-        currentTurn.pendingToolCallDetail = undefined;
-      }
+    const view = resolveToolUpdateView(currentTurn, update, { title, status, content });
+    if (view.isEmpty) {
+      clearRunningToolCallState(currentTurn, view.toolCall);
       syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
       return;
     }
-    const displayTitle = resolveToolUpdateDisplayTitle({ title, status, priorDetail });
-    const effectiveToolName = toolName || displayTitle || title;
-    const effectiveCallId = toolCall?.key || messageId;
-    if (isTerminalToolStatus(status)) {
+    this.projectToolCallTrace(currentRunId, view);
+    if (!isTerminalToolStatus(view.status) && view.displayTitle && !/^tool update$/i.test(view.displayTitle)) {
+      if (view.toolCall) {
+        view.toolCall.detail = view.displayTitle;
+      }
+      currentTurn.pendingToolCallDetail = view.displayTitle;
+    }
+    if (isTerminalToolStatus(view.status)) {
+      clearRunningToolCallState(currentTurn, view.toolCall);
+    }
+    this.recordAndEmitToolProgress(session, currentTurn, currentRunId, view);
+    syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
+  }
+
+  private projectToolCallTrace(currentRunId: string, view: ResolvedToolUpdate) {
+    if (isTerminalToolStatus(view.status)) {
       this.traceProjector?.onToolCallEnd(
         currentRunId,
-        effectiveToolName,
-        status === 'failed' ? 'failed' : 'completed',
-        content || (updateInput === undefined ? toolCall?.input : updateInput),
-        effectiveCallId,
+        view.effectiveToolName,
+        view.status === 'failed' ? 'failed' : 'completed',
+        view.content || view.input,
+        view.effectiveCallId,
       );
     } else {
       this.traceProjector?.onToolCallStart(
         currentRunId,
-        effectiveToolName,
-        updateInput === undefined ? toolCall?.input : updateInput,
-        effectiveCallId,
+        view.effectiveToolName,
+        view.input,
+        view.effectiveCallId,
       );
     }
-    if (!isTerminalToolStatus(status) && displayTitle && !/^tool update$/i.test(displayTitle)) {
-      if (toolCall) {
-        toolCall.detail = displayTitle;
-      }
-      currentTurn.pendingToolCallDetail = displayTitle;
-    }
-    if (isTerminalToolStatus(status)) {
-      if (toolCall) {
-        deletePendingToolCall(currentTurn, toolCall.key);
-      } else {
-        currentTurn.pendingToolCallTitle = undefined;
-        currentTurn.pendingToolCallId = undefined;
-        currentTurn.pendingToolCallDetail = undefined;
-      }
-    }
+  }
+
+  private recordAndEmitToolProgress(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, view: ResolvedToolUpdate) {
     const toolCallPayload = createToolCallPayload({
-      id: toolCall?.key || currentTurn.activeToolCallKey,
-      name: toolName || displayTitle || 'Tool update',
-      status,
-      input: updateInput === undefined ? toolCall?.input : updateInput,
-      detail: displayTitle,
-      content,
+      id: view.toolCall?.key || currentTurn.activeToolCallKey,
+      name: view.toolName || view.displayTitle || 'Tool update',
+      status: view.status,
+      input: view.input,
+      detail: view.displayTitle,
+      content: view.content,
     });
-    const progressContent = formatToolProgressMessage({ toolName, title: displayTitle, status, content });
-    const suppressProgress = Boolean(toolCall?.suppressReplay) || this.shouldSuppressProgress(currentTurn, 'tool', progressContent);
+    const progressContent = formatToolProgressMessage({
+      toolName: view.toolName,
+      title: view.displayTitle,
+      status: view.status,
+      content: view.content,
+    });
+    const suppressProgress = Boolean(view.toolCall?.suppressReplay) || this.shouldSuppressProgress(currentTurn, 'tool', progressContent);
     if (!suppressProgress) {
       recordToolObservation(currentTurn, {
-        name: toolName || displayTitle || title,
-        title: displayTitle || title,
-        status,
-        input: updateInput === undefined ? toolCall?.input : updateInput,
-        outputText: content,
+        name: view.effectiveToolName,
+        title: view.displayTitle || view.title,
+        status: view.status,
+        input: view.input,
+        outputText: view.content,
       });
-      this.emitProgress(
-        session,
-        currentRunId,
-        progressContent,
-        messageId,
-        toolCallPayload,
-      );
+      this.emitProgress(session, currentRunId, progressContent, view.messageId, toolCallPayload);
     }
-    syncLegacyPendingToolCall(currentTurn, resolveFallbackToolCall(currentTurn));
   }
 
   private handlePlanUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
