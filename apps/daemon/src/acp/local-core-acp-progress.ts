@@ -1,7 +1,7 @@
 import type { AcpSessionState } from '../router/workspace-router-types.js';
 
 type RunningTurn = NonNullable<AcpSessionState['currentTurn']>;
-type RunningToolCall = NonNullable<RunningTurn['pendingToolCalls']>[string];
+export type RunningToolCall = NonNullable<RunningTurn['pendingToolCalls']>[string];
 type RunningToolObservation = NonNullable<RunningTurn['toolObservations']>[number];
 
 export type MessagePreviewProjection = {
@@ -301,6 +301,75 @@ export function isEmptyRunningToolUpdate(input: {
 
 export function isTerminalToolStatus(status: string) {
   return /^(completed|failed|error|cancelled|canceled)$/i.test(status.trim());
+}
+
+/** One streaming tool update, resolved from turn state before any phase runs.
+ * The resolver merges the update input into the matched pending tool call;
+ * phases read this view instead of re-deriving identity fields. */
+export type ResolvedToolUpdate = {
+  toolCall: RunningToolCall | undefined;
+  title: string;
+  status: string;
+  content: string;
+  /** Update payload once merged onto the matched pending tool call. */
+  input: unknown;
+  toolName: string | undefined;
+  messageId: string | undefined;
+  displayTitle: string;
+  effectiveToolName: string;
+  effectiveCallId: string | undefined;
+  isEmpty: boolean;
+};
+
+export function resolveToolUpdateView(
+  currentTurn: RunningTurn,
+  update: any,
+  known: { title: string; status: string; content: string },
+): ResolvedToolUpdate {
+  const toolCall = resolveToolCallForUpdate(currentTurn, update);
+  const updateInput = extractToolCallInput(update);
+  if (toolCall && updateInput !== undefined) {
+    toolCall.input = updateInput;
+  }
+  return {
+    ...deriveToolUpdateIdentity(currentTurn, toolCall, known),
+    toolCall,
+    title: known.title,
+    status: known.status,
+    content: known.content,
+    input: updateInput === undefined ? toolCall?.input : updateInput,
+    isEmpty: isEmptyRunningToolUpdate({ title: known.title, status: known.status, content: known.content }),
+  };
+}
+
+function deriveToolUpdateIdentity(
+  currentTurn: RunningTurn,
+  toolCall: RunningToolCall | undefined,
+  known: { title: string; status: string },
+) {
+  const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
+  const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
+  const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
+  const displayTitle = resolveToolUpdateDisplayTitle({ title: known.title, status: known.status, priorDetail });
+  return {
+    toolName,
+    messageId,
+    displayTitle,
+    effectiveToolName: toolName || displayTitle || known.title,
+    effectiveCallId: toolCall?.key || messageId,
+  };
+}
+
+export function clearRunningToolCallState(currentTurn: RunningTurn, toolCall: RunningToolCall | undefined) {
+  if (toolCall) {
+    deletePendingToolCall(currentTurn, toolCall.key);
+  } else {
+    // Deliberately does NOT reset activeToolCallKey: fallback resolution in
+    // resolveFallbackToolCall depends on it surviving the cleanup.
+    currentTurn.pendingToolCallTitle = undefined;
+    currentTurn.pendingToolCallId = undefined;
+    currentTurn.pendingToolCallDetail = undefined;
+  }
 }
 
 export function formatPlanProgress(entries: unknown[]) {

@@ -4,22 +4,21 @@ import { normalizeDesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  clearRunningToolCallState,
   closeAssistantMessageSegment,
   closeThoughtSegment,
   deletePendingToolCall,
-  extractToolCallInput,
   extractToolUpdateContent,
   formatPlanProgress,
   formatToolProgressMessage,
   getToolCallsInOrder,
-  isEmptyRunningToolUpdate,
   isTerminalToolStatus,
   recordToolObservation,
   registerPendingToolCall,
   resolveFallbackToolCall,
-  resolveToolCallForUpdate,
-  resolveToolUpdateDisplayTitle,
+  resolveToolUpdateView,
   syncLegacyPendingToolCall,
+  type ResolvedToolUpdate,
 } from './local-core-acp-progress.js';
 import {
   applyPendingPermissionRequest,
@@ -38,63 +37,6 @@ import { resolveAgentAcpBehavior } from '../agents/index.js';
 import type { AgentAcpProgressKind } from '../agents/shared/acp-behavior.js';
 import type { LocalCoreTraceStore } from './store/trace-store.js';
 import { AcpTraceProjector, type TokenUsage } from './local-core-acp-trace-projector.js';
-
-type RunningToolCall = NonNullable<RunningTurn['pendingToolCalls']>[string];
-
-/** One streaming tool update, resolved from turn state once before any phase
- * mutates it. Phases read this view instead of re-deriving identity fields. */
-type ResolvedToolUpdate = {
-  toolCall: RunningToolCall | undefined;
-  title: string;
-  status: string;
-  content: string;
-  updateInput: unknown;
-  toolName: string | undefined;
-  messageId: string | undefined;
-  displayTitle: string;
-  effectiveToolName: string;
-  effectiveCallId: string | undefined;
-  isEmpty: boolean;
-};
-
-function resolveToolUpdateView(
-  currentTurn: RunningTurn,
-  update: any,
-  known: { title: string; status: string; content: string },
-): ResolvedToolUpdate {
-  const toolCall = resolveToolCallForUpdate(currentTurn, update);
-  const updateInput = extractToolCallInput(update);
-  if (toolCall && updateInput !== undefined) {
-    toolCall.input = updateInput;
-  }
-  const toolName = toolCall?.title.trim() || currentTurn.pendingToolCallTitle?.trim();
-  const messageId = toolCall?.messageId || currentTurn.pendingToolCallId;
-  const priorDetail = toolCall ? toolCall.detail?.trim() : currentTurn.pendingToolCallDetail?.trim();
-  const displayTitle = resolveToolUpdateDisplayTitle({ title: known.title, status: known.status, priorDetail });
-  return {
-    toolCall,
-    title: known.title,
-    status: known.status,
-    content: known.content,
-    updateInput,
-    toolName,
-    messageId,
-    displayTitle,
-    effectiveToolName: toolName || displayTitle || known.title,
-    effectiveCallId: toolCall?.key || messageId,
-    isEmpty: isEmptyRunningToolUpdate({ title: known.title, status: known.status, content: known.content }),
-  };
-}
-
-function clearRunningToolCallState(currentTurn: RunningTurn, toolCall: RunningToolCall | undefined) {
-  if (toolCall) {
-    deletePendingToolCall(currentTurn, toolCall.key);
-  } else {
-    currentTurn.pendingToolCallTitle = undefined;
-    currentTurn.pendingToolCallId = undefined;
-    currentTurn.pendingToolCallDetail = undefined;
-  }
-}
 
 type LocalCoreAcpTurnCoordinatorOptions = {
   saveAssistantPartial?: (threadId: string, runId: string, messageId: string, content: string) => void;
@@ -193,9 +135,7 @@ export class LocalCoreAcpTurnCoordinator {
         return;
       }
       const messageId = currentTurn.pendingToolCallId;
-      currentTurn.pendingToolCallTitle = undefined;
-      currentTurn.pendingToolCallId = undefined;
-      currentTurn.pendingToolCallDetail = undefined;
+      clearRunningToolCallState(currentTurn, undefined);
       this.emitProgress(session, currentRunId, `🔧 ${title}`, messageId, createToolCallPayload({
         id: currentTurn.activeToolCallKey,
         name: title,
@@ -557,14 +497,14 @@ export class LocalCoreAcpTurnCoordinator {
         currentRunId,
         view.effectiveToolName,
         view.status === 'failed' ? 'failed' : 'completed',
-        view.content || (view.updateInput === undefined ? view.toolCall?.input : view.updateInput),
+        view.content || view.input,
         view.effectiveCallId,
       );
     } else {
       this.traceProjector?.onToolCallStart(
         currentRunId,
         view.effectiveToolName,
-        view.updateInput === undefined ? view.toolCall?.input : view.updateInput,
+        view.input,
         view.effectiveCallId,
       );
     }
@@ -575,7 +515,7 @@ export class LocalCoreAcpTurnCoordinator {
       id: view.toolCall?.key || currentTurn.activeToolCallKey,
       name: view.toolName || view.displayTitle || 'Tool update',
       status: view.status,
-      input: view.updateInput === undefined ? view.toolCall?.input : view.updateInput,
+      input: view.input,
       detail: view.displayTitle,
       content: view.content,
     });
@@ -591,7 +531,7 @@ export class LocalCoreAcpTurnCoordinator {
         name: view.effectiveToolName,
         title: view.displayTitle || view.title,
         status: view.status,
-        input: view.updateInput === undefined ? view.toolCall?.input : view.updateInput,
+        input: view.input,
         outputText: view.content,
       });
       this.emitProgress(session, currentRunId, progressContent, view.messageId, toolCallPayload);
