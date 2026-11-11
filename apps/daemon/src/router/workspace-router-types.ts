@@ -21,6 +21,7 @@ import type {
   ThreadKnowledgeAttachmentStore,
 } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
+import type { ThreadSubmissionOwner } from '../acp/store/submission-store.js';
 import type { AgentAcpProgressRecord } from '../agents/shared/acp-behavior.js';
 import type { CostService } from '../cost/cost-service.js';
 export * from '../acp/store/acp-store-types.js';
@@ -183,6 +184,7 @@ export type WorkspaceThreadMessageOptions = {
   expectedApprovalId?: string;
   requestId?: string;
   submissionIdentity?: unknown;
+  submissionOwner?: ThreadSubmissionOwner;
   permissionMode?: string;
   runtimeEnv?: Record<string, string>;
   channelRoute?: ChannelRoute;

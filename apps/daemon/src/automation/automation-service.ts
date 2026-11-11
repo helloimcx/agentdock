@@ -258,6 +258,14 @@ export class AutomationService {
     return this.options.store.listAutomationRuns(automationId);
   }
 
+  emitRun(run: AutomationRun): void {
+    this.eventProjector.emitRun(run);
+  }
+
+  reportDiagnostic(phase: string, error: unknown): void {
+    this.eventProjector.reportDiagnostic(phase, normalizeAutomationError(error));
+  }
+
   getLatestRun(automationId: string): AutomationRun | undefined {
     return this.options.store.getLatestAutomationRun(automationId);
   }
@@ -795,7 +803,8 @@ export class AutomationService {
     const automation = this.get(automationId);
     if (!automation) throw new Error('Automation not found');
     const runIds = new Set(this.listRuns(automationId).map((run) => run.id));
-    return this.options.store.deliveries.list(automation.workspaceId).filter((row) => runIds.has(row.ownerRunId));
+    return this.options.store.deliveries.list(automation.workspaceId)
+      .filter((row) => row.ownerKind === 'automation' && runIds.has(row.ownerRunId));
   }
 
   async reconcileDelivery(automationId: string, deliveryId: string, input: DeliveryReconcileInput) {

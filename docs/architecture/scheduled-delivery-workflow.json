@@ -41,6 +41,18 @@
           "final_reply"
         ],
         "note": "Progress remains bridged; final reports go through the persistent outbox and require platform receipt."
+      },
+      {
+        "id": "automation-run-correlation",
+        "label": "自动化运行关联",
+        "focus": [
+          "executor_init",
+          "acp_run",
+          "automation_run_link",
+          "final_reply",
+          "lifecycle_finish"
+        ],
+        "note": "提交受理后先保存 ACP Run 引用；详情按 Automation Run 分开展示执行与投递。"
       }
     ]
   },
@@ -142,7 +154,16 @@
       "col": 4,
       "type": "backend",
       "label": "ACP 会话执行",
-      "sublabel": "驱动模型推理与工具",
+      "sublabel": "受理返回 Run ID 后等待完成",
+      "width": 140
+    },
+    {
+      "id": "automation_run_link",
+      "lane": "scheduler",
+      "col": 4,
+      "type": "database",
+      "label": "Automation Owner",
+      "sublabel": "入队原子保存 owner",
       "width": 140
     },
     {
@@ -225,11 +246,32 @@
       "variant": "emphasis"
     },
     {
+      "id": "executor-to-submission-owner",
+      "from": "executor_init",
+      "to": "automation_run_link",
+      "label": "可信 AutomationRun owner",
+      "variant": "default"
+    },
+    {
       "id": "acp-to-stream",
       "from": "acp_run",
       "to": "channel_stream",
       "label": "流式事件",
       "variant": "emphasis"
+    },
+    {
+      "id": "acp-admission-to-automation-run",
+      "from": "acp_run",
+      "to": "automation_run_link",
+      "label": "受理返回 ACP Run ID",
+      "role": "return"
+    },
+    {
+      "id": "automation-run-to-detail",
+      "from": "automation_run_link",
+      "to": "final_reply",
+      "label": "按 ownerRunId 关联投递",
+      "variant": "default"
     },
     {
       "id": "stream-to-target",

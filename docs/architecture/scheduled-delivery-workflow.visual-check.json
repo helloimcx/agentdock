@@ -5,10 +5,12 @@
   "evidenceKind": "automated-browser",
   "status": "pass",
   "visualReview": "pending",
+  "provenance": "current",
+  "deliveryReceiptId": "50864d88-d125-42ac-bfe1-c6679351938c",
   "artifact": {
-    "path": "/Users/momo/.codex/worktrees/e826/agentdock/docs/architecture/scheduled-delivery-workflow.html",
-    "sha256": "9de1bb7dd53a48920ebbd5053643ac6e0e1f88e0fc3d116409d4e5f3ff0b2dda",
-    "bytes": 723802
+    "path": "scheduled-delivery-workflow.html",
+    "sha256": "640a5f48648cbcef9c36e4cffa0601ef37af398288d6190918fe4089044e6774",
+    "bytes": 836008
   },
   "state": {
     "detail": "read",
@@ -21,6 +23,7 @@
   "diagnostics": [],
   "containment": {
     "status": "pass",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
     "viewports": [
       {
         "width": 1440,
@@ -32,23 +35,85 @@
         "scrollHeight": 900,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1366,
-        "diagramWidth": 1336,
+        "readerWidth": 1376,
+        "diagramWidth": 1346,
+        "pageComposition": {
+          "bodyPaddingPx": 12,
+          "headerPx": 52,
+          "diagramChromePx": 78,
+          "svgPx": 585,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 115,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -63,23 +128,85 @@
         "scrollHeight": 1000,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1407,
-        "diagramWidth": 1377,
+        "readerWidth": 1536,
+        "diagramWidth": 1506,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 60,
+          "diagramChromePx": 84,
+          "svgPx": 655,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 129,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 129,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 129,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -94,23 +221,85 @@
         "scrollHeight": 1080,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1591,
-        "diagramWidth": 1561,
+        "readerWidth": 1856,
+        "diagramWidth": 1826,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 60,
+          "diagramChromePx": 84,
+          "svgPx": 794,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 156,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 156,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 156,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -125,26 +314,135 @@
         "scrollHeight": 1320,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
         "readerWidth": 1920,
         "diagramWidth": 1870,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 68,
+          "diagramChromePx": 94,
+          "svgPx": 813,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 160,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 41,
+        "viewerChromeReserve": 44,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
+      }
+    ]
+  },
+  "themeStates": {
+    "status": "pass",
+    "viewports": [
+      {
+        "width": 1440,
+        "height": 900,
+        "requestedTheme": "light",
+        "resolvedTheme": "light",
+        "ok": true
+      },
+      {
+        "width": 1600,
+        "height": 1000,
+        "requestedTheme": "light",
+        "resolvedTheme": "light",
+        "ok": true
+      },
+      {
+        "width": 1920,
+        "height": 1080,
+        "requestedTheme": "light",
+        "resolvedTheme": "light",
+        "ok": true
+      },
+      {
+        "width": 2048,
+        "height": 1320,
+        "requestedTheme": "light",
+        "resolvedTheme": "light",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "height": 900,
+        "requestedTheme": "dark",
+        "resolvedTheme": "dark",
+        "ok": true
+      },
+      {
+        "width": 2048,
+        "height": 1320,
+        "requestedTheme": "dark",
+        "resolvedTheme": "dark",
+        "ok": true
       }
     ]
   },
@@ -162,23 +460,85 @@
         "scrollHeight": 900,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1366,
-        "diagramWidth": 1336,
+        "readerWidth": 1376,
+        "diagramWidth": 1346,
+        "pageComposition": {
+          "bodyPaddingPx": 12,
+          "headerPx": 52,
+          "diagramChromePx": 78,
+          "svgPx": 585,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 115,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -193,23 +553,85 @@
         "scrollHeight": 1000,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1407,
-        "diagramWidth": 1377,
+        "readerWidth": 1536,
+        "diagramWidth": 1506,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 60,
+          "diagramChromePx": 84,
+          "svgPx": 655,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 129,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 129,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 129,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -224,23 +646,85 @@
         "scrollHeight": 1080,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1591,
-        "diagramWidth": 1561,
+        "readerWidth": 1856,
+        "diagramWidth": 1826,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 60,
+          "diagramChromePx": 84,
+          "svgPx": 794,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 156,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 156,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 156,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -255,23 +739,85 @@
         "scrollHeight": 1320,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
         "readerWidth": 1920,
         "diagramWidth": 1870,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 68,
+          "diagramChromePx": 94,
+          "svgPx": 813,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 160,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 41,
+        "viewerChromeReserve": 44,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -291,23 +837,85 @@
         "scrollHeight": 900,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1366,
-        "diagramWidth": 1336,
+        "readerWidth": 1376,
+        "diagramWidth": 1346,
+        "pageComposition": {
+          "bodyPaddingPx": 12,
+          "headerPx": 52,
+          "diagramChromePx": 78,
+          "svgPx": 585,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 115,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -322,23 +930,85 @@
         "scrollHeight": 1000,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1407,
-        "diagramWidth": 1377,
+        "readerWidth": 1536,
+        "diagramWidth": 1506,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 60,
+          "diagramChromePx": 84,
+          "svgPx": 655,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 129,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 129,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 129,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 65,
+            "spaceAboveNodesPx": 51,
+            "spaceBelowNodesPx": 14
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -353,23 +1023,85 @@
         "scrollHeight": 1080,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1591,
-        "diagramWidth": 1561,
+        "readerWidth": 1856,
+        "diagramWidth": 1826,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 60,
+          "diagramChromePx": 84,
+          "svgPx": 794,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 156,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 156,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 156,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 78,
+            "spaceAboveNodesPx": 62,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -384,23 +1116,85 @@
         "scrollHeight": 1320,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
         "readerWidth": 1920,
         "diagramWidth": 1870,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 68,
+          "diagramChromePx": 94,
+          "svgPx": 813,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 160,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 41,
+        "viewerChromeReserve": 44,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light"
@@ -420,23 +1214,85 @@
         "scrollHeight": 900,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1366,
-        "diagramWidth": 1336,
+        "readerWidth": 1376,
+        "diagramWidth": 1346,
+        "pageComposition": {
+          "bodyPaddingPx": 12,
+          "headerPx": 52,
+          "diagramChromePx": 78,
+          "svgPx": 585,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 115,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light",
@@ -452,23 +1308,85 @@
         "scrollHeight": 900,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
-        "readerWidth": 1366,
-        "diagramWidth": 1336,
+        "readerWidth": 1376,
+        "diagramWidth": 1346,
+        "pageComposition": {
+          "bodyPaddingPx": 12,
+          "headerPx": 52,
+          "diagramChromePx": 78,
+          "svgPx": 585,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 115,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 115,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 58,
+            "spaceAboveNodesPx": 45,
+            "spaceBelowNodesPx": 12
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 51,
+        "viewerChromeReserve": 54,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "dark",
@@ -484,23 +1402,85 @@
         "scrollHeight": 1320,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
         "readerWidth": 1920,
         "diagramWidth": 1870,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 68,
+          "diagramChromePx": 94,
+          "svgPx": 813,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 160,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 41,
+        "viewerChromeReserve": 44,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "light",
@@ -516,23 +1496,85 @@
         "scrollHeight": 1320,
         "overflowX": false,
         "overflowY": false,
+        "verticalScrollAccepted": false,
+        "overflowDisposition": "contained",
+        "readerLayout": "adaptive",
+        "readerOverflow": null,
+        "readerFit": null,
         "ok": true,
         "readerWidth": 1920,
         "diagramWidth": 1870,
+        "pageComposition": {
+          "bodyPaddingPx": 64,
+          "headerPx": 68,
+          "diagramChromePx": 94,
+          "svgPx": 813,
+          "cardsPx": 0,
+          "viewBoxHeight": 528
+        },
         "viewBoxWidth": 1214,
+        "workflowLanes": [
+          {
+            "frameId": "lane-0",
+            "heightPx": 160,
+            "nodeCount": 5,
+            "nodeIds": [
+              "cron_tick",
+              "adapter_select",
+              "policy_resolve",
+              "automation_run_link",
+              "lifecycle_finish"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-1",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "executor_init",
+              "acp_run",
+              "final_reply"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          },
+          {
+            "frameId": "lane-2",
+            "heightPx": 160,
+            "nodeCount": 3,
+            "nodeIds": [
+              "bridge_open",
+              "channel_stream",
+              "channel_target"
+            ],
+            "nodeSpanPx": 80,
+            "spaceAboveNodesPx": 63,
+            "spaceBelowNodesPx": 17
+          }
+        ],
         "minimumProjectedNodeTextPx": 8,
+        "minimumProjectedNonEdgeTextPx": 8,
+        "minimumProjectedEdgeTextPx": 8,
         "minimumProjectedNodeText": "Due Polling 到期检查",
         "minimumProjectedNodeTextDetail": "context",
+        "minimumProjectedNodeTextOwner": {
+          "kind": "node",
+          "id": "cron_tick"
+        },
         "minimumRequiredNodeTextPx": 6,
         "readabilityOk": true,
         "hasLegend": true,
         "hasNavigationDock": true,
         "legendDockIntersectionArea": 0,
         "dockStageIntersectionArea": 0,
-        "dockStageGap": 10.21875,
+        "dockStageGap": 10,
         "requiredDockStageGap": 10,
         "viewerChromeStageOk": true,
-        "viewerChromeReserve": 41,
+        "viewerChromeReserve": 44,
         "viewerChromeActive": true,
         "viewerChromeOk": true,
         "resolvedTheme": "dark",
@@ -542,7 +1584,35 @@
     "contactSheet": "scheduled-delivery-workflow.visual-check.html"
   },
   "sidecars": {
+    "directory": ".",
     "receipt": "scheduled-delivery-workflow.visual-check.json",
-    "contactSheet": "scheduled-delivery-workflow.visual-check.html"
+    "contactSheet": "scheduled-delivery-workflow.visual-check.html",
+    "files": [
+      {
+        "sha256": "f70bd578f8138a72076f293d4063ebbb641384268fdf0cd444eb5e5232e16bb4",
+        "bytes": 2006,
+        "file": "scheduled-delivery-workflow.visual-check.html"
+      },
+      {
+        "sha256": "3a29cefd5be354d41a4de509dead9bdbce461488ccd1f5677f12d194565da627",
+        "bytes": 199373,
+        "file": "scheduled-delivery-workflow.visual-check.1440x900.light.png"
+      },
+      {
+        "sha256": "6775ab8247b9406813a0b4b4b5899af08203cb2ea4f2742bc6c7bc3946967519",
+        "bytes": 212261,
+        "file": "scheduled-delivery-workflow.visual-check.1440x900.dark.png"
+      },
+      {
+        "sha256": "44a7b0d96a31085c65129c9fab331b50ba15e9a48953ab520926375148ea2344",
+        "bytes": 296116,
+        "file": "scheduled-delivery-workflow.visual-check.2048x1320.light.png"
+      },
+      {
+        "sha256": "c3e8ca56f3f28358cfdbb0a36bcb839444b309b5f20022ff5d7d9c2a2b5c0b1b",
+        "bytes": 315854,
+        "file": "scheduled-delivery-workflow.visual-check.2048x1320.dark.png"
+      }
+    ]
   }
 }

@@ -60,6 +60,7 @@ flowchart LR
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
 Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onboarding-discovery.html) · [部署与身份认证](docs/architecture/tailscale-onboarding-enrollment.html) · [能力验证与工作区目标](docs/architecture/tailscale-onboarding-readiness.html)
+自动化运行关联：[交互式工作流](docs/architecture/scheduled-delivery-workflow.html)
 <!-- project-setup:architecture-diagram:end -->
 
 后台关键模块说明：
@@ -76,6 +77,10 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 - [管家任务协调](docs/architecture/butler-orchestration.md)
 
 ## New
+
+### 2026-11-08
+
+- Automation 详情会按每次运行关联 ACP 执行轨迹和独立投递状态；执行成功但消息投递失败时会分别显示。
 
 ### 2026-11-07
 

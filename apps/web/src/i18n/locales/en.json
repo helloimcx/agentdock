@@ -287,7 +287,23 @@
     "enable": "Enable",
     "detail": "Details",
     "scriptApprovals": "Script approvals",
-    "reviewApproval": "Review"
+    "reviewApproval": "Review",
+    "recentRuns": "Recent runs",
+    "agentExecution": "Agent execution",
+    "deliveryOutcome": "Delivery",
+    "viewExecutionTrace": "View execution trace",
+    "traceUnavailable": "Execution trace is unavailable",
+    "deliveryNotStarted": "Not sent because execution did not finish",
+    "deliveryUnrecorded": "No delivery record",
+    "localDelivery": "Available in the local thread",
+    "olderDeliveryRecords": "Older delivery records",
+    "runStatus": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Completed",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    }
   },
   "theme": {
     "light": "Light",
@@ -444,7 +460,16 @@
     "duplicateRisk": "I understand retrying may send a duplicate report.",
     "confirm": "Confirm delivered",
     "retry": "Retry delivery",
-    "cancel": "Cancel delivery"
+    "cancel": "Cancel delivery",
+    "status": {
+      "pending": "Pending",
+      "sending": "Sending",
+      "delivering": "Sending",
+      "delivered": "Delivered",
+      "failed": "Failed",
+      "unknown": "Unknown",
+      "cancelled": "Cancelled"
+    }
   },
   "butler": {
     "title": "Butler",

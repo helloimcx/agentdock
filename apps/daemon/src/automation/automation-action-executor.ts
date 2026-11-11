@@ -1,7 +1,7 @@
 import { DeliveryOutboxService } from './delivery-outbox-service.js';
 import { channelPlatformKey, extractChannelInstanceId } from '../channel/shared/channel-keys.js';
 import type { DeliveryIntent } from '@cc/superai-contracts';
-import type { AutomationDefinition, AutomationEvaluation } from '@cc/superai-contracts';
+import type { AutomationDefinition, AutomationEvaluation, AutomationRun } from '@cc/superai-contracts';
 import type { ChannelRuntime } from '@cc/plugin-sdk';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { RunFinalResult } from '../acp/store/submission-store.js';
@@ -57,6 +57,8 @@ export interface AutomationActionExecutionResult {
 
 interface AutomationCreatorService {
   create: (definition: any) => any;
+  emitRun?: (run: AutomationRun) => void;
+  reportDiagnostic?: (phase: string, error: unknown) => void;
 }
 
 export type AutomationActionExecutorOptions = {
@@ -67,6 +69,9 @@ export type AutomationActionExecutorOptions = {
   decisionLogService?: DecisionLogService;
   getAutomationService?: () => AutomationCreatorService;
 };
+
+type RecoveryDestination = NonNullable<ReturnType<LocalCoreAcpStore['deliveries']['destination']>>;
+type RecoveryDelivery = ReturnType<LocalCoreAcpStore['deliveries']['forRun']>;
 
 function extractChannelId(route: unknown): string | undefined {
   if (typeof route === 'object' && route && 'channelId' in route) {
@@ -169,13 +174,20 @@ async function dispatchAndWaitRun(
     route: DeliveryIntent['route'];
     originKind?: AutomationDefinition['originKind'];
     timeoutMs: number;
+    onRunAdmitted?: (runId: string) => void;
+    onRunAdmissionError?: (error: unknown) => void;
   },
 ): Promise<{ runId: string; final: RunFinalResult }> {
   const sendResult = await options.workspaceRouter.sendThreadMessage(options.threadId, options.prompt, {
     ...(options.automationRunId ? { requestId: `automation:${options.automationRunId}` } : {}),
+    ...(options.automationRunId ? { submissionOwner: { kind: 'automation' as const, id: options.automationRunId } } : {}),
     permissionMode: AUTOMATION_RUN_PERMISSION_MODE,
     runtimeEnv: buildPlatformRuntimeEnv(options.platform, options.route),
   });
+  if (sendResult.runId) {
+    try { options.onRunAdmitted?.(sendResult.runId); }
+    catch (error) { options.onRunAdmissionError?.(error); }
+  }
   await waitForRunCompletion({
     store: options.store,
     runId: sendResult.runId,
@@ -222,29 +234,54 @@ export class AutomationActionExecutor {
     this.decisionService = options.decisionLogService ?? new DecisionLogService(options.store);
   }
 
-  /** Reconcile saved final answers before generic interrupted-run cleanup. Never re-prompt an Agent. */
+  /** Restore saved execution links and final answers before interrupted-run cleanup; never re-prompt an Agent. */
   recoverCompletedExecutions(): void {
     for (const automation of this.options.store.listAutomations()) {
-      for (const run of this.options.store.listAutomationRuns(automation.id)) {
-        if (!['queued', 'running'].includes(run.status) || this.options.store.deliveries.forRun(run.id)) continue;
-        const destination = this.options.store.deliveries.destination(run.id);
-        if (!destination) continue; // Historical runs have no recoverable final-delivery intent.
-        const submissions = this.options.store.findSubmissionsByRequestId(`automation:${run.id}`);
-        if (submissions.length > 1) throw new Error(`Ambiguous submission binding for ${run.id}`);
-        const acpRunId = run.acpRunId || submissions[0]?.runId;
-        if (!acpRunId) continue;
-        const final = this.options.store.getRunFinalResult(acpRunId);
-        if (!final) continue;
-        this.options.store.deliveries.enqueue({
-          ownerKind: 'automation', ownerRunId: run.id, workspaceId: destination.workspaceId,
-          platform: destination.platform, route: destination.route,
-          threadId: final.threadId, acpRunId, sourceMessageId: final.messageId, content: final.content,
-        }, () => this.options.store.updateAutomationRun(run.id, {
-          status: 'succeeded', threadId: final.threadId, acpRunId,
-          finishedAt: new Date().toISOString(), deliveryStatus: 'pending',
-        }));
-      }
+      for (const run of this.options.store.listAutomationRuns(automation.id)) this.recoverAutomationExecution(automation, run);
     }
+  }
+
+  private recoverAutomationExecution(automation: AutomationDefinition, run: AutomationRun): void {
+    const target = this.resolveRecoveryTarget(automation, run);
+    if (!target) return;
+    const acpRunId = this.resolveOwnerBoundRunId(run, target.destination, target.delivery);
+    if (!acpRunId) return;
+    if (!run.acpRunId) {
+      const restored = this.options.store.updateAutomationRun(run.id, { threadId: target.destination.threadId, acpRunId });
+      this.options.getAutomationService?.().emitRun?.(restored);
+    }
+    if (target.delivery) return;
+    const final = this.options.store.getRunFinalResult(acpRunId);
+    if (!final || final.threadId !== target.destination.threadId) return;
+    this.options.store.deliveries.enqueue({
+      ownerKind: 'automation', ownerRunId: run.id, workspaceId: target.destination.workspaceId,
+      platform: target.destination.platform, route: target.destination.route,
+      threadId: final.threadId, acpRunId, sourceMessageId: final.messageId, content: final.content,
+    }, () => this.options.store.updateAutomationRun(run.id, {
+      status: 'succeeded', threadId: final.threadId, acpRunId,
+      finishedAt: new Date().toISOString(), deliveryStatus: 'pending',
+    }));
+  }
+
+  private resolveRecoveryTarget(automation: AutomationDefinition, run: AutomationRun): { destination: RecoveryDestination; delivery: RecoveryDelivery } | undefined {
+    if (!['queued', 'running'].includes(run.status)) return undefined;
+    const destination = this.options.store.deliveries.destination(run.id);
+    if (!destination || destination.workspaceId !== automation.workspaceId) return undefined;
+    const thread = this.options.store.getThreadRow(destination.threadId);
+    if (!thread || thread.workspace_id !== automation.workspaceId) return undefined;
+    const delivery = this.options.store.deliveries.forRun(run.id, 'automation');
+    if (delivery && (delivery.workspaceId !== automation.workspaceId || delivery.threadId !== destination.threadId)) return undefined;
+    return { destination, delivery };
+  }
+
+  private resolveOwnerBoundRunId(run: AutomationRun, destination: RecoveryDestination, delivery: RecoveryDelivery): string | undefined {
+    const submissions = this.options.store.submissions.byOwner({ kind: 'automation', id: run.id })
+      .filter((submission) => submission.threadId === destination.threadId && submission.operationKind === 'message');
+    if (submissions.length > 1) return undefined;
+    if (submissions[0] && submissions[0].requestId !== `automation:${run.id}`) return undefined;
+    const persistedRunIds = [run.acpRunId, submissions[0]?.runId, delivery?.acpRunId].filter((id): id is string => Boolean(id));
+    if (new Set(persistedRunIds).size > 1) return undefined;
+    return persistedRunIds[0];
   }
 
   async execute(
@@ -281,8 +318,9 @@ export class AutomationActionExecutor {
         route: automation.delivery.route,
         originKind: automation.originKind,
         timeoutMs,
+        onRunAdmitted: (runId) => trackScheduledRun(this.options, input, automation, bridge, threadId, runId),
+        onRunAdmissionError: (error) => this.options.getAutomationService?.().reportDiagnostic?.('run-admission-correlation', error),
       });
-      trackScheduledRun(this.options, input, automation, bridge, threadId, runId);
       const replyText = final.content;
 
       const { decision, retrospectiveOutcome } = await processPostRunDecision({
@@ -363,8 +401,11 @@ function rememberDeliveryDestination(store: AutomationActionExecutorOptions['sto
 
 function trackScheduledRun(options: AutomationActionExecutorOptions, input: AutomationActionExecutionInput,
   automation: AutomationDefinition, bridge: Awaited<ReturnType<typeof openExecutionBridge>>, threadId: string, runId: string) {
+  if (input.automationRunId) {
+    const run = options.store.updateAutomationRun(input.automationRunId, { threadId, acpRunId: runId });
+    options.getAutomationService?.().emitRun?.(run);
+  }
   if (bridge?.sessionKey) options.getChannelRuntime(automation.delivery.platform)?.markScheduledThreadRunOwned?.(bridge.sessionKey, runId);
-  if (input.automationRunId) options.store.updateAutomationRun(input.automationRunId, { threadId, acpRunId: runId });
 }
 
 async function processPostRunDecision(options: {

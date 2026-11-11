@@ -1,12 +1,32 @@
 import DeliveryRecoveryPanel from './DeliveryRecoveryPanel';
 import type { DeliveryRecord } from '@cc/superai-contracts';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Activity } from 'lucide-react';
 import { listAutomationDeliveries, listAutomationEvaluations, listAutomationRuns, listAutomationScriptVersions } from '@cc/core-sdk/automations';
+import { subscribeEvents } from '@cc/core-sdk/runtime';
 import type { AutomationDefinition, AutomationEvaluation, AutomationRun, AutomationScriptVersion } from '@cc/superai-contracts/automations';
 import { Badge, Button, Modal } from '@/components/ui';
-import { formatEvaluation, formatRun, redactSecretName } from './automation-page-model';
+import { formatEvaluation, redactSecretName } from './automation-page-model';
 import ScriptApprovalModal from './ScriptApprovalModal';
+
+type StatusBadge = { label: string; detail?: string; variant: 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'destructive' | 'outline' | 'info' };
+
+function executionStatus(status: AutomationRun['status']): StatusBadge {
+  const variants = { queued: 'warning', running: 'default', succeeded: 'success', failed: 'danger', skipped: 'secondary' } as const;
+  return { label: `automations.runStatus.${status}`, variant: variants[status] };
+}
+
+function deliveryStatus(run: AutomationRun, delivery: DeliveryRecord | undefined, localDelivery: boolean): StatusBadge {
+  if (delivery) return { label: `delivery.status.${delivery.status}`, detail: delivery.error, variant: delivery.status === 'delivered' ? 'success' : delivery.status === 'failed' || delivery.status === 'unknown' ? 'danger' : 'warning' };
+  if (run.deliveryStatus) {
+    const label = run.deliveryStatus;
+    return { label: localDelivery && label === 'delivered' ? 'automations.localDelivery' : `delivery.status.${label}`, detail: run.deliveryError, variant: label === 'delivered' ? 'success' : label === 'failed' || label === 'unknown' ? 'danger' : 'warning' };
+  }
+  if (run.status === 'failed' || run.status === 'skipped') return { label: 'automations.deliveryNotStarted', variant: 'secondary' as const };
+  if (run.status === 'queued' || run.status === 'running') return { label: 'delivery.status.pending', variant: 'warning' as const };
+  return { label: 'automations.deliveryUnrecorded', variant: 'warning' as const };
+}
 
 type Props = {
   automation: AutomationDefinition | null;
@@ -16,6 +36,7 @@ type Props = {
 };
 
 export default function AutomationDetailModal({ automation, onClose, onChanged, onViewTrace }: Props) {
+  const { t } = useTranslation();
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [evaluations, setEvaluations] = useState<AutomationEvaluation[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -37,18 +58,62 @@ export default function AutomationDetailModal({ automation, onClose, onChanged, 
       setVersion(versions.versions.find((candidate) => candidate.id === condition.approvedVersionId) || null);
     } else setVersion(null);
   };
-  useEffect(() => { void load(); }, [automation?.id]); // selected definition is refreshed by the parent.
+  useEffect(() => {
+    if (!automation) return;
+    void load();
+    return subscribeEvents((event) => {
+      if (event.type === 'automation.run.updated' && event.run.automationId === automation.id) void load();
+    });
+  }, [automation?.id]); // selected definition is refreshed by the parent.
   if (!automation) return null;
+  const visibleRuns = runs.slice(0, 5);
+  const visibleRunIds = new Set(visibleRuns.map((run) => run.id));
+  const olderDeliveries = deliveries.filter((record) => record.ownerKind === 'automation' && !visibleRunIds.has(record.ownerRunId));
   return (
     <>
       <Modal open onClose={onClose} title={automation.title} className="sm:max-w-2xl">
         <div className="space-y-4 text-sm">
-          <DeliveryRecoveryPanel automationId={automation.id} workspaceId={automation.workspaceId} deliveries={deliveries} onChanged={async () => { await load(); await onChanged(); }} />
           {automation.health === 'blocked' && <p className="rounded-md bg-red-50 p-3 text-red-700 dark:bg-red-950/30 dark:text-red-200">Blocked: {automation.blockedReason || 'Automation is unavailable.'} No fallback will run.</p>}
           <section><h3 className="font-medium">Definition</h3><p>Activation: {automation.activation.kind} · Condition: {automation.condition.kind} · Workspace: {automation.workspaceId}</p></section>
           {version && <section className="space-y-1"><h3 className="font-medium">Approved script (read-only)</h3><p>Hash: <code>{version.packageSha256}</code></p><p>Interpreter: {version.interpreterPath} ({version.interpreterVersion})</p><p>Permissions: network {version.networkMode}; internal access {version.internalAccess ? 'allowed' : 'denied'}; read directories {version.allowedReadDirs.length}</p><p>Secrets: {version.secretRefs.length ? version.secretRefs.map(redactSecretName).join(', ') : 'none'}</p>{version.networkMode === 'public' && <p className="text-amber-700 dark:text-amber-200">Public-network access is enabled. Private destinations remain denied.</p>}<p>Test plan: {JSON.stringify(version.testPlan)}</p>{version.testReport && <p>Test report: {JSON.stringify(version.testReport)}</p>}<div><Badge variant={version.status === 'approved' ? 'success' : 'warning'}>{version.status}</Badge> <Button size="sm" variant="secondary" onClick={() => setApprovalOpen(true)}>Approval</Button></div></section>}
           <section><h3 className="font-medium">Recent evaluations</h3>{evaluations.length ? evaluations.slice(0, 5).map((evaluation) => <p key={evaluation.id}>{formatEvaluation(evaluation)} · {evaluation.finishedAt || evaluation.startedAt}</p>) : <p>—</p>}</section>
-          <section><h3 className="font-medium">Recent runs</h3>{runs.length ? runs.slice(0, 5).map((run) => <div key={run.id} className="flex items-center justify-between gap-2 py-0.5"><p className="truncate">{formatRun(run)} · {run.finishedAt || run.createdAt}</p>{onViewTrace && <Button size="sm" variant="ghost" onClick={() => onViewTrace(run.acpRunId || run.id)} className="h-6 px-2 text-xs text-primary hover:bg-primary/10 shrink-0"><Activity className="mr-1 h-3 w-3" /> Trace 轨迹</Button>}</div>) : <p>—</p>}</section>
+          <section className="space-y-2">
+            <h3 className="font-medium">{t('automations.recentRuns', 'Recent runs')}</h3>
+            {visibleRuns.length ? visibleRuns.map((run) => {
+              const delivery = deliveries.find((record) => record.ownerKind === 'automation' && record.ownerRunId === run.id);
+              const execution = executionStatus(run.status);
+              const deliveryView = deliveryStatus(run, delivery, automation.delivery.platform === 'local');
+              const acpRunId = run.acpRunId || delivery?.acpRunId;
+              return <article key={run.id} className="rounded-md border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">{run.finishedAt || run.startedAt || run.createdAt}</span>
+                  <span className="break-all text-right text-xs text-muted-foreground">{run.id}</span>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{t('automations.agentExecution', 'Agent execution')}</p>
+                    <Badge variant={execution.variant}>{t(execution.label)}</Badge>
+                    {run.error && <p className="text-xs text-destructive">{run.error}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{t('automations.deliveryOutcome', 'Delivery')}</p>
+                    <Badge variant={deliveryView.variant}>{t(deliveryView.label)}</Badge>
+                    {deliveryView.detail && <p className="text-xs text-destructive">{deliveryView.detail}</p>}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {onViewTrace && acpRunId
+                    ? <Button size="sm" variant="ghost" onClick={() => onViewTrace(acpRunId)} className="h-7 px-2 text-xs text-primary hover:bg-primary/10"><Activity className="mr-1 h-3 w-3" />{t('automations.viewExecutionTrace', 'View execution trace')}</Button>
+                    : <span className="text-xs text-muted-foreground">{t('automations.traceUnavailable', 'Execution trace is unavailable')}</span>}
+                </div>
+                {delivery && <DeliveryRecoveryPanel automationId={automation.id} workspaceId={automation.workspaceId} deliveries={[delivery]} onChanged={async () => { await load(); await onChanged(); }} />}
+              </article>;
+            }) : <p>—</p>}
+          </section>
+          {olderDeliveries.length > 0 && <section className="space-y-2">
+            <h3 className="font-medium">{t('automations.olderDeliveryRecords', 'Older delivery records')}</h3>
+            <DeliveryRecoveryPanel automationId={automation.id} workspaceId={automation.workspaceId} deliveries={olderDeliveries} onChanged={async () => { await load(); await onChanged(); }} />
+          </section>}
         </div>
       </Modal>
       <ScriptApprovalModal open={approvalOpen} version={version} workspaceId={automation.workspaceId} onClose={() => setApprovalOpen(false)} onChanged={async () => { await load(); await onChanged(); }} />

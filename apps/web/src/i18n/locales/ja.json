@@ -247,7 +247,23 @@
     "enable": "有効化",
     "detail": "詳細",
     "scriptApprovals": "スクリプト承認",
-    "reviewApproval": "確認"
+    "reviewApproval": "確認",
+    "recentRuns": "最近の実行",
+    "agentExecution": "Agent の実行",
+    "deliveryOutcome": "配信",
+    "viewExecutionTrace": "実行トレースを表示",
+    "traceUnavailable": "実行トレースを利用できません",
+    "deliveryNotStarted": "実行未完了のため未送信",
+    "deliveryUnrecorded": "配信記録なし",
+    "localDelivery": "ローカルスレッドで確認できます",
+    "olderDeliveryRecords": "以前の配信記録",
+    "runStatus": {
+      "queued": "待機中",
+      "running": "実行中",
+      "succeeded": "完了",
+      "failed": "失敗",
+      "skipped": "スキップ"
+    }
   },
   "theme": {
     "light": "ライト",
@@ -404,7 +420,16 @@
     "duplicateRisk": "再送によりレポートが重複する可能性を理解しています。",
     "confirm": "配信済みと確認",
     "retry": "配信を再試行",
-    "cancel": "配信を取消"
+    "cancel": "配信を取消",
+    "status": {
+      "pending": "待機中",
+      "sending": "送信中",
+      "delivering": "送信中",
+      "delivered": "配信済み",
+      "failed": "失敗",
+      "unknown": "不明",
+      "cancelled": "取消済み"
+    }
   },
   "butler": {
     "title": "執事",
