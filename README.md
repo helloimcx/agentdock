@@ -25,7 +25,8 @@ flowchart LR
   external[External clients] --> api
   api --> kernel[Daemon kernel and workspace router]
   api --> butler[Butler orchestration]
-  butler -->|Core: worker submit / read-only check| acp
+  butler -->|Core: run-scoped noninteractive worker| acp
+  butler -->|Pending approval: ID · reason · 5m reminder| sqlite
   butler -->|Legacy Channel: bot mentions / callbacks| channels
   butler -->|Task, report, checkpoint, next check and lease| sqlite
   kernel --> sqlite[(SQLite)]
@@ -76,6 +77,10 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 - [管家任务协调](docs/architecture/butler-orchestration.md)
 
 ## New
+
+### 2026-11-12
+
+- **修复 Butler 无人值守 worker 审批阻塞（#289）**：Core transport 的受管 worker 在单次委派运行中使用非交互权限，完成后关闭该会话；终止运行会过期其未决审批，保留审批诊断，并在审批持续五分钟时向管家会话排队一次提醒。该权限允许运行任意命令，不代表只读或沙箱隔离。
 
 ### 2026-11-07
 

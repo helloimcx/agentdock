@@ -9,7 +9,7 @@ import {
   normalizeDesktopBridgeButtonOption,
   normalizePermissionResponse,
 } from '@cc/superai-contracts';
-import { LocalCoreAcpStore } from './local-core-acp-store.js';
+import { LocalCoreAcpStore, redactSecrets } from './local-core-acp-store.js';
 import type { SubmissionStatus } from './store/submission-store.js';
 import type { EventBus } from '@cc/plugin-sdk';
 import type {
@@ -728,9 +728,11 @@ export class LocalCoreAcpBackend {
       runtimeId: flow.config.agentType,
     });
     const errorContent = formatUserError(errorInfo);
+    this.options.store.submissions.appendRunError(flow.runId, redactSecrets(errorInfo.message).slice(0, 2000));
     this.options.store.updateRun(flow.runId, flow.threadId, 'failed');
+    const submissionError = this.options.store.submissions.byRun(flow.runId)?.error || errorInfo.message;
     this.turnCoordinator.endRun(flow.runId, 'failed');
-    this.registerTaskOutcomeForRun(flow, { status: 'failed', error: errorInfo.message });
+    this.registerTaskOutcomeForRun(flow, { status: 'failed', error: submissionError });
     this.options.store.appendMessage(flow.threadId, 'assistant', errorContent, 'final');
     this.options.eventBus.emit({
       type: 'thread.message.accepted',
@@ -792,7 +794,8 @@ export class LocalCoreAcpBackend {
       session.promptPromise = null;
       session.schedulerJobCreatedByRun.delete(runId);
     }
-    this.sessionCoordinator.releaseThreadSession(threadId, config);
+    if (session?.launchPermissionMode === 'bypassPermissions') this.sessionCoordinator.closeThreadSession(threadId);
+    else this.sessionCoordinator.releaseThreadSession(threadId, config);
     this.options.runThreadMap.delete(runId);
   }
 
@@ -846,7 +849,6 @@ export class LocalCoreAcpBackend {
 
   private handleTransportSessionClosed(session: AcpSessionState, error: Error) {
     this.turnCoordinator.flushAssistantPartial(session);
-    this.options.store.threadRuntime.expireAcpPermissions(session.threadId, session.currentRunId || undefined);
     if (session.currentRunId) void this.screenSessions.stop(session.currentRunId);
     const row = this.options.store.getThreadRow(session.threadId);
     const runtimeId = session.currentTurn?.agentType || row?.agent_type || '';

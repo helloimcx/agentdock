@@ -482,6 +482,7 @@ export class ButlerService {
     for (const task of tasks) {
       try { await this.dispatcher.reconcile(task); } catch (error) { this.options.onError?.(error); }
     }
+    for (const task of this.store.butler.list()) this.notifications.recordApprovalReminders(task);
     await this.notifications.flush();
   }
 }

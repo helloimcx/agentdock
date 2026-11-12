@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "bac1b333-590c-42ef-a76d-61a6b23999b5",
+  "receiptId": "5b346c45-9fea-4725-a289-594706bec142",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "/Users/momo/.codex/worktrees/mesh-operation-recovery/agentdock/docs/architecture/system-architecture.json",
-  "output": "/Users/momo/.codex/worktrees/mesh-operation-recovery/agentdock/docs/architecture/system-architecture.html",
+  "input": "/Users/momo/.codex/worktrees/issue-289/agentdock/docs/architecture/system-architecture.json",
+  "output": "/Users/momo/.codex/worktrees/issue-289/agentdock/docs/architecture/system-architecture.html",
   "specification": {
-    "sha256": "dfeaf7b37fc9a14d34457e97cf997e6aa52384544fc60673ba9a3d1f9eef5002",
-    "bytes": 11123
+    "sha256": "24fde04d0e00c40c9219060e4193abce6bce7f0d73a3b965e58eb5a8ed7deea3",
+    "bytes": 11229
   },
   "artifact": {
-    "sha256": "3e9934e0d58e1d3363886179fe40deebfa8eded2196206d1d3e965c38d03e053",
-    "bytes": 850875
+    "sha256": "e82476303f568d5d95fececab7e555435bbe3cbb533b6dd34701924068b4bc5d",
+    "bytes": 851094
   }
 }

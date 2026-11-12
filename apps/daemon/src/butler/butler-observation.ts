@@ -5,25 +5,31 @@ import type { ThreadSubmission } from '../acp/store/submission-store.js';
 /** Exact submission/run domain, never the latest response in a reused child thread. */
 export function observeDelegation(store: LocalCoreAcpStore, delegation: ButlerDelegation): Partial<ButlerDelegation> {
   if (!delegation.runId || !delegation.threadId) return {};
-  if (!store.getThreadRow(delegation.threadId)) return { status: 'failed', error: 'Execution thread was removed.' };
+  if (!store.getThreadRow(delegation.threadId)) return { status: 'failed', error: 'Execution thread was removed.', blockedReason: undefined };
   const operation = store.butler.operations(delegation.id).at(-1);
-  if (operation?.status === 'failed' && operation.runId === delegation.runId) return { status: 'failed', summary: undefined, error: operation.error };
+  if (operation?.status === 'failed' && operation.runId === delegation.runId) return { status: 'failed', summary: undefined, error: operation.error,
+    approvalIds: [], blockedReason: undefined };
   const submission = store.submissions.byRun(delegation.runId);
-  if (!submission) return { status: 'waiting_for_user', error: 'Execution record is unavailable; confirm before retrying.' };
+  if (!submission) return { status: 'waiting_for_user', error: 'Execution record is unavailable; confirm before retrying.',
+    approvalIds: [], blockedReason: undefined };
   const snapshot = store.getThreadExecutionSnapshot(delegation.threadId);
   const permissions = snapshot.permissions.filter((entry) => entry.runId === delegation.runId && entry.actionable);
   const approvalIds = permissions.map((entry) => entry.approvalId);
-  const terminal = terminalResult(store, submission, approvalIds);
+  const blockedReason = approvalIds.length ? 'pending_approval' : undefined;
+  const terminal = terminalResult(store, submission, approvalIds, blockedReason);
   if (terminal) return terminal;
   const run = snapshot.runs.find((entry) => entry.id === delegation.runId);
-  return { status: approvalIds.length || run?.status === 'awaiting_input' ? 'waiting_for_user' : 'running', approvalIds, error: undefined };
+  return { status: approvalIds.length || run?.status === 'awaiting_input' ? 'waiting_for_user' : 'running', approvalIds,
+    blockedReason, error: undefined };
 }
 
-function terminalResult(store: LocalCoreAcpStore, submission: ThreadSubmission, approvalIds: string[]): Partial<ButlerDelegation> | undefined {
-  if (submission.status === 'unknown') return { status: 'waiting_for_user', approvalIds, error: submission.error || 'Execution outcome is uncertain; it was not replayed.' };
-  if (submission.status === 'completed') return { status: 'completed', approvalIds: [], summary: store.submissions.getFinal(submission.runId)?.content || '', error: undefined };
-  if (submission.status === 'failed') return { status: 'failed', approvalIds: [], error: submission.error || 'Agent execution failed.' };
-  if (submission.status === 'interrupted') return { status: 'cancelled', approvalIds: [], error: submission.error };
+function terminalResult(store: LocalCoreAcpStore, submission: ThreadSubmission, approvalIds: string[], blockedReason?: ButlerDelegation['blockedReason']): Partial<ButlerDelegation> | undefined {
+  if (submission.status === 'unknown') return { status: 'waiting_for_user', approvalIds, blockedReason,
+    error: submission.error || 'Execution outcome is uncertain; it was not replayed.' };
+  if (submission.status === 'completed') return { status: 'completed', approvalIds: [], blockedReason: undefined,
+    summary: store.submissions.getFinal(submission.runId)?.content || '', error: undefined };
+  if (submission.status === 'failed') return { status: 'failed', approvalIds: [], blockedReason: undefined, error: submission.error || 'Agent execution failed.' };
+  if (submission.status === 'interrupted') return { status: 'cancelled', approvalIds: [], blockedReason: undefined, error: submission.error };
   return undefined;
 }
 
