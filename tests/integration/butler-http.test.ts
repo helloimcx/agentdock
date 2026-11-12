@@ -16,17 +16,39 @@ const ACP_FIXTURE = `
 import { createInterface } from 'node:readline';
 import { createHash } from 'node:crypto';
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
+let permissionMode = 'default';
+let pendingPromptId;
+const pendingPermissionId = 'fixture-butler-permission';
 for await (const line of createInterface({ input: process.stdin })) {
   const input = JSON.parse(line);
   if (input.method === 'initialize') send({ jsonrpc: '2.0', id: input.id, result: { protocolVersion: 1, agentCapabilities: {} } });
-  else if (input.method === 'session/new') send({ jsonrpc: '2.0', id: input.id, result: { sessionId: 'controlled-session' } });
+  else if (input.method === 'session/new') {
+    permissionMode = input.params?._meta?.claudeCode?.options?.permissionMode || 'default';
+    send({ jsonrpc: '2.0', id: input.id, result: { sessionId: 'controlled-session' } });
+  }
   else if (input.method === 'session/prompt') {
-    send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: input.params.sessionId, update: {
-      sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Verified fixture result for ' + process.env.LOCAL_AI_WORKSPACE_ID
-        + '; Butler capability=' + (process.env.AGENTDOCK_BUTLER_CONTEXT_TOKEN
-          ? createHash('sha256').update(process.env.AGENTDOCK_BUTLER_CONTEXT_TOKEN).digest('hex').slice(0, 12) : 'none') }
+    if (permissionMode === 'bypassPermissions') {
+      pendingPromptId = input.id;
+      send({ jsonrpc: '2.0', id: pendingPermissionId, method: 'session/request_permission', params: {
+        toolCall: { title: 'Terminal', parameters: { command: 'python3 status.py --help' } },
+        options: [{ optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' }, { optionId: 'reject', name: 'Reject', kind: 'reject_once' }],
+      } });
+    } else {
+      send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: input.params.sessionId, update: {
+        sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Verified fixture result for ' + process.env.LOCAL_AI_WORKSPACE_ID
+          + '; Butler capability=' + (process.env.AGENTDOCK_BUTLER_CONTEXT_TOKEN
+            ? createHash('sha256').update(process.env.AGENTDOCK_BUTLER_CONTEXT_TOKEN).digest('hex').slice(0, 12) : 'none') }
+      } } });
+      send({ jsonrpc: '2.0', id: input.id, result: { stopReason: 'end_turn' } });
+    }
+  } else if (input.id === pendingPermissionId) {
+    const outcome = input.result?.outcome?.outcome || 'missing';
+    send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'controlled-session', update: {
+      sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Permission=' + outcome + '; launchMode=' + permissionMode
+        + '; workspace=' + process.env.LOCAL_AI_WORKSPACE_ID }
     } } });
-    send({ jsonrpc: '2.0', id: input.id, result: { stopReason: 'end_turn' } });
+    send({ jsonrpc: '2.0', id: pendingPromptId, result: { stopReason: 'end_turn' } });
+    pendingPromptId = undefined;
   } else if (input.id !== undefined) send({ jsonrpc: '2.0', id: input.id, result: {} });
 }
 `;
@@ -133,6 +155,26 @@ test('real Butler HTTP and CLI delegate through ACP processes, persist facts, sc
     assert.equal(JSON.parse(output).status, 'reviewing');
     t.diagnostic(`HTTP+ACP goal: ${(performance.now() - start).toFixed(1)} ms; CLI read: ${(performance.now() - cliStart).toFixed(1)} ms`);
     assert.equal((await request('POST', `/butler/tasks/${taskId}/complete`, { ownerThreadId: owner, summary: 'Verified both deliverables' })).payload.data.status, 'completed');
+    const coreProfile = await request('PUT', '/butler/profile', { managerBotId, managedBots: roster, transport: 'core', threadId: owner });
+    assert.equal(coreProfile.status, 200);
+    const coreTaskResponse = await request('POST', '/butler/tasks', { ownerThreadId: owner,
+      requestId: 'request:core-worker-permission:289', title: 'Check core worker permission',
+      completionCriteria: 'Run the controlled ACP permission check',
+      assignments: [{ key: 'permission', botId: researchBotId, title: 'Permission check', prompt: 'Run the controlled permission check' }] });
+    assert.equal(coreTaskResponse.status, 200, JSON.stringify(coreTaskResponse.payload));
+    const coreTaskId = coreTaskResponse.payload.data.id as string;
+    await waitFor(async () => {
+      await service.reconcile();
+      const delegation = service.get(coreTaskId, owner).delegations[0];
+      return Boolean(delegation?.runId && store.submissions.byRun(delegation.runId)?.status === 'completed');
+    });
+    const coreDelegation = service.get(coreTaskId, owner).delegations[0];
+    const coreRunContent = store.getThread(coreDelegation.threadId!, []).messages
+      .filter((message) => message.role === 'assistant').map((message) => message.content).join('\n');
+    assert.match(coreRunContent, /Permission=selected; launchMode=bypassPermissions/);
+    assert.ok(!store.listRunApprovals(coreDelegation.threadId!, coreDelegation.runId!).some((approval) => approval.status === 'pending'));
+    assert.notEqual(store.getThreadRow(coreDelegation.threadId!)?.agent_mode, 'bypassPermissions',
+      'the worker launch mode must not persist to the worker thread');
     const ownerRun = await router.sendThreadMessage(owner, '现在怎么样？', { requestId: 'request:71333717-26ce-4144-a2e2-92d4a0a7fc39' });
     assert.ok(store.getThread(owner, []).messages.some((message) => message.role === 'user' && message.content.includes('[Butler Role]')));
     await waitFor(async () => store.submissions.byRun(ownerRun.runId)?.status === 'completed');

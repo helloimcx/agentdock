@@ -323,6 +323,24 @@ export class LocalThreadStore {
     return { id, timestamp };
   }
 
+  removeQueuedUserMessage(threadId: string, messageId: string): boolean {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const message = this.db.prepare('SELECT role FROM messages WHERE id=? AND thread_id=?').get(messageId, threadId) as { role: string } | undefined;
+      if (message?.role !== 'user') { this.db.exec('ROLLBACK'); return false; }
+      this.db.prepare('DELETE FROM messages WHERE id=? AND thread_id=?').run(messageId, threadId);
+      const latest = this.db.prepare('SELECT content FROM messages WHERE thread_id=? ORDER BY seq DESC LIMIT 1').get(threadId) as { content: string } | undefined;
+      this.db.prepare(`UPDATE threads SET history_count=(SELECT COUNT(*) FROM messages WHERE thread_id=?),
+        updated_at=?, excerpt=? WHERE id=?`).run(threadId, new Date().toISOString(),
+        latest ? normalizeMessageContent(latest.content) : '', threadId);
+      this.db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   private insertMessageRow(
     threadId: string,
     id: string | undefined,
@@ -331,7 +349,7 @@ export class LocalThreadStore {
   ) {
     const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
-    const messageId = id ?? `${timestamp}-${role}-${nextSeq}`;
+    const messageId = id ?? `${timestamp}-${role}-${nextSeq}-${randomUUID()}`;
     this.db.prepare(`
       INSERT INTO messages (${MESSAGE_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

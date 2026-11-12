@@ -63,7 +63,8 @@
       "col": 2,
       "type": "security",
       "label": "授权与内部派发",
-      "sublabel": "凭证绑定 run"
+      "sublabel": "Core worker: bypassPermissions per run",
+      "width": 192
     },
     {
       "id": "worker",
@@ -71,7 +72,8 @@
       "col": 3,
       "type": "backend",
       "label": "工作区 Agent",
-      "sublabel": "独立会话执行一轮"
+      "sublabel": "任意命令 · 结束关闭权限会话",
+      "width": 140
     },
     {
       "id": "report",
@@ -96,8 +98,8 @@
       "lane": "coordination",
       "col": 5,
       "type": "frontend",
-      "label": "管家回复用户",
-      "sublabel": "结论或需要用户决定"
+      "label": "管家会话通知",
+      "sublabel": "结论 · 审批提醒"
     },
     {
       "id": "watch",
@@ -151,7 +153,8 @@
       "from": "worker",
       "to": "ledger",
       "label": "Side effect ID · phase=checkpoint",
-      "role": "async"
+      "role": "async",
+      "channelY": 68
     },
     {
       "id": "result",
@@ -252,6 +255,14 @@
       "title": "明确拒绝与不确定投递分开",
       "items": [
         "首次 Channel 提交收到 HTTP 400 时记为失败；超时及其他未确认响应继续保持 unknown，不自动重发。配置保存时只在本地收尾精确记录为 HTTP 400 且没有 runId 或平台消息 ID 的历史提交，不向任何 Bot 补发或取消。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Core worker 权限限定在一次 run",
+      "items": [
+        "Core transport 的 worker 提交以 bypassPermissions 执行，可运行任意命令；该模式不是只读 allowlist 或 OS 沙箱。运行结束即关闭 ACP 会话，普通用户 turn 不继承该权限；旧 Channel worker 保持交互审批。",
+        "终态 run 仅过期该 thread/run 尚待处理的 agent approval，并在失败诊断保留脱敏审批 ID 与命令摘要。task info 仅在当前审批可操作时返回 blockedReason=pending_approval；待批五分钟后向 owner 会话排队一次提醒，发送前重新确认状态。"
       ]
     }
   ]

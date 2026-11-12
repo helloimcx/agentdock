@@ -139,6 +139,8 @@ export interface ButlerDelegation extends ButlerAssignmentInput {
   resultMessageId?: string;
   summary?: string;
   error?: string;
+  /** Machine-readable cause when this exact worker run is blocked on a live permission decision. */
+  blockedReason?: 'pending_approval';
   approvalIds: string[];
   updatedAt: string;
   pendingFollowups: string[];

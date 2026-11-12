@@ -106,7 +106,17 @@ export class LocalSubmissionStore {
         AND (prior.status IN ('dispatching', 'running') OR (prior.status = 'pending' AND prior.rowid < thread_submissions.rowid))))`).run(new Date().toISOString(), id, bypassQueue ? 1 : 0).changes === 1;
   }
   finish(id: string, status: SubmissionStatus, result?: unknown, error?: string) {
-    this.db.prepare('UPDATE thread_submissions SET status = ?, result_json = ?, error = ?, updated_at = ? WHERE id = ?').run(status, result === undefined ? null : JSON.stringify(result), error ?? null, new Date().toISOString(), id);
+    const previous = this.db.prepare('SELECT error FROM thread_submissions WHERE id=?').get(id) as { error: string | null } | undefined;
+    const retainedError = status === 'failed' || status === 'interrupted' || status === 'unknown' ? previous?.error : null;
+    const finalError = error && retainedError && !error.includes(retainedError) ? `${error} ${retainedError}` : error ?? retainedError ?? null;
+    this.db.prepare('UPDATE thread_submissions SET status = ?, result_json = ?, error = ?, updated_at = ? WHERE id = ?').run(status, result === undefined ? null : JSON.stringify(result), finalError, new Date().toISOString(), id);
+  }
+  appendRunError(runId: string, message: string) {
+    const row = this.db.prepare('SELECT id,error FROM thread_submissions WHERE run_id=?').get(runId) as { id: string; error: string | null } | undefined;
+    if (!row) return;
+    const error = row.error ? `${row.error} ${message}` : message;
+    this.db.prepare("UPDATE thread_submissions SET error=?,updated_at=? WHERE id=? AND status IN ('dispatching','running')")
+      .run(error, new Date().toISOString(), row.id);
   }
   reconcileInterrupted() {
     const rows = this.db.prepare("SELECT * FROM thread_submissions WHERE status IN ('dispatching', 'running') AND runtime_type != 'pi-durable'").all() as unknown as SubmissionRow[];
