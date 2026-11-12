@@ -15,7 +15,8 @@ const PERMISSION_OPTIONS: PermissionOption[] = [
   { optionId: 'reject', name: 'Reject', kind: 'reject_once', normalizedAction: 'deny' },
 ];
 
-function createSession(threadId: string, runId: string, withPendingPermission: boolean) {
+function createSession(threadId: string, runId: string, withPendingPermission: boolean | PermissionOption[]) {
+  const pendingOptions = Array.isArray(withPendingPermission) ? withPendingPermission : PERMISSION_OPTIONS;
   const session: Record<string, unknown> = {
     threadId,
     bridgeSessionKey: `session:${threadId}`,
@@ -41,7 +42,7 @@ function createSession(threadId: string, runId: string, withPendingPermission: b
       requestId: 41,
       toolTitle: 'Terminal: ls -la ~/Desktop',
       isSchedulerAdd: false,
-      options: PERMISSION_OPTIONS,
+      options: pendingOptions,
     });
   }
   return session as any;
@@ -53,13 +54,7 @@ function cleanup(backend: LocalCoreAcpBackend, store: LocalCoreAcpStore, dir: st
   rmSync(dir, { recursive: true, force: true });
 }
 
-test('allow-all permission approval persists across ACP session rebuilds', async () => {
-  const bridgeEvents: any[] = [];
-  const sentPayloads: any[] = [];
-  const dir = mkdtempSync(join(tmpdir(), 'thread-allow-all-'));
-  const store = new LocalCoreAcpStore(dir);
-  const thread = store.createThread('workspace-a', 'Allow all thread', 'claudecode');
-  const firstSession = createSession(thread.id, 'run-1', true);
+function createBackend(store: LocalCoreAcpStore, bridgeEvents: any[], sentPayloads: any[]) {
   const backend = new LocalCoreAcpBackend({
     store,
     runThreadMap: new Map<string, string>(),
@@ -71,11 +66,22 @@ test('allow-all permission approval persists across ACP session rebuilds', async
       deleteJob: async () => {},
     },
   } as any);
-  (backend as any).sessionCoordinator.getSession = () => firstSession;
   (backend as any).transport.sendRaw = (_target: any, payload: any) => {
     sentPayloads.push(payload);
     return true;
   };
+  return backend;
+}
+
+test('allow-all permission approval persists across ACP session rebuilds', async () => {
+  const bridgeEvents: any[] = [];
+  const sentPayloads: any[] = [];
+  const dir = mkdtempSync(join(tmpdir(), 'thread-allow-all-'));
+  const store = new LocalCoreAcpStore(dir);
+  const thread = store.createThread('workspace-a', 'Allow all thread', 'claudecode');
+  const firstSession = createSession(thread.id, 'run-1', true);
+  const backend = createBackend(store, bridgeEvents, sentPayloads);
+  (backend as any).sessionCoordinator.getSession = () => firstSession;
 
   await backend.sendThreadAction(thread.id, 'allow all');
 
@@ -112,22 +118,8 @@ test('deny reply without a pending permission revokes the thread allow-all memor
   const store = new LocalCoreAcpStore(dir);
   const thread = store.createThread('workspace-a', 'Deny thread', 'claudecode');
   const grantSession = createSession(thread.id, 'run-1', true);
-  const backend = new LocalCoreAcpBackend({
-    store,
-    runThreadMap: new Map<string, string>(),
-    emitBridge: (event: any) => bridgeEvents.push(event),
-    eventBus: { emit: () => {}, on: () => () => {} },
-    scheduler: {
-      createJob: async () => { throw new Error('not used'); },
-      listJobsForThread: async () => [],
-      deleteJob: async () => {},
-    },
-  } as any);
+  const backend = createBackend(store, bridgeEvents, sentPayloads);
   (backend as any).sessionCoordinator.getSession = () => grantSession;
-  (backend as any).transport.sendRaw = (_target: any, payload: any) => {
-    sentPayloads.push(payload);
-    return true;
-  };
 
   await backend.sendThreadAction(thread.id, 'allow all');
 
@@ -169,6 +161,70 @@ test('deny reply without a pending permission revokes the thread allow-all memor
   cleanup(backend, store, dir);
 });
 
+test('advertised allow-all reply without an offered allow-all option guides instead of failing', async () => {
+  const bridgeEvents: any[] = [];
+  const sentPayloads: any[] = [];
+  const dir = mkdtempSync(join(tmpdir(), 'thread-allow-all-'));
+  const store = new LocalCoreAcpStore(dir);
+  const thread = store.createThread('workspace-a', 'No persistent option thread', 'claudecode');
+  // Some runtimes only offer one-time allow/reject for a tool, yet the channel
+  // cards still advertise `allow all` as a text reply (prod: Obsidian-Personal
+  // 2026-11-12 "Unknown permission option: allow all").
+  const session = createSession(thread.id, 'run-1', [
+    { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once', normalizedAction: 'allow' },
+    { optionId: 'reject', name: 'Reject', kind: 'reject_once', normalizedAction: 'deny' },
+  ]);
+  const backend = createBackend(store, bridgeEvents, sentPayloads);
+  (backend as any).sessionCoordinator.getSession = () => session;
+
+  await backend.sendThreadAction(thread.id, 'allow all');
+
+  assert.equal((backend as any).threadAllowAll.has(thread.id), false, 'guidance must not grant allow-all');
+  assert.equal(sentPayloads.length, 0, 'no option may be selected on the agent side');
+  assert.equal(session.pendingPermissionByRun.size, 1, 'decision must stay pending');
+  const guidanceReplies = bridgeEvents.filter((event) => event.type === 'reply');
+  assert.equal(guidanceReplies.length, 1, 'guidance must be posted exactly once');
+  assert.equal(
+    String(guidanceReplies[0]?.content || ''),
+    '本次工具确认未提供“始终允许”选项，该回复无法执行。当前可回复：allow / deny。',
+  );
+
+  bridgeEvents.length = 0;
+  sentPayloads.length = 0;
+  await backend.sendThreadAction(thread.id, 'allow');
+  assert.deepEqual(sentPayloads[0]?.result?.outcome, { outcome: 'selected', optionId: 'allow-once' });
+  assert.equal(session.pendingPermissionByRun.size, 0, 'the offered option must still be answerable');
+  assert.equal(bridgeEvents.filter((event) => event.type === 'reply').length, 0, 'a matched option must not produce guidance');
+
+  cleanup(backend, store, dir);
+});
+
+test('advertised deny reply without an offered deny option guides instead of failing', async () => {
+  const bridgeEvents: any[] = [];
+  const sentPayloads: any[] = [];
+  const dir = mkdtempSync(join(tmpdir(), 'thread-allow-all-'));
+  const store = new LocalCoreAcpStore(dir);
+  const thread = store.createThread('workspace-a', 'No deny option thread', 'claudecode');
+  const session = createSession(thread.id, 'run-1', [
+    { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once', normalizedAction: 'allow' },
+  ]);
+  const backend = createBackend(store, bridgeEvents, sentPayloads);
+  (backend as any).sessionCoordinator.getSession = () => session;
+
+  await backend.sendThreadAction(thread.id, 'deny');
+
+  assert.equal(sentPayloads.length, 0, 'no option may be selected on the agent side');
+  assert.equal(session.pendingPermissionByRun.size, 1, 'decision must stay pending');
+  const guidanceReplies = bridgeEvents.filter((event) => event.type === 'reply');
+  assert.equal(guidanceReplies.length, 1, 'guidance must be posted exactly once');
+  assert.equal(
+    String(guidanceReplies[0]?.content || ''),
+    '本次工具确认未提供“拒绝”选项，该回复无法执行。当前可回复：allow。',
+  );
+
+  cleanup(backend, store, dir);
+});
+
 test('deleting a thread clears its allow-all memory', async () => {
   const bridgeEvents: any[] = [];
   const sentPayloads: any[] = [];
@@ -176,22 +232,8 @@ test('deleting a thread clears its allow-all memory', async () => {
   const store = new LocalCoreAcpStore(dir);
   const thread = store.createThread('workspace-a', 'Delete thread', 'claudecode');
   const session = createSession(thread.id, 'run-1', true);
-  const backend = new LocalCoreAcpBackend({
-    store,
-    runThreadMap: new Map<string, string>(),
-    emitBridge: (event: any) => bridgeEvents.push(event),
-    eventBus: { emit: () => {}, on: () => () => {} },
-    scheduler: {
-      createJob: async () => { throw new Error('not used'); },
-      listJobsForThread: async () => [],
-      deleteJob: async () => {},
-    },
-  } as any);
+  const backend = createBackend(store, bridgeEvents, sentPayloads);
   (backend as any).sessionCoordinator.getSession = () => session;
-  (backend as any).transport.sendRaw = (_target: any, payload: any) => {
-    sentPayloads.push(payload);
-    return true;
-  };
 
   await backend.sendThreadAction(thread.id, 'allow all');
   assert.equal((backend as any).threadAllowAll.has(thread.id), true, 'grant should be remembered');
@@ -209,22 +251,8 @@ test('allow-once permission response does not grant the thread allow-all memory'
   const store = new LocalCoreAcpStore(dir);
   const thread = store.createThread('workspace-a', 'Allow once thread', 'claudecode');
   const firstSession = createSession(thread.id, 'run-1', true);
-  const backend = new LocalCoreAcpBackend({
-    store,
-    runThreadMap: new Map<string, string>(),
-    emitBridge: (event: any) => bridgeEvents.push(event),
-    eventBus: { emit: () => {}, on: () => () => {} },
-    scheduler: {
-      createJob: async () => { throw new Error('not used'); },
-      listJobsForThread: async () => [],
-      deleteJob: async () => {},
-    },
-  } as any);
+  const backend = createBackend(store, bridgeEvents, sentPayloads);
   (backend as any).sessionCoordinator.getSession = () => firstSession;
-  (backend as any).transport.sendRaw = (_target: any, payload: any) => {
-    sentPayloads.push(payload);
-    return true;
-  };
 
   await backend.sendThreadAction(thread.id, 'allow');
 
