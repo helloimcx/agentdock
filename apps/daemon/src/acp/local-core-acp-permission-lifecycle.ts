@@ -42,6 +42,15 @@ export function isThreadAllowAllRevokeIntent(value: unknown) {
   return THREAD_ALLOW_ALL_REVOKE_INTENTS.has(String(value || '').trim().toLowerCase());
 }
 
+// Channel cards advertise `allow` / `allow all` / `deny` as text replies
+// regardless of which options the runtime offered; replies are matched
+// against this exact vocabulary.
+const PERMISSION_ACTION_INTENTS = new Set(['allow', 'allow all', 'deny']);
+
+export function isPermissionActionIntent(value: unknown) {
+  return PERMISSION_ACTION_INTENTS.has(String(value || '').trim().toLowerCase());
+}
+
 export function createRunningPermissionRequest(input: {
   requestId: number | string;
   toolTitle: string;
