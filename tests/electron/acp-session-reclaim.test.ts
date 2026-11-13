@@ -246,6 +246,75 @@ test('ACP session coordinator restores session via session/load after idle recla
   }
 });
 
+test('mesh-mode session/new carries the LAC context env injected into agentdock-lac-control', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-session-mesh-context-'));
+  let store: LocalCoreAcpStore | null = null;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-test', 'Mesh thread');
+    const newSessionParams: any[] = [];
+
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+            launchPermissionMode: '',
+          };
+        },
+        initializeSession: async () => {},
+        request: async (_session: any, method: string, params: any) => {
+          if (method === 'session/new') newSessionParams.push(params);
+          return { sessionId: 'session:agentdock::mesh::7c1e5d92-1f2a-4c33-9a41-6f8d2f5a9c11' };
+        },
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: () => true,
+      } as any,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+    });
+
+    // bindMeshLacMcpContext injects the trusted runtime env (workspace/thread
+    // identity + LAC base URL) into the lac-control MCP server only for
+    // execution.mode === 'mesh'; the session/new payload must carry it.
+    const meshConfig = {
+      workspaceId: 'workspace-test',
+      agentType: 'claudecode',
+      command: 'claude',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-test',
+      model: '',
+      execution: { mode: 'mesh', transport: 'remote-mesh-shell', nodeId: 'node:7c1e5d92-1f2a-4c33-9a41-6f8d2f5a9c11' },
+      mcpServers: [{ name: 'agentdock-lac-control', type: 'stdio', command: 'node', args: ['lac.js'], env: {} }],
+    } as LocalCoreProjectConfig;
+
+    await coordinator.ensureSession(thread.id, 'bridge:mesh', meshConfig);
+
+    assert.equal(newSessionParams.length, 1);
+    const lacServer = newSessionParams[0].mcpServers.find((entry: any) => entry.name === 'agentdock-lac-control');
+    assert.ok(lacServer, 'lac-control server must be present in the session/new payload');
+    const lacEnv = Object.fromEntries((lacServer.env || []).map((pair: any) => [pair.name, pair.value]));
+    assert.equal(lacEnv.ELECTRON_RUN_AS_NODE, '1');
+    assert.equal(lacEnv.LOCAL_AI_THREAD_ID, thread.id);
+    assert.equal(lacEnv.LOCAL_AI_WORKSPACE_ID, 'workspace-test');
+    assert.ok(lacEnv.LOCAL_AI_CORE_BASE, 'LAC base URL must be bound');
+
+    coordinator.closeAll();
+  } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('LocalCoreAcpBackend evicts runThreadMap entry once the run reaches a terminal state', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-backend-run-thread-map-'));
   let store: LocalCoreAcpStore | null = null;
