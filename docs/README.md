@@ -9,6 +9,8 @@ This directory is organized by documentation purpose.
 
 ## Architecture
 
+- [Public Architecture Overview](architecture/public-overview.md): English control/execution/device boundaries and implementation evidence.
+
 - [Overview](architecture/overview.md): current Local AI Core-first architecture.
 - [AgentDock Mesh](architecture/mesh.md): device pairing, outbound connections, capabilities and remote request lifecycle.
 - [Cloud Sandbox And External Agent API](architecture/cloud-sandbox-and-external-api.md): OpenSandbox cloud execution, external project/thread/run mapping, and per-run SSE.
@@ -30,6 +32,11 @@ This directory is organized by documentation purpose.
 - [Workspace Task Model](features/workspace-task-model.md): Phase 2 workspace registry and task model.
 - [Device And Workspace Registry](features/device-workspace-registry.md): Phase 0 registry ownership and device contract draft.
 - [Security, Approval, And Audit](features/security-approval.md): Phase 3 permission model, approvals, command risk, and audit log.
+
+## Technical Guides and Demos
+
+- [Agent Session Recovery Case](guides/agent-session-recovery.md): ACP session reattachment, Pi Durable distinction and restart validation.
+- [Cloud Sandbox End-to-End Demo](demos/cloud-sandbox.md): reproducible Compose/OpenSandbox/external-run/SSE walkthrough.
 
 ## Operations
 
