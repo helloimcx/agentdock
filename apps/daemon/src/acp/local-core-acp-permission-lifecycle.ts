@@ -1,7 +1,6 @@
 import { normalizePermissionOptionAction } from './workspace-acp-permissions.js';
+import type { RunningToolCall } from './local-core-acp-progress.js';
 import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
-
-type RunningToolCall = NonNullable<NonNullable<AcpSessionState['currentTurn']>['pendingToolCalls']>[string];
 
 export type PermissionApprovalInput = {
   threadId: string;
@@ -41,6 +40,15 @@ const THREAD_ALLOW_ALL_REVOKE_INTENTS = new Set(['deny', '拒绝', '撤销']);
 
 export function isThreadAllowAllRevokeIntent(value: unknown) {
   return THREAD_ALLOW_ALL_REVOKE_INTENTS.has(String(value || '').trim().toLowerCase());
+}
+
+// Channel cards advertise `allow` / `allow all` / `deny` as text replies
+// regardless of which options the runtime offered; replies are matched
+// against this exact vocabulary.
+const PERMISSION_ACTION_INTENTS = new Set(['allow', 'allow all', 'deny']);
+
+export function isPermissionActionIntent(value: unknown) {
+  return PERMISSION_ACTION_INTENTS.has(String(value || '').trim().toLowerCase());
 }
 
 export function createRunningPermissionRequest(input: {

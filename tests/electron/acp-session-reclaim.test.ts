@@ -246,6 +246,75 @@ test('ACP session coordinator restores session via session/load after idle recla
   }
 });
 
+test('mesh-mode session/new carries the LAC context env injected into agentdock-lac-control', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-session-mesh-context-'));
+  let store: LocalCoreAcpStore | null = null;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-test', 'Mesh thread');
+    const newSessionParams: any[] = [];
+
+    const coordinator = new LocalCoreAcpSessionCoordinator({
+      store,
+      transport: {
+        spawnSession(input: any) {
+          return {
+            threadId: input.threadId,
+            bridgeSessionKey: input.bridgeSessionKey,
+            closed: false,
+            sessionId: '',
+            supportsLoad: false,
+            pendingPermissionByRun: new Map(),
+            schedulerJobCreatedByRun: new Map(),
+            launchPermissionMode: '',
+          };
+        },
+        initializeSession: async () => {},
+        request: async (_session: any, method: string, params: any) => {
+          if (method === 'session/new') newSessionParams.push(params);
+          return { sessionId: 'session:agentdock::mesh::7c1e5d92-1f2a-4c33-9a41-6f8d2f5a9c11' };
+        },
+        closeSession: () => {},
+        closeSessionWithError: () => {},
+        sendRaw: () => true,
+      } as any,
+      runThreadMap: new Map(),
+      emitBridge: () => {},
+    });
+
+    // bindMeshLacMcpContext injects the trusted runtime env (workspace/thread
+    // identity + LAC base URL) into the lac-control MCP server only for
+    // execution.mode === 'mesh'; the session/new payload must carry it.
+    const meshConfig = {
+      workspaceId: 'workspace-test',
+      agentType: 'claudecode',
+      command: 'claude',
+      args: [],
+      env: {},
+      workDir: '/tmp/workspace-test',
+      model: '',
+      execution: { mode: 'mesh', transport: 'remote-mesh-shell', nodeId: 'node:7c1e5d92-1f2a-4c33-9a41-6f8d2f5a9c11' },
+      mcpServers: [{ name: 'agentdock-lac-control', type: 'stdio', command: 'node', args: ['lac.js'], env: {} }],
+    } as LocalCoreProjectConfig;
+
+    await coordinator.ensureSession(thread.id, 'bridge:mesh', meshConfig);
+
+    assert.equal(newSessionParams.length, 1);
+    const lacServer = newSessionParams[0].mcpServers.find((entry: any) => entry.name === 'agentdock-lac-control');
+    assert.ok(lacServer, 'lac-control server must be present in the session/new payload');
+    const lacEnv = Object.fromEntries((lacServer.env || []).map((pair: any) => [pair.name, pair.value]));
+    assert.equal(lacEnv.ELECTRON_RUN_AS_NODE, '1');
+    assert.equal(lacEnv.LOCAL_AI_THREAD_ID, thread.id);
+    assert.equal(lacEnv.LOCAL_AI_WORKSPACE_ID, 'workspace-test');
+    assert.ok(lacEnv.LOCAL_AI_CORE_BASE, 'LAC base URL must be bound');
+
+    coordinator.closeAll();
+  } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test('LocalCoreAcpBackend evicts runThreadMap entry once the run reaches a terminal state', async () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'acp-backend-run-thread-map-'));
   let store: LocalCoreAcpStore | null = null;
@@ -307,6 +376,44 @@ test('LocalCoreAcpBackend evicts runThreadMap entry once the run reaches a termi
     assert.equal(runThreadMap.size, 0, 'runThreadMap entry must be evicted once the run reaches a terminal state');
     assert.equal(session.schedulerJobCreatedByRun.size, 0, 'schedulerJobCreatedByRun entry must be evicted once the run reaches a terminal state');
   } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('ACP transport closure preserves approval diagnostics through the terminal run update', async () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-transport-approval-close-'));
+  let store: LocalCoreAcpStore | null = null;
+  let backend: any;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-test', 'Thread with pending approval');
+    const { LocalCoreAcpBackend } = await import('../../apps/daemon/src/acp/local-core-acp-backend.js');
+    backend = new LocalCoreAcpBackend({ store, runThreadMap: new Map(), emitBridge: () => {},
+      eventBus: { emit: () => {}, on: () => () => {} }, scheduler: {} } as any);
+    backend.screenSessions.stop = async () => {};
+    const submission = store.submissions.admit({ threadId: thread.id, requestId: 'request:transport-close-approval',
+      payload: { text: 'Run pending command' } }, () => ({})).submission;
+    const runId = submission.runId;
+    assert.equal(store.submissions.claim(submission.id, true), true);
+    const approval = store.createApprovalRequest({ workspaceId: 'workspace-test', threadId: thread.id, runId,
+      kind: 'command', riskLevel: 'medium', title: 'Approve terminal command', description: 'python3 status.py --help',
+      requestedAction: 'python3 status.py --help', command: 'python3 status.py --help', scopes: [], requestedBy: 'agent' });
+    const session: any = { threadId: thread.id, bridgeSessionKey: `session:${thread.id}`, closed: false,
+      sessionId: 'session:agentdock::local::33333333-3333-4333-8333-333333333333', supportsLoad: false,
+      currentRunId: runId, currentTurn: null, pendingPermissionByRun: new Map([[runId, {}]]), pending: new Map(),
+      schedulerJobCreatedByRun: new Map(), promptPromise: null, child: { killed: true } };
+
+    backend.handleTransportSessionClosed(session, new Error('ACP transport exited'));
+    store.submissions.finish(submission.id, 'failed', undefined, 'ACP transport exited');
+
+    assert.equal(store.getApprovalRequest(approval.approvalId)?.status, 'expired');
+    const diagnostic = store.submissions.byRun(runId)?.error || '';
+    assert.match(diagnostic, new RegExp(approval.approvalId));
+    assert.match(diagnostic, /python3 status\.py --help/);
+    assert.match(diagnostic, /ACP transport exited/);
+  } finally {
+    await backend?.close();
     store?.close();
     rmSync(userDataPath, { recursive: true, force: true });
   }

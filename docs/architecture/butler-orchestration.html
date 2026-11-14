@@ -5202,7 +5202,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 951 786" data-reader-fit="width-first" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="">
+      <svg viewBox="0 0 1037 786" data-reader-fit="width-first" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="showcase" data-node-ui="">
         <title id="archify-diagram-title">管家 LAC 委派与持续跟踪</title>
         <desc id="archify-diagram-description">由 Archify 生成的工作流图。</desc>
         <!-- Definitions -->
@@ -5249,13 +5249,13 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Swimlanes -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="895" height="190" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="981" height="190" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="74" class="t-muted" font-size="10" font-weight="600">01 / 管家协调与用户交付</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="262" width="895" height="190" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="262" width="981" height="190" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="284" class="t-muted" font-size="10" font-weight="600">02 / Core 内部委派与单轮执行</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="472" width="895" height="190" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="472" width="981" height="190" rx="10" class="c-lane" stroke-width="1"/>
         <text x="54" y="494" class="t-muted" font-size="10" font-weight="600">03 / 跨重启的持续跟踪</text>
 
         <!-- Phase headers -->
@@ -5265,18 +5265,18 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 
         <!-- Edge paths -->
-        <path data-edge-from="ledger" data-edge-to="dispatch" data-edge-label="先登记，再提交" data-edge-key="0" data-edge-id="admit" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="406.4,188;406.4,346" d="M 406.4 188 L 406.4 346" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="worker" data-edge-to="ledger" data-edge-label="Side effect ID · phase=checkpoint" data-edge-key="1" data-edge-id="checkpoint" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="588.4,346;588.4,240;430.4,240;430.4,188" d="M 588.4 346 L 588.4 248 Q 588.4 240 580.4 240 L 438.4 240 Q 430.4 240 430.4 232 L 430.4 188" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="review" data-edge-to="ledger" data-edge-label="继续处理 / 调整计划" data-edge-key="2" data-edge-id="continue" data-composition-routing="workflow-v2-auto" data-edge-role="return" data-composition-points="752.4,186;752.4,162;492.4,162" d="M 752.4 186 L 752.4 170 Q 752.4 162 744.4 162 L 492.4 162" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="butler" data-edge-to="ledger" data-edge-label="lac butler create / delegate" data-edge-key="3" data-edge-id="delegate" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="242.4,136;242.4,120;406.4,120;406.4,136" d="M 242.4 136 L 242.4 128 Q 242.4 120 250.4 120 L 398.4 120 Q 406.4 120 406.4 128 L 406.4 136" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="review" data-edge-to="notify" data-edge-label="核验证据后通知" data-edge-key="4" data-edge-id="deliver" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="798.4,212;876.4,212;876.4,188" d="M 798.4 212 L 868.4 212 Q 876.4 212 876.4 204 L 876.4 188" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="watch" data-edge-to="check" data-edge-label="到期原子领取；重启续查" data-edge-key="5" data-edge-id="due" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="678.4,582;452.4,582" d="M 678.4 582 L 452.4 582" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="dispatch" data-edge-to="worker" data-edge-label="WorkspaceRouter" data-edge-key="6" data-edge-id="execute" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="452.4,372;542.4,372" d="M 452.4 372 L 542.4 372" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="check" data-edge-to="dispatch" data-edge-label="查询已有任务，不重复创建" data-edge-key="7" data-edge-id="query" data-composition-routing="workflow-v2-auto" data-edge-role="return" data-composition-points="406.4,556;406.4,398" d="M 406.4 556 L 406.4 398" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="ledger" data-edge-to="dispatch" data-edge-label="先登记，再提交" data-edge-key="0" data-edge-id="admit" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="402.4,188;402.4,346" d="M 402.4 188 L 402.4 346" class="a-default" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="worker" data-edge-to="ledger" data-edge-label="Side effect ID · phase=checkpoint" data-edge-key="1" data-edge-id="checkpoint" data-edge-role="async" data-composition-points="658.4,346;658.4,68;402.4,68;402.4,136" d="M 658.4 346 L 658.4 76 Q 658.4 68 650.4 68 L 410.4 68 Q 402.4 68 402.4 76 L 402.4 136" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="review" data-edge-to="ledger" data-edge-label="继续处理 / 调整计划" data-edge-key="2" data-edge-id="continue" data-composition-routing="workflow-v2-auto" data-edge-role="return" data-composition-points="842.4,186;842.4,36;378.4,36;378.4,136" d="M 842.4 186 L 842.4 44 Q 842.4 36 834.4 36 L 386.4 36 Q 378.4 36 378.4 44 L 378.4 136" class="a-default" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="butler" data-edge-to="ledger" data-edge-label="lac butler create / delegate" data-edge-key="3" data-edge-id="delegate" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="242.4,136;242.4,120;291.4,120;291.4,162;316.4,162" d="M 242.4 136 L 242.4 128 Q 242.4 120 250.4 120 L 283.4 120 Q 291.4 120 291.4 128 L 291.4 154 Q 291.4 162 299.4 162 L 316.4 162" class="a-default" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="review" data-edge-to="notify" data-edge-label="核验证据后通知" data-edge-key="4" data-edge-id="deliver" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="888.4,212;962.4,212;962.4,188" d="M 888.4 212 L 954.4 212 Q 962.4 212 962.4 204 L 962.4 188" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="watch" data-edge-to="check" data-edge-label="到期原子领取；重启续查" data-edge-key="5" data-edge-id="due" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="768.4,582;448.4,582" d="M 768.4 582 L 448.4 582" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="dispatch" data-edge-to="worker" data-edge-label="WorkspaceRouter" data-edge-key="6" data-edge-id="execute" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="498.4,372;588.4,372" d="M 498.4 372 L 588.4 372" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="check" data-edge-to="dispatch" data-edge-label="查询已有任务，不重复创建" data-edge-key="7" data-edge-id="query" data-composition-routing="workflow-v2-auto" data-edge-role="return" data-composition-points="402.4,556;402.4,398" d="M 402.4 556 L 402.4 398" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <path data-edge-from="origin" data-edge-to="butler" data-edge-label="用户指令" data-edge-key="8" data-edge-id="request" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="140,162;196.4,162" d="M 140 162 L 196.4 162" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="worker" data-edge-to="report" data-edge-label="lac butler report · phase=final" data-edge-key="9" data-edge-id="result" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="588.4,398;588.4,468;650.4,468;650.4,372;666.4,372" d="M 588.4 398 L 588.4 460 Q 588.4 468 596.4 468 L 642.4 468 Q 650.4 468 650.4 460 L 650.4 380 Q 650.4 372 658.4 372 L 666.4 372" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="report" data-edge-to="watch" data-edge-label="按已登记计划续查" data-edge-key="10" data-edge-id="waiting" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="752.4,398;752.4,556" d="M 752.4 398 L 752.4 556" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="report" data-edge-to="review" data-edge-label="首轮 / 完成 / 异常" data-edge-key="11" data-edge-id="wake" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="752.4,346;752.4,238" d="M 752.4 346 L 752.4 238" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="worker" data-edge-to="report" data-edge-label="lac butler report · phase=final" data-edge-key="9" data-edge-id="result" data-composition-routing="workflow-v2-auto" data-edge-role="main" data-composition-points="682.4,346;682.4,330;818.4,330;818.4,346" d="M 682.4 346 L 682.4 338 Q 682.4 330 690.4 330 L 810.4 330 Q 818.4 330 818.4 338 L 818.4 346" class="a-default" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="report" data-edge-to="watch" data-edge-label="按已登记计划续查" data-edge-key="10" data-edge-id="waiting" data-composition-routing="workflow-v2-auto" data-edge-role="branch" data-composition-points="842.4,398;842.4,556" d="M 842.4 398 L 842.4 556" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="report" data-edge-to="review" data-edge-label="首轮 / 完成 / 异常" data-edge-key="11" data-edge-id="wake" data-composition-routing="workflow-v2-auto" data-edge-role="async" data-composition-points="842.4,346;842.4,238" d="M 842.4 346 L 842.4 238" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 
         <!-- Nodes -->
         <g id="node-origin" data-node-id="origin" data-node-label="用户交代目标" tabindex="0" role="button" aria-label="聚焦用户交代目标，通过管家 Channel, 管家协调与用户交付" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="通过管家 Channel" data-node-context="管家协调与用户交付">
@@ -5306,149 +5306,149 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <g id="node-ledger" data-node-id="ledger" data-node-label="Core Butler 账本" tabindex="0" role="button" aria-label="聚焦Core Butler 账本，Task · Operation · checkpoint, 管家协调与用户交付" aria-pressed="false" data-node-kind="database" data-node-sublabel="Task · Operation · checkpoint" data-node-context="管家协调与用户交付">
           <title>Core Butler 账本 · Task · Operation · checkpoint · 管家协调与用户交付</title>
-          <rect x="320.4" y="136" width="172" height="52" rx="8" class="c-mask"/>
-          <rect x="320.4" y="136" width="172" height="52" rx="8" class="c-database" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(326.4 142) scale(0.6875)">
+          <rect x="316.4" y="136" width="172" height="52" rx="8" class="c-mask"/>
+          <rect x="316.4" y="136" width="172" height="52" rx="8" class="c-database" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(322.4 142) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="406.4" y="157" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Core Butler 账本</text>
-          <text data-detail="context" x="406.4" y="174" class="t-muted" font-size="8" text-anchor="middle">Task · Operation · checkpoint</text>
+          <text data-node-label="" data-detail-anchor="" x="402.4" y="157" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Core Butler 账本</text>
+          <text data-detail="context" x="402.4" y="174" class="t-muted" font-size="8" text-anchor="middle">Task · Operation · checkpoint</text>
         </g>
 
         <g id="node-review" data-node-id="review" data-node-label="唤醒管家原会话" tabindex="0" role="button" aria-label="聚焦唤醒管家原会话，核验 / 追问 / 异常, 管家协调与用户交付" aria-pressed="false" data-node-kind="backend" data-node-sublabel="核验 / 追问 / 异常" data-node-context="管家协调与用户交付">
           <title>唤醒管家原会话 · 核验 / 追问 / 异常 · 管家协调与用户交付</title>
-          <rect x="706.4" y="186" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="706.4" y="186" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(712.4 192) scale(0.6875)">
+          <rect x="796.4" y="186" width="92" height="52" rx="8" class="c-mask"/>
+          <rect x="796.4" y="186" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(802.4 192) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="752.4" y="217" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">唤醒管家原会话</text>
-          <text data-detail="context" x="752.4" y="231.3" class="t-muted" font-size="7.7" text-anchor="middle">核验 / 追问 / 异常</text>
+          <text data-node-label="" data-detail-anchor="" x="842.4" y="217" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">唤醒管家原会话</text>
+          <text data-detail="context" x="842.4" y="231.3" class="t-muted" font-size="7.7" text-anchor="middle">核验 / 追问 / 异常</text>
         </g>
 
-        <g id="node-notify" data-node-id="notify" data-node-label="管家回复用户" tabindex="0" role="button" aria-label="聚焦管家回复用户，结论或需要用户决定, 管家协调与用户交付" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="结论或需要用户决定" data-node-context="管家协调与用户交付">
-          <title>管家回复用户 · 结论或需要用户决定 · 管家协调与用户交付</title>
-          <rect x="830.4" y="136" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="830.4" y="136" width="92" height="52" rx="8" class="c-frontend" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(836.4 142) scale(0.6875)">
+        <g id="node-notify" data-node-id="notify" data-node-label="管家会话通知" tabindex="0" role="button" aria-label="聚焦管家会话通知，结论 · 审批提醒, 管家协调与用户交付" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="结论 · 审批提醒" data-node-context="管家协调与用户交付">
+          <title>管家会话通知 · 结论 · 审批提醒 · 管家协调与用户交付</title>
+          <rect x="916.4" y="136" width="92" height="52" rx="8" class="c-mask"/>
+          <rect x="916.4" y="136" width="92" height="52" rx="8" class="c-frontend" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(922.4 142) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="876.4" y="168.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">管家回复用户</text>
-          <text data-detail="context" x="876.4" y="182.8" class="t-muted" font-size="7.7" text-anchor="middle">结论或需要用户决定</text>
+          <text data-node-label="" data-detail-anchor="" x="962.4" y="168.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">管家会话通知</text>
+          <text data-detail="context" x="962.4" y="183.1" class="t-muted" font-size="8" text-anchor="middle">结论 · 审批提醒</text>
         </g>
 
-        <g id="node-dispatch" data-node-id="dispatch" data-node-label="授权与内部派发" tabindex="0" role="button" aria-label="聚焦授权与内部派发，凭证绑定 run, Core 内部委派与单轮执行" aria-pressed="false" data-node-kind="security" data-node-sublabel="凭证绑定 run" data-node-context="Core 内部委派与单轮执行">
-          <title>授权与内部派发 · 凭证绑定 run · Core 内部委派与单轮执行</title>
-          <rect x="360.4" y="346" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="360.4" y="346" width="92" height="52" rx="8" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(366.4 352) scale(0.6875)">
+        <g id="node-dispatch" data-node-id="dispatch" data-node-label="授权与内部派发" tabindex="0" role="button" aria-label="聚焦授权与内部派发，Core worker: bypassPermissions per run, Core 内部委派与单轮执行" aria-pressed="false" data-node-kind="security" data-node-sublabel="Core worker: bypassPermissions per run" data-node-context="Core 内部委派与单轮执行">
+          <title>授权与内部派发 · Core worker: bypassPermissions per run · Core 内部委派与单轮执行</title>
+          <rect x="306.4" y="346" width="192" height="52" rx="8" class="c-mask"/>
+          <rect x="306.4" y="346" width="192" height="52" rx="8" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(312.4 352) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="406.4" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">授权与内部派发</text>
-          <text data-detail="context" x="406.4" y="391.6" class="t-muted" font-size="8" text-anchor="middle">凭证绑定 run</text>
+          <text data-node-label="" data-detail-anchor="" x="402.4" y="367" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">授权与内部派发</text>
+          <text data-detail="context" x="402.4" y="384" class="t-muted" font-size="8" text-anchor="middle">Core worker: bypassPermissions per run</text>
         </g>
 
-        <g id="node-worker" data-node-id="worker" data-node-label="工作区 Agent" tabindex="0" role="button" aria-label="聚焦工作区 Agent，独立会话执行一轮, Core 内部委派与单轮执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="独立会话执行一轮" data-node-context="Core 内部委派与单轮执行">
-          <title>工作区 Agent · 独立会话执行一轮 · Core 内部委派与单轮执行</title>
-          <rect x="542.4" y="346" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="542.4" y="346" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(548.4 352) scale(0.6875)">
+        <g id="node-worker" data-node-id="worker" data-node-label="工作区 Agent" tabindex="0" role="button" aria-label="聚焦工作区 Agent，任意命令 · 结束关闭权限会话, Core 内部委派与单轮执行" aria-pressed="false" data-node-kind="backend" data-node-sublabel="任意命令 · 结束关闭权限会话" data-node-context="Core 内部委派与单轮执行">
+          <title>工作区 Agent · 任意命令 · 结束关闭权限会话 · Core 内部委派与单轮执行</title>
+          <rect x="588.4" y="346" width="140" height="52" rx="8" class="c-mask"/>
+          <rect x="588.4" y="346" width="140" height="52" rx="8" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(594.4 352) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="588.4" y="378.2" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">工作区 Agent</text>
-          <text data-detail="context" x="588.4" y="393.1" class="t-muted" font-size="8" text-anchor="middle">独立会话执行一轮</text>
+          <text data-node-label="" data-detail-anchor="" x="658.4" y="367" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">工作区 Agent</text>
+          <text data-detail="context" x="658.4" y="384" class="t-muted" font-size="8" text-anchor="middle">任意命令 · 结束关闭权限会话</text>
         </g>
 
         <g id="node-report" data-node-id="report" data-node-label="Worker 回报与检查点" tabindex="0" role="button" aria-label="聚焦Worker 回报与检查点，校验委派与 run, Core 内部委派与单轮执行" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="校验委派与 run" data-node-context="Core 内部委派与单轮执行">
           <title>Worker 回报与检查点 · 校验委派与 run · Core 内部委派与单轮执行</title>
-          <rect x="666.4" y="346" width="172" height="52" rx="8" class="c-mask"/>
-          <rect x="666.4" y="346" width="172" height="52" rx="8" class="c-messagebus" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(672.4 352) scale(0.6875)">
+          <rect x="756.4" y="346" width="172" height="52" rx="8" class="c-mask"/>
+          <rect x="756.4" y="346" width="172" height="52" rx="8" class="c-messagebus" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(762.4 352) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="752.4" y="367" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Worker 回报与检查点</text>
-          <text data-detail="context" x="752.4" y="384" class="t-muted" font-size="8" text-anchor="middle">校验委派与 run</text>
+          <text data-node-label="" data-detail-anchor="" x="842.4" y="367" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Worker 回报与检查点</text>
+          <text data-detail="context" x="842.4" y="384" class="t-muted" font-size="8" text-anchor="middle">校验委派与 run</text>
         </g>
 
         <g id="node-check" data-node-id="check" data-node-label="到期检查" tabindex="0" role="button" aria-label="聚焦到期检查，按登记的只读计划, 跨重启的持续跟踪" aria-pressed="false" data-node-kind="backend" data-node-sublabel="按登记的只读计划" data-node-context="跨重启的持续跟踪">
           <title>到期检查 · 按登记的只读计划 · 跨重启的持续跟踪</title>
-          <rect x="360.4" y="556" width="92" height="52" rx="8" class="c-mask"/>
-          <rect x="360.4" y="556" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(366.4 562) scale(0.6875)">
+          <rect x="356.4" y="556" width="92" height="52" rx="8" class="c-mask"/>
+          <rect x="356.4" y="556" width="92" height="52" rx="8" class="c-backend" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(362.4 562) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="406.4" y="577" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">到期检查</text>
-          <text data-detail="context" x="406.4" y="594" class="t-muted" font-size="8" text-anchor="middle">按登记的只读计划</text>
+          <text data-node-label="" data-detail-anchor="" x="402.4" y="577" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">到期检查</text>
+          <text data-detail="context" x="402.4" y="594" class="t-muted" font-size="8" text-anchor="middle">按登记的只读计划</text>
         </g>
 
         <g id="node-watch" data-node-id="watch" data-node-label="持久只读检查计划" tabindex="0" role="button" aria-label="聚焦持久只读检查计划，外部任务 ID · nextCheckAt · budget, 跨重启的持续跟踪" aria-pressed="false" data-node-kind="database" data-node-sublabel="外部任务 ID · nextCheckAt · budget" data-node-context="跨重启的持续跟踪">
           <title>持久只读检查计划 · 外部任务 ID · nextCheckAt · budget · 跨重启的持续跟踪</title>
-          <rect x="678.4" y="556" width="148" height="52" rx="8" class="c-mask"/>
-          <rect x="678.4" y="556" width="148" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(684.4 562) scale(0.6875)">
+          <rect x="768.4" y="556" width="148" height="52" rx="8" class="c-mask"/>
+          <rect x="768.4" y="556" width="148" height="52" rx="8" class="c-database" data-animate="node" style="--step:12" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(774.4 562) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="752.4" y="577" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">持久只读检查计划</text>
-          <text data-detail="context" x="752.4" y="594" class="t-muted" font-size="6.8" text-anchor="middle">外部任务 ID · nextCheckAt · budget</text>
+          <text data-node-label="" data-detail-anchor="" x="842.4" y="577" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">持久只读检查计划</text>
+          <text data-detail="context" x="842.4" y="594" class="t-muted" font-size="6.8" text-anchor="middle">外部任务 ID · nextCheckAt · budget</text>
         </g>
 
         <!-- Edge labels -->
         <g data-detail="context" data-edge-from="ledger" data-edge-to="dispatch" data-edge-label="先登记，再提交" data-edge-key="0" data-edge-id="admit">
-          <rect x="367.79999999999995" y="257" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="406.4" y="267" class="t-muted" font-size="8" text-anchor="middle">先登记，再提交</text>
+          <rect x="363.79999999999995" y="257" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="402.4" y="267" class="t-muted" font-size="8" text-anchor="middle">先登记，再提交</text>
         </g>
         <g data-detail="context" data-edge-from="worker" data-edge-to="ledger" data-edge-label="Side effect ID · phase=checkpoint" data-edge-key="1" data-edge-id="checkpoint">
-          <rect x="425.2" y="220" width="168.4" height="14" rx="3" class="c-mask"/>
-          <text x="509.4" y="230" class="t-muted" font-size="8" text-anchor="middle">Side effect ID · phase=checkpoint</text>
+          <rect x="446.2" y="48" width="168.4" height="14" rx="3" class="c-mask"/>
+          <text x="530.4" y="58" class="t-muted" font-size="8" text-anchor="middle">Side effect ID · phase=checkpoint</text>
         </g>
         <g data-detail="context" data-edge-from="review" data-edge-to="ledger" data-edge-label="继续处理 / 调整计划" data-edge-key="2" data-edge-id="continue">
-          <rect x="571.8" y="142" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="622.4" y="152" class="t-muted" font-size="8" text-anchor="middle">继续处理 / 调整计划</text>
+          <rect x="559.8" y="16" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="610.4" y="26" class="t-muted" font-size="8" text-anchor="middle">继续处理 / 调整计划</text>
         </g>
         <g data-detail="context" data-edge-from="butler" data-edge-to="ledger" data-edge-label="lac butler create / delegate" data-edge-key="3" data-edge-id="delegate">
-          <rect x="252.2" y="100" width="144.4" height="14" rx="3" class="c-mask"/>
-          <text x="324.4" y="110" class="t-muted" font-size="8" text-anchor="middle">lac butler create / delegate</text>
+          <rect x="194.7" y="100" width="144.4" height="14" rx="3" class="c-mask"/>
+          <text x="266.9" y="110" class="t-muted" font-size="8" text-anchor="middle">lac butler create / delegate</text>
         </g>
         <g data-detail="context" data-edge-from="review" data-edge-to="notify" data-edge-label="核验证据后通知" data-edge-key="4" data-edge-id="deliver">
-          <rect x="798.8" y="192" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="837.4" y="202" class="t-muted" font-size="8" text-anchor="middle">核验证据后通知</text>
+          <rect x="886.8" y="192" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="925.4" y="202" class="t-muted" font-size="8" text-anchor="middle">核验证据后通知</text>
         </g>
         <g data-detail="context" data-edge-from="watch" data-edge-to="check" data-edge-label="到期原子领取；重启续查" data-edge-key="5" data-edge-id="due">
-          <rect x="507.59999999999997" y="562" width="115.6" height="14" rx="3" class="c-mask"/>
-          <text x="565.4" y="572" class="t-muted" font-size="8" text-anchor="middle">到期原子领取；重启续查</text>
+          <rect x="550.6" y="562" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="608.4" y="572" class="t-muted" font-size="8" text-anchor="middle">到期原子领取；重启续查</text>
         </g>
         <g data-detail="context" data-edge-from="dispatch" data-edge-to="worker" data-edge-label="WorkspaceRouter" data-edge-key="6" data-edge-id="execute">
-          <rect x="456.4" y="352" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="497.4" y="362" class="t-muted" font-size="8" text-anchor="middle">WorkspaceRouter</text>
+          <rect x="502.4" y="352" width="82" height="14" rx="3" class="c-mask"/>
+          <text x="543.4" y="362" class="t-muted" font-size="8" text-anchor="middle">WorkspaceRouter</text>
         </g>
         <g data-detail="context" data-edge-from="check" data-edge-to="dispatch" data-edge-label="查询已有任务，不重复创建" data-edge-key="7" data-edge-id="query">
-          <rect x="343.79999999999995" y="467" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="406.4" y="477" class="t-muted" font-size="8" text-anchor="middle">查询已有任务，不重复创建</text>
+          <rect x="339.79999999999995" y="467" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="402.4" y="477" class="t-muted" font-size="8" text-anchor="middle">查询已有任务，不重复创建</text>
         </g>
         <g data-detail="context" data-edge-from="origin" data-edge-to="butler" data-edge-label="用户指令" data-edge-key="8" data-edge-id="request">
           <rect x="144" y="142" width="48.4" height="14" rx="3" class="c-mask"/>
           <text x="168.2" y="152" class="t-muted" font-size="8" text-anchor="middle">用户指令</text>
         </g>
         <g data-detail="context" data-edge-from="worker" data-edge-to="report" data-edge-label="lac butler report · phase=final" data-edge-key="9" data-edge-id="result">
-          <rect x="540" y="448" width="158.79999999999998" height="14" rx="3" class="c-mask"/>
-          <text x="619.4" y="458" class="t-muted" font-size="8" text-anchor="middle">lac butler report · phase=final</text>
+          <rect x="671" y="310" width="158.79999999999998" height="14" rx="3" class="c-mask"/>
+          <text x="750.4" y="320" class="t-muted" font-size="8" text-anchor="middle">lac butler report · phase=final</text>
         </g>
         <g data-detail="context" data-edge-from="report" data-edge-to="watch" data-edge-label="按已登记计划续查" data-edge-key="10" data-edge-id="waiting">
-          <rect x="709" y="467" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="752.4" y="477" class="t-muted" font-size="8" text-anchor="middle">按已登记计划续查</text>
+          <rect x="799" y="467" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="842.4" y="477" class="t-muted" font-size="8" text-anchor="middle">按已登记计划续查</text>
         </g>
         <g data-detail="context" data-edge-from="report" data-edge-to="review" data-edge-label="首轮 / 完成 / 异常" data-edge-key="11" data-edge-id="wake">
-          <rect x="704.1999999999999" y="282" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="752.4" y="292" class="t-muted" font-size="8" text-anchor="middle">首轮 / 完成 / 异常</text>
+          <rect x="794.1999999999999" y="282" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="842.4" y="292" class="t-muted" font-size="8" text-anchor="middle">首轮 / 完成 / 异常</text>
         </g>
 
         <!-- Legend -->
@@ -5680,6 +5680,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>首次 Channel 提交收到 HTTP 400 时记为失败；超时及其他未确认响应继续保持 unknown，不自动重发。配置保存时只在本地收尾精确记录为 HTTP 400 且没有 runId 或平台消息 ID 的历史提交，不向任何 Bot 补发或取消。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>Core worker 权限限定在一次 run</h3>
+        </div>
+        <ul>
+          <li>Core transport 的 worker 提交以 bypassPermissions 执行，可运行任意命令；该模式不是只读 allowlist 或 OS 沙箱。运行结束即关闭 ACP 会话，普通用户 turn 不继承该权限；旧 Channel worker 保持交互审批。</li>
+          <li>终态 run 仅过期该 thread/run 尚待处理的 agent approval，并在失败诊断保留脱敏审批 ID 与命令摘要。task info 仅在当前审批可操作时返回 blockedReason=pending_approval；待批五分钟后向 owner 会话排队一次提醒，发送前重新确认状态。</li>
         </ul>
       </div>
     </div>

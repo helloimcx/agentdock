@@ -28,7 +28,8 @@ flowchart LR
   api --> kernel[Core kernel and workspace router]
   api --> butler[Butler orchestration]
   butler -->|Persist goals, progress and acceptance| sqlite
-  butler -->|Core: worker submit / read-only check| acp
+  butler -->|Core: run-scoped noninteractive worker| acp
+  butler -->|Pending approval: ID · reason · 5m reminder| sqlite
   butler -->|Legacy Channel: bot mentions / callbacks| channels
   butler -->|Task, report, checkpoint, next check and lease| sqlite
   kernel --> sqlite[(SQLite)]
@@ -53,20 +54,22 @@ flowchart LR
 
 Pi Durable 通过 Local AI Core 的单一 worker 接入；所有 Durable threads 共用一个 Harness 和 `runtime/pi-durable.sqlite`，每个 thread 保持独立 Conversation。工作区写入经 Core 的逐次审批、路径与基线校验后由 Core 原子落盘；shell、删除、MCP、sandbox 仍不可用。详细边界见[架构事实](../architecture.md)、[持久执行记录](changes/2026-10-03-durable-execution.md)和[写入审批变更](changes/2026-10-04-pi-durable-write-approval.md)。
 
+工作区列表由 Daemon 逐项解析路由。某工作区引用缺失的模型服务商时，列表仍返回其他工作区，并在受影响条目的 API 响应中附上不可用原因。管家页面独立加载已保存配置和 Bot 列表。见 [#236 架构变更](changes/2026-11-06-workspace-list-degradation.md)。
+
 ## 架构资产矩阵 (Architecture-as-Code Matrix)
 
 AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pnpm lint:arch` 在持续集成中严格校验：
 
 | 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
 |---|---|---|---|---|---|
-| **L1 全局系统** | 端到端系统架构与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [浅色图](system-architecture.light.png) · [深色图](system-architecture.dark.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
+| **L1 全局系统** | 端到端系统架构、工作区列表错误隔离与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [浅色图](system-architecture.light.png) · [深色图](system-architecture.dark.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
 | **L2 Mesh 接入 1/3** | 发现、权限与 SSH 预检 | `sequence` | [交互时序图](tailscale-onboarding-discovery.html) · [浅色图](tailscale-onboarding-discovery.light.png) · [深色图](tailscale-onboarding-discovery.dark.png) | [`tailscale-onboarding-discovery.sequence.json`](tailscale-onboarding-discovery.sequence.json) | [Mesh 接入边界](mesh.md) · [接入变更](changes/2026-10-25-tailscale-one-click-onboarding.md) |
 | **L2 Mesh 接入 2/3** | Bridge、部署与身份认证 | `sequence` | [交互时序图](tailscale-onboarding-enrollment.html) · [浅色图](tailscale-onboarding-enrollment.light.png) · [深色图](tailscale-onboarding-enrollment.dark.png) | [`tailscale-onboarding-enrollment.sequence.json`](tailscale-onboarding-enrollment.sequence.json) | [Mesh 接入边界](mesh.md) · [接入变更](changes/2026-10-25-tailscale-one-click-onboarding.md) |
 | **L2 Mesh 接入 3/3** | 能力验证与工作区目标 | `sequence` | [交互时序图](tailscale-onboarding-readiness.html) · [浅色图](tailscale-onboarding-readiness.light.png) · [深色图](tailscale-onboarding-readiness.dark.png) | [`tailscale-onboarding-readiness.sequence.json`](tailscale-onboarding-readiness.sequence.json) | [Mesh 接入边界](mesh.md) · [接入变更](changes/2026-10-25-tailscale-one-click-onboarding.md) |
 | **L2 核心流程** | 定时调度与渠道主动投递 | `workflow` | [调度工作流](scheduled-delivery-workflow.html) · [浅色图](scheduled-delivery-workflow.light.png) · [深色图](scheduled-delivery-workflow.dark.png) | [`scheduled-delivery-workflow.json`](scheduled-delivery-workflow.json) | [定时投递架构](scheduled-delivery.md) |
 | **L2 核心流程** | ACP 会话与沙箱桥接时序 | `sequence` | [通信时序图](acp-session-flow.html) · [浅色图](acp-session-flow.light.png) · [深色图](acp-session-flow.dark.png) | [`acp-session-flow.sequence.json`](acp-session-flow.sequence.json) | [ACP 协议运行时](acp-protocol.md) |
 | **L2 核心流程** | 确定性技能路由与工具索引 | `workflow` | [路由工作流](skill-router.html) · [浅色图](skill-router.light.png) · [深色图](skill-router.dark.png) | [`skill-router.workflow.json`](skill-router.workflow.json) | [Core 内核与插件](local-core-kernel.md) |
-| **L2 核心流程** | 管家 Channel 入口、LAC 工作区委派、持久跟踪与验收（兼容旧 Channel 委派） | `workflow` | [管家工作流](butler-orchestration.html) · [浅色图](butler-orchestration.light.png) · [深色图](butler-orchestration.dark.png) | [`butler-orchestration.workflow.json`](butler-orchestration.workflow.json) | [管家模块与 API](butler-orchestration.md) |
+| **L2 核心流程** | 管家 Channel 入口、按运行授权的 LAC 工作区委派、审批诊断与提醒、持久跟踪及验收（兼容旧 Channel 委派） | `workflow` | [管家工作流](butler-orchestration.html) · [浅色图](butler-orchestration.light.png) · [深色图](butler-orchestration.dark.png) | [`butler-orchestration.workflow.json`](butler-orchestration.workflow.json) | [管家模块与 API](butler-orchestration.md) |
 | **L3 状态模型** | Agent Run 执行状态机 | `lifecycle` | [状态转移图](agent-run-lifecycle.html) · [浅色图](agent-run-lifecycle.light.png) · [深色图](agent-run-lifecycle.dark.png) | [`agent-run.lifecycle.json`](agent-run.lifecycle.json) | [状态所有权](state-ownership.md) |
 | **L2 持久执行** | 提交、历史分页、窗口化运行快照、SSE 背压、Pi Durable 与逐次写入审批 | `workflow` | [持久执行流程](durable-execution-workflow.html) · [浅色图](durable-execution-workflow.light.png) · [深色图](durable-execution-workflow.dark.png) | [`durable-execution.workflow.json`](durable-execution.workflow.json) | [持久执行记录](changes/2026-10-03-durable-execution.md) · [聊天会话切换变更](changes/2026-10-31-chat-detail-flicker.md) · [写入审批变更](changes/2026-10-04-pi-durable-write-approval.md) |
 | **L2 远程调用** | 远程工作区通过 MCP 与独立 CLI 调用主机 LAC | `workflow` | [LAC 控制流程](remote-lac-control.html) · [浅色图](remote-lac-control.light.png) · [深色图](remote-lac-control.dark.png) | [`remote-lac-control.workflow.json`](remote-lac-control.workflow.json) | [远程 LAC 变更记录](changes/2026-10-12-remote-lac-routing.md) |

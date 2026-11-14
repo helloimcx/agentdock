@@ -23,9 +23,10 @@ flowchart LR
   api -->|SSE drain-aware revision updates| renderer
   channels[Lark / Weixin] --> api
   external[External clients] --> api
-  api --> kernel[Daemon kernel and workspace router]
+  api -->|Workspace listing resolves routes per entry| kernel[Daemon kernel and workspace router]
   api --> butler[Butler orchestration]
-  butler -->|Core: worker submit / read-only check| acp
+  butler -->|Core: run-scoped noninteractive worker| acp
+  butler -->|Pending approval: ID · reason · 5m reminder| sqlite
   butler -->|Legacy Channel: bot mentions / callbacks| channels
   butler -->|Task, report, checkpoint, next check and lease| sqlite
   kernel --> sqlite[(SQLite)]
@@ -56,6 +57,8 @@ flowchart LR
 
 当前架构提供交互式 [HTML 全景图](docs/architecture/system-architecture.html)、[管家 Bot 委托流程](docs/architecture/butler-orchestration.html)、[Android 亮屏流程](docs/architecture/mobile-screen.workflow.html)与 Mermaid 视图。架构视图同时标明管家任务和 Agent run 的归属、Core SQLite 与 Pi Durable 全局 SQLite 的边界，以及 Mesh 设备本地回执库。Mesh 的 [回执恢复时序](docs/architecture/changes/2026-10-25-mesh-operation-recovery.html)记录了按稳定 `operationId` 查询已保存结果的流程。Pi Durable 是可选运行时，一个 worker 为所有 Durable threads 复用一个 `pi-durable.sqlite`；能力探测要求可用的 Node.js 与 SQLite。
 
+工作区列表由 Daemon 逐项解析路由：某个工作区配置有误时，API 仍返回其他工作区，并在受影响条目中附上不可用原因。
+
 [架构事实](docs/architecture.md) · [架构全景矩阵](docs/architecture/overview.md) · [聊天会话切换变更](docs/architecture/changes/2026-10-31-chat-detail-flicker.md) · [Mesh 设计与使用](docs/architecture/mesh.md) · [Mesh 回执恢复变更记录](docs/architecture/changes/2026-10-25-mesh-operation-recovery.md) · [Android 手机接入指南](docs/operations/android-termux-mesh-guide.md) · [架构变更历史](docs/architecture/changes/)
 持久执行工作流：[交互式图](docs/architecture/durable-execution-workflow.html) · [浅色图](docs/architecture/durable-execution-workflow.light.png) · [深色图](docs/architecture/durable-execution-workflow.dark.png)
 管家工作流：[交互式图](docs/architecture/butler-orchestration.html)
@@ -76,6 +79,14 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 - [管家任务协调](docs/architecture/butler-orchestration.md)
 
 ## New
+
+### 2026-11-12
+
+- **修复 Butler 无人值守 worker 审批阻塞（#289）**：Core transport 的受管 worker 在单次委派运行中使用非交互权限，完成后关闭该会话；终止运行会过期其未决审批，保留审批诊断，并在审批持续五分钟时向管家会话排队一次提醒。该权限允许运行任意命令，不代表只读或沙箱隔离。
+
+### 2026-11-07
+
+- **鲸鱼线程轮次读取瘦身**：每次提问前的轮次状态准备不再加载该线程全部 assistant 消息（ whale 线程约 22MB progress 行），finals 始终窄读，progress 仅在行为声明需要回放抑制时（hermes）才加载；工具回放去重从"全量载入后 JS 子串扫描"改为索引化 SQL 存在性探测（`instr` + LIMIT 1），并以轮次开始时间为界，避免本轮刚落库的工具行误伤本轮真实重复调用。
 
 ### 2026-11-05
 

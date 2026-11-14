@@ -1,7 +1,7 @@
 # 2026-11-06 — Degrade workspace listing per workspace instead of failing the whole list
 
 - Architecture Impact: Required (public protocol: `WorkspaceSummary` gains optional fields; `GET /api/local/v1/workspaces` failure mode changes from all-or-nothing 500 to per-workspace degradation).
-- Base revision: `b513f1e` (`origin/main`).
+- Original implementation base: `b513f1e`. Architecture repair baseline: `58578f722bb6ea9386cdbe80fd21d01c4b7d08b6` (`origin/main`, 2026-11-14).
 - Implementation: branch `fix/issue-236-butler-missing-provider` (PR: Closes #236).
 
 ## Semantic delta
@@ -24,10 +24,15 @@
 
 - Backward compatible: new contract fields are optional; response shape for healthy workspaces unchanged; no CLI/config/migration impact.
 
+## Diagram provider
+
+Archify, as declared in [the provider manifest](../diagram-provider.yaml). The [system diagram source](../system-architecture.json) records per-entry degradation under the existing Daemon core. Components, relationships and boundaries are unchanged. The [overview](../overview.md) and the README architecture block describe the same listing contract. The [Archify comparison receipt](2026-11-06-workspace-list-degradation.delta.receipt.json) confirms that only the API node description and supporting presentation changed; no nodes moved and no relationships or boundaries changed.
+
 ## Validation
 
 - `[PASS]` `pnpm build:electron`.
 - `[PASS]` `node --test` compiled: workspace-list-unavailable 1/1, butler-page-model 4/4.
 - `[PASS]` `tsc --noEmit -p tsconfig.electron.json` (results recorded in PR body).
 - `[PASS]` Full compiled Node suite and static gates (results recorded in PR body).
-- Diagram provider: no L1–L3 update required — component identities, data flows, and trust boundaries are unchanged; the delta is a response-level degradation policy recorded here.
+- `[PASS]` Archify showcase finalization and browser checks; [interactive diagram](../system-architecture.html), [light](../system-architecture.light.png) and [dark](../system-architecture.dark.png) outputs match the candidate.
+- `[PASS]` 2026-11-14: pinned Archify `pnpm lint:arch` (12 specs), README block and local documentation links, and complete `pnpm verify` (1,219 compiled tests passed, 1 optional skip; 80 BDD scenarios passed).

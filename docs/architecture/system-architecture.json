@@ -66,7 +66,7 @@
           "sqlite",
           "acp_engine"
         ],
-        "note": "Core transport 将任务直接提交给受管 Bot 绑定的工作区 Agent，持久检查外部任务；旧 Channel Bot 消息 transport 保留兼容。"
+        "note": "Core transport 将单次授权的非交互 worker 提交给受管 Bot 绑定工作区；终态清理同 run 审批并持久提醒 manager。该运行可执行任意命令，不是只读权限或 OS 沙箱；旧 Channel transport 保留交互权限与兼容。"
       }
     ]
   },
@@ -130,7 +130,7 @@
       "id": "core_api",
       "type": "backend",
       "label": "Core API 路由层",
-      "sublabel": "/api/local/v1 · 统一网关",
+      "sublabel": "REST · 工作区列表逐项降级",
       "pos": [
         330,
         295
@@ -175,7 +175,7 @@
       "sublabel": "会话管理 · 权限治理 · 桥接",
       "pos": [
         790,
-        200
+        295
       ],
       "size": [
         160,
@@ -203,7 +203,7 @@
       "sublabel": "ACP + Durable · writes",
       "pos": [
         980,
-        40
+        120
       ],
       "size": [
         160,
@@ -284,7 +284,7 @@
       "id": "butler",
       "type": "backend",
       "label": "管家 Bot 协调服务",
-      "sublabel": "LAC dispatch · durable checks",
+      "sublabel": "Run-scoped auth · approvals",
       "pos": [
         330,
         470
@@ -477,6 +477,7 @@
       "title": "AgentDock Daemon 核心层",
       "items": [
         "统一管理 Workspace 隔离、Thread 线程、Run 执行与工件产物",
+        "工作区列表逐项解析；路由失败只标记该条目不可用，并附原因",
         "确定性技能路由引擎（Skill Router）、权限动态继承与开放式 Monitor 事件源（行情 / Webhook）",
         "内置 SQLite 本地持久化与工作区会话状态管理"
       ]

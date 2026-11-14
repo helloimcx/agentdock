@@ -1,7 +1,7 @@
 import type { DesktopBridgeEvent } from '@cc/superai-contracts';
 import type { AcpSessionState, RunningPermissionRequest } from '../router/workspace-router-types.js';
 import type { LocalCoreProjectConfig } from '../router/workspace-router-types.js';
-import { isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
+import { isPermissionActionIntent, isThreadAllowAllRevokeIntent } from './local-core-acp-permission-lifecycle.js';
 import type { SendThreadMessageOptions } from './thread-submission-dispatcher.js';
 import type { LocalCoreAcpStore } from './local-core-acp-store.js';
 import type { LocalCoreAcpSessionCoordinator } from './local-core-acp-session-coordinator.js';
@@ -65,10 +65,21 @@ export class LocalCoreAcpActions {
     }
   }
 
-  private answerPendingPermission(session: AcpSessionState, pending: RunningPermissionRequest, threadId: string, content: string): { runId: string } {
+  private answerPendingPermission(session: AcpSessionState, pending: RunningPermissionRequest, threadId: string, content: string): { runId: string; unavailableAction?: string } {
     const action = String(content || '').trim().toLowerCase();
     const matched = pending.options.find((option) => option.normalizedAction === action || option.optionId === action);
-    if (!matched) throw new Error(`Unknown permission option: ${content}`);
+    if (!matched) {
+      if (isPermissionActionIntent(action)) {
+        // Channel cards advertise `allow` / `allow all` / `deny` as text replies
+        // regardless of which options the runtime offered. When the advertised
+        // action is unavailable, guide instead of failing: silently substituting
+        // another option (e.g. allow all → allow) would approve execution the
+        // user did not consent to in that form.
+        this.postUnavailableActionNotice(session, pending, threadId, action);
+        return { runId: session.currentRunId || '', unavailableAction: action };
+      }
+      throw new Error(`Unknown permission option: ${content}`);
+    }
     if (pending.approvalId) this.options.store.resolveApprovalRequest(pending.approvalId, {
       status: matched.normalizedAction === 'deny' ? 'rejected' : 'approved', resolvedBy: 'local', resolution: matched.name || matched.optionId,
     });
@@ -86,6 +97,14 @@ export class LocalCoreAcpActions {
     return { runId };
   }
 
+  private postUnavailableActionNotice(session: AcpSessionState, pending: RunningPermissionRequest, threadId: string, action: string) {
+    const label = action === 'allow all' ? '始终允许' : action === 'allow' ? '允许一次' : '拒绝';
+    const available = describePermissionActions(pending.options) || '—';
+    const delivered = this.postAssistantNotice(threadId, session.bridgeSessionKey,
+      `本次工具确认未提供“${label}”选项，该回复无法执行。当前可回复：${available}。`, false);
+    if (!delivered) throw new Error(`Permission guidance could not be delivered for thread ${threadId}`);
+  }
+
   private revokeThreadAllowAll(threadId: string, content: string): { runId: string } {
     this.options.threadAllowAll.delete(threadId);
     const row = this.options.store.getThreadRow(threadId);
@@ -101,9 +120,9 @@ export class LocalCoreAcpActions {
     return { runId: '' };
   }
 
-  private postAssistantNotice(threadId: string, bridgeSessionKey: string | null | undefined, text: string, withTypingStop: boolean) {
+  private postAssistantNotice(threadId: string, bridgeSessionKey: string | null | undefined, text: string, withTypingStop: boolean): boolean {
     const row = this.options.store.getThreadRow(threadId);
-    if (!row) return;
+    if (!row) return false;
     this.options.store.appendMessage(threadId, 'assistant', text, 'final');
     this.options.eventBus.emit({ type: 'thread.message.accepted', payload: {
       threadId, workspaceId: row.workspace_id, role: 'assistant', content: text, kind: 'final', source: 'system',
@@ -111,7 +130,13 @@ export class LocalCoreAcpActions {
     const sessionKey = String(bridgeSessionKey || row.bridge_session_key || '');
     this.options.emitBridge({ type: 'reply', sessionKey, content: text });
     if (withTypingStop) this.options.emitBridge({ type: 'typing_stop', sessionKey });
+    return true;
   }
+}
+
+function describePermissionActions(options: RunningPermissionRequest['options']) {
+  const actions = options.map((option) => option.normalizedAction).filter(Boolean);
+  return Array.from(new Set(actions)).join(' / ');
 }
 
 function assertPermissionActionTarget(options: SendThreadMessageOptions, session: AcpSessionState | undefined, pending: RunningPermissionRequest | undefined) {
