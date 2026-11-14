@@ -357,7 +357,15 @@ export function bootstrapLocalCoreRuntime(options: {
     },
   });
 
-  const heapWatcher = createHeapWatcher({ log: options.log ?? (() => {}) });
+  const heapWatcher = createHeapWatcher({
+    log: options.log ?? (() => {}),
+    onSustainedError: () => {
+      // A heap pinned above 90% ends in a V8 abort regardless; exiting now
+      // restarts the daemon before the final hours of swap thrash degrade
+      // the whole host. bin/agentdock.mjs restarts the stack on any child exit.
+      process.exit(1);
+    },
+  });
 
   return {
     kernel,
