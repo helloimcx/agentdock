@@ -160,6 +160,38 @@ test('a warn dip resets the sustained error streak', () => {
   assert.equal(fired, 0, `expected no fire after the warn dip, got ${fired}`);
 });
 
+test('sustainedErrorSamples=1 fires on the first error sample', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 }),
+    sustainedErrorSamples: 1,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  watcher.check();
+  assert.equal(fired, 1, `expected fire on first error sample, got ${fired}`);
+});
+
+test('sustainedErrorSamples=0 disables the sustained callback', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 }),
+    sustainedErrorSamples: 0,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  for (let tick = 0; tick < 40; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(fired, 0, `expected no fire when disabled, got ${fired}`);
+});
+
 test('heap watcher start() samples on the interval and stop() clears it', () => {
   const lines: string[] = [];
   using timers = mock.timers;

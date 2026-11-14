@@ -62,9 +62,10 @@ export function createHeapWatcher(options: HeapWatchOptions) {
     if (level) {
       if (level !== state.crossed) {
         state.crossed = level;
-        state.errorStreak = level === 'error' ? 1 : 0;
+        state.errorStreak = 0;
         options.log(formatLine(state, current, limitBytes, fraction));
-      } else if (level === 'error') {
+      }
+      if (level === 'error') {
         state.errorStreak = (state.errorStreak ?? 0) + 1;
         const sustainedLimit = options.sustainedErrorSamples ?? 30;
         if (sustainedLimit > 0 && options.onSustainedError && state.errorStreak === sustainedLimit) {
@@ -93,6 +94,7 @@ export function createHeapWatcher(options: HeapWatchOptions) {
       clearInterval(state.timer);
       state.timer = undefined;
       state.crossed = undefined;
+      state.errorStreak = undefined;
     },
   };
 }
