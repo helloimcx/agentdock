@@ -90,9 +90,10 @@ export function createHeapWatcher(options: HeapWatchOptions) {
       state.timer.unref?.();
     },
     stop() {
-      if (!state.timer) return;
-      clearInterval(state.timer);
-      state.timer = undefined;
+      if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = undefined;
+      }
       state.crossed = undefined;
       state.errorStreak = undefined;
     },

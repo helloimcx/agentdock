@@ -192,6 +192,25 @@ test('sustainedErrorSamples=0 disables the sustained callback', () => {
   assert.equal(fired, 0, `expected no fire when disabled, got ${fired}`);
 });
 
+test('stop() clears the sustained streak so a restarted watcher rebuilds it', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 }),
+    sustainedErrorSamples: 3,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  watcher.check();
+  watcher.check();
+  watcher.stop();
+  watcher.check();
+  watcher.check();
+  assert.equal(fired, 0, 'stale streak must not fire early after stop');
+});
+
 test('heap watcher start() samples on the interval and stop() clears it', () => {
   const lines: string[] = [];
   using timers = mock.timers;
