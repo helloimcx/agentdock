@@ -54,13 +54,15 @@ flowchart LR
 
 Pi Durable 通过 Local AI Core 的单一 worker 接入；所有 Durable threads 共用一个 Harness 和 `runtime/pi-durable.sqlite`，每个 thread 保持独立 Conversation。工作区写入经 Core 的逐次审批、路径与基线校验后由 Core 原子落盘；shell、删除、MCP、sandbox 仍不可用。详细边界见[架构事实](../architecture.md)、[持久执行记录](changes/2026-10-03-durable-execution.md)和[写入审批变更](changes/2026-10-04-pi-durable-write-approval.md)。
 
+工作区列表由 Daemon 逐项解析路由。某工作区引用缺失的模型服务商时，列表仍返回其他工作区，并在受影响条目的 API 响应中附上不可用原因。管家页面独立加载已保存配置和 Bot 列表。见 [#236 架构变更](changes/2026-11-06-workspace-list-degradation.md)。
+
 ## 架构资产矩阵 (Architecture-as-Code Matrix)
 
 AgentDock 采用 Archify 建立多层活文档架构资产矩阵，并通过 `pnpm lint:arch` 在持续集成中严格校验：
 
 | 层级 | 领域 / 模块 | 图表类型 | 交付物 (HTML / 图像) | 规范源文件 (JSON) | 对应设计文档 |
 |---|---|---|---|---|---|
-| **L1 全局系统** | 端到端系统架构与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [浅色图](system-architecture.light.png) · [深色图](system-architecture.dark.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
+| **L1 全局系统** | 端到端系统架构、工作区列表错误隔离与 Mesh | `architecture` | [交互全景图](system-architecture.html) · [浅色图](system-architecture.light.png) · [深色图](system-architecture.dark.png) | [`system-architecture.json`](system-architecture.json) | [架构总览](overview.md) |
 | **L2 Mesh 接入 1/3** | 发现、权限与 SSH 预检 | `sequence` | [交互时序图](tailscale-onboarding-discovery.html) · [浅色图](tailscale-onboarding-discovery.light.png) · [深色图](tailscale-onboarding-discovery.dark.png) | [`tailscale-onboarding-discovery.sequence.json`](tailscale-onboarding-discovery.sequence.json) | [Mesh 接入边界](mesh.md) · [接入变更](changes/2026-10-25-tailscale-one-click-onboarding.md) |
 | **L2 Mesh 接入 2/3** | Bridge、部署与身份认证 | `sequence` | [交互时序图](tailscale-onboarding-enrollment.html) · [浅色图](tailscale-onboarding-enrollment.light.png) · [深色图](tailscale-onboarding-enrollment.dark.png) | [`tailscale-onboarding-enrollment.sequence.json`](tailscale-onboarding-enrollment.sequence.json) | [Mesh 接入边界](mesh.md) · [接入变更](changes/2026-10-25-tailscale-one-click-onboarding.md) |
 | **L2 Mesh 接入 3/3** | 能力验证与工作区目标 | `sequence` | [交互时序图](tailscale-onboarding-readiness.html) · [浅色图](tailscale-onboarding-readiness.light.png) · [深色图](tailscale-onboarding-readiness.dark.png) | [`tailscale-onboarding-readiness.sequence.json`](tailscale-onboarding-readiness.sequence.json) | [Mesh 接入边界](mesh.md) · [接入变更](changes/2026-10-25-tailscale-one-click-onboarding.md) |

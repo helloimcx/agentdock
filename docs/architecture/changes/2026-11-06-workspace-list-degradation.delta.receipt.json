@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "compare",
+  "type": "architecture",
+  "comparatorVersion": 1,
+  "canonicalVersion": 1,
+  "completeness": "complete",
+  "proofLevel": "authored",
+  "base": {
+    "title": "AgentDock 系统架构图",
+    "rawSha256": "24fde04d0e00c40c9219060e4193abce6bce7f0d73a3b965e58eb5a8ed7deea3",
+    "semanticSha256": "65654bf7517f14c5b881b2d72077bf4603dc3719a43fa265a400cab922adfccd",
+    "bytes": 11229
+  },
+  "head": {
+    "title": "AgentDock 系统架构图",
+    "rawSha256": "d4ad53a8393b7b10f27085442dff2d450c934c70d3712a2b1de4ef31b51efa21",
+    "semanticSha256": "e9b3d49a0d31b0d41b090f7dd430499a42f9129eff440c959395c3b22791a6e0",
+    "bytes": 11331
+  },
+  "summary": {
+    "components": {
+      "added": 0,
+      "changed": 1,
+      "evidenceChanged": 0,
+      "removed": 0,
+      "moved": 0
+    },
+    "connections": {
+      "added": 0,
+      "changed": 0,
+      "removed": 0,
+      "rerouted": 0
+    },
+    "boundaries": {
+      "added": 0,
+      "changed": 0,
+      "removed": 0,
+      "geometryChanged": 0
+    },
+    "presentationChanged": true,
+    "provenanceChanged": false
+  },
+  "changes": {
+    "components": [
+      {
+        "id": "core_api",
+        "baseLabel": "Core API 路由层",
+        "headLabel": "Core API 路由层",
+        "status": "changed",
+        "classifications": [
+          "semantic"
+        ],
+        "changedFields": [
+          "/sublabel"
+        ]
+      }
+    ],
+    "connections": [],
+    "boundaries": []
+  },
+  "identity": {
+    "components": "components[].id",
+    "connections": "connections[].id (required)",
+    "boundaries": "boundaries[].kind + boundaries[].label (derived)"
+  },
+  "view": {
+    "visualPreset": "classic"
+  },
+  "limitations": [
+    "Authored Architecture IR only; no runtime impact, causality, risk, or mergeability is inferred.",
+    "Boundary identity is conservatively derived from kind + label."
+  ],
+  "artifact": {
+    "sha256": "82ee0cfbe8e24ae3782a688279b056f8aeafdfc491fdff711067235c50591685",
+    "bytes": 2380229
+  },
+  "validation": {
+    "checksPassed": 28,
+    "checkCount": 28,
+    "baseComposition": "pass",
+    "headComposition": "pass"
+  }
+}

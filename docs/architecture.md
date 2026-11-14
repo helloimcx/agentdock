@@ -67,7 +67,7 @@ Key capabilities:
 2. **Web Admin UI**: Served via Vite or production bundle from `apps/web/`. Interacts with AgentDock Daemon via `/api/local/v1/*`.
 3. **AgentDock Daemon REST & WebSocket API**:
    - `GET /api/local/v1/health`: Daemon health probe
-   - `/api/local/v1/workspaces/*`: Workspace configurations and route bindings
+   - `/api/local/v1/workspaces/*`: Workspace configurations and route bindings. `GET /api/local/v1/workspaces` returns healthy summaries unchanged and includes any workspace whose route resolution failed with `unavailable: true` and `unavailableReason` (for example, a missing provider). This tolerance is specific to listing; it does not make the affected workspace runnable.
    - `/api/local/v1/threads/*`: Conversational threads, messages, and permission requests
    - `/api/local/v1/runs/*`: ACP agent execution runs and streaming events
    - `/api/local/v1/scheduler/*`: Recurring cron jobs and automated delivery
