@@ -8,17 +8,18 @@ import {
 interface FakeStream {
   stream: NodeJS.WritableStream;
   written: string[];
-  writeResult: boolean;
+  setAccepted: (accepted: boolean) => void;
   drain: () => void;
 }
 
-function createFakeStream(writeResult: boolean): FakeStream {
+function createFakeStream(accepted: boolean): FakeStream {
   const written: string[] = [];
   const handlers = new Map<string, () => void>();
+  const state = { accepted };
   const stream = {
     write: (line: string) => {
       written.push(line);
-      return writeResult;
+      return state.accepted;
     },
     on: (eventName: string, handler: () => void) => {
       handlers.set(eventName, handler);
@@ -27,7 +28,9 @@ function createFakeStream(writeResult: boolean): FakeStream {
   return {
     stream,
     written,
-    writeResult,
+    setAccepted: (value: boolean) => {
+      state.accepted = value;
+    },
     drain: () => handlers.get('drain')?.(),
   };
 }
@@ -84,6 +87,7 @@ test('lossy writer drops lines under backpressure and resumes after drain', () =
   });
   assert.deepEqual(fake.written, ['line-1\n'], 'only the first line may be written before backpressure');
   assert.equal(produced, 1, 'suspended producers must not be evaluated');
+  fake.setAccepted(true);
   fake.drain();
   assert.equal(fake.written.length, 2, 'drain should emit one drop-marker line');
   assert.match(fake.written[1], /dropped 2 diagnostic lines/);

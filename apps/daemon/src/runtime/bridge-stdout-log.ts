@@ -27,7 +27,7 @@ export function createLossyStdoutLineWriter(stream: NodeJS.WritableStream = proc
     }
     suspended = false;
     if (dropped > 0) {
-      stream.write(`[local-ai-core] stdout backpressure cleared; dropped ${dropped} diagnostic lines\n`);
+      suspended = !stream.write(`[local-ai-core] stdout backpressure cleared; dropped ${dropped} diagnostic lines\n`);
       dropped = 0;
     }
   });
