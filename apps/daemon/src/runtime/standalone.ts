@@ -31,10 +31,10 @@ async function main() {
     if (!line) {
       return;
     }
-    writeDiagnosticLine(`[local-ai-core] ${line}\n`);
+    writeDiagnosticLine(() => `[local-ai-core] ${line}\n`);
   });
   controller.on('bridge', (event: unknown) => {
-    writeDiagnosticLine(formatBridgeLogLine(event));
+    writeDiagnosticLine(() => formatBridgeLogLine(event));
   });
   await server.start();
   await controller.init();

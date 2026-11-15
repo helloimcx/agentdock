@@ -1,6 +1,7 @@
 import process from 'node:process';
 
 export const BRIDGE_LOG_MAX_CHARS = 4096;
+export const BRIDGE_LOG_PREFIX = '[local-ai-core bridge]';
 
 // Bridge events carry full tool outputs (tens of KB); dumping them raw to the
 // journal produced multi-KB lines (2026-11-15 06:02 death log) and the write
@@ -8,14 +9,15 @@ export const BRIDGE_LOG_MAX_CHARS = 4096;
 export function formatBridgeLogLine(event: unknown, maxChars: number = BRIDGE_LOG_MAX_CHARS): string {
   const json = JSON.stringify(event) ?? 'undefined';
   if (json.length <= maxChars) {
-    return `[local-ai-core bridge] ${json}\n`;
+    return `${BRIDGE_LOG_PREFIX} ${json}\n`;
   }
-  return `[local-ai-core bridge] ${json.slice(0, maxChars)} …[truncated ${json.length - maxChars} chars]\n`;
+  return `${BRIDGE_LOG_PREFIX} ${json.slice(0, maxChars)} …[truncated ${json.length - maxChars} chars]\n`;
 }
 
 // process.stdout on a pipe (journald) buffers unboundedly inside libuv while
-// the reader is stalled; diagnostic lines must be dropped instead of piling up
-// in process memory on long-lived daemons.
+// the reader is stalled; that retained queue was the OOM vector. Diagnostic
+// lines are dropped during the stall, and callers pass a producer so an
+// oversized event is never stringified at all while suspended.
 export function createLossyStdoutLineWriter(stream: NodeJS.WritableStream = process.stdout) {
   let suspended = false;
   let dropped = 0;
@@ -29,11 +31,11 @@ export function createLossyStdoutLineWriter(stream: NodeJS.WritableStream = proc
       dropped = 0;
     }
   });
-  return (line: string) => {
+  return (produceLine: () => string) => {
     if (suspended) {
       dropped += 1;
       return;
     }
-    suspended = !stream.write(line);
+    suspended = !stream.write(produceLine());
   };
 }

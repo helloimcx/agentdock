@@ -5,10 +5,8 @@ import {
   formatBridgeLogLine,
   createLossyStdoutLineWriter,
 } from '../../apps/daemon/src/runtime/bridge-stdout-log.js';
-import type { WritableStream } from 'node:stream';
-
 interface FakeStream {
-  stream: WritableStream;
+  stream: NodeJS.WritableStream;
   written: string[];
   writeResult: boolean;
   drain: () => void;
@@ -25,7 +23,7 @@ function createFakeStream(writeResult: boolean): FakeStream {
     on: (eventName: string, handler: () => void) => {
       handlers.set(eventName, handler);
     },
-  } as unknown as WritableStream;
+  } as unknown as NodeJS.WritableStream;
   return {
     stream,
     written,
@@ -43,7 +41,7 @@ test('bridge log line truncates oversized tool payloads with a count marker', ()
   const event = {
     type: 'reply',
     bridgeKind: 'tool',
-    content: `🔧 Terminal: ${'X'.repeat(BRIDGE_LOG_MAX_CHARS * 2)}`,
+    content: `Terminal: ${'X'.repeat(BRIDGE_LOG_MAX_CHARS * 2)}`,
   };
   const expectedTruncated = (JSON.stringify(event) as string).length - BRIDGE_LOG_MAX_CHARS;
   const line = formatBridgeLogLine(event);
@@ -63,29 +61,43 @@ test('formatBridgeLogLine honors a custom limit', () => {
 test('lossy writer passes lines through while the stream accepts them', () => {
   const fake = createFakeStream(true);
   const write = createLossyStdoutLineWriter(fake.stream);
-  write('line-1\n');
-  write('line-2\n');
+  write(() => 'line-1\n');
+  write(() => 'line-2\n');
   assert.deepEqual(fake.written, ['line-1\n', 'line-2\n']);
 });
 
 test('lossy writer drops lines under backpressure and resumes after drain', () => {
   const fake = createFakeStream(false);
+  let produced = 0;
   const write = createLossyStdoutLineWriter(fake.stream);
-  write('line-1\n');
-  write('line-2\n');
-  write('line-3\n');
+  write(() => {
+    produced += 1;
+    return 'line-1\n';
+  });
+  write(() => {
+    produced += 1;
+    return 'line-2\n';
+  });
+  write(() => {
+    produced += 1;
+    return 'line-3\n';
+  });
   assert.deepEqual(fake.written, ['line-1\n'], 'only the first line may be written before backpressure');
+  assert.equal(produced, 1, 'suspended producers must not be evaluated');
   fake.drain();
   assert.equal(fake.written.length, 2, 'drain should emit one drop-marker line');
   assert.match(fake.written[1], /dropped 2 diagnostic lines/);
-  write('line-4\n');
+  write(() => {
+    produced += 1;
+    return 'line-4\n';
+  });
   assert.deepEqual(fake.written[2], 'line-4\n', 'writer must resume after drain');
 });
 
 test('drain while not suspended does not emit a drop marker', () => {
   const fake = createFakeStream(true);
   const write = createLossyStdoutLineWriter(fake.stream);
-  write('line-1\n');
+  write(() => 'line-1\n');
   fake.drain();
   assert.deepEqual(fake.written, ['line-1\n']);
 });
