@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { LocalCoreController } from './local-core-controller.js';
 import { LocalAiCoreServer } from './server.js';
+import { createLossyStdoutLineWriter, formatBridgeLogLine } from './bridge-stdout-log.js';
 
 async function main() {
   const userDataPath = process.env.AI_WORKSTATION_USER_DATA_DIR?.trim() || join(process.cwd(), '.agentdock-core');
@@ -25,14 +26,15 @@ async function main() {
     kernel: controller.kernel,
     errorReporter: controller.errorReporter,
   }, { host });
+  const writeDiagnosticLine = createLossyStdoutLineWriter();
   controller.on('logs', (line: string) => {
     if (!line) {
       return;
     }
-    process.stdout.write(`[local-ai-core] ${line}\n`);
+    writeDiagnosticLine(`[local-ai-core] ${line}\n`);
   });
   controller.on('bridge', (event: unknown) => {
-    process.stdout.write(`[local-ai-core bridge] ${JSON.stringify(event)}\n`);
+    writeDiagnosticLine(formatBridgeLogLine(event));
   });
   await server.start();
   await controller.init();
