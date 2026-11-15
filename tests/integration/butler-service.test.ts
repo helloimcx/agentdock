@@ -266,11 +266,16 @@ test('core Butler tracks an external task across checks and completes only after
       title: 'Download a movie on fnOS', completionCriteria: 'The downloader reports completed and the file exists.',
       assignments: [{ key: 'download', botId: BOTS.research.id, title: 'fnOS download', prompt: 'Create one download task and track it.' }] });
     let delegation = task.delegations[0];
+    const workerCall = f.calls.find((call) => call.threadId === delegation.threadId)!;
+    assert.equal(workerCall.options.permissionMode, 'bypassPermissions');
+    assert.equal(f.core.getThread(delegation.threadId!, [])?.agentMode, 'default', 'worker bypass must not become the persisted thread mode');
     assert.deepEqual(task.trackingPolicy, { defaultCheckIntervalSeconds: 120, checkBudget: 3, deadlineSeconds: 86_400 });
     assert.equal(task.status, 'running');
     assert.equal(f.botMessages.length, 0, 'core transport must not send bot-to-bot channel messages');
     assert.equal(delegation.executionBinding?.workspaceId, 'research');
     const initialRun = delegation.runId!;
+    assert.ok(f.calls.filter((call) => call.threadId === delegation.threadId)
+      .every((call) => call.options.permissionMode === 'bypassPermissions'));
     const createdDownloadIds = ['download-7'];
     await agentCommand(f, { threadId: delegation.threadId!, runId: initialRun }, { action: 'report', report: workerReport('download-checkpoint:7', {
       phase: 'checkpoint', outcome: 'waiting_external', summary: 'Download created; checkpointing the stable ID before continuing.',
@@ -360,12 +365,20 @@ test('core Butler retains an external side-effect checkpoint when its worker run
     await agentCommand(f, { threadId: delegation.threadId!, runId }, { action: 'report', report: checkpoint });
     await assert.rejects(agentCommand(f, { threadId: delegation.threadId!, runId }, { action: 'report', report: { ...checkpoint, summary: 'Replacement' } }), /different payload/i);
     const submission = f.core.submissions.byRun(runId)!;
-    f.core.submissions.finish(submission.id, 'failed');
+    const approval = f.core.createApprovalRequest({ workspaceId: 'research', threadId: delegation.threadId, runId,
+      deviceId: 'local', kind: 'command', riskLevel: 'low', title: 'Approve status query', description: 'python3 status.py --help',
+      requestedAction: 'python3 status.py --help', command: 'python3 status.py --help', scopes: [], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'Allow once', action: 'approve' }],
+      metadata: { acpSessionEpoch: f.core.threadRuntime.epoch } });
+    f.core.submissions.finish(submission.id, 'running');
     f.core.updateRun(runId, delegation.threadId!, 'failed');
+    f.core.submissions.finish(submission.id, 'failed');
     await f.service.reconcile();
     delegation = f.service.get(task.id, profile.threadId).delegations[0];
     assert.equal(delegation.status, 'blocked');
     assert.equal(delegation.checkpoint?.externalRefs?.[0].id, 'download:stable-12');
+    assert.equal(f.core.getApprovalRequest(approval.approvalId)?.status, 'expired');
+    assert.match(delegation.error || '', new RegExp(approval.approvalId));
     const manager = await managerRun(f, profile.threadId);
     await agentCommand(f, manager, { action: 'watch', taskId: task.id, delegationId: delegation.id,
       instructions: 'Read the existing download by ID and report its current state; do not create another download.' });
@@ -378,6 +391,7 @@ test('core Butler retains an external side-effect checkpoint when its worker run
     const operation = f.core.butler.operations(delegation.id).find((entry) => entry.runId === checkRun)!;
     const prompt = f.calls.find((entry) => entry.options.requestId === `butler:worker:${operation.id}`)?.content || '';
     assert.equal(operation.kind, 'check');
+    assert.equal(f.calls.find((entry) => entry.options.requestId === `butler:worker:${operation.id}`)?.options.permissionMode, 'bypassPermissions');
     assert.match(prompt, /download:stable-12/);
     assert.match(prompt, /do not create/i);
   } finally { f.close(); }
@@ -739,7 +753,7 @@ test('delegating to an existing goal is idempotent and waits for declared prereq
   } finally { f.close(); }
 });
 
-test('butler dispatches distinct workspaces concurrently and same workspace serially without bypass', async () => {
+test('channel Butler workers keep interactive permissions', async () => {
   const f = fixture();
   try {
     const profile = await f.service.configure(profileInput());
@@ -758,6 +772,161 @@ test('butler dispatches distinct workspaces concurrently and same workspace seri
     ] });
     assert.equal(repeated.id, task.id);
     assert.equal(f.calls.length, 2);
+  } finally { f.close(); }
+});
+
+test('core Butler reports a pending approval reason and sends one delayed owner reminder', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({ ownerThreadId: profile.threadId, requestId: 'request:approval-reminder:289',
+      title: 'Check download state', assignments: [{ key: 'check', botId: BOTS.research.id, title: 'Check', prompt: 'Inspect current state.' }] });
+    const delegation = task.delegations[0];
+    const submission = f.core.submissions.byRun(delegation.runId!)!;
+    f.core.submissions.finish(submission.id, 'running');
+    f.core.updateRun(delegation.runId!, delegation.threadId!, 'awaiting_input');
+    const approval = f.core.createApprovalRequest({ workspaceId: 'research', threadId: delegation.threadId, runId: delegation.runId,
+      deviceId: 'local', kind: 'command', riskLevel: 'low', title: 'Approve status query', description: 'python3 status.py --help',
+      requestedAction: 'python3 status.py --help', command: 'python3 status.py --help', scopes: [], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'Allow once', action: 'approve' }],
+      metadata: { acpSessionEpoch: f.core.threadRuntime.epoch } });
+
+    await f.service.reconcile();
+    let waiting = f.service.get(task.id, task.ownerThreadId).delegations[0];
+    assert.equal(waiting.blockedReason, 'pending_approval');
+    assert.equal((f.core as any).db.prepare("SELECT COUNT(*) AS count FROM butler_notifications WHERE id LIKE 'butler-reminder:%'").get().count, 0,
+      'do not enqueue a reminder before the threshold');
+
+    const managerNotice = f.core.submissions.listPending().find((entry) => entry.threadId === task.ownerThreadId);
+    if (managerNotice) finish(f, managerNotice.runId);
+    (f.core as any).db.prepare('UPDATE approval_requests SET created_at=? WHERE id=?')
+      .run(new Date(Date.now() - 6 * 60_000).toISOString(), approval.approvalId);
+    const resolvedApproval = f.core.createApprovalRequest({ workspaceId: 'research', threadId: delegation.threadId, runId: delegation.runId,
+      deviceId: 'local', kind: 'command', riskLevel: 'low', title: 'Resolved command', description: 'ls -la',
+      requestedAction: 'ls -la', command: 'ls -la', scopes: [], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'Allow once', action: 'approve' }],
+      metadata: { acpSessionEpoch: f.core.threadRuntime.epoch } });
+    (f.core as any).db.prepare('UPDATE approval_requests SET created_at=? WHERE id=?')
+      .run(new Date(Date.now() - 6 * 60_000).toISOString(), resolvedApproval.approvalId);
+    f.core.resolveApprovalRequest(resolvedApproval.approvalId, { status: 'approved', resolution: 'approved before reminder' });
+    await f.service.reconcile();
+    const reminderCalls = f.calls.filter((call) => call.threadId === task.ownerThreadId && call.content.includes('Approval is still waiting'));
+    assert.equal(reminderCalls.length, 1);
+    assert.ok(reminderCalls[0].content.includes(approval.approvalId));
+    assert.ok(!reminderCalls[0].content.includes(resolvedApproval.approvalId));
+    await f.service.reconcile();
+    assert.equal(f.calls.filter((call) => call.threadId === task.ownerThreadId && call.content.includes('Approval is still waiting')).length, 1);
+
+    f.core.resolveApprovalRequest(approval.approvalId, { status: 'approved', resolution: 'allow once' });
+    f.core.updateRun(delegation.runId!, delegation.threadId!, 'running');
+    finish(f, delegation.runId!);
+    await f.service.reconcile();
+    waiting = f.service.get(task.id, task.ownerThreadId).delegations[0];
+    assert.equal(waiting.blockedReason, undefined);
+  } finally { f.close(); }
+});
+
+test('approval reminder queue drops a stale approval after restart without sending a duplicate', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({ ownerThreadId: profile.threadId, requestId: 'request:approval-reminder-restart:289',
+      title: 'Check a worker result', assignments: [{ key: 'check', botId: BOTS.research.id, title: 'Check', prompt: 'Read the current result.' }] });
+    const delegation = task.delegations[0];
+    const submission = f.core.submissions.byRun(delegation.runId!)!;
+    f.core.submissions.finish(submission.id, 'running');
+    f.core.updateRun(delegation.runId!, delegation.threadId!, 'awaiting_input');
+    const approval = f.core.createApprovalRequest({ workspaceId: 'research', threadId: delegation.threadId, runId: delegation.runId,
+      deviceId: 'local', kind: 'command', riskLevel: 'low', title: 'Approve status query', description: 'python3 status.py --help',
+      requestedAction: 'python3 status.py --help', command: 'python3 status.py --help', scopes: [], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'Allow once', action: 'approve' }],
+      metadata: { acpSessionEpoch: f.core.threadRuntime.epoch } });
+    (f.core as any).db.prepare('UPDATE approval_requests SET created_at=? WHERE id=?')
+      .run(new Date(Date.now() - 6 * 60_000).toISOString(), approval.approvalId);
+    await f.router.sendThreadMessage(task.ownerThreadId, 'Manager is busy', { requestId: 'request:manager-busy:289' });
+
+    await f.service.reconcile();
+    const queued = f.core.butler.notifications('pending').find((entry) => entry.reminder?.approvalId === approval.approvalId);
+    assert.ok(queued, 'the reminder remains durable while the owner thread is busy');
+
+    await f.restart();
+    await f.service.reconcile();
+    assert.equal(f.core.getApprovalRequest(approval.approvalId)?.status, 'expired');
+    const discarded = f.core.butler.notifications('failed').find((entry) => entry.id === queued.id);
+    assert.match(discarded?.error || '', /resolved or its run ended/i);
+    assert.ok(!f.calls.some((call) => call.threadId === task.ownerThreadId && call.content.includes('Approval is still waiting')));
+  } finally { f.close(); }
+});
+
+test('restart preserves the expired approval id and command in the Butler run diagnostic', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({ ownerThreadId: profile.threadId, requestId: 'request:approval-diagnostic-restart:289',
+      title: 'Check a worker result', assignments: [{ key: 'check', botId: BOTS.research.id, title: 'Check', prompt: 'Read the current result.' }] });
+    const delegation = task.delegations[0];
+    const submission = f.core.submissions.byRun(delegation.runId!)!;
+    f.core.submissions.finish(submission.id, 'running');
+    f.core.updateRun(delegation.runId!, delegation.threadId!, 'awaiting_input');
+    const approval = f.core.createApprovalRequest({ workspaceId: 'research', threadId: delegation.threadId, runId: delegation.runId,
+      deviceId: 'local', kind: 'command', riskLevel: 'low', title: 'Approve status query', description: 'python3 status.py --help',
+      requestedAction: 'python3 status.py --help', command: 'python3 status.py --help', scopes: [], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'Allow once', action: 'approve' }],
+      metadata: { acpSessionEpoch: f.core.threadRuntime.epoch } });
+
+    await f.restart();
+    const recovered = f.core.submissions.reconcileInterrupted().find((entry) => entry.runId === delegation.runId)!;
+    assert.equal(f.core.getApprovalRequest(approval.approvalId)?.status, 'expired');
+    assert.match(recovered.error || '', new RegExp(approval.approvalId));
+    assert.match(recovered.error || '', /python3 status\.py --help/);
+    await f.service.reconcile();
+    const observed = f.service.get(task.id, task.ownerThreadId).delegations[0];
+    assert.match(observed.error || '', new RegExp(approval.approvalId));
+    assert.match(observed.error || '', /python3 status\.py --help/);
+    assert.equal(observed.blockedReason, undefined);
+  } finally { f.close(); }
+});
+
+test('restart cancels a pending manager batch containing an expired reminder', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({ ownerThreadId: profile.threadId, requestId: 'request:approval-reminder-batch-restart:289',
+      title: 'Check a worker result', assignments: [{ key: 'check', botId: BOTS.research.id, title: 'Check', prompt: 'Read the current result.' }] });
+    const delegation = task.delegations[0];
+    const workerSubmission = f.core.submissions.byRun(delegation.runId!)!;
+    f.core.submissions.finish(workerSubmission.id, 'running');
+    f.core.updateRun(delegation.runId!, delegation.threadId!, 'awaiting_input');
+    const approval = f.core.createApprovalRequest({ workspaceId: 'research', threadId: delegation.threadId, runId: delegation.runId,
+      deviceId: 'local', kind: 'command', riskLevel: 'low', title: 'Approve status query', description: 'python3 status.py --help',
+      requestedAction: 'python3 status.py --help', command: 'python3 status.py --help', scopes: [], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'Allow once', action: 'approve' }],
+      metadata: { acpSessionEpoch: f.core.threadRuntime.epoch } });
+    (f.core as any).db.prepare('UPDATE approval_requests SET created_at=? WHERE id=?')
+      .run(new Date(Date.now() - 6 * 60_000).toISOString(), approval.approvalId);
+
+    await f.service.reconcile();
+    const batch = f.core.butler.allNotifications().find((entry) => entry.id.startsWith('butler-batch:')
+      && entry.reminderRefs?.some((ref) => ref.approvalId === approval.approvalId))!;
+    assert.ok(batch);
+    const queuedSubmission = f.core.submissions.byRequestId(batch.id).find((entry) => entry.threadId === task.ownerThreadId)!;
+    assert.equal(queuedSubmission.status, 'pending');
+    assert.match(f.calls.find((call) => call.options.requestId === batch.id)?.content || '', /Approval is still waiting/);
+    const reminderSendCount = f.calls.filter((call) => call.threadId === task.ownerThreadId
+      && call.content.includes('Approval is still waiting')).length;
+    assert.equal(reminderSendCount, 1);
+
+    await f.restart();
+
+    assert.equal(f.core.getApprovalRequest(approval.approvalId)?.status, 'expired');
+    assert.equal(f.core.submissions.byRun(queuedSubmission.runId)?.status, 'interrupted');
+    assert.equal(f.calls.filter((call) => call.threadId === task.ownerThreadId
+      && call.content.includes('Approval is still waiting')).length, reminderSendCount);
+    assert.equal(f.core.butler.getNotification(batch.id)?.status, 'failed');
   } finally { f.close(); }
 });
 

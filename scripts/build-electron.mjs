@@ -22,6 +22,7 @@ export function buildElectron({ root = process.cwd(), coverage = false, run = ru
     ['exec', 'tsc', '-p', tsconfig],
     ['exec', 'tsc-alias', '-p', tsconfig],
     ['exec', 'node', 'scripts/copy-managed-skills.mjs'],
+    ['exec', 'node', 'scripts/build-mesh-runtime.mjs'],
   ];
 
   for (const args of stages) {

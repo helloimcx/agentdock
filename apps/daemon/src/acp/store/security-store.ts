@@ -182,16 +182,23 @@ export class LocalSecurityStore {
     return row ? this.toApprovalRequest(row) : undefined;
   }
 
+  listRunApprovals(threadId: string, runId: string): ApprovalRequest[] {
+    const rows = this.db.prepare('SELECT * FROM approval_requests WHERE thread_id = ? AND run_id = ? ORDER BY rowid')
+      .all(threadId, runId) as LocalApprovalRequestRow[];
+    return rows.map((row) => this.toApprovalRequest(row));
+  }
+
   resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): ApprovalRequest {
     const existing = this.getApprovalRequest(approvalId);
     if (!existing) {
       throw new Error(`Approval not found: ${approvalId}`);
     }
+    if (existing.status !== 'pending') throw new Error(`Approval is no longer pending: ${approvalId}`);
     const now = new Date().toISOString();
-    this.db.prepare(`
+    const resolved = this.db.prepare(`
       UPDATE approval_requests
       SET status = ?, resolved_by = ?, resolution = ?, resolved_at = ?, updated_at = ?
-      WHERE id = ?
+      WHERE id = ? AND status = 'pending'
     `).run(
       input.status,
       input.resolvedBy || existing.resolvedBy || 'local',
@@ -200,6 +207,7 @@ export class LocalSecurityStore {
       now,
       approvalId,
     );
+    if (Number(resolved.changes) !== 1) throw new Error(`Approval is no longer pending: ${approvalId}`);
     const approval = this.getApprovalRequest(approvalId)!;
     this.createAuditEvent({
       type: input.status === 'rejected' ? 'approval.rejected' : 'approval.resolved',

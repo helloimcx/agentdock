@@ -6,11 +6,11 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "0015eb1d-f6a9-402f-8255-af276cfa183d",
+  "deliveryReceiptId": "750239d6-3258-4bd1-9293-cb76767bb588",
   "artifact": {
-    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.html",
-    "sha256": "ce2950350d876ef157ac4c9287d532b1730536eb165d2b2004a6aa207a3d073a",
-    "bytes": 851003
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-handler-44/docs/architecture/system-architecture.html",
+    "sha256": "6ac532f3bde74bb1b35a85cddca732783f80046bef3a5d3fe9d4f0cba25f3e9d",
+    "bytes": 851574
   },
   "state": {
     "detail": "read",

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "e4f0ec26-672d-41d4-ba28-172a821c7632",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/momo/.codex/worktrees/issue-289/agentdock/docs/architecture/butler-orchestration.workflow.json",
+  "output": "/Users/momo/.codex/worktrees/issue-289/agentdock/docs/architecture/butler-orchestration.html",
+  "specification": {
+    "sha256": "7827e4ddd9a122186e5ea9cdbcb1d486282dc1fd25ac36ac654217a09ae331d6",
+    "bytes": 6814
+  },
+  "artifact": {
+    "sha256": "48a077198b1095879c476ffd9b0c129d7c365273eedf0ad169dee1475e001d9c",
+    "bytes": 829113
+  }
+}

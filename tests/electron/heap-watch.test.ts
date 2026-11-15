@@ -82,6 +82,135 @@ test('heap watcher re-arms after recovery so a later crossing logs again', () =>
   assert.equal(lines.filter((line) => line.includes('recovered')).length, 1);
 });
 
+test('heap watcher fires onSustainedError once after sustained error samples', () => {
+  const lines: string[] = [];
+  const pinned: Sample = { heapUsed: heapUsedOfLimit(0.94), rss: rssOf(0.9), external: 0 };
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: (message) => lines.push(message),
+    limitBytes: 1_000_000_000,
+    sample: () => pinned,
+    sustainedErrorSamples: 4,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  for (let tick = 0; tick < 10; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(fired, 1, `expected one sustained-error callback, got ${fired}`);
+  assert.ok(
+    lines.some((line) => line.includes('sustained') && line.includes('94%')),
+    `expected a sustained line, got ${JSON.stringify(lines)}`,
+  );
+});
+
+test('heap watcher re-arms the sustained episode after recovery', () => {
+  const lines: string[] = [];
+  const samples: Sample[] = [
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.30), rss: rssOf(0.3), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+  ];
+  const lastSample = samples[samples.length - 1];
+  const totalChecks = samples.length + 1;
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: (message) => lines.push(message),
+    limitBytes: 1_000_000_000,
+    sample: () => samples.shift() ?? lastSample,
+    sustainedErrorSamples: 3,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  for (let tick = 0; tick < totalChecks; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(fired, 1, `expected one fire in the second episode only, got ${fired}`);
+});
+
+test('a warn dip resets the sustained error streak', () => {
+  const lines: string[] = [];
+  const samples: Sample[] = [
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.80), rss: rssOf(0.7), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 },
+  ];
+  const lastSample = samples[samples.length - 1];
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: (message) => lines.push(message),
+    limitBytes: 1_000_000_000,
+    sample: () => samples.shift() ?? lastSample,
+    sustainedErrorSamples: 3,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  for (let tick = 0; tick < 5; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(fired, 0, `expected no fire after the warn dip, got ${fired}`);
+});
+
+test('sustainedErrorSamples=1 fires on the first error sample', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 }),
+    sustainedErrorSamples: 1,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  watcher.check();
+  assert.equal(fired, 1, `expected fire on first error sample, got ${fired}`);
+});
+
+test('sustainedErrorSamples=0 disables the sustained callback', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 }),
+    sustainedErrorSamples: 0,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  for (let tick = 0; tick < 40; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(fired, 0, `expected no fire when disabled, got ${fired}`);
+});
+
+test('stop() clears the sustained streak so a restarted watcher rebuilds it', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.95), rss: rssOf(0.9), external: 0 }),
+    sustainedErrorSamples: 3,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  watcher.check();
+  watcher.check();
+  watcher.stop();
+  watcher.check();
+  watcher.check();
+  assert.equal(fired, 0, 'stale streak must not fire early after stop');
+});
+
 test('heap watcher start() samples on the interval and stop() clears it', () => {
   const lines: string[] = [];
   using timers = mock.timers;

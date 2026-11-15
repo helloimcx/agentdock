@@ -6,6 +6,7 @@ import type { ButlerChannelTransport, ButlerRouter } from './butler-types.js';
 import { decodeButlerBotProtocolMessage, encodeButlerBotProtocolMessage } from './butler-bot-protocol.js';
 
 type TaskChanged = (task: ButlerTask, previous: ButlerTask) => void;
+const BUTLER_WORKER_PERMISSION_MODE = 'bypassPermissions';
 
 export class ButlerDispatcher {
   constructor(
@@ -61,8 +62,9 @@ export class ButlerDispatcher {
         this.store.butler.updateDelegation(current.id, {
           ...(current.runId !== delegation.runId ? { runId: current.runId, runIds: current.runIds,
             status: observed.status || 'running', summary: observed.summary, error: observed.error,
+            blockedReason: observed.blockedReason,
             resultDeliveryState: 'pending', resultMessageId: undefined, lastProgressSignature: undefined } : {}),
-          approvalIds: observed.approvalIds || current.approvalIds,
+          approvalIds: observed.approvalIds || current.approvalIds, blockedReason: observed.blockedReason,
         });
       }
     }
@@ -113,7 +115,7 @@ export class ButlerDispatcher {
     if (delegation.runId === original.runId) return delegation;
     const observed = observeDelegation(this.store, delegation);
     return this.store.butler.updateDelegation(delegation.id, { runId: delegation.runId, runIds: delegation.runIds,
-      approvalIds: observed.approvalIds || [], status: 'running', summary: undefined, error: undefined,
+      approvalIds: observed.approvalIds || [], blockedReason: observed.blockedReason, status: observed.status || 'running', summary: undefined, error: observed.error,
       resultDeliveryState: 'pending', resultMessageId: undefined, lastProgressSignature: undefined });
   }
 
@@ -275,7 +277,9 @@ export class ButlerDispatcher {
       const recovered = this.store.submissions.byRequestId(runId).find((entry) => entry.threadId === threadId);
       const sent = recovered || await this.router.sendThreadMessage(threadId, instruction, {
         requestId: runId,
-        submissionIdentity: { butlerTaskId: task.id, delegationId: delegation.id, operationId: operation.id, content: instruction },
+        permissionMode: BUTLER_WORKER_PERMISSION_MODE,
+        submissionIdentity: { butlerTaskId: task.id, delegationId: delegation.id, operationId: operation.id,
+          permissionMode: BUTLER_WORKER_PERMISSION_MODE, content: instruction },
       });
       this.store.butler.updateOperation({ ...operation, status: 'accepted', runId: sent.runId });
       this.store.butler.updateDelegation(delegation.id, { threadId, runId: sent.runId,
@@ -325,7 +329,8 @@ export class ButlerDispatcher {
     }
     const operation = this.findCoreOperation(delegation);
     if (!operation) {
-      this.store.butler.updateDelegation(delegation.id, { status: 'blocked', error: 'The completed run is not bound to a Butler operation.' });
+      this.store.butler.updateDelegation(delegation.id, { status: 'blocked', approvalIds: [], blockedReason: undefined,
+        error: 'The completed run is not bound to a Butler operation.' });
       return;
     }
     if (operation.settled) return;
@@ -360,8 +365,9 @@ export class ButlerDispatcher {
   }
 
   private recordNonterminalCoreResult(delegation: ButlerDelegation, observed: Partial<ButlerDelegation>) {
-    if (observed.status !== 'waiting_for_user') return;
-    this.store.butler.updateDelegation(delegation.id, { status: 'waiting_for_user', approvalIds: observed.approvalIds || [], error: observed.error });
+    if (!observed.status) return;
+    this.store.butler.updateDelegation(delegation.id, { status: observed.status, approvalIds: observed.approvalIds || [],
+      blockedReason: observed.blockedReason, error: observed.error });
   }
 
   private findCoreOperation(delegation: ButlerDelegation) {
@@ -375,6 +381,7 @@ export class ButlerDispatcher {
       && observed.status === 'cancelled';
     this.store.butler.updateDelegation(delegation.id, {
       status: observed.status === 'cancelled' && !workerInterruptedBeforeExternalCancel ? 'cancelled' : 'blocked',
+      approvalIds: [], blockedReason: undefined,
       error: workerInterruptedBeforeExternalCancel
         ? 'The worker was interrupted; cancellation of the external task has not been verified.'
         : observed.error || 'Worker execution ended without success.',
@@ -383,14 +390,14 @@ export class ButlerDispatcher {
 
   private settleUnreportedCoreRun(delegation: ButlerDelegation, operation: ButlerOperation, summary?: string) {
     this.store.butler.updateOperation({ ...operation, settled: true });
-    this.store.butler.updateDelegation(delegation.id, { status: 'blocked', summary,
+    this.store.butler.updateDelegation(delegation.id, { status: 'blocked', summary, approvalIds: [], blockedReason: undefined,
       error: 'Worker run ended without a structured Butler report; inspect before continuing.' });
   }
 
   private settleReportedCoreRun(delegation: ButlerDelegation, operation: ButlerOperation, report: NonNullable<ButlerOperation['report']>) {
     this.store.butler.updateOperation({ ...operation, settled: true });
     const settlement = buildCoreReportSettlement(delegation, operation, report);
-    this.store.butler.updateDelegation(delegation.id, settlement);
+    this.store.butler.updateDelegation(delegation.id, { ...settlement, approvalIds: [], blockedReason: undefined });
   }
 
   private async dispatchFollowupIfReady(task: ButlerTask, delegation: ButlerDelegation) {

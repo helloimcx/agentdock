@@ -131,6 +131,133 @@ function bindMeshLacMcpContext(config: LocalCoreProjectConfig, runtimeEnv: Recor
   };
 }
 
+type ResolvedSessionLaunch = {
+  permissionMode: string;
+  runtimeEnv: Record<string, string>;
+  sessionConfig: LocalCoreProjectConfig;
+  configKey: string;
+  runtimeEnvKey: string;
+};
+
+function resolveLaunchPermissionMode(store: LocalCoreAcpStore, threadId: string, permissionModeOverride = '') {
+  const row = store.getThreadRow(threadId);
+  const mode = String(permissionModeOverride || row?.agent_mode || '').trim();
+  return !mode || mode === 'default' ? '' : mode;
+}
+
+function buildRuntimeEnvKey(runtimeEnv: Record<string, string> = {}, butlerCapability = '') {
+  return Object.keys(runtimeEnv)
+    .sort()
+    .map((key) => `${key}=${runtimeEnv[key]}`)
+    .concat(butlerCapability ? [`AGENTDOCK_BUTLER_CONTEXT_TOKEN=${butlerCapability}`] : [])
+    .join('\n');
+}
+
+function buildAgentRuntimeEnv(store: LocalCoreAcpStore, threadId: string, existingPath: string,
+  runtimeEnv: Record<string, string>, runId: string, config: LocalCoreProjectConfig | undefined,
+  localCoreBase: string | undefined, cliBinDir: string | undefined): Record<string, string> {
+  const capability = runId && store.submissions.byRun(runId)?.threadId === threadId
+    ? store.butler?.issueAgentCapability(threadId, runId)
+    : undefined;
+  const isRemoteMesh = config?.execution?.mode === 'mesh';
+  const env = buildTrustedAgentEnv(store, threadId, existingPath, runId, localCoreBase, cliBinDir);
+  if (!env) return {};
+  return {
+    ...env,
+    ...buildMeshLaunchEnv(config),
+    ...filterRuntimeOverrides(runtimeEnv, isRemoteMesh),
+    ...(runId ? { AGENTDOCK_SANDBOX_RUN_ID: runId } : {}),
+    LOCAL_AI_THREAD_ID: threadId,
+    ...(capability ? { AGENTDOCK_BUTLER_CONTEXT_TOKEN: capability } : {}),
+  };
+}
+
+function resolveSessionLaunch(
+  options: LocalCoreAcpSessionCoordinatorOptions,
+  threadId: string,
+  config: LocalCoreProjectConfig,
+  launchOptions: EnsureSessionOptions,
+): ResolvedSessionLaunch {
+  const permissionMode = resolveLaunchPermissionMode(options.store, threadId, launchOptions.permissionMode);
+  const baseEnv = {
+    ...process.env,
+    ...config.env,
+  };
+  const runtimeEnv = buildAgentRuntimeEnv(options.store, threadId, getPathEnv(baseEnv), launchOptions.runtimeEnv || {},
+    launchOptions.runId || '', config, options.localCoreBase, options.cliBinDir);
+  const sessionConfig = bindMeshLacMcpContext(config, runtimeEnv);
+  return {
+    permissionMode,
+    runtimeEnv,
+    sessionConfig,
+    configKey: buildLaunchConfigKey(sessionConfig),
+    runtimeEnvKey: buildRuntimeEnvKey(launchOptions.runtimeEnv, runtimeEnv.AGENTDOCK_BUTLER_CONTEXT_TOKEN),
+  };
+}
+
+function buildLaunchConfigKey(config: LocalCoreProjectConfig) {
+  return JSON.stringify({
+    agentType: config.agentType,
+    workDir: config.workDir,
+    command: config.command,
+    args: config.args || [],
+    env: config.env || {},
+    model: config.model || '',
+    execution: config.execution || null,
+    sandbox: config.sandbox || null,
+    mcpServers: toAcpMcpServers(config),
+  });
+}
+
+function buildSessionProviderKey(config: LocalCoreProjectConfig) {
+  const env = config.env || {};
+  const rawApiKey = env.OPENAI_API_KEY || env.HERMES_API_KEY || env.ANTHROPIC_API_KEY || '';
+  const keyHash = rawApiKey ? createHash('sha256').update(rawApiKey).digest('hex').slice(0, 16) : '';
+  return JSON.stringify({
+    agentType: config.agentType,
+    model: config.model || '',
+    baseUrl: env.OPENAI_BASE_URL || env.HERMES_BASE_URL || env.ANTHROPIC_BASE_URL || '',
+    keyHash,
+    executionMode: config.execution?.mode || 'local',
+    executionNodeId: config.execution?.nodeId || '',
+  });
+}
+
+// A warm session may only be reused when the permission mode, launch config,
+// and runtime env are all unchanged — any drift would silently run the next
+// turn on stale provider/model/env state.
+function canReuseSession(existing: AcpSessionState | undefined, launch: ResolvedSessionLaunch): existing is AcpSessionState {
+  return Boolean(
+    existing
+    && !existing.closed
+    && existing.sessionId
+    && existing.launchPermissionMode === launch.permissionMode
+    && existing.launchConfigKey === launch.configKey
+    && existing.launchRuntimeEnvKey === launch.runtimeEnvKey,
+  );
+}
+
+function resolveStoredSessionIdentity(row: ReturnType<LocalCoreAcpStore['getThreadRow']>, providerKey: string) {
+  const storedSessionId = row?.acp_session_id;
+  const hasProviderMismatch = Boolean(row?.acp_launch_config_key && row.acp_launch_config_key !== providerKey);
+  const canLoad = Boolean(storedSessionId && row?.acp_supports_load && !hasProviderMismatch);
+  return { storedSessionId, hasProviderMismatch, canLoad };
+}
+
+function sanitizeProviderKeyForLog(key?: string | null) {
+  if (!key) return 'none';
+  try {
+    const parsed = JSON.parse(key);
+    if (parsed && typeof parsed === 'object') {
+      const { apiKey: _removed, ...rest } = parsed as Record<string, unknown>;
+      return JSON.stringify(rest);
+    }
+  } catch {
+    // ignore
+  }
+  return 'fingerprint';
+}
+
 export class LocalCoreAcpSessionCoordinator {
   private readonly sessions = new Map<string, AcpSessionState>();
 
@@ -185,23 +312,8 @@ export class LocalCoreAcpSessionCoordinator {
     options: EnsureSessionOptions = {},
   ) {
     const existing = this.sessions.get(threadId);
-    const permissionMode = this.resolveLaunchPermissionMode(threadId, options.permissionMode);
-    const baseEnv = {
-      ...process.env,
-      ...config.env,
-    };
-    const runtimeEnv: Record<string, string> = this.buildAgentRuntimeEnv(threadId, getPathEnv(baseEnv), options.runtimeEnv, options.runId, config);
-    const sessionConfig = bindMeshLacMcpContext(config, runtimeEnv);
-    const configKey = this.buildLaunchConfigKey(sessionConfig);
-    const runtimeEnvKey = this.buildRuntimeEnvKey(options.runtimeEnv, runtimeEnv.AGENTDOCK_BUTLER_CONTEXT_TOKEN);
-    if (
-      existing
-      && !existing.closed
-      && existing.sessionId
-      && existing.launchPermissionMode === permissionMode
-      && existing.launchConfigKey === configKey
-      && existing.launchRuntimeEnvKey === runtimeEnvKey
-    ) {
+    const launch = resolveSessionLaunch(this.options, threadId, config, options);
+    if (canReuseSession(existing, launch)) {
       this.clearIdleClose(existing);
       this.options.log?.(`[acp.session:${threadId}] reuse existing session mode=${config.sandbox?.enabled ? 'sandbox' : 'local'}`);
       return existing;
@@ -210,67 +322,108 @@ export class LocalCoreAcpSessionCoordinator {
       this.closeThreadSession(threadId);
     }
     const startedAt = Date.now();
+    const session = this.spawnSessionForLaunch(threadId, bridgeSessionKey, config, launch);
+    // launch.sessionConfig (not the raw config) must flow into session/load
+    // and session/new: in mesh mode bindMeshLacMcpContext injects the LAC
+    // context env into the agentdock-lac-control MCP server payload.
+    await this.attachSessionIdentity(threadId, session, launch.sessionConfig, launch.permissionMode, startedAt);
+    this.options.log?.(`[acp.session:${threadId}] ready in ${Date.now() - startedAt}ms`);
+    return session;
+  }
+
+  private spawnSessionForLaunch(
+    threadId: string,
+    bridgeSessionKey: string,
+    config: LocalCoreProjectConfig,
+    launch: ResolvedSessionLaunch,
+  ) {
     this.options.log?.(`[acp.session:${threadId}] spawn mode=${config.sandbox?.enabled ? 'sandbox' : 'local'} transport=${config.execution?.transport || 'stdio'}`);
     const session = this.options.transport.spawnSession({
       threadId,
       bridgeSessionKey,
-      config: sessionConfig,
-      runtimeEnv,
+      config: launch.sessionConfig,
+      runtimeEnv: launch.runtimeEnv,
     });
-    session.launchPermissionMode = permissionMode;
-    session.launchConfigKey = configKey;
-    session.launchRuntimeEnvKey = runtimeEnvKey;
+    session.launchPermissionMode = launch.permissionMode;
+    session.launchConfigKey = launch.configKey;
+    session.launchRuntimeEnvKey = launch.runtimeEnvKey;
     this.sessions.set(threadId, session);
+    return session;
+  }
+
+  private async attachSessionIdentity(
+    threadId: string,
+    session: AcpSessionState,
+    config: LocalCoreProjectConfig,
+    permissionMode: string,
+    startedAt: number,
+  ) {
     await this.options.transport.initializeSession(session);
     this.options.log?.(`[acp.session:${threadId}] initialize done in ${Date.now() - startedAt}ms`);
     const row = this.options.store.getThreadRow(threadId);
-    const providerKey = this.buildSessionProviderKey(config);
-    const hasProviderMismatch = Boolean(
-      row?.acp_launch_config_key && row.acp_launch_config_key !== providerKey,
-    );
-    if (hasProviderMismatch && row?.acp_session_id) {
+    const providerKey = buildSessionProviderKey(config);
+    const identity = resolveStoredSessionIdentity(row, providerKey);
+    if (identity.hasProviderMismatch && identity.storedSessionId) {
       this.options.log?.(
-        `[acp.session:${threadId}] provider configuration mismatch (stored=${this.sanitizeProviderKeyForLog(row.acp_launch_config_key)} current=${this.sanitizeProviderKeyForLog(providerKey)}); ` +
-        `discarding stale session ${row.acp_session_id} to prevent provider/model pollution`,
+        `[acp.session:${threadId}] provider configuration mismatch (stored=${sanitizeProviderKeyForLog(row?.acp_launch_config_key)} current=${sanitizeProviderKeyForLog(providerKey)}); ` +
+        `discarding stale session ${identity.storedSessionId} to prevent provider/model pollution`,
       );
     }
-    if (row?.acp_session_id && row.acp_supports_load && session.supportsLoad && !hasProviderMismatch) {
-      try {
-        session.loadReplayMode = true;
-        await this.options.transport.request(session, 'session/load', {
-          sessionId: row.acp_session_id,
-          cwd: acpSessionCwd(sessionConfig),
-          mcpServers: toAcpMcpServers(sessionConfig),
-        }, 30000);
-        session.sessionId = row.acp_session_id;
-      } catch (error) {
-        this.options.log?.(`ACP loadSession failed for ${threadId}; creating a fresh session instead: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        session.loadReplayMode = false;
-      }
+    if (identity.canLoad && session.supportsLoad && identity.storedSessionId) {
+      await this.tryLoadStoredSession(threadId, session, identity.storedSessionId, config);
     }
     if (!session.sessionId) {
-      try {
-        const created = await this.options.transport.request(session, 'session/new', {
-          cwd: acpSessionCwd(sessionConfig),
-          mcpServers: toAcpMcpServers(sessionConfig),
-          _meta: this.buildSessionMeta(threadId, permissionMode, sessionConfig),
-        }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
-        session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
-        if (!session.sessionId) {
-          throw new Error('ACP session/new did not return a sessionId');
-        }
-        this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad, providerKey);
-        this.options.log?.(`[acp.session:${threadId}] session/new done in ${Date.now() - startedAt}ms`);
-      } catch (error) {
-        this.closeThreadSession(threadId);
-        throw error;
-      }
+      await this.createFreshSession(threadId, session, config, permissionMode, providerKey, startedAt);
     } else if (!row?.acp_launch_config_key) {
       this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad, providerKey);
     }
-    this.options.log?.(`[acp.session:${threadId}] ready in ${Date.now() - startedAt}ms`);
-    return session;
+  }
+
+  private async tryLoadStoredSession(
+    threadId: string,
+    session: AcpSessionState,
+    storedSessionId: string,
+    config: LocalCoreProjectConfig,
+  ) {
+    try {
+      session.loadReplayMode = true;
+      await this.options.transport.request(session, 'session/load', {
+        sessionId: storedSessionId,
+        cwd: acpSessionCwd(config),
+        mcpServers: toAcpMcpServers(config),
+      }, 30000);
+      session.sessionId = storedSessionId;
+    } catch (error) {
+      this.options.log?.(`ACP loadSession failed for ${threadId}; creating a fresh session instead: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      session.loadReplayMode = false;
+    }
+  }
+
+  private async createFreshSession(
+    threadId: string,
+    session: AcpSessionState,
+    config: LocalCoreProjectConfig,
+    permissionMode: string,
+    providerKey: string,
+    startedAt: number,
+  ) {
+    try {
+      const created = await this.options.transport.request(session, 'session/new', {
+        cwd: acpSessionCwd(config),
+        mcpServers: toAcpMcpServers(config),
+        _meta: this.buildSessionMeta(threadId, permissionMode, config),
+      }, 30000) as { id?: string; sessionId?: string; session_id?: string; session?: { id?: string; sessionId?: string; session_id?: string } };
+      session.sessionId = String(created.sessionId || created.session_id || created.id || created.session?.sessionId || created.session?.session_id || created.session?.id || '').trim();
+      if (!session.sessionId) {
+        throw new Error('ACP session/new did not return a sessionId');
+      }
+      this.options.store.updateThreadSession(threadId, session.sessionId, session.supportsLoad, providerKey);
+      this.options.log?.(`[acp.session:${threadId}] session/new done in ${Date.now() - startedAt}ms`);
+    } catch (error) {
+      this.closeThreadSession(threadId);
+      throw error;
+    }
   }
 
   async setThreadMode(threadId: string, mode: string) {
@@ -393,88 +546,8 @@ export class LocalCoreAcpSessionCoordinator {
     }
   }
 
-  private buildRuntimeEnvKey(runtimeEnv: Record<string, string> = {}, butlerCapability = '') {
-    return Object.keys(runtimeEnv)
-      .sort()
-      .map((key) => `${key}=${runtimeEnv[key]}`)
-      .concat(butlerCapability ? [`AGENTDOCK_BUTLER_CONTEXT_TOKEN=${butlerCapability}`] : [])
-      .join('\n');
-  }
-
-  private buildAgentRuntimeEnv(
-    threadId: string,
-    existingPath: string,
-    runtimeEnv: Record<string, string> = {},
-    runId = '',
-    config?: LocalCoreProjectConfig,
-  ) {
-    const capability = runId && this.options.store.submissions.byRun(runId)?.threadId === threadId
-      ? this.options.store.butler?.issueAgentCapability(threadId, runId)
-      : undefined;
-    const isRemoteMesh = config?.execution?.mode === 'mesh';
-    const env = buildTrustedAgentEnv(this.options.store, threadId, existingPath, runId,
-      this.options.localCoreBase, this.options.cliBinDir);
-    if (!env) return {};
-    return {
-      ...env,
-      ...buildMeshLaunchEnv(config),
-      ...filterRuntimeOverrides(runtimeEnv, isRemoteMesh),
-      ...(runId ? { AGENTDOCK_SANDBOX_RUN_ID: runId } : {}),
-      LOCAL_AI_THREAD_ID: threadId,
-      ...(capability ? { AGENTDOCK_BUTLER_CONTEXT_TOKEN: capability } : {}),
-    };
-  }
-
-  private buildLaunchConfigKey(config: LocalCoreProjectConfig) {
-    return JSON.stringify({
-      agentType: config.agentType,
-      workDir: config.workDir,
-      command: config.command,
-      args: config.args || [],
-      env: config.env || {},
-      model: config.model || '',
-      execution: config.execution || null,
-      sandbox: config.sandbox || null,
-      mcpServers: toAcpMcpServers(config),
-    });
-  }
-
-  private buildSessionProviderKey(config: LocalCoreProjectConfig) {
-    const env = config.env || {};
-    const rawApiKey = env.OPENAI_API_KEY || env.HERMES_API_KEY || env.ANTHROPIC_API_KEY || '';
-    const keyHash = rawApiKey ? createHash('sha256').update(rawApiKey).digest('hex').slice(0, 16) : '';
-    return JSON.stringify({
-      agentType: config.agentType,
-      model: config.model || '',
-      baseUrl: env.OPENAI_BASE_URL || env.HERMES_BASE_URL || env.ANTHROPIC_BASE_URL || '',
-      keyHash,
-      executionMode: config.execution?.mode || 'local',
-      executionNodeId: config.execution?.nodeId || '',
-    });
-  }
-
-  private sanitizeProviderKeyForLog(key?: string | null) {
-    if (!key) return 'none';
-    try {
-      const parsed = JSON.parse(key);
-      if (parsed && typeof parsed === 'object') {
-        const { apiKey: _removed, ...rest } = parsed as Record<string, unknown>;
-        return JSON.stringify(rest);
-      }
-    } catch {
-      // ignore
-    }
-    return 'fingerprint';
-  }
-
-  private resolveLaunchPermissionMode(threadId: string, permissionModeOverride = '') {
-    const row = this.options.store.getThreadRow(threadId);
-    const mode = String(permissionModeOverride || row?.agent_mode || '').trim();
-    return !mode || mode === 'default' ? '' : mode;
-  }
-
   private buildSessionMeta(threadId: string, permissionModeOverride = '', config?: LocalCoreProjectConfig) {
-    const mode = this.resolveLaunchPermissionMode(threadId, permissionModeOverride);
+    const mode = resolveLaunchPermissionMode(this.options.store, threadId, permissionModeOverride);
     const isMesh = config?.execution?.mode === 'mesh';
     const systemPromptAppend = isMesh ? config?.execution?.systemPromptAppend : undefined;
     const disallowedTools = isMesh ? ['FileEdit', 'GlobTool', 'Write', 'Edit'] : [];

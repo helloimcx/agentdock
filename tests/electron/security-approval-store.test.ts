@@ -80,6 +80,40 @@ test('approval requests persist, resolve, attach to tasks, and audit lifecycle',
   store.close();
 });
 
+test('terminal runs expire only their pending ACP approvals and expired approvals cannot be resolved', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'approval-terminal-run-'));
+  const store = new LocalCoreAcpStore(userDataPath);
+  const firstThread = store.createThread('workspace-a', 'First thread', 'codex').id;
+  const secondThread = store.createThread('workspace-a', 'Second thread', 'codex').id;
+  const submission = store.submissions.admit({ threadId: firstThread, requestId: 'request:terminal-approval-regression',
+    payload: { text: 'Run the pending command' } }, () => ({})).submission;
+  const targetRunId = submission.runId;
+  const otherRunId = `run:${firstThread}:22222222-2222-4222-8222-222222222222:1792200000000`;
+  const otherThreadRunId = `run:${secondThread}:33333333-3333-4333-8333-333333333333:1792200000000`;
+  const create = (threadId: string, runId: string) => store.createApprovalRequest({
+    workspaceId: 'workspace-a', threadId, runId, deviceId: 'local', kind: 'command', riskLevel: 'low',
+    title: 'Approve command', description: 'python3 status.py --help', requestedAction: 'python3 status.py --help',
+    command: 'python3 status.py --help', scopes: [], requestedBy: 'agent',
+  });
+  const target = create(firstThread, targetRunId);
+  const otherRun = create(firstThread, otherRunId);
+  const otherThread = create(secondThread, otherThreadRunId);
+  assert.equal(store.submissions.claim(submission.id, true), true);
+
+  store.updateRun(targetRunId, firstThread, 'failed');
+  store.submissions.finish(submission.id, 'failed', undefined, 'ACP transport closed.');
+
+  assert.equal(store.getApprovalRequest(target.approvalId)?.status, 'expired');
+  assert.equal(store.getApprovalRequest(otherRun.approvalId)?.status, 'pending');
+  assert.equal(store.getApprovalRequest(otherThread.approvalId)?.status, 'pending');
+  assert.match(store.submissions.byRun(targetRunId)?.error || '', new RegExp(target.approvalId));
+  assert.match(store.submissions.byRun(targetRunId)?.error || '', /python3 status\.py --help/);
+  assert.match(store.submissions.byRun(targetRunId)?.error || '', /ACP transport closed/);
+  assert.throws(() => store.resolveApprovalRequest(target.approvalId, { status: 'approved', resolution: 'too late' }), /no longer pending/i);
+  assert.equal(store.getApprovalRequest(target.approvalId)?.status, 'expired');
+  store.close();
+});
+
 test('empty status filter returns all rows instead of building invalid IN () SQL', () => {
   const userDataPath = mkdtempSync(join(tmpdir(), 'approval-empty-filter-'));
   const store = new LocalCoreAcpStore(userDataPath);

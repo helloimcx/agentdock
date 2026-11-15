@@ -35,9 +35,12 @@ import type {
   WorkspaceStreamingProbeResult,
   MeshExecution,
   MeshNode,
+  TailscaleBindInput,
+  TailscaleStatusResponse,
 } from '@cc/superai-contracts';
 import { coreClient } from './client.js';
 import { buildQuery, coreRequest } from './request.js';
+import { createMeshClient } from './mesh.js';
 
 export {
   coreClient,
@@ -259,13 +262,26 @@ export function onRuntimeUpdated(listener: (runtime: DesktopRuntimeStatus) => vo
   });
 }
 
+export function getMeshAdminToken(adminToken?: string) {
+  return adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
+}
+
 export function listMeshNodes(adminToken?: string) {
-  const token = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('agentdock_mesh_token') || localStorage.getItem('agentdock_token') || '' : '');
+  const token = getMeshAdminToken(adminToken);
   const headers: Record<string, string> = {};
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   return coreRequest<{ nodes: MeshNode[] }>('GET', '/mesh/nodes', undefined, headers);
+}
+
+export function getTailscaleStatus(adminToken?: string) {
+  return createMeshClient(getMeshAdminToken(adminToken)).getTailscaleStatus();
+}
+
+/** @deprecated Inventory-only binding is retired; use secure Tailscale onboarding. */
+export function bindTailscaleNode(input: TailscaleBindInput, adminToken?: string) {
+  return createMeshClient(getMeshAdminToken(adminToken)).bindTailscaleNode(input);
 }
 
 export interface DirectoryListingResult {

@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "0015eb1d-f6a9-402f-8255-af276cfa183d",
+  "receiptId": "750239d6-3258-4bd1-9293-cb76767bb588",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.json",
-  "output": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/system-architecture.html",
+  "input": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-handler-44/docs/architecture/system-architecture.json",
+  "output": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-handler-44/docs/architecture/system-architecture.html",
   "specification": {
-    "sha256": "b46bb12154132e2270de2f3f4926e0b72d394170e97f53cea1b188cc5723580c",
-    "bytes": 11144
+    "sha256": "c054e1abb7cede4e32113518887a65083f9d87ad911caeffe1c5b4996ed81f62",
+    "bytes": 11352
   },
   "artifact": {
-    "sha256": "ce2950350d876ef157ac4c9287d532b1730536eb165d2b2004a6aa207a3d073a",
-    "bytes": 851003
+    "sha256": "6ac532f3bde74bb1b35a85cddca732783f80046bef3a5d3fe9d4f0cba25f3e9d",
+    "bytes": 851574
   }
 }

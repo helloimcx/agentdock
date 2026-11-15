@@ -33,8 +33,13 @@ export interface ButlerNotification {
   content: string;
   status: 'pending' | 'submitted' | 'failed';
   error?: string;
+  reminder?: ButlerApprovalReminderRef;
+  reminderRefs?: ButlerApprovalReminderRef[];
+  sourceNotificationIds?: string[];
   deliveryContext?: { channelRoute?: ChannelRoute; runtimeEnv?: Record<string, string> };
 }
+
+export interface ButlerApprovalReminderRef { taskId: string; delegationId: string; runId: string; approvalId: string }
 
 export class ButlerTaskClosedError extends Error {
   constructor() { super('This Butler task is closed.'); }
@@ -336,6 +341,12 @@ export class ButlerStore {
   }
   notifications(status: ButlerNotification['status'] = 'pending'): ButlerNotification[] {
     return this.db.prepare('SELECT data FROM butler_notifications ORDER BY rowid').all().map((row) => readJson<ButlerNotification>(row)!).filter((row) => row.status === status);
+  }
+  allNotifications(): ButlerNotification[] {
+    return this.db.prepare('SELECT data FROM butler_notifications ORDER BY rowid').all().map((row) => readJson<ButlerNotification>(row)!);
+  }
+  getNotification(id: string): ButlerNotification | undefined {
+    return readJson<ButlerNotification>(this.db.prepare('SELECT data FROM butler_notifications WHERE id=?').get(id));
   }
   updateNotification(notification: ButlerNotification) { this.db.prepare('UPDATE butler_notifications SET data=? WHERE id=?').run(JSON.stringify(notification), notification.id); }
   updateNotificationIfCurrent(notification: ButlerNotification, previous: ButlerNotification): boolean {

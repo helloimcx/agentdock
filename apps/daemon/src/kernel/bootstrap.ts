@@ -1,3 +1,4 @@
+import { writeSync } from 'node:fs';
 import type {
   ChannelRoute,
   DesktopConnectConfig,
@@ -357,7 +358,23 @@ export function bootstrapLocalCoreRuntime(options: {
     },
   });
 
-  const heapWatcher = createHeapWatcher({ log: options.log ?? (() => {}) });
+  const heapWatcher = createHeapWatcher({
+    log: options.log ?? (() => {}),
+    onSustainedError: () => {
+      // A heap pinned above 90% ends in a V8 abort regardless; exiting now
+      // restarts the daemon before the final hours of swap thrash degrade
+      // the whole host. bin/agentdock.mjs exits in turn so systemd restarts
+      // the stack. writeSync so the diagnostic survives process.exit's async
+      // stdout truncation; the fd may already be gone, which must not turn
+      // the deliberate exit into an uncaught exception.
+      try {
+        writeSync(1, '[heap-watch] heap sustained above the error threshold; exiting for supervisor restart\n');
+      } catch {
+        // stdout is closed or its reader is gone — exit anyway.
+      }
+      process.exit(1);
+    },
+  });
 
   return {
     kernel,

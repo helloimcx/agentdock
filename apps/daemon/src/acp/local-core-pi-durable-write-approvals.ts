@@ -88,9 +88,11 @@ export class LocalCorePiDurableWriteApprovals {
     const { request } = pending;
     const { store, host, log } = this.deps;
     store.threadRuntime.expireAcpPermissions(request.threadId, request.coreRunId, 'Pi Durable write approval expired before a decision.');
-    store.updateRun(request.coreRunId, request.threadId, 'running');
+    const run = store.getRun(request.coreRunId);
+    const runIsActive = run && !['completed', 'failed', 'interrupted'].includes(run.status);
+    if (runIsActive) store.updateRun(request.coreRunId, request.threadId, 'running');
     const task = store.getAgentTaskByRunId(request.coreRunId);
-    if (task) store.updateAgentTask(task.taskId, { status: 'running' });
+    if (task && runIsActive) store.updateAgentTask(task.taskId, { status: 'running' });
     void host.resolveWrite(request.requestId, { ok: false, error: 'The workspace write approval expired.' })
       .catch((error) => log?.(`Pi Durable write expiration response failed: ${String(error)}`));
   }

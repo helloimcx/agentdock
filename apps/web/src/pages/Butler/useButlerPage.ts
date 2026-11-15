@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cancelButlerTask, completeButlerTask, followupButlerTask, getButlerProfile, listButlerBots, listButlerTasks, setButlerProfile } from '@cc/core-sdk/butler';
 import { listWorkspaces } from '@cc/core-sdk/threads';
 import type { ButlerBotEndpoint, ButlerProfile, ButlerTask, ButlerTrackingPolicy, WorkspaceSummary } from '@cc/superai-contracts';
+import { applyButlerReload } from './butler-page-model';
 
 export function useButlerPage() {
   const [profile, setProfile] = useState<ButlerProfile | null>(null);
@@ -29,17 +30,16 @@ export function useButlerPage() {
   const reload = useCallback(async () => {
     setActionError('');
     try {
-      const [current, result, discovered] = await Promise.all([getButlerProfile(), listWorkspaces(), listButlerBots()]);
+      const settled = await Promise.allSettled([getButlerProfile(), listWorkspaces(), listButlerBots()] as const);
       if (!alive.current) return;
-      owner.current = current?.threadId || '';
-      setProfile(current);
-      setWorkspaces(result.workspaces);
-      setBots(discovered.bots);
-      setError('');
-      if (current) await loadTasks(current.threadId);
+      const outcome = applyButlerReload(settled);
+      owner.current = outcome.profile?.threadId || '';
+      setProfile(outcome.profile);
+      setWorkspaces(outcome.workspaces);
+      setBots(outcome.bots);
+      setError(outcome.failure);
+      if (outcome.profile) await loadTasks(outcome.profile.threadId);
       else setTasks([]);
-    } catch (failure) {
-      if (alive.current) setError(String(failure instanceof Error ? failure.message : failure));
     } finally { if (alive.current) setLoading(false); }
   }, [loadTasks]);
   useEffect(() => {

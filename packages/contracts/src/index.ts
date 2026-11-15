@@ -10,6 +10,7 @@ export * from './standards.js';
 export * from './handoff.js';
 export * from './memory.js';
 export * from './mesh.js';
+export * from './mesh-onboarding.js';
 export * from './thread-runtime.js';
 export * from './delivery.js';
 export * from './butler.js';

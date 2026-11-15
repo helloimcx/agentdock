@@ -266,3 +266,116 @@ test('runtime watch waits for SSE drain, coalesces pending snapshots, and cleans
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(blockedWriteCount, 1);
 });
+
+test('runtime watch fans out through a fixed listener budget no matter how many clients watch', async () => {
+  const { registerThreadRuntimeHandlers } = await import('../../apps/daemon/src/runtime/handlers/thread-runtime-handler.js');
+  const { EventEmitter } = await import('node:events');
+  const threadId = 'thread:agentdock::b5e89726-c114-4a07-8dfc-c35e058754a7';
+  let revision = 1;
+  let snapshotReads = 0;
+  const controller = new EventEmitter();
+  const store = {
+    threadRuntime: { revision: () => revision },
+    getThreadExecutionSnapshot: () => {
+      snapshotReads += 1;
+      return { schemaVersion: 1, threadId, runtimeEpoch: 'epoch:one', revision };
+    },
+  };
+  const router = { getThread: async () => ({ selectedKnowledgeBaseIds: [] }) };
+  const handlers = new Map();
+  const watches = new Set<() => void>();
+  registerThreadRuntimeHandlers(handlers, store as any, router as any, controller, watches);
+
+  const responses = Array.from({ length: 20 }, () => {
+    const writes = { count: 0 };
+    const response = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writeHead: () => {},
+      write: () => { writes.count += 1; return true; },
+      end: () => {},
+      writes,
+    });
+    return response;
+  });
+  for (const response of responses) {
+    await handlers.get('thread.runtime.watch')({ threadId }, {}, response, new URL('http://localhost/'));
+  }
+  try {
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const event of ['bridge', 'agent-run', 'automation-run'] as const) {
+      assert.equal(controller.listenerCount(event), 1, `${event} should hold exactly one dispatcher listener`);
+    }
+    assert.ok(responses.every((response) => response.writes.count === 1));
+    assert.equal(snapshotReads, 20);
+
+    revision = 2;
+    controller.emit('bridge');
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(responses.every((response) => response.writes.count === 2));
+    assert.equal(snapshotReads, 40);
+
+    controller.emit('agent-run');
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(snapshotReads, 40, 'events for an unchanged revision must not hydrate snapshots');
+
+    for (const response of responses.slice(0, 10)) {
+      response.destroyed = true;
+      response.emit('close');
+    }
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(watches.size, 10);
+    for (const event of ['bridge', 'agent-run', 'automation-run'] as const) {
+      assert.equal(controller.listenerCount(event), 1, 'surviving watches must keep the dispatcher wired');
+    }
+
+    revision = 3;
+    controller.emit('bridge');
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(responses.slice(10).every((response) => response.writes.count === 3));
+    assert.ok(responses.slice(0, 10).every((response) => response.writes.count === 2));
+    assert.equal(snapshotReads, 50);
+  } finally {
+    for (const response of responses) {
+      response.destroyed = true;
+      response.emit('close');
+    }
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  for (const event of ['bridge', 'agent-run', 'automation-run'] as const) {
+    assert.equal(controller.listenerCount(event), 0, `${event} dispatcher should unwire after the last client leaves`);
+  }
+  assert.equal(watches.size, 0);
+});
+
+test('runtime watch aborts before SSE setup when the client already disconnected', async () => {
+  const { registerThreadRuntimeHandlers } = await import('../../apps/daemon/src/runtime/handlers/thread-runtime-handler.js');
+  const { EventEmitter } = await import('node:events');
+  const threadId = 'thread:agentdock::b5e89726-c114-4a07-8dfc-c35e058754a7';
+  let snapshotReads = 0;
+  const controller = new EventEmitter();
+  const store = {
+    threadRuntime: { revision: () => 1 },
+    getThreadExecutionSnapshot: () => {
+      snapshotReads += 1;
+      return { schemaVersion: 1, threadId, runtimeEpoch: 'epoch:one', revision: 1 };
+    },
+  };
+  const router = { getThread: async () => ({ selectedKnowledgeBaseIds: [] }) };
+  const handlers = new Map();
+  const watches = new Set<() => void>();
+  registerThreadRuntimeHandlers(handlers, store as any, router as any, controller, watches);
+
+  const response = Object.assign(new EventEmitter(), {
+    destroyed: true,
+    writeHead: () => {},
+    write: () => true,
+    end: () => {},
+  });
+  await handlers.get('thread.runtime.watch')({ threadId }, {}, response, new URL('http://localhost/'));
+  for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(snapshotReads, 0);
+  assert.equal(watches.size, 0);
+  for (const event of ['bridge', 'agent-run', 'automation-run'] as const) {
+    assert.equal(controller.listenerCount(event), 0);
+  }
+});

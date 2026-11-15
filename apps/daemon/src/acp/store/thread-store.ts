@@ -161,22 +161,53 @@ export class LocalThreadStore {
     };
   }
 
-  /** Narrow read for runPrompt turn state: skips user rows and the fat
-   * tool_call_json column, so a whale thread costs bytes of content instead of
-   * a full ThreadDetail hydration per run. Unlike get(), a missing thread
-   * yields [] rather than throwing — runPrompt has already verified the row. */
-  listAssistantTurnMessages(threadId: string): Array<{ kind: LocalMessageRow['kind']; content: string; bridgeKind: ReturnType<typeof normalizeBridgeKind> }> {
+  /** Narrow read for runPrompt turn state: only 'final' assistant rows
+   * (finals are small; hermes replay-prefix stripping needs them). Unlike
+   * get(), a missing thread yields [] rather than throwing — runPrompt has
+   * already verified the row. */
+  listAssistantFinalMessages(threadId: string): string[] {
     const rows = this.db.prepare(`
-      SELECT kind, content, bridge_kind
+      SELECT content
       FROM messages
-      WHERE thread_id = ? AND role = 'assistant'
+      WHERE thread_id = ? AND role = 'assistant' AND kind = 'final'
       ORDER BY seq ASC
-    `).all(threadId) as Array<Pick<LocalMessageRow, 'kind' | 'content' | 'bridge_kind'>>;
+    `).all(threadId) as Array<Pick<LocalMessageRow, 'content'>>;
+    return rows.map((row) => row.content);
+  }
+
+  /** Progress rows for runPrompt turn state. Loaded ONLY when the agent's ACP
+   * behavior consumes them (replay suppression), so claudecode turns on a
+   * whale thread never hydrate megabytes of progress text. */
+  listAssistantProgressMessages(threadId: string): Array<{ kind: ReturnType<typeof normalizeBridgeKind>; content: string }> {
+    const rows = this.db.prepare(`
+      SELECT content, bridge_kind
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant' AND kind = 'progress'
+      ORDER BY seq ASC
+    `).all(threadId) as Array<Pick<LocalMessageRow, 'content' | 'bridge_kind'>>;
     return rows.map((row) => ({
-      kind: row.kind,
+      kind: normalizeBridgeKind(row.bridge_kind),
       content: row.content,
-      bridgeKind: normalizeBridgeKind(row.bridge_kind),
     }));
+  }
+
+  /** Existence probe for tool replay dedup: an indexed instr() LIMIT 1 replaces
+   * the old "load every progress row then substring-scan in JS" path. beforeIso
+   * bounds the probe to rows written strictly before the running turn started
+   * (ISO string compare; every writer stores new Date().toISOString()), so rows
+   * the turn itself persists never suppress a genuine repeat of the same tool
+   * call. Newest-first ordering lets the common case — a replay of recent
+   * history — terminate early; a full miss still scans the thread's tool rows.
+   * instr() has no wildcards, so content needs no LIKE-style escaping. */
+  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1
+      FROM messages
+      WHERE thread_id = ? AND role = 'assistant' AND bridge_kind = 'tool' AND instr(content, ?) > 0 AND timestamp < ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `).get(threadId, needle, beforeIso);
+    return row !== undefined;
   }
 
   /** Narrow read for external-run SSE replay: only this run's assistant rows,
@@ -292,6 +323,24 @@ export class LocalThreadStore {
     return { id, timestamp };
   }
 
+  removeQueuedUserMessage(threadId: string, messageId: string): boolean {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const message = this.db.prepare('SELECT role FROM messages WHERE id=? AND thread_id=?').get(messageId, threadId) as { role: string } | undefined;
+      if (message?.role !== 'user') { this.db.exec('ROLLBACK'); return false; }
+      this.db.prepare('DELETE FROM messages WHERE id=? AND thread_id=?').run(messageId, threadId);
+      const latest = this.db.prepare('SELECT content FROM messages WHERE thread_id=? ORDER BY seq DESC LIMIT 1').get(threadId) as { content: string } | undefined;
+      this.db.prepare(`UPDATE threads SET history_count=(SELECT COUNT(*) FROM messages WHERE thread_id=?),
+        updated_at=?, excerpt=? WHERE id=?`).run(threadId, new Date().toISOString(),
+        latest ? normalizeMessageContent(latest.content) : '', threadId);
+      this.db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   private insertMessageRow(
     threadId: string,
     id: string | undefined,
@@ -300,7 +349,7 @@ export class LocalThreadStore {
   ) {
     const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
-    const messageId = id ?? `${timestamp}-${role}-${nextSeq}`;
+    const messageId = id ?? `${timestamp}-${role}-${nextSeq}-${randomUUID()}`;
     this.db.prepare(`
       INSERT INTO messages (${MESSAGE_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

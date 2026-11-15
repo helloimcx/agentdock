@@ -158,6 +158,27 @@ test('Mesh history pruning removes resolved records older than retention and kee
   } finally { db.close(); }
 });
 
+test('Mesh history pruning leaves durable Tailscale onboarding records intact', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const store = new MeshStore(db);
+    const onboarding = store.onboarding.begin({
+      peerId: '100.64.0.8', sshUser: 'agent', approvedRoot: '/workspace', allowShell: false,
+      idempotencyKey: 'mesh-onboarding:retention-test',
+    });
+    const nodeId = store.createPairing({ label: 'Onboarding target' }).nodeId;
+    const oldExecution = store.createExecution({ nodeId, capability: 'filesystem.list', args: { path: '.' } });
+    backdateExecutionCreatedAt(db, oldExecution.id, new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString());
+    store.finish(oldExecution.id, 'completed', []);
+
+    store.recover();
+
+    assert.equal(store.getExecution(oldExecution.id), undefined);
+    assert.equal(store.onboarding.getResult(onboarding.operation.id).connection.id, onboarding.connection.id);
+    assert.equal(store.onboarding.getResult(onboarding.operation.id).operation.stage, 'preflight');
+  } finally { db.close(); }
+});
+
 test('Mesh recover() prunes resolved history and keeps restart orphans interruptible', () => {
   const db = new DatabaseSync(':memory:');
   try {

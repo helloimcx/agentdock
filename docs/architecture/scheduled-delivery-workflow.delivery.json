@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "receiptId": "70fce1fd-33bd-4101-b2ac-4cbd80a5533f",
+  "receiptId": "708e4423-21fa-4a77-b492-a8a7a2730759",
   "status": "current",
   "command": "deliver",
   "type": "workflow",
-  "input": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.json",
-  "output": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-20261105/docs/architecture/scheduled-delivery-workflow.html",
+  "input": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-handler-44/docs/architecture/scheduled-delivery-workflow.json",
+  "output": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-handler-44/docs/architecture/scheduled-delivery-workflow.html",
   "specification": {
     "sha256": "45a55a7303b3550c9fc6c4e1f225fc5b7d2e427e7449c9f74c86a53985471767",
     "bytes": 6972

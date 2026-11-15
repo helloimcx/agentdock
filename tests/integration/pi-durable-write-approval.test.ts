@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import type { DesktopBridgeEvent } from '../../packages/contracts/src/desktop.js';
 import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 import { LocalCoreAcpBackend } from '../../apps/daemon/src/acp/local-core-acp-backend.js';
+import { LocalCorePiDurableWriteApprovals } from '../../apps/daemon/src/acp/local-core-pi-durable-write-approvals.js';
 
 test('Pi Durable write tool requires the existing per-write approval and Core performs the approved file write', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'pi-durable-write-approval-'));
@@ -114,4 +115,31 @@ test('Core restart expires a pending Pi Durable write approval and removes its a
     store.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('late Pi Durable approval timeout does not revive a terminal run', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'pi-durable-terminal-approval-'));
+  const store = new LocalCoreAcpStore(directory);
+  try {
+    const thread = store.createThread('agentdock', 'Terminal write approval', 'pi-durable');
+    const runId = `run:${thread.id}:da11abed-1b3a-4e18-bc31-fb1821224211:1791079000000`;
+    store.updateRun(runId, thread.id, 'awaiting_input');
+    const approval = store.createApprovalRequest({ workspaceId: 'agentdock', threadId: thread.id, runId,
+      deviceId: 'local', kind: 'file_change', riskLevel: 'medium', title: 'Write file?', description: 'Create notes.txt',
+      requestedAction: 'write_file notes.txt', scopes: ['workspace.write'], requestedBy: 'agent',
+      options: [{ optionId: 'allow', label: 'allow once', action: 'allow_once' }],
+      metadata: { runtime: 'pi-durable', durableWriteRequestId: 'durable-write:terminal', acpSessionEpoch: store.threadRuntime.epoch } });
+    const timer = setTimeout(() => {}, 60_000);
+    const approvals = new LocalCorePiDurableWriteApprovals({ store, host: { resolveWrite: async () => {} } as any,
+      configs: new Map(), emit: () => {} });
+    (approvals as any).pending.set(approval.approvalId, { request: { threadId: thread.id, coreRunId: runId,
+      requestId: 'durable-write:terminal' }, prepared: {}, timer });
+    store.updateRun(runId, thread.id, 'failed');
+
+    (approvals as any).expire(approval.approvalId);
+
+    assert.equal(store.getRun(runId)?.status, 'failed');
+    assert.equal(store.getApprovalRequest(approval.approvalId)?.status, 'expired');
+    approvals.close();
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 });

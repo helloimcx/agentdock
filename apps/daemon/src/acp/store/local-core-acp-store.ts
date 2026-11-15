@@ -90,7 +90,7 @@ import { LocalPlatformStore } from './platform-store.js';
 import { LocalSchedulerStore } from './scheduler-store.js';
 import { LocalSecurityStore } from './security-store.js';
 import { LocalThreadStore } from './thread-store.js';
-import { LocalThreadRuntimeStore } from './thread-runtime-store.js';
+import { LocalThreadRuntimeStore, type ExpiredAcpPermission } from './thread-runtime-store.js';
 import { readThreadExecutionSnapshot } from './thread-execution-snapshot.js';
 import { LocalWorkspaceRegistryStore } from './workspace-registry-store.js';
 import { LocalModelProviderStore } from './model-provider-store.js';
@@ -101,6 +101,7 @@ import { LocalCoreSessionHandoffStore } from './session-handoff-store.js';
 import { LocalCoreWorkspaceMemoryStore } from './workspace-memory-store.js';
 import { LocalSubmissionStore } from './submission-store.js';
 import { ButlerStore } from './butler-store.js';
+import { ButlerApprovalLifecycle } from './butler-approval-lifecycle.js';
 import { MeshStore } from '../../mesh/mesh-store.js';
 import type { SkillSource, SkillScope } from '@cc/superai-contracts/skills';
 
@@ -132,6 +133,7 @@ export class LocalCoreAcpStore {
   readonly channelCommands: ChannelCommandStore;
   readonly submissions: LocalSubmissionStore;
   readonly butler: ButlerStore;
+  private readonly butlerApprovalLifecycle: ButlerApprovalLifecycle;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
@@ -171,7 +173,12 @@ export class LocalCoreAcpStore {
     this.submissions = new LocalSubmissionStore(this.db);
     this.butler = new ButlerStore(this.db);
     this.runtimeConfig = new LocalRuntimeConfigStore(this.db, dbPath);
-    this.threadRuntime = new LocalThreadRuntimeStore(this.db);
+    let startupExpired: ExpiredAcpPermission[] = [];
+    this.threadRuntime = new LocalThreadRuntimeStore(this.db, (expired) => { startupExpired = expired; });
+    this.butlerApprovalLifecycle = new ButlerApprovalLifecycle({ butler: this.butler, security: this.security,
+      submissions: this.submissions, threadRuntime: this.threadRuntime, threads: this.threads });
+    this.butlerApprovalLifecycle.handleExpiredAcpPermissions(startupExpired, 'Core restarted');
+    this.reconcileButlerApprovalReminders();
   }
 
   private handleDeliveryOutboxUpdate(record: DeliveryRecord): void {
@@ -254,8 +261,16 @@ export class LocalCoreAcpStore {
     return this.threads.get(threadId, selectedKnowledgeBaseIds, options);
   }
 
-  listAssistantTurnMessages(threadId: string) {
-    return this.threads.listAssistantTurnMessages(threadId);
+  listAssistantFinalMessages(threadId: string) {
+    return this.threads.listAssistantFinalMessages(threadId);
+  }
+
+  listAssistantProgressMessages(threadId: string) {
+    return this.threads.listAssistantProgressMessages(threadId);
+  }
+
+  hasAssistantToolCallMessage(threadId: string, needle: string, beforeIso: string) {
+    return this.threads.hasAssistantToolCallMessage(threadId, needle, beforeIso);
   }
 
   listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
@@ -321,6 +336,12 @@ export class LocalCoreAcpStore {
 
   updateRun(runId: string, threadId: string, status: LocalRunRow['status']) {
     this.threads.updateRun(runId, threadId, status);
+    if (status === 'completed' || status === 'failed' || status === 'interrupted') {
+      const expired = this.threadRuntime.expireAcpPermissions(threadId, runId, 'ACP run ended while this approval was pending.');
+      this.butlerApprovalLifecycle.handleExpiredAcpPermissions(expired, 'Run ended');
+      return expired;
+    }
+    return [];
   }
 
   getLatestRunForThread(threadId: string) {
@@ -428,6 +449,14 @@ export class LocalCoreAcpStore {
 
   getApprovalRequest(approvalId: string): ApprovalRequest | undefined {
     return this.security.getApprovalRequest(approvalId);
+  }
+
+  listRunApprovals(threadId: string, runId: string): ApprovalRequest[] {
+    return this.security.listRunApprovals(threadId, runId);
+  }
+
+  reconcileButlerApprovalReminders() {
+    this.butlerApprovalLifecycle.reconcileReminders();
   }
 
   resolveApprovalRequest(approvalId: string, input: ApprovalRequestResolveInput): ApprovalRequest {

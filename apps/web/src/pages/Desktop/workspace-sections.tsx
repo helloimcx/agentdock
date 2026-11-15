@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { FolderOpen, Plus, Save, Settings, Trash2 } from 'lucide-react';
 import { Button, EmptyState, Input, Select, StatusPill } from '@/components/ui';
+import { ExecutionDeviceSelector } from '../Mesh/ExecutionDeviceSelector';
 import { DirectoryPickerModal } from './DirectoryPickerModal';
 import {
   DEFAULT_SANDBOX_PROVIDER_ID,
@@ -36,6 +37,9 @@ type BasicProjectSectionProps = {
   project: DesktopProjectConfig;
   updateProject: ProjectUpdater;
   meshNodes?: import('@cc/superai-contracts').MeshNode[];
+  tailscalePeers?: import('@cc/superai-contracts').TailscalePeer[];
+  tailscaleError?: string | null;
+  onNodeBound?: (node: import('@cc/superai-contracts').MeshNode) => void;
 };
 
 function applyAgentTypeChange(current: DesktopProjectConfig, value: string): DesktopProjectConfig {
@@ -65,23 +69,6 @@ function applyDeviceChange(current: DesktopProjectConfig, deviceId: string): Des
       },
     },
   };
-}
-
-function DeviceOptions({ nodes }: { nodes?: import('@cc/superai-contracts').MeshNode[] }) {
-  if (!nodes || nodes.length === 0) return null;
-  return (
-    <>
-      {nodes.map((node) => {
-        const label = node.label || node.id;
-        const deviceValue = node.id.startsWith('node:') ? node.id : `node:${node.id}`;
-        return (
-          <option key={node.id} value={deviceValue}>
-            {label} ({node.platform}) - {node.status}
-          </option>
-        );
-      })}
-    </>
-  );
 }
 
 function resolveDeviceLabel(deviceId: string, meshNodes?: import('@cc/superai-contracts').MeshNode[]) {
@@ -127,7 +114,7 @@ function HostWorkspacePathField({
   );
 }
 
-export function BasicProjectSection({ project, updateProject, meshNodes }: BasicProjectSectionProps) {
+export function BasicProjectSection({ project, updateProject, meshNodes, tailscalePeers, tailscaleError, onNodeBound }: BasicProjectSectionProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const agentType = project.agent?.type || '';
   const agentTypeValue = getSelectValue(agentType, DESKTOP_AGENT_TYPE_OPTIONS);
@@ -159,14 +146,14 @@ export function BasicProjectSection({ project, updateProject, meshNodes }: Basic
           {DESKTOP_AGENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           <option value={CUSTOM_SELECT_VALUE}>custom</option>
         </Select>
-        <Select
-          label="Execution device"
-          value={selectedDevice}
-          onChange={(event) => updateProject((current) => applyDeviceChange(current, event.target.value))}
-        >
-          <option value="local">本机 (Local)</option>
-          <DeviceOptions nodes={meshNodes} />
-        </Select>
+        <ExecutionDeviceSelector
+          selectedDevice={selectedDevice}
+          meshNodes={meshNodes}
+          tailscalePeers={tailscalePeers}
+          tailscaleError={tailscaleError}
+          onNodeBound={onNodeBound}
+          onDeviceChange={deviceId => updateProject(current => applyDeviceChange(current, deviceId))}
+        />
         <HostWorkspacePathField
           workDir={workDir}
           selectedDevice={selectedDevice}

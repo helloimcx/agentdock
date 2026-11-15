@@ -1,6 +1,6 @@
 # Scheduled delivery deduplication plan
 
-Architecture Impact: None. This restores ordering within existing automation and channel responsibilities; ownership, protocols, data flows and deployment boundaries are unchanged.
+Architecture Impact: Required. Synchronous ownership registration at ACP admission changes when channel gateways hand final delivery to the outbox.
 
 ```mermaid
 flowchart LR
@@ -14,4 +14,4 @@ flowchart LR
 2. Register the execution during admission before the dispatcher can claim it; preserve existing completion-time persistence and failure behavior.
 3. Verify rapid completion, unrelated runs, failure cleanup and one confirmed outbox delivery; run relevant checks and independent review.
 
-Docs Impact: None. Existing architecture and operational documentation describe the intended ownership and remain accurate.
+Docs Impact: Required. Synchronize the architecture facts, change record, system and scheduled-delivery diagrams, architecture matrix, and README diagram.

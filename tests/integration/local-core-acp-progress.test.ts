@@ -1935,3 +1935,103 @@ test('recordToolObservation keeps small tool inputs verbatim', () => {
   recordToolObservation(currentTurn, { name: 'Write', title: 'Write', status: 'completed', input });
   assert.equal(currentTurn.toolObservations[0].input, input);
 });
+
+test('tool replay dedup probes the store without a loaded progress history', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'acp-tool-dedup-store-'));
+  let store: LocalCoreAcpStore | null = null;
+  try {
+    store = new LocalCoreAcpStore(userDataPath);
+    const thread = store.createThread('workspace-test', 'Tool dedup thread');
+    store.appendMessage(thread.id, 'assistant', '🔧 Terminal: pnpm test', 'progress', undefined, 'tool');
+
+    const turnStartedAtIso = new Date(Date.now() + 60_000).toISOString();
+    const probes: Array<{ threadId: string; needle: string; beforeIso: string }> = [];
+    const coordinator = new LocalCoreAcpTurnCoordinator({
+      appendMessage: () => assert.fail('suppressed tool calls must not append'),
+      emitBridge: () => {},
+      updateRunStatus: () => {},
+      sendRaw: () => true,
+      hasPriorToolMessage: (probeThreadId, needle, beforeIso) => {
+        probes.push({ threadId: probeThreadId, needle, beforeIso });
+        return store!.hasAssistantToolCallMessage(probeThreadId, needle, beforeIso);
+      },
+    });
+    const session = {
+      threadId: thread.id,
+      bridgeSessionKey: `session:${thread.id}`,
+      currentRunId: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000004',
+      currentTurn: {
+        runId: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000004',
+        startedAtIso: turnStartedAtIso,
+        replyCtx: 'run:agentdock::0aa8b5ae-4c3f-4b6a-9f0e-8f6a4fd1c201:1793034000004',
+        previewHandle: 'preview-1',
+        thoughtPreviewHandle: 'thought-preview-1',
+        thoughtMessageId: 'run-1-thought-1',
+        agentType: 'claudecode',
+        assistantText: '',
+        thoughtText: '',
+        thoughtSequence: 1,
+        typingStarted: true,
+        previewStarted: false,
+        thoughtPreviewStarted: false,
+        toolObservations: [],
+        permission: null,
+      },
+      loadReplayMode: false,
+      schedulerJobCreatedByRun: new Map(),
+    } as any;
+
+    coordinator.handleAgentNotification(session, {
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call',
+          id: 'tool-1',
+          title: 'Terminal',
+          rawInput: { command: 'pnpm test' },
+        },
+      },
+    });
+    assert.deepEqual(probes, [{
+      threadId: thread.id,
+      needle: 'Terminal: pnpm test',
+      beforeIso: turnStartedAtIso,
+    }]);
+    assert.equal(session.currentTurn.toolObservations.length, 0);
+
+    coordinator.handleAgentNotification(session, {
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call',
+          id: 'tool-2',
+          title: 'Terminal',
+          rawInput: { command: 'pnpm lint' },
+        },
+      },
+    });
+    assert.deepEqual(probes[1], { threadId: thread.id, needle: 'Terminal: pnpm lint', beforeIso: turnStartedAtIso });
+    assert.equal(session.currentTurn.toolObservations.length, 1);
+    assert.equal(session.currentTurn.toolObservations[0].title, 'Terminal');
+
+    // A probe bounded before the seeded row exists must not suppress: rows the
+    // turn itself persists (timestamp >= turn start) never count as prior.
+    session.currentTurn.startedAtIso = '2000-01-01T00:00:00.000Z';
+    coordinator.handleAgentNotification(session, {
+      method: 'session/update',
+      params: {
+        update: {
+          sessionUpdate: 'tool_call',
+          id: 'tool-3',
+          title: 'Terminal',
+          rawInput: { command: 'pnpm test' },
+        },
+      },
+    });
+    assert.equal(probes[2].beforeIso, '2000-01-01T00:00:00.000Z');
+    assert.equal(session.currentTurn.toolObservations.length, 2);
+  } finally {
+    store?.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});

@@ -5,6 +5,10 @@ export interface WorkspaceSummary {
   platforms: string[];
   sessionsCount: number;
   heartbeatEnabled: boolean;
+  /** Present when the workspace cannot currently be routed (e.g. it references a missing provider). */
+  unavailable?: boolean;
+  /** Human-readable cause, naming the workspace and the missing dependency. */
+  unavailableReason?: string;
 }
 
 export type WorkspaceRegistryHealthStatus = 'healthy' | 'warning' | 'error' | 'unknown';
