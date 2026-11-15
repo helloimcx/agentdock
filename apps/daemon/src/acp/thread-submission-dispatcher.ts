@@ -3,6 +3,7 @@ import type { LocalCoreProjectConfig } from '../router/workspace-router-types.js
 import type { LocalCoreAcpStore } from './local-core-acp-store.js';
 import type { ChannelRoute } from '@cc/superai-contracts';
 export type SendThreadMessageOptions = {
+  onRunAdmitted?: (runId: string) => void;
   requestId?: string;
   expectedRunId?: string;
   expectedApprovalId?: string;

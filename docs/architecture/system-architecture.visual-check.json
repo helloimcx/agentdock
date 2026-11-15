@@ -6,11 +6,11 @@
   "status": "pass",
   "visualReview": "pending",
   "provenance": "current",
-  "deliveryReceiptId": "0d432f11-4759-4855-8edf-004d59738589",
+  "deliveryReceiptId": "750239d6-3258-4bd1-9293-cb76767bb588",
   "artifact": {
-    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-277-handler-38/docs/architecture/system-architecture.html",
-    "sha256": "4e3d5792137460031cea5d0689454176315e357b62c880652981ff9a7ad2210b",
-    "bytes": 851222
+    "path": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-271-handler-44/docs/architecture/system-architecture.html",
+    "sha256": "6ac532f3bde74bb1b35a85cddca732783f80046bef3a5d3fe9d4f0cba25f3e9d",
+    "bytes": 851574
   },
   "state": {
     "detail": "read",
@@ -928,7 +928,6 @@
     "contactSheet": "system-architecture.visual-check.html"
   },
   "sidecars": {
-    "directory": "/Users/momo/code/agentdock/.git-worktrees/repair-pr-277-handler-38/tmp/handler-38/published-visual",
     "receipt": "system-architecture.visual-check.json",
     "contactSheet": "system-architecture.visual-check.html",
     "files": [
@@ -938,23 +937,23 @@
         "file": "system-architecture.visual-check.html"
       },
       {
-        "sha256": "b9a6441e4e52dccbe974d142c553aac012207dfd9b259d153ebd136a135f94ac",
-        "bytes": 164763,
+        "sha256": "6922b61a19d054c947505a6877e0383240e1244218a56c7c5cc1bfe98e250494",
+        "bytes": 166531,
         "file": "system-architecture.visual-check.1440x900.light.png"
       },
       {
-        "sha256": "9b9e909b9e74bf75975318029c35ae61e596fd20322af5b1cba4914da97674d5",
-        "bytes": 184286,
+        "sha256": "a9de7af8d26ad97a964924a9329f3aa276e30fd158042cb2d09ad46e9f5628aa",
+        "bytes": 186017,
         "file": "system-architecture.visual-check.1440x900.dark.png"
       },
       {
-        "sha256": "9cb4edc5cb56dae7f5419bdc5df2add30b18a262fed0edb5bb5f418e8d2f9216",
-        "bytes": 256076,
+        "sha256": "6e2d9ae4712642e5d1b8991050e99e2648a0a0ed06920afa17aaa020b59500a9",
+        "bytes": 259201,
         "file": "system-architecture.visual-check.2048x1320.light.png"
       },
       {
-        "sha256": "7ea73c82aed2fadb3aaebdb221267efa47998b4f0821afd9f51b1746031d379d",
-        "bytes": 289450,
+        "sha256": "34999b3c155384ac438292d5f75684d4d6b2e49a079119ab67f07811001a55a4",
+        "bytes": 292800,
         "file": "system-architecture.visual-check.2048x1320.dark.png"
       }
     ]

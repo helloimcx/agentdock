@@ -508,3 +508,40 @@ test('AutomationService settles bridge success only after outbox delivered, and 
 });
 
 
+
+test('automation registers outbox ownership before observing a completed run', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'delivery-registration-'));
+  const core = new LocalCoreAcpStore(directory);
+  try {
+    const thread = core.createThread(input.workspaceId, '[Automation:lark] Registration');
+    const automation = core.createAutomation({ workspaceId: input.workspaceId, title: 'Registration', enabled: true,
+      activation: { kind: 'once', runAt: '2026-11-01T00:00:00.000Z' }, condition: { kind: 'always' },
+      action: { kind: 'agent-prompt', promptTemplate: 'report', executionMode: 'side-thread' },
+      delivery: { platform: 'lark', route: input.route }, policies: { concurrency: 'skip-if-running', cooldownMs: 0 } });
+    const evaluation = core.createAutomationEvaluation(automation.id, { activationKind: 'once', startedAt: '2026-11-01T00:00:00.000Z' });
+    core.finishAutomationEvaluation(evaluation.id, { finishedAt: '2026-11-01T00:00:01.000Z', conditionOutcome: 'matched', triggerDecision: 'triggered' });
+    const run = core.createAutomationRun(automation.id, evaluation.id, { status: 'running' });
+    const sessionKey = `localcore-acp:${thread.id}`;
+    let owner = '';
+    let closed = false;
+    const runtime = { platform: 'lark', registerScheduledThreadBridge: () => () => { closed = true; },
+      onBridgeEvent: async () => {}, markScheduledThreadRunOwned: (key: string, id: string) => { assert.equal(key, sessionKey); owner = id; } };
+    const router = { listThreads: async () => [{ id: thread.id, title: '[Automation:lark] Registration', agentType: 'codex' }],
+      getWorkspaceAgentType: async () => 'codex', getThreadSessionKey: () => sessionKey,
+      sendThreadMessage: async (_threadId: string, _prompt: string, options: { onRunAdmitted: (id: string) => void }) => {
+        options.onRunAdmitted(input.acpRunId);
+        return { runId: input.acpRunId };
+      } };
+    (core as any).getRun = () => {
+      assert.equal(owner, input.acpRunId, 'ownership must be registered before completion can emit a final');
+      return { status: 'completed' };
+    };
+    (core as any).getRunFinalResult = () => ({ threadId: thread.id, content: input.content, messageId: input.sourceMessageId });
+    const executor = new AutomationActionExecutor({ store: core, getWorkspaceRouter: () => router as any, getChannelRuntime: () => runtime as any });
+    const result = await executor.execute({ automation, automationRunId: run.id, evaluation, promptVariables: {} });
+    assert.equal(core.getAutomationRun(run.id)?.acpRunId, input.acpRunId);
+    assert.equal(result.deliveryIntent?.content, input.content);
+    await result.closeBridge?.();
+    assert.equal(closed, true);
+  } finally { core.close(); rmSync(directory, { recursive: true, force: true }); }
+});
