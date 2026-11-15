@@ -155,22 +155,21 @@ export class WorkspaceRouter {
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
     const localProjects = await this.listLocalCoreProjects();
     const workspaceMap = new Map<string, WorkspaceSummary>();
-    const configState = await this.options.readRuntimeConfig();
     const workspaceIds: string[] = [];
-    for (const project of localProjects) {
-      const route = this.resolveProjectRoute(configState, project);
-      if (!route) {
-        continue;
-      }
+    for (const { project, route, error } of localProjects) {
+      // Route-less projects without an error are simply not local-core workspaces; skip them.
+      if (!route && !error) continue;
       const workspaceId = projectWorkspaceId(project);
       workspaceIds.push(workspaceId);
+      // A misconfigured workspace stays visible with its cause instead of failing the whole listing.
       workspaceMap.set(workspaceId, {
         id: workspaceId,
         name: project.name,
-        agentType: route.agentType,
+        agentType: route?.agentType || String(project.agent?.type || '').trim().toLowerCase() || 'unknown',
         platforms: normalizePlatformTypes(project),
         sessionsCount: 0,
         heartbeatEnabled: false,
+        ...(error ? { unavailable: true, unavailableReason: error.message } : {}),
       });
     }
     const threadCounts = this.store.countThreadsByWorkspace(workspaceIds);
@@ -841,7 +840,18 @@ export class WorkspaceRouter {
     const projects = this.withWorkspaceIds(
       Array.isArray(configState.config?.projects) ? configState.config.projects : [],
     );
-    return projects.filter((project) => this.resolveProjectRoute(configState, project));
+    const entries: Array<{ project: DesktopProjectConfig; route: WorkspaceRoute | null; error?: Error }> = [];
+    for (const project of projects) {
+      let route: WorkspaceRoute | null = null;
+      try {
+        route = this.resolveProjectRoute(configState, project);
+      } catch (error) {
+        entries.push({ project, route: null, error: error instanceof Error ? error : new Error(String(error)) });
+        continue;
+      }
+      entries.push({ project, route });
+    }
+    return entries;
   }
 
   private withWorkspaceIds(projects: DesktopProjectConfig[]): DesktopProjectConfig[] {

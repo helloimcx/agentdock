@@ -1,7 +1,35 @@
-import type { ButlerBotEndpoint, ButlerTask, ButlerTrackingPolicy } from '@cc/superai-contracts';
+import type { ButlerBotEndpoint, ButlerProfile, ButlerTask, ButlerTrackingPolicy, WorkspaceSummary } from '@cc/superai-contracts';
 
 export function butlerChatHref(workspaceId: string, threadId: string) {
   return `/chat?${new URLSearchParams({ project: workspaceId, session: threadId }).toString()}`;
+}
+
+export type ButlerReloadParts = [
+  PromiseSettledResult<ButlerProfile | null>,
+  PromiseSettledResult<{ workspaces: WorkspaceSummary[] }>,
+  PromiseSettledResult<{ bots: ButlerBotEndpoint[] }>,
+];
+
+export interface ButlerReloadOutcome {
+  profile: ButlerProfile | null;
+  workspaces: WorkspaceSummary[];
+  bots: ButlerBotEndpoint[];
+  /** Joined messages of the reload parts that failed; empty when everything loaded. */
+  failure: string;
+}
+
+/** Keeps fulfilled Butler data on partial reload failures instead of blanking the page. */
+export function applyButlerReload(results: ButlerReloadParts): ButlerReloadOutcome {
+  const [profilePart, workspacesPart, botsPart] = results;
+  const failures = [profilePart, workspacesPart, botsPart]
+    .filter((part): part is PromiseRejectedResult => part.status === 'rejected')
+    .map((part) => String(part.reason instanceof Error ? part.reason.message : part.reason));
+  return {
+    profile: profilePart.status === 'fulfilled' ? profilePart.value : null,
+    workspaces: workspacesPart.status === 'fulfilled' ? workspacesPart.value.workspaces : [],
+    bots: botsPart.status === 'fulfilled' ? botsPart.value.bots : [],
+    failure: failures.join('; '),
+  };
 }
 
 export function canCompleteButlerTask(task: ButlerTask) {

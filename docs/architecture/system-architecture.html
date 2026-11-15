@@ -5386,15 +5386,15 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="125" y="564" class="t-muted" font-size="9" text-anchor="middle">/external/* · Webhook 接入</text>
         </g>
 
-        <g id="node-core_api" data-node-id="core_api" data-node-label="Core API 路由层" tabindex="0" role="button" aria-label="聚焦Core API 路由层，/api/local/v1 · 统一网关, AgentDock Daemon (本地服务进程 127.0.0.1:9831)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="/api/local/v1 · 统一网关" data-node-context="AgentDock Daemon (本地服务进程 127.0.0.1:9831)">
-          <title>Core API 路由层 · /api/local/v1 · 统一网关 · AgentDock Daemon (本地服务进程 127.0.0.1:9831)</title>
+        <g id="node-core_api" data-node-id="core_api" data-node-label="Core API 路由层" tabindex="0" role="button" aria-label="聚焦Core API 路由层，REST · 工作区列表逐项降级, AgentDock Daemon (本地服务进程 127.0.0.1:9831)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="REST · 工作区列表逐项降级" data-node-context="AgentDock Daemon (本地服务进程 127.0.0.1:9831)">
+          <title>Core API 路由层 · REST · 工作区列表逐项降级 · AgentDock Daemon (本地服务进程 127.0.0.1:9831)</title>
           <rect x="330" y="295" width="160" height="70" rx="8" class="c-mask"/>
           <rect x="330" y="295" width="160" height="70" rx="8" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(336 301) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="410" y="328" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Core API 路由层</text>
-        <text data-detail="context" x="410" y="344" class="t-muted" font-size="9" text-anchor="middle">/api/local/v1 · 统一网关</text>
+        <text data-detail="context" x="410" y="344" class="t-muted" font-size="9" text-anchor="middle">REST · 工作区列表逐项降级</text>
         </g>
 
         <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite 本地持久化" tabindex="0" role="button" aria-label="聚焦SQLite 本地持久化，工作区 · 线程历史 · 产物, AgentDock Daemon (本地服务进程 127.0.0.1:9831)" aria-pressed="false" data-node-kind="database" data-node-sublabel="工作区 · 线程历史 · 产物" data-node-context="AgentDock Daemon (本地服务进程 127.0.0.1:9831)">
@@ -5845,6 +5845,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>统一管理 Workspace 隔离、Thread 线程、Run 执行与工件产物</li>
+          <li>工作区列表逐项解析；路由失败只标记该条目不可用，并附原因</li>
           <li>确定性技能路由引擎（Skill Router）、权限动态继承与开放式 Monitor 事件源（行情 / Webhook）</li>
           <li>内置 SQLite 本地持久化与工作区会话状态管理</li>
         </ul>
