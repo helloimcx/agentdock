@@ -82,6 +82,13 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 
 ## New
 
+### 2026-11-15
+
+- **管家多 Agent 长周期执行管道与验收闭环修复（#297, #299, #298）**：
+  - **人工裁决验收通道（#297）**：`lac butler complete` 新增 `--manual/--force` 与 `--reason` 选项，支持现场确认成果后手动裁决结案，并将 reviewing 委派级联晋升为 completed，终态锁定防止后台回退。
+  - **全链路执行观测透出（#299）**：`lac butler info` 完整透出 worker 动态心跳 (`lastHeartbeatAt`)、最新消息片段 (`lastWorkerMessage`)、细粒度阻断原因 (`blockedReason`) 与结构化待审批详情 (`approvals`)，并在跨进程通道协议中打通。
+  - **工作区有界并发调度（#298）**：解除工作区单槽位串行二元锁，过滤非执行类交互并放开有界并发（默认最高 4），长耗时任务不再卡死后续委派，排队委派显式追踪 `queueReason`（`waiting_dependency:<keys>`、`waiting_thread`、`workspace_busy`）。
+
 ### 2026-11-12
 
 - **修复 Butler 无人值守 worker 审批阻塞（#289）**：Core transport 的受管 worker 在单次委派运行中使用非交互权限，完成后关闭该会话；终止运行会过期其未决审批，保留审批诊断，并在审批持续五分钟时向管家会话排队一次提醒。该权限允许运行任意命令，不代表只读或沙箱隔离。

@@ -1,4 +1,4 @@
-import type { ButlerDelegation } from '@cc/superai-contracts';
+import type { ButlerApprovalDetail, ButlerDelegation, ThreadExecutionSnapshot } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { ThreadSubmission } from '../acp/store/submission-store.js';
 
@@ -16,11 +16,40 @@ export function observeDelegation(store: LocalCoreAcpStore, delegation: ButlerDe
   const permissions = snapshot.permissions.filter((entry) => entry.runId === delegation.runId && entry.actionable);
   const approvalIds = permissions.map((entry) => entry.approvalId);
   const blockedReason = approvalIds.length ? 'pending_approval' : undefined;
+  const metrics = extractObservationMetrics(snapshot, delegation.runId, permissions);
+
   const terminal = terminalResult(store, submission, approvalIds, blockedReason);
-  if (terminal) return terminal;
+  if (terminal) return { ...terminal, ...metrics };
+
   const run = snapshot.runs.find((entry) => entry.id === delegation.runId);
   return { status: approvalIds.length || run?.status === 'awaiting_input' ? 'waiting_for_user' : 'running', approvalIds,
-    blockedReason, error: undefined };
+    blockedReason, error: undefined, ...metrics };
+}
+
+function extractObservationMetrics(
+  snapshot: ThreadExecutionSnapshot,
+  runId: string,
+  permissions: ThreadExecutionSnapshot['permissions'],
+) {
+  const run = snapshot.runs.find((entry) => entry.id === runId);
+  const latestMessage = snapshot.thread.messages.filter((m) => m.role === 'assistant').at(-1);
+  const timestamps = [run?.updatedAt, run?.startedAt, latestMessage?.timestamp]
+    .filter((t): t is string => typeof t === 'string' && t.length > 0);
+  const lastHeartbeatAt = timestamps.sort().at(-1);
+  let lastWorkerMessage = latestMessage?.content;
+  if (typeof lastWorkerMessage === 'string' && lastWorkerMessage.length > 500) {
+    lastWorkerMessage = `${lastWorkerMessage.slice(0, 497)}...`;
+  }
+  const approvals: ButlerApprovalDetail[] = permissions.map((entry) => ({
+    id: entry.approvalId,
+    title: entry.title,
+    status: entry.status,
+  }));
+  return {
+    approvals,
+    ...(lastHeartbeatAt ? { lastHeartbeatAt } : {}),
+    ...(lastWorkerMessage ? { lastWorkerMessage } : {}),
+  };
 }
 
 function terminalResult(store: LocalCoreAcpStore, submission: ThreadSubmission, approvalIds: string[], blockedReason?: ButlerDelegation['blockedReason']): Partial<ButlerDelegation> | undefined {
@@ -57,7 +86,12 @@ export function childHasOutstandingExecution(store: LocalCoreAcpStore, threadId:
     submission.threadId === threadId && isExecutionSubmission(submission));
 }
 
-export function workspaceBusy(store: LocalCoreAcpStore, workspaceId: string, exceptThreadId?: string): boolean {
-  return [...store.submissions.listActive(), ...store.submissions.listPending()].some((submission) =>
-    submission.threadId !== exceptThreadId && store.getThreadRow(submission.threadId)?.workspace_id === workspaceId);
+export function workspaceActiveExecutionCount(store: LocalCoreAcpStore, workspaceId: string, exceptThreadId?: string): number {
+  return [...store.submissions.listActive(), ...store.submissions.listPending()].filter((submission) =>
+    submission.threadId !== exceptThreadId && isExecutionSubmission(submission)
+    && store.getThreadRow(submission.threadId)?.workspace_id === workspaceId).length;
+}
+
+export function workspaceBusy(store: LocalCoreAcpStore, workspaceId: string, exceptThreadId?: string, maxConcurrency = 4): boolean {
+  return workspaceActiveExecutionCount(store, workspaceId, exceptThreadId) >= maxConcurrency;
 }

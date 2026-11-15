@@ -1,4 +1,4 @@
-import type { ButlerAgentContext, ButlerTaskCreateInput, ButlerTaskDelegateInput, ButlerFollowupInput, ButlerCancelInput, ButlerProfileInput } from '@cc/superai-contracts';
+import type { ButlerAgentContext, ButlerTaskCreateInput, ButlerTaskDelegateInput, ButlerFollowupInput, ButlerCancelInput, ButlerCompleteInput, ButlerProfileInput } from '@cc/superai-contracts';
 import type { ButlerService } from '../../butler/butler-service.js';
 import type { RouteHandler } from '../server-helpers.js';
 import { json, readJsonBody } from '../server-helpers.js';
@@ -87,8 +87,12 @@ export function registerButlerHandlers(map: Map<string, RouteHandler>, service: 
     json(res, 200, await service.cancel((route as { taskId: string }).taskId, input));
   });
   map.set('butler.task.complete', async (route, req, res) => {
-    const input = validateBody<{ ownerThreadId: string; summary: string }>(await readJsonBody(req, BODY_LIMIT), {
-      ...OWNER_SCHEMA, summary: { kind: 'string', required: true },
+    const input = validateBody<ButlerCompleteInput>(await readJsonBody(req, BODY_LIMIT), {
+      ...OWNER_SCHEMA,
+      summary: { kind: 'string', required: true },
+      manual: 'boolean',
+      force: 'boolean',
+      reason: 'string',
     });
     json(res, 200, await service.complete((route as { taskId: string }).taskId, input));
   });

@@ -18,7 +18,7 @@ export function decodeButlerBotProtocolMessage(text: string): ButlerBotProtocolM
   if (!match || Buffer.byteLength(match[0], 'utf8') > MAX_PROTOCOL_BYTES) return undefined;
   try {
     const value = JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as Partial<ButlerBotProtocolMessage>;
-    if (!hasValidEnvelopeIdentity(value) || !hasValidEnvelopePayload(value) || !hasValidApprovalIds(value.approvalIds)) return undefined;
+    if (!hasValidEnvelopeIdentity(value) || !hasValidEnvelopePayload(value) || !hasValidApprovalIds(value.approvalIds) || !hasValidBlockedReason(value.blockedReason)) return undefined;
     return value as ButlerBotProtocolMessage;
   } catch {
     return undefined;
@@ -43,6 +43,11 @@ function hasValidEnvelopePayload(value: Partial<ButlerBotProtocolMessage>): bool
 function hasValidApprovalIds(value: unknown): boolean {
   if (value === undefined) return true;
   return Array.isArray(value) && value.length <= 64 && value.every(nonEmptyString);
+}
+
+function hasValidBlockedReason(value: unknown): boolean {
+  if (value === undefined) return true;
+  return typeof value === 'string' && ['pending_approval', 'workspace_busy', 'execution_uncertain', 'waiting_external'].includes(value);
 }
 
 function nonEmptyString(value: unknown): value is string {

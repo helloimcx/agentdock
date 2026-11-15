@@ -1109,6 +1109,11 @@ test('permissions remain in the child boundary and actionable approvals are surf
     const waiting = f.service.get(task.id, task.ownerThreadId);
     assert.equal(waiting.status, 'waiting_for_user');
     assert.deepEqual(waiting.delegations[0].approvalIds, [approval.approvalId]);
+    assert.deepEqual(waiting.delegations[0].approvals, [{
+      id: approval.approvalId,
+      title: 'Write report',
+      status: 'pending',
+    }]);
     assert.equal(f.core.getApprovalRequest(approval.approvalId)?.status, 'pending');
     assert.ok(f.calls.filter((call) => call.threadId === task.ownerThreadId)[0].content.includes(approval.approvalId));
   } finally { f.close(); }
@@ -1438,3 +1443,268 @@ test('failed core followup dispatch updates operation to failed, clears pending 
     assert.match(failedOp.error || '', /Simulated workspace dispatch failure/);
   } finally { f.close(); }
 });
+
+test('issue #297: butler complete accepts task with reviewing and failed delegations under manual acceptance', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }, { botId: BOTS.development.id }] });
+    const task = await f.service.create({
+      ownerThreadId: profile.threadId, requestId: 'request:issue-297:acceptance-test',
+      title: 'Manual acceptance test', completionCriteria: 'At least one bot succeeds.',
+      assignments: [
+        { key: 'research', botId: BOTS.research.id, title: 'Research task', prompt: 'Research prompt.' },
+        { key: 'development', botId: BOTS.development.id, title: 'Dev task', prompt: 'Dev prompt.' },
+      ],
+    });
+    const researchDel = task.delegations.find((d) => d.key === 'research')!;
+    const devDel = task.delegations.find((d) => d.key === 'development')!;
+
+    // Research bot reports success -> reviewing
+    await agentCommand(f, { threadId: researchDel.threadId!, runId: researchDel.runId! }, {
+      action: 'report', report: workerReport('research-done', { outcome: 'succeeded', summary: 'Research data ready.' }),
+    });
+    finish(f, researchDel.runId!, 'Research final report');
+
+    // Dev bot fails execution
+    f.core.submissions.finish(f.core.submissions.byRun(devDel.runId!)!.id, 'failed', 'Dev failed due to network error');
+    f.core.updateRun(devDel.runId!, devDel.threadId!, 'failed');
+    await f.service.reconcile();
+
+    const taskBeforeAccept = f.service.get(task.id, profile.threadId);
+    assert.equal(taskBeforeAccept.status, 'blocked');
+    assert.equal(taskBeforeAccept.delegations.find((d) => d.key === 'research')!.status, 'reviewing');
+    assert.equal(taskBeforeAccept.delegations.find((d) => d.key === 'development')!.status, 'blocked');
+
+    // User accepts manually with summary
+    const completedTask = await f.service.complete(task.id, {
+      ownerThreadId: profile.threadId,
+      summary: 'Owner verified research data manually on site',
+      manual: true,
+      reason: 'User verified on site',
+    });
+
+    assert.equal(completedTask.status, 'completed');
+    assert.equal(completedTask.summary, 'Owner verified research data manually on site');
+    assert.equal(completedTask.acceptedBy, 'user');
+    assert.equal(completedTask.manualAcceptanceReason, 'User verified on site');
+
+    // Research delegation auto-promoted to completed
+    const acceptedResearch = completedTask.delegations.find((d) => d.key === 'research')!;
+    assert.equal(acceptedResearch.status, 'completed');
+    assert.equal(acceptedResearch.summary, 'Research data ready.');
+
+    // Dev delegation kept blocked status for audit
+    const keptDev = completedTask.delegations.find((d) => d.key === 'development')!;
+    assert.equal(keptDev.status, 'blocked');
+
+    // Background reconcile must NOT revert completed task back to failed
+    await f.service.reconcile();
+    const taskAfterReconcile = f.service.get(task.id, profile.threadId);
+    assert.equal(taskAfterReconcile.status, 'completed');
+  } finally { f.close(); }
+});
+
+test('issue #299: delegation captures lastHeartbeatAt and lastWorkerMessage during execution', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }] });
+    const task = await f.service.create({
+      ownerThreadId: profile.threadId, requestId: 'request:issue-299:observation-test',
+      title: 'Observation test',
+      assignments: [{ key: 'research', botId: BOTS.research.id, title: 'Research task', prompt: 'Research prompt.' }],
+    });
+    const delegation = task.delegations[0];
+    assert.ok(delegation.runId);
+
+    // Simulate worker outputting assistant message
+    f.core.appendMessage(
+      delegation.threadId!,
+      'assistant',
+      'Downloading subtitles: episode 1-29 completed...',
+      'final',
+    );
+
+    await f.service.reconcile();
+    const observedTask = f.service.get(task.id, profile.threadId);
+    const observedDel = observedTask.delegations[0];
+
+    assert.ok(observedDel.lastHeartbeatAt, 'heartbeat timestamp must be present');
+    assert.equal(observedDel.lastWorkerMessage, 'Downloading subtitles: episode 1-29 completed...');
+  } finally { f.close(); }
+});
+
+test('issue #299: channel transport synchronizes blockedReason to manager delegation', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure(profileInput());
+    const task = await f.service.create({
+      ownerThreadId: profile.threadId, requestId: 'request:issue-299:channel-sync',
+      title: 'Channel blocked reason test',
+      assignments: [{ key: 'research', botId: BOTS.research.id, title: 'Research task', prompt: 'Research prompt.' }],
+    });
+    const delegation = task.delegations[0];
+
+    // Worker sends progress with approvalIds
+    const protocolText = encodeButlerBotProtocolMessage({
+      protocol: 'agentdock.butler',
+      version: 1,
+      kind: 'task.progress',
+      taskId: task.id,
+      delegationId: delegation.id,
+      operationId: delegation.operationId,
+      managerBotId: BOTS.manager.id,
+      targetBotId: BOTS.research.id,
+      workerStatus: 'waiting_for_user',
+      approvalIds: ['approval:perm:123'],
+      blockedReason: 'pending_approval',
+      lastHeartbeatAt: '2026-11-15T10:00:00.000Z',
+      lastWorkerMessage: 'Waiting for download permission',
+    });
+
+    await f.service.receiveBotMessage({
+      platform: 'lark',
+      workspaceId: 'butler',
+      instanceId: 'assistant',
+      appId: 'app-butler',
+      botOpenId: 'ou-butler',
+      senderOpenId: 'ou-research-in-butler',
+      chatId: delegation.deliveryContext.botChatId,
+      messageId: 'om_progress_001',
+      text: protocolText,
+    });
+
+    const updatedTask = f.service.get(task.id, profile.threadId);
+    const updatedDel = updatedTask.delegations[0];
+
+    assert.equal(updatedDel.status, 'waiting_for_user');
+    assert.equal(updatedDel.blockedReason, 'pending_approval');
+    assert.equal(updatedDel.lastHeartbeatAt, '2026-11-15T10:00:00.000Z');
+    assert.equal(updatedDel.lastWorkerMessage, 'Waiting for download permission');
+    assert.deepEqual(updatedDel.approvalIds, ['approval:perm:123']);
+  } finally { f.close(); }
+});
+
+test('issue #298: concurrent delegations in the same workspace execute without starving each other', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }, { botId: BOTS.development.id }] });
+    const task = await f.service.create({
+      ownerThreadId: profile.threadId, requestId: 'request:issue-298:concurrency-test',
+      title: 'Workspace concurrency test',
+      assignments: [
+        { key: 'long-job', botId: BOTS.research.id, title: 'Long running task', prompt: 'Long task prompt.' },
+        { key: 'quick-job', botId: BOTS.development.id, title: 'Quick task', prompt: 'Quick task prompt.' },
+      ],
+    });
+
+    const longDel = task.delegations.find((d) => d.key === 'long-job')!;
+    const quickDel = task.delegations.find((d) => d.key === 'quick-job')!;
+
+    // Both delegations should be dispatched and have their own distinct runs
+    assert.ok(longDel.runId);
+    assert.ok(quickDel.runId);
+    assert.notEqual(longDel.runId, quickDel.runId);
+    assert.equal(longDel.queueReason, undefined);
+    assert.equal(quickDel.queueReason, undefined);
+
+    // Keep long-job active
+    f.core.updateRun(longDel.runId, longDel.threadId!, 'running');
+
+    // Reconcile and ensure quick-job stays runnable / progressing, not blocked by long-job
+    await f.service.reconcile();
+    const taskAfter = f.service.get(task.id, profile.threadId);
+    const currentQuick = taskAfter.delegations.find((d) => d.key === 'quick-job')!;
+    assert.notEqual(currentQuick.status, 'failed');
+    assert.equal(currentQuick.blockedReason, undefined);
+  } finally { f.close(); }
+});
+
+test('issue #298: queued delegation tracks queueReason when waiting for dependency', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({ transport: 'core', managerBotId: BOTS.manager.id,
+      managedBots: [{ botId: BOTS.research.id }, { botId: BOTS.development.id }] });
+    const task = await f.service.create({
+      ownerThreadId: profile.threadId, requestId: 'request:issue-298:dependency-queue-reason',
+      title: 'Dependency queue test',
+      assignments: [
+        { key: 'step1', botId: BOTS.research.id, title: 'Step 1', prompt: 'First step.' },
+        { key: 'step2', botId: BOTS.development.id, title: 'Step 2', prompt: 'Second step.', dependsOn: ['step1'] },
+      ],
+    });
+
+    const taskBefore = f.service.get(task.id, profile.threadId);
+    const step2Before = taskBefore.delegations.find((d) => d.key === 'step2')!;
+    assert.equal(step2Before.status, 'queued');
+    assert.equal(step2Before.queueReason, 'waiting_dependency:step1');
+
+    // Complete step 1
+    const step1 = taskBefore.delegations.find((d) => d.key === 'step1')!;
+    await agentCommand(f, { threadId: step1.threadId!, runId: step1.runId! }, {
+      action: 'report', report: workerReport('step1-done', { outcome: 'succeeded', summary: 'Step 1 finished.' }),
+    });
+    finish(f, step1.runId!, 'Step 1 finished');
+
+    await f.service.reconcile();
+
+    // Now accept step 1 so step 2 can proceed
+    const acceptCtx = await managerRun(f, profile.threadId);
+    const step1Review = f.service.get(task.id, profile.threadId).delegations.find((d) => d.key === 'step1')!;
+    await agentCommand(f, acceptCtx, {
+      action: 'accept', taskId: task.id, delegationId: step1.id, reportVersion: step1Review.reportVersion,
+    });
+    await f.service.reconcile();
+
+    const taskAfter = f.service.get(task.id, profile.threadId);
+    const step2After = taskAfter.delegations.find((d) => d.key === 'step2')!;
+    assert.equal(step2After.queueReason, undefined);
+    assert.ok(step2After.runId);
+  } finally { f.close(); }
+});
+
+test('issue #298: saturation of workspace concurrency sets queueReason and blockedReason to workspace_busy', async () => {
+  const f = fixture();
+  try {
+    const profile = await f.service.configure({
+      transport: 'core', managerBotId: BOTS.manager.id,
+      trackingPolicy: { defaultCheckIntervalSeconds: 60, checkBudget: 5, deadlineSeconds: 3600, maxWorkspaceConcurrency: 1 },
+      managedBots: [{ botId: BOTS.research.id }, { botId: BOTS.development.id }],
+    });
+    const task = await f.service.create({
+      ownerThreadId: profile.threadId, requestId: 'request:issue-298:max-concurrency-test',
+      title: 'Max concurrency test',
+      assignments: [
+        { key: 'slot1', botId: BOTS.research.id, title: 'Slot 1', prompt: 'Takes the slot.' },
+        { key: 'slot2', botId: BOTS.research.id, title: 'Slot 2', prompt: 'Must queue.' },
+      ],
+    });
+
+    // The first delegation is dispatched, the second is queued due to maxWorkspaceConcurrency=1
+    const taskBefore = f.service.get(task.id, profile.threadId);
+    const slot1 = taskBefore.delegations.find((d) => d.key === 'slot1')!;
+    const slot2 = taskBefore.delegations.find((d) => d.key === 'slot2')!;
+
+    assert.ok(slot1.runId);
+    assert.equal(slot2.status, 'queued');
+    assert.equal(slot2.queueReason, 'workspace_busy');
+    assert.equal(slot2.blockedReason, 'workspace_busy');
+
+    // Complete slot 1
+    await agentCommand(f, { threadId: slot1.threadId!, runId: slot1.runId! }, {
+      action: 'report', report: workerReport('slot1-done', { outcome: 'succeeded', summary: 'Slot 1 finished.' }),
+    });
+    finish(f, slot1.runId!, 'Slot 1 finished');
+
+    // Reconcile -> slot 2 can now acquire the freed slot
+    await f.service.reconcile();
+    const taskAfter = f.service.get(task.id, profile.threadId);
+    const slot2After = taskAfter.delegations.find((d) => d.key === 'slot2')!;
+    assert.ok(slot2After.runId);
+    assert.equal(slot2After.queueReason, undefined);
+    assert.equal(slot2After.blockedReason, undefined);
+  } finally { f.close(); }
+});
+

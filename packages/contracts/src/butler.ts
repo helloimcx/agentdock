@@ -36,6 +36,7 @@ export interface ButlerTrackingPolicy {
   defaultCheckIntervalSeconds: number;
   checkBudget: number;
   deadlineSeconds: number;
+  maxWorkspaceConcurrency?: number;
 }
 
 export interface ButlerProfileInput {
@@ -69,6 +70,8 @@ export interface ButlerBotInboundMessage {
 
 export type ButlerBotMessageKind = 'task.submit' | 'task.accepted' | 'task.progress' | 'task.result' | 'task.followup' | 'task.cancel';
 
+export type ButlerBlockedReason = 'pending_approval' | 'workspace_busy' | 'execution_uncertain' | 'waiting_external';
+
 export interface ButlerBotProtocolMessage {
   protocol: 'agentdock.butler';
   version: 1;
@@ -83,9 +86,21 @@ export interface ButlerBotProtocolMessage {
   content?: string;
   summary?: string;
   error?: string;
+  blockedReason?: ButlerBlockedReason;
+  lastHeartbeatAt?: string;
+  lastWorkerMessage?: string;
   approvalIds?: string[];
   outcome?: 'completed' | 'failed' | 'cancelled';
   workerStatus?: 'running' | 'waiting_for_user' | 'failed' | 'cancelled';
+}
+
+export interface ButlerApprovalDetail {
+  id: string;
+  kind?: string;
+  riskLevel?: string;
+  title?: string;
+  status?: string;
+  createdAt?: string;
 }
 
 export type ButlerStatus = 'queued' | 'sending' | 'waiting_for_bot' | 'running' | 'waiting_external' | 'waiting_for_manager'
@@ -139,9 +154,16 @@ export interface ButlerDelegation extends ButlerAssignmentInput {
   resultMessageId?: string;
   summary?: string;
   error?: string;
-  /** Machine-readable cause when this exact worker run is blocked on a live permission decision. */
-  blockedReason?: 'pending_approval';
+  /** Machine-readable cause when this exact worker run is blocked on a live permission decision or environmental constraint. */
+  blockedReason?: ButlerBlockedReason;
+  /** Reason why this delegation is waiting in the queue before dispatching. */
+  queueReason?: string;
+  /** ISO 8601 timestamp of the latest observed activity / heartbeat in this delegation. */
+  lastHeartbeatAt?: string;
+  /** Latest assistant progress content or message preview produced by the worker (truncated). */
+  lastWorkerMessage?: string;
   approvalIds: string[];
+  approvals?: ButlerApprovalDetail[];
   updatedAt: string;
   pendingFollowups: string[];
   transport?: 'channel' | 'core';
@@ -197,6 +219,8 @@ export interface ButlerTask {
   completionPolicy?: 'butler' | 'user';
   cancellationMode?: 'tracking' | 'external';
   trackingPolicy?: ButlerTrackingPolicy;
+  acceptedBy?: 'user' | 'worker_report';
+  manualAcceptanceReason?: string;
 }
 
 export interface ButlerFollowupInput {
@@ -214,4 +238,8 @@ export interface ButlerCancelInput {
 export interface ButlerCompleteInput {
   ownerThreadId: string;
   summary: string;
+  manual?: boolean;
+  force?: boolean;
+  reason?: string;
+  evidence?: unknown;
 }
