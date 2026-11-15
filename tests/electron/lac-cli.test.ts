@@ -137,6 +137,99 @@ test('lac scheduler add posts a local job without IM context', async () => {
   }
 });
 
+test('lac scheduler add posts a one-shot job when --at is given', async () => {
+  let capturedBody: string | null = null;
+  const { restore } = withFetchMock(async (input, init) => {
+    if (init?.body) capturedBody = init.body as string;
+    return new Response(JSON.stringify({
+      ok: true,
+      data: {
+        id: 'job:9c41f7d2-83ae-4b06-9d15-2c07a45be813',
+        workspaceId: '知识库',
+        platform: 'local',
+        route: { type: 'local.thread', channelId: '知识库' },
+        executionMode: 'same-thread',
+        triggerType: 'once',
+        runAt: '2026-11-17T01:50:00.000Z',
+        promptTemplate: '提醒考试',
+        description: '考试提醒',
+        enabled: true,
+        concurrencyPolicy: 'skip_if_running',
+        createdAt: '2026-11-16T19:00:00.000Z',
+        updatedAt: '2026-11-16T19:00:00.000Z',
+      },
+    }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io, read } = createIo();
+    const exitCode = await runCli(
+      ['scheduler', 'add', '--at', '2026-11-17T09:50:00+08:00', '--message', '提醒考试', '--desc', '考试提醒'],
+      {
+        LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+        LOCAL_AI_WORKSPACE_ID: '知识库',
+      },
+      io,
+    );
+    assert.equal(exitCode, 0);
+    assert(capturedBody);
+    assert.deepEqual(JSON.parse(capturedBody), {
+      workspaceId: '知识库',
+      executionMode: 'same-thread',
+      triggerType: 'once',
+      runAt: '2026-11-17T01:50:00.000Z',
+      promptTemplate: '提醒考试',
+      description: '考试提醒',
+      enabled: true,
+    });
+    assert.match(read().stdout, /Created scheduler job 9c41f7d2/);
+    assert.match(read().stdout, /2026-11-17T01:50:00\.000Z/);
+  } finally {
+    restore();
+  }
+});
+
+test('lac scheduler add rejects --cron together with --at', async () => {
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'add', '--cron', '50 9 27 10 *', '--at', '2026-11-17T09:50:00+08:00', '--message', '提醒考试', '--desc', '考试提醒'],
+    {
+      LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+    },
+    io,
+  );
+  assert.equal(exitCode, 1);
+  assert.match(read().stderr, /either --cron or --at/);
+});
+
+test('lac scheduler add requires --cron or --at', async () => {
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'add', '--message', '提醒考试', '--desc', '考试提醒'],
+    {
+      LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+    },
+    io,
+  );
+  assert.equal(exitCode, 1);
+  assert.match(read().stderr, /either --cron or --at/);
+});
+
+test('lac scheduler add rejects an invalid --at timestamp', async () => {
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'add', '--at', 'not-a-date', '--message', '提醒考试', '--desc', '考试提醒'],
+    {
+      LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+    },
+    io,
+  );
+  assert.equal(exitCode, 1);
+  assert.match(read().stderr, /--at must be a valid timestamp/);
+});
+
 test('lac channel send-file posts a workspace-relative file through outbound message parts', async () => {
   let capturedBody: string | null = null;
   const { restore } = withFetchMock(async (input, init) => {
@@ -618,6 +711,7 @@ test('lac scheduler edit patches a short job id and normalizes execution mode', 
     assert.equal(exitCode, 0);
     assert(capturedBody);
     assert.deepEqual(JSON.parse(capturedBody), {
+      triggerType: 'cron',
       cronExpr: '0 10 * * *',
       promptTemplate: 'updated ping',
       description: 'daily updated ping',
@@ -663,11 +757,64 @@ test('lac scheduler edit with only --cron does not clear message or description'
     );
     assert.equal(exitCode, 0);
     assert(capturedBody);
-    assert.deepEqual(JSON.parse(capturedBody), { cronExpr: '0 2 * * *' });
+    assert.deepEqual(JSON.parse(capturedBody), { triggerType: 'cron', cronExpr: '0 2 * * *' });
     assert.match(read().stdout, /Updated scheduler job 826aff79/);
   } finally {
     restore();
   }
+});
+
+test('lac scheduler edit switches a job to one-shot with --at', async () => {
+  let capturedBody: string | null = null;
+  const { restore } = withFetchMock(async (input, init) => {
+    if (init?.body) capturedBody = init.body as string;
+    return new Response(JSON.stringify({
+      ok: true,
+      data: {
+        id: 'job:826aff79-570b-4308-822e-18318e2c96ba',
+        workspaceId: '知识库',
+        platform: 'lark',
+        route: { type: 'channel.chat', channelId: 'chat-1', participantId: 'user-1', threadId: 'thread-1' },
+        executionMode: 'same-thread',
+        triggerType: 'once',
+        runAt: '2026-11-17T01:50:00.000Z',
+        promptTemplate: '提醒考试',
+        description: '考试提醒',
+        enabled: true,
+        concurrencyPolicy: 'skip_if_running',
+        createdAt: '2026-04-22T06:00:00.000Z',
+        updatedAt: '2026-04-22T07:00:00.000Z',
+      },
+    }), { headers: { 'content-type': 'application/json' } });
+  });
+  try {
+    const { io, read } = createIo();
+    const exitCode = await runCli(
+      ['scheduler', 'edit', '826aff79', '--at', '2026-11-17T09:50:00+08:00'],
+      { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1' },
+      io,
+    );
+    assert.equal(exitCode, 0);
+    assert(capturedBody);
+    assert.deepEqual(JSON.parse(capturedBody), {
+      triggerType: 'once',
+      runAt: '2026-11-17T01:50:00.000Z',
+    });
+    assert.match(read().stdout, /Updated scheduler job 826aff79/);
+  } finally {
+    restore();
+  }
+});
+
+test('lac scheduler edit rejects --cron together with --at', async () => {
+  const { io, read } = createIo();
+  const exitCode = await runCli(
+    ['scheduler', 'edit', '826aff79', '--cron', '50 9 27 10 *', '--at', '2026-11-17T09:50:00+08:00'],
+    { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1' },
+    io,
+  );
+  assert.equal(exitCode, 1);
+  assert.match(read().stderr, /either --cron or --at/);
 });
 
 test('lac scheduler del deletes a short job id', async () => {

@@ -559,7 +559,14 @@ async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.P
 }
 
 async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
-  const cronExpr = getRequiredFlag(flags, 'cron');
+  const cronExpr = getFlag(flags, 'cron');
+  const atText = getFlag(flags, 'at');
+  if (cronExpr && atText) {
+    throw new Error('scheduler add accepts either --cron or --at, not both.');
+  }
+  if (!cronExpr && !atText) {
+    throw new Error('scheduler add requires either --cron or --at.');
+  }
   const promptTemplate = getRequiredFlag(flags, 'message');
   const description = getRequiredFlag(flags, 'desc');
   const executionMode = getExecutionMode(flags);
@@ -575,15 +582,15 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
     ...(explicitChannelId ? { channelId: explicitChannelId } : {}),
     ...(context.threadId ? { threadId: context.threadId } : {}),
     executionMode,
-    triggerType: 'cron',
-    cronExpr,
+    triggerType: atText ? 'once' : 'cron',
+    ...(atText ? { runAt: parseRunAtFlag(atText) } : { cronExpr: cronExpr! }),
     promptTemplate,
     description,
     enabled: true,
   });
   print(json, io.stdout, presentJob(job), [
     `Created scheduler job ${toPublicScheduledJobId(job.id)}`,
-    `Schedule: ${job.cronExpr || ''}`,
+    `Schedule: ${job.cronExpr || job.runAt || ''}`,
     `Execution mode: ${job.executionMode}`,
     `Description: ${job.description}`,
   ].join('\n'));
@@ -629,11 +636,19 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
   }
   const input: ScheduledJobUpdateInput = {};
   const cronExpr = getFlag(flags, 'cron');
+  const atText = getFlag(flags, 'at');
+  if (cronExpr && atText) {
+    throw new Error('scheduler edit accepts either --cron or --at, not both.');
+  }
   const promptTemplate = getFlag(flags, 'message');
   const description = getFlag(flags, 'desc');
   const enabled = getOptionalBooleanFlag(flags, 'enabled');
   const executionMode = getFlag(flags, 'execution-mode');
-  if (cronExpr) {
+  if (atText) {
+    input.triggerType = 'once';
+    input.runAt = parseRunAtFlag(atText);
+  } else if (cronExpr) {
+    input.triggerType = 'cron';
     input.cronExpr = cronExpr;
   }
   if (promptTemplate) {
@@ -681,6 +696,14 @@ function getExecutionMode(flags: Map<string, string[]>) {
   return normalizeScheduledJobExecutionMode(getFlag(flags, 'execution-mode'));
 }
 
+function parseRunAtFlag(text: string): string {
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('--at must be a valid timestamp, e.g. "2026-10-27T09:50:00+08:00".');
+  }
+  return parsed.toISOString();
+}
+
 function getMonitorExecutionMode(flags: Map<string, string[]>) {
   return normalizeScheduledJobExecutionMode(getFlag(flags, 'execution-mode') || 'side-thread');
 }
@@ -721,10 +744,10 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
     '  lac skill remove <name> [--scope user|workspace] [--json]',
     '  lac skill verify [<name>] [--json]',
     '  lac skill scan [<name>] [--all] [--workspace <id>] [--json]',
-    '  lac scheduler add --cron "<expr>" --message "<text>" --desc "<label>" [--execution-mode same-thread|side-thread] [--json]',
+    '  lac scheduler add (--cron "<expr>" | --at "<iso-timestamp>") --message "<text>" --desc "<label>" [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler list [--workspace <id>] [--thread [<id>]] [--json]',
     '  lac scheduler info <job-id> [--json]',
-    '  lac scheduler edit <job-id> [--cron "<expr>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
+    '  lac scheduler edit <job-id> [--cron "<expr>" | --at "<iso-timestamp>"] [--message "<text>"] [--desc "<label>"] [--enabled true|false] [--execution-mode same-thread|side-thread] [--json]',
     '  lac scheduler del <job-id> [--json]',
     '  lac scheduler run <job-id> [--json]',
     '  lac monitor add --title "<title>" --source stock.quote|webhook [--symbol <symbol>] [--hook-id <id>] [--token <tok>] --condition "<expr>" --message "<text>" [--cooldown 15m] [--cron "<expr>"] [--timezone <tz>] [--workflow direct|deep-analysis] [--retro-delay <hours>] [--execution-mode same-thread|side-thread] [--json]',
