@@ -86,7 +86,7 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 
 ### 2026-11-16
 
-- **调度器 CLI 支持一次性任务（#263）**：`lac scheduler add` 新增 `--at "<iso-timestamp>"`（与 `--cron` 互斥、二选一），可创建只触发一次的提醒任务；触发成功后自动停用，不再像"用 cron 模拟一次性"那样在明年同日静默重放。`lac scheduler edit <id>` 现可在 cron 与一次性之间互相切换（`--cron` / `--at`）。底层调度引擎、服务端 API 与持久化本已支持 `once`，本轮只补齐 CLI 入口。
+- **调度器 CLI 支持一次性任务（#263）**：`lac scheduler add` 新增 `--at "<iso-timestamp>"`（与 `--cron` 互斥、二选一），可创建只触发一次的提醒任务；触发成功后自动停用，不再像"用 cron 模拟一次性"那样在明年同日静默重放。`lac scheduler edit <id>` 现可在 cron 与一次性之间互相切换（`--cron` / `--at`）。`--at` 必须是带时区偏移或 `Z` 的未来 ISO 时间，文本输出以 UTC 显示一次性任务并标记 `(once)`。
 
 ### 2026-11-12
 

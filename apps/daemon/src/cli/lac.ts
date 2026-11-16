@@ -13,6 +13,7 @@ import type {
 import { normalizeChannelPlatform, normalizeScheduledJobExecutionMode } from '@cc/superai-contracts';
 import { toPublicScheduledJobId } from '../scheduler/job-id.js';
 import { getChannelPlatformBase, getChannelPlatformInstanceId, scheduledJobMatchesCliContext } from '../scheduler/scheduled-job-route.js';
+import { nextActivationAt } from '../automation/automation-trigger-engine.js';
 import { toPublicAutomationMonitorId } from '../automation/monitor-id.js';
 import { automationMonitorToScheduledJob } from '../automation/automation-schedule-utils.js';
 import { parseDurationMs, parseMonitorCondition, parseMonitorSchedule, parseRetroDelayHours } from './monitor-cli-parsers.js';
@@ -560,11 +561,11 @@ async function handleChannelSendFile(flags: Map<string, string[]>, env: NodeJS.P
 
 async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, io: StdIo, json: boolean) {
   const cronExpr = getFlag(flags, 'cron');
-  const atText = getFlag(flags, 'at');
-  if (cronExpr && atText) {
+  const hasAt = flags.has('at');
+  if (flags.has('cron') && hasAt) {
     throw new Error('scheduler add accepts either --cron or --at, not both.');
   }
-  if (!cronExpr && !atText) {
+  if (!cronExpr && !hasAt) {
     throw new Error('scheduler add requires either --cron or --at.');
   }
   const promptTemplate = getRequiredFlag(flags, 'message');
@@ -582,15 +583,15 @@ async function handleAdd(flags: Map<string, string[]>, env: NodeJS.ProcessEnv, i
     ...(explicitChannelId ? { channelId: explicitChannelId } : {}),
     ...(context.threadId ? { threadId: context.threadId } : {}),
     executionMode,
-    triggerType: atText ? 'once' : 'cron',
-    ...(atText ? { runAt: parseRunAtFlag(atText) } : { cronExpr: cronExpr! }),
+    triggerType: hasAt ? 'once' : 'cron',
+    ...(hasAt ? { runAt: parseRunAtFlag(getFlag(flags, 'at')) } : { cronExpr: cronExpr! }),
     promptTemplate,
     description,
     enabled: true,
   });
   print(json, io.stdout, presentJob(job), [
     `Created scheduler job ${toPublicScheduledJobId(job.id)}`,
-    `Schedule: ${job.cronExpr || job.runAt || ''}`,
+    `Schedule: ${formatJobSchedule(job)}`,
     `Execution mode: ${job.executionMode}`,
     `Description: ${job.description}`,
   ].join('\n'));
@@ -636,17 +637,17 @@ async function handleEdit(jobId: string, flags: Map<string, string[]>, env: Node
   }
   const input: ScheduledJobUpdateInput = {};
   const cronExpr = getFlag(flags, 'cron');
-  const atText = getFlag(flags, 'at');
-  if (cronExpr && atText) {
+  const hasAt = flags.has('at');
+  if (flags.has('cron') && hasAt) {
     throw new Error('scheduler edit accepts either --cron or --at, not both.');
   }
   const promptTemplate = getFlag(flags, 'message');
   const description = getFlag(flags, 'desc');
   const enabled = getOptionalBooleanFlag(flags, 'enabled');
   const executionMode = getFlag(flags, 'execution-mode');
-  if (atText) {
+  if (hasAt) {
     input.triggerType = 'once';
-    input.runAt = parseRunAtFlag(atText);
+    input.runAt = parseRunAtFlag(getFlag(flags, 'at'));
   } else if (cronExpr) {
     input.triggerType = 'cron';
     input.cronExpr = cronExpr;
@@ -697,11 +698,15 @@ function getExecutionMode(flags: Map<string, string[]>) {
 }
 
 function parseRunAtFlag(text: string): string {
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error('--at must be a valid timestamp, e.g. "2026-10-27T09:50:00+08:00".');
+  let next: Date | null;
+  try {
+    next = nextActivationAt({ kind: 'once', runAt: text.trim() }, new Date());
+  } catch {
+    throw new Error('--at must be a valid timestamp with a time zone, e.g. "2027-10-27T09:50:00+08:00".');
   }
-  return parsed.toISOString();
+  if (!next) throw new Error('--at must be in the future.');
+  if (next.getUTCFullYear() > 9999) throw new Error('--at must be a valid timestamp with a four-digit UTC year.');
+  return next.toISOString();
 }
 
 function getMonitorExecutionMode(flags: Map<string, string[]>) {
@@ -782,8 +787,12 @@ function printUsage(output: Pick<NodeJS.WriteStream, 'write'>) {
 }
 
 
+function formatJobSchedule(job: ScheduledJob): string {
+  return job.triggerType === 'cron' ? job.cronExpr || '' : `${job.runAt || ''} (once)`;
+}
+
 function formatJobLine(job: ScheduledJob) {
-  const schedule = job.triggerType === 'cron' ? job.cronExpr || '' : job.runAt || '';
+  const schedule = formatJobSchedule(job);
   return `${toPublicScheduledJobId(job.id)} | ${job.enabled ? 'enabled' : 'disabled'} | ${job.executionMode} | ${schedule} | ${job.description}`;
 }
 
@@ -794,7 +803,7 @@ function formatJobDetails(job: ScheduledJob, latestRun?: ScheduledJobRun) {
     `Platform: ${job.platform}`,
     `Thread: ${job.route.threadId || ''}`,
     `Execution mode: ${job.executionMode}`,
-    `Schedule: ${job.triggerType === 'cron' ? job.cronExpr || '' : job.runAt || ''}`,
+    `Schedule: ${formatJobSchedule(job)}`,
     `Enabled: ${job.enabled ? 'true' : 'false'}`,
     `Description: ${job.description}`,
     `Message: ${job.promptTemplate}`,

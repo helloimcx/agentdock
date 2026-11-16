@@ -137,7 +137,8 @@ test('lac scheduler add posts a local job without IM context', async () => {
   }
 });
 
-test('lac scheduler add posts a one-shot job when --at is given', async () => {
+test('lac scheduler add posts a one-shot job when --at is given', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-16T19:00:00Z') });
   let capturedBody: string | null = null;
   const { restore } = withFetchMock(async (input, init) => {
     if (init?.body) capturedBody = init.body as string;
@@ -182,7 +183,7 @@ test('lac scheduler add posts a one-shot job when --at is given', async () => {
       enabled: true,
     });
     assert.match(read().stdout, /Created scheduler job 9c41f7d2/);
-    assert.match(read().stdout, /2026-11-17T01:50:00\.000Z/);
+    assert.match(read().stdout, /Schedule: 2026-11-17T01:50:00\.000Z \(once\)/);
   } finally {
     restore();
   }
@@ -228,6 +229,63 @@ test('lac scheduler add rejects an invalid --at timestamp', async () => {
   );
   assert.equal(exitCode, 1);
   assert.match(read().stderr, /--at must be a valid timestamp/);
+});
+
+const invalidOneShotTimes = [
+  { description: 'a nonexistent date', value: '2027-02-30T09:50:00+08:00', error: /valid timestamp/ },
+  { description: 'a missing zone', value: '2027-02-28T09:50:00', error: /valid timestamp/ },
+  { description: 'an invalid offset', value: '2027-02-28T09:50:00+08:60', error: /valid timestamp/ },
+  { description: 'a past instant', value: '2026-11-15T09:50:00+08:00', error: /in the future/ },
+  { description: 'the current instant', value: '2026-11-16T08:00:00+08:00', error: /in the future/ },
+  { description: 'an empty timestamp', value: '', error: /valid timestamp/ },
+];
+
+for (const { description, value, error } of invalidOneShotTimes) {
+  test(`lac scheduler add and edit reject --at with ${description} before sending a request`, async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-16T00:00:00Z') });
+    const fetch = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ ok: true, data: {} })));
+    const env = {
+      LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1',
+      LOCAL_AI_WORKSPACE_ID: '知识库',
+    };
+
+    for (const command of [['add', '--message', '提醒考试'], ['edit', '826aff79', '--message', '提醒考试']]) {
+      await t.test(command[0], async () => {
+        fetch.mock.resetCalls();
+        const { io, read } = createIo();
+        const exitCode = await runCli(['scheduler', ...command, '--desc', '考试提醒', '--at', value], env, io);
+        assert.equal(fetch.mock.callCount(), 0);
+        assert.equal(exitCode, 1);
+        assert.match(read().stderr, error);
+      });
+    }
+  });
+}
+
+test('lac scheduler list and info identify one-shot jobs in text', async (t) => {
+  const job = {
+    id: 'job:9c41f7d2-83ae-4b06-9d15-2c07a45be813',
+    workspaceId: '知识库',
+    platform: 'local',
+    route: { type: 'local.thread', channelId: '知识库' },
+    executionMode: 'same-thread',
+    triggerType: 'once',
+    runAt: '2026-11-17T01:50:00.000Z',
+    description: '考试提醒',
+    enabled: true,
+  };
+  t.mock.method(globalThis, 'fetch', async (input: string) => {
+    const path = new URL(input).pathname;
+    const data = path.endsWith('/runs') ? { runs: [] } : path.endsWith('/jobs') ? { jobs: [job] } : job;
+    return new Response(JSON.stringify({ ok: true, data }));
+  });
+  const env = { LOCAL_AI_CORE_BASE: 'http://127.0.0.1:9831/api/local/v1' };
+
+  for (const command of [['list'], ['info', '9c41f7d2']]) {
+    const { io, read } = createIo();
+    assert.equal(await runCli(['scheduler', ...command], env, io), 0);
+    assert.match(read().stdout, /2026-11-17T01:50:00\.000Z \(once\)/);
+  }
 });
 
 test('lac channel send-file posts a workspace-relative file through outbound message parts', async () => {
@@ -764,7 +822,8 @@ test('lac scheduler edit with only --cron does not clear message or description'
   }
 });
 
-test('lac scheduler edit switches a job to one-shot with --at', async () => {
+test('lac scheduler edit switches a job to one-shot with --at', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-16T19:00:00Z') });
   let capturedBody: string | null = null;
   const { restore } = withFetchMock(async (input, init) => {
     if (init?.body) capturedBody = init.body as string;
