@@ -1,4 +1,4 @@
-import type { ButlerBotInboundMessage, ButlerBotProtocolMessage, ButlerDelegation, ButlerProfile, ButlerTask } from '@cc/superai-contracts';
+import type { ButlerBlockedReason, ButlerBotInboundMessage, ButlerBotProtocolMessage, ButlerDelegation, ButlerProfile, ButlerTask } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { ButlerOperation } from '../acp/store/butler-store.js';
 import { childHasOutstandingExecution, includeChildUpdates, isExecutionSubmission, observeDelegation, workspaceBusy } from './butler-observation.js';
@@ -64,7 +64,9 @@ export class ButlerDispatcher {
             status: observed.status || 'running', summary: observed.summary, error: observed.error,
             blockedReason: observed.blockedReason,
             resultDeliveryState: 'pending', resultMessageId: undefined, lastProgressSignature: undefined } : {}),
-          approvalIds: observed.approvalIds || current.approvalIds, blockedReason: observed.blockedReason,
+          approvalIds: observed.approvalIds || current.approvalIds,
+          approvals: observed.approvals || current.approvals,
+          blockedReason: observed.blockedReason,
         });
       }
     }
@@ -115,7 +117,7 @@ export class ButlerDispatcher {
     if (delegation.runId === original.runId) return delegation;
     const observed = observeDelegation(this.store, delegation);
     return this.store.butler.updateDelegation(delegation.id, { runId: delegation.runId, runIds: delegation.runIds,
-      approvalIds: observed.approvalIds || [], blockedReason: observed.blockedReason, status: observed.status || 'running', summary: undefined, error: observed.error,
+      approvalIds: observed.approvalIds || [], approvals: observed.approvals, blockedReason: observed.blockedReason, status: observed.status || 'running', summary: undefined, error: observed.error,
       resultDeliveryState: 'pending', resultMessageId: undefined, lastProgressSignature: undefined });
   }
 
@@ -127,13 +129,20 @@ export class ButlerDispatcher {
       this.settleCoreWorkerResult(current, observed);
       return;
     }
-    if (observed.status === 'waiting_for_user') await this.sendProgress(current, observed);
+    if (observed.status === 'waiting_for_user') {
+      this.store.butler.updateDelegation(current.id, {
+        approvalIds: observed.approvalIds || [],
+        approvals: observed.approvals,
+        blockedReason: observed.blockedReason,
+      });
+      await this.sendProgress(current, observed);
+    }
     else if (isTerminalStatus(observed.status)) await this.sendWorkerResult(current, observed);
-    else if (observed.status) this.store.butler.updateDelegation(current.id, { approvalIds: observed.approvalIds || [] });
+    else if (observed.status) this.store.butler.updateDelegation(current.id, { approvalIds: observed.approvalIds || [], approvals: observed.approvals });
   }
 
   private async sendProgress(delegation: ButlerDelegation, observed: Partial<ButlerDelegation>) {
-    const signature = `waiting_for_user:${(observed.approvalIds || []).join(',')}`;
+    const signature = `waiting_for_user:${(observed.approvalIds || []).join(',')}:${observed.blockedReason || ''}`;
     if (delegation.lastProgressSignature === signature || delegation.resultDeliveryState === 'sent') return;
     this.store.butler.updateDelegation(delegation.id, { lastProgressSignature: signature });
     await this.sendWorkerMessage(delegation, {
@@ -144,6 +153,9 @@ export class ButlerDispatcher {
         : observed.error || '受管 bot 正在等待用户处理。',
       error: observed.error,
       approvalIds: observed.approvalIds || [],
+      blockedReason: observed.blockedReason,
+      lastHeartbeatAt: observed.lastHeartbeatAt,
+      lastWorkerMessage: observed.lastWorkerMessage,
     }, signature, false);
   }
 
@@ -164,7 +176,7 @@ export class ButlerDispatcher {
   }
 
   private async sendWorkerMessage(delegation: ButlerDelegation,
-    message: Pick<ButlerBotProtocolMessage, 'kind' | 'summary' | 'error' | 'outcome' | 'workerStatus' | 'approvalIds'>,
+    message: Pick<ButlerBotProtocolMessage, 'kind' | 'summary' | 'error' | 'outcome' | 'workerStatus' | 'approvalIds' | 'blockedReason' | 'lastHeartbeatAt' | 'lastWorkerMessage'>,
     signature: string, finalResult = true) {
     if (finalResult && delegation.resultDeliveryState !== 'pending') return;
     const profile = this.getProfile();
@@ -180,7 +192,7 @@ export class ButlerDispatcher {
   }
 
   private encodeWorkerMessage(delegation: ButlerDelegation, profile: ButlerProfile,
-    message: Pick<ButlerBotProtocolMessage, 'kind' | 'summary' | 'error' | 'outcome' | 'workerStatus' | 'approvalIds'>,
+    message: Pick<ButlerBotProtocolMessage, 'kind' | 'summary' | 'error' | 'outcome' | 'workerStatus' | 'approvalIds' | 'blockedReason' | 'lastHeartbeatAt' | 'lastWorkerMessage'>,
     finalResult: boolean): string | undefined {
     const envelope: ButlerBotProtocolMessage = { protocol: 'agentdock.butler', version: 1, ...message, taskId: delegation.taskId,
       delegationId: delegation.id, operationId: delegation.operationId, managerBotId: profile.managerBot.id, targetBotId: delegation.botId };
@@ -235,16 +247,39 @@ export class ButlerDispatcher {
       const currentTask = this.store.butler.get(task.id)!;
       if (currentTask.cancellationRequested) return;
       const delegation = currentTask.delegations.find((item) => item.id === original.id)!;
-      const dependencies = (delegation.dependsOn || []).map((key) => currentTask.delegations.find((item) => item.key === key)!);
-      if (dependencies.some((item) => ['failed', 'cancelled'].includes(item.status))) {
-        this.store.butler.updateDelegation(delegation.id, { status: 'failed', error: 'A required bot task did not complete.' });
+      const queueState = evaluateDelegationQueueState(currentTask, delegation, this.store);
+      if (queueState.failed) {
+        this.store.butler.updateDelegation(delegation.id, { status: 'failed', queueReason: undefined, error: 'A required bot task did not complete.' });
         continue;
       }
-      if (dependencies.some((item) => item.status !== 'completed')) continue;
-      if (delegation.status === 'queued' && workspaceBusy(this.store, delegation.workspaceId, delegation.threadId)) continue;
-      if (delegation.status === 'queued' && delegation.deliveryState === 'pending') await this.dispatchInitial(currentTask, delegation, dependencies);
-      else await this.dispatchFollowupIfReady(currentTask, delegation);
-      if (delegation.transport === 'core') await this.dispatchDueCoreCheck(this.store.butler.get(task.id)!.delegations.find((item) => item.id === delegation.id)!);
+      if (!queueState.ready) {
+        if (delegation.status === 'queued' && (delegation.queueReason !== queueState.queueReason || (queueState.blockedReason && delegation.blockedReason !== queueState.blockedReason))) {
+          this.store.butler.updateDelegation(delegation.id, {
+            queueReason: queueState.queueReason,
+            ...(queueState.blockedReason ? { blockedReason: queueState.blockedReason } : {}),
+          });
+        }
+        continue;
+      }
+      await this.dispatchDelegationExecution(currentTask, delegation);
+    }
+  }
+
+  private async dispatchDelegationExecution(task: ButlerTask, delegation: ButlerDelegation) {
+    if (delegation.status === 'queued' && delegation.deliveryState === 'pending') {
+      if (delegation.queueReason || delegation.blockedReason === 'workspace_busy') {
+        this.store.butler.updateDelegation(delegation.id, {
+          queueReason: undefined,
+          blockedReason: delegation.blockedReason === 'workspace_busy' ? undefined : delegation.blockedReason,
+        });
+      }
+      const dependencies = (delegation.dependsOn || []).map((key) => task.delegations.find((item) => item.key === key)!);
+      await this.dispatchInitial(task, delegation, dependencies);
+    } else {
+      await this.dispatchFollowupIfReady(task, delegation);
+    }
+    if (delegation.transport === 'core') {
+      await this.dispatchDueCoreCheck(this.store.butler.get(task.id)!.delegations.find((item) => item.id === delegation.id)!);
     }
   }
 
@@ -351,9 +386,24 @@ export class ButlerDispatcher {
   }
 
   private deferCheckForBusyWorkspace(delegation: ButlerDelegation) {
-    if (!workspaceBusy(this.store, delegation.workspaceId, delegation.threadId)) return false;
-    this.store.butler.updateDelegation(delegation.id, { checkLeaseUntil: undefined,
-      nextCheckAt: new Date(Date.now() + 60_000).toISOString() });
+    if (delegation.threadId && childHasOutstandingExecution(this.store, delegation.threadId)) {
+      this.store.butler.updateDelegation(delegation.id, {
+        checkLeaseUntil: undefined,
+        nextCheckAt: new Date(Date.now() + 60_000).toISOString(),
+        queueReason: 'waiting_thread',
+      });
+      return true;
+    }
+    const maxConcurrency = delegation.transport === 'channel'
+      ? 1
+      : (this.store.butler.get(delegation.taskId)?.trackingPolicy?.maxWorkspaceConcurrency || 4);
+    if (!workspaceBusy(this.store, delegation.workspaceId, delegation.threadId, maxConcurrency)) return false;
+    this.store.butler.updateDelegation(delegation.id, {
+      checkLeaseUntil: undefined,
+      nextCheckAt: new Date(Date.now() + 60_000).toISOString(),
+      blockedReason: 'workspace_busy',
+      queueReason: 'workspace_busy',
+    });
     return true;
   }
 
@@ -366,8 +416,15 @@ export class ButlerDispatcher {
 
   private recordNonterminalCoreResult(delegation: ButlerDelegation, observed: Partial<ButlerDelegation>) {
     if (!observed.status) return;
-    this.store.butler.updateDelegation(delegation.id, { status: observed.status, approvalIds: observed.approvalIds || [],
-      blockedReason: observed.blockedReason, error: observed.error });
+    this.store.butler.updateDelegation(delegation.id, {
+      status: observed.status,
+      approvalIds: observed.approvalIds || [],
+      approvals: observed.approvals,
+      blockedReason: observed.blockedReason,
+      error: observed.error,
+      ...(observed.lastHeartbeatAt ? { lastHeartbeatAt: observed.lastHeartbeatAt } : {}),
+      ...(observed.lastWorkerMessage ? { lastWorkerMessage: observed.lastWorkerMessage } : {}),
+    });
   }
 
   private findCoreOperation(delegation: ButlerDelegation) {
@@ -397,7 +454,11 @@ export class ButlerDispatcher {
   private settleReportedCoreRun(delegation: ButlerDelegation, operation: ButlerOperation, report: NonNullable<ButlerOperation['report']>) {
     this.store.butler.updateOperation({ ...operation, settled: true });
     const settlement = buildCoreReportSettlement(delegation, operation, report);
-    this.store.butler.updateDelegation(delegation.id, { ...settlement, approvalIds: [], blockedReason: undefined });
+    this.store.butler.updateDelegation(delegation.id, {
+      ...settlement,
+      approvalIds: [],
+      blockedReason: settlement.status === 'waiting_external' ? 'waiting_external' : undefined,
+    });
   }
 
   private async dispatchFollowupIfReady(task: ButlerTask, delegation: ButlerDelegation) {
@@ -743,8 +804,16 @@ export class ButlerDispatcher {
 
   private applyManagerProgress(envelope: ButlerBotProtocolMessage, delegation: ButlerDelegation) {
     const status = envelope.workerStatus === 'waiting_for_user' ? 'waiting_for_user' : 'running';
-    this.store.butler.updateDelegation(delegation.id, { status, summary: envelope.summary || delegation.summary,
-      error: envelope.error, approvalIds: envelope.approvalIds || delegation.approvalIds });
+    const blockedReason = envelope.blockedReason || (status === 'waiting_for_user' && (envelope.approvalIds?.length || delegation.approvalIds.length) ? 'pending_approval' : undefined);
+    this.store.butler.updateDelegation(delegation.id, {
+      status,
+      summary: envelope.summary || delegation.summary,
+      error: envelope.error,
+      approvalIds: envelope.approvalIds || delegation.approvalIds,
+      blockedReason,
+      ...(envelope.lastHeartbeatAt ? { lastHeartbeatAt: envelope.lastHeartbeatAt } : {}),
+      ...(envelope.lastWorkerMessage ? { lastWorkerMessage: envelope.lastWorkerMessage } : {}),
+    });
   }
 
   private applyManagerResult(envelope: ButlerBotProtocolMessage, message: ButlerBotInboundMessage,
@@ -757,6 +826,7 @@ export class ButlerDispatcher {
 
   private aggregate(taskId: string) {
     const task = this.store.butler.get(taskId)!;
+    if (['completed', 'cancelled'].includes(task.status) && !task.cancellationRequested) return;
     const status = deriveTaskStatus(task);
     const error = task.cancellationRequested && status !== 'cancelled' ? 'Cancellation is pending; confirm remote bot outcome before retrying.' : undefined;
     const summary = status === 'completed' && task.transport === 'core'
@@ -860,6 +930,8 @@ function coreReportSchedule(outcome: string, canContinueWatch: boolean, retryChe
 }
 
 function deriveTaskStatus(task: ButlerTask): ButlerTask['status'] {
+  if (task.status === 'completed') return 'completed';
+  if (task.status === 'cancelled') return 'cancelled';
   const statuses = task.delegations.map((entry) => entry.status);
   if (task.cancellationRequested) return statuses.every((entry) => ['completed', 'cancelled', 'failed'].includes(entry)) ? 'cancelled' : 'waiting_for_user';
   if (statuses.includes('waiting_for_user')) return 'waiting_for_user';
@@ -880,4 +952,29 @@ function hasActiveDelegation(task: ButlerTask, statuses: ButlerDelegation['statu
 function acceptedTaskStatus(task: ButlerTask, statuses: ButlerDelegation['status'][]) {
   return statuses.every((entry) => entry === 'completed') && task.transport === 'core' && task.completionPolicy === 'butler'
     ? 'completed' : 'reviewing';
+}
+
+function evaluateDelegationQueueState(
+  task: ButlerTask,
+  delegation: ButlerDelegation,
+  store: LocalCoreAcpStore,
+): { ready: boolean; failed?: boolean; queueReason?: string; blockedReason?: ButlerBlockedReason } {
+  const dependencies = (delegation.dependsOn || []).map((key) => task.delegations.find((item) => item.key === key)!);
+  if (dependencies.some((item) => ['failed', 'cancelled'].includes(item.status))) {
+    return { ready: false, failed: true };
+  }
+  const incompleteKeys = (delegation.dependsOn || []).filter((key) => task.delegations.find((item) => item.key === key)?.status !== 'completed');
+  if (incompleteKeys.length > 0) {
+    return { ready: false, queueReason: `waiting_dependency:${incompleteKeys.join(',')}` };
+  }
+  if (delegation.threadId && childHasOutstandingExecution(store, delegation.threadId)) {
+    return { ready: false, queueReason: 'waiting_thread' };
+  }
+  const maxConcurrency = delegation.transport === 'channel'
+    ? 1
+    : (task.trackingPolicy?.maxWorkspaceConcurrency || 4);
+  if (delegation.status === 'queued' && workspaceBusy(store, delegation.workspaceId, delegation.threadId, maxConcurrency)) {
+    return { ready: false, queueReason: 'workspace_busy', blockedReason: 'workspace_busy' };
+  }
+  return { ready: true };
 }

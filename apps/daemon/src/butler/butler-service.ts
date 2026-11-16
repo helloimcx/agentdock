@@ -318,10 +318,52 @@ export class ButlerService {
     await this.reconcile();
     if (this.dispatcher.refreshForAcceptance(id)) throw new ButlerError('A managed bot conversation changed during acceptance; review its latest outcome.', 409);
     const task = this.get(id, input.ownerThreadId);
-    if (task.status !== 'reviewing' || task.delegations.some((entry) => entry.status !== 'completed')) throw new ButlerError('All managed bots must return a completed result before user acceptance.');
     if (task.delegations.some((entry) => entry.threadId && childHasOutstandingExecution(this.store, entry.threadId))) throw new ButlerError('A managed bot still has outstanding execution.', 409);
     if (!input.summary?.trim()) throw new ButlerError('An acceptance summary is required.');
-    return this.store.butler.updateTask(id, { status: 'completed', summary: input.summary });
+
+    const isManual = Boolean(input.manual || input.force);
+    this.validateAcceptanceEligibility(task, isManual);
+    this.settleReviewingDelegations(task);
+    if (isManual) this.cancelIncompleteDelegations(task);
+
+    return this.store.butler.updateTask(id, {
+      status: 'completed',
+      summary: input.summary,
+      acceptedBy: isManual ? 'user' : 'worker_report',
+      ...(input.reason ? { manualAcceptanceReason: input.reason } : {}),
+    });
+  }
+
+  private validateAcceptanceEligibility(task: ButlerTask, isManual: boolean) {
+    if (isManual) return;
+    if (task.delegations.some((entry) => ['failed', 'cancelled', 'blocked'].includes(entry.status))) {
+      throw new ButlerError('Cannot complete a task with failed, cancelled, or blocked bot delegations.', 409);
+    }
+    if (task.delegations.some((entry) => entry.status !== 'completed' && entry.status !== 'reviewing')) {
+      throw new ButlerError('All bot delegations must be completed or reviewing before completing the task.', 409);
+    }
+  }
+
+  private settleReviewingDelegations(task: ButlerTask) {
+    for (const delegation of task.delegations.filter((entry) => entry.status === 'reviewing')) {
+      this.store.butler.updateDelegation(delegation.id, {
+        status: 'completed',
+        acceptedReportVersion: delegation.reportVersion,
+        summary: delegation.report?.summary || delegation.summary || 'Accepted with Butler task completion.',
+        error: undefined,
+      });
+    }
+  }
+
+  private cancelIncompleteDelegations(task: ButlerTask) {
+    const unstarted = ['queued', 'waiting_external', 'waiting_for_user', 'waiting_for_bot', 'waiting_for_manager'];
+    for (const delegation of task.delegations.filter((entry) => unstarted.includes(entry.status))) {
+      this.store.butler.updateDelegation(delegation.id, {
+        status: 'cancelled',
+        nextCheckAt: undefined,
+        checkLeaseUntil: undefined,
+      });
+    }
   }
 
   async runAgentCommand(context: ButlerAgentContext, raw: unknown, capability: string): Promise<unknown> {
@@ -363,7 +405,13 @@ export class ButlerService {
         input.intervalSeconds === undefined ? undefined : Number(input.intervalSeconds)),
       cancel: () => this.cancel(taskId(), { ownerThreadId,
         ...(input.mode === 'tracking' || input.mode === 'external' ? { mode: input.mode } : {}) }),
-      complete: () => this.complete(taskId(), { ownerThreadId, summary: requiredText(input.summary, 'summary') }),
+      complete: () => this.complete(taskId(), {
+        ownerThreadId,
+        summary: requiredText(input.summary, 'summary'),
+        ...(input.manual ? { manual: true } : {}),
+        ...(input.force ? { force: true } : {}),
+        ...(input.reason ? { reason: String(input.reason) } : {}),
+      }),
     };
     const command = commands[action];
     if (!command) throw new ButlerError(`Unsupported Butler agent command: ${action || '(empty)'}.`);
@@ -494,8 +542,15 @@ function requiredText(value: unknown, name: string): string {
 }
 
 function resolveTrackingPolicy(value: ButlerProfileInput['trackingPolicy']): ButlerTrackingPolicy {
-  const policy = { defaultCheckIntervalSeconds: value?.defaultCheckIntervalSeconds ?? 600,
-    checkBudget: value?.checkBudget ?? 30, deadlineSeconds: value?.deadlineSeconds ?? 7 * 24 * 60 * 60 };
+  const maxWorkspaceConcurrency = value?.maxWorkspaceConcurrency && value.maxWorkspaceConcurrency > 0
+    ? Math.min(32, Math.floor(value.maxWorkspaceConcurrency))
+    : undefined;
+  const policy = {
+    defaultCheckIntervalSeconds: value?.defaultCheckIntervalSeconds ?? 600,
+    checkBudget: value?.checkBudget ?? 30,
+    deadlineSeconds: value?.deadlineSeconds ?? 7 * 24 * 60 * 60,
+    ...(maxWorkspaceConcurrency ? { maxWorkspaceConcurrency } : {}),
+  };
   validateTrackingInterval(policy.defaultCheckIntervalSeconds);
   validateTrackingBudget(policy.checkBudget);
   validateTrackingDeadline(policy.deadlineSeconds);

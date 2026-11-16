@@ -13,7 +13,7 @@ const USAGE = [
   '  lac butler reattach <task-id> [--json]',
   '  lac butler followup <task-id> --delegation <delegation-id> --message "<instructions>" --request-id <stable-id> [--json]',
   '  lac butler cancel <task-id> [--mode <tracking|external>] [--json]',
-  '  lac butler complete <task-id> --summary "<acceptance report>" [--json]',
+  '  lac butler complete <task-id> --summary "<acceptance report>" [--manual] [--reason "<text>"] [--json]',
   '  lac butler accept <task-id> --delegation <delegation-id> --report-version <version> [--json]',
   '  lac butler watch <task-id> --delegation <delegation-id> --instructions "<read-only check steps>" [--interval <seconds>] [--json]',
   '  lac butler report [--phase <checkpoint|final>] --outcome <succeeded|waiting_external|needs_input|failed> --summary "<result>" --request-id <stable-id> [--external-refs "<JSON array>"] [--evidence "<JSON array>"] [--check-after <seconds>] [--json]',
@@ -189,7 +189,14 @@ function agentCommandInput(action: string, taskId: string, flags: ParsedFlags, t
       reportVersion: Number(requiredValue(flags, 'report-version')) }),
     watch: () => ({ action, taskId: requiredText(taskId, 'task ID'), delegationId: requiredValue(flags, 'delegation'),
       instructions: requiredValue(flags, 'instructions'), ...(getFlag(flags, 'interval') ? { intervalSeconds: Number(getFlag(flags, 'interval')) } : {}) }),
-    complete: () => ({ action, taskId: requiredText(taskId, 'task ID'), summary: requiredValue(flags, 'summary') }),
+    complete: () => ({
+      action,
+      taskId: requiredText(taskId, 'task ID'),
+      summary: requiredValue(flags, 'summary'),
+      ...(flags.has('manual') ? { manual: true } : {}),
+      ...(flags.has('force') ? { force: true } : {}),
+      ...(getFlag(flags, 'reason') ? { reason: getFlag(flags, 'reason') } : {}),
+    }),
   };
   const builder = builders[action];
   if (!builder) throw new Error(`Unsupported Butler agent command: ${action}.`);
@@ -214,23 +221,41 @@ function requiredText(value: string, label: string) {
   return value.trim();
 }
 
+function buildTaskOperationBody(action: string, flags: ParsedFlags, ownerThreadId: string): Record<string, unknown> {
+  const body: Record<string, unknown> = { ownerThreadId };
+  if (action === 'followup') {
+    return { ...body, delegationId: requiredValue(flags, 'delegation'),
+      content: requiredValue(flags, 'message'), requestId: requiredValue(flags, 'request-id') };
+  }
+  if (action === 'complete') {
+    return {
+      ...body,
+      summary: requiredValue(flags, 'summary'),
+      ...(flags.has('manual') ? { manual: true } : {}),
+      ...(flags.has('force') ? { force: true } : {}),
+      ...(getFlag(flags, 'reason') ? { reason: getFlag(flags, 'reason') } : {}),
+    };
+  }
+  if (action === 'cancel') {
+    const mode = getFlag(flags, 'mode');
+    if (mode && mode !== 'tracking' && mode !== 'external') throw new Error('--mode must be tracking or external.');
+    return mode ? { ...body, mode } : body;
+  }
+  if (action === 'accept') {
+    return { ...body, delegationId: requiredValue(flags, 'delegation'), reportVersion: Number(requiredValue(flags, 'report-version')) };
+  }
+  if (action === 'watch') {
+    return { ...body, delegationId: requiredValue(flags, 'delegation'), instructions: requiredValue(flags, 'instructions'),
+      ...(getFlag(flags, 'interval') ? { intervalSeconds: Number(getFlag(flags, 'interval')) } : {}) };
+  }
+  return body;
+}
+
 async function taskOperation(action: string, taskId: string, flags: ParsedFlags, baseUrl: string, ownerThreadId: string) {
   const scope = `?owner_thread_id=${encodeURIComponent(ownerThreadId)}`;
   if (action === 'list') return request(baseUrl, 'GET', `/butler/tasks${scope}`);
   if (!taskId.trim()) throw new Error(`butler ${action} requires a task ID.`);
   const path = `/butler/tasks/${encodeURIComponent(taskId)}`;
   if (action === 'info') return request(baseUrl, 'GET', `${path}${scope}`);
-  let body: Record<string, unknown> = { ownerThreadId };
-  if (action === 'followup') body = { ...body, delegationId: requiredValue(flags, 'delegation'),
-    content: requiredValue(flags, 'message'), requestId: requiredValue(flags, 'request-id') };
-  if (action === 'complete') body.summary = requiredValue(flags, 'summary');
-  if (action === 'cancel' && getFlag(flags, 'mode')) {
-    const mode = getFlag(flags, 'mode');
-    if (mode !== 'tracking' && mode !== 'external') throw new Error('--mode must be tracking or external.');
-    body.mode = mode;
-  }
-  if (action === 'accept') body = { ...body, delegationId: requiredValue(flags, 'delegation'), reportVersion: Number(requiredValue(flags, 'report-version')) };
-  if (action === 'watch') body = { ...body, delegationId: requiredValue(flags, 'delegation'), instructions: requiredValue(flags, 'instructions'),
-    ...(getFlag(flags, 'interval') ? { intervalSeconds: Number(getFlag(flags, 'interval')) } : {}) };
-  return request(baseUrl, 'POST', `${path}/${action}`, body);
+  return request(baseUrl, 'POST', `${path}/${action}`, buildTaskOperationBody(action, flags, ownerThreadId));
 }
