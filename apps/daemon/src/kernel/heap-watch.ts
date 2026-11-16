@@ -82,7 +82,7 @@ export function createHeapWatcher(options: HeapWatchOptions) {
   function updateSustainedWindow(fraction: number, current: HeapWatchSample) {
     const windowSamples = options.sustainedWindowSamples ?? 30;
     const sustainedMean = options.sustainedMeanFraction ?? 0.85;
-    if (windowSamples <= 0 || !options.onSustainedError) {
+    if (!Number.isFinite(windowSamples) || windowSamples <= 0 || !options.onSustainedError) {
       return;
     }
     state.windowSum += fraction;

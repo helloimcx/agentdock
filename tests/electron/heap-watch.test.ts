@@ -215,7 +215,7 @@ test('the sustained episode re-arms only after the window mean recovers below wa
   assert.equal(fired, 2, `expected fire, recovery, then a second fire, got ${fired}`);
 });
 
-test('sustainedWindowSamples=1 fires on the first error sample', () => {
+test('sustainedWindowSamples=1 fires on the first sample at or above the sustained mean', () => {
   let fired = 0;
   const watcher = createHeapWatcher({
     log: () => {},
@@ -228,6 +228,23 @@ test('sustainedWindowSamples=1 fires on the first error sample', () => {
   });
   watcher.check();
   assert.equal(fired, 1, `expected fire on first error sample, got ${fired}`);
+});
+
+test('a warn-band sample at or above the sustained mean fires once the window is full', () => {
+  let fired = 0;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => ({ heapUsed: heapUsedOfLimit(0.86), rss: rssOf(0.8), external: 0 }),
+    sustainedWindowSamples: 2,
+    onSustainedError: () => {
+      fired += 1;
+    },
+  });
+  watcher.check();
+  assert.equal(fired, 0, 'a warn-band mean must not fire before the window fills');
+  watcher.check();
+  assert.equal(fired, 1, `0.86 is below the error line but at the sustained mean, got ${fired}`);
 });
 
 test('sustainedWindowSamples=0 disables the sustained callback', () => {
@@ -260,10 +277,14 @@ test('stop() clears the sustained window so a restarted watcher rebuilds it', ()
   });
   watcher.check();
   watcher.check();
+  watcher.check();
+  assert.equal(fired, 1, 'episode must fire before stop so the reset pins are meaningful');
   watcher.stop();
   watcher.check();
+  assert.equal(fired, 1, 'stop must clear the window so the restart does not fire immediately');
   watcher.check();
-  assert.equal(fired, 0, 'stale streak must not fire early after stop');
+  watcher.check();
+  assert.equal(fired, 2, 'stop must clear sustainedActive so a fresh episode can fire');
 });
 
 test('heap watcher start() samples on the interval and stop() clears it', () => {
