@@ -3,6 +3,7 @@ import { SubmissionConflictError } from '../acp/store/submission-store.js';
 import { EventEmitter } from 'node:events';
 import { parseLocalAiCoreRoute, type LocalAiCoreRoute } from './server-routes.js';
 import { setCorsHeaders, jsonError, createSseEvent, type RouteHandler } from './server-helpers.js';
+import { capBridgeEventForBroadcast } from './bridge-broadcast-cap.js';
 import type {
   DesktopBridgeEvent,
   DesktopConnectConfig,
@@ -265,7 +266,8 @@ export class LocalAiCoreServer {
       this.broadcast({ type: 'runtime.updated', runtime });
     });
     b.controller.on('bridge', (bridge: DesktopBridgeEvent) => {
-      this.broadcast({ type: 'stream.updated', stream: bridge });
+      const broadcastBridge = capBridgeEventForBroadcast(bridge);
+      this.broadcast({ type: 'stream.updated', stream: broadcastBridge });
       if (bridge.replyCtx) {
         const runId = String(bridge.replyCtx);
         this.broadcastExternalRunStream(runId, bridge);
@@ -277,7 +279,7 @@ export class LocalAiCoreServer {
           type: 'presence.updated',
           threadId,
           live: bridge.type !== 'typing_stop',
-          stream: bridge,
+          stream: broadcastBridge,
         });
       }
     });
@@ -431,6 +433,11 @@ export class LocalAiCoreServer {
   }
 
   private broadcast(event: LocalCoreEvent) {
+    if (!this.sseClients.size) {
+      // Building the JSON payload with nobody listening still allocates a
+      // full serialized copy per event; skip it while the heap is tight.
+      return;
+    }
     const payload = createSseEvent(event.type, event);
     for (const client of this.sseClients) {
       client.write(payload);
