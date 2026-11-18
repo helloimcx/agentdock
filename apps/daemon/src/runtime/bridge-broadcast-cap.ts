@@ -1,4 +1,5 @@
 import type { DesktopBridgeEvent, DesktopBridgeToolCall } from '@agentdock/contracts';
+import { capString } from './bridge-stdout-log.js';
 
 export const BRIDGE_BROADCAST_MAX_CHARS = 65536;
 
@@ -18,13 +19,6 @@ export function capBridgeEventForBroadcast(
     return event;
   }
   return { ...event, content, toolCall };
-}
-
-function capString(value: string | undefined, maxChars: number): string | undefined {
-  if (value === undefined || value.length <= maxChars) {
-    return value;
-  }
-  return `${value.slice(0, maxChars)} …[truncated ${value.length - maxChars} chars]`;
 }
 
 function capToolCall(toolCall: DesktopBridgeToolCall, maxChars: number): DesktopBridgeToolCall {

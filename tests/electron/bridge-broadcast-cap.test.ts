@@ -77,13 +77,13 @@ test('a small tool call keeps its identity; object input is passed by reference'
 });
 
 test('oversized string tool input is capped without touching the object identity of other fields', () => {
-  const toolCall = {
+  const toolCall: DesktopBridgeToolCall = {
     id: 'call_63cbd324-tool-6',
     name: 'Terminal',
     status: 'completed',
     input: 'Z'.repeat(BRIDGE_BROADCAST_MAX_CHARS + 1),
     output: 'done',
-  } as DesktopBridgeToolCall;
+  };
   const capped = capBridgeEventForBroadcast({ type: 'update_message', bridgeKind: 'tool', toolCall });
   assert.ok(typeof capped.toolCall!.input === 'string');
   assert.ok((capped.toolCall!.input as string).includes('…[truncated 1 chars]'));
