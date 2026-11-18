@@ -6,12 +6,23 @@ export const BRIDGE_LOG_PREFIX = '[local-ai-core bridge]';
 // Bridge events carry full tool outputs (tens of KB); dumping them raw to the
 // journal produced multi-KB lines (2026-11-15 06:02 death log) and the write
 // itself allocates the giant string right when the heap can least afford it.
+
+/** Returns value unchanged when short enough; otherwise a capped prefix with
+ *  a dropped-char marker. Generic so a required string stays required. */
+export function capString<T extends string | undefined>(value: T, maxChars: number): T {
+  if (value === undefined || value.length <= maxChars) {
+    return value;
+  }
+  const capped = `${value.slice(0, maxChars)} …[truncated ${value.length - maxChars} chars]`;
+  return capped as T;
+}
 export function formatBridgeLogLine(event: unknown, maxChars: number = BRIDGE_LOG_MAX_CHARS): string {
   const json = JSON.stringify(event) ?? 'undefined';
-  if (json.length <= maxChars) {
+  const capped = capString(json, maxChars);
+  if (capped === json) {
     return `${BRIDGE_LOG_PREFIX} ${json}\n`;
   }
-  return `${BRIDGE_LOG_PREFIX} ${json.slice(0, maxChars)} …[truncated ${json.length - maxChars} chars]\n`;
+  return `${BRIDGE_LOG_PREFIX} ${capped}\n`;
 }
 
 // process.stdout on a pipe (journald) buffers unboundedly inside libuv while
