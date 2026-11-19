@@ -20,6 +20,12 @@ import { ACTIVE_RUN_STATUSES_SQL, normalizeBridgeKind, normalizeBridgeStatus, pa
 
 // Order matters: also reused by INSERT INTO messages below — keep its VALUES placeholder count in sync.
 const MESSAGE_COLUMNS = 'id, thread_id, role, content, tool_call_json, bridge_kind, bridge_status, timestamp, kind, seq';
+/** Default message window for get() when a caller omits limit. Unbounded
+ *  hydration of a whale thread (16k messages / ~30MB of content plus fat
+ *  tool_call_json) inside one StatementSync::All aborted the prod daemon at
+ *  90% heap (2026-11-19 10:48 death #8). Callers needing deeper history page
+ *  via beforeSeq or pass an explicit limit. */
+export const THREAD_GET_DEFAULT_LIMIT = 200;
 // Shared by listSummaries and getRow; getRow alone appends acp_launch_config_key.
 const THREAD_COLUMNS = 'id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode';
 // Also reused by the INSERT INTO runs in updateRun — keep its VALUES placeholder count in sync.
@@ -106,8 +112,10 @@ export class LocalThreadStore {
     let messages: LocalMessageRow[];
     let hasMore = false;
 
-    const limit = options?.limit;
-    if (limit !== undefined && limit > 0) {
+    // An omitted limit reads the newest window instead of the whole history;
+    // see THREAD_GET_DEFAULT_LIMIT for why the unbounded path had to go.
+    const limit = options?.limit ?? THREAD_GET_DEFAULT_LIMIT;
+    if (limit > 0) {
       const rows = this.selectMessageWindow(threadId, limit, options?.beforeSeq);
       hasMore = rows.length > limit;
       if (hasMore) rows.pop();
