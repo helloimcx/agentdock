@@ -1,6 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import type { RouteHandler } from '../server-helpers.js';
 import type { ExternalService } from '../external-service.js';
+import { runStartedAtMs } from '../external-service.js';
 import {
   json,
   rawJson,
@@ -426,7 +427,7 @@ function extractOpenAiMessageText(content: OpenAiChatCompletionMessage['content'
 
 function collectAssistantMessagesForRun(snapshot: ExternalRunSnapshot): Array<{ role: string; id: string; timestamp?: string; kind?: string; bridgeKind?: string; bridgeStatus?: string; content: string; toolCall?: unknown }> {
   const thread = snapshot.thread;
-  const startedAt = Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || '');
+  const startedAt = runStartedAtMs(snapshot.task);
   if (!thread || !Number.isFinite(startedAt)) {
     return [];
   }

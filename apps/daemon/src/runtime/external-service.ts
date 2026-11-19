@@ -13,6 +13,7 @@ import type {
   ExternalRunSnapshot,
   ExternalThread,
   RuntimeConfigState,
+  ThreadDetail,
 } from '@cc/superai-contracts';
 import type { LocalCoreAcpStore } from '../acp/local-core-acp-store.js';
 import type { WorkspaceRouter } from '../router/workspace-router.js';
@@ -33,11 +34,18 @@ export interface ExternalRunReplayFeed {
   readonly messages: readonly ExternalRunReplayFeedMessage[];
 }
 
+/** Single parse for the run-start cutoff, shared by the attach-time snapshot,
+ *  the per-tick replay feed, and the OpenAI handler. NaN when the run never
+ *  recorded a parseable start. */
+export function runStartedAtMs(task: AgentTask | undefined): number {
+  return Date.parse(task?.startedAt || task?.createdAt || '');
+}
+
 /** Shared shape for the connect-time snapshot replay and the per-tick feed
  *  poll, so both paths apply identical cutoff/role semantics. */
 export function replayFeedFromSnapshot(snapshot: ExternalRunSnapshot): ExternalRunReplayFeed {
   return {
-    startedAtMs: Date.parse(snapshot.task?.startedAt || snapshot.task?.createdAt || ''),
+    startedAtMs: runStartedAtMs(snapshot.task),
     bridgeSessionKey: snapshot.thread?.bridgeSessionKey,
     messages: snapshot.thread?.messages || [],
   };
@@ -154,12 +162,36 @@ export class ExternalService {
   async getRunSnapshot(runId: string): Promise<ExternalRunSnapshot> {
     const { task, threadId } = this.resolveRunThread(runId);
     const thread = threadId
-      ? await this.workspaceRouter.getThread(threadId).catch(() => undefined)
+      ? await this.getRunThreadDetail(threadId, task).catch(() => undefined)
       : undefined;
     return {
       runId,
       task,
       thread,
+    };
+  }
+
+  /** Run-scoped thread detail: hydrates O(run assistant messages) instead of
+   *  the whole thread. Every snapshot consumer (external SSE attach replay,
+   *  OpenAI streaming/non-streaming) filters to assistant rows at/after the
+   *  run start, so this window is exact; hydrating a 16k-message whale thread
+   *  per attach aborted the prod daemon at 90% heap (2026-11-19 10:48 death
+   *  #8). Threads with no parseable run start keep a bounded newest window
+   *  via the store default limit. */
+  private async getRunThreadDetail(threadId: string, task: AgentTask | undefined): Promise<ThreadDetail> {
+    const startedAtMs = runStartedAtMs(task);
+    if (!Number.isFinite(startedAtMs)) {
+      return this.workspaceRouter.getThread(threadId);
+    }
+    const [thread, runMessages] = await Promise.all([
+      this.workspaceRouter.getThread(threadId, { limit: 1 }),
+      this.workspaceRouter.listAssistantRunMessagesSince(threadId, new Date(startedAtMs).toISOString(), { includeToolCall: true }),
+    ]);
+    const { firstSeq: _windowFirstSeq, lastSeq: _windowLastSeq, ...threadMeta } = thread;
+    return {
+      ...threadMeta,
+      messages: runMessages.map((message) => ({ ...message, role: 'assistant' as const })),
+      hasMore: runMessages.length < threadMeta.historyCount,
     };
   }
 
@@ -171,7 +203,7 @@ export class ExternalService {
    *  steady-state ticks only read new messages; message ids already dedupe. */
   async getRunReplayFeed(runId: string, sinceIso?: string): Promise<ExternalRunReplayFeed> {
     const { task, threadId } = this.resolveRunThread(runId);
-    const startedAtMs = Date.parse(task?.startedAt || task?.createdAt || '');
+    const startedAtMs = runStartedAtMs(task);
     if (!threadId || !Number.isFinite(startedAtMs)) {
       return { startedAtMs: Number.NaN, bridgeSessionKey: undefined, messages: [] };
     }

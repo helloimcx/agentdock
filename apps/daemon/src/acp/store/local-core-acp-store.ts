@@ -273,8 +273,8 @@ export class LocalCoreAcpStore {
     return this.threads.hasAssistantToolCallMessage(threadId, needle, beforeIso);
   }
 
-  listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
-    return this.threads.listAssistantRunMessagesSince(threadId, sinceIso);
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string, options?: { includeToolCall?: boolean }) {
+    return this.threads.listAssistantRunMessagesSince(threadId, sinceIso, options);
   }
 
   renameThread(threadId: string, title: string) {
