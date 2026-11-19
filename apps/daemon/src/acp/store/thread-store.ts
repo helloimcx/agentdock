@@ -30,6 +30,20 @@ export const THREAD_GET_DEFAULT_LIMIT = 200;
 const THREAD_COLUMNS = 'id, workspace_id, session_id, bridge_session_key, title, agent_type, created_at, updated_at, history_count, excerpt, acp_session_id, acp_supports_load, agent_mode';
 // Also reused by the INSERT INTO runs in updateRun — keep its VALUES placeholder count in sync.
 const RUN_COLUMNS = 'id, thread_id, status, started_at, updated_at';
+/** Read-side cap for toolCall.output restored from tool_call_json, matching the
+ *  cap get() has always applied; full outputs stay available via run-message REST. */
+const THREAD_TOOL_OUTPUT_MAX_CHARS = 65536;
+
+function parseToolCallColumn(toolCallJson: string | null | undefined): DesktopBridgeToolCall | undefined {
+  const toolCall = parseJson<DesktopBridgeToolCall | null>(toolCallJson || 'null', null) || undefined;
+  if (toolCall?.output && toolCall.output.length > THREAD_TOOL_OUTPUT_MAX_CHARS) {
+    return {
+      ...toolCall,
+      output: `${toolCall.output.slice(0, THREAD_TOOL_OUTPUT_MAX_CHARS)}\n... [output truncated for performance]`,
+    };
+  }
+  return toolCall;
+}
 
 export class LocalThreadStore {
   constructor(private readonly db: DatabaseSync) {}
@@ -109,25 +123,16 @@ export class LocalThreadStore {
       throw new Error(`Thread not found: ${threadId}`);
     }
 
-    let messages: LocalMessageRow[];
-    let hasMore = false;
-
-    // An omitted limit reads the newest window instead of the whole history;
-    // see THREAD_GET_DEFAULT_LIMIT for why the unbounded path had to go.
-    const limit = options?.limit ?? THREAD_GET_DEFAULT_LIMIT;
-    if (limit > 0) {
-      const rows = this.selectMessageWindow(threadId, limit, options?.beforeSeq);
-      hasMore = rows.length > limit;
-      if (hasMore) rows.pop();
-      messages = rows.reverse();
-    } else {
-      messages = this.db.prepare(`
-        SELECT ${MESSAGE_COLUMNS}
-        FROM messages
-        WHERE thread_id = ?
-        ORDER BY seq ASC
-      `).all(threadId) as LocalMessageRow[];
-    }
+    // An omitted (or non-positive) limit reads the newest window instead of
+    // the whole history; see THREAD_GET_DEFAULT_LIMIT for why the unbounded
+    // path had to go entirely.
+    const limit = options?.limit !== undefined && options.limit > 0
+      ? options.limit
+      : THREAD_GET_DEFAULT_LIMIT;
+    const rows = this.selectMessageWindow(threadId, limit, options?.beforeSeq);
+    const hasMore = rows.length > limit;
+    if (hasMore) rows.pop();
+    const messages = rows.reverse();
 
     const firstSeq = messages.length > 0 ? messages[0].seq : undefined;
     const lastSeq = messages.length > 0 ? messages[messages.length - 1].seq : undefined;
@@ -145,10 +150,7 @@ export class LocalThreadStore {
       agentType: row.agent_type,
       agentMode: row.agent_mode,
       messages: messages.map((message) => {
-        const toolCall = parseJson<DesktopBridgeToolCall | null>(message.tool_call_json || 'null', null) || undefined;
-        if (toolCall?.output && toolCall.output.length > 65536) {
-          toolCall.output = `${toolCall.output.slice(0, 65536)}\n... [output truncated for performance]`;
-        }
+        const toolCall = parseToolCallColumn(message.tool_call_json);
         return {
           id: message.id,
           role: message.role,
@@ -225,20 +227,21 @@ export class LocalThreadStore {
    * serves the range seek). The `timestamp >= ?` string comparison is sound
    * because every writer stores `new Date().toISOString()`; the JS Date.parse
    * finiteness gate in the replay consumer backstops non-normalized stamps. */
-  listAssistantRunMessagesSince(threadId: string, sinceIso: string): Array<{
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string, options?: { includeToolCall?: boolean }): Array<{
     id: string;
     kind: LocalMessageRow['kind'];
     content: string;
     bridgeKind: ReturnType<typeof normalizeBridgeKind>;
     bridgeStatus: ReturnType<typeof normalizeBridgeStatus>;
     timestamp: string;
+    toolCall?: DesktopBridgeToolCall;
   }> {
     const rows = this.db.prepare(`
-      SELECT id, kind, content, bridge_kind, bridge_status, timestamp
+      SELECT id, kind, content, bridge_kind, bridge_status${options?.includeToolCall ? ', tool_call_json' : ''}, timestamp
       FROM messages
       WHERE thread_id = ? AND role = 'assistant' AND timestamp >= ?
       ORDER BY seq ASC
-    `).all(threadId, sinceIso) as Array<Pick<LocalMessageRow, 'id' | 'kind' | 'content' | 'bridge_kind' | 'bridge_status' | 'timestamp'>>;
+    `).all(threadId, sinceIso) as Array<Pick<LocalMessageRow, 'id' | 'kind' | 'content' | 'bridge_kind' | 'bridge_status' | 'timestamp'> & { tool_call_json?: string | null }>;
     return rows.map((row) => ({
       id: row.id,
       kind: row.kind,
@@ -246,6 +249,7 @@ export class LocalThreadStore {
       bridgeKind: normalizeBridgeKind(row.bridge_kind),
       bridgeStatus: normalizeBridgeStatus(row.bridge_status),
       timestamp: row.timestamp,
+      ...(options?.includeToolCall ? { toolCall: parseToolCallColumn(row.tool_call_json) } : {}),
     }));
   }
 

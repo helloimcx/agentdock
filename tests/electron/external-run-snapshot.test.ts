@@ -32,8 +32,8 @@ function createHarness(makeTask: (threadId: string) => Record<string, unknown>) 
       getThreadCalls.push({ threadId, options });
       return Promise.resolve(store.getThread(threadId, [], options));
     },
-    listAssistantRunMessagesSince: (threadId: string, sinceIso: string) => {
-      return Promise.resolve(store.listAssistantRunMessagesSince(threadId, sinceIso));
+    listAssistantRunMessagesSince: (threadId: string, sinceIso: string, options?: { includeToolCall?: boolean }) => {
+      return Promise.resolve(store.listAssistantRunMessagesSince(threadId, sinceIso, options));
     },
     getThreadSessionKey: (threadId: string) => `localcore-acp:workspace-agentdock::${threadId}`,
   };
@@ -77,11 +77,20 @@ test('getRunSnapshot hydrates only the run-window assistant messages', async () 
       'tool',
       'awaiting_input',
     );
+    const runFatTool = store.appendMessage(
+      thread.id,
+      'assistant',
+      '🔧 Terminal: cat big.log',
+      'progress',
+      { id: 'call_11', name: 'Terminal', status: 'completed', input: {}, output: 'z'.repeat(70000) },
+      'tool',
+    );
     backdateMessageTimestamp(dbPath, userRow.id, '2026-11-02T00:59:00.000Z');
     backdateMessageTimestamp(dbPath, oldFinal.id, '2026-11-02T00:59:30.000Z');
     backdateMessageTimestamp(dbPath, oldTool.id, '2026-11-02T00:59:45.000Z');
     backdateMessageTimestamp(dbPath, runFinal.id, '2026-11-02T01:00:05.000Z');
     backdateMessageTimestamp(dbPath, runTool.id, '2026-11-02T01:01:30.000Z');
+    backdateMessageTimestamp(dbPath, runFatTool.id, '2026-11-02T01:02:45.000Z');
 
     const snapshot = await service.getRunSnapshot(RUN_ID);
 
@@ -91,10 +100,18 @@ test('getRunSnapshot hydrates only the run-window assistant messages', async () 
       [
         { role: 'assistant', content: 'Nightly digest body' },
         { role: 'assistant', content: '🔧 Terminal: pnpm lint' },
+        { role: 'assistant', content: '🔧 Terminal: cat big.log' },
       ],
       'snapshot messages must be exactly the run-window assistant rows',
     );
-    assert.equal(snapshot.thread.messages.length, 2);
+    assert.equal(snapshot.thread.messages.length, 3);
+    assert.equal(snapshot.thread.messages[0].toolCall, undefined, 'final rows carry no tool payload');
+    const toolRow = snapshot.thread.messages[1];
+    assert.equal(toolRow.toolCall?.name, 'Terminal', 'run-window tool rows restore toolCall');
+    assert.equal(toolRow.toolCall?.output, 'y'.repeat(2048));
+    const fatRow = snapshot.thread.messages[2];
+    assert.ok(fatRow.toolCall?.output?.endsWith('\n... [output truncated for performance]'), 'oversized output is capped with the truncation marker');
+    assert.ok((fatRow.toolCall?.output?.length ?? 0) <= 65536 + 64, 'capped output stays near the 65536 limit');
     assert.equal(snapshot.thread.hasMore, true, 'older history must be signaled via hasMore');
     assert.equal(snapshot.thread.firstSeq, undefined, 'run window carries no firstSeq');
     assert.equal(snapshot.thread.lastSeq, undefined, 'run window carries no lastSeq');

@@ -295,8 +295,8 @@ export class LocalCoreAcpBackend {
     };
   }
 
-  listAssistantRunMessagesSince(threadId: string, sinceIso: string) {
-    return this.options.store.listAssistantRunMessagesSince(threadId, sinceIso);
+  listAssistantRunMessagesSince(threadId: string, sinceIso: string, options?: { includeToolCall?: boolean }) {
+    return this.options.store.listAssistantRunMessagesSince(threadId, sinceIso, options);
   }
 
   async renameThread(threadId: string, title: string): Promise<ThreadDetail> {
