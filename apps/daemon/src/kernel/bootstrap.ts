@@ -1,4 +1,5 @@
 import { writeSync } from 'node:fs';
+import { join } from 'node:path';
 import type {
   ChannelRoute,
   DesktopConnectConfig,
@@ -27,6 +28,7 @@ import { LocalCoreCapabilityRegistry } from './capability-registry.js';
 import { LocalCoreDiagnostics } from './diagnostics.js';
 import { LocalCoreEventBus } from './event-bus.js';
 import { createHeapWatcher } from './heap-watch.js';
+import { captureHeapSnapshot } from './heap-snapshot.js';
 import { LocalCoreLifecycleManager } from './lifecycle-manager.js';
 import { LocalCorePluginRegistry } from './plugin-registry.js';
 import {
@@ -366,13 +368,20 @@ export function bootstrapLocalCoreRuntime(options: {
       // the whole host. bin/agentdock.mjs exits in turn so systemd restarts
       // the stack. writeSync so the diagnostic survives process.exit's async
       // stdout truncation; the fd may already be gone, which must not turn
-      // the deliberate exit into an uncaught exception.
-      try {
-        writeSync(1, '[heap-watch] heap sustained near the limit; exiting for supervisor restart\n');
-      } catch {
-        // stdout is closed or its reader is gone — exit anyway.
-      }
-      process.exit(1);
+      // the deliberate exit into an uncaught exception. The snapshot attempt
+      // comes first (bounded, best-effort, never rejects) because the two
+      // prod OOM deaths left zero heap evidence — a blind exit every time
+      // makes the heap-floor creep permanently undiagnosable.
+      void captureHeapSnapshot(join(options.userDataPath, 'runtime', 'heap'))
+        .catch(() => {})
+        .finally(() => {
+          try {
+            writeSync(1, '[heap-watch] heap sustained near the limit; exiting for supervisor restart\n');
+          } catch {
+            // stdout is closed or its reader is gone — exit anyway.
+          }
+          process.exit(1);
+        });
     },
   });
 
