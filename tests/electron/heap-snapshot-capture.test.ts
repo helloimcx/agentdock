@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -64,6 +64,42 @@ test('a timed-out snapshot attempt is abandoned and leaves no partial file', asy
   }
 });
 
+test('rotation never deletes the fresh capture even when keep is zero', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'heap-snapshot-clamp-'));
+  try {
+    const path = await captureHeapSnapshot(dir, {
+      produceSnapshot: stubSnapshot(['x']),
+      keep: 0,
+      now: () => new Date('2026-11-20T05:00:00.000Z'),
+    });
+    assert.equal(path, join(dir, 'heap-2026-11-20T05-00-00-000Z.heapsnapshot'));
+    assert.deepEqual(readdirSync(dir), ['heap-2026-11-20T05-00-00-000Z.heapsnapshot']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a stream error mid-write is contained and leaves no partial file', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'heap-snapshot-error-'));
+  try {
+    const path = await captureHeapSnapshot(dir, {
+      produceSnapshot: async () => {
+        const failing = new Readable({ read() { /* chunk pushed below */ } });
+        queueMicrotask(() => {
+          failing.push('partial');
+          failing.destroy(new Error('simulated ENOSPC during snapshot'));
+        });
+        return failing;
+      },
+      timeoutMs: 5_000,
+    });
+    assert.equal(path, undefined, 'a mid-write stream error must not report success');
+    assert.deepEqual(readdirSync(dir), [], 'no truncated .heapsnapshot may survive');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a failing snapshot producer resolves with undefined and never rejects', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'heap-snapshot-fail-'));
   try {
@@ -82,7 +118,11 @@ test('the real v8 snapshot plumbing writes a file with a heapsnapshot header', a
   try {
     const path = await captureHeapSnapshot(dir, { produceSnapshot: async () => getHeapSnapshot(), timeoutMs: 120_000 });
     assert.ok(path, 'the real snapshot must complete well within the bound');
-    assert.ok(readFileSync(path!, 'utf8').startsWith('{"snapshot":'), 'output must be a heapsnapshot document');
+    const fd = openSync(path!, 'r');
+    const head = Buffer.alloc(12);
+    readSync(fd, head, 0, 12, 0);
+    closeSync(fd);
+    assert.equal(head.toString('utf8'), '{"snapshot":', 'output must be a heapsnapshot document');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

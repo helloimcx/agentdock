@@ -368,11 +368,13 @@ export function bootstrapLocalCoreRuntime(options: {
       // the whole host. bin/agentdock.mjs exits in turn so systemd restarts
       // the stack. writeSync so the diagnostic survives process.exit's async
       // stdout truncation; the fd may already be gone, which must not turn
-      // the deliberate exit into an uncaught exception. The snapshot attempt
-      // comes first (bounded, best-effort, never rejects) because the two
-      // prod OOM deaths left zero heap evidence — a blind exit every time
-      // makes the heap-floor creep permanently undiagnosable.
-      void captureHeapSnapshot(join(options.userDataPath, 'runtime', 'heap'))
+      // the deliberate exit into an uncaught exception. Sampling stops first
+      // so no further work runs during the capture, and the snapshot attempt
+      // itself (bounded, best-effort, never rejects) comes before the exit
+      // because the two prod OOM deaths left zero heap evidence — a blind
+      // exit every time makes the heap-floor creep permanently undiagnosable.
+      heapWatcher.stop();
+      void captureHeapSnapshot(join(state.runtimeDir, 'heap'))
         .catch(() => {})
         .finally(() => {
           try {

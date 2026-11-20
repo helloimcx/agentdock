@@ -1,14 +1,17 @@
 import { createWriteStream, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import type { WriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { getHeapSnapshot } from 'node:v8';
 import type { Readable } from 'node:stream';
 
 export interface HeapSnapshotCaptureOptions {
-  /** Newest complete captures kept after rotation; older ones are deleted. */
+  /** Newest complete captures kept after rotation; older ones are deleted.
+   *  Clamped to at least 1 so rotation can never delete the fresh capture. */
   readonly keep?: number;
-  /** Bound on how long a thrashing process may spend writing a heap-sized
-   *  snapshot. The caller exits either way; the snapshot is evidence, not a
-   *  guarantee, so a timeout abandons the partial file and resolves. */
+  /** Total bound covering BOTH snapshot generation and the disk write:
+   *  getHeapSnapshot() of a thrashing heap can stall arbitrarily, so the
+   *  deadline must not start only at the write phase. The caller exits
+   *  either way; the snapshot is evidence, not a guarantee. */
   readonly timeoutMs?: number;
   readonly produceSnapshot?: () => Promise<Readable>;
   readonly now?: () => Date;
@@ -23,36 +26,55 @@ export async function captureHeapSnapshot(
   dir: string,
   options: HeapSnapshotCaptureOptions = {},
 ): Promise<string | undefined> {
-  const keep = options.keep ?? 2;
-  const timeoutMs = options.timeoutMs ?? 30_000;
+  const keep = Math.max(1, options.keep ?? 2);
+  const timeoutMs = options.timeoutMs ?? 60_000;
   const produce = options.produceSnapshot ?? (() => getHeapSnapshot());
-  const stamp = (options.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-');
-  const path = join(dir, `heap-${stamp}.heapsnapshot`);
-  const partialPath = `${path}.part`;
+  let partialPath: string | undefined;
   try {
     mkdirSync(dir, { recursive: true });
-    const snapshot = await produce();
+    const stamp = (options.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-');
+    const path = join(dir, `heap-${stamp}.heapsnapshot`);
+    partialPath = `${path}.part`;
     const finished = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), timeoutMs);
-      const out = createWriteStream(partialPath);
-      const done = (completed: boolean) => {
+      let abandoned = false;
+      let streams: { snapshot: Readable; out: WriteStream } | undefined;
+      function settle(completed: boolean) {
         clearTimeout(timer);
+        if (streams && !completed) {
+          streams.snapshot.destroy();
+          streams.out.destroy();
+        }
         resolve(completed);
-      };
-      snapshot.once('error', () => done(false));
-      out.once('error', () => done(false));
-      out.once('finish', () => done(true));
-      snapshot.pipe(out);
+      }
+      const timer = setTimeout(() => {
+        abandoned = true;
+        settle(false);
+      }, timeoutMs);
+      void (async () => {
+        const snapshot = await produce();
+        if (abandoned) {
+          snapshot.destroy();
+          return;
+        }
+        const out = createWriteStream(partialPath!);
+        streams = { snapshot, out };
+        snapshot.once('error', () => settle(false));
+        out.once('error', () => settle(false));
+        out.once('finish', () => settle(true));
+        snapshot.pipe(out);
+      })().catch(() => settle(false));
     });
     if (finished) {
-      renameSync(partialPath, path);
+      renameSync(partialPath!, path);
       rotateHeapSnapshots(dir, keep);
       return path;
     }
-    rmSync(partialPath, { force: true });
+    rmSync(partialPath!, { force: true });
     return undefined;
   } catch {
-    try { rmSync(partialPath, { force: true }); } catch { /* best effort */ }
+    if (partialPath) {
+      try { rmSync(partialPath, { force: true }); } catch { /* best effort */ }
+    }
     return undefined;
   }
 }
