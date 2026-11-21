@@ -107,6 +107,7 @@ export function closeAssistantMessageSegment(currentTurn: RunningTurn): Assistan
     return null;
   }
   const messageId = currentTurn.assistantMessageId || currentTurn.previewHandle;
+  currentTurn.closedAssistantSegments = (currentTurn.closedAssistantSegments || 0) + 1;
   resetAssistantMessageSegment(currentTurn);
   return {
     messageId,

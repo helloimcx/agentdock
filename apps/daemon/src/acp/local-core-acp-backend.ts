@@ -595,6 +595,7 @@ export class LocalCoreAcpBackend {
       rawAssistantText: '',
       assistantSequence: 1,
       assistantMessageId: `${runId}-assistant-1`,
+      closedAssistantSegments: 0,
       priorAssistantFinalMessages,
       priorAssistantProgressMessages,
       thoughtText: '',
@@ -624,6 +625,17 @@ export class LocalCoreAcpBackend {
     this.turnCoordinator.closePendingThoughtSegment(session);
     this.turnCoordinator.flushPendingToolCall(session);
     const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+    // Slash commands complete even when no reply is derivable; cancellation is
+    // handled by finalizeRunOutcome. Assistant text resets at every tool-call
+    // boundary and empty segment closes still bump assistantSequence, so a
+    // silent agent failure (e.g. abort on a provider error) is a turn with no
+    // current text, no non-empty closed segment, and no tool activity — it
+    // used to be recorded as 'completed' with no final message, which left
+    // automation consumers only an opaque "final result unavailable" to
+    // diagnose from.
+    let handled = Boolean(currentTurn.assistantText?.trim())
+      || (currentTurn.closedAssistantSegments || 0) > 0
+      || (currentTurn.toolCallSequence || 0) > 0;
     if (currentTurn.assistantText) {
       const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
         rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
@@ -637,6 +649,13 @@ export class LocalCoreAcpBackend {
       if (processed.displayContent) {
         this.turnCoordinator.discardAssistantPartial(session);
         this.persistFinalReply(flow, processed.displayContent);
+        handled = true;
+      } else {
+        // Normalization or tool-transcript stripping emptied the surviving
+        // text; fall back to whether the turn produced durable output
+        // elsewhere instead of completing with no final message.
+        handled = (currentTurn.closedAssistantSegments || 0) > 0
+          || (currentTurn.toolCallSequence || 0) > 0;
       }
       for (const systemResponse of processed.systemResponses) {
         this.options.store.appendMessage(flow.threadId, 'system', systemResponse, 'system');
@@ -657,6 +676,7 @@ export class LocalCoreAcpBackend {
       if (slashReply) {
         this.persistFinalReply(flow, slashReply);
       }
+      handled = true;
     } else if (result?.stopReason === 'cancelled') {
       this.emitBridgeEvent({
         type: 'reply',
@@ -665,7 +685,7 @@ export class LocalCoreAcpBackend {
         content: 'Request cancelled.',
       });
     }
-    this.finalizeRunOutcome(flow, result);
+    this.finalizeRunOutcome(flow, result, { handled });
   }
 
   /** Shared persistence for a final assistant reply (agent answer or slash
@@ -693,8 +713,20 @@ export class LocalCoreAcpBackend {
     });
   }
 
-  private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }) {
+  private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }, options: { handled: boolean }) {
     const cancelled = result?.stopReason === 'cancelled';
+    if (!cancelled && !options.handled) {
+      // A run that already ended keeps that outcome: interrupted runs get the
+      // canonical interrupted cleanup (endRun, typing_stop), while failed runs
+      // already went through the full failure tail.
+      const status = this.options.store.getRun(flow.runId)?.status;
+      if (status === 'interrupted') {
+        this.finishInterruptedRun(flow.runId, flow.threadId, flow.workspaceId, flow.bridgeSessionKey);
+      } else if (status !== 'failed') {
+        this.handleRunFailure(flow, new Error(`Agent turn ended without producing a final answer (stopReason: ${result?.stopReason || 'unknown'}).`));
+      }
+      return;
+    }
     const nextStatus = cancelled ? 'interrupted' : 'completed';
     this.options.store.updateRun(flow.runId, flow.threadId, nextStatus);
     this.turnCoordinator.endRun(flow.runId, cancelled ? 'failed' : 'completed');

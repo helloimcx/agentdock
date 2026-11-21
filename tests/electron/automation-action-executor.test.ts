@@ -130,6 +130,31 @@ test('action executor interrupts the ACP run when execution times out', async ()
   assert.equal(interruptedRunId, 'acp-run-1');
 });
 
+test('action executor surfaces run diagnostics when the final result is missing', async () => {
+  const executor = new AutomationActionExecutor({
+    store: {
+      getPlatformThreadBinding: () => undefined,
+      getRun: () => ({ status: 'completed' }),
+      getRunFinalResult: () => undefined,
+    },
+    getWorkspaceRouter: () => ({
+      listThreads: async () => [],
+      createThread: async () => ({ id: 'thread-1' }),
+      sendThreadMessage: async () => ({ runId: 'acp-run-1' }),
+    }),
+    getChannelRuntime: () => undefined,
+  } as any);
+
+  // The run finished 'completed' with no persisted final message (a silent
+  // agent abort in prod); the error must carry run id/status/thread so the
+  // automation failure is diagnosable instead of an opaque "unavailable".
+  await assert.rejects(() => executor.execute({
+    automation: definition('local'),
+    evaluation,
+    promptVariables: {},
+  }), /Final result for the target execution is unavailable \(run acp-run-1, status completed, thread thread-1\)/);
+});
+
 test('side-thread executor recreates the thread when the workspace agent changed', async () => {
   const created: Array<{ workspaceId: string; title: string }> = [];
   const executor = new AutomationActionExecutor({

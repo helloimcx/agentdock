@@ -202,7 +202,7 @@ async function dispatchAndWaitRun(
     runtimeEnv: buildPlatformRuntimeEnv(options.platform, options.route),
     onRunAdmitted: options.onRunAdmitted,
   });
-  await waitForRunCompletion({
+  const run = await waitForRunCompletion({
     store: options.store,
     runId: sendResult.runId,
     timeoutMs: options.timeoutMs,
@@ -211,7 +211,7 @@ async function dispatchAndWaitRun(
   });
   const final = options.store.getRunFinalResult(sendResult.runId);
   if (!final || final.threadId !== options.threadId) {
-    throw new Error('Final result for the target execution is unavailable.');
+    throw new Error(`Final result for the target execution is unavailable (run ${sendResult.runId}, status ${run.status}, thread ${options.threadId}).`);
   }
   return { runId: sendResult.runId, final };
 }
