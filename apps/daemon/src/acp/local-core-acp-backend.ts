@@ -595,6 +595,7 @@ export class LocalCoreAcpBackend {
       rawAssistantText: '',
       assistantSequence: 1,
       assistantMessageId: `${runId}-assistant-1`,
+      closedAssistantSegments: 0,
       priorAssistantFinalMessages,
       priorAssistantProgressMessages,
       thoughtText: '',
@@ -626,13 +627,14 @@ export class LocalCoreAcpBackend {
     const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
     // Slash commands complete even when no reply is derivable; cancellation is
     // handled by finalizeRunOutcome. Assistant text resets at every tool-call
-    // boundary, so a silent agent failure (e.g. abort on a provider error) is
-    // a turn with no text anywhere, no closed segment, and no tool activity —
-    // it used to be recorded as 'completed' with no final message, which left
+    // boundary and empty segment closes still bump assistantSequence, so a
+    // silent agent failure (e.g. abort on a provider error) is a turn with no
+    // current text, no non-empty closed segment, and no tool activity — it
+    // used to be recorded as 'completed' with no final message, which left
     // automation consumers only an opaque "final result unavailable" to
     // diagnose from.
     let handled = Boolean(currentTurn.assistantText?.trim())
-      || (currentTurn.assistantSequence || 0) > 1
+      || (currentTurn.closedAssistantSegments || 0) > 0
       || (currentTurn.toolCallSequence || 0) > 0;
     if (currentTurn.assistantText) {
       const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
@@ -707,10 +709,13 @@ export class LocalCoreAcpBackend {
   private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }, options: { handled: boolean }) {
     const cancelled = result?.stopReason === 'cancelled';
     if (!cancelled && !options.handled) {
-      // A run that already ended (user interrupt, earlier failure) keeps that
-      // outcome instead of being overwritten or double-reporting the failure.
+      // A run that already ended keeps that outcome: interrupted runs get the
+      // canonical interrupted cleanup (endRun, typing_stop), while failed runs
+      // already went through the full failure tail.
       const status = this.options.store.getRun(flow.runId)?.status;
-      if (status !== 'failed' && status !== 'interrupted') {
+      if (status === 'interrupted') {
+        this.finishInterruptedRun(flow.runId, flow.threadId, flow.workspaceId, flow.bridgeSessionKey);
+      } else if (status !== 'failed') {
         this.handleRunFailure(flow, new Error(`Agent turn ended without producing a final answer (stopReason: ${result?.stopReason || 'unknown'}).`));
       }
       return;

@@ -68,6 +68,10 @@ export type RunningTurn = {
   rawAssistantText?: string;
   assistantSequence?: number;
   assistantMessageId?: string;
+  /** Non-empty assistant segments closed during this run; empty closes also
+   * bump assistantSequence, so this is the reliable "agent produced output"
+   * signal. */
+  closedAssistantSegments?: number;
   priorAssistantFinalMessages?: string[];
   priorAssistantProgressMessages?: AgentAcpProgressRecord[];
   thoughtText: string;
