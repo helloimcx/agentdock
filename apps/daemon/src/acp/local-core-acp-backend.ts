@@ -625,11 +625,15 @@ export class LocalCoreAcpBackend {
     this.turnCoordinator.flushPendingToolCall(session);
     const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
     // Slash commands complete even when no reply is derivable; cancellation is
-    // handled by finalizeRunOutcome. Any other turn without an answer is a
-    // silent agent failure (e.g. abort on a provider error) — it used to be
-    // recorded as 'completed' with no final message, which left automation
-    // consumers only an opaque "final result unavailable" to diagnose from.
-    let handled = Boolean(currentTurn.assistantText);
+    // handled by finalizeRunOutcome. Assistant text resets at every tool-call
+    // boundary, so a silent agent failure (e.g. abort on a provider error) is
+    // a turn with no text anywhere, no closed segment, and no tool activity —
+    // it used to be recorded as 'completed' with no final message, which left
+    // automation consumers only an opaque "final result unavailable" to
+    // diagnose from.
+    let handled = Boolean(currentTurn.assistantText?.trim())
+      || (currentTurn.assistantSequence || 0) > 1
+      || (currentTurn.toolCallSequence || 0) > 0;
     if (currentTurn.assistantText) {
       const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
         rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
@@ -703,7 +707,12 @@ export class LocalCoreAcpBackend {
   private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }, options: { handled: boolean }) {
     const cancelled = result?.stopReason === 'cancelled';
     if (!cancelled && !options.handled) {
-      this.handleRunFailure(flow, new Error(`Agent turn ended without producing a final answer (stopReason: ${result?.stopReason || 'unknown'}).`));
+      // A run that already ended (user interrupt, earlier failure) keeps that
+      // outcome instead of being overwritten or double-reporting the failure.
+      const status = this.options.store.getRun(flow.runId)?.status;
+      if (status !== 'failed' && status !== 'interrupted') {
+        this.handleRunFailure(flow, new Error(`Agent turn ended without producing a final answer (stopReason: ${result?.stopReason || 'unknown'}).`));
+      }
       return;
     }
     const nextStatus = cancelled ? 'interrupted' : 'completed';
