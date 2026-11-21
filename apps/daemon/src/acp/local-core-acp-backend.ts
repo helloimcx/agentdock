@@ -624,6 +624,12 @@ export class LocalCoreAcpBackend {
     this.turnCoordinator.closePendingThoughtSegment(session);
     this.turnCoordinator.flushPendingToolCall(session);
     const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
+    // Slash commands complete even when no reply is derivable; cancellation is
+    // handled by finalizeRunOutcome. Any other turn without an answer is a
+    // silent agent failure (e.g. abort on a provider error) — it used to be
+    // recorded as 'completed' with no final message, which left automation
+    // consumers only an opaque "final result unavailable" to diagnose from.
+    let handled = Boolean(currentTurn.assistantText);
     if (currentTurn.assistantText) {
       const normalizedFinalAssistantText = behavior.normalizeFinalAssistantText({
         rawText: currentTurn.rawAssistantText || currentTurn.assistantText,
@@ -657,6 +663,7 @@ export class LocalCoreAcpBackend {
       if (slashReply) {
         this.persistFinalReply(flow, slashReply);
       }
+      handled = true;
     } else if (result?.stopReason === 'cancelled') {
       this.emitBridgeEvent({
         type: 'reply',
@@ -665,7 +672,7 @@ export class LocalCoreAcpBackend {
         content: 'Request cancelled.',
       });
     }
-    this.finalizeRunOutcome(flow, result);
+    this.finalizeRunOutcome(flow, result, { handled });
   }
 
   /** Shared persistence for a final assistant reply (agent answer or slash
@@ -693,8 +700,12 @@ export class LocalCoreAcpBackend {
     });
   }
 
-  private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }) {
+  private finalizeRunOutcome(flow: AcpRunFlow, result: { stopReason?: string }, options: { handled: boolean }) {
     const cancelled = result?.stopReason === 'cancelled';
+    if (!cancelled && !options.handled) {
+      this.handleRunFailure(flow, new Error(`Agent turn ended without producing a final answer (stopReason: ${result?.stopReason || 'unknown'}).`));
+      return;
+    }
     const nextStatus = cancelled ? 'interrupted' : 'completed';
     this.options.store.updateRun(flow.runId, flow.threadId, nextStatus);
     this.turnCoordinator.endRun(flow.runId, cancelled ? 'failed' : 'completed');

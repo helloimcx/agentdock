@@ -211,7 +211,8 @@ async function dispatchAndWaitRun(
   });
   const final = options.store.getRunFinalResult(sendResult.runId);
   if (!final || final.threadId !== options.threadId) {
-    throw new Error('Final result for the target execution is unavailable.');
+    const run = options.store.getRun(sendResult.runId);
+    throw new Error(`Final result for the target execution is unavailable (run ${sendResult.runId}, status ${run?.status || 'unknown'}, thread ${options.threadId}).`);
   }
   return { runId: sendResult.runId, final };
 }
