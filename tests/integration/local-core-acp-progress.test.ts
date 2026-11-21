@@ -8,6 +8,7 @@ import { LocalCoreAcpTurnCoordinator } from '../../apps/daemon/src/acp/local-cor
 import {
   applyAssistantMessageChunk,
   applyThoughtChunk,
+  closeAssistantMessageSegment,
   closeThoughtSegment,
   deletePendingToolCall,
   extractToolCallKey,
@@ -2034,4 +2035,39 @@ test('tool replay dedup probes the store without a loaded progress history', () 
     store?.close();
     rmSync(userDataPath, { recursive: true, force: true });
   }
+});
+
+test('closing an assistant segment counts only non-empty closes as run output', () => {
+  const silentRunId = 'run:agentdock::5f0f3c62-9f7e-4e0e-8d3a-2b1c4d5e6f70:1795500000000';
+  const emptyCloseTurn: any = {
+    runId: silentRunId,
+    replyCtx: silentRunId,
+    previewHandle: `${silentRunId}-preview-1`,
+    thoughtPreviewHandle: `${silentRunId}-thought-preview-1`,
+    thoughtMessageId: `${silentRunId}-thought-1`,
+    assistantText: '   ',
+    thoughtText: '',
+    typingStarted: true,
+    previewStarted: false,
+    thoughtPreviewStarted: false,
+    permission: null,
+  };
+  // Empty closes (whitespace-only text, boundary closes fired by thought/tool
+  // updates) must not register as agent output, or aborted thinking-model
+  // turns would pass the silent-failure gate.
+  assert.equal(closeAssistantMessageSegment(emptyCloseTurn), null);
+  assert.equal(emptyCloseTurn.closedAssistantSegments, undefined);
+
+  const textCloseTurn: any = {
+    ...emptyCloseTurn,
+    assistantText: 'Daily digest is ready.',
+  };
+  const projection = closeAssistantMessageSegment(textCloseTurn);
+  assert.equal(projection?.content, 'Daily digest is ready.');
+  assert.equal(projection?.bridgeKind, 'assistant');
+  assert.equal(textCloseTurn.closedAssistantSegments, 1);
+  assert.equal(textCloseTurn.assistantText, '');
+
+  closeAssistantMessageSegment(textCloseTurn);
+  assert.equal(textCloseTurn.closedAssistantSegments, 1);
 });

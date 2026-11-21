@@ -649,6 +649,13 @@ export class LocalCoreAcpBackend {
       if (processed.displayContent) {
         this.turnCoordinator.discardAssistantPartial(session);
         this.persistFinalReply(flow, processed.displayContent);
+        handled = true;
+      } else {
+        // Normalization or tool-transcript stripping emptied the surviving
+        // text; fall back to whether the turn produced durable output
+        // elsewhere instead of completing with no final message.
+        handled = (currentTurn.closedAssistantSegments || 0) > 0
+          || (currentTurn.toolCallSequence || 0) > 0;
       }
       for (const systemResponse of processed.systemResponses) {
         this.options.store.appendMessage(flow.threadId, 'system', systemResponse, 'system');
