@@ -126,19 +126,6 @@ export class LocalCoreAcpPiDurableRuntime {
     const answer = result.answer.trim();
     this.partials.discard(threadId);
     this.deps.store.threadRuntime.clearPartial(threadId, runId);
-    // A done result with no assistant text is a silent agent failure; throwing
-    // routes it through the shared failure tail instead of recording a
-    // completed run with no final message (the standard path misclassification
-    // fixed for automation consumers). Cancelled or empty results with a
-    // reason already throw above.
-    if (!answer) {
-      throw new Error('Pi Durable did not produce a final answer for this request.');
-    }
-    this.deps.store.appendRunFinalMessage(runId, threadId, answer);
-    this.deps.eventBus.emit({ type: 'thread.message.accepted', payload: {
-      threadId, workspaceId: row.workspace_id, role: 'assistant', content: answer, kind: 'final', source: 'agent',
-    } });
-    this.deps.emitBridge({ type: 'reply', sessionKey, replyCtx: runId, content: answer });
     const usage = sumDurableUsage(result.usage);
     const usageSourceId = `pi-durable:${submission.id}`;
     if (usage.totalTokens > 0 && !this.deps.store.cost.hasRunSource(runId, usageSourceId)) {
@@ -150,6 +137,22 @@ export class LocalCoreAcpPiDurableRuntime {
       if (this.deps.costService) this.deps.costService.recordUsage(eventPayload);
       else this.deps.store.cost.recordCostEvent(eventPayload);
     }
+    // A done result with no assistant text is a silent agent failure; throwing
+    // routes it through the shared failure tail instead of recording a
+    // completed run with no final message (the standard path misclassification
+    // fixed for automation consumers). The durable contract is stricter than
+    // the standard path's tool-activity allowance: a DurableResult carries no
+    // durable-output signal, and a durable run that only ran tools without
+    // answering fails the consumer the same way. Cancelled or empty results
+    // with a reason already throw above.
+    if (!answer) {
+      throw new Error('Pi Durable did not produce a final answer for this request.');
+    }
+    this.deps.store.appendRunFinalMessage(runId, threadId, answer);
+    this.deps.eventBus.emit({ type: 'thread.message.accepted', payload: {
+      threadId, workspaceId: row.workspace_id, role: 'assistant', content: answer, kind: 'final', source: 'agent',
+    } });
+    this.deps.emitBridge({ type: 'reply', sessionKey, replyCtx: runId, content: answer });
     this.deps.store.updateRun(runId, threadId, 'completed');
     this.deps.endRun(runId, 'completed');
     const task = this.deps.store.getAgentTaskByRunId(runId);
