@@ -62,3 +62,43 @@ test('Core Pi Durable runs persist in one global SQLite and publish an exact fin
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('Pi Durable turns that finish without an answer fail the run instead of completing silently', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'agentdock-pi-durable-silent-'));
+  const server = createServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end('data: '+JSON.stringify({ id:'chatcmpl-silent', object:'chat.completion.chunk', created:1, model:'mock-model', choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:0,total_tokens:2} })+'\n\ndata: [DONE]\n\n');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address() as { port: number };
+  const store = new LocalCoreAcpStore(directory);
+  const thread = store.createThread('agentdock', 'Silent durable trial', 'pi-durable');
+  const events: string[] = [];
+  const backend = new LocalCoreAcpBackend({ store, runThreadMap: new Map(), emitBridge: (event) => events.push(event.type),
+    eventBus: { emit: (event: any) => events.push(event.type), on: () => () => {} } as any,
+    scheduler: { createJob: async () => { throw new Error('unused'); }, listJobsForThread: async () => [], deleteJob: async () => {} } });
+  const config = { workspaceId: 'agentdock', agentType: 'pi-durable', command: 'unused', args: [], workDir: directory,
+    model: 'mock-model', env: { OPENAI_API_KEY: 'test-only-key', OPENAI_BASE_URL: `http://127.0.0.1:${address.port}/v1` } };
+  try {
+    const accepted = await backend.sendThreadMessage(thread.id, 'Please answer', config, { requestId: 'request:pi-durable-silent:1' });
+    const deadline = Date.now() + 10000;
+    let run = store.getRun(accepted.runId);
+    while (run?.status !== 'completed' && run?.status !== 'failed' && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      run = store.getRun(accepted.runId);
+    }
+    // A 'done' result with no assistant text is a silent agent failure: it
+    // used to be recorded 'completed' with no final message, leaving
+    // automation consumers only an opaque "final result unavailable" to
+    // diagnose from (the same misclassification fixed for the standard path).
+    assert.equal(run?.status, 'failed');
+    assert.ok(events.includes('run.failed'));
+    assert.equal(store.submissions.getFinal(accepted.runId)?.content, undefined);
+  } finally {
+    await backend.close();
+    store.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
