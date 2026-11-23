@@ -33,7 +33,7 @@ import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route
 import { LOCAL_SLASH_COMMANDS, ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { createProviderCommandOptions } from '../thread/thread-command-service.js';
 import { distillSessionHandoff } from './session-handoff-distiller.js';
-import { buildAcpRunCostEvent } from './run-cost-event.js';
+import { createAcpRunCostRecorder, type AcpRunCostRecorder } from './run-cost-event.js';
 
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
@@ -84,8 +84,14 @@ export class LocalCoreAcpBackend {
   private readonly submissionDispatcher: ThreadSubmissionDispatcher;
   private readonly durable: LocalCoreAcpPiDurableRuntime;
   private readonly actions: LocalCoreAcpActions;
+  private readonly runCostRecorder: AcpRunCostRecorder;
 
   constructor(private readonly options: LocalCoreAcpBackendOptions) {
+    this.runCostRecorder = createAcpRunCostRecorder({
+      runThreadMap: options.runThreadMap,
+      store: options.store,
+      costService: options.costService,
+    });
     this.durable = new LocalCoreAcpPiDurableRuntime({
       store: options.store,
       eventBus: options.eventBus,
@@ -106,28 +112,11 @@ export class LocalCoreAcpBackend {
       onSessionClosed: (session, error) => this.handleTransportSessionClosed(session, error),
     });
     const traceProjector = new AcpTraceProjector(options.store.trace, (runId, modelName, usage) => {
-      const threadId = this.options.runThreadMap.get(runId);
-      if (!threadId) return;
-      const threadRow = this.options.store.getThreadRow(threadId);
-      if (!threadRow) return;
-
-      const eventPayload = buildAcpRunCostEvent({
-        workspaceId: threadRow.workspace_id,
-        threadId,
-        runId,
-        agentType: threadRow.agent_type,
-        modelId: modelName,
-        usage,
-      });
-
-      if (this.options.costService) {
-        this.options.costService.recordUsage(eventPayload);
-      } else {
-        this.options.store.cost.recordCostEvent(eventPayload);
-      }
+      this.runCostRecorder.observe(runId, modelName, usage);
     });
     this.turnCoordinator = new LocalCoreAcpTurnCoordinator({
       traceProjector,
+      onRunCostFlush: (runId) => this.runCostRecorder.flush(runId),
       saveAssistantPartial: (threadId, runId, messageId, content) => this.options.store.threadRuntime.savePartial(threadId, runId, messageId, content),
       clearAssistantPartial: (threadId, runId) => this.options.store.threadRuntime.clearPartial(threadId, runId),
       onPartialError: (error) => this.options.log?.(`Assistant partial persistence failed: ${String(error)}`),

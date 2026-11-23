@@ -59,6 +59,8 @@ type LocalCoreAcpTurnCoordinatorOptions = {
   executeMesh?: (input: { nodeId: string; capability: string; args: Record<string, unknown>; timeoutMs?: number; signal?: AbortSignal }) => Promise<any>;
   traceStore?: LocalCoreTraceStore;
   traceProjector?: AcpTraceProjector;
+  /** Invoked once per ended run so run-scoped cost aggregation can flush before callers move on. */
+  onRunCostFlush?: (runId: string) => void;
 };
 
 export class LocalCoreAcpTurnCoordinator {
@@ -76,6 +78,7 @@ export class LocalCoreAcpTurnCoordinator {
 
   endRun(runId: string, status: 'completed' | 'failed' = 'completed') {
     this.traceProjector?.endRun(runId, status);
+    this.options.onRunCostFlush?.(runId);
   }
 
   closePendingThoughtSegment(session: AcpSessionState) {
