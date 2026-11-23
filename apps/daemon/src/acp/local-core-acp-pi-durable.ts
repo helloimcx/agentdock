@@ -9,6 +9,7 @@ import { PiDurableHost } from '../agents/pi-durable/host.js';
 import { sumDurableUsage, toDurableConfig } from '../agents/pi-durable/config.js';
 import { AssistantPartialPersistence } from './assistant-partial-persistence.js';
 import { LocalCorePiDurableWriteApprovals } from './local-core-pi-durable-write-approvals.js';
+import { buildAcpRunCostEvent } from './run-cost-event.js';
 
 type LocalCoreAcpPiDurableDeps = {
   store: LocalCoreAcpStore;
@@ -129,11 +130,11 @@ export class LocalCoreAcpPiDurableRuntime {
     const usage = sumDurableUsage(result.usage);
     const usageSourceId = `pi-durable:${submission.id}`;
     if (usage.totalTokens > 0 && !this.deps.store.cost.hasRunSource(runId, usageSourceId)) {
-      const eventPayload = {
+      const eventPayload = buildAcpRunCostEvent({
         workspaceId: row.workspace_id, threadId, runId, agentType: 'pi-durable', modelId: config.model,
-        sourceKind: 'manual' as const, sourceId: usageSourceId, tokensIn: usage.inputTokens, tokensOut: usage.outputTokens,
-        tokensCache: usage.cacheTokens, tokensTotal: usage.totalTokens,
-      };
+        sourceId: usageSourceId,
+        usage,
+      });
       if (this.deps.costService) this.deps.costService.recordUsage(eventPayload);
       else this.deps.store.cost.recordCostEvent(eventPayload);
     }

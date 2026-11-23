@@ -33,6 +33,7 @@ import { routeFromPlatformThreadBinding } from '../scheduler/scheduled-job-route
 import { LOCAL_SLASH_COMMANDS, ThreadSlashCommandDispatcher } from '../thread/thread-slash-command-dispatcher.js';
 import { createProviderCommandOptions } from '../thread/thread-command-service.js';
 import { distillSessionHandoff } from './session-handoff-distiller.js';
+import { buildAcpRunCostEvent } from './run-cost-event.js';
 
 import { formatUserError, toLocalCoreErrorInfo } from '../kernel/local-core-errors.js';
 import { ACP_PROMPT_TIMEOUT_MS } from '../agents/shared/execution-timeouts.js';
@@ -110,18 +111,14 @@ export class LocalCoreAcpBackend {
       const threadRow = this.options.store.getThreadRow(threadId);
       if (!threadRow) return;
 
-      const eventPayload = {
+      const eventPayload = buildAcpRunCostEvent({
         workspaceId: threadRow.workspace_id,
         threadId,
         runId,
         agentType: threadRow.agent_type,
         modelId: modelName,
-        sourceKind: 'manual' as const,
-        tokensIn: usage.inputTokens,
-        tokensOut: usage.outputTokens,
-        tokensCache: usage.cacheTokens,
-        tokensTotal: usage.totalTokens,
-      };
+        usage,
+      });
 
       if (this.options.costService) {
         this.options.costService.recordUsage(eventPayload);
