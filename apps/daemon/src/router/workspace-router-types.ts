@@ -66,6 +66,11 @@ export type RunningTurn = {
   agentType?: string;
   assistantText: string;
   rawAssistantText?: string;
+  /** Sticky: accumulated stream text exceeded MAX_TURN_ASSISTANT_TEXT_CHARS;
+   * the raw/normalized prefix diff is no longer anchored, so chunks fall back
+   * to verbatim passthrough until the segment resets. The final-message path
+   * (normalizeFinalAssistantText) likewise operates on this bounded tail. */
+  assistantStreamTruncated?: boolean;
   assistantSequence?: number;
   assistantMessageId?: string;
   /** Non-empty assistant segments closed during this run; empty closes also
@@ -124,6 +129,10 @@ export type AcpSessionState = {
   pendingPermissionByRun: Map<string, RunningPermissionRequest>;
   schedulerJobCreatedByRun: Map<string, boolean>;
   pendingRawAssistantProgressChunks?: string[];
+  /** local_command_output entries dropped by the pending cap, kept so
+   * exact-match consumption still routes their session/update re-sends away
+   * from the assistant stream instead of misrendering slash output. */
+  evictedRawAssistantProgressChunks?: Set<string>;
   closed: boolean;
   closeReason: string | null;
   promptPromise: Promise<{ stopReason?: string }> | null;

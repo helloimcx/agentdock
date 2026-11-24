@@ -35,11 +35,34 @@ export type PendingToolCallRegistration = {
   suppressReplay?: boolean;
 };
 
+// Per-turn assistant stream state grew unbounded: every agent_message_chunk
+// concatenated the full accumulated raw text, re-normalized it, and re-diffed
+// it (O(n²) copies), and pathological tool-echo streams reached hundreds of MB
+// of retained strings (2026-11-24 death: heap 1014.8MB, giant ConsString
+// flatten during a stdout write). Legit answers sit far below the cap; beyond
+// it only a bounded tail is kept and the chunk diff chain degrades to
+// verbatim passthrough.
+export const MAX_TURN_ASSISTANT_TEXT_CHARS = 1_000_000;
+const TURN_TEXT_TRIM_SLACK_CHARS = 64_000;
+
+export function appendBoundedTurnStreamText(current: string, chunk: string): { text: string; truncated: boolean } {
+  const merged = `${current}${chunk}`;
+  if (merged.length <= MAX_TURN_ASSISTANT_TEXT_CHARS) {
+    return { text: merged, truncated: false };
+  }
+  const text = merged.length > MAX_TURN_ASSISTANT_TEXT_CHARS + TURN_TEXT_TRIM_SLACK_CHARS
+    ? merged.slice(merged.length - MAX_TURN_ASSISTANT_TEXT_CHARS)
+    : merged;
+  return { text, truncated: true };
+}
+
 export function applyAssistantMessageChunk(currentTurn: RunningTurn, text: string): MessagePreviewProjection | null {
   if (!text) {
     return null;
   }
-  currentTurn.assistantText += text;
+  const appended = appendBoundedTurnStreamText(currentTurn.assistantText, text);
+  currentTurn.assistantText = appended.text;
+  if (appended.truncated) currentTurn.assistantStreamTruncated = true;
   if (!currentTurn.previewStarted) {
     currentTurn.previewStarted = true;
     return {
@@ -62,7 +85,11 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
     return null;
   }
   const projection = mergeThoughtSegment(currentTurn.thoughtText, text);
-  currentTurn.thoughtText = projection.fullText;
+  // Same OOM family as the assistant stream cap: stored thought text feeds
+  // the overlap scans below, so it must stay bounded per segment.
+  currentTurn.thoughtText = projection.fullText.length > MAX_TURN_ASSISTANT_TEXT_CHARS + TURN_TEXT_TRIM_SLACK_CHARS
+    ? projection.fullText.slice(projection.fullText.length - MAX_TURN_ASSISTANT_TEXT_CHARS)
+    : projection.fullText;
   const content = currentTurn.thoughtText.trim();
   if (!content) {
     return null;
@@ -122,6 +149,7 @@ function resetAssistantMessageSegment(currentTurn: RunningTurn) {
   currentTurn.assistantSequence = nextSequence;
   currentTurn.assistantText = '';
   currentTurn.rawAssistantText = '';
+  currentTurn.assistantStreamTruncated = false;
   currentTurn.previewStarted = false;
   currentTurn.assistantMessageId = `${runId}-assistant-${nextSequence}`;
   currentTurn.previewHandle = `${runId}-assistant-preview-${nextSequence}`;
