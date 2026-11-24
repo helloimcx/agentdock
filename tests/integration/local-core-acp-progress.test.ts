@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { LocalCoreAcpStore } from '../../apps/daemon/src/acp/local-core-acp-store.js';
 import { LocalCoreAcpTurnCoordinator } from '../../apps/daemon/src/acp/local-core-acp-turn-coordinator.js';
 import {
+  MAX_TURN_ASSISTANT_TEXT_CHARS,
+  appendBoundedTurnStreamText,
   applyAssistantMessageChunk,
   applyThoughtChunk,
   closeAssistantMessageSegment,
@@ -2070,4 +2072,145 @@ test('closing an assistant segment counts only non-empty closes as run output', 
 
   closeAssistantMessageSegment(textCloseTurn);
   assert.equal(textCloseTurn.closedAssistantSegments, 1);
+});
+
+function createBoundedStreamCoordinator() {
+  const upserted: Array<{ id: string; content: string; bridgeKind?: string }> = [];
+  const partials: Array<{ content: string }> = [];
+  const emitted: any[] = [];
+  const coordinator = new LocalCoreAcpTurnCoordinator({
+    appendMessage: () => {},
+    upsertMessage: (_threadId, id, _role, content, _kind, _toolCall, bridgeKind) => {
+      upserted.push({ id, content, bridgeKind });
+    },
+    saveAssistantPartial: (_threadId, _runId, _messageId, content) => {
+      partials.push({ content });
+    },
+    emitBridge: (event) => emitted.push(event as { content?: string; type: string; bridgeKind?: string }),
+    updateRunStatus: () => {},
+    sendRaw: () => true,
+  });
+  const session = {
+    threadId: 'thread:agentdock::11111111-4111-4111-8111-111111111111',
+    bridgeSessionKey: 'session:thread:agentdock::11111111-4111-4111-8111-111111111111',
+    currentRunId: 'run:agentdock::11111111-4111-4111-8111-111111111111:1795000001000',
+    currentTurn: {
+      runId: 'run:agentdock::11111111-4111-4111-8111-111111111111:1795000001000',
+      replyCtx: 'run:agentdock::11111111-4111-4111-8111-111111111111:1795000001000',
+      previewHandle: 'run-assistant-preview-1',
+      assistantMessageId: 'run-assistant-1',
+      assistantSequence: 1,
+      thoughtPreviewHandle: 'thought-preview-1',
+      thoughtMessageId: 'run-thought-1',
+      agentType: 'claudecode',
+      assistantText: '',
+      rawAssistantText: '',
+      thoughtText: '',
+      typingStarted: true,
+      previewStarted: false,
+      thoughtPreviewStarted: false,
+      pendingToolCalls: {},
+      pendingToolCallOrder: [],
+      toolCallSequence: 0,
+      toolObservations: [],
+      permission: null,
+    },
+    loadReplayMode: false,
+    schedulerJobCreatedByRun: new Map(),
+  } as any;
+  return { coordinator, session, upserted, partials, emitted };
+}
+
+function sendAssistantChunk(coordinator: LocalCoreAcpTurnCoordinator, session: any, text: string) {
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text },
+      },
+    },
+  });
+}
+
+test('appendBoundedTurnStreamText keeps a bounded tail once the cap is exceeded', () => {
+  const small = appendBoundedTurnStreamText('你好', '世界');
+  assert.equal(small.text, '你好世界');
+  assert.equal(small.truncated, false);
+
+  // Legit turns stay far below the cap: nothing is dropped, nothing flagged.
+  const large = 'x'.repeat(MAX_TURN_ASSISTANT_TEXT_CHARS - 10);
+  const below = appendBoundedTurnStreamText(large, 'tail');
+  assert.equal(below.truncated, false);
+  assert.equal(below.text.length, MAX_TURN_ASSISTANT_TEXT_CHARS - 6);
+
+  // Pathological streams (tool-echo loops) are capped: front bytes are
+  // dropped, the tail survives, and the caller learns truncation happened.
+  const over = appendBoundedTurnStreamText(large, 'y'.repeat(20_000));
+  assert.equal(over.truncated, true);
+  assert.ok(over.text.length <= MAX_TURN_ASSISTANT_TEXT_CHARS + 64_000 + 20_000);
+  assert.ok(over.text.endsWith('y'.repeat(1_000)));
+
+  const resliced = appendBoundedTurnStreamText(over.text, 'z'.repeat(200_000));
+  assert.equal(resliced.truncated, true);
+  assert.equal(resliced.text.length, MAX_TURN_ASSISTANT_TEXT_CHARS);
+  assert.ok(resliced.text.endsWith('z'.repeat(1_000)));
+});
+
+test('assistant stream accumulation switches to bounded passthrough past the cap', async () => {
+  const { coordinator, session, partials } = createBoundedStreamCoordinator();
+  const chunk = 'a'.repeat(8192);
+  for (let index = 0; index < 140; index += 1) {
+    sendAssistantChunk(coordinator, session, chunk);
+  }
+  assert.equal(session.currentTurn.assistantStreamTruncated, true);
+  assert.ok(session.currentTurn.rawAssistantText.length <= MAX_TURN_ASSISTANT_TEXT_CHARS + 64_000,
+    `raw stream must stay bounded, got ${session.currentTurn.rawAssistantText.length}`);
+  assert.ok(session.currentTurn.assistantText.length <= MAX_TURN_ASSISTANT_TEXT_CHARS + 64_000,
+    `assistant buffer must stay bounded, got ${session.currentTurn.assistantText.length}`);
+
+  sendAssistantChunk(coordinator, session, 'TAIL-MARKER-日常流水');
+  assert.ok(session.currentTurn.assistantText.includes('TAIL-MARKER-日常流水'),
+    'streaming must continue in passthrough mode past the cap');
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.ok(partials.length > 0, 'preview persistence must continue past the cap');
+  assert.ok(partials[partials.length - 1]?.content.includes('TAIL-MARKER-日常流水'));
+});
+
+test('segment close resets truncation so the diff chain resumes on the next segment', () => {
+  const { coordinator, session } = createBoundedStreamCoordinator();
+  const chunk = 'a'.repeat(8192);
+  for (let index = 0; index < 140; index += 1) {
+    sendAssistantChunk(coordinator, session, chunk);
+  }
+  assert.equal(session.currentTurn.assistantStreamTruncated, true);
+
+  coordinator.handleAgentNotification(session, {
+    method: 'session/update',
+    params: { update: { sessionUpdate: 'tool_call', title: 'Terminal' } },
+  });
+  assert.equal(session.currentTurn.assistantText, '');
+  assert.equal(session.currentTurn.rawAssistantText, '');
+  assert.equal(session.currentTurn.assistantStreamTruncated, false);
+
+  sendAssistantChunk(coordinator, session, '最终回答');
+  assert.equal(session.currentTurn.assistantText, '最终回答');
+  assert.equal(session.currentTurn.rawAssistantText, '最终回答');
+  assert.equal(session.currentTurn.assistantStreamTruncated, false);
+});
+
+test('pending raw assistant progress chunks are capped so local_command_output cannot accumulate', () => {
+  const { coordinator, session } = createBoundedStreamCoordinator();
+  for (let index = 0; index < 70; index += 1) {
+    coordinator.handleAgentNotification(session, {
+      method: '_claude/sdkMessage',
+      params: {
+        message: { type: 'system', subtype: 'local_command_output', content: `out-${index}` },
+      },
+    });
+  }
+  const pending = session.pendingRawAssistantProgressChunks as string[];
+  assert.ok(pending.length <= 64, `pending chunks must stay bounded, got ${pending.length}`);
+  assert.equal(pending[0], 'out-6', 'oldest pending chunks are dropped first');
+  assert.equal(pending[pending.length - 1], 'out-69');
 });

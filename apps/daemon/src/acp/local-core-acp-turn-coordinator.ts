@@ -2,6 +2,7 @@ import { AssistantPartialPersistence } from './assistant-partial-persistence.js'
 import type { DesktopBridgeEvent, DesktopBridgeToolCall, ThreadDetail, ThreadPendingPermissionRequest } from '@cc/superai-contracts';
 import { normalizeDesktopBridgeButtonOption } from '@cc/superai-contracts';
 import {
+  appendBoundedTurnStreamText,
   applyAssistantMessageChunk,
   applyThoughtChunk,
   clearRunningToolCallState,
@@ -396,7 +397,20 @@ export class LocalCoreAcpTurnCoordinator {
       return;
     }
     const chunk = String(update.content.text || '');
-    currentTurn.rawAssistantText = `${currentTurn.rawAssistantText || ''}${chunk}`;
+    const rawAppend = appendBoundedTurnStreamText(currentTurn.rawAssistantText || '', chunk);
+    currentTurn.rawAssistantText = rawAppend.text;
+    if (rawAppend.truncated) currentTurn.assistantStreamTruncated = true;
+    if (currentTurn.assistantStreamTruncated) {
+      // Past the cap the raw and normalized buffers drop front bytes
+      // independently, so the prefix diff is no longer anchored to the same
+      // stream start and re-diffing full text would re-emit duplicated
+      // content; chunks fall back to verbatim passthrough.
+      const projection = applyAssistantMessageChunk(currentTurn, chunk);
+      if (projection) {
+        this.persistAssistantProjection(session.threadId, currentRunId, currentTurn, projection);
+      }
+      return;
+    }
     const behavior = resolveAgentAcpBehavior(currentTurn.agentType);
     const normalizedText = behavior.normalizeAssistantText({
       rawText: currentTurn.rawAssistantText,
@@ -575,10 +589,16 @@ export class LocalCoreAcpTurnCoordinator {
     if (!content) {
       return;
     }
-    session.pendingRawAssistantProgressChunks = [
+    // local_command_output re-arrives as session/update chunks for exact-match
+    // consumption; an unbounded pending list retained every slash output for
+    // the whole turn (same OOM family as the assistant stream caps).
+    const pending = [
       ...(session.pendingRawAssistantProgressChunks || []),
       content,
     ];
+    session.pendingRawAssistantProgressChunks = pending.length > MAX_PENDING_RAW_PROGRESS_CHUNKS
+      ? pending.slice(pending.length - MAX_PENDING_RAW_PROGRESS_CHUNKS)
+      : pending;
   }
 
   private emitProgress(
@@ -692,6 +712,8 @@ function isToolScopedAssistantUpdate(update: Record<string, unknown>) {
   const parentToolUseId = (claudeCode as { parentToolUseId?: unknown }).parentToolUseId;
   return typeof parentToolUseId === 'string' && parentToolUseId.trim().length > 0;
 }
+
+const MAX_PENDING_RAW_PROGRESS_CHUNKS = 64;
 
 function consumeRawAssistantProgressChunk(session: AcpSessionState, text: string) {
   const pending = session.pendingRawAssistantProgressChunks || [];

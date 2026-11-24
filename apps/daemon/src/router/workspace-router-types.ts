@@ -66,6 +66,10 @@ export type RunningTurn = {
   agentType?: string;
   assistantText: string;
   rawAssistantText?: string;
+  /** Sticky: accumulated stream text exceeded MAX_TURN_ASSISTANT_TEXT_CHARS;
+   * the raw/normalized prefix diff is no longer anchored, so chunks fall back
+   * to verbatim passthrough until the segment resets. */
+  assistantStreamTruncated?: boolean;
   assistantSequence?: number;
   assistantMessageId?: string;
   /** Non-empty assistant segments closed during this run; empty closes also
