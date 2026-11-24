@@ -2169,12 +2169,17 @@ test('assistant stream accumulation switches to bounded passthrough past the cap
   assert.ok(session.currentTurn.assistantText.length <= MAX_TURN_ASSISTANT_TEXT_CHARS + 64_000,
     `assistant buffer must stay bounded, got ${session.currentTurn.assistantText.length}`);
 
+  const lengthBeforeMarker = session.currentTurn.assistantText.length;
   sendAssistantChunk(coordinator, session, 'TAIL-MARKER-日常流水');
+  assert.equal(session.currentTurn.assistantText.length, lengthBeforeMarker + 'TAIL-MARKER-日常流水'.length,
+    'the boundary chunk must be emitted exactly once, with no gap or duplicate');
   assert.ok(session.currentTurn.assistantText.includes('TAIL-MARKER-日常流水'),
     'streaming must continue in passthrough mode past the cap');
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.ok(partials.length > 0, 'preview persistence must continue past the cap');
   assert.ok(partials[partials.length - 1]?.content.includes('TAIL-MARKER-日常流水'));
+  assert.ok(partials[partials.length - 1].content.length <= 65_536,
+    `truncated-turn partial saves must stay tail-capped, got ${partials[partials.length - 1].content.length}`);
 });
 
 test('segment close resets truncation so the diff chain resumes on the next segment', () => {
@@ -2213,4 +2218,34 @@ test('pending raw assistant progress chunks are capped so local_command_output c
   assert.ok(pending.length <= 64, `pending chunks must stay bounded, got ${pending.length}`);
   assert.equal(pending[0], 'out-6', 'oldest pending chunks are dropped first');
   assert.equal(pending[pending.length - 1], 'out-69');
+
+  // Evicted entries are still consumed on re-send instead of leaking into the
+  // assistant stream as progress text.
+  sendAssistantChunk(coordinator, session, 'out-0');
+  assert.equal(session.currentTurn.assistantText, '',
+    'evicted local_command_output re-sends must not render as assistant text');
+  assert.equal(pending.length, 64);
+});
+
+test('thought segment text stays bounded like the assistant stream', () => {
+  const turn: any = {
+    runId: 'run:agentdock::77777777-4777-4777-8777-777777777777:1795000002000',
+    replyCtx: 'run:agentdock::77777777-4777-4777-8777-777777777777:1795000002000',
+    previewHandle: 'thought-preview-1',
+    thoughtPreviewHandle: 'thought-preview-1',
+    thoughtMessageId: 'run-thought-1',
+    assistantText: '',
+    thoughtText: '',
+    typingStarted: true,
+    previewStarted: false,
+    thoughtPreviewStarted: false,
+    permission: null,
+  };
+  applyThoughtChunk(turn, 'a'.repeat(1_100_000));
+  assert.ok(turn.thoughtText.length <= MAX_TURN_ASSISTANT_TEXT_CHARS + 64_000,
+    `thought text must stay bounded, got ${turn.thoughtText.length}`);
+  applyThoughtChunk(turn, 'b'.repeat(200_000));
+  assert.ok(turn.thoughtText.length <= MAX_TURN_ASSISTANT_TEXT_CHARS + 64_000 + 200_000);
+  const projection = applyThoughtChunk(turn, '收尾思考');
+  assert.ok(projection?.content.includes('收尾思考'));
 });

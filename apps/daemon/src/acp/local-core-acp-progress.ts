@@ -85,7 +85,11 @@ export function applyThoughtChunk(currentTurn: RunningTurn, text: string): Thoug
     return null;
   }
   const projection = mergeThoughtSegment(currentTurn.thoughtText, text);
-  currentTurn.thoughtText = projection.fullText;
+  // Same OOM family as the assistant stream cap: stored thought text feeds
+  // the overlap scans below, so it must stay bounded per segment.
+  currentTurn.thoughtText = projection.fullText.length > MAX_TURN_ASSISTANT_TEXT_CHARS + TURN_TEXT_TRIM_SLACK_CHARS
+    ? projection.fullText.slice(projection.fullText.length - MAX_TURN_ASSISTANT_TEXT_CHARS)
+    : projection.fullText;
   const content = currentTurn.thoughtText.trim();
   if (!content) {
     return null;

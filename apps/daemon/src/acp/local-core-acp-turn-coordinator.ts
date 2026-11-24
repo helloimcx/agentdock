@@ -431,8 +431,15 @@ export class LocalCoreAcpTurnCoordinator {
 
   private persistAssistantProjection(threadId: string, runId: string, turn: RunningTurn, projection: { previewHandle: string; content: string }) {
     const messageId = turn.assistantMessageId || projection.previewHandle;
+    // Past the cap every debounced flush would otherwise UPSERT the full ~1MB
+    // tail (~20MB/s of SQLite WAL churn for a sustained pathological turn);
+    // the live preview only needs the recent tail, and the segment close
+    // still persists the full bounded text.
+    const content = turn.assistantStreamTruncated && projection.content.length > TRUNCATED_PARTIAL_PREVIEW_CHARS
+      ? projection.content.slice(-TRUNCATED_PARTIAL_PREVIEW_CHARS)
+      : projection.content;
     this.partialPersistence.schedule(threadId, () =>
-      this.options.saveAssistantPartial?.(threadId, runId, messageId, projection.content));
+      this.options.saveAssistantPartial?.(threadId, runId, messageId, content));
   }
 
   private handleThoughtChunkUpdate(session: AcpSessionState, currentTurn: RunningTurn, currentRunId: string, update: any) {
@@ -591,14 +598,29 @@ export class LocalCoreAcpTurnCoordinator {
     }
     // local_command_output re-arrives as session/update chunks for exact-match
     // consumption; an unbounded pending list retained every slash output for
-    // the whole turn (same OOM family as the assistant stream caps).
+    // the whole turn (same OOM family as the assistant stream caps). Entries
+    // dropped by the cap move to the evicted set so their re-sends are still
+    // consumed instead of misrendered as assistant text.
     const pending = [
       ...(session.pendingRawAssistantProgressChunks || []),
       content,
     ];
-    session.pendingRawAssistantProgressChunks = pending.length > MAX_PENDING_RAW_PROGRESS_CHUNKS
-      ? pending.slice(pending.length - MAX_PENDING_RAW_PROGRESS_CHUNKS)
-      : pending;
+    const overflow = pending.length - MAX_PENDING_RAW_PROGRESS_CHUNKS;
+    if (overflow <= 0) {
+      session.pendingRawAssistantProgressChunks = pending;
+      return;
+    }
+    const evicted = session.evictedRawAssistantProgressChunks || new Set<string>();
+    for (const entry of pending.slice(0, overflow)) {
+      evicted.add(entry);
+    }
+    while (evicted.size > MAX_EVICTED_RAW_PROGRESS_CHUNKS) {
+      const oldest = evicted.values().next().value;
+      if (oldest === undefined) break;
+      evicted.delete(oldest);
+    }
+    session.evictedRawAssistantProgressChunks = evicted;
+    session.pendingRawAssistantProgressChunks = pending.slice(overflow);
   }
 
   private emitProgress(
@@ -714,16 +736,18 @@ function isToolScopedAssistantUpdate(update: Record<string, unknown>) {
 }
 
 const MAX_PENDING_RAW_PROGRESS_CHUNKS = 64;
+const MAX_EVICTED_RAW_PROGRESS_CHUNKS = 128;
+const TRUNCATED_PARTIAL_PREVIEW_CHARS = 65_536;
 
 function consumeRawAssistantProgressChunk(session: AcpSessionState, text: string) {
   const pending = session.pendingRawAssistantProgressChunks || [];
   const index = pending.findIndex((candidate) => candidate === text);
-  if (index < 0) {
-    return false;
+  if (index >= 0) {
+    pending.splice(index, 1);
+    session.pendingRawAssistantProgressChunks = pending;
+    return true;
   }
-  pending.splice(index, 1);
-  session.pendingRawAssistantProgressChunks = pending;
-  return true;
+  return Boolean(session.evictedRawAssistantProgressChunks?.delete(text));
 }
 
 function createToolCallPayload(input: {
