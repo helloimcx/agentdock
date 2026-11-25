@@ -604,6 +604,10 @@ export class LocalCoreAcpStore {
     return this.automations.get(automationId);
   }
 
+  hasFinishedAutomationEvaluation(automationId: string): boolean {
+    return this.automations.hasFinishedEvaluation(automationId);
+  }
+
   findAutomationMonitorIdByHookId(hookId: string): string | undefined {
     return this.automations.findMonitorIdByHookId(hookId);
   }

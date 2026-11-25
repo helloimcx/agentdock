@@ -30,6 +30,7 @@ export async function captureHeapSnapshot(
   const timeoutMs = options.timeoutMs ?? 60_000;
   const produce = options.produceSnapshot ?? (() => getHeapSnapshot());
   let partialPath: string | undefined;
+  let outClosed: Promise<void> | undefined;
   try {
     mkdirSync(dir, { recursive: true });
     const stamp = (options.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-');
@@ -57,6 +58,7 @@ export async function captureHeapSnapshot(
           return;
         }
         const out = createWriteStream(partialPath!);
+        outClosed = new Promise<void>((resolve) => out.once('close', () => resolve()));
         streams = { snapshot, out };
         snapshot.once('error', () => settle(false));
         out.once('error', () => settle(false));
@@ -68,6 +70,13 @@ export async function captureHeapSnapshot(
       renameSync(partialPath!, path);
       rotateHeapSnapshots(dir, keep);
       return path;
+    }
+    if (outClosed) {
+      // The write stream's open may still be in flight when the failure
+      // resolves; removing immediately races the kernel-side create and can
+      // leave the .part behind (observed 2026-11-26 suite flake). Wait
+      // bounded for close, then remove.
+      await Promise.race([outClosed, new Promise<void>((resolve) => setTimeout(resolve, 250))]);
     }
     rmSync(partialPath!, { force: true });
     return undefined;

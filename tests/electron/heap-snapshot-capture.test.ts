@@ -100,6 +100,30 @@ test('a stream error mid-write is contained and leaves no partial file', async (
   }
 });
 
+test('repeated early stream errors never leave a partial file behind', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'heap-snapshot-error-race-'));
+  try {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const path = await captureHeapSnapshot(dir, {
+        produceSnapshot: async () => {
+          const failing = new Readable({ read() { /* chunk pushed below */ } });
+          queueMicrotask(() => {
+            failing.push('partial');
+            failing.destroy(new Error('simulated ENOSPC during snapshot'));
+          });
+          return failing;
+        },
+        timeoutMs: 5_000,
+      });
+      assert.equal(path, undefined);
+      assert.deepEqual(readdirSync(dir), [],
+        `attempt ${attempt} left a truncated snapshot behind`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a failing snapshot producer resolves with undefined and never rejects', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'heap-snapshot-fail-'));
   try {

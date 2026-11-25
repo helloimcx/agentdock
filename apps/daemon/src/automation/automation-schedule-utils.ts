@@ -1,6 +1,5 @@
 import type {
   AutomationDefinition,
-  AutomationEvaluation,
   AutomationMonitor,
   ScheduledJob,
 } from '@cc/superai-contracts';
@@ -59,11 +58,11 @@ export function automationMonitorToScheduledJob(monitor: AutomationMonitor): Sch
 
 export function isAutomationConsumedOnce(
   automation: AutomationDefinition,
-  listEvaluations: (automationId: string) => AutomationEvaluation[],
+  hasFinishedEvaluation: (automationId: string) => boolean,
 ): boolean {
   if (automation.activation.kind !== 'once') return false;
   if (automation.lastEvaluationAt !== undefined) return true;
-  return listEvaluations(automation.id).some((evaluation) => evaluation.status === 'finished');
+  return hasFinishedEvaluation(automation.id);
 }
 
 export function shouldPollAutomation(
