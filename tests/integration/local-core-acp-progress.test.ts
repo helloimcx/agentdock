@@ -2249,3 +2249,53 @@ test('thought segment text stays bounded like the assistant stream', () => {
   const projection = applyThoughtChunk(turn, '收尾思考');
   assert.ok(projection?.content.includes('收尾思考'));
 });
+
+test('progress rows are content-capped at write time while finals stay intact', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-progress-cap-'));
+  const store = new LocalCoreAcpStore(userDataPath);
+  try {
+    const thread = store.createThread('agentdock', 'Progress cap');
+    const giant = 'x'.repeat(200_000);
+    store.appendMessage(thread.id, 'assistant', `🔧 webReader: completed - ${giant}`, 'progress');
+    store.appendMessage(thread.id, 'assistant', giant, 'final');
+
+    const detail = store.getThread(thread.id, []);
+    const progressRow = detail.messages.find((message) => message.kind === 'progress');
+    const finalRow = detail.messages.find((message) => message.kind === 'final');
+    assert.ok(progressRow, 'progress row must persist');
+    assert.ok(progressRow.content.length <= 65_536 + 64,
+      `progress content must be capped at write, got ${progressRow.content.length}`);
+    assert.ok(progressRow.content.endsWith('... [output truncated for performance]'));
+    assert.equal(finalRow?.content.length, 200_000, 'final answers are never capped');
+  } finally {
+    store.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('upsertMessage caps progress content on the update path too', () => {
+  const userDataPath = mkdtempSync(join(tmpdir(), 'agentdock-progress-cap-update-'));
+  const store = new LocalCoreAcpStore(userDataPath);
+  try {
+    const thread = store.createThread('agentdock', 'Progress cap update');
+    store.upsertMessage(thread.id, 'run-1-tool-1', 'assistant', 'running', 'progress');
+    store.upsertMessage(thread.id, 'run-1-tool-1', 'assistant', `🔧 Terminal: completed - ${'y'.repeat(200_000)}`, 'progress', {
+      id: 'call-1',
+      name: 'Terminal',
+      status: 'completed',
+      output: 'z'.repeat(200_000),
+      label: '工具结果',
+    });
+
+    const detail = store.getThread(thread.id, []);
+    const row = detail.messages[0];
+    assert.ok(row.content.length <= 65_536 + 64,
+      `upserted progress content must be capped, got ${row.content.length}`);
+    assert.ok(row.toolCall?.output && row.toolCall.output.length <= 65_536 + 64,
+      `upserted toolCall.output must be capped, got ${row.toolCall?.output?.length}`);
+    assert.ok(row.toolCall?.output?.endsWith('... [output truncated for performance]'));
+  } finally {
+    store.close();
+    rmSync(userDataPath, { recursive: true, force: true });
+  }
+});

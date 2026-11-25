@@ -34,6 +34,12 @@ const RUN_COLUMNS = 'id, thread_id, status, started_at, updated_at';
  *  cap get() has always applied; full outputs stay available via run-message REST. */
 const THREAD_TOOL_OUTPUT_MAX_CHARS = 65536;
 
+/** Write-side cap for kind='progress' rows: whale threads accumulated single
+ *  progress rows of ~124KB (webReader/curl tool outputs; one prod thread holds
+ *  30MB of them) and the 2026-11-25 OOM death crashed materializing such TEXT
+ *  into JS via StatementSync::All. Finals are never capped. */
+const PROGRESS_CONTENT_MAX_CHARS = 65536;
+
 function parseToolCallColumn(toolCallJson: string | null | undefined): DesktopBridgeToolCall | undefined {
   const toolCall = parseJson<DesktopBridgeToolCall | null>(toolCallJson || 'null', null) || undefined;
   if (toolCall?.output && toolCall.output.length > THREAD_TOOL_OUTPUT_MAX_CHARS) {
@@ -43,6 +49,21 @@ function parseToolCallColumn(toolCallJson: string | null | undefined): DesktopBr
     };
   }
   return toolCall;
+}
+
+function capProgressContent(content: string, kind: string | undefined): string {
+  if (kind !== 'progress' || content.length <= PROGRESS_CONTENT_MAX_CHARS) return content;
+  return `${content.slice(0, PROGRESS_CONTENT_MAX_CHARS)}\n... [output truncated for performance]`;
+}
+
+function capProgressToolCall(toolCall: DesktopBridgeToolCall | undefined, kind: string | undefined): DesktopBridgeToolCall | undefined {
+  if (kind !== 'progress' || toolCall?.output === undefined || toolCall.output.length <= PROGRESS_CONTENT_MAX_CHARS) {
+    return toolCall;
+  }
+  return {
+    ...toolCall,
+    output: `${toolCall.output.slice(0, PROGRESS_CONTENT_MAX_CHARS)}\n... [output truncated for performance]`,
+  };
 }
 
 export class LocalThreadStore {
@@ -304,16 +325,17 @@ export class LocalThreadStore {
 
   upsertMessage(threadId: string, id: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
     const timestamp = new Date().toISOString();
-    const excerpt = normalizeMessageContent(content);
+    const excerpt = normalizeMessageContent(capProgressContent(content, kind));
     const existing = this.db.prepare('SELECT id FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as { id: string } | undefined;
     this.db.exec('BEGIN IMMEDIATE');
     try {
       if (existing) {
+        const cappedToolCall = capProgressToolCall(toolCall, kind);
         this.db.prepare(`
           UPDATE messages
           SET content = ?, tool_call_json = ?, bridge_kind = ?, bridge_status = ?, timestamp = ?, kind = ?
           WHERE id = ? AND thread_id = ?
-        `).run(content, toolCall ? JSON.stringify(toolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, id, threadId);
+        `).run(capProgressContent(content, kind), cappedToolCall ? JSON.stringify(cappedToolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, id, threadId);
       } else {
         this.insertMessageRow(threadId, id, timestamp, role, content, kind, toolCall, bridgeKind, bridgeStatus);
         this.db.prepare(`
@@ -362,6 +384,7 @@ export class LocalThreadStore {
     const nextSequenceRow = this.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS next_seq FROM messages WHERE thread_id = ?').get(threadId) as { next_seq: number };
     const nextSeq = Number(nextSequenceRow?.next_seq || 0);
     const messageId = id ?? `${timestamp}-${role}-${nextSeq}-${randomUUID()}`;
+    const cappedToolCall = capProgressToolCall(toolCall, kind);
     this.db.prepare(`
       INSERT INTO messages (${MESSAGE_COLUMNS})
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -369,8 +392,8 @@ export class LocalThreadStore {
       messageId,
       threadId,
       role,
-      content,
-      toolCall ? JSON.stringify(toolCall) : null,
+      capProgressContent(content, kind),
+      cappedToolCall ? JSON.stringify(cappedToolCall) : null,
       bridgeKind || null,
       bridgeStatus || null,
       timestamp,

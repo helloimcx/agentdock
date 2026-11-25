@@ -208,7 +208,7 @@ export class AutomationService {
         input.enabled === true
         && existing.enabled === false
         && this.options.store.getAutomationNextCheckAt(automation.id) === null
-        && !isAutomationConsumedOnce(automation, (id) => this.listEvaluations(id))
+        && !isAutomationConsumedOnce(automation, (id) => this.options.store.hasFinishedAutomationEvaluation(id))
       ) {
         return { nextCheckAt: calculateInitialNextCheckAt(automation, this.now()) };
       }
@@ -326,7 +326,7 @@ export class AutomationService {
         if (
           automation
           && shouldPollAutomation(automation, this.options.ownershipPolicy)
-          && !isAutomationConsumedOnce(automation, (id) => this.listEvaluations(id))
+          && !isAutomationConsumedOnce(automation, (id) => this.options.store.hasFinishedAutomationEvaluation(id))
         ) {
           this.persistInitialNextCheck(automation);
         }

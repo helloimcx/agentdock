@@ -1033,3 +1033,33 @@ test('legacy migration safely imports scheduled job with empty or missing route 
 });
 
 
+
+test('finished-evaluation existence is probed with an indexed lookup, not a list load', () => {
+  const context = fixture();
+  try {
+    const once = context.store.create(createInput({
+      activation: { kind: 'once', runAt: '2026-11-26T08:00:00.000Z' },
+    }));
+    assert.equal(context.store.hasFinishedEvaluation(once.id), false);
+    const evaluation = context.store.createEvaluation(once.id, {
+      activationKind: 'once',
+      startedAt: '2026-11-26T08:00:00.000Z',
+    });
+    assert.equal(context.store.hasFinishedEvaluation(once.id), false,
+      'running evaluations must not count as consumed');
+    context.store.finishEvaluation(evaluation.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-11-26T08:00:05.000Z',
+    });
+    assert.equal(context.store.hasFinishedEvaluation(once.id), true);
+    const other = context.store.create(createInput({
+      workspaceId: 'workspace-2',
+      title: 'Other automation',
+      activation: { kind: 'once', runAt: '2026-11-26T09:00:00.000Z' },
+    }));
+    assert.equal(context.store.hasFinishedEvaluation(other.id), false);
+  } finally {
+    context.close();
+  }
+});

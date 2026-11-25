@@ -282,6 +282,20 @@ export class LocalAutomationStore {
     return rows.map((row) => rowToEvaluation(row));
   }
 
+  /** Indexed existence probe for once-automation consumption: callers used to
+   * hydrate the full evaluation list (~1000 rows x evaluation_json, 82MB table
+   * in prod) just to ask whether any finished row exists — the 2026-11-25
+   * death #13 crashed materializing exactly such a row set. */
+  hasFinishedEvaluation(automationId: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1
+      FROM automation_evaluations
+      WHERE automation_id = ? AND status = 'finished'
+      LIMIT 1
+    `).get(automationId);
+    return row !== undefined;
+  }
+
   getLatestEvaluation(automationId: string): AutomationEvaluation | undefined {
     const row = this.db.prepare(`
       SELECT ${EVALUATION_COLUMNS}
