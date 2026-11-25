@@ -2257,6 +2257,12 @@ test('progress rows are content-capped at write time while finals stay intact', 
     const thread = store.createThread('agentdock', 'Progress cap');
     const giant = 'x'.repeat(200_000);
     store.appendMessage(thread.id, 'assistant', `🔧 webReader: completed - ${giant}`, 'progress');
+
+    const summary = store.listThreadSummaries('agentdock').find((candidate) => candidate.id === thread.id);
+    assert.ok(summary, 'thread summary must exist');
+    assert.ok(summary.excerpt.length <= 65_536 + 64,
+      `append path must not persist the uncapped content as thread excerpt, got ${summary.excerpt.length}`);
+
     store.appendMessage(thread.id, 'assistant', giant, 'final');
 
     const detail = store.getThread(thread.id, []);

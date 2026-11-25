@@ -34,36 +34,36 @@ const RUN_COLUMNS = 'id, thread_id, status, started_at, updated_at';
  *  cap get() has always applied; full outputs stay available via run-message REST. */
 const THREAD_TOOL_OUTPUT_MAX_CHARS = 65536;
 
+const TRUNCATION_MARKER = '\n... [output truncated for performance]';
+
 /** Write-side cap for kind='progress' rows: whale threads accumulated single
  *  progress rows of ~124KB (webReader/curl tool outputs; one prod thread holds
  *  30MB of them) and the 2026-11-25 OOM death crashed materializing such TEXT
  *  into JS via StatementSync::All. Finals are never capped. */
 const PROGRESS_CONTENT_MAX_CHARS = 65536;
 
+function capToolCallOutput(toolCall: DesktopBridgeToolCall, maxChars: number): DesktopBridgeToolCall {
+  if (toolCall.output === undefined || toolCall.output.length <= maxChars) return toolCall;
+  return {
+    ...toolCall,
+    output: `${toolCall.output.slice(0, maxChars)}${TRUNCATION_MARKER}`,
+  };
+}
+
 function parseToolCallColumn(toolCallJson: string | null | undefined): DesktopBridgeToolCall | undefined {
   const toolCall = parseJson<DesktopBridgeToolCall | null>(toolCallJson || 'null', null) || undefined;
-  if (toolCall?.output && toolCall.output.length > THREAD_TOOL_OUTPUT_MAX_CHARS) {
-    return {
-      ...toolCall,
-      output: `${toolCall.output.slice(0, THREAD_TOOL_OUTPUT_MAX_CHARS)}\n... [output truncated for performance]`,
-    };
-  }
-  return toolCall;
+  if (!toolCall) return undefined;
+  return capToolCallOutput(toolCall, THREAD_TOOL_OUTPUT_MAX_CHARS);
 }
 
 function capProgressContent(content: string, kind: string | undefined): string {
   if (kind !== 'progress' || content.length <= PROGRESS_CONTENT_MAX_CHARS) return content;
-  return `${content.slice(0, PROGRESS_CONTENT_MAX_CHARS)}\n... [output truncated for performance]`;
+  return `${content.slice(0, PROGRESS_CONTENT_MAX_CHARS)}${TRUNCATION_MARKER}`;
 }
 
 function capProgressToolCall(toolCall: DesktopBridgeToolCall | undefined, kind: string | undefined): DesktopBridgeToolCall | undefined {
-  if (kind !== 'progress' || toolCall?.output === undefined || toolCall.output.length <= PROGRESS_CONTENT_MAX_CHARS) {
-    return toolCall;
-  }
-  return {
-    ...toolCall,
-    output: `${toolCall.output.slice(0, PROGRESS_CONTENT_MAX_CHARS)}\n... [output truncated for performance]`,
-  };
+  if (kind !== 'progress') return toolCall;
+  return toolCall ? capToolCallOutput(toolCall, PROGRESS_CONTENT_MAX_CHARS) : undefined;
 }
 
 export class LocalThreadStore {
@@ -319,13 +319,14 @@ export class LocalThreadStore {
     const timestamp = new Date().toISOString();
     const id = this.insertMessageRow(threadId, undefined, timestamp, ...args);
     this.db.prepare(`UPDATE threads SET updated_at = ?, history_count = history_count + 1, excerpt = ? WHERE id = ?`)
-      .run(timestamp, normalizeMessageContent(args[1]), threadId);
+      .run(timestamp, normalizeMessageContent(capProgressContent(args[1], args[2])), threadId);
     return { id, timestamp };
   }
 
   upsertMessage(threadId: string, id: string, ...[role, content, kind, toolCall, bridgeKind, bridgeStatus]: MessageContentArgs) {
     const timestamp = new Date().toISOString();
-    const excerpt = normalizeMessageContent(capProgressContent(content, kind));
+    const cappedContent = capProgressContent(content, kind);
+    const excerpt = normalizeMessageContent(cappedContent);
     const existing = this.db.prepare('SELECT id FROM messages WHERE id = ? AND thread_id = ?').get(id, threadId) as { id: string } | undefined;
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -335,7 +336,7 @@ export class LocalThreadStore {
           UPDATE messages
           SET content = ?, tool_call_json = ?, bridge_kind = ?, bridge_status = ?, timestamp = ?, kind = ?
           WHERE id = ? AND thread_id = ?
-        `).run(capProgressContent(content, kind), cappedToolCall ? JSON.stringify(cappedToolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, id, threadId);
+        `).run(cappedContent, cappedToolCall ? JSON.stringify(cappedToolCall) : null, bridgeKind || null, bridgeStatus || null, timestamp, kind, id, threadId);
       } else {
         this.insertMessageRow(threadId, id, timestamp, role, content, kind, toolCall, bridgeKind, bridgeStatus);
         this.db.prepare(`
