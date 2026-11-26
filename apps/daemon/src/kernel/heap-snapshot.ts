@@ -33,6 +33,15 @@ export async function captureHeapSnapshot(
   let outClosed: Promise<void> | undefined;
   try {
     mkdirSync(dir, { recursive: true });
+    // A .part found here belongs to a crashed prior attempt: the only writer
+    // that leaves one behind is a process dying mid-write (V8 abort during a
+    // near-limit capture), and rotation ignores .part names. Sweep it now —
+    // otherwise aborted attempts pile up forever beside the live captures.
+    for (const stale of readdirSync(dir)) {
+      if (stale.endsWith('.heapsnapshot.part')) {
+        try { rmSync(join(dir, stale), { force: true }); } catch { /* best effort */ }
+      }
+    }
     const stamp = (options.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-');
     const path = join(dir, `heap-${stamp}.heapsnapshot`);
     partialPath = `${path}.part`;

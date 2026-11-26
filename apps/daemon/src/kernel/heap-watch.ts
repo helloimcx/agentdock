@@ -29,6 +29,13 @@ interface HeapWatchOptions {
    *  restarts a fresh process instead of dying by V8 abort hours later after
    *  thrashing host swap. */
   readonly onSustainedError?: (info: { heapUsed: number; limitBytes: number }) => void;
+  /** Fired once per episode on the FIRST sample at or above the error line,
+   *  without exiting. Deaths #13 (2026-11-25) and #14 (2026-11-26) went from
+   *  sub-warn heapUsed to fatal V8 abort inside minutes — RSS climbs in
+   *  external/native memory while heapUsed stays low — so the 15-minute
+   *  sustained window never filled and both crashes again left zero heap
+   *  evidence. Evidence capture must ride on a single sample, not the mean. */
+  readonly onErrorEvidence?: (info: { heapUsed: number; limitBytes: number }) => void;
 }
 
 interface HeapWatchState {
@@ -38,6 +45,7 @@ interface HeapWatchState {
   windowFractions: number[];
   windowSum: number;
   sustainedActive: boolean;
+  errorEvidenceActive: boolean;
 }
 
 const MB = 1024 * 1024;
@@ -62,7 +70,7 @@ export function createHeapWatcher(options: HeapWatchOptions) {
     const memory = process.memoryUsage();
     return { heapUsed: memory.heapUsed, rss: memory.rss, external: memory.external };
   });
-  const state: HeapWatchState = { windowFractions: [], windowSum: 0, sustainedActive: false };
+  const state: HeapWatchState = { windowFractions: [], windowSum: 0, sustainedActive: false, errorEvidenceActive: false };
 
   function check() {
     const current = sample();
@@ -72,8 +80,14 @@ export function createHeapWatcher(options: HeapWatchOptions) {
       state.crossed = level;
       options.log(formatLine(state, current, limitBytes, fraction));
     }
+    if (level === 'error' && !state.errorEvidenceActive && options.onErrorEvidence) {
+      state.errorEvidenceActive = true;
+      options.log(`[heap-watch] error line crossed at ${Math.round(fraction * 100)}% of limit; capturing heap evidence without exiting`);
+      options.onErrorEvidence({ heapUsed: current.heapUsed, limitBytes });
+    }
     if (!level && state.crossed) {
       state.crossed = undefined;
+      state.errorEvidenceActive = false;
       options.log(`[heap-watch] recovered heapUsed=${Math.round(current.heapUsed / MB)}MB/${Math.round(limitBytes / MB)}MB rss=${Math.round(current.rss / MB)}MB`);
     }
     updateSustainedWindow(fraction, current);
@@ -124,6 +138,7 @@ export function createHeapWatcher(options: HeapWatchOptions) {
       state.windowFractions = [];
       state.windowSum = 0;
       state.sustainedActive = false;
+      state.errorEvidenceActive = false;
     },
   };
 }

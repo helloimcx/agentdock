@@ -291,6 +291,85 @@ test('stop() clears the sustained window so a restarted watcher rebuilds it', ()
   assert.ok(sustained[1].includes('95%'), `post-stop mean must come from a rebuilt window, got ${sustained[1]}`);
 });
 
+// Deaths #13 (2026-11-25) and #14 (2026-11-26) both went from sub-warn
+// heapUsed to fatal inside a few minutes — RSS climbs in external/native
+// memory while heapUsed stays low, then one burst crosses 100%. The 30-sample
+// sustained window never fills, so the only path that captures heap evidence
+// must not wait for it: the first error-line sample fires onErrorEvidence.
+test('the first error-line sample captures evidence without waiting for the sustained window', () => {
+  const lines: string[] = [];
+  let evidence = 0;
+  let sustained = 0;
+  const samples: Sample[] = [
+    { heapUsed: heapUsedOfLimit(0.60), rss: rssOf(0.5), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.72), rss: rssOf(0.7), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.95), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.95), external: 0 },
+  ];
+  const lastSample = samples[samples.length - 1];
+  const watcher = createHeapWatcher({
+    log: (message) => lines.push(message),
+    limitBytes: 1_000_000_000,
+    sample: () => samples.shift() ?? lastSample,
+    onSustainedError: () => {
+      sustained += 1;
+    },
+    onErrorEvidence: () => {
+      evidence += 1;
+    },
+  });
+  for (let tick = 0; tick < 4; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(evidence, 1, `expected evidence on the first error-line sample, got ${evidence}`);
+  assert.equal(sustained, 0, 'the sustained window must not gate evidence capture');
+  assert.ok(lines.some((line) => line.includes('capturing heap evidence')),
+    `expected an evidence log line, got ${JSON.stringify(lines)}`);
+});
+
+test('error evidence fires once per episode and re-arms after recovery below warn', () => {
+  let evidence = 0;
+  const samples: Sample[] = [
+    { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.98), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.30), rss: rssOf(0.3), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
+  ];
+  const lastSample = samples[samples.length - 1];
+  const totalChecks = samples.length + 1;
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => samples.shift() ?? lastSample,
+    onErrorEvidence: () => {
+      evidence += 1;
+    },
+  });
+  for (let tick = 0; tick < totalChecks; tick += 1) {
+    watcher.check();
+  }
+  assert.equal(evidence, 2, `expected evidence per episode (first and post-recovery), got ${evidence}`);
+});
+
+test('stop() clears the error-evidence episode so a restarted watcher re-captures', () => {
+  let evidence = 0;
+  const pinned: Sample = { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 };
+  const watcher = createHeapWatcher({
+    log: () => {},
+    limitBytes: 1_000_000_000,
+    sample: () => pinned,
+    onErrorEvidence: () => {
+      evidence += 1;
+    },
+  });
+  watcher.check();
+  assert.equal(evidence, 1);
+  watcher.stop();
+  watcher.check();
+  assert.equal(evidence, 2, 'stop must reset the episode so a restart can capture again');
+});
+
 test('heap watcher start() samples on the interval and stop() clears it', () => {
   const lines: string[] = [];
   using timers = mock.timers;

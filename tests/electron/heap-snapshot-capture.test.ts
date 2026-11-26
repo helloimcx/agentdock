@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -21,6 +21,22 @@ test('captureHeapSnapshot writes the snapshot file and resolves with its path', 
     assert.equal(path, join(dir, 'heap-2026-11-21T06-30-00-000Z.heapsnapshot'));
     assert.equal(readFileSync(path!, 'utf8'), '{"snapshot":true}');
     assert.deepEqual(readdirSync(dir), ['heap-2026-11-21T06-30-00-000Z.heapsnapshot']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a stale .part from a crashed prior attempt is cleaned up by the next capture', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'heap-snapshot-stale-part-'));
+  try {
+    writeFileSync(join(dir, 'heap-2026-11-25T06-03-00-000Z.heapsnapshot.part'), '{"trunc');
+    const path = await captureHeapSnapshot(dir, {
+      produceSnapshot: stubSnapshot(['{"snap', 'shot":true}']),
+      now: () => new Date('2026-11-26T07:00:00.000Z'),
+    });
+    assert.ok(path);
+    assert.deepEqual(readdirSync(dir), ['heap-2026-11-26T07-00-00-000Z.heapsnapshot'],
+      'the stale .part must not survive a successful capture');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
