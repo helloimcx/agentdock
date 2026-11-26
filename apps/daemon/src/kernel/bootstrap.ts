@@ -371,8 +371,8 @@ export function bootstrapLocalCoreRuntime(options: {
       // the deliberate exit into an uncaught exception. Sampling stops first
       // so no further work runs during the capture, and the snapshot attempt
       // itself (bounded, best-effort, never rejects) comes before the exit
-      // because the two prod OOM deaths left zero heap evidence — a blind
-      // exit every time makes the heap-floor creep permanently undiagnosable.
+      // because prod OOM deaths left zero heap evidence — a blind exit every
+      // time makes the heap-floor creep permanently undiagnosable.
       heapWatcher.stop();
       void captureHeapSnapshot(join(state.runtimeDir, 'heap'))
         .catch(() => {})
@@ -384,6 +384,14 @@ export function bootstrapLocalCoreRuntime(options: {
           }
           process.exit(1);
         });
+    },
+    onErrorEvidence: () => {
+      // Deaths #13/#14 crossed from sub-warn heapUsed to fatal abort within
+      // minutes — faster than the sustained window fills — so the exit path
+      // never ran and no snapshot was taken. Capture evidence at the first
+      // error-line sample instead: keep running (GC may still recover; the
+      // sustained path owns the exit) but get the snapshot on disk now.
+      void captureHeapSnapshot(join(state.runtimeDir, 'heap')).catch(() => {});
     },
   });
 

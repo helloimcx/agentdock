@@ -18,13 +18,34 @@ export interface HeapSnapshotCaptureOptions {
 }
 
 /** Best-effort heap snapshot for memory forensics. Resolves with the written
- *  path, or undefined if the write failed, timed out, or was abandoned — it
- *  never rejects, so an evidence attempt can never delay or block the
- *  caller's emergency exit. Truncated attempts are removed: a partial
- *  .heapsnapshot chokes analysis tools, and the next episode captures again. */
+ *  path, or undefined if the write failed, timed out, was abandoned, or
+ *  another capture in the same directory is still in flight — it never
+ *  rejects, so an evidence attempt can never delay or block the caller's
+ *  emergency exit. Truncated attempts are removed: a partial .heapsnapshot
+ *  chokes analysis tools, and the next episode captures again. */
 export async function captureHeapSnapshot(
   dir: string,
   options: HeapSnapshotCaptureOptions = {},
+): Promise<string | undefined> {
+  if (capturesInFlight.has(dir)) return undefined;
+  capturesInFlight.add(dir);
+  try {
+    return await runCapture(dir, options);
+  } finally {
+    capturesInFlight.delete(dir);
+  }
+}
+
+/** One capture per directory at a time: the evidence watcher can fire a second
+ *  capture while a first is still writing (sustained path in the same tick as
+ *  the error-line path, or an episode re-cross). A second run here would sweep
+ *  the first's in-flight .part (destroying that evidence via ENOENT rename)
+ *  and roughly double snapshot allocation at the most fragile heap moment. */
+const capturesInFlight = new Set<string>();
+
+async function runCapture(
+  dir: string,
+  options: HeapSnapshotCaptureOptions,
 ): Promise<string | undefined> {
   const keep = Math.max(1, options.keep ?? 2);
   const timeoutMs = options.timeoutMs ?? 60_000;
@@ -33,6 +54,15 @@ export async function captureHeapSnapshot(
   let outClosed: Promise<void> | undefined;
   try {
     mkdirSync(dir, { recursive: true });
+    // A .part found here belongs to a crashed prior attempt: the only writer
+    // that leaves one behind is a process dying mid-write (V8 abort during a
+    // near-limit capture), and rotation ignores .part names. Sweep it now —
+    // otherwise aborted attempts pile up forever beside the live captures.
+    for (const stale of readdirSync(dir)) {
+      if (stale.endsWith('.heapsnapshot.part')) {
+        try { rmSync(join(dir, stale), { force: true }); } catch { /* best effort */ }
+      }
+    }
     const stamp = (options.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-');
     const path = join(dir, `heap-${stamp}.heapsnapshot`);
     partialPath = `${path}.part`;
