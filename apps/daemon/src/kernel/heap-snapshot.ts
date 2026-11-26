@@ -18,13 +18,34 @@ export interface HeapSnapshotCaptureOptions {
 }
 
 /** Best-effort heap snapshot for memory forensics. Resolves with the written
- *  path, or undefined if the write failed, timed out, or was abandoned — it
- *  never rejects, so an evidence attempt can never delay or block the
- *  caller's emergency exit. Truncated attempts are removed: a partial
- *  .heapsnapshot chokes analysis tools, and the next episode captures again. */
+ *  path, or undefined if the write failed, timed out, was abandoned, or
+ *  another capture in the same directory is still in flight — it never
+ *  rejects, so an evidence attempt can never delay or block the caller's
+ *  emergency exit. Truncated attempts are removed: a partial .heapsnapshot
+ *  chokes analysis tools, and the next episode captures again. */
 export async function captureHeapSnapshot(
   dir: string,
   options: HeapSnapshotCaptureOptions = {},
+): Promise<string | undefined> {
+  if (capturesInFlight.has(dir)) return undefined;
+  capturesInFlight.add(dir);
+  try {
+    return await runCapture(dir, options);
+  } finally {
+    capturesInFlight.delete(dir);
+  }
+}
+
+/** One capture per directory at a time: the evidence watcher can fire a second
+ *  capture while a first is still writing (sustained path in the same tick as
+ *  the error-line path, or an episode re-cross). A second run here would sweep
+ *  the first's in-flight .part (destroying that evidence via ENOENT rename)
+ *  and roughly double snapshot allocation at the most fragile heap moment. */
+const capturesInFlight = new Set<string>();
+
+async function runCapture(
+  dir: string,
+  options: HeapSnapshotCaptureOptions,
 ): Promise<string | undefined> {
   const keep = Math.max(1, options.keep ?? 2);
   const timeoutMs = options.timeoutMs ?? 60_000;

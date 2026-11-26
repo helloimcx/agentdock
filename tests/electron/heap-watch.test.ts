@@ -331,7 +331,8 @@ test('error evidence fires once per episode and re-arms after recovery below war
   let evidence = 0;
   const samples: Sample[] = [
     { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
-    { heapUsed: heapUsedOfLimit(0.98), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.80), rss: rssOf(0.9), external: 0 },
+    { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
     { heapUsed: heapUsedOfLimit(0.30), rss: rssOf(0.3), external: 0 },
     { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
     { heapUsed: heapUsedOfLimit(0.97), rss: rssOf(0.9), external: 0 },
