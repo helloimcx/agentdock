@@ -248,6 +248,61 @@ test('listLatestFinishedEvaluationByOrigin returns the most recent finished eval
   }
 });
 
+test('getLatestFinishedEvaluation returns the newest finished row without hydrating the list', () => {
+  const context = fixture();
+  try {
+    const monitor = context.store.createTrusted({
+      ...createInput({ title: 'Monitor A' }),
+      originKind: 'automation-monitor',
+    });
+    const other = context.store.createTrusted({
+      ...createInput({ workspaceId: 'workspace-2', title: 'Monitor B' }),
+      originKind: 'automation-monitor',
+    });
+
+    assert.equal(context.store.getLatestFinishedEvaluation(monitor.id), undefined);
+
+    const earlier = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T01:00:00.000Z',
+    });
+    context.store.finishEvaluation(earlier.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T01:00:05.000Z',
+    });
+    const later = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T02:00:00.000Z',
+    });
+    context.store.finishEvaluation(later.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T02:00:05.000Z',
+    });
+    const running = context.store.createEvaluation(monitor.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T03:00:00.000Z',
+    });
+    void running;
+    const otherEvaluation = context.store.createEvaluation(other.id, {
+      activationKind: 'provider-event',
+      startedAt: '2026-07-05T04:00:00.000Z',
+    });
+    context.store.finishEvaluation(otherEvaluation.id, {
+      conditionOutcome: 'matched',
+      triggerDecision: 'triggered',
+      finishedAt: '2026-07-05T04:00:05.000Z',
+    });
+
+    assert.equal(context.store.getLatestFinishedEvaluation(monitor.id)?.id, later.id);
+    assert.equal(context.store.getLatestFinishedEvaluation(other.id)?.id, otherEvaluation.id);
+    assert.equal(context.facade.getLatestFinishedAutomationEvaluation(monitor.id)?.id, later.id);
+  } finally {
+    context.close();
+  }
+});
+
 test('listLatestRunByOrigin returns the most recent run per automation', () => {
   const context = fixture();
   try {

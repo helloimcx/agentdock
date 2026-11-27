@@ -608,6 +608,10 @@ export class LocalCoreAcpStore {
     return this.automations.hasFinishedEvaluation(automationId);
   }
 
+  getLatestFinishedAutomationEvaluation(automationId: string): AutomationEvaluation | undefined {
+    return this.automations.getLatestFinishedEvaluation(automationId);
+  }
+
   findAutomationMonitorIdByHookId(hookId: string): string | undefined {
     return this.automations.findMonitorIdByHookId(hookId);
   }
