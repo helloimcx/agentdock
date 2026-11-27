@@ -84,6 +84,10 @@ Tailscale 安全接入：[发现与 SSH 预检](docs/architecture/tailscale-onbo
 
 ## New
 
+### 2026-11-18
+
+- **内建每日简报技能（#275 Phase 1）**：新增 `briefing` 内建技能，把"多源聚合 → 已读去重 → 简报合成 → 定时投递"打包成开箱即用的工作流模板。Phase 1 覆盖三个免 key 来源（RSS/Atom、Hacker News、GitHub Trending），已读状态落盘工作区 `.agentdock/briefing/seen.json`（URL 主键 + 30 天清理），通过 `lac scheduler add --cron` 定时触发、`side-thread` 生成不打扰当前对话，支持 `lac scheduler run` 立即试运行。编辑画像、话题级向量去重与 enrichment 按 issue 分期留作后续。
+
 ### 2026-11-16
 
 - **调度器 CLI 支持一次性任务（#263）**：`lac scheduler add` 新增 `--at "<iso-timestamp>"`（与 `--cron` 互斥、二选一），可创建只触发一次的提醒任务；触发成功后自动停用，不再像"用 cron 模拟一次性"那样在明年同日静默重放。`lac scheduler edit <id>` 现可在 cron 与一次性之间互相切换（`--cron` / `--at`）。`--at` 必须是带时区偏移或 `Z` 的未来 ISO 时间，文本输出以 UTC 显示一次性任务并标记 `(once)`。
