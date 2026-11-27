@@ -296,6 +296,21 @@ export class LocalAutomationStore {
     return row !== undefined;
   }
 
+  /** Single-row hydration for "latest finished evaluation" consumers; the
+   * previous shape pulled the full per-automation list (~1000 rows x
+   * evaluation_json, 82MB table in prod) and picked the first finished row —
+   * the 2026-11-27 death #15 crashed materializing exactly such a row set. */
+  getLatestFinishedEvaluation(automationId: string): AutomationEvaluation | undefined {
+    const row = this.db.prepare(`
+      SELECT ${EVALUATION_COLUMNS}
+      FROM automation_evaluations
+      WHERE automation_id = ? AND status = 'finished'
+      ORDER BY started_at DESC, id DESC
+      LIMIT 1
+    `).get(automationId) as LocalAutomationEvaluationRow | undefined;
+    return row ? rowToEvaluation(row) : undefined;
+  }
+
   getLatestEvaluation(automationId: string): AutomationEvaluation | undefined {
     const row = this.db.prepare(`
       SELECT ${EVALUATION_COLUMNS}

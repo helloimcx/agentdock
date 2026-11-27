@@ -249,10 +249,6 @@ function resolveEvaluationDeliveryStatus(run: AutomationRun | undefined, evaluat
   return undefined;
 }
 
-export function latestFinishedEvaluation(evaluations: AutomationEvaluation[]): AutomationEvaluation | undefined {
-  return evaluations.find((evaluation) => evaluation.status === 'finished');
-}
-
 function monitorConditionExpression(condition: AutomationMonitorCondition): string {
   if (condition.metric === 'always' || condition.expression?.trim() === 'always') {
     return 'always';

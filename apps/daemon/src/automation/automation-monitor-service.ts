@@ -25,7 +25,6 @@ import {
 import {
   automationToMonitor,
   automationToMonitorRun,
-  latestFinishedEvaluation,
   monitorToAutomationInput,
 } from './legacy-automation-mappers.js';
 import type { AutomationService } from './automation-service.js';
@@ -206,7 +205,7 @@ export class AutomationMonitorService {
     return automation
       ? automationToMonitor(
         automation,
-        latestFinishedEvaluation(this.options.automations.listEvaluations(automation.id)),
+        this.options.automations.getLatestFinishedEvaluation(automation.id),
         this.options.automations.getLatestRun(automation.id),
         this.options.automations.getLatestEvaluationWithState(automation.id),
       )

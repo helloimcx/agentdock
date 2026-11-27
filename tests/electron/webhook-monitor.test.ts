@@ -906,23 +906,24 @@ test('updateMonitor and deleteMonitor resolve a public short id exactly once', a
     });
     const publicId = toPublicAutomationMonitorId(monitor.id);
     let listCalls = 0;
-    let evaluationListCalls = 0;
+    let latestFinishedCalls = 0;
     const originalList = context.automations.list.bind(context.automations);
     (context.automations as unknown as { list: (...args: unknown[]) => unknown }).list = (...args: unknown[]) => {
       listCalls += 1;
       return originalList(...(args as Parameters<typeof originalList>));
     };
-    const originalListEvaluations = context.automations.listEvaluations.bind(context.automations);
-    (context.automations as unknown as { listEvaluations: (...args: unknown[]) => unknown }).listEvaluations = (...args: unknown[]) => {
-      evaluationListCalls += 1;
-      return originalListEvaluations(...(args as Parameters<typeof originalListEvaluations>));
+    const originalLatestFinished = context.automations.getLatestFinishedEvaluation.bind(context.automations);
+    (context.automations as unknown as { getLatestFinishedEvaluation: (...args: unknown[]) => unknown }).getLatestFinishedEvaluation = (...args: unknown[]) => {
+      latestFinishedCalls += 1;
+      return originalLatestFinished(...(args as Parameters<typeof originalLatestFinished>));
     };
 
     await context.monitors.updateMonitor(publicId, { title: 'Renamed Probe Hook' });
     assert.equal(listCalls, 1, 'updateMonitor must resolve the monitor automation exactly once');
-    // Exactly one listEvaluations is allowed: AutomationEventProjector.emitDefinition
-    // inside updateFromLegacy. The monitor resolution itself must stay lean.
-    assert.equal(evaluationListCalls, 1, 'updateMonitor may only list evaluations via the update event projector');
+    // Exactly one getLatestFinishedEvaluation is allowed: AutomationEventProjector
+    // .emitDefinition inside updateFromLegacy. The monitor resolution itself must
+    // stay lean, and the projector must not hydrate the full evaluation list.
+    assert.equal(latestFinishedCalls, 1, 'updateMonitor may only read evaluations via the update event projector');
     assert.equal((await context.monitors.getMonitor(publicId))?.title, 'Renamed Probe Hook');
 
     listCalls = 0;

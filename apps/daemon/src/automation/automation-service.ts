@@ -119,7 +119,7 @@ export class AutomationService {
         getAutomation: (id) => this.get(id),
         getLatestRun: (id) => this.getLatestRun(id),
         getEvaluation: (id) => this.getEvaluation(id),
-        listEvaluations: (id) => this.listEvaluations(id),
+        getLatestFinishedEvaluation: (id) => this.getLatestFinishedEvaluation(id),
         getLatestEvaluationWithState: (id) => this.getLatestEvaluationWithState(id),
       },
       options.log,
@@ -252,6 +252,10 @@ export class AutomationService {
 
   getLatestEvaluationWithState(automationId: string): AutomationEvaluation | undefined {
     return this.options.store.getLatestAutomationEvaluationWithState(automationId);
+  }
+
+  getLatestFinishedEvaluation(automationId: string): AutomationEvaluation | undefined {
+    return this.options.store.getLatestFinishedAutomationEvaluation(automationId);
   }
 
   listRuns(automationId: string): AutomationRun[] {

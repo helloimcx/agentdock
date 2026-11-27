@@ -14,7 +14,6 @@ import {
   automationToMonitorRun,
   automationToScheduledJob,
   automationToScheduledJobRun,
-  latestFinishedEvaluation,
 } from './legacy-automation-mappers.js';
 
 export interface EvaluationContext {
@@ -27,7 +26,7 @@ export interface AutomationEventProjectorStoreDelegate {
   getAutomation: (automationId: string) => AutomationDefinition | undefined;
   getLatestRun: (automationId: string) => AutomationRun | undefined;
   getEvaluation: (evaluationId: string) => AutomationEvaluation | undefined;
-  listEvaluations: (automationId: string) => AutomationEvaluation[];
+  getLatestFinishedEvaluation: (automationId: string) => AutomationEvaluation | undefined;
   getLatestEvaluationWithState: (automationId: string) => AutomationEvaluation | undefined;
 }
 
@@ -47,7 +46,7 @@ export class AutomationEventProjector {
           payload: automationToScheduledJob(automation, this.store.getLatestRun(automation.id)),
         });
       } else if (automation.originKind === 'automation-monitor') {
-        const latest = latestFinishedEvaluation(this.store.listEvaluations(automation.id));
+        const latest = this.store.getLatestFinishedEvaluation(automation.id);
         this.emitEvent({
           type: 'automation.monitor.updated',
           payload: automationToMonitor(
